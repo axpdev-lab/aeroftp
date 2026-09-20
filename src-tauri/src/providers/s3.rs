@@ -3606,10 +3606,20 @@ impl S3Provider {
                         .get(reqwest::header::ETAG)
                         .and_then(|v| v.to_str().ok())
                         .map(|v| v.trim().to_string());
-                    if let Some(after) = now_tag.as_deref() {
-                        if after != etag {
+                    match now_tag.as_deref() {
+                        Some(after) if after != etag => {
                             return Some(format!("entity tag {} became {}", etag, after));
                         }
+                        // The parallel path only starts with a strong tag, so
+                        // an answer without one is not "nothing to compare",
+                        // it is an endpoint that stopped pinning the bytes.
+                        None => {
+                            return Some(format!(
+                                "entity tag {} is no longer reported, so nothing pins the bytes",
+                                etag
+                            ));
+                        }
+                        Some(_) => {}
                     }
                     let now_size = head
                         .headers()
@@ -4355,8 +4365,13 @@ impl StorageProvider for S3Provider {
                             {
                                 Ok(()) => return Ok(()),
                                 Err(e)
-                                    if e.to_string()
-                                        .contains(super::multi_thread::SOURCE_CHANGED_MARKER) =>
+                                    if {
+                                        let text = e.to_string();
+                                        text.contains(super::multi_thread::SOURCE_CHANGED_MARKER)
+                                            || text.contains(
+                                                super::multi_thread::PARALLEL_REFUSED_MARKER,
+                                            )
+                                    } =>
                                 {
                                     // Refused, not failed: the object moved
                                     // while the windows were reading it, and a
@@ -6960,7 +6975,47 @@ async fn download_range_to_offset(
 
     let status = response.status();
     match status {
-        StatusCode::PARTIAL_CONTENT | StatusCode::OK => {}
+        StatusCode::PARTIAL_CONTENT => {
+            // The window is written at its own offset, so a body that is not
+            // the window asked for puts the wrong bytes there while the total
+            // still adds up, and no comparison of the object would see it.
+            // The server has to say which range it is answering with.
+            let answered = response
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+                .map(|value| value.trim().to_string());
+            let expected = format!("bytes {}-{}/", start, end);
+            if !answered
+                .as_deref()
+                .map(|value| value.starts_with(&expected))
+                .unwrap_or(false)
+            {
+                return Err(ProviderError::TransferFailed(
+                    super::multi_thread::parallel_refused(
+                        "S3 multi-thread",
+                        &key,
+                        &format!(
+                            "the server answered {:?} to a request for {}",
+                            answered.unwrap_or_default(),
+                            expected
+                        ),
+                    ),
+                ));
+            }
+        }
+        StatusCode::OK => {
+            // Range ignored: the body is the whole object, and writing its
+            // prefix at this window's offset would corrupt the file to
+            // exactly the right length.
+            return Err(ProviderError::TransferFailed(
+                super::multi_thread::parallel_refused(
+                    "S3 multi-thread",
+                    &key,
+                    "the server ignored the range and answered with the whole object",
+                ),
+            ));
+        }
         StatusCode::NOT_FOUND => return Err(ProviderError::NotFound(key)),
         StatusCode::PRECONDITION_FAILED => {
             return Err(ProviderError::TransferFailed(format!(

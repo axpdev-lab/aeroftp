@@ -33,7 +33,7 @@ use tokio_util::sync::CancellationToken;
 use super::multi_thread::{
     aerotmp_path_for, parallel_refused, run_concurrent_range_download, source_changed,
     ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
-    AFTER_TRANSFER_READ_RETRY, SOURCE_CHANGED_MARKER,
+    AFTER_TRANSFER_READ_RETRY, PARALLEL_REFUSED_MARKER, SOURCE_CHANGED_MARKER,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -1851,7 +1851,7 @@ impl StorageProvider for SftpProvider {
                 return Err(classify_russh_err(error, ProviderError::NotFound));
             }
         };
-        let total_size = metadata.size.unwrap_or(0);
+        let mut total_size = metadata.size.unwrap_or(0);
         // The OPEN above is speculation, fired next to the STAT to overlap the
         // two round trips. Its failure is not the download's failure: the fresh
         // STAT can still select the pooled, read-ahead or pipelined path, and
@@ -1971,14 +1971,40 @@ impl StorageProvider for SftpProvider {
                     .await
                     {
                         Ok(()) => return Ok(()),
-                        Err(e) if e.to_string().contains(SOURCE_CHANGED_MARKER) => {
+                        Err(e)
+                            if {
+                                let text = e.to_string();
+                                text.contains(SOURCE_CHANGED_MARKER)
+                                    || text.contains(PARALLEL_REFUSED_MARKER)
+                            } =>
+                        {
                             // Read on several handles and the object moved
-                            // between the opens: the serial path below reads
-                            // on one.
+                            // between the opens, or it is not the object the
+                            // transfer was planned for: the serial path below
+                            // reads on one handle.
                             tracing::warn!("{}; downloading on a single handle", e);
                             source_is_moving = true;
                         }
                         Err(e) => return Err(e),
+                    }
+                }
+            }
+        }
+
+        if source_is_moving {
+            // Everything below is bounded by `total_size`, which was read
+            // before the object moved: keeping it would publish a file cut to
+            // a length that is no longer the object's.
+            if let Ok(sftp) = self.get_sftp() {
+                if let Ok(fresh) = Self::range_source_reading(sftp, &full_path).await {
+                    if fresh.size() != total_size {
+                        tracing::warn!(
+                            "SFTP: {} is {} bytes now and was {}, the single-handle download uses the new size",
+                            full_path,
+                            fresh.size(),
+                            total_size
+                        );
+                        total_size = fresh.size();
                     }
                 }
             }
@@ -3752,15 +3778,29 @@ async fn sftp_readahead_download(
     // replaced inside it would be read as two versions. The window is far
     // narrower than a whole transfer, but the check costs one round trip on
     // the session that is already there.
-    let before = SftpProvider::range_source_reading(sftp, full_path)
-        .await
-        .ok();
-    if before.is_none() {
-        tracing::warn!(
-            "SFTP readahead: {} could not be read before the transfer, a replacement during it will not be detected",
-            full_path
-        );
-    }
+    // The transfer is bounded by `total_size`, read by the caller earlier, so
+    // a reading that does not match it means this download would publish a
+    // file cut to a length the object no longer has. Refusing here costs
+    // nothing: not a byte has been read.
+    let before = match SftpProvider::range_source_reading(sftp, full_path).await {
+        Ok(reading) => match reading.matches_planned_size(total_size) {
+            Ok(()) => reading,
+            Err(why) => {
+                return Err(ProviderError::TransferFailed(parallel_refused(
+                    "SFTP readahead",
+                    full_path,
+                    &why,
+                )))
+            }
+        },
+        Err(why) => {
+            return Err(ProviderError::TransferFailed(parallel_refused(
+                "SFTP readahead",
+                full_path,
+                &why,
+            )))
+        }
+    };
 
     // Keep the exclusive handle returned by create_new through commit: no
     // symlink following and no create/reopen TOCTOU window.
@@ -3799,7 +3839,7 @@ async fn sftp_readahead_download(
         .map_err(|e| ProviderError::TransferFailed(format!("Failed to sync download: {}", e)))?;
     drop(out);
 
-    if let Some(before) = before {
+    {
         let changed = match SftpProvider::range_source_reading(sftp, full_path).await {
             Ok(after) => before.differs_from(&after),
             Err(first) => {

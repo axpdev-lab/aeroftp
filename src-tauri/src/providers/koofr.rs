@@ -1733,11 +1733,25 @@ impl StorageProvider for KoofrProvider {
             return Err(Self::parse_error(resp).await);
         }
 
+        // A server that ignores the range answers 200 with the whole file.
+        // The caller writes what comes back at the offset it asked for, so
+        // handing it the head of the object would put the wrong bytes there
+        // and still add up to the right length. Cut the window out of it, the
+        // same way the other HTTP providers do.
+        let ignored_range = resp.status() == reqwest::StatusCode::OK;
         let bytes = resp
             .bytes()
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Read bytes failed: {}", e)))?;
-        Ok(bytes.to_vec())
+        if !ignored_range {
+            return Ok(bytes.to_vec());
+        }
+        if offset >= bytes.len() as u64 {
+            return Ok(Vec::new());
+        }
+        let start = offset as usize;
+        let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
+        Ok(bytes[start..stop].to_vec())
     }
 
     fn transfer_optimization_hints(&self) -> TransferOptimizationHints {

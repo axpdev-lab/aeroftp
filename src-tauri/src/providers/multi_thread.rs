@@ -248,6 +248,11 @@ impl RangeSourceFingerprint {
         self.validator.clone()
     }
 
+    /// The size this reading found.
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
     /// The plan about to run was built from a size the caller probed earlier.
     /// If the object has a different one now, the plan belongs to a different
     /// object: pinning the windows to this one would publish a file cut to the
@@ -264,14 +269,24 @@ impl RangeSourceFingerprint {
     }
 
     /// A named reason when the two readings cannot describe the same object,
-    /// and `None` when nothing proves they differ. Only fields both readings
-    /// carry are compared: a provider that stops publishing a value says
-    /// nothing about the bytes.
+    /// and `None` when nothing proves they differ.
+    ///
+    /// A value this reading carried and the other does not is itself a
+    /// difference, not a missing comparison: an endpoint that stops answering
+    /// with the entity tag it had just given is exactly how a replacement
+    /// would hide from a check that only compares what both sides publish.
     pub fn differs_from(&self, other: &Self) -> Option<String> {
-        if let (Some(before), Some(after)) = (&self.validator, &other.validator) {
-            if before != after {
+        match (&self.validator, &other.validator) {
+            (Some(before), Some(after)) if before != after => {
                 return Some(format!("entity tag {} became {}", before, after));
             }
+            (Some(before), None) => {
+                return Some(format!(
+                    "entity tag {} is no longer reported, so nothing pins the bytes",
+                    before
+                ));
+            }
+            _ => {}
         }
         if self.size != other.size {
             return Some(format!("size {} became {}", self.size, other.size));
@@ -1433,10 +1448,20 @@ async fn http_range_source_moved(
             .get(reqwest::header::ETAG)
             .and_then(|v| v.to_str().ok())
             .map(|tag| tag.trim().to_string());
-        if let (Some(before), Some(after)) = (validator, now_tag.as_deref()) {
-            if before != after {
+        match (validator, now_tag.as_deref()) {
+            (Some(before), Some(after)) if before != after => {
                 return Some(format!("entity tag {} became {}", before, after));
             }
+            // A tag that was there and is not any more is a difference, not a
+            // field to skip: it is how a replacement hides from a comparison
+            // that only looks at what both answers publish.
+            (Some(before), None) => {
+                return Some(format!(
+                    "entity tag {} is no longer reported, so nothing pins the bytes",
+                    before
+                ));
+            }
+            _ => {}
         }
         let now_modified = response
             .headers()
