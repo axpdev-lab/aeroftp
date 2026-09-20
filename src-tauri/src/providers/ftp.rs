@@ -293,7 +293,7 @@ impl FtpProvider {
         )
         .await;
 
-        let result = match outcome {
+        match outcome {
             // The windows are in `<local>.aerotmp` and the file is not
             // published here: the caller reads the object again through the
             // session it already holds and publishes only if it did not move.
@@ -308,8 +308,7 @@ impl FtpProvider {
                 ))
             }
             Err(e) => Err(e),
-        };
-        result
+        }
     }
 
     /// Create a TLS connector with rustls for TLS session reuse support (RFC 4217 §10.2).
@@ -1431,20 +1430,23 @@ impl StorageProvider for FtpProvider {
             && total_size >= self.multi_thread_cutoff
             && self.connection_spec.is_some()
         {
+            let (attempt_progress, fallback_progress) =
+                super::multi_thread::share_progress(on_progress.take());
+            on_progress = fallback_progress;
             match self
                 .parallel_download_if_unchanged(
                     remote_path,
                     local_path,
                     total_size,
-                    on_progress.take(),
+                    attempt_progress,
                 )
                 .await
             {
                 Ok(true) => return Ok(()),
                 // Refused, not failed: one stream reads one consistent view of
                 // the object, which is what the parallel path could not
-                // promise here. The progress callback went with the attempt,
-                // so this runs without one.
+                // promise here, and it reports through the half of the
+                // progress callback that stayed here.
                 Ok(false) => {}
                 Err(e) => return Err(e),
             }

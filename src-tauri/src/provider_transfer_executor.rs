@@ -447,7 +447,7 @@ pub async fn run_provider_segmented_download(
     let outcome =
         run_concurrent_range_download(cfg, write_one_range, cancel_token, on_progress).await;
 
-    let result = match outcome {
+    match outcome {
         Ok(ConcurrentRangeOutcome::Completed) => {
             let temp = aerotmp_path_for(Path::new(local_path));
             let changed = range_source_changed_through(primary, remote_path, &before).await;
@@ -469,9 +469,7 @@ pub async fn run_provider_segmented_download(
             "segmented download: server ignored Range; falling back to single-stream".to_string(),
         ),
         Err(e) => Err(format!("segmented download: {}", e)),
-    };
-
-    result
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

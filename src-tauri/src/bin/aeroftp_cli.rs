@@ -7241,7 +7241,9 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::NotFound(_) => 2,
         ProviderError::PermissionDenied(_) | ProviderError::ReadOnly(_) => 3,
         ProviderError::TransferFailed(msg) if provider_error_message_looks_not_found(msg) => 2,
-        ProviderError::TransferFailed(_) | ProviderError::Cancelled => 4,
+        ProviderError::TransferFailed(_)
+        | ProviderError::ParallelRefused(_)
+        | ProviderError::Cancelled => 4,
         ProviderError::InvalidConfig(_)
         | ProviderError::InvalidPath(_)
         | ProviderError::FileTooLarge(_)
@@ -32040,8 +32042,9 @@ async fn pget_segmented_download(
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
-        aerotmp_path_for, range_source_changed_through, read_range_source_through,
-        run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+        aerotmp_path_for, open_after_transfer, range_source_changed_through,
+        read_range_source_through, run_concurrent_range_download, ConcurrentRangeConfig,
+        ConcurrentRangeOutcome,
     };
 
     let actual_segments = pget_effective_segments(file_size, segments);
@@ -32110,7 +32113,13 @@ async fn pget_segmented_download(
     let mut conns: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(actual_segments);
     for i in 0..actual_segments {
         match create_and_connect(url, cli, format).await {
-            Ok((p, _)) => conns.push(p),
+            Ok((mut p, _)) => {
+                // Pin every window to the version the first reading saw, as
+                // the shared executor does: on S3 this is the `If-Match` that
+                // refuses a window the moment the object is replaced.
+                p.set_range_validator(before.validator());
+                conns.push(p)
+            }
             Err(_) => {
                 for mut c in conns {
                     let _ = c.disconnect().await;
@@ -32297,7 +32306,11 @@ async fn pget_segmented_download(
             // than kept idle through the transfer: the connections that read
             // the windows are closed by the engine, and a session parked for
             // minutes is the first thing a server's idle timeout drops.
-            let changed = match create_and_connect(url, cli, format).await {
+            // Opened twice if need be: the window connections have just
+            // closed, and one refused connection must not discard a transfer
+            // that is complete.
+            let reopened = open_after_transfer(|| create_and_connect(url, cli, format)).await;
+            let changed = match reopened {
                 Ok((mut session, _)) => {
                     // The shared comparison, so this reading retries once like
                     // the others before it discards a finished download.

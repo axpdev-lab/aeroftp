@@ -31,9 +31,9 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
 use super::multi_thread::{
-    aerotmp_path_for, parallel_refused, run_concurrent_range_download, source_changed,
-    ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
-    AFTER_TRANSFER_READ_RETRY, PARALLEL_REFUSED_MARKER, SOURCE_CHANGED_MARKER,
+    aerotmp_path_for, parallel_refused, run_concurrent_range_download, share_progress,
+    source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
+    AFTER_TRANSFER_READ_RETRY,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -832,7 +832,7 @@ impl SftpProvider {
         )
         .await;
 
-        let result = match outcome {
+        match outcome {
             // The windows are in `<local>.aerotmp` and the file is not
             // published here: the caller reads the object again through the
             // session it already holds and publishes only if it did not move.
@@ -846,8 +846,7 @@ impl SftpProvider {
                 ))
             }
             Err(e) => Err(e),
-        };
-        result
+        }
     }
 
     /// Return a cloneable handle to the underlying SSH session, if connected.
@@ -1906,13 +1905,17 @@ impl StorageProvider for SftpProvider {
             && self.connection_spec.is_some()
         {
             close_preopened!();
+            // Half of the callback goes with the attempt and half stays, so
+            // the path a refusal falls back to keeps reporting.
+            let (attempt_progress, fallback_progress) = share_progress(on_progress.take());
+            on_progress = fallback_progress;
             match self
                 .parallel_download_if_unchanged(
                     remote_path,
                     &full_path,
                     local_path,
                     total_size,
-                    on_progress.take(),
+                    attempt_progress,
                 )
                 .await
             {
@@ -1922,8 +1925,7 @@ impl StorageProvider for SftpProvider {
                 // stayed put. One stream reads one consistent view, which is
                 // exactly what the parallel path could not promise, so take
                 // the path below instead of failing a download that has a
-                // correct way to finish. The progress callback went with the
-                // attempt, so this runs without one.
+                // correct way to finish.
                 Ok(false) => source_is_moving = true,
                 Err(e) => return Err(e),
             }
@@ -1958,6 +1960,8 @@ impl StorageProvider for SftpProvider {
                         *slot = CancellationToken::new();
                         slot.clone()
                     };
+                    let (attempt_progress, fallback_progress) = share_progress(on_progress.take());
+                    on_progress = fallback_progress;
                     match sftp_readahead_download(
                         sftp,
                         &full_path,
@@ -1965,20 +1969,14 @@ impl StorageProvider for SftpProvider {
                         local_path,
                         self.buffer_size,
                         window,
-                        on_progress.take(),
+                        attempt_progress,
                         &cancel,
                         Arc::clone(&self.fail_readahead_write),
                     )
                     .await
                     {
                         Ok(()) => return Ok(()),
-                        Err(e)
-                            if {
-                                let text = e.to_string();
-                                text.contains(SOURCE_CHANGED_MARKER)
-                                    || text.contains(PARALLEL_REFUSED_MARKER)
-                            } =>
-                        {
+                        Err(e @ ProviderError::ParallelRefused(_)) => {
                             // Read on several handles and the object moved
                             // between the opens, or it is not the object the
                             // transfer was planned for: the serial path below
@@ -1987,25 +1985,6 @@ impl StorageProvider for SftpProvider {
                             source_is_moving = true;
                         }
                         Err(e) => return Err(e),
-                    }
-                }
-            }
-        }
-
-        if source_is_moving {
-            // Everything below is bounded by `total_size`, which was read
-            // before the object moved: keeping it would publish a file cut to
-            // a length that is no longer the object's.
-            if let Ok(sftp) = self.get_sftp() {
-                if let Ok(fresh) = Self::range_source_reading(sftp, &full_path).await {
-                    if fresh.size() != total_size {
-                        tracing::warn!(
-                            "SFTP: {} is {} bytes now and was {}, the single-handle download uses the new size",
-                            full_path,
-                            fresh.size(),
-                            total_size
-                        );
-                        total_size = fresh.size();
                     }
                 }
             }
@@ -2032,25 +2011,61 @@ impl StorageProvider for SftpProvider {
                     .map_err(|e| {
                         ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
                     })?;
-                sftp_pipelined_download(
+                let (attempt_progress, fallback_progress) = share_progress(on_progress.take());
+                on_progress = fallback_progress;
+                match sftp_pipelined_download(
                     sftp,
                     &full_path,
                     total_size,
                     &mut atomic,
                     self.buffer_size,
                     window,
-                    on_progress,
+                    attempt_progress,
                 )
-                .await?;
-                atomic.commit().await.map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-                })?;
-                tracing::info!(
-                    "SFTP: Download complete (pipelined, window={}): {} bytes",
-                    window,
-                    total_size
-                );
-                return Ok(());
+                .await
+                {
+                    Ok(()) => {
+                        atomic.commit().await.map_err(|e| {
+                            ProviderError::TransferFailed(format!(
+                                "Failed to finalize download: {}",
+                                e
+                            ))
+                        })?;
+                        tracing::info!(
+                            "SFTP: Download complete (pipelined, window={}): {} bytes",
+                            window,
+                            total_size
+                        );
+                        return Ok(());
+                    }
+                    // Read on several handles and the object moved under
+                    // them: the staged file goes with `atomic`, and the
+                    // serial path below reads on one handle.
+                    Err(e @ ProviderError::ParallelRefused(_)) => {
+                        tracing::warn!("{}; downloading on a single handle", e);
+                        source_is_moving = true;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+
+        if source_is_moving {
+            // Everything below is bounded by `total_size`, which was read
+            // before the object moved: keeping it would publish a file cut to
+            // a length that is no longer the object's.
+            if let Ok(sftp) = self.get_sftp() {
+                if let Ok(fresh) = Self::range_source_reading(sftp, &full_path).await {
+                    if fresh.size() != total_size {
+                        tracing::warn!(
+                            "SFTP: {} is {} bytes now and was {}, the single-handle download uses the new size",
+                            full_path,
+                            fresh.size(),
+                            total_size
+                        );
+                        total_size = fresh.size();
+                    }
+                }
             }
         }
 
@@ -3787,7 +3802,7 @@ async fn sftp_readahead_download(
         Ok(reading) => match reading.matches_planned_size(total_size) {
             Ok(()) => reading,
             Err(why) => {
-                return Err(ProviderError::TransferFailed(parallel_refused(
+                return Err(ProviderError::ParallelRefused(parallel_refused(
                     "SFTP readahead",
                     full_path,
                     &why,
@@ -3795,7 +3810,7 @@ async fn sftp_readahead_download(
             }
         },
         Err(why) => {
-            return Err(ProviderError::TransferFailed(parallel_refused(
+            return Err(ProviderError::ParallelRefused(parallel_refused(
                 "SFTP readahead",
                 full_path,
                 &why,
@@ -3861,7 +3876,7 @@ async fn sftp_readahead_download(
         if let Some(what) = changed {
             // The guard removes the staged file. The caller reads this as a
             // refusal and downloads on one handle instead.
-            return Err(ProviderError::TransferFailed(source_changed(
+            return Err(ProviderError::ParallelRefused(source_changed(
                 "SFTP readahead",
                 full_path,
                 &what,
@@ -3918,6 +3933,31 @@ async fn sftp_pipelined_download(
     let window = window.clamp(2, 64);
     let chunks_needed = total_size.div_ceil(chunk).max(1) as usize;
     let eff_window = window.min(chunks_needed);
+
+    // Several handles onto disjoint stripes of one path is the shape
+    // `sftp_readahead_download` guards, and the guard is the same: the object
+    // is read before the handles open and again once they are closed, and a
+    // file that moved in between is refused rather than handed to the caller
+    // to commit. Both readings cost one round trip on this session.
+    let before = match SftpProvider::range_source_reading(sftp, full_path).await {
+        Ok(reading) => match reading.matches_planned_size(total_size) {
+            Ok(()) => reading,
+            Err(why) => {
+                return Err(ProviderError::ParallelRefused(parallel_refused(
+                    "SFTP pipeline",
+                    full_path,
+                    &why,
+                )))
+            }
+        },
+        Err(why) => {
+            return Err(ProviderError::ParallelRefused(parallel_refused(
+                "SFTP pipeline",
+                full_path,
+                &why,
+            )))
+        }
+    };
 
     // `eff_window` handles, all on the SAME session: one SSH channel, the
     // RawSftpSession multiplexes the concurrent reads by request id.
@@ -3992,6 +4032,32 @@ async fn sftp_pipelined_download(
     .await;
     close_sftp_files(handles).await;
     streamed?;
+
+    let changed = match SftpProvider::range_source_reading(sftp, full_path).await {
+        Ok(after) => before.differs_from(&after),
+        Err(first) => {
+            tracing::warn!(
+                "SFTP pipeline: {} could not be read after the transfer ({}), reading once more",
+                full_path,
+                first
+            );
+            tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+            match SftpProvider::range_source_reading(sftp, full_path).await {
+                Ok(after) => before.differs_from(&after),
+                Err(why) => Some(format!(
+                    "it could not be read again after the transfer: {why}"
+                )),
+            }
+        }
+    };
+    if let Some(what) = changed {
+        // The caller drops the staged file and downloads on one handle.
+        return Err(ProviderError::ParallelRefused(source_changed(
+            "SFTP pipeline",
+            full_path,
+            &what,
+        )));
+    }
     Ok(())
 }
 

@@ -3570,7 +3570,7 @@ impl S3Provider {
         // backend this is the only thing between it and a file made of two
         // versions. The guard removes the staged file on the way out.
         if let Some(what) = self.object_moved_since(key, &validator, total_size).await {
-            return Err(ProviderError::TransferFailed(format!(
+            return Err(ProviderError::ParallelRefused(format!(
                 "Object {} {} ({})",
                 key,
                 super::multi_thread::SOURCE_CHANGED_MARKER,
@@ -4359,25 +4359,25 @@ impl StorageProvider for S3Provider {
                         .unwrap_or(true);
                     if size >= self.multi_thread_cutoff && accepts_ranges {
                         if let Some(etag) = validator {
+                            let (attempt_progress, fallback_progress) =
+                                super::multi_thread::share_progress(on_progress);
                             match self
-                                .download_multi_thread(key, local_path, size, etag, on_progress)
+                                .download_multi_thread(
+                                    key,
+                                    local_path,
+                                    size,
+                                    etag,
+                                    attempt_progress,
+                                )
                                 .await
                             {
                                 Ok(()) => return Ok(()),
-                                Err(e)
-                                    if {
-                                        let text = e.to_string();
-                                        text.contains(super::multi_thread::SOURCE_CHANGED_MARKER)
-                                            || text.contains(
-                                                super::multi_thread::PARALLEL_REFUSED_MARKER,
-                                            )
-                                    } =>
-                                {
+                                Err(e @ ProviderError::ParallelRefused(_)) => {
                                     // Refused, not failed: the object moved
                                     // while the windows were reading it, and a
-                                    // single stream reads one consistent view.
-                                    // The progress callback went with the
-                                    // attempt, so this runs without one.
+                                    // single stream reads one consistent view,
+                                    // reporting through the half of the
+                                    // progress callback that stayed here.
                                     warn!("S3: {}; downloading on a single stream", e);
                                     // A copy with the parallel path off, rather
                                     // than a size hint that lies about the
@@ -4390,7 +4390,7 @@ impl StorageProvider for S3Provider {
                                             remote_path,
                                             local_path,
                                             size_hint,
-                                            None,
+                                            fallback_progress,
                                         )
                                         .await;
                                 }
@@ -5838,7 +5838,7 @@ impl StorageProvider for S3Provider {
                     end,
                 ) {
                     Ok(_) => Ok(bytes.to_vec()),
-                    Err(why) => Err(ProviderError::TransferFailed(
+                    Err(why) => Err(ProviderError::ParallelRefused(
                         super::multi_thread::parallel_refused("S3 range read", path, &why),
                     )),
                 }
@@ -5848,7 +5848,7 @@ impl StorageProvider for S3Provider {
                 // would put its head at the window's offset, and slicing it
                 // here would mean fetching the entire object for every window.
                 // Refuse, and the caller reads one stream instead.
-                Err(ProviderError::TransferFailed(
+                Err(ProviderError::ParallelRefused(
                     super::multi_thread::parallel_refused(
                         "S3 range read",
                         path,
@@ -5856,7 +5856,7 @@ impl StorageProvider for S3Provider {
                     ),
                 ))
             }
-            StatusCode::PRECONDITION_FAILED => Err(ProviderError::TransferFailed(format!(
+            StatusCode::PRECONDITION_FAILED => Err(ProviderError::ParallelRefused(format!(
                 "Object {} {}: the range request no longer matches the version the download \
                  started from",
                 key,
@@ -7019,7 +7019,7 @@ async fn download_range_to_offset(
                 .and_then(|v| v.to_str().ok())
                 .map(|value| value.trim().to_string());
             if !super::multi_thread::content_range_matches(answered.as_deref(), start, end) {
-                return Err(ProviderError::TransferFailed(
+                return Err(ProviderError::ParallelRefused(
                     super::multi_thread::parallel_refused(
                         "S3 multi-thread",
                         &key,
@@ -7037,7 +7037,7 @@ async fn download_range_to_offset(
             // Range ignored: the body is the whole object, and writing its
             // prefix at this window's offset would corrupt the file to
             // exactly the right length.
-            return Err(ProviderError::TransferFailed(
+            return Err(ProviderError::ParallelRefused(
                 super::multi_thread::parallel_refused(
                     "S3 multi-thread",
                     &key,
@@ -7047,7 +7047,7 @@ async fn download_range_to_offset(
         }
         StatusCode::NOT_FOUND => return Err(ProviderError::NotFound(key)),
         StatusCode::PRECONDITION_FAILED => {
-            return Err(ProviderError::TransferFailed(format!(
+            return Err(ProviderError::ParallelRefused(format!(
                 "Object {key} {}: the range request no longer matches the version the \
                  download started from",
                 super::multi_thread::SOURCE_CHANGED_MARKER
@@ -7091,7 +7091,7 @@ async fn download_range_to_offset(
             // the extra away would keep whatever arrived first and call it the
             // window; there is no reason to believe it is. Refuse, and the
             // caller reads this file on a single stream.
-            return Err(ProviderError::TransferFailed(
+            return Err(ProviderError::ParallelRefused(
                 super::multi_thread::parallel_refused(
                     "S3 multi-thread",
                     &key,
@@ -9696,8 +9696,16 @@ mod tests {
         provider.set_multi_thread_download(4, 1024 * 1024);
         let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("big.bin");
+        let reported = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let sink = std::sync::Arc::clone(&reported);
         provider
-            .download("/big.bin", out.to_str().unwrap(), None)
+            .download(
+                "/big.bin",
+                out.to_str().unwrap(),
+                Some(Box::new(move |done, _total| {
+                    sink.store(done, std::sync::atomic::Ordering::SeqCst);
+                })),
+            )
             .await
             .expect("the refusal falls back to a single stream, which succeeds");
         assert_eq!(
@@ -9706,6 +9714,11 @@ mod tests {
                 .len(),
             SIZE as u64,
             "one whole version"
+        );
+        assert_eq!(
+            reported.load(std::sync::atomic::Ordering::SeqCst),
+            SIZE as u64,
+            "the single-stream fallback must keep reporting progress"
         );
     }
 

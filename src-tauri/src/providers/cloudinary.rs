@@ -883,7 +883,7 @@ impl StorageProvider for CloudinaryProvider {
             Ok(super::multi_thread::RangedAnswer::WholeObject) => {
                 Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
             }
-            Err(why) => Err(ProviderError::TransferFailed(
+            Err(why) => Err(ProviderError::ParallelRefused(
                 super::multi_thread::parallel_refused("Cloudinary range read", remote_path, &why),
             )),
         }

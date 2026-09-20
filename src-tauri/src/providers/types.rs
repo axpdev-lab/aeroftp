@@ -2064,6 +2064,14 @@ pub enum ProviderError {
     #[error("Transfer failed: {0}")]
     TransferFailed(String),
 
+    /// A parallel read refused itself: a window was not answered for the
+    /// range it asked, or the object moved under the windows. Not a failed
+    /// download; the caller reads the object on one stream instead. A type
+    /// of its own, so a server message that happens to contain the same
+    /// words is never taken for a refusal.
+    #[error("{0}")]
+    ParallelRefused(String),
+
     #[error("Timeout")]
     Timeout,
 
