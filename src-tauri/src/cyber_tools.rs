@@ -528,25 +528,27 @@ pub async fn crypto_decrypt_text(encoded: String, password: String) -> Result<St
 
 /// ChaCha20-Poly1305 encryption helper
 fn encrypt_chacha20(key: [u8; 32], nonce: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
-    use chacha20poly1305::aead::generic_array::GenericArray;
-    use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit};
+    use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 
-    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&key));
-    let nonce = GenericArray::from_slice(nonce);
+    let cipher = ChaCha20Poly1305::new(&Key::from(key));
+    // A nonce of the wrong length used to panic here, because the old
+    // constructor took a slice and asserted; this one answers.
+    let nonce = Nonce::try_from(nonce)
+        .map_err(|_| "ChaCha20-Poly1305 needs a 12 byte nonce".to_string())?;
     cipher
-        .encrypt(nonce, plaintext)
+        .encrypt(&nonce, plaintext)
         .map_err(|e| format!("ChaCha20-Poly1305 encrypt failed: {}", e))
 }
 
 /// ChaCha20-Poly1305 decryption helper
 fn decrypt_chacha20(key: [u8; 32], nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
-    use chacha20poly1305::aead::generic_array::GenericArray;
-    use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit};
+    use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 
-    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&key));
-    let nonce = GenericArray::from_slice(nonce);
+    let cipher = ChaCha20Poly1305::new(&Key::from(key));
+    let nonce = Nonce::try_from(nonce)
+        .map_err(|_| "ChaCha20-Poly1305 needs a 12 byte nonce".to_string())?;
     cipher
-        .decrypt(nonce, ciphertext)
+        .decrypt(&nonce, ciphertext)
         .map_err(|_| "Decryption failed: wrong password or corrupted data".into())
 }
 
