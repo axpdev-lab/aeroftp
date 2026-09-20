@@ -528,25 +528,27 @@ pub async fn crypto_decrypt_text(encoded: String, password: String) -> Result<St
 
 /// ChaCha20-Poly1305 encryption helper
 fn encrypt_chacha20(key: [u8; 32], nonce: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
-    use chacha20poly1305::aead::generic_array::GenericArray;
-    use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit};
+    use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 
-    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&key));
-    let nonce = GenericArray::from_slice(nonce);
+    let cipher = ChaCha20Poly1305::new(&Key::from(key));
+    // A nonce of the wrong length used to panic here, because the old
+    // constructor took a slice and asserted; this one answers.
+    let nonce = Nonce::try_from(nonce)
+        .map_err(|_| "ChaCha20-Poly1305 needs a 12 byte nonce".to_string())?;
     cipher
-        .encrypt(nonce, plaintext)
+        .encrypt(&nonce, plaintext)
         .map_err(|e| format!("ChaCha20-Poly1305 encrypt failed: {}", e))
 }
 
 /// ChaCha20-Poly1305 decryption helper
 fn decrypt_chacha20(key: [u8; 32], nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
-    use chacha20poly1305::aead::generic_array::GenericArray;
-    use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit};
+    use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, Key, KeyInit, Nonce};
 
-    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&key));
-    let nonce = GenericArray::from_slice(nonce);
+    let cipher = ChaCha20Poly1305::new(&Key::from(key));
+    let nonce = Nonce::try_from(nonce)
+        .map_err(|_| "ChaCha20-Poly1305 needs a 12 byte nonce".to_string())?;
     cipher
-        .decrypt(nonce, ciphertext)
+        .decrypt(&nonce, ciphertext)
         .map_err(|_| "Decryption failed: wrong password or corrupted data".into())
 }
 
@@ -940,6 +942,55 @@ const WORDLIST: &[&str] = &[
     "woman", "world", "worry", "worst", "worth", "wound", "wrath", "wrist", "wrote", "yacht",
     "yearn", "yeast", "yield", "young", "youth", "zebra", "zilch", "zones",
 ];
+
+#[cfg(test)]
+mod chacha_nonce_tests {
+    use super::*;
+
+    /// The old constructor took a slice and asserted, so a nonce of the wrong
+    /// length killed the call. These two pin the answer that replaced the
+    /// panic. The public commands check the length before they get here, so
+    /// the helpers are exercised directly: that check is what would hide the
+    /// regression if the helper went back to asserting.
+    #[test]
+    fn a_nonce_that_is_not_twelve_bytes_is_answered_and_not_asserted() {
+        let key = [7u8; 32];
+        for wrong in [vec![], vec![0u8; 11], vec![0u8; 13], vec![0u8; 24]] {
+            let encrypted = encrypt_chacha20(key, &wrong, b"payload");
+            assert!(
+                encrypted
+                    .as_ref()
+                    .err()
+                    .is_some_and(|e| e.contains("12 byte nonce")),
+                "encrypt with a {} byte nonce: {:?}",
+                wrong.len(),
+                encrypted.map(|bytes| bytes.len())
+            );
+
+            let decrypted = decrypt_chacha20(key, &wrong, b"ciphertext");
+            assert!(
+                decrypted
+                    .as_ref()
+                    .err()
+                    .is_some_and(|e| e.contains("12 byte nonce")),
+                "decrypt with a {} byte nonce: {:?}",
+                wrong.len(),
+                decrypted.map(|bytes| bytes.len())
+            );
+        }
+    }
+
+    /// And the length that is right still round-trips, so the check above is
+    /// refusing the wrong lengths rather than everything.
+    #[test]
+    fn twelve_bytes_round_trips() {
+        let key = [3u8; 32];
+        let nonce = [9u8; 12];
+        let sealed = encrypt_chacha20(key, &nonce, b"round trip").expect("encrypt");
+        let opened = decrypt_chacha20(key, &nonce, &sealed).expect("decrypt");
+        assert_eq!(opened, b"round trip");
+    }
+}
 
 #[cfg(test)]
 mod hash_forge_tests {
