@@ -79,7 +79,7 @@ fn take_transfer_attempts(counts: &AttemptCounts, entry_id: &str) -> Option<u32>
         .remove(entry_id)
 }
 use crate::transfer_settings::{
-    default_download_segments_for, resolve_transfer_settings_for_capabilities,
+    download_segments_preference_for, resolve_transfer_settings_for_capabilities,
     ResolvedTransferSettings, TransferSettingsInput, DEFAULT_MAX_CONCURRENT, MAX_MAX_CONCURRENT,
     MIN_MAX_CONCURRENT,
 };
@@ -215,7 +215,7 @@ fn segmented_runtime_request(
     (
         sftp_tuning
             .map(|tuning| tuning.connections as u32)
-            .unwrap_or(settings.download_segments),
+            .unwrap_or(settings.download_segments.count()),
         sftp_tuning
             .map(|tuning| tuning.connections)
             .unwrap_or(session_max_leases),
@@ -682,7 +682,11 @@ pub async fn resolve_provider_executor_runtime(
         );
     };
 
-    let advertised = provider.transfer_capabilities();
+    let mut advertised = provider.transfer_capabilities();
+    // Bind the Auto policy to this same live provider snapshot, even when a
+    // provider overrides `transfer_capabilities` with a minimal snapshot.
+    advertised.preferred_download_segments =
+        Some(download_segments_preference_for(provider.provider_type()));
     let kind = provider.transfer_executor_kind();
     let can_clone = provider.clone_for_transfer().is_ok();
     let runtime_caps = compose_runtime_transfer_capabilities(&advertised, kind, can_clone);
@@ -712,7 +716,6 @@ pub async fn resolve_provider_transfer_runtime(
     ProviderExecutorSessionModel,
     TransferCapabilities,
 ) {
-    let input = fill_download_segments_default(provider, input).await;
     let requested_max_concurrent = input
         .max_concurrent
         .unwrap_or(DEFAULT_MAX_CONCURRENT)
@@ -720,6 +723,10 @@ pub async fn resolve_provider_transfer_runtime(
     let (session_model, capabilities) =
         resolve_provider_executor_runtime(provider, requested_max_concurrent).await;
     let runtime_settings = resolve_transfer_settings_for_capabilities(input, &capabilities);
+    tracing::info!(
+        "download streams requested: {}",
+        runtime_settings.download_segments
+    );
 
     debug_assert_eq!(
         runtime_settings.max_concurrent as usize,
@@ -728,23 +735,6 @@ pub async fn resolve_provider_transfer_runtime(
     );
 
     (runtime_settings, session_model, capabilities)
-}
-
-/// "Auto" download streams (`None`) become the provider's measured default
-/// (`default_download_segments_for`); an explicit value is kept as is. Read
-/// from the live provider so the GUI, which sends `undefined` for Auto, gets
-/// the same table the CLI documents.
-async fn fill_download_segments_default(
-    provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
-    mut input: TransferSettingsInput,
-) -> TransferSettingsInput {
-    if input.download_segments.is_none() {
-        let provider_type = provider.lock().await.as_ref().map(|p| p.provider_type());
-        if let Some(provider_type) = provider_type {
-            input.download_segments = Some(default_download_segments_for(provider_type));
-        }
-    }
-    input
 }
 
 /// Thin async wrapper over [`resolve_session_model`]: locks the provider,
@@ -2138,7 +2128,7 @@ mod tests {
             max_concurrent: 4,
             retry_count: 3,
             timeout_seconds: 30,
-            download_segments: 1,
+            download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
             sftp_download_preset: Some(
                 crate::sftp_download_tuning::SftpDownloadPreset::MaximumTested,
             ),
@@ -2516,18 +2506,23 @@ mod tests {
         let (auto, _, _) =
             resolve_provider_transfer_runtime(&holder, TransferSettingsInput::default()).await;
         assert_eq!(
-            auto.download_segments, 4,
+            auto.download_segments.count(),
+            4,
             "Auto on S3 is the measured 4 streams"
         );
         let (explicit, _, _) = resolve_provider_transfer_runtime(
             &holder,
             TransferSettingsInput {
-                download_segments: Some(2),
+                download_segments: crate::transfer_settings::DownloadSegmentsRequest::Explicit(2),
                 ..TransferSettingsInput::default()
             },
         )
         .await;
-        assert_eq!(explicit.download_segments, 2, "an explicit value is kept");
+        assert_eq!(
+            explicit.download_segments.count(),
+            2,
+            "an explicit value is kept"
+        );
     }
 
     #[test]
@@ -2905,7 +2900,7 @@ mod tests {
                 max_concurrent: 1,
                 retry_count,
                 timeout_seconds: 30,
-                download_segments: 1,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
                 sftp_download_preset: None,
             },
             cancel_token,

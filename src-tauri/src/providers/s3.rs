@@ -9279,6 +9279,26 @@ mod tests {
             p.transfer_optimization_hints().multipart_max_parallel as usize,
             S3Provider::UPLOAD_CONCURRENCY_DEFAULT
         );
+        // Exercise the setting through the capability snapshot and the actual
+        // multipart graph shape. A hint-only assertion would miss a later
+        // resolver that silently pins the graph to a fixed slot count.
+        for requested in [1, 8] {
+            p.set_upload_concurrency(requested);
+            let caps = p.transfer_capabilities();
+            let graph = crate::transfer_dag::TransferDagBuilder::shaped_file(
+                crate::transfer_dag::TransferDirection::Upload,
+                &caps,
+                300 * 1024 * 1024,
+            );
+            assert!(graph.transfer.len() > 1);
+            assert_eq!(graph.profile.max_chunk_slots as usize, requested);
+            let nodes = graph.dag.nodes();
+            if requested == 1 {
+                assert_eq!(nodes[graph.transfer[1]].depends_on, vec![graph.transfer[0]]);
+            } else {
+                assert_eq!(nodes[graph.transfer[1]].depends_on, vec![graph.acquire]);
+            }
+        }
         p.set_upload_concurrency(8);
         assert_eq!(p.transfer_optimization_hints().multipart_max_parallel, 8);
         p.set_upload_concurrency(0); // reset to the default

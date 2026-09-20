@@ -496,7 +496,7 @@ async fn s3_adapter_batch_dag_seeds_completion_etag_through_clone_pool_hooks() {
         max_concurrent: 1,
         retry_count: 0,
         timeout_seconds: 300,
-        download_segments: 1,
+        download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
         sftp_download_preset: None,
     };
     let executor = Arc::new(ProviderUploadExecutor::new(

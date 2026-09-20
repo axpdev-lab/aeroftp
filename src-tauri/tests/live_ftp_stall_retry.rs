@@ -185,7 +185,10 @@ async fn run_one(port: u16, remote: &str, local: &str) -> (u32, u32, usize, u32)
             max_concurrent: Some(1),
             retry_count: None,
             timeout_seconds: Some(PER_FILE_TIMEOUT_S),
-            download_segments: None,
+            download_segments:
+                ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Single {
+                    reason: "legacy FTP retry fixture has no segmented path".to_string(),
+                },
             sftp_download_preset: None,
         },
         &capabilities,

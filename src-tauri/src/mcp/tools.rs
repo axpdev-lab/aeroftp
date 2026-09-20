@@ -1560,7 +1560,9 @@ pub async fn execute_tool(
                     ..Default::default()
                 },
                 error_correction: Default::default(),
-                download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
+                download_segments: crate::transfer_settings::DownloadSegmentsRequest::Single {
+                    reason: "MCP sync exposes no stream setting and retains its existing single-stream behavior".to_string(),
+                },
                 max_backlog: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
                 schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
             };
@@ -1582,6 +1584,12 @@ pub async fn execute_tool(
                 Err(e) => err(e),
                 Ok(arc) => {
                     let mut p = arc.lock().await;
+                    let stream_policy = crate::transfer_settings::resolve_download_segments(
+                        &opts.download_segments,
+                        Some(crate::transfer_settings::download_segments_preference_for(
+                            p.provider_type(),
+                        )),
+                    );
                     let mut sink = NotifierSyncSink::new(notifier, dry_run);
                     sink.emit_started(&direction_raw, dry_run).await;
                     let report =
@@ -1816,6 +1824,11 @@ pub async fn execute_tool(
                     // lists of a thousand paths each would defeat it.
                     if let Value::Object(map) = &mut payload {
                         map.extend(sync_boundaries_json(&report, summary_only));
+                        map.insert(
+                            "download_segments".into(),
+                            serde_json::to_value(&stream_policy)
+                                .expect("stream policy is always serializable"),
+                        );
                     }
                     // Release the provider lock and pool Arc BEFORE invalidate
                     // so the pool sees `strong_count == 1` and actually closes

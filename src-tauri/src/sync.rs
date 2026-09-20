@@ -410,9 +410,8 @@ pub struct SyncOptions {
     pub conflict_mode: ConflictMode,
     pub scan: ScanOptions,
     pub error_correction: SyncErrorCorrectionOptions,
-    /// Requested intra-file download segments for the transfer phase.
-    /// `1` preserves the legacy single-stream path.
-    pub download_segments: u32,
+    /// Intra-file download policy for the transfer phase.
+    pub download_segments: crate::transfer_settings::DownloadSegmentsRequest,
     /// DAG-P2-04 residual close-out: bounded streaming backlog for the sync
     /// transfer frontier (same knob as CLI `--max-backlog` / batch). When the
     /// plan is large, the WorkSource pauses instead of unbounded growth.
@@ -433,7 +432,9 @@ impl Default for SyncOptions {
             conflict_mode: ConflictMode::Larger,
             scan: ScanOptions::default(),
             error_correction: SyncErrorCorrectionOptions::default(),
-            download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
+            download_segments: crate::transfer_settings::DownloadSegmentsRequest::Single {
+                reason: "sync core has no caller-selected stream policy".to_string(),
+            },
             max_backlog: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
             schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
         }
@@ -1342,6 +1343,13 @@ pub async fn sync_tree_core(
     }
 
     let start = std::time::Instant::now();
+    let resolved_segments = crate::transfer_settings::resolve_download_segments(
+        &opts.download_segments,
+        Some(crate::transfer_settings::download_segments_preference_for(
+            provider.provider_type(),
+        )),
+    );
+    tracing::info!("sync download streams requested: {}", resolved_segments);
     sink.on_phase(SyncPhase::Scanning);
     let scan = scan_options_for_sync(opts);
     let (mut locals, local_scan, mut local_boundaries) = scan_local_tree_checked(local_root, &scan);
@@ -1518,7 +1526,7 @@ pub async fn sync_tree_core(
                             decision_policy: decision.decision_policy,
                             requested_policy: opts.delta_policy,
                         },
-                        opts.download_segments,
+                        resolved_segments.count(),
                         opts.dry_run,
                         sink,
                         &mut delta_batch,
