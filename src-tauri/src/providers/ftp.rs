@@ -153,6 +153,25 @@ impl FtpProvider {
     /// `ServerIgnoredRange` analogue (it cannot answer `200 OK` ignoring the
     /// offset), so that orchestrator arm is unreachable here and fails loud
     /// if hit, never a silent re-download that would double the bytes.
+    /// The path that the primary session and a freshly dialled worker both
+    /// resolve to the same file.
+    ///
+    /// A worker reconnects from the connection spec and starts at the login
+    /// directory, while this session may have changed directory since. A
+    /// relative path would then name two different files, and the readings
+    /// would describe one object while the windows assembled another.
+    fn absolute_remote_path(&self, remote_path: &str) -> String {
+        if remote_path.starts_with('/') {
+            remote_path.to_string()
+        } else {
+            format!(
+                "{}/{}",
+                self.current_path.trim_end_matches('/'),
+                remote_path.trim_start_matches("./")
+            )
+        }
+    }
+
     /// Run the parallel download and publish it only if the object did not
     /// move while the windows were reading it.
     ///
@@ -170,27 +189,30 @@ impl FtpProvider {
         total_size: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<bool, ProviderError> {
-        let before = match read_range_source_through(self, remote_path).await {
+        // One resolved path for the readings and for the windows: see
+        // `absolute_remote_path`.
+        let resolved = self.absolute_remote_path(remote_path);
+        let before = match read_range_source_through(self, &resolved).await {
             Ok(reading) => match reading.matches_planned_size(total_size) {
                 Ok(()) => reading,
                 Err(why) => {
-                    tracing::warn!("{}", parallel_refused("FTP intra-file", remote_path, &why));
+                    tracing::warn!("{}", parallel_refused("FTP intra-file", &resolved, &why));
                     return Ok(false);
                 }
             },
             Err(why) => {
-                tracing::warn!("{}", parallel_refused("FTP intra-file", remote_path, &why));
+                tracing::warn!("{}", parallel_refused("FTP intra-file", &resolved, &why));
                 return Ok(false);
             }
         };
 
-        self.download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
+        self.download_intra_file_pooled(&resolved, local_path, total_size, on_progress)
             .await?;
 
         let temp = aerotmp_path_for(Path::new(local_path));
-        if let Some(what) = range_source_changed_through(self, remote_path, &before).await {
+        if let Some(what) = range_source_changed_through(self, &resolved, &before).await {
             let _ = tokio::fs::remove_file(&temp).await;
-            tracing::warn!("{}", source_changed("FTP intra-file", remote_path, &what));
+            tracing::warn!("{}", source_changed("FTP intra-file", &resolved, &what));
             return Ok(false);
         }
         match tokio::fs::rename(&temp, local_path).await {
@@ -3624,6 +3646,39 @@ async fn ftp_download_one_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A window worker dials its own connection and starts where the login
+    /// leaves it, not where this session has since moved. A relative path
+    /// would name one file for the readings that decide, and another for the
+    /// windows that download, and both could have the planned size.
+    #[test]
+    fn a_relative_path_is_resolved_against_this_session_before_the_windows_run() {
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "example.invalid".to_string(),
+            port: 21,
+            username: "u".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+        provider.current_path = "/srv/backups".to_string();
+        assert_eq!(
+            provider.absolute_remote_path("dump.tar"),
+            "/srv/backups/dump.tar"
+        );
+        assert_eq!(
+            provider.absolute_remote_path("./dump.tar"),
+            "/srv/backups/dump.tar"
+        );
+        assert_eq!(
+            provider.absolute_remote_path("/elsewhere/dump.tar"),
+            "/elsewhere/dump.tar",
+            "an absolute path is already unambiguous"
+        );
+        provider.current_path = "/".to_string();
+        assert_eq!(provider.absolute_remote_path("dump.tar"), "/dump.tar");
+    }
 
     /// A permanent refusal that is not about the path must not be reported as
     /// one. The condition used to be any 5xx, so "530 Not logged in" reached the

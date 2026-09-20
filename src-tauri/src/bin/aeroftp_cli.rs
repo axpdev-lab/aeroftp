@@ -32040,8 +32040,8 @@ async fn pget_segmented_download(
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
-        aerotmp_path_for, read_range_source_through, run_concurrent_range_download,
-        ConcurrentRangeConfig, ConcurrentRangeOutcome,
+        aerotmp_path_for, range_source_changed_through, read_range_source_through,
+        run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
     };
 
     let actual_segments = pget_effective_segments(file_size, segments);
@@ -32299,14 +32299,12 @@ async fn pget_segmented_download(
             // minutes is the first thing a server's idle timeout drops.
             let changed = match create_and_connect(url, cli, format).await {
                 Ok((mut session, _)) => {
-                    let reading = read_range_source_through(session.as_mut(), remote_path).await;
+                    // The shared comparison, so this reading retries once like
+                    // the others before it discards a finished download.
+                    let changed =
+                        range_source_changed_through(session.as_mut(), remote_path, &before).await;
                     let _ = session.disconnect().await;
-                    match reading {
-                        Ok(after) => before.differs_from(&after),
-                        Err(why) => Some(format!(
-                            "it could not be read again after the transfer: {why}"
-                        )),
-                    }
+                    changed
                 }
                 Err(_) => Some(
                     "it could not be read again after the transfer: no session to read it with"

@@ -4349,9 +4349,38 @@ impl StorageProvider for S3Provider {
                         .unwrap_or(true);
                     if size >= self.multi_thread_cutoff && accepts_ranges {
                         if let Some(etag) = validator {
-                            return self
+                            match self
                                 .download_multi_thread(key, local_path, size, etag, on_progress)
-                                .await;
+                                .await
+                            {
+                                Ok(()) => return Ok(()),
+                                Err(e)
+                                    if e.to_string()
+                                        .contains(super::multi_thread::SOURCE_CHANGED_MARKER) =>
+                                {
+                                    // Refused, not failed: the object moved
+                                    // while the windows were reading it, and a
+                                    // single stream reads one consistent view.
+                                    // The progress callback went with the
+                                    // attempt, so this runs without one.
+                                    warn!("S3: {}; downloading on a single stream", e);
+                                    // A copy with the parallel path off, rather
+                                    // than a size hint that lies about the
+                                    // object: the clone shares the HTTP client
+                                    // and the credentials.
+                                    let mut single = self.clone();
+                                    single.multi_thread_streams = 1;
+                                    return single
+                                        .download_with_size_hint(
+                                            remote_path,
+                                            local_path,
+                                            size_hint,
+                                            None,
+                                        )
+                                        .await;
+                                }
+                                Err(e) => return Err(e),
+                            }
                         }
                         warn!(
                             "S3 multi-thread download disabled: no strong ETag on the HEAD of {}, so ranges cannot be pinned to one version",
@@ -9564,10 +9593,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_object_replaced_mid_download_fails_instead_of_mixing_versions() {
+    async fn an_object_replaced_mid_download_falls_back_instead_of_mixing_versions() {
         // 412 is what a server answers when the pinned ETag no longer matches.
-        // The download must fail: the bytes of two versions would pass every
-        // length check and the rename would commit the mixture.
+        // The windows must not be published, because the bytes of two versions
+        // would pass every length check; the download itself still finishes,
+        // on one stream, which reads one consistent version.
         const SIZE: usize = 2 * 1024 * 1024;
         let (addr, _gets) = spawn_range_server(SIZE, Some("\"v1\""), 412).await;
         let mut provider = make_provider(Some(&format!("http://{addr}")));
@@ -9575,15 +9605,17 @@ mod tests {
         provider.set_multi_thread_download(4, 1024 * 1024);
         let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("big.bin");
-        let err = provider
+        provider
             .download("/big.bin", out.to_str().unwrap(), None)
             .await
-            .expect_err("a replaced object must fail the download");
-        assert!(
-            format!("{err}").contains("changed while it was being downloaded"),
-            "{err}"
+            .expect("the refusal falls back to a single stream, which succeeds");
+        assert_eq!(
+            std::fs::metadata(&out)
+                .expect("the file is published")
+                .len(),
+            SIZE as u64,
+            "one whole version"
         );
-        assert!(!out.exists(), "no file may be committed");
     }
 
     /// Pinning the windows is not enough on a backend that ignores the
@@ -9617,16 +9649,23 @@ mod tests {
                             .unwrap();
                     }
                     // If-Match arrives and is ignored, as such a gateway does.
-                    let len = req
+                    // A window carries the old bytes, a plain GET the new
+                    // ones, so a file made of both is visible in the content.
+                    match req
                         .headers()
                         .get("range")
                         .and_then(|v| v.to_str().ok())
                         .and_then(range_window_len)
-                        .unwrap_or(SIZE);
-                    axum::response::Response::builder()
-                        .status(206)
-                        .body(axum::body::Body::from(vec![7u8; len]))
-                        .unwrap()
+                    {
+                        Some(len) => axum::response::Response::builder()
+                            .status(206)
+                            .body(axum::body::Body::from(vec![7u8; len]))
+                            .unwrap(),
+                        None => axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::from(vec![9u8; SIZE]))
+                            .unwrap(),
+                    }
                 }
             }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -9642,15 +9681,16 @@ mod tests {
         provider.set_multi_thread_download(4, 1024 * 1024);
         let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("big.bin");
-        let err = provider
+        provider
             .download("/big.bin", out.to_str().unwrap(), None)
             .await
-            .expect_err("an object that moved must not be published");
+            .expect("the refusal falls back to a single stream, which succeeds");
+        let bytes = std::fs::read(&out).expect("the file is published");
+        assert_eq!(bytes.len(), SIZE, "one whole version");
         assert!(
-            format!("{err}").contains("changed while it was being downloaded"),
-            "{err}"
+            bytes.iter().all(|byte| *byte == 9u8),
+            "the published file must be one version, not the windows mixed with it"
         );
-        assert!(!out.exists(), "no file may be committed");
     }
 
     /// Length of the window a `bytes=start-end` header asks for.
