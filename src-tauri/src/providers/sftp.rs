@@ -31,9 +31,9 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
 use super::multi_thread::{
-    aerotmp_path_for, is_parallel_refusal, parallel_refused, run_concurrent_range_download,
-    share_progress, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
-    RangeSourceFingerprint, AFTER_TRANSFER_READ_RETRY,
+    aerotmp_path_for, parallel_refused, run_concurrent_range_download, share_progress,
+    source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
+    AFTER_TRANSFER_READ_RETRY,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -1976,7 +1976,7 @@ impl StorageProvider for SftpProvider {
                     .await
                     {
                         Ok(()) => return Ok(()),
-                        Err(e) if is_parallel_refusal(&e) => {
+                        Err(e @ ProviderError::ParallelRefused(_)) => {
                             // Read on several handles and the object moved
                             // between the opens, or it is not the object the
                             // transfer was planned for: the serial path below
@@ -2041,7 +2041,7 @@ impl StorageProvider for SftpProvider {
                     // Read on several handles and the object moved under
                     // them: the staged file goes with `atomic`, and the
                     // serial path below reads on one handle.
-                    Err(e) if is_parallel_refusal(&e) => {
+                    Err(e @ ProviderError::ParallelRefused(_)) => {
                         tracing::warn!("{}; downloading on a single handle", e);
                         source_is_moving = true;
                     }
@@ -3802,7 +3802,7 @@ async fn sftp_readahead_download(
         Ok(reading) => match reading.matches_planned_size(total_size) {
             Ok(()) => reading,
             Err(why) => {
-                return Err(ProviderError::TransferFailed(parallel_refused(
+                return Err(ProviderError::ParallelRefused(parallel_refused(
                     "SFTP readahead",
                     full_path,
                     &why,
@@ -3810,7 +3810,7 @@ async fn sftp_readahead_download(
             }
         },
         Err(why) => {
-            return Err(ProviderError::TransferFailed(parallel_refused(
+            return Err(ProviderError::ParallelRefused(parallel_refused(
                 "SFTP readahead",
                 full_path,
                 &why,
@@ -3876,7 +3876,7 @@ async fn sftp_readahead_download(
         if let Some(what) = changed {
             // The guard removes the staged file. The caller reads this as a
             // refusal and downloads on one handle instead.
-            return Err(ProviderError::TransferFailed(source_changed(
+            return Err(ProviderError::ParallelRefused(source_changed(
                 "SFTP readahead",
                 full_path,
                 &what,
@@ -3943,7 +3943,7 @@ async fn sftp_pipelined_download(
         Ok(reading) => match reading.matches_planned_size(total_size) {
             Ok(()) => reading,
             Err(why) => {
-                return Err(ProviderError::TransferFailed(parallel_refused(
+                return Err(ProviderError::ParallelRefused(parallel_refused(
                     "SFTP pipeline",
                     full_path,
                     &why,
@@ -3951,7 +3951,7 @@ async fn sftp_pipelined_download(
             }
         },
         Err(why) => {
-            return Err(ProviderError::TransferFailed(parallel_refused(
+            return Err(ProviderError::ParallelRefused(parallel_refused(
                 "SFTP pipeline",
                 full_path,
                 &why,
@@ -4052,7 +4052,7 @@ async fn sftp_pipelined_download(
     };
     if let Some(what) = changed {
         // The caller drops the staged file and downloads on one handle.
-        return Err(ProviderError::TransferFailed(source_changed(
+        return Err(ProviderError::ParallelRefused(source_changed(
             "SFTP pipeline",
             full_path,
             &what,

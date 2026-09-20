@@ -3570,7 +3570,7 @@ impl S3Provider {
         // backend this is the only thing between it and a file made of two
         // versions. The guard removes the staged file on the way out.
         if let Some(what) = self.object_moved_since(key, &validator, total_size).await {
-            return Err(ProviderError::TransferFailed(format!(
+            return Err(ProviderError::ParallelRefused(format!(
                 "Object {} {} ({})",
                 key,
                 super::multi_thread::SOURCE_CHANGED_MARKER,
@@ -4372,7 +4372,7 @@ impl StorageProvider for S3Provider {
                                 .await
                             {
                                 Ok(()) => return Ok(()),
-                                Err(e) if super::multi_thread::is_parallel_refusal(&e) => {
+                                Err(e @ ProviderError::ParallelRefused(_)) => {
                                     // Refused, not failed: the object moved
                                     // while the windows were reading it, and a
                                     // single stream reads one consistent view,
@@ -5838,7 +5838,7 @@ impl StorageProvider for S3Provider {
                     end,
                 ) {
                     Ok(_) => Ok(bytes.to_vec()),
-                    Err(why) => Err(ProviderError::TransferFailed(
+                    Err(why) => Err(ProviderError::ParallelRefused(
                         super::multi_thread::parallel_refused("S3 range read", path, &why),
                     )),
                 }
@@ -5848,7 +5848,7 @@ impl StorageProvider for S3Provider {
                 // would put its head at the window's offset, and slicing it
                 // here would mean fetching the entire object for every window.
                 // Refuse, and the caller reads one stream instead.
-                Err(ProviderError::TransferFailed(
+                Err(ProviderError::ParallelRefused(
                     super::multi_thread::parallel_refused(
                         "S3 range read",
                         path,
@@ -5856,7 +5856,7 @@ impl StorageProvider for S3Provider {
                     ),
                 ))
             }
-            StatusCode::PRECONDITION_FAILED => Err(ProviderError::TransferFailed(format!(
+            StatusCode::PRECONDITION_FAILED => Err(ProviderError::ParallelRefused(format!(
                 "Object {} {}: the range request no longer matches the version the download \
                  started from",
                 key,
@@ -7019,7 +7019,7 @@ async fn download_range_to_offset(
                 .and_then(|v| v.to_str().ok())
                 .map(|value| value.trim().to_string());
             if !super::multi_thread::content_range_matches(answered.as_deref(), start, end) {
-                return Err(ProviderError::TransferFailed(
+                return Err(ProviderError::ParallelRefused(
                     super::multi_thread::parallel_refused(
                         "S3 multi-thread",
                         &key,
@@ -7037,7 +7037,7 @@ async fn download_range_to_offset(
             // Range ignored: the body is the whole object, and writing its
             // prefix at this window's offset would corrupt the file to
             // exactly the right length.
-            return Err(ProviderError::TransferFailed(
+            return Err(ProviderError::ParallelRefused(
                 super::multi_thread::parallel_refused(
                     "S3 multi-thread",
                     &key,
@@ -7047,7 +7047,7 @@ async fn download_range_to_offset(
         }
         StatusCode::NOT_FOUND => return Err(ProviderError::NotFound(key)),
         StatusCode::PRECONDITION_FAILED => {
-            return Err(ProviderError::TransferFailed(format!(
+            return Err(ProviderError::ParallelRefused(format!(
                 "Object {key} {}: the range request no longer matches the version the \
                  download started from",
                 super::multi_thread::SOURCE_CHANGED_MARKER
@@ -7091,7 +7091,7 @@ async fn download_range_to_offset(
             // the extra away would keep whatever arrived first and call it the
             // window; there is no reason to believe it is. Refuse, and the
             // caller reads this file on a single stream.
-            return Err(ProviderError::TransferFailed(
+            return Err(ProviderError::ParallelRefused(
                 super::multi_thread::parallel_refused(
                     "S3 multi-thread",
                     &key,

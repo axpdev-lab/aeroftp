@@ -322,15 +322,6 @@ pub fn source_changed(scope: &str, remote_path: &str, what: &str) -> String {
     format!("{scope}: {remote_path} {SOURCE_CHANGED_MARKER} ({what})")
 }
 
-/// Whether an error is one of the two refusals above rather than a failed
-/// transfer: the caller answers it with its single-stream path, which reads
-/// one consistent view. The refusal is recognised by its message because it
-/// crosses engines and closures that carry nothing but a `ProviderError`.
-pub fn is_parallel_refusal(error: &impl std::fmt::Display) -> bool {
-    let text = error.to_string();
-    text.contains(SOURCE_CHANGED_MARKER) || text.contains(PARALLEL_REFUSED_MARKER)
-}
-
 /// A transfer progress callback, as every provider download takes it.
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
 
@@ -1443,7 +1434,7 @@ pub(crate) async fn try_http_concurrent_range_download(
                 .await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             if response.status() == reqwest::StatusCode::PRECONDITION_FAILED {
-                return Err(ProviderError::TransferFailed(source_changed(
+                return Err(ProviderError::ParallelRefused(source_changed(
                     "http range",
                     url.as_ref(),
                     "the server refused a window pinned to the version the probe saw",
@@ -1487,7 +1478,7 @@ pub(crate) async fn try_http_concurrent_range_download(
             );
             HttpRangeAttempt::Fallback(fallback_progress)
         }
-        Err(e) if is_parallel_refusal(&e) => {
+        Err(e @ ProviderError::ParallelRefused(_)) => {
             // A window was refused because the object moved. That is not a
             // failed download: one stream reads one consistent view, which is
             // exactly what the windows could not promise. The engine already
@@ -1685,21 +1676,6 @@ mod tests {
         let changed = source_changed("segmented download", "/big.bin", "size 10 became 11");
         assert!(changed.contains(SOURCE_CHANGED_MARKER), "{changed}");
         assert!(changed.contains("size 10 became 11"), "{changed}");
-    }
-
-    /// One predicate answers "refused, not failed" for both refusals, however
-    /// many layers wrapped the message on the way up, and for nothing else.
-    #[test]
-    fn a_refusal_is_recognised_through_a_wrapped_error() {
-        let refused = ProviderError::TransferFailed(format!(
-            "b2 multi-thread: read_range at offset 0 failed: {}",
-            parallel_refused("b2 range read", "/big.bin", "content-range mismatch")
-        ));
-        assert!(is_parallel_refusal(&refused));
-        let changed = ProviderError::TransferFailed(source_changed("s3", "/big.bin", "etag"));
-        assert!(is_parallel_refusal(&changed));
-        let failed = ProviderError::TransferFailed("connection reset by peer".into());
-        assert!(!is_parallel_refusal(&failed));
     }
 
     /// The half kept for the fallback still reports after the half that went

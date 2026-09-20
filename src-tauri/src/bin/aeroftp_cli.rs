@@ -7241,7 +7241,9 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::NotFound(_) => 2,
         ProviderError::PermissionDenied(_) | ProviderError::ReadOnly(_) => 3,
         ProviderError::TransferFailed(msg) if provider_error_message_looks_not_found(msg) => 2,
-        ProviderError::TransferFailed(_) | ProviderError::Cancelled => 4,
+        ProviderError::TransferFailed(_)
+        | ProviderError::ParallelRefused(_)
+        | ProviderError::Cancelled => 4,
         ProviderError::InvalidConfig(_)
         | ProviderError::InvalidPath(_)
         | ProviderError::FileTooLarge(_)
