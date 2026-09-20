@@ -944,6 +944,55 @@ const WORDLIST: &[&str] = &[
 ];
 
 #[cfg(test)]
+mod chacha_nonce_tests {
+    use super::*;
+
+    /// The old constructor took a slice and asserted, so a nonce of the wrong
+    /// length killed the call. These two pin the answer that replaced the
+    /// panic. The public commands check the length before they get here, so
+    /// the helpers are exercised directly: that check is what would hide the
+    /// regression if the helper went back to asserting.
+    #[test]
+    fn a_nonce_that_is_not_twelve_bytes_is_answered_and_not_asserted() {
+        let key = [7u8; 32];
+        for wrong in [vec![], vec![0u8; 11], vec![0u8; 13], vec![0u8; 24]] {
+            let encrypted = encrypt_chacha20(key, &wrong, b"payload");
+            assert!(
+                encrypted
+                    .as_ref()
+                    .err()
+                    .is_some_and(|e| e.contains("12 byte nonce")),
+                "encrypt with a {} byte nonce: {:?}",
+                wrong.len(),
+                encrypted.map(|bytes| bytes.len())
+            );
+
+            let decrypted = decrypt_chacha20(key, &wrong, b"ciphertext");
+            assert!(
+                decrypted
+                    .as_ref()
+                    .err()
+                    .is_some_and(|e| e.contains("12 byte nonce")),
+                "decrypt with a {} byte nonce: {:?}",
+                wrong.len(),
+                decrypted.map(|bytes| bytes.len())
+            );
+        }
+    }
+
+    /// And the length that is right still round-trips, so the check above is
+    /// refusing the wrong lengths rather than everything.
+    #[test]
+    fn twelve_bytes_round_trips() {
+        let key = [3u8; 32];
+        let nonce = [9u8; 12];
+        let sealed = encrypt_chacha20(key, &nonce, b"round trip").expect("encrypt");
+        let opened = decrypt_chacha20(key, &nonce, &sealed).expect("decrypt");
+        assert_eq!(opened, b"round trip");
+    }
+}
+
+#[cfg(test)]
 mod hash_forge_tests {
     use super::*;
 
