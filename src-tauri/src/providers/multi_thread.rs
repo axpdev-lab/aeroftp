@@ -215,6 +215,224 @@ impl Drop for TempFileGuard {
     }
 }
 
+/// What a remote object looked like at one moment: the validator the provider
+/// publishes for it, plus the size and modification time every provider has.
+///
+/// A multi-stream download reads its windows in parallel, so an object
+/// replaced while they are in flight is assembled out of two versions: each
+/// window has the length it asked for, the total is exactly right, and
+/// nothing downstream can tell. Reading the object before the windows start
+/// and again before publishing turns that into a refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RangeSourceFingerprint {
+    size: u64,
+    modified: Option<String>,
+    validator: Option<String>,
+}
+
+impl RangeSourceFingerprint {
+    pub fn of(entry: &super::RemoteEntry) -> Self {
+        Self {
+            size: entry.size,
+            modified: entry.modified.clone(),
+            validator: entry
+                .metadata
+                .get("etag")
+                .map(|tag| tag.trim().to_string())
+                .filter(|tag| !tag.is_empty()),
+        }
+    }
+
+    /// The validator to pin ranged reads to, when the provider published one.
+    pub fn validator(&self) -> Option<String> {
+        self.validator.clone()
+    }
+
+    /// The size this reading found.
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
+    /// The plan about to run was built from a size the caller probed earlier.
+    /// If the object has a different one now, the plan belongs to a different
+    /// object: pinning the windows to this one would publish a file cut to the
+    /// old length with every check green.
+    pub fn matches_planned_size(&self, planned_size: u64) -> Result<(), String> {
+        if self.size == planned_size {
+            Ok(())
+        } else {
+            Err(format!(
+                "the transfer was planned for {} bytes and the object now has {}",
+                planned_size, self.size
+            ))
+        }
+    }
+
+    /// A named reason when the two readings cannot describe the same object,
+    /// and `None` when nothing proves they differ.
+    ///
+    /// A value this reading carried and the other does not is itself a
+    /// difference, not a missing comparison: an endpoint that stops answering
+    /// with the entity tag it had just given is exactly how a replacement
+    /// would hide from a check that only compares what both sides publish.
+    pub fn differs_from(&self, other: &Self) -> Option<String> {
+        match (&self.validator, &other.validator) {
+            (Some(before), Some(after)) if before != after => {
+                return Some(format!("entity tag {} became {}", before, after));
+            }
+            (Some(before), None) => {
+                return Some(format!(
+                    "entity tag {} is no longer reported, so nothing pins the bytes",
+                    before
+                ));
+            }
+            _ => {}
+        }
+        if self.size != other.size {
+            return Some(format!("size {} became {}", self.size, other.size));
+        }
+        if let (Some(before), Some(after)) = (&self.modified, &other.modified) {
+            if before != after {
+                return Some(format!("modification time {} became {}", before, after));
+            }
+        }
+        None
+    }
+}
+
+/// The phrase every refusal of this kind carries, so a reader of a log or an
+/// error can tell "the object moved under us" from a transport failure.
+pub const SOURCE_CHANGED_MARKER: &str = "changed while it was being downloaded";
+
+/// How long to wait before reading the object a second time, when the reading
+/// that decides whether a finished download is published has just failed.
+pub(crate) const AFTER_TRANSFER_READ_RETRY: std::time::Duration =
+    std::time::Duration::from_millis(500);
+
+/// The phrase a refusal to even start the parallel path carries.
+pub const PARALLEL_REFUSED_MARKER: &str = "refusing to read it in parallel";
+
+/// The message for a parallel path that refuses to start.
+pub fn parallel_refused(scope: &str, remote_path: &str, why: &str) -> String {
+    format!("{scope}: {PARALLEL_REFUSED_MARKER} ({remote_path}): {why}")
+}
+
+/// The message for an assembled file that must not be published.
+pub fn source_changed(scope: &str, remote_path: &str, what: &str) -> String {
+    format!("{scope}: {remote_path} {SOURCE_CHANGED_MARKER} ({what})")
+}
+
+/// What a ranged HTTP answer turned out to be.
+#[derive(Debug)]
+pub enum RangedAnswer {
+    /// The window that was asked for, ready to be written at its offset.
+    Window,
+    /// The whole object: the server ignored the range. The caller has to cut
+    /// the window out of it or refuse, never write it at the offset.
+    WholeObject,
+}
+
+/// Cut the window out of a whole-object answer.
+///
+/// One implementation rather than one per provider: an off-by-one here would
+/// otherwise have to be found and fixed seven times.
+pub fn slice_whole_object(bytes: &[u8], offset: u64, len: u64) -> Vec<u8> {
+    if offset >= bytes.len() as u64 {
+        return Vec::new();
+    }
+    let start = offset as usize;
+    let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
+    bytes[start..stop].to_vec()
+}
+
+/// Classify the answer to a ranged read.
+///
+/// The property has two halves and a reader that checks one is still open. A
+/// 200 is the whole object, whose head written at the window's offset
+/// corrupts the file to exactly the right length. A 206 has to say which
+/// range it carries, and it has to be the one asked for: a server that
+/// answers a different window is the same corruption with a success code.
+pub fn ranged_answer(
+    status: reqwest::StatusCode,
+    content_range: Option<&str>,
+    body_len: u64,
+    start: u64,
+    end: u64,
+) -> Result<RangedAnswer, String> {
+    match status {
+        reqwest::StatusCode::PARTIAL_CONTENT => {
+            // The whole grammar, not a prefix: `bytes 0-1/not-a-total` starts
+            // like the right answer and is not one.
+            if !content_range_matches(content_range, start, end) {
+                return Err(format!(
+                    "the server answered {:?} to a request for bytes {}-{}",
+                    content_range.unwrap_or_default(),
+                    start,
+                    end
+                ));
+            }
+            let window = end - start + 1;
+            if body_len != window {
+                return Err(format!(
+                    "the server said bytes {}-{} and sent {} bytes instead of {}",
+                    start, end, body_len, window
+                ));
+            }
+            Ok(RangedAnswer::Window)
+        }
+        reqwest::StatusCode::OK => Ok(RangedAnswer::WholeObject),
+        other => Err(format!("the server answered {} to a ranged read", other)),
+    }
+}
+
+/// The same reading, taken through a session the caller owns. For a caller
+/// that builds its own connections and has no template to clone from.
+pub async fn read_range_source_through(
+    session: &mut dyn super::StorageProvider,
+    remote_path: &str,
+) -> Result<RangeSourceFingerprint, String> {
+    session
+        .stat(remote_path)
+        .await
+        .map(|entry| RangeSourceFingerprint::of(&entry))
+        .map_err(|e| format!("it could not be read ({})", e))
+}
+
+/// The comparison, taken through a session the caller already owns.
+///
+/// A caller that holds an open session on the object uses this rather than
+/// [`range_source_changed`]: opening one of its own costs a full handshake,
+/// measured at about 1.3 seconds on an SFTP link, on every transfer, whether
+/// or not anything changed. That cost is fixed, so it weighs most exactly
+/// where the transfer is fastest.
+pub async fn range_source_changed_through(
+    session: &mut dyn super::StorageProvider,
+    remote_path: &str,
+    before: &RangeSourceFingerprint,
+) -> Option<String> {
+    let first = match read_range_source_through(session, remote_path).await {
+        Ok(after) => return before.differs_from(&after),
+        Err(why) => why,
+    };
+    // This reading decides whether bytes already on disk are kept, so one
+    // hiccup should not throw away a download that is finished and correct.
+    // The reading before the windows pays a failure for nothing; this one
+    // pays it after the expensive part. A session that is really gone fails
+    // the second time too, and the refusal stands.
+    log::warn!(
+        "segmented download: {} could not be read after the transfer ({}), reading once more",
+        remote_path,
+        first
+    );
+    tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+    match read_range_source_through(session, remote_path).await {
+        Ok(after) => before.differs_from(&after),
+        Err(why) => Some(format!(
+            "it could not be read again after the transfer: {why}"
+        )),
+    }
+}
+
 /// Compute the `.aerotmp` sibling of `final_path`, matching the convention
 /// used by `AtomicFile::temp_path_for` so existing cleanup tooling and the
 /// resume path stay consistent.
@@ -1088,6 +1306,30 @@ pub(crate) async fn try_http_concurrent_range_download(
         );
         return HttpRangeAttempt::Fallback(on_progress);
     }
+    // The probe is also where the version comes from. HTTP has a validator,
+    // so the windows can be pinned to the object the probe saw: without one,
+    // an object replaced while they are in flight is assembled out of two
+    // versions, with the right length and nothing to tell it apart. A weak
+    // tag is not used, because If-Match compares strongly and would refuse
+    // every window.
+    let validator = probe
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty() && !tag.starts_with("W/"));
+    let last_modified = probe
+        .headers()
+        .get(reqwest::header::LAST_MODIFIED)
+        .and_then(|v| v.to_str().ok())
+        .map(|value| value.to_string());
+    if validator.is_none() && last_modified.is_none() {
+        tracing::warn!(
+            "[multi-thread] {} has no validator and no modification time: a replacement while the windows read it cannot be detected",
+            req.url
+        );
+    }
+
     let total = match content_range
         .as_deref()
         .and_then(parse_content_range)
@@ -1127,14 +1369,19 @@ pub(crate) async fn try_http_concurrent_range_download(
     let client = req.client.clone();
     let url: Arc<str> = Arc::from(req.url.as_str());
     let headers = Arc::new(req.headers.clone());
+    let pin: Arc<Option<String>> = Arc::new(validator.clone());
     let fetch_range = move |start: u64, end: u64| {
         let client = client.clone();
         let url = url.clone();
         let headers = headers.clone();
+        let pin = pin.clone();
         async move {
             let mut rb = client.get(url.as_ref());
             for (k, v) in headers.iter() {
                 rb = rb.header(k.clone(), v.clone());
+            }
+            if let Some(tag) = pin.as_ref() {
+                rb = rb.header(reqwest::header::IF_MATCH, tag.as_str());
             }
             let range = HeaderValue::from_str(&format!("bytes={}-{}", start, end))
                 .map_err(|e| ProviderError::TransferFailed(format!("Invalid Range: {}", e)))?;
@@ -1142,9 +1389,17 @@ pub(crate) async fn try_http_concurrent_range_download(
                 .header(RANGE, range)
                 .build()
                 .map_err(|e| ProviderError::TransferFailed(format!("Build request: {}", e)))?;
-            send_with_retry(&client, request, &HttpRetryConfig::default())
+            let response = send_with_retry(&client, request, &HttpRetryConfig::default())
                 .await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            if response.status() == reqwest::StatusCode::PRECONDITION_FAILED {
+                return Err(ProviderError::TransferFailed(source_changed(
+                    "http range",
+                    url.as_ref(),
+                    "the server refused a window pinned to the version the probe saw",
+                )));
+            }
+            Ok(response)
         }
     };
 
@@ -1153,6 +1408,17 @@ pub(crate) async fn try_http_concurrent_range_download(
     {
         Ok(ConcurrentRangeOutcome::Completed) => {
             let temp = aerotmp_path_for(Path::new(&req.local_path));
+            if let Some(what) =
+                http_range_source_moved(&req, validator.as_deref(), last_modified.as_deref(), total)
+                    .await
+            {
+                let _ = tokio::fs::remove_file(&temp).await;
+                tracing::warn!(
+                    "[multi-thread] {}; single-stream fallback (no progress)",
+                    source_changed("http range", &req.url, &what)
+                );
+                return HttpRangeAttempt::Fallback(None);
+            }
             match tokio::fs::rename(&temp, &req.local_path).await {
                 Ok(()) => HttpRangeAttempt::Completed,
                 Err(e) => {
@@ -1172,8 +1438,120 @@ pub(crate) async fn try_http_concurrent_range_download(
             );
             HttpRangeAttempt::Fallback(None)
         }
+        Err(e) if e.to_string().contains(SOURCE_CHANGED_MARKER) => {
+            // A window was refused because the object moved. That is not a
+            // failed download: one stream reads one consistent view, which is
+            // exactly what the windows could not promise. The engine already
+            // removed the staged file. This is the one place that recognises
+            // the refusal by its message, because it crosses a generic engine
+            // that carries nothing else.
+            tracing::warn!("[multi-thread] {}; single-stream fallback (no progress)", e);
+            HttpRangeAttempt::Fallback(None)
+        }
         Err(e) => HttpRangeAttempt::Failed(e),
     }
+}
+
+/// `Some(reason)` when the object is provably not the one the probe saw.
+///
+/// A second one-byte probe on the same client, so the cost is a request and
+/// not a connection. It exists for the servers that ignore `If-Match`: where
+/// the pin is honoured a window is refused mid-flight and never reaches here.
+/// One retry, because this reading decides whether bytes already on disk are
+/// kept.
+async fn http_range_source_moved(
+    req: &HttpRangeRequest,
+    validator: Option<&str>,
+    last_modified: Option<&str>,
+    total: u64,
+) -> Option<String> {
+    if validator.is_none() && last_modified.is_none() {
+        return None;
+    }
+    let mut last_error = None;
+    for attempt in 0..2 {
+        if attempt == 1 {
+            tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+        }
+        let mut rb = req.client.get(&req.url);
+        for (k, v) in req.headers.iter() {
+            rb = rb.header(k.clone(), v.clone());
+        }
+        let request = match rb
+            .header(RANGE, HeaderValue::from_static("bytes=0-0"))
+            .build()
+        {
+            Ok(request) => request,
+            Err(e) => {
+                last_error = Some(e.to_string());
+                continue;
+            }
+        };
+        let response =
+            match send_with_retry(&req.client, request, &HttpRetryConfig::default()).await {
+                Ok(response) => response,
+                Err(e) => {
+                    last_error = Some(e.to_string());
+                    continue;
+                }
+            };
+        // A non-success answer carries none of the headers compared below, so
+        // every comparison would be skipped and the silence would read as "the
+        // object did not change". An answer that cannot be compared is a
+        // failed reading, not a passed one.
+        if !matches!(
+            response.status(),
+            reqwest::StatusCode::PARTIAL_CONTENT | reqwest::StatusCode::OK
+        ) {
+            last_error = Some(format!("the probe answered {}", response.status()));
+            continue;
+        }
+        let now_tag = response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(|tag| tag.trim().to_string());
+        match (validator, now_tag.as_deref()) {
+            (Some(before), Some(after)) if before != after => {
+                return Some(format!("entity tag {} became {}", before, after));
+            }
+            // A tag that was there and is not any more is a difference, not a
+            // field to skip: it is how a replacement hides from a comparison
+            // that only looks at what both answers publish.
+            (Some(before), None) => {
+                return Some(format!(
+                    "entity tag {} is no longer reported, so nothing pins the bytes",
+                    before
+                ));
+            }
+            _ => {}
+        }
+        let now_modified = response
+            .headers()
+            .get(reqwest::header::LAST_MODIFIED)
+            .and_then(|v| v.to_str().ok());
+        if let (Some(before), Some(after)) = (last_modified, now_modified) {
+            if before != after {
+                return Some(format!("modification time {} became {}", before, after));
+            }
+        }
+        let now_total = response
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_content_range)
+            .and_then(|(_, _, total)| total);
+        if let Some(after) = now_total {
+            if after != total {
+                return Some(format!("size {} became {}", total, after));
+            }
+        }
+        return None;
+    }
+    Some(format!(
+        "it could not be read again after the transfer: {}",
+        last_error.unwrap_or_else(|| "no answer".to_string())
+    ))
 }
 
 #[cfg(test)]
@@ -1181,6 +1559,84 @@ mod tests {
     use super::*;
 
     const MAX: usize = 16;
+
+    /// The two halves of the rule, and the two ways an answer can look right
+    /// and not be: a `Content-Range` that starts like the one asked for but
+    /// does not parse, and a body that is not the length it just declared.
+    #[test]
+    fn a_ranged_answer_is_the_window_or_it_is_refused() {
+        use reqwest::StatusCode;
+        let ok = ranged_answer(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 1048576-2097151/8388608"),
+            1048576,
+            1048576,
+            2097151,
+        );
+        assert!(matches!(ok, Ok(RangedAnswer::Window)), "{ok:?}");
+
+        let malformed = ranged_answer(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 1048576-2097151/not-a-total"),
+            1048576,
+            1048576,
+            2097151,
+        )
+        .expect_err("a Content-Range that does not parse is not the window");
+        assert!(malformed.contains("not-a-total"), "{malformed}");
+
+        let other_window = ranged_answer(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-1048575/8388608"),
+            1048576,
+            1048576,
+            2097151,
+        )
+        .expect_err("another window is not this one");
+        assert!(
+            other_window.contains("bytes 1048576-2097151"),
+            "{other_window}"
+        );
+
+        let short = ranged_answer(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-1023/8388608"),
+            512,
+            0,
+            1023,
+        )
+        .expect_err("a body shorter than the window it declared");
+        assert!(short.contains("512"), "{short}");
+
+        let oversized = ranged_answer(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-1023/8388608"),
+            4096,
+            0,
+            1023,
+        )
+        .expect_err("a body longer than the window it declared");
+        assert!(oversized.contains("4096"), "{oversized}");
+
+        assert!(matches!(
+            ranged_answer(StatusCode::OK, None, 8388608, 1048576, 2097151),
+            Ok(RangedAnswer::WholeObject)
+        ));
+        assert!(ranged_answer(StatusCode::NO_CONTENT, None, 0, 0, 1023).is_err());
+    }
+
+    /// Both refusals are written in one place so a log or an error reads the
+    /// same wherever it comes from, and so a reworded message cannot drift
+    /// apart from the one a reader greps for.
+    #[test]
+    fn both_refusals_name_themselves() {
+        let refused = parallel_refused("segmented download", "/big.bin", "it timed out");
+        assert!(refused.contains(PARALLEL_REFUSED_MARKER), "{refused}");
+        assert!(refused.contains("/big.bin"), "{refused}");
+        let changed = source_changed("segmented download", "/big.bin", "size 10 became 11");
+        assert!(changed.contains(SOURCE_CHANGED_MARKER), "{changed}");
+        assert!(changed.contains("size 10 became 11"), "{changed}");
+    }
 
     // DAG-P2-06 (wire-level): the segmented-range construction point binds
     // learned tuning to its endpoint under the SegmentedRange workload key.
@@ -2302,5 +2758,158 @@ mod tests {
             1,
             "an unknown size still probes once"
         );
+    }
+
+    /// Start and end of a `bytes=start-end` request header.
+    fn requested_window(raw: &str) -> Option<(u64, u64)> {
+        let (start, end) = raw.strip_prefix("bytes=")?.split_once('-')?;
+        Some((start.parse().ok()?, end.parse().ok()?))
+    }
+
+    /// A reading that cannot be compared is a failed reading. If the probe
+    /// that checks before publishing answers 500, none of the headers it
+    /// would be compared on are there, and the silence must not read as "the
+    /// object did not change".
+    #[tokio::test]
+    async fn a_final_probe_that_fails_does_not_read_as_unchanged() {
+        use std::sync::atomic::AtomicUsize;
+        const SIZE: u64 = 2 * 1024 * 1024;
+        let probes = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&probes);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    let raw = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let (start, end) = requested_window(&raw).unwrap_or((0, SIZE - 1));
+                    if start == 0 && end == 0 && counter.fetch_add(1, Ordering::SeqCst) > 0 {
+                        return axum::response::Response::builder()
+                            .status(500)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .status(206)
+                        .header("content-range", format!("bytes {}-{}/{}", start, end, SIZE))
+                        .header("etag", "\"v1\"")
+                        .body(axum::body::Body::from(vec![
+                            7u8;
+                            (end - start + 1) as usize
+                        ]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("big.bin");
+        let attempt = try_http_concurrent_range_download(
+            HttpRangeRequest {
+                client: reqwest::Client::new(),
+                url: format!("http://{addr}/big.bin"),
+                headers: Vec::new(),
+                local_path: local.to_string_lossy().into_owned(),
+                provider_type: super::super::ProviderType::WebDav,
+                streams: 4,
+                max_streams: 4,
+                cutoff: 1024 * 1024,
+                known_size: None,
+            },
+            None,
+        )
+        .await;
+        assert!(
+            matches!(attempt, HttpRangeAttempt::Fallback(None)),
+            "a reading that could not be taken must not publish the file"
+        );
+        assert!(!local.exists(), "no file may be published");
+    }
+
+    /// This is the path WebDAV and Koofr take, and it holds a validator from
+    /// its own probe. A server that ignores `If-Match` must still not get a
+    /// file published out of two versions: the windows all answer with the
+    /// length they asked for and the total is exactly right.
+    #[tokio::test]
+    async fn the_http_range_path_refuses_an_object_replaced_under_it() {
+        use std::sync::atomic::AtomicUsize;
+        const SIZE: u64 = 2 * 1024 * 1024;
+        let probes = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&probes);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    let raw = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let (start, end) = requested_window(&raw).unwrap_or((0, SIZE - 1));
+                    // The object is replaced while the windows are in flight:
+                    // the probe that plans them sees v1, the one that checks
+                    // before publishing sees v2. If-Match is ignored, as a
+                    // server that does not implement it would.
+                    let tag = if start == 0 && end == 0 {
+                        if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                            "\"v1\""
+                        } else {
+                            "\"v2\""
+                        }
+                    } else {
+                        "\"v1\""
+                    };
+                    axum::response::Response::builder()
+                        .status(206)
+                        .header("content-range", format!("bytes {}-{}/{}", start, end, SIZE))
+                        .header("etag", tag)
+                        .body(axum::body::Body::from(vec![
+                            7u8;
+                            (end - start + 1) as usize
+                        ]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("big.bin");
+        let attempt = try_http_concurrent_range_download(
+            HttpRangeRequest {
+                client: reqwest::Client::new(),
+                url: format!("http://{addr}/big.bin"),
+                headers: Vec::new(),
+                local_path: local.to_string_lossy().into_owned(),
+                provider_type: super::super::ProviderType::WebDav,
+                streams: 4,
+                max_streams: 4,
+                cutoff: 1024 * 1024,
+                known_size: None,
+            },
+            None,
+        )
+        .await;
+        assert!(
+            matches!(attempt, HttpRangeAttempt::Fallback(None)),
+            "an object that moved must be handed back to a single stream"
+        );
+        assert!(!local.exists(), "no file may be published");
     }
 }

@@ -692,17 +692,28 @@ impl StorageProvider for ImageKitProvider {
                 status
             )));
         }
+        let answered = resp
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string());
         let bytes = response_bytes_with_limit(resp, MAX_DOWNLOAD_TO_BYTES).await?;
-        if status == StatusCode::OK {
-            if offset >= bytes.len() as u64 {
-                Ok(Vec::new())
-            } else {
-                let start = offset as usize;
-                let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
-                Ok(bytes[start..stop].to_vec())
+        // A 206 that does not name the window it carries is written at this
+        // offset just the same, so it has to say which range it is.
+        match super::multi_thread::ranged_answer(
+            status,
+            answered.as_deref(),
+            bytes.len() as u64,
+            offset,
+            end,
+        ) {
+            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes),
+            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
+                Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
             }
-        } else {
-            Ok(bytes)
+            Err(why) => Err(ProviderError::TransferFailed(
+                super::multi_thread::parallel_refused("ImageKit range read", remote_path, &why),
+            )),
         }
     }
 

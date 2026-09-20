@@ -1733,11 +1733,35 @@ impl StorageProvider for KoofrProvider {
             return Err(Self::parse_error(resp).await);
         }
 
+        // The caller writes what comes back at the offset it asked for, so a
+        // whole file answered to a ranged request would put the head of the
+        // object there and still add up to the right length, and a 206 that
+        // does not name its window would do the same with a success code.
+        let status = resp.status();
+        let answered = resp
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string());
         let bytes = resp
             .bytes()
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Read bytes failed: {}", e)))?;
-        Ok(bytes.to_vec())
+        match super::multi_thread::ranged_answer(
+            status,
+            answered.as_deref(),
+            bytes.len() as u64,
+            offset,
+            end,
+        ) {
+            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
+            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
+                Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
+            }
+            Err(why) => Err(ProviderError::TransferFailed(
+                super::multi_thread::parallel_refused("Koofr range read", path, &why),
+            )),
+        }
     }
 
     fn transfer_optimization_hints(&self) -> TransferOptimizationHints {

@@ -1506,11 +1506,10 @@ impl B2Provider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         use crate::providers::multi_thread::{
-            aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
-            ConcurrentRangeOutcome,
+            run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
         };
         use std::collections::VecDeque;
-        use std::path::{Path, PathBuf};
+        use std::path::PathBuf;
         use std::sync::Arc;
 
         let streams = streams.clamp(2, MULTI_THREAD_MAX_STREAMS);
@@ -1618,19 +1617,75 @@ impl B2Provider {
             tokio_util::sync::CancellationToken::new(),
             on_progress,
         )
-        .await?;
+        .await;
 
         match outcome {
-            ConcurrentRangeOutcome::Completed => {
-                let temp = aerotmp_path_for(Path::new(local_path));
-                tokio::fs::rename(&temp, local_path).await.map_err(|e| {
-                    ProviderError::Other(format!("b2 multi-thread finalize: {}", e))
-                })?;
-                Ok(())
-            }
-            ConcurrentRangeOutcome::ServerIgnoredRange => Err(ProviderError::NotSupported(
+            // The windows are in `<local>.aerotmp` and the file is not
+            // published here: the caller reads the object again through the
+            // session it already holds and publishes only if it did not move.
+            Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
+            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(ProviderError::NotSupported(
                 "b2 multi-thread: server returned 200 (ignored Range)".to_string(),
             )),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Run the parallel download and publish it only if the object did not
+    /// move while the windows were reading it.
+    ///
+    /// `Ok(true)` it is published, `Ok(false)` it was refused and the caller
+    /// takes its single-stream path, `Err` a real failure. Both readings go
+    /// through this session rather than a new one, the same shape the other
+    /// providers use.
+    async fn parallel_download_if_unchanged(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        streams: usize,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<bool, ProviderError> {
+        use super::multi_thread::{
+            aerotmp_path_for, parallel_refused, range_source_changed_through,
+            read_range_source_through, source_changed,
+        };
+        use std::path::Path;
+
+        let before = match read_range_source_through(self, remote_path).await {
+            Ok(reading) => match reading.matches_planned_size(total_size) {
+                Ok(()) => reading,
+                Err(why) => {
+                    tracing::warn!("{}", parallel_refused("b2 multi-thread", remote_path, &why));
+                    return Ok(false);
+                }
+            },
+            Err(why) => {
+                tracing::warn!("{}", parallel_refused("b2 multi-thread", remote_path, &why));
+                return Ok(false);
+            }
+        };
+
+        self.download_multi_thread(remote_path, local_path, total_size, streams, on_progress)
+            .await?;
+
+        let temp = aerotmp_path_for(Path::new(local_path));
+        if let Some(what) = range_source_changed_through(self, remote_path, &before).await {
+            let _ = tokio::fs::remove_file(&temp).await;
+            tracing::warn!("{}", source_changed("b2 multi-thread", remote_path, &what));
+            return Ok(false);
+        }
+        match tokio::fs::rename(&temp, local_path).await {
+            Ok(()) => Ok(true),
+            Err(e) => {
+                // The engine handed the temp over when it reported the windows
+                // complete, so nothing else will remove it.
+                let _ = tokio::fs::remove_file(&temp).await;
+                Err(ProviderError::Other(format!(
+                    "b2 multi-thread finalize: {}",
+                    e
+                )))
+            }
         }
     }
 
@@ -2435,22 +2490,32 @@ impl StorageProvider for B2Provider {
         // cutoff, and B2's range-honouring endpoint is available. Mirrors the
         // S3 path: a `stat` hiccup just falls through to single-stream so a
         // one-off mismatch never fails an otherwise downloadable transfer.
-        // Once committed we return the result (any hard error surfaces to the
-        // caller's retry envelope); we do not silently re-stream here.
+        // Once committed a hard error surfaces to the caller's retry envelope;
+        // a refusal to read the object in parallel, or to publish a file that
+        // moved under the windows, takes the single-stream path below instead,
+        // which reads one consistent view.
         let progress = if self.multi_thread_streams >= 2
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
             match self.size(remote_path).await {
                 Ok(size) if size >= self.multi_thread_cutoff => {
-                    return self
-                        .download_multi_thread(
+                    match self
+                        .parallel_download_if_unchanged(
                             remote_path,
                             local_path,
                             size,
                             self.multi_thread_streams,
                             progress,
                         )
-                        .await;
+                        .await
+                    {
+                        Ok(true) => return Ok(()),
+                        // Refused, not failed. The progress callback went with
+                        // the attempt, so the single-stream path runs without
+                        // one.
+                        Ok(false) => None,
+                        Err(e) => return Err(e),
+                    }
                 }
                 _ => progress,
             }
@@ -3461,6 +3526,15 @@ impl StorageProvider for B2Provider {
                 "b2_download_file_by_name (range)",
             ));
         }
+        // The caller writes what comes back at the offset it asked for, so a
+        // whole file answered to a ranged request would put the head of the
+        // object there and still add up to the right length, and a 206 that
+        // does not name its window would do the same with a success code.
+        let answered = resp
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string());
         let bytes = resp
             .bytes()
             .await
@@ -3470,7 +3544,21 @@ impl StorageProvider for B2Provider {
             bytes.len() as u64,
         )
         .await;
-        Ok(bytes.to_vec())
+        match super::multi_thread::ranged_answer(
+            status,
+            answered.as_deref(),
+            bytes.len() as u64,
+            offset,
+            end,
+        ) {
+            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
+            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
+                Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
+            }
+            Err(why) => Err(ProviderError::TransferFailed(
+                super::multi_thread::parallel_refused("b2 range read", path, &why),
+            )),
+        }
     }
 }
 

@@ -31,7 +31,9 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
 use super::multi_thread::{
-    aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+    aerotmp_path_for, parallel_refused, run_concurrent_range_download, source_changed,
+    ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
+    AFTER_TRANSFER_READ_RETRY, PARALLEL_REFUSED_MARKER, SOURCE_CHANGED_MARKER,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -631,11 +633,106 @@ impl SftpProvider {
         Ok(())
     }
 
+    /// The object as this session sees it now, read on the connection that is
+    /// already open.
+    ///
+    /// Going through the trait's `stat` would mean a session of its own, and
+    /// on SFTP a session is a full handshake: about 1.3 seconds on the lab
+    /// link, twice per segmented download, whether or not anything changed.
+    async fn range_source_reading(
+        sftp: &SftpSession,
+        full_path: &str,
+    ) -> Result<RangeSourceFingerprint, String> {
+        let metadata = sftp
+            .metadata(full_path)
+            .await
+            .map_err(|e| format!("it could not be read ({e})"))?;
+        let entry = Self::metadata_to_entry(String::new(), full_path.to_string(), &metadata);
+        Ok(RangeSourceFingerprint::of(&entry))
+    }
+
+    /// Run the parallel download and publish it only if the object did not
+    /// move while the windows were reading it.
+    ///
+    /// `Ok(true)` it is published, `Ok(false)` it was refused and the caller
+    /// takes its single-stream path, `Err` a real failure. Both readings of
+    /// the object go through this session, which is open and idle while the
+    /// windows run on their own connections. Opening a session for them would
+    /// cost a full SFTP handshake twice on every segmented download, about
+    /// 1.3 seconds each on the lab link, and that cost is fixed: it weighs
+    /// most exactly where the transfer is fastest.
+    async fn parallel_download_if_unchanged(
+        &self,
+        remote_path: &str,
+        full_path: &str,
+        local_path: &str,
+        total_size: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<bool, ProviderError> {
+        let sftp = self.get_sftp()?;
+        let before = match Self::range_source_reading(sftp, full_path).await {
+            Ok(reading) => match reading.matches_planned_size(total_size) {
+                Ok(()) => reading,
+                Err(why) => {
+                    tracing::warn!("{}", parallel_refused("SFTP intra-file", remote_path, &why));
+                    return Ok(false);
+                }
+            },
+            Err(why) => {
+                tracing::warn!("{}", parallel_refused("SFTP intra-file", remote_path, &why));
+                return Ok(false);
+            }
+        };
+
+        self.download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
+            .await?;
+
+        // One retry, the same tolerance the shared comparison gives the other
+        // providers: this reading decides whether bytes already on disk are
+        // kept, and a hiccup is not proof that the object moved.
+        let changed = match Self::range_source_reading(sftp, full_path).await {
+            Ok(after) => before.differs_from(&after),
+            Err(first) => {
+                tracing::warn!(
+                    "SFTP intra-file: {} could not be read after the transfer ({}), reading once more",
+                    full_path,
+                    first
+                );
+                tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+                match Self::range_source_reading(sftp, full_path).await {
+                    Ok(after) => before.differs_from(&after),
+                    Err(why) => Some(format!(
+                        "it could not be read again after the transfer: {why}"
+                    )),
+                }
+            }
+        };
+        let temp = aerotmp_path_for(Path::new(local_path));
+        if let Some(what) = changed {
+            let _ = tokio::fs::remove_file(&temp).await;
+            tracing::warn!("{}", source_changed("SFTP intra-file", remote_path, &what));
+            return Ok(false);
+        }
+        match tokio::fs::rename(&temp, local_path).await {
+            Ok(()) => {
+                tracing::info!("SFTP: intra-file download complete: {}", remote_path);
+                Ok(true)
+            }
+            Err(e) => {
+                // The engine handed the temp over when it reported the windows
+                // complete, so nothing else will remove it.
+                let _ = tokio::fs::remove_file(&temp).await;
+                Err(ProviderError::IoError(e))
+            }
+        }
+    }
+
     /// PD-SFTP-2 intra-file download: split a large file into N gap-free
     /// windows, each streamed over its **own independent SSH connection**
     /// (the exact connection model of the file-level pool: spec re-dial with
     /// host-key pin, no shared SSH handle/channel), assembled into a
-    /// pre-allocated `.aerotmp` and atomically renamed. Reuses the shared
+    /// pre-allocated `.aerotmp`, which the caller publishes once it has read
+    /// the object again. Reuses the shared
     /// [`run_concurrent_range_download`] orchestrator (plan / temp / RAII
     /// cleanup / bounded concurrency / progress / cancel) so HTTP and SFTP
     /// share one engine, not a fifth implementation.
@@ -727,23 +824,20 @@ impl SftpProvider {
             }
         };
 
-        match run_concurrent_range_download(
+        let outcome = run_concurrent_range_download(
             cfg,
             write_one_range,
             CancellationToken::new(),
             on_progress,
         )
-        .await?
-        {
-            ConcurrentRangeOutcome::Completed => {
-                let temp = aerotmp_path_for(Path::new(local_path));
-                tokio::fs::rename(&temp, local_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                tracing::info!("SFTP: intra-file download complete: {}", remote_path);
-                Ok(())
-            }
-            ConcurrentRangeOutcome::ServerIgnoredRange => {
+        .await;
+
+        let result = match outcome {
+            // The windows are in `<local>.aerotmp` and the file is not
+            // published here: the caller reads the object again through the
+            // session it already holds and publishes only if it did not move.
+            Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
+            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
                 // Unreachable for SFTP: seek+read cannot "ignore" a range.
                 // Never silently re-download (it would double the bytes).
                 let _ = tokio::fs::remove_file(aerotmp_path_for(Path::new(local_path))).await;
@@ -751,7 +845,9 @@ impl SftpProvider {
                     "SFTP intra-file: unexpected range-ignored outcome".to_string(),
                 ))
             }
-        }
+            Err(e) => Err(e),
+        };
+        result
     }
 
     /// Return a cloneable handle to the underlying SSH session, if connected.
@@ -1756,7 +1852,7 @@ impl StorageProvider for SftpProvider {
                 return Err(classify_russh_err(error, ProviderError::NotFound));
             }
         };
-        let total_size = metadata.size.unwrap_or(0);
+        let mut total_size = metadata.size.unwrap_or(0);
         // The OPEN above is speculation, fired next to the STAT to overlap the
         // two round trips. Its failure is not the download's failure: the fresh
         // STAT can still select the pooled, read-ahead or pipelined path, and
@@ -1798,14 +1894,39 @@ impl StorageProvider for SftpProvider {
         // re-dial N independent SSH connections (the SftpConnectionPool kind).
         // Without all three this is a no-op and the single-stream path below
         // is unchanged: honest non-regression, no protocol overclaim.
+        let mut on_progress = on_progress;
+        // Set when the parallel path refused to publish: the object is moving,
+        // so the fallback must read it on one handle. The read-ahead and
+        // pipelined paths below open several handles to the same path, a few
+        // milliseconds apart, and a replacement inside that burst would put
+        // the fallback back in the hole the refusal just avoided.
+        let mut source_is_moving = false;
         if self.multi_thread_streams >= 2
             && total_size >= self.multi_thread_cutoff
             && self.connection_spec.is_some()
         {
             close_preopened!();
-            return self
-                .download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
-                .await;
+            match self
+                .parallel_download_if_unchanged(
+                    remote_path,
+                    &full_path,
+                    local_path,
+                    total_size,
+                    on_progress.take(),
+                )
+                .await
+            {
+                Ok(true) => return Ok(()),
+                // Refused, not failed: the object is not the one the windows
+                // were planned for, or it could not be read again to prove it
+                // stayed put. One stream reads one consistent view, which is
+                // exactly what the parallel path could not promise, so take
+                // the path below instead of failing a download that has a
+                // correct way to finish. The progress callback went with the
+                // attempt, so this runs without one.
+                Ok(false) => source_is_moving = true,
+                Err(e) => return Err(e),
+            }
         }
 
         // Sliding-window read-ahead downloader (our own, no crate fork). Takes
@@ -1813,7 +1934,8 @@ impl StorageProvider for SftpProvider {
         // guardrails: known size, no active
         // bandwidth cap (the serial loop owns precise throttling).
         if let Some(requested_window) = self.sftp_readahead.requested_window() {
-            if total_size > 0
+            if !source_is_moving
+                && total_size > 0
                 && self.download_limit_bps == 0
                 && crate::transfer_dag::governor::global()
                     .bandwidth()
@@ -1836,19 +1958,55 @@ impl StorageProvider for SftpProvider {
                         *slot = CancellationToken::new();
                         slot.clone()
                     };
-                    sftp_readahead_download(
+                    match sftp_readahead_download(
                         sftp,
                         &full_path,
                         total_size,
                         local_path,
                         self.buffer_size,
                         window,
-                        on_progress,
+                        on_progress.take(),
                         &cancel,
                         Arc::clone(&self.fail_readahead_write),
                     )
-                    .await?;
-                    return Ok(());
+                    .await
+                    {
+                        Ok(()) => return Ok(()),
+                        Err(e)
+                            if {
+                                let text = e.to_string();
+                                text.contains(SOURCE_CHANGED_MARKER)
+                                    || text.contains(PARALLEL_REFUSED_MARKER)
+                            } =>
+                        {
+                            // Read on several handles and the object moved
+                            // between the opens, or it is not the object the
+                            // transfer was planned for: the serial path below
+                            // reads on one handle.
+                            tracing::warn!("{}; downloading on a single handle", e);
+                            source_is_moving = true;
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+        }
+
+        if source_is_moving {
+            // Everything below is bounded by `total_size`, which was read
+            // before the object moved: keeping it would publish a file cut to
+            // a length that is no longer the object's.
+            if let Ok(sftp) = self.get_sftp() {
+                if let Ok(fresh) = Self::range_source_reading(sftp, &full_path).await {
+                    if fresh.size() != total_size {
+                        tracing::warn!(
+                            "SFTP: {} is {} bytes now and was {}, the single-handle download uses the new size",
+                            full_path,
+                            fresh.size(),
+                            total_size
+                        );
+                        total_size = fresh.size();
+                    }
                 }
             }
         }
@@ -1860,7 +2018,8 @@ impl StorageProvider for SftpProvider {
         // loop owns the exact throttling, including the process-global cap);
         // the SHA-256 live gate guards it.
         if let Some(window) = sftp_read_pipeline_window() {
-            if total_size > 0
+            if !source_is_moving
+                && total_size > 0
                 && self.download_limit_bps == 0
                 && crate::transfer_dag::governor::global()
                     .bandwidth()
@@ -3614,6 +3773,36 @@ async fn sftp_readahead_download(
 ) -> Result<(), ProviderError> {
     use tokio::io::AsyncWriteExt;
 
+    // This path opens as many handles as the window, all at once, a few
+    // milliseconds apart. A handle already open keeps reading the file it was
+    // opened on, so the risk is not the transfer but that burst: an object
+    // replaced inside it would be read as two versions. The window is far
+    // narrower than a whole transfer, but the check costs one round trip on
+    // the session that is already there.
+    // The transfer is bounded by `total_size`, read by the caller earlier, so
+    // a reading that does not match it means this download would publish a
+    // file cut to a length the object no longer has. Refusing here costs
+    // nothing: not a byte has been read.
+    let before = match SftpProvider::range_source_reading(sftp, full_path).await {
+        Ok(reading) => match reading.matches_planned_size(total_size) {
+            Ok(()) => reading,
+            Err(why) => {
+                return Err(ProviderError::TransferFailed(parallel_refused(
+                    "SFTP readahead",
+                    full_path,
+                    &why,
+                )))
+            }
+        },
+        Err(why) => {
+            return Err(ProviderError::TransferFailed(parallel_refused(
+                "SFTP readahead",
+                full_path,
+                &why,
+            )))
+        }
+    };
+
     // Keep the exclusive handle returned by create_new through commit: no
     // symlink following and no create/reopen TOCTOU window.
     let (file, temp_guard) = create_sftp_readahead_temp(local_path, total_size).await?;
@@ -3650,6 +3839,35 @@ async fn sftp_readahead_download(
         .await
         .map_err(|e| ProviderError::TransferFailed(format!("Failed to sync download: {}", e)))?;
     drop(out);
+
+    {
+        let changed = match SftpProvider::range_source_reading(sftp, full_path).await {
+            Ok(after) => before.differs_from(&after),
+            Err(first) => {
+                tracing::warn!(
+                    "SFTP readahead: {} could not be read after the transfer ({}), reading once more",
+                    full_path,
+                    first
+                );
+                tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+                match SftpProvider::range_source_reading(sftp, full_path).await {
+                    Ok(after) => before.differs_from(&after),
+                    Err(why) => Some(format!(
+                        "it could not be read again after the transfer: {why}"
+                    )),
+                }
+            }
+        };
+        if let Some(what) = changed {
+            // The guard removes the staged file. The caller reads this as a
+            // refusal and downloads on one handle instead.
+            return Err(ProviderError::TransferFailed(source_changed(
+                "SFTP readahead",
+                full_path,
+                &what,
+            )));
+        }
+    }
 
     tokio::fs::rename(&guard.path, local_path)
         .await

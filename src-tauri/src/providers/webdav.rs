@@ -4715,21 +4715,31 @@ impl StorageProvider for WebDavProvider {
         let status = response.status();
         match status {
             StatusCode::PARTIAL_CONTENT | StatusCode::OK => {
+                let answered = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|value| value.to_str().ok())
+                    .map(|value| value.to_string());
                 let bytes = response
                     .bytes()
                     .await
                     .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                // If server ignores Range and returns full content, slice to requested range
-                if status == StatusCode::OK {
-                    if offset >= bytes.len() as u64 {
-                        Ok(Vec::new())
-                    } else {
-                        let start = offset as usize;
-                        let end = std::cmp::min(start.saturating_add(len as usize), bytes.len());
-                        Ok(bytes[start..end].to_vec())
+                // A 206 that does not name the window it carries is written at
+                // this offset just the same, so it has to say which range it is.
+                match super::multi_thread::ranged_answer(
+                    status,
+                    answered.as_deref(),
+                    bytes.len() as u64,
+                    offset,
+                    end,
+                ) {
+                    Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
+                    Ok(super::multi_thread::RangedAnswer::WholeObject) => {
+                        Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
                     }
-                } else {
-                    Ok(bytes.to_vec())
+                    Err(why) => Err(ProviderError::TransferFailed(
+                        super::multi_thread::parallel_refused("WebDAV range read", path, &why),
+                    )),
                 }
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
