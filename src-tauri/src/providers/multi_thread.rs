@@ -289,6 +289,10 @@ impl RangeSourceFingerprint {
 /// error can tell "the object moved under us" from a transport failure.
 pub const SOURCE_CHANGED_MARKER: &str = "changed while it was being downloaded";
 
+/// How long to wait before reading the object a second time, when the reading
+/// that decides whether a finished download is published has just failed.
+const AFTER_TRANSFER_READ_RETRY: std::time::Duration = std::time::Duration::from_millis(500);
+
 /// The phrase a refusal to even start the parallel path carries.
 pub const PARALLEL_REFUSED_MARKER: &str = "refusing to read it in parallel";
 
@@ -300,31 +304,6 @@ pub fn parallel_refused(scope: &str, remote_path: &str, why: &str) -> String {
 /// The message for an assembled file that must not be published.
 pub fn source_changed(scope: &str, remote_path: &str, what: &str) -> String {
     format!("{scope}: {remote_path} {SOURCE_CHANGED_MARKER} ({what})")
-}
-
-/// Read what the object looks like, through a session opened and closed for
-/// the reading alone.
-///
-/// Nothing is kept open across the transfer on purpose: an idle session would
-/// hold a connection slot the windows themselves may need, and it is the first
-/// thing a server's idle timeout closes, so the reading that matters most, the
-/// one after a long download, is the one most likely to fail.
-async fn read_range_source(
-    primary: &dyn super::StorageProvider,
-    remote_path: &str,
-) -> Result<RangeSourceFingerprint, String> {
-    let mut session = primary
-        .clone_for_transfer()
-        .map_err(|e| format!("no session to read it with ({})", e))?;
-    if !session.is_connected() {
-        session
-            .connect()
-            .await
-            .map_err(|e| format!("the session did not connect ({})", e))?;
-    }
-    let reading = read_range_source_through(session.as_mut(), remote_path).await;
-    let _ = session.disconnect().await;
-    reading
 }
 
 /// The same reading, taken through a session the caller owns. For a caller
@@ -340,25 +319,6 @@ pub async fn read_range_source_through(
         .map_err(|e| format!("it could not be read ({})", e))
 }
 
-/// Read the object before the windows start, and check that the plan about to
-/// run was built for that same object.
-///
-/// Returns `Err` rather than running unverified: at this point nothing has
-/// been downloaded, so refusing costs one fallback to a single stream, while
-/// proceeding would mean publishing a file nobody can vouch for. The size
-/// check closes the window between the caller's own size probe and this
-/// reading: a plan built for the old object would otherwise be pinned to the
-/// new one and publish a truncated file with every check green.
-pub async fn open_range_source_check(
-    primary: &dyn super::StorageProvider,
-    remote_path: &str,
-    planned_size: u64,
-) -> Result<RangeSourceFingerprint, String> {
-    let before = read_range_source(primary, remote_path).await?;
-    before.matches_planned_size(planned_size)?;
-    Ok(before)
-}
-
 /// The comparison, taken through a session the caller already owns.
 ///
 /// A caller that holds an open session on the object uses this rather than
@@ -371,27 +331,22 @@ pub async fn range_source_changed_through(
     remote_path: &str,
     before: &RangeSourceFingerprint,
 ) -> Option<String> {
+    let first = match read_range_source_through(session, remote_path).await {
+        Ok(after) => return before.differs_from(&after),
+        Err(why) => why,
+    };
+    // This reading decides whether bytes already on disk are kept, so one
+    // hiccup should not throw away a download that is finished and correct.
+    // The reading before the windows pays a failure for nothing; this one
+    // pays it after the expensive part. A session that is really gone fails
+    // the second time too, and the refusal stands.
+    log::warn!(
+        "segmented download: {} could not be read after the transfer ({}), reading once more",
+        remote_path,
+        first
+    );
+    tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
     match read_range_source_through(session, remote_path).await {
-        Ok(after) => before.differs_from(&after),
-        Err(why) => Some(format!(
-            "it could not be read again after the transfer: {why}"
-        )),
-    }
-}
-
-/// `Some(reason)` when the assembled file must not be published: either the
-/// object is provably no longer the one the windows started from, or it can no
-/// longer be read at all.
-///
-/// This one fails closed. A file assembled out of two versions passes every
-/// length check there is, so the cost of being wrong here is a silently
-/// corrupt file, while the cost of refusing is a single-stream re-download.
-pub async fn range_source_changed(
-    primary: &dyn super::StorageProvider,
-    remote_path: &str,
-    before: &RangeSourceFingerprint,
-) -> Option<String> {
-    match read_range_source(primary, remote_path).await {
         Ok(after) => before.differs_from(&after),
         Err(why) => Some(format!(
             "it could not be read again after the transfer: {why}"

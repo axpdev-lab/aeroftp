@@ -336,7 +336,7 @@ async fn gtc_gui_sftp_segmented_byte_identical_vs_single_stream() {
     let cancel = CancellationToken::new();
     let t4 = Instant::now();
     run_provider_segmented_download(
-        &base,
+        &mut base,
         REMOTE_BIG,
         dst4.to_str().unwrap(),
         FILE_BYTES as u64,
@@ -508,7 +508,7 @@ async fn gtc_gui_sftp_segmented_cancel_leaves_no_aerotmp() {
     cancel.cancel();
 
     let outcome = run_provider_segmented_download(
-        &base,
+        &mut base,
         REMOTE_BIG,
         dst.to_str().unwrap(),
         FILE_BYTES as u64,
@@ -685,7 +685,7 @@ async fn gtc_gui_ftp_segmented_byte_identical_vs_single_stream() {
     let cancel = CancellationToken::new();
     let t4 = Instant::now();
     run_provider_segmented_download(
-        &base,
+        &mut base,
         FTP_REMOTE_BIG,
         dst4.to_str().unwrap(),
         FILE_BYTES as u64,
@@ -990,7 +990,7 @@ async fn gtc_gui_s3_segmented_byte_identical_vs_single_stream() {
     let cancel = CancellationToken::new();
     let t4 = Instant::now();
     run_provider_segmented_download(
-        &base,
+        &mut base,
         S3_REMOTE_BIG,
         dst4.to_str().unwrap(),
         FILE_BYTES as u64,

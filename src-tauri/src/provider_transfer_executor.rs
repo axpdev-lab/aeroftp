@@ -289,7 +289,7 @@ pub fn provider_segmented_download_eligible(
 /// sibling on success; on any error the engine's `TempFileGuard`
 /// drops the temp.
 pub async fn run_provider_segmented_download(
-    primary: &dyn StorageProvider,
+    primary: &mut dyn StorageProvider,
     remote_path: &str,
     local_path: &str,
     file_size: u64,
@@ -298,9 +298,9 @@ pub async fn run_provider_segmented_download(
     cancel_token: CancellationToken,
 ) -> Result<(), String> {
     use crate::providers::multi_thread::{
-        aerotmp_path_for, open_range_source_check, parallel_refused, range_source_changed,
-        run_concurrent_range_download, source_changed, ConcurrentRangeConfig,
-        ConcurrentRangeOutcome,
+        aerotmp_path_for, parallel_refused, range_source_changed_through,
+        read_range_source_through, run_concurrent_range_download, source_changed,
+        ConcurrentRangeConfig, ConcurrentRangeOutcome,
     };
     use crate::providers::ProviderError;
     use std::collections::VecDeque;
@@ -316,8 +316,14 @@ pub async fn run_provider_segmented_download(
     // total exactly right: nothing downstream can tell. The reading is used
     // twice, to pin the ranges where the provider has a validator and to
     // refuse the publish if the object moved anyway.
-    let before = match open_range_source_check(primary, remote_path, file_size).await {
-        Ok(before) => before,
+    // Read on the caller's session, which is open and idle while the windows
+    // run on their own: opening one costs a full handshake on SFTP and FTP,
+    // about 1.3 seconds each, and that cost would be paid per file.
+    let before = match read_range_source_through(primary, remote_path).await {
+        Ok(reading) => match reading.matches_planned_size(file_size) {
+            Ok(()) => reading,
+            Err(why) => return Err(parallel_refused("segmented download", remote_path, &why)),
+        },
         Err(why) => return Err(parallel_refused("segmented download", remote_path, &why)),
     };
 
@@ -444,7 +450,7 @@ pub async fn run_provider_segmented_download(
     let result = match outcome {
         Ok(ConcurrentRangeOutcome::Completed) => {
             let temp = aerotmp_path_for(Path::new(local_path));
-            let changed = range_source_changed(primary, remote_path, &before).await;
+            let changed = range_source_changed_through(primary, remote_path, &before).await;
             match changed {
                 Some(what) => {
                     let _ = tokio::fs::remove_file(&temp).await;

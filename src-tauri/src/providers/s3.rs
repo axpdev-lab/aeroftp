@@ -9587,7 +9587,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("big.bin");
         let err = crate::provider_transfer_executor::run_provider_segmented_download(
-            &provider,
+            &mut provider,
             "/big.bin",
             out.to_str().unwrap(),
             SIZE as u64,
@@ -9618,7 +9618,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("big.bin");
         let err = crate::provider_transfer_executor::run_provider_segmented_download(
-            &provider,
+            &mut provider,
             "/big.bin",
             out.to_str().unwrap(),
             PLANNED as u64,
@@ -9688,7 +9688,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("big.bin");
         crate::provider_transfer_executor::run_provider_segmented_download(
-            &provider,
+            &mut provider,
             "/big.bin",
             out.to_str().unwrap(),
             SIZE as u64,
