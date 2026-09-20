@@ -1417,6 +1417,17 @@ async fn http_range_source_moved(
                     continue;
                 }
             };
+        // A non-success answer carries none of the headers compared below, so
+        // every comparison would be skipped and the silence would read as "the
+        // object did not change". An answer that cannot be compared is a
+        // failed reading, not a passed one.
+        if !matches!(
+            response.status(),
+            reqwest::StatusCode::PARTIAL_CONTENT | reqwest::StatusCode::OK
+        ) {
+            last_error = Some(format!("the probe answered {}", response.status()));
+            continue;
+        }
         let now_tag = response
             .headers()
             .get(reqwest::header::ETAG)
@@ -2600,6 +2611,76 @@ mod tests {
     fn requested_window(raw: &str) -> Option<(u64, u64)> {
         let (start, end) = raw.strip_prefix("bytes=")?.split_once('-')?;
         Some((start.parse().ok()?, end.parse().ok()?))
+    }
+
+    /// A reading that cannot be compared is a failed reading. If the probe
+    /// that checks before publishing answers 500, none of the headers it
+    /// would be compared on are there, and the silence must not read as "the
+    /// object did not change".
+    #[tokio::test]
+    async fn a_final_probe_that_fails_does_not_read_as_unchanged() {
+        use std::sync::atomic::AtomicUsize;
+        const SIZE: u64 = 2 * 1024 * 1024;
+        let probes = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&probes);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    let raw = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let (start, end) = requested_window(&raw).unwrap_or((0, SIZE - 1));
+                    if start == 0 && end == 0 && counter.fetch_add(1, Ordering::SeqCst) > 0 {
+                        return axum::response::Response::builder()
+                            .status(500)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .status(206)
+                        .header("content-range", format!("bytes {}-{}/{}", start, end, SIZE))
+                        .header("etag", "\"v1\"")
+                        .body(axum::body::Body::from(vec![
+                            7u8;
+                            (end - start + 1) as usize
+                        ]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("big.bin");
+        let attempt = try_http_concurrent_range_download(
+            HttpRangeRequest {
+                client: reqwest::Client::new(),
+                url: format!("http://{addr}/big.bin"),
+                headers: Vec::new(),
+                local_path: local.to_string_lossy().into_owned(),
+                provider_type: super::super::ProviderType::WebDav,
+                streams: 4,
+                max_streams: 4,
+                cutoff: 1024 * 1024,
+                known_size: None,
+            },
+            None,
+        )
+        .await;
+        assert!(
+            matches!(attempt, HttpRangeAttempt::Fallback(None)),
+            "a reading that could not be taken must not publish the file"
+        );
+        assert!(!local.exists(), "no file may be published");
     }
 
     /// This is the path WebDAV and Koofr take, and it holds a validator from
