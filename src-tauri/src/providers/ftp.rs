@@ -19,9 +19,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::checksum_matrix;
 use super::multi_thread::{
-    aerotmp_path_for, is_parallel_refusal, open_range_source_check, parallel_refused,
-    range_source_changed, run_concurrent_range_download, source_changed, ConcurrentRangeConfig,
-    ConcurrentRangeOutcome,
+    aerotmp_path_for, parallel_refused, range_source_changed_through, read_range_source_through,
+    run_concurrent_range_download, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
 };
 use super::{
     ChecksumCapability, FtpConfig, FtpTlsMode, ProviderError, ProviderTransferExecutorKind,
@@ -154,6 +153,60 @@ impl FtpProvider {
     /// `ServerIgnoredRange` analogue (it cannot answer `200 OK` ignoring the
     /// offset), so that orchestrator arm is unreachable here and fails loud
     /// if hit, never a silent re-download that would double the bytes.
+    /// Run the parallel download and publish it only if the object did not
+    /// move while the windows were reading it.
+    ///
+    /// `Ok(true)` it is published, `Ok(false)` it was refused and the caller
+    /// takes its single-stream path, `Err` a real failure. Both readings of
+    /// the object go through this session, which is open and idle while the
+    /// windows run on their own connections. Opening a session for them would
+    /// cost a full control connection and login twice on every segmented
+    /// download, and that cost is fixed: it weighs most exactly where the
+    /// transfer is fastest.
+    async fn parallel_download_if_unchanged(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<bool, ProviderError> {
+        let before = match read_range_source_through(self, remote_path).await {
+            Ok(reading) => match reading.matches_planned_size(total_size) {
+                Ok(()) => reading,
+                Err(why) => {
+                    tracing::warn!("{}", parallel_refused("FTP intra-file", remote_path, &why));
+                    return Ok(false);
+                }
+            },
+            Err(why) => {
+                tracing::warn!("{}", parallel_refused("FTP intra-file", remote_path, &why));
+                return Ok(false);
+            }
+        };
+
+        self.download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
+            .await?;
+
+        let temp = aerotmp_path_for(Path::new(local_path));
+        if let Some(what) = range_source_changed_through(self, remote_path, &before).await {
+            let _ = tokio::fs::remove_file(&temp).await;
+            tracing::warn!("{}", source_changed("FTP intra-file", remote_path, &what));
+            return Ok(false);
+        }
+        match tokio::fs::rename(&temp, local_path).await {
+            Ok(()) => {
+                tracing::info!("FTP: intra-file download complete: {}", remote_path);
+                Ok(true)
+            }
+            Err(e) => {
+                // The engine handed the temp over when it reported the windows
+                // complete, so nothing else will remove it.
+                let _ = tokio::fs::remove_file(&temp).await;
+                Err(ProviderError::IoError(e))
+            }
+        }
+    }
+
     async fn download_intra_file_pooled(
         &self,
         remote_path: &str,
@@ -169,20 +222,6 @@ impl FtpProvider {
             .multi_thread_streams
             .clamp(2, FTP_MULTI_THREAD_MAX_STREAMS);
         let remote_path_owned = remote_path.to_string();
-
-        // Each window is read on its own connection: an object replaced while
-        // they are in flight would be assembled out of two versions, with the
-        // length it should have and nothing to tell it apart.
-        let before = match open_range_source_check(self, remote_path, total_size).await {
-            Ok(before) => before,
-            Err(why) => {
-                return Err(ProviderError::TransferFailed(parallel_refused(
-                    "FTP intra-file",
-                    remote_path,
-                    &why,
-                )))
-            }
-        };
 
         let cfg = ConcurrentRangeConfig {
             final_path: PathBuf::from(local_path),
@@ -232,32 +271,10 @@ impl FtpProvider {
         .await;
 
         let result = match outcome {
-            Ok(ConcurrentRangeOutcome::Completed) => {
-                let temp = aerotmp_path_for(Path::new(local_path));
-                let changed = range_source_changed(self, remote_path, &before).await;
-                match changed {
-                    Some(what) => {
-                        let _ = tokio::fs::remove_file(&temp).await;
-                        Err(ProviderError::TransferFailed(source_changed(
-                            "FTP intra-file",
-                            remote_path,
-                            &what,
-                        )))
-                    }
-                    None => match tokio::fs::rename(&temp, local_path).await {
-                        Ok(()) => {
-                            tracing::info!("FTP: intra-file download complete: {}", remote_path);
-                            Ok(())
-                        }
-                        Err(e) => {
-                            // The engine handed the temp over when it reported
-                            // Completed, so nothing else will remove it.
-                            let _ = tokio::fs::remove_file(&temp).await;
-                            Err(ProviderError::IoError(e))
-                        }
-                    },
-                }
-            }
+            // The windows are in `<local>.aerotmp` and the file is not
+            // published here: the caller reads the object again through the
+            // session it already holds and publishes only if it did not move.
+            Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
             Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
                 // Unreachable for FTP: REST+RETR cannot "ignore" a range.
                 // Never silently re-download (it would double the bytes).
@@ -1392,17 +1409,20 @@ impl StorageProvider for FtpProvider {
             && self.connection_spec.is_some()
         {
             match self
-                .download_intra_file_pooled(remote_path, local_path, total_size, on_progress.take())
+                .parallel_download_if_unchanged(
+                    remote_path,
+                    local_path,
+                    total_size,
+                    on_progress.take(),
+                )
                 .await
             {
-                Ok(()) => return Ok(()),
-                Err(e) if is_parallel_refusal(&e.to_string()) => {
-                    // Refused, not failed: one stream reads one consistent
-                    // view of the object, which is what the parallel path
-                    // could not promise here. The progress callback went with
-                    // the attempt, so the fallback runs without one.
-                    tracing::warn!("FTP: {}; downloading on a single stream", e);
-                }
+                Ok(true) => return Ok(()),
+                // Refused, not failed: one stream reads one consistent view of
+                // the object, which is what the parallel path could not
+                // promise here. The progress callback went with the attempt,
+                // so this runs without one.
+                Ok(false) => {}
                 Err(e) => return Err(e),
             }
         }

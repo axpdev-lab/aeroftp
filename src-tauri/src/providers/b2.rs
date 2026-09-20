@@ -1506,29 +1506,13 @@ impl B2Provider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         use crate::providers::multi_thread::{
-            aerotmp_path_for, open_range_source_check, parallel_refused, range_source_changed,
-            run_concurrent_range_download, source_changed, ConcurrentRangeConfig,
-            ConcurrentRangeOutcome,
+            run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
         };
         use std::collections::VecDeque;
-        use std::path::{Path, PathBuf};
+        use std::path::PathBuf;
         use std::sync::Arc;
 
         let streams = streams.clamp(2, MULTI_THREAD_MAX_STREAMS);
-
-        // Each window is a separate request: an object replaced while they are
-        // in flight assembles a file out of two versions, with the length it
-        // should have and nothing to tell it apart.
-        let before = match open_range_source_check(self, remote_path, total_size).await {
-            Ok(before) => before,
-            Err(why) => {
-                return Err(ProviderError::TransferFailed(parallel_refused(
-                    "b2 multi-thread",
-                    remote_path,
-                    &why,
-                )))
-            }
-        };
 
         // Pre-acquire exactly `streams` independent workers. The range planner
         // emits exactly `streams` windows (object is well above the cutoff), so
@@ -1635,39 +1619,74 @@ impl B2Provider {
         )
         .await;
 
-        let result = match outcome {
-            Ok(ConcurrentRangeOutcome::Completed) => {
-                let temp = aerotmp_path_for(Path::new(local_path));
-                let changed = range_source_changed(self, remote_path, &before).await;
-                match changed {
-                    Some(what) => {
-                        let _ = tokio::fs::remove_file(&temp).await;
-                        Err(ProviderError::TransferFailed(source_changed(
-                            "b2 multi-thread",
-                            remote_path,
-                            &what,
-                        )))
-                    }
-                    None => match tokio::fs::rename(&temp, local_path).await {
-                        Ok(()) => Ok(()),
-                        Err(e) => {
-                            // The engine handed the temp over when it reported
-                            // Completed, so nothing else will remove it.
-                            let _ = tokio::fs::remove_file(&temp).await;
-                            Err(ProviderError::Other(format!(
-                                "b2 multi-thread finalize: {}",
-                                e
-                            )))
-                        }
-                    },
-                }
-            }
+        match outcome {
+            // The windows are in `<local>.aerotmp` and the file is not
+            // published here: the caller reads the object again through the
+            // session it already holds and publishes only if it did not move.
+            Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
             Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(ProviderError::NotSupported(
                 "b2 multi-thread: server returned 200 (ignored Range)".to_string(),
             )),
             Err(e) => Err(e),
+        }
+    }
+
+    /// Run the parallel download and publish it only if the object did not
+    /// move while the windows were reading it.
+    ///
+    /// `Ok(true)` it is published, `Ok(false)` it was refused and the caller
+    /// takes its single-stream path, `Err` a real failure. Both readings go
+    /// through this session rather than a new one, the same shape the other
+    /// providers use.
+    async fn parallel_download_if_unchanged(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        streams: usize,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<bool, ProviderError> {
+        use super::multi_thread::{
+            aerotmp_path_for, parallel_refused, range_source_changed_through,
+            read_range_source_through, source_changed,
         };
-        result
+        use std::path::Path;
+
+        let before = match read_range_source_through(self, remote_path).await {
+            Ok(reading) => match reading.matches_planned_size(total_size) {
+                Ok(()) => reading,
+                Err(why) => {
+                    tracing::warn!("{}", parallel_refused("b2 multi-thread", remote_path, &why));
+                    return Ok(false);
+                }
+            },
+            Err(why) => {
+                tracing::warn!("{}", parallel_refused("b2 multi-thread", remote_path, &why));
+                return Ok(false);
+            }
+        };
+
+        self.download_multi_thread(remote_path, local_path, total_size, streams, on_progress)
+            .await?;
+
+        let temp = aerotmp_path_for(Path::new(local_path));
+        if let Some(what) = range_source_changed_through(self, remote_path, &before).await {
+            let _ = tokio::fs::remove_file(&temp).await;
+            tracing::warn!("{}", source_changed("b2 multi-thread", remote_path, &what));
+            return Ok(false);
+        }
+        match tokio::fs::rename(&temp, local_path).await {
+            Ok(()) => Ok(true),
+            Err(e) => {
+                // The engine handed the temp over when it reported the windows
+                // complete, so nothing else will remove it.
+                let _ = tokio::fs::remove_file(&temp).await;
+                Err(ProviderError::Other(format!(
+                    "b2 multi-thread finalize: {}",
+                    e
+                )))
+            }
+        }
     }
 
     /// In-memory download (range-capped). Same pattern as `do_download`.
@@ -2481,7 +2500,7 @@ impl StorageProvider for B2Provider {
             match self.size(remote_path).await {
                 Ok(size) if size >= self.multi_thread_cutoff => {
                     match self
-                        .download_multi_thread(
+                        .parallel_download_if_unchanged(
                             remote_path,
                             local_path,
                             size,
@@ -2490,13 +2509,11 @@ impl StorageProvider for B2Provider {
                         )
                         .await
                     {
-                        Ok(()) => return Ok(()),
-                        Err(e) if super::multi_thread::is_parallel_refusal(&e.to_string()) => {
-                            // The progress callback went with the attempt, so
-                            // the single-stream fallback runs without one.
-                            tracing::warn!("b2: {}; downloading on a single stream", e);
-                            None
-                        }
+                        Ok(true) => return Ok(()),
+                        // Refused, not failed. The progress callback went with
+                        // the attempt, so the single-stream path runs without
+                        // one.
+                        Ok(false) => None,
                         Err(e) => return Err(e),
                     }
                 }

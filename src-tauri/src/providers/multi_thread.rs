@@ -302,17 +302,6 @@ pub fn source_changed(scope: &str, remote_path: &str, what: &str) -> String {
     format!("{scope}: {remote_path} {SOURCE_CHANGED_MARKER} ({what})")
 }
 
-/// Whether an error is one of those two refusals rather than a transfer that
-/// failed.
-///
-/// A caller that has a single-stream path of its own takes it instead of
-/// failing the download: one stream reads one consistent view of the object,
-/// which is exactly what the parallel path could not promise. Both messages
-/// are built by the two functions above, so the three cannot drift apart.
-pub fn is_parallel_refusal(message: &str) -> bool {
-    message.contains(SOURCE_CHANGED_MARKER) || message.contains(PARALLEL_REFUSED_MARKER)
-}
-
 /// Read what the object looks like, through a session opened and closed for
 /// the reading alone.
 ///
@@ -368,6 +357,26 @@ pub async fn open_range_source_check(
     let before = read_range_source(primary, remote_path).await?;
     before.matches_planned_size(planned_size)?;
     Ok(before)
+}
+
+/// The comparison, taken through a session the caller already owns.
+///
+/// A caller that holds an open session on the object uses this rather than
+/// [`range_source_changed`]: opening one of its own costs a full handshake,
+/// measured at about 1.3 seconds on an SFTP link, on every transfer, whether
+/// or not anything changed. That cost is fixed, so it weighs most exactly
+/// where the transfer is fastest.
+pub async fn range_source_changed_through(
+    session: &mut dyn super::StorageProvider,
+    remote_path: &str,
+    before: &RangeSourceFingerprint,
+) -> Option<String> {
+    match read_range_source_through(session, remote_path).await {
+        Ok(after) => before.differs_from(&after),
+        Err(why) => Some(format!(
+            "it could not be read again after the transfer: {why}"
+        )),
+    }
 }
 
 /// `Some(reason)` when the assembled file must not be published: either the
@@ -1357,25 +1366,17 @@ mod tests {
 
     const MAX: usize = 16;
 
-    /// The callers pick the single-stream path on these two messages, so the
-    /// predicate has to recognise exactly what the two producers write. A
-    /// reworded message that stops matching would turn a refusal back into a
-    /// failed download, silently.
+    /// Both refusals are written in one place so a log or an error reads the
+    /// same wherever it comes from, and so a reworded message cannot drift
+    /// apart from the one a reader greps for.
     #[test]
-    fn a_refusal_of_the_parallel_path_is_recognised_by_its_own_callers() {
-        assert!(is_parallel_refusal(&parallel_refused(
-            "segmented download",
-            "/big.bin",
-            "it could not be read (timed out)"
-        )));
-        assert!(is_parallel_refusal(&source_changed(
-            "segmented download",
-            "/big.bin",
-            "size 10 became 11"
-        )));
-        assert!(!is_parallel_refusal(
-            "segmented download: read_range at offset 0 failed: connection reset"
-        ));
+    fn both_refusals_name_themselves() {
+        let refused = parallel_refused("segmented download", "/big.bin", "it timed out");
+        assert!(refused.contains(PARALLEL_REFUSED_MARKER), "{refused}");
+        assert!(refused.contains("/big.bin"), "{refused}");
+        let changed = source_changed("segmented download", "/big.bin", "size 10 became 11");
+        assert!(changed.contains(SOURCE_CHANGED_MARKER), "{changed}");
+        assert!(changed.contains("size 10 became 11"), "{changed}");
     }
 
     // DAG-P2-06 (wire-level): the segmented-range construction point binds
