@@ -33,6 +33,7 @@ use tokio_util::sync::CancellationToken;
 use super::multi_thread::{
     aerotmp_path_for, parallel_refused, run_concurrent_range_download, source_changed,
     ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
+    AFTER_TRANSFER_READ_RETRY,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -705,11 +706,25 @@ impl SftpProvider {
         self.download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
             .await?;
 
+        // One retry, the same tolerance the shared comparison gives the other
+        // providers: this reading decides whether bytes already on disk are
+        // kept, and a hiccup is not proof that the object moved.
         let changed = match Self::range_source_reading(sftp, full_path).await {
             Ok(after) => before.differs_from(&after),
-            Err(why) => Some(format!(
-                "it could not be read again after the transfer: {why}"
-            )),
+            Err(first) => {
+                tracing::warn!(
+                    "SFTP intra-file: {} could not be read after the transfer ({}), reading once more",
+                    full_path,
+                    first
+                );
+                tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+                match Self::range_source_reading(sftp, full_path).await {
+                    Ok(after) => before.differs_from(&after),
+                    Err(why) => Some(format!(
+                        "it could not be read again after the transfer: {why}"
+                    )),
+                }
+            }
         };
         let temp = aerotmp_path_for(Path::new(local_path));
         if let Some(what) = changed {

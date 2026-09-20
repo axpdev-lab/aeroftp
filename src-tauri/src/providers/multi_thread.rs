@@ -291,7 +291,8 @@ pub const SOURCE_CHANGED_MARKER: &str = "changed while it was being downloaded";
 
 /// How long to wait before reading the object a second time, when the reading
 /// that decides whether a finished download is published has just failed.
-const AFTER_TRANSFER_READ_RETRY: std::time::Duration = std::time::Duration::from_millis(500);
+pub(crate) const AFTER_TRANSFER_READ_RETRY: std::time::Duration =
+    std::time::Duration::from_millis(500);
 
 /// The phrase a refusal to even start the parallel path carries.
 pub const PARALLEL_REFUSED_MARKER: &str = "refusing to read it in parallel";
