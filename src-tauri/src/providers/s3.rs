@@ -6964,7 +6964,9 @@ async fn download_range_to_offset(
         StatusCode::NOT_FOUND => return Err(ProviderError::NotFound(key)),
         StatusCode::PRECONDITION_FAILED => {
             return Err(ProviderError::TransferFailed(format!(
-                "Object {key} changed while it was being downloaded: the range request no longer matches the version the download started from"
+                "Object {key} {}: the range request no longer matches the version the \
+                 download started from",
+                super::multi_thread::SOURCE_CHANGED_MARKER
             )));
         }
         StatusCode::RANGE_NOT_SATISFIABLE => {

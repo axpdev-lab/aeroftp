@@ -1894,6 +1894,12 @@ impl StorageProvider for SftpProvider {
         // Without all three this is a no-op and the single-stream path below
         // is unchanged: honest non-regression, no protocol overclaim.
         let mut on_progress = on_progress;
+        // Set when the parallel path refused to publish: the object is moving,
+        // so the fallback must read it on one handle. The read-ahead and
+        // pipelined paths below open several handles to the same path, a few
+        // milliseconds apart, and a replacement inside that burst would put
+        // the fallback back in the hole the refusal just avoided.
+        let mut source_is_moving = false;
         if self.multi_thread_streams >= 2
             && total_size >= self.multi_thread_cutoff
             && self.connection_spec.is_some()
@@ -1917,7 +1923,7 @@ impl StorageProvider for SftpProvider {
                 // the path below instead of failing a download that has a
                 // correct way to finish. The progress callback went with the
                 // attempt, so this runs without one.
-                Ok(false) => {}
+                Ok(false) => source_is_moving = true,
                 Err(e) => return Err(e),
             }
         }
@@ -1927,7 +1933,8 @@ impl StorageProvider for SftpProvider {
         // guardrails: known size, no active
         // bandwidth cap (the serial loop owns precise throttling).
         if let Some(requested_window) = self.sftp_readahead.requested_window() {
-            if total_size > 0
+            if !source_is_moving
+                && total_size > 0
                 && self.download_limit_bps == 0
                 && crate::transfer_dag::governor::global()
                     .bandwidth()
@@ -1974,7 +1981,8 @@ impl StorageProvider for SftpProvider {
         // loop owns the exact throttling, including the process-global cap);
         // the SHA-256 live gate guards it.
         if let Some(window) = sftp_read_pipeline_window() {
-            if total_size > 0
+            if !source_is_moving
+                && total_size > 0
                 && self.download_limit_bps == 0
                 && crate::transfer_dag::governor::global()
                     .bandwidth()
