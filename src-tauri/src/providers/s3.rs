@@ -3564,12 +3564,73 @@ impl S3Provider {
             return Err(err);
         }
 
+        // Every window asked for this version with `If-Match`, but a gateway
+        // that ignores the header would have served whatever was current at
+        // the time. Read the object once more before publishing: on such a
+        // backend this is the only thing between it and a file made of two
+        // versions. The guard removes the staged file on the way out.
+        if let Some(what) = self.object_moved_since(key, &validator, total_size).await {
+            return Err(ProviderError::TransferFailed(format!(
+                "Object {} {} ({})",
+                key,
+                super::multi_thread::SOURCE_CHANGED_MARKER,
+                what
+            )));
+        }
+
         // All ranges committed: atomic rename .aerotmp → final path.
         tokio::fs::rename(&temp_path, &final_pathbuf)
             .await
             .map_err(ProviderError::IoError)?;
         guard.committed = true;
         Ok(())
+    }
+
+    /// `Some(reason)` when a second HEAD describes an object that is not the
+    /// one the first HEAD described.
+    ///
+    /// One retry, because this reading decides whether bytes already on disk
+    /// are kept: a single hiccup should not discard a download that is
+    /// finished and correct, while a backend that is really gone answers
+    /// badly twice.
+    async fn object_moved_since(&self, key: &str, etag: &str, size: u64) -> Option<String> {
+        let mut last_error = None;
+        for attempt in 0..2 {
+            if attempt == 1 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+            match self.s3_request(Method::HEAD, key, None, None).await {
+                Ok(head) if head.status() == StatusCode::OK => {
+                    let now_tag = head
+                        .headers()
+                        .get(reqwest::header::ETAG)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| v.trim().to_string());
+                    if let Some(after) = now_tag.as_deref() {
+                        if after != etag {
+                            return Some(format!("entity tag {} became {}", etag, after));
+                        }
+                    }
+                    let now_size = head
+                        .headers()
+                        .get(reqwest::header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.parse::<u64>().ok());
+                    if let Some(after) = now_size {
+                        if after != size {
+                            return Some(format!("size {} became {}", size, after));
+                        }
+                    }
+                    return None;
+                }
+                Ok(other) => last_error = Some(format!("HEAD answered {}", other.status())),
+                Err(e) => last_error = Some(e.to_string()),
+            }
+        }
+        Some(format!(
+            "it could not be read again after the transfer: {}",
+            last_error.unwrap_or_else(|| "no answer".to_string())
+        ))
     }
 
     /// List all object keys under a given prefix (non-recursive, no delimiter).
@@ -4277,7 +4338,9 @@ impl StorageProvider for S3Provider {
                         .get(reqwest::header::ETAG)
                         .and_then(|v| v.to_str().ok())
                         .map(|v| v.trim().to_string())
-                        .filter(|v| !v.is_empty());
+                        // A weak tag is not usable: `If-Match` compares
+                        // strongly, so it would refuse every window.
+                        .filter(|v| !v.is_empty() && !v.starts_with("W/"));
                     let accepts_ranges = head
                         .headers()
                         .get("accept-ranges")
@@ -4291,7 +4354,7 @@ impl StorageProvider for S3Provider {
                                 .await;
                         }
                         warn!(
-                            "S3 multi-thread download disabled: no ETag on the HEAD of {}, so ranges cannot be pinned to one version",
+                            "S3 multi-thread download disabled: no strong ETag on the HEAD of {}, so ranges cannot be pinned to one version",
                             key
                         );
                     }
@@ -9516,6 +9579,73 @@ mod tests {
             .download("/big.bin", out.to_str().unwrap(), None)
             .await
             .expect_err("a replaced object must fail the download");
+        assert!(
+            format!("{err}").contains("changed while it was being downloaded"),
+            "{err}"
+        );
+        assert!(!out.exists(), "no file may be committed");
+    }
+
+    /// Pinning the windows is not enough on a backend that ignores the
+    /// header: the object has to be read again before the file is published,
+    /// or that backend is the one case where the mixture still reaches disk.
+    #[tokio::test]
+    async fn a_backend_that_ignores_the_pin_is_caught_before_the_file_is_published() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        const SIZE: usize = 2 * 1024 * 1024;
+        let heads = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&heads);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        // Replaced while the windows were in flight: the HEAD
+                        // that plans them sees v1, the one before publishing
+                        // sees v2.
+                        let tag = if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                            "\"v1\""
+                        } else {
+                            "\"v2\""
+                        };
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .header("etag", tag)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    // If-Match arrives and is ignored, as such a gateway does.
+                    let len = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(range_window_len)
+                        .unwrap_or(SIZE);
+                    axum::response::Response::builder()
+                        .status(206)
+                        .body(axum::body::Body::from(vec![7u8; len]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let err = provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect_err("an object that moved must not be published");
         assert!(
             format!("{err}").contains("changed while it was being downloaded"),
             "{err}"
