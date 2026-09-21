@@ -749,7 +749,7 @@ flatpak remote-add --if-not-exists flatpark https://dl.flatpark.org/flatpark.fla
 flatpak install flatpark com.aeroftp.AeroFTP
 ```
 
-> Community repository, co-maintained with us: it installs the official `.deb` from our releases unmodified and follows every new release ([app page](https://flatpark.org/apps/com.aeroftp.AeroFTP)). The Flatpak ID stays `com.aeroftp.AeroFTP`. A Flatpak install keeps its own configuration, so on first run AeroFTP offers to import an existing native one (a copy, with the vault still locked behind its password).
+> Independent community repository, not run by the AeroFTP project; the package is marked developer-approved there and we contribute fixes to it. It installs the official `.deb` from our releases unmodified and follows every new release ([app page](https://flatpark.org/apps/com.aeroftp.AeroFTP)). The Flatpak ID stays `com.aeroftp.AeroFTP`. A Flatpak install keeps its own configuration, so on first run AeroFTP offers to import an existing native one (a copy, with the vault still locked behind its password).
 
 #### Launchpad PPA (Ubuntu / Debian)
 
