@@ -6928,8 +6928,8 @@ pub async fn provider_compare_directories(
     crypt_kind: Option<String>,
     options: Option<crate::sync::CompareOptions>,
     progress_id: Option<String>,
-) -> Result<Vec<crate::sync::FileComparison>, String> {
-    use crate::sync::{build_comparison_results_with_index, load_sync_index, FileInfo};
+) -> Result<crate::sync::CompareReport, String> {
+    use crate::sync::{classify_with_summary, load_sync_index, FileInfo};
 
     let mut options = options.unwrap_or_default();
     crate::sync::apply_error_correction_excludes(&mut options);
@@ -7302,15 +7302,15 @@ pub async fn provider_compare_directories(
     );
 
     let index = load_sync_index(&local_path, &remote_path).ok().flatten();
-    let results =
-        build_comparison_results_with_index(local_files, remote_files, &options, index.as_ref());
+    let report = classify_with_summary(local_files, remote_files, &options, index.as_ref());
     info!(
-        "Provider compare complete: {} differences found (index: {})",
-        results.len(),
+        "Provider compare complete: {} differences out of {} examined (index: {})",
+        report.differences.len(),
+        report.summary.examined_count,
         if index.is_some() { "used" } else { "none" }
     );
 
-    Ok(results)
+    Ok(report)
 }
 
 // ============ 4shared OAuth 1.0 Commands ============

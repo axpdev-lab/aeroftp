@@ -19,7 +19,7 @@ import {
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
   SyncDirection, VerifyPolicy, DeltaTransferStats,
-  FileComparison, RetryPolicy, SyncJournal, CompressionMode
+  CompareReport, RetryPolicy, SyncJournal, CompressionMode
 } from './types';
 
 interface DownloadFolderParams {
@@ -10804,7 +10804,7 @@ const App: React.FC = () => {
         void (async () => {
           let resolved: CompareResult;
           try {
-            const comparisons = await invoke<FileComparison[]>('compare_local_directories', {
+            const report = await invoke<CompareReport>('compare_local_directories', {
               leftPath,
               rightPath,
               options: {
@@ -10823,7 +10823,7 @@ const App: React.FC = () => {
               progressId: scanProgressId,
             });
             // Both sides are local: local_info = left, remote_info = right.
-            resolved = adaptFileComparisons(comparisons, true);
+            resolved = adaptFileComparisons(report.differences, true, report.summary);
           } catch (err) {
             if (isScanIncompleteError(err)) {
               // CLAUDE-AV-B3-13: one of the two local walks did not see its
@@ -10940,11 +10940,11 @@ const App: React.FC = () => {
             },
             progressId: scanProgressId,
           };
-          const comparisons = await invoke<FileComparison[]>(
+          const report = await invoke<CompareReport>(
             isProviderConn ? 'provider_compare_directories' : 'compare_directories',
             compareArgs,
           );
-          resolved = adaptFileComparisons(comparisons, leftLocal);
+          resolved = adaptFileComparisons(report.differences, leftLocal, report.summary);
         } catch (err) {
           if (isProviderConn && cryptCompareActive) {
             // Crypt overlay active: the backend failed closed (vault missing,

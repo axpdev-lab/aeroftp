@@ -4,9 +4,10 @@
 // GAP-5 of the AeroSync residual-gap closure filone.
 //
 // `adaptFileComparisons` bridges the recursive backend tree scan
-// (`compare_directories` / `provider_compare_directories`, which return a
-// `FileComparison[]` carrying `/`-separated `relative_path` values) into the
-// flat `CompareResult` shape the unified Compare/Plan tabs already consume.
+// (`compare_directories` / `provider_compare_directories` /
+// `compare_local_directories`, which return a `CompareReport` whose
+// `differences` carry `/`-separated `relative_path` values) into the flat
+// `CompareResult` shape the unified Compare/Plan tabs already consume.
 //
 // The unified Compare tab used to run the pure, flat `compareEntries()` over
 // the already-loaded top-level listings, so a connected-remote preset against
@@ -15,7 +16,7 @@
 // every `CompareResultEntry` it produces carries `relativePath`, and
 // `presetToSyncRun` + `remoteSyncRunner` already honour nested paths.
 
-import type { FileComparison, FileInfo, SyncStatus } from '../types';
+import type { CompareSummary, FileComparison, FileInfo, SyncStatus } from '../types';
 import type {
     CompareBucket,
     CompareBucketStats,
@@ -88,9 +89,15 @@ const statusToBucket = (
  * structure consumed by `CompareTabContent`, `derivePresetPlan` and
  * `buildRemoteSyncInput`.
  *
- * @param comparisons  Raw rows from `compare_directories`.
+ * @param comparisons  Raw difference rows from a compare command.
  * @param leftIsLocal  true for the `local-remote` pair kind (left panel is
  *                     local), false for `remote-local`.
+ * @param summary      Optional backend `CompareSummary`: the rows omit
+ *                     identical files, so without it the totals cover only the
+ *                     differences and every non-empty compare reads as 100%
+ *                     out of sync. With it, totals divide by what the scan
+ *                     examined and the `same` bucket is reconstructed by
+ *                     subtraction (no identical rows cross the wire).
  *
  * Directory rows are kept only when one side is missing entirely
  * (`only-left` / `only-right`) so empty directories still get created; a
@@ -98,8 +105,9 @@ const statusToBucket = (
  * is dropped.
  */
 export const adaptFileComparisons = (
-    comparisons: FileComparison[],
+    comparisons: FileComparison[] | null | undefined,
     leftIsLocal: boolean,
+    summary?: CompareSummary | null,
 ): CompareResult => {
     const buckets: Record<CompareBucket, CompareResultEntry[]> = {
         'only-left': [],
@@ -118,7 +126,7 @@ export const adaptFileComparisons = (
         conflict: emptyStats(),
     };
 
-    for (const fc of comparisons) {
+    for (const fc of comparisons ?? []) {
         if (!fc || typeof fc.relative_path !== 'string' || fc.relative_path === '') {
             continue;
         }
@@ -167,13 +175,29 @@ export const adaptFileComparisons = (
     }
 
     const entries: CompareResultEntry[] = BUCKETS.flatMap((bucket) => buckets[bucket]);
-    const totals = BUCKETS.reduce(
+    let totals = BUCKETS.reduce(
         (acc, bucket) => ({
             count: acc.count + stats[bucket].count,
             bytes: acc.bytes + stats[bucket].bytes,
         }),
         { count: 0, bytes: 0 },
     );
+
+    if (summary) {
+        // The rows omit identical files, so the totals above cover only the
+        // differences. Re-anchor them to what the scan examined and rebuild
+        // the `same` bucket by subtraction: the backend never emits identical
+        // file rows, and both-sides directory rows are dropped above, so the
+        // row-derived `same` stats stay empty and the overwrite is exact.
+        // Clamped at zero against any backend/adapter drift.
+        const examinedCount = Math.max(0, Math.floor(summary.examined_count));
+        const examinedBytes = Math.max(0, summary.examined_bytes);
+        const rowCount = totals.count - stats.same.count;
+        const rowBytes = totals.bytes - stats.same.bytes;
+        stats.same.count = Math.max(0, examinedCount - rowCount);
+        stats.same.bytes = Math.max(0, examinedBytes - rowBytes);
+        totals = { count: examinedCount, bytes: examinedBytes };
+    }
 
     return {
         entries,

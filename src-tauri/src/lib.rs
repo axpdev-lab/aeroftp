@@ -10994,11 +10994,11 @@ fn rebuild_menu_on_main(
 
 use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use sync::{
-    build_comparison_results_with_index, classify_sync_error, delete_sync_journal,
-    journal_sig_filename, load_sync_index, load_sync_journal, save_sync_index, save_sync_journal,
-    select_canary_sample, should_exclude, sign_journal, verify_local_file, CanaryResult,
-    CanarySampleResult, CanarySummary, CompareOptions, FileComparison, FileInfo, RetryPolicy,
-    SyncEcStatus, SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+    classify_sync_error, classify_with_summary, delete_sync_journal, journal_sig_filename,
+    load_sync_index, load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample,
+    should_exclude, sign_journal, verify_local_file, CanaryResult, CanarySampleResult,
+    CanarySummary, CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus,
+    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -11250,7 +11250,7 @@ async fn compare_directories(
     remote_path: String,
     options: Option<CompareOptions>,
     progress_id: Option<String>,
-) -> Result<Vec<FileComparison>, String> {
+) -> Result<CompareReport, String> {
     let mut options = options.unwrap_or_default();
     sync::apply_error_correction_excludes(&mut options);
 
@@ -11335,7 +11335,7 @@ async fn compare_directories(
 
     // Load sync index if available for conflict detection
     let index = load_sync_index(&local_path, &remote_path).ok().flatten();
-    let results = classify_walked_pair(
+    let report = classify_walked_pair(
         &local_path,
         None,
         local_files,
@@ -11345,12 +11345,13 @@ async fn compare_directories(
     );
 
     info!(
-        "Comparison complete: {} differences found (index: {})",
-        results.len(),
+        "Comparison complete: {} differences out of {} examined (index: {})",
+        report.differences.len(),
+        report.summary.examined_count,
         if index.is_some() { "used" } else { "none" }
     );
 
-    Ok(results)
+    Ok(report)
 }
 
 /// Classify a pair whose local side (or both sides, when `right_root` is a
@@ -11368,7 +11369,7 @@ fn classify_walked_pair(
     mut right_files: HashMap<String, FileInfo>,
     options: &CompareOptions,
     index: Option<&SyncIndex>,
-) -> Vec<FileComparison> {
+) -> CompareReport {
     provider_commands::bound_compare_rows(
         left_root,
         &mut left_files,
@@ -11383,7 +11384,7 @@ fn classify_walked_pair(
             crate::sync_core::ScanBoundaries::default(),
         );
     }
-    build_comparison_results_with_index(left_files, right_files, options, index)
+    classify_with_summary(left_files, right_files, options, index)
 }
 
 /// GAP-10: recursive comparison of two local directories.
@@ -11392,10 +11393,10 @@ fn classify_walked_pair(
 /// flat, top-level classify, so a Mirror / Backup preset only ever acted on
 /// the first directory level. This command scans both trees with the same
 /// `get_local_files_recursive_with_progress` walker that `compare_directories`
-/// uses for the local side, then reuses `build_comparison_results_with_index`
-/// so the unified Compare / Plan tabs and the runner operate on every nested
-/// level. The `left` directory maps onto `local_info`, `right` onto
-/// `remote_info`; the frontend adapts the result with `leftIsLocal = true`.
+/// uses for the local side, then reuses `classify_with_summary` so the
+/// unified Compare / Plan tabs and the runner operate on every nested level.
+/// The `left` directory maps onto `local_info`, `right` onto `remote_info`;
+/// the frontend adapts the result with `leftIsLocal = true`.
 #[tauri::command]
 async fn compare_local_directories(
     app: AppHandle,
@@ -11404,7 +11405,7 @@ async fn compare_local_directories(
     right_path: String,
     options: Option<CompareOptions>,
     progress_id: Option<String>,
-) -> Result<Vec<FileComparison>, String> {
+) -> Result<CompareReport, String> {
     let mut options = options.unwrap_or_default();
     sync::apply_error_correction_excludes(&mut options);
 
@@ -11468,7 +11469,7 @@ async fn compare_local_directories(
     // The sync index is keyed by the (left, right) path pair, so previous
     // local-local runs feed conflict detection just like the remote case.
     let index = load_sync_index(&left_path, &right_path).ok().flatten();
-    let results = classify_walked_pair(
+    let report = classify_walked_pair(
         &left_path,
         Some(&right_path),
         left_files,
@@ -11478,12 +11479,13 @@ async fn compare_local_directories(
     );
 
     info!(
-        "Local comparison complete: {} differences found (index: {})",
-        results.len(),
+        "Local comparison complete: {} differences out of {} examined (index: {})",
+        report.differences.len(),
+        report.summary.examined_count,
         if index.is_some() { "used" } else { "none" }
     );
 
-    Ok(results)
+    Ok(report)
 }
 
 /// Compute SHA-256 hash of a local file (streaming, 64KB chunks)
@@ -11507,9 +11509,9 @@ async fn compute_sha256(path: &std::path::Path) -> Option<String> {
 /// CLAUDE-AV-B3-13: marker embedded in the error a compare command returns when
 /// the local scan could not see the whole tree.
 ///
-/// The compare commands answer with a flat `Vec<FileComparison>`, so there is no
-/// field in which to say "this scan was partial". Rather than widen the payload,
-/// the refusal travels in the error string behind a stable marker, the same way
+/// The compare summary counts only classified paths, so there is no field in
+/// which to say "this scan was partial". Rather than widen the payload, the
+/// refusal travels in the error string behind a stable marker, the same way
 /// `CONNECT_CANCELLED` / `DEST_EXISTS` already do. The frontend matches on it
 /// (`src/utils/scanCompleteness.ts`) and fails closed instead of dropping to its
 /// flat top-level fallback, which would rebuild an actionable delete plan and
@@ -21743,8 +21745,12 @@ mod scan_completeness_gate_tests {
         let left_root = left.path().to_str().unwrap();
         let right_root = right.path().to_str().unwrap();
         let options = CompareOptions::default();
-        let paths = |rows: Vec<FileComparison>| -> Vec<String> {
-            rows.into_iter().map(|row| row.relative_path).collect()
+        let paths = |report: CompareReport| -> Vec<String> {
+            report
+                .differences
+                .into_iter()
+                .map(|row| row.relative_path)
+                .collect()
         };
 
         // Remote pair: the right side stands for a server listing.
