@@ -11335,8 +11335,14 @@ async fn compare_directories(
 
     // Load sync index if available for conflict detection
     let index = load_sync_index(&local_path, &remote_path).ok().flatten();
-    let results =
-        build_comparison_results_with_index(local_files, remote_files, &options, index.as_ref());
+    let results = classify_walked_pair(
+        &local_path,
+        None,
+        local_files,
+        remote_files,
+        &options,
+        index.as_ref(),
+    );
 
     info!(
         "Comparison complete: {} differences found (index: {})",
@@ -11345,6 +11351,39 @@ async fn compare_directories(
     );
 
     Ok(results)
+}
+
+/// Classify a pair whose local side (or both sides, when `right_root` is a
+/// local directory too) came from the walker above.
+///
+/// That walker skips links and says nothing about it, so a path behind a local
+/// link is absent from its side while the twin is still on the other one. The
+/// rows are bounded first, with the same bound the provider compare applies:
+/// a path under a local link is left out on both sides, and classifies as
+/// nothing instead of as a file that one side deleted.
+fn classify_walked_pair(
+    left_root: &str,
+    right_root: Option<&str>,
+    mut left_files: HashMap<String, FileInfo>,
+    mut right_files: HashMap<String, FileInfo>,
+    options: &CompareOptions,
+    index: Option<&SyncIndex>,
+) -> Vec<FileComparison> {
+    provider_commands::bound_compare_rows(
+        left_root,
+        &mut left_files,
+        &mut right_files,
+        crate::sync_core::ScanBoundaries::default(),
+    );
+    if let Some(right_root) = right_root {
+        provider_commands::bound_compare_rows(
+            right_root,
+            &mut right_files,
+            &mut left_files,
+            crate::sync_core::ScanBoundaries::default(),
+        );
+    }
+    build_comparison_results_with_index(left_files, right_files, options, index)
 }
 
 /// GAP-10: recursive comparison of two local directories.
@@ -11429,8 +11468,14 @@ async fn compare_local_directories(
     // The sync index is keyed by the (left, right) path pair, so previous
     // local-local runs feed conflict detection just like the remote case.
     let index = load_sync_index(&left_path, &right_path).ok().flatten();
-    let results =
-        build_comparison_results_with_index(left_files, right_files, &options, index.as_ref());
+    let results = classify_walked_pair(
+        &left_path,
+        Some(&right_path),
+        left_files,
+        right_files,
+        &options,
+        index.as_ref(),
+    );
 
     info!(
         "Local comparison complete: {} differences found (index: {})",
@@ -21670,6 +21715,64 @@ mod arch_install_format_tests {
 #[cfg(test)]
 mod scan_completeness_gate_tests {
     use super::*;
+
+    /// The walker skips links. A file replaced by a link to its moved bytes
+    /// is then absent from the walk while its twin is still on the other side,
+    /// and a Mirror preset turns that row into a delete of the twin. The row
+    /// must not exist, on either side of a dual-local pair, while a file that
+    /// really is on one side only keeps its row.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_skipped_link_is_not_classified_as_absent() {
+        let left = tempfile::tempdir().expect("left");
+        let right = tempfile::tempdir().expect("right");
+        let moved = tempfile::tempdir().expect("moved");
+        for root in [left.path(), right.path()] {
+            std::fs::create_dir(root.join("dir")).expect("mkdir");
+            std::fs::write(root.join("file.txt"), b"f").expect("file");
+            std::fs::write(root.join("dir/inner.txt"), b"i").expect("inner");
+        }
+        std::fs::write(right.path().join("only-right.txt"), b"r").expect("only right");
+        // Left: a file and a directory become links to where their bytes went.
+        std::fs::rename(left.path().join("file.txt"), moved.path().join("file.txt")).unwrap();
+        std::os::unix::fs::symlink(moved.path().join("file.txt"), left.path().join("file.txt"))
+            .unwrap();
+        std::fs::rename(left.path().join("dir"), moved.path().join("dir")).unwrap();
+        std::os::unix::fs::symlink(moved.path().join("dir"), left.path().join("dir")).unwrap();
+
+        let left_root = left.path().to_str().unwrap();
+        let right_root = right.path().to_str().unwrap();
+        let options = CompareOptions::default();
+        let paths = |rows: Vec<FileComparison>| -> Vec<String> {
+            rows.into_iter().map(|row| row.relative_path).collect()
+        };
+
+        // Remote pair: the right side stands for a server listing.
+        let (left_files, _) = scan(left_root).await;
+        let (right_files, _) = scan(right_root).await;
+        let rows = paths(classify_walked_pair(
+            left_root,
+            None,
+            left_files,
+            right_files,
+            &options,
+            None,
+        ));
+        assert_eq!(rows, vec!["only-right.txt".to_string()], "remote pair");
+
+        // Dual-local pair, with the links on the RIGHT this time.
+        let (left_files, _) = scan(right_root).await;
+        let (right_files, _) = scan(left_root).await;
+        let rows = paths(classify_walked_pair(
+            right_root,
+            Some(left_root),
+            left_files,
+            right_files,
+            &options,
+            None,
+        ));
+        assert_eq!(rows, vec!["only-right.txt".to_string()], "dual-local pair");
+    }
 
     async fn scan(
         root: &str,

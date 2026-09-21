@@ -291,10 +291,17 @@ impl RangeSourceFingerprint {
         if self.size != other.size {
             return Some(format!("size {} became {}", self.size, other.size));
         }
-        if let (Some(before), Some(after)) = (&self.modified, &other.modified) {
-            if before != after {
+        match (&self.modified, &other.modified) {
+            (Some(before), Some(after)) if before != after => {
                 return Some(format!("modification time {} became {}", before, after));
             }
+            (Some(before), None) => {
+                return Some(format!(
+                    "modification time {} is no longer reported",
+                    before
+                ));
+            }
+            _ => {}
         }
         None
     }
@@ -1366,7 +1373,7 @@ pub(crate) async fn try_http_concurrent_range_download(
         .map(|value| value.to_string());
     if validator.is_none() && last_modified.is_none() {
         tracing::warn!(
-            "[multi-thread] {} has no validator and no modification time: a replacement while the windows read it cannot be detected",
+            "[multi-thread] {} has no validator and no modification time: a same-size replacement while the windows read it cannot be detected",
             req.url
         );
     }
@@ -1482,9 +1489,7 @@ pub(crate) async fn try_http_concurrent_range_download(
             // A window was refused because the object moved. That is not a
             // failed download: one stream reads one consistent view, which is
             // exactly what the windows could not promise. The engine already
-            // removed the staged file. This is the one place that recognises
-            // the refusal by its message, because it crosses a generic engine
-            // that carries nothing else.
+            // removed the staged file and preserved the typed refusal.
             tracing::warn!("[multi-thread] {}; single-stream fallback", e);
             HttpRangeAttempt::Fallback(fallback_progress)
         }
@@ -1492,7 +1497,8 @@ pub(crate) async fn try_http_concurrent_range_download(
     }
 }
 
-/// `Some(reason)` when the object is provably not the one the probe saw.
+/// `Some(reason)` when the object changed or its previous evidence cannot
+/// be checked anymore.
 ///
 /// A second one-byte probe on the same client, so the cost is a request and
 /// not a connection. It exists for the servers that ignore `If-Match`: where
@@ -1505,9 +1511,8 @@ async fn http_range_source_moved(
     last_modified: Option<&str>,
     total: u64,
 ) -> Option<String> {
-    if validator.is_none() && last_modified.is_none() {
-        return None;
-    }
+    // The initial probe always supplied the size used to plan the windows.
+    // It remains evidence even when the server has no version validator.
     let mut last_error = None;
     for attempt in 0..2 {
         if attempt == 1 {
@@ -1570,23 +1575,39 @@ async fn http_range_source_moved(
             .headers()
             .get(reqwest::header::LAST_MODIFIED)
             .and_then(|v| v.to_str().ok());
-        if let (Some(before), Some(after)) = (last_modified, now_modified) {
-            if before != after {
-                return Some(format!("modification time {} became {}", before, after));
-            }
-        }
-        let now_total = response
-            .headers()
-            .get(reqwest::header::CONTENT_RANGE)
-            .and_then(|v| v.to_str().ok())
-            .and_then(parse_content_range)
-            .and_then(|(_, _, total)| total);
-        if let Some(after) = now_total {
-            if after != total {
-                return Some(format!("size {} became {}", total, after));
-            }
-        }
-        return None;
+        let now_total = if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+            response
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(parse_content_range)
+                .filter(|(start, end, _)| *start == 0 && *end == 0)
+                .and_then(|(_, _, total)| total)
+                .filter(|total| *total > 0)
+        } else {
+            // A 200 ignores Range: its Content-Length describes the whole
+            // object. On a 206 it would only describe the one-byte probe.
+            response
+                .headers()
+                .get(reqwest::header::CONTENT_LENGTH)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok())
+        };
+        let Some(now_total) = now_total else {
+            last_error = Some("the probe no longer reports a comparable object size".to_string());
+            continue;
+        };
+        let before = RangeSourceFingerprint {
+            size: total,
+            modified: last_modified.map(str::to_owned),
+            validator: validator.map(str::to_owned),
+        };
+        let after = RangeSourceFingerprint {
+            size: now_total,
+            modified: now_modified.map(str::to_owned),
+            validator: now_tag,
+        };
+        return before.differs_from(&after);
     }
     Some(format!(
         "it could not be read again after the transfer: {}",
@@ -2915,6 +2936,217 @@ mod tests {
             "a reading that could not be taken must not publish the file"
         );
         assert!(!local.exists(), "no file may be published");
+    }
+
+    async fn final_source_observation(
+        status: u16,
+        range: Option<&'static str>,
+        length: Option<&'static str>,
+        modified: Option<&'static str>,
+    ) -> Option<String> {
+        let app = axum::Router::new().fallback(axum::routing::any(move || async move {
+            let mut response = axum::response::Response::builder().status(status);
+            for (key, value) in [
+                ("content-range", range),
+                ("content-length", length),
+                ("last-modified", modified),
+            ] {
+                if let Some(value) = value {
+                    response = response.header(key, value);
+                }
+            }
+            let body_len = if status == 200 {
+                length.and_then(|n| n.parse::<usize>().ok()).unwrap_or(1)
+            } else {
+                1
+            };
+            response
+                .body(axum::body::Body::from(vec![b'x'; body_len]))
+                .unwrap()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let request = HttpRangeRequest {
+            client: reqwest::Client::new(),
+            url: format!("http://{addr}/object"),
+            headers: Vec::new(),
+            local_path: String::new(),
+            provider_type: super::super::ProviderType::WebDav,
+            streams: 2,
+            max_streams: 2,
+            cutoff: 1,
+            known_size: None,
+        };
+        let result =
+            http_range_source_moved(&request, None, Some("Mon, 21 Sep 2026 00:00:00 GMT"), 2048)
+                .await;
+        server.abort();
+        result
+    }
+
+    #[tokio::test]
+    async fn source_observation_checks_whole_object_size() {
+        // A server may answer 200 to the last probe; Content-Length is then
+        // the object size, not the one-byte range size.
+        assert!(final_source_observation(
+            200,
+            None,
+            Some("1"),
+            Some("Mon, 21 Sep 2026 00:00:00 GMT")
+        )
+        .await
+        .is_some());
+    }
+
+    #[tokio::test]
+    async fn source_observation_refuses_missing_range_total() {
+        for range in [
+            None,
+            Some("bytes 0-0/*"),
+            Some("bytes 1-1/2048"),
+            Some("bytes 0-0/0"),
+        ] {
+            assert!(
+                final_source_observation(
+                    206,
+                    range,
+                    Some("1"),
+                    Some("Mon, 21 Sep 2026 00:00:00 GMT")
+                )
+                .await
+                .is_some(),
+                "unusable final Content-Range: {range:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn source_observation_accepts_unchanged_partial_and_whole_responses() {
+        for (status, range, length) in [(206, Some("bytes 0-0/2048"), "1"), (200, None, "2048")] {
+            assert!(final_source_observation(
+                status,
+                range,
+                Some(length),
+                Some("Mon, 21 Sep 2026 00:00:00 GMT")
+            )
+            .await
+            .is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn source_observation_refuses_disappearing_http_timestamp() {
+        assert!(
+            final_source_observation(206, Some("bytes 0-0/2048"), Some("1"), None)
+                .await
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn source_observation_refuses_disappearing_provider_timestamp() {
+        let before = RangeSourceFingerprint {
+            size: 2048,
+            modified: Some("2026-09-21T00:00:00Z".into()),
+            validator: None,
+        };
+        let after = RangeSourceFingerprint {
+            size: 2048,
+            modified: None,
+            validator: None,
+        };
+        assert!(
+            before.differs_from(&after).is_some(),
+            "losing the only version evidence must refuse publication"
+        );
+    }
+
+    /// No validator does not erase the size we learned from Content-Range.
+    /// The server finishes a larger replacement between the range requests.
+    #[tokio::test]
+    async fn http_range_replacement_without_validators_is_not_published() {
+        http_range_without_validators(true).await;
+    }
+
+    #[tokio::test]
+    async fn http_range_without_validators_preserves_stable_object() {
+        http_range_without_validators(false).await;
+    }
+
+    async fn http_range_without_validators(replace: bool) {
+        use std::sync::atomic::AtomicUsize;
+        const SIZE: u64 = 2 * 1024 * 1024;
+        let windows = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&windows);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let count = Arc::clone(&count);
+                async move {
+                    let raw = req.headers().get("range").unwrap().to_str().unwrap();
+                    let (start, end) = requested_window(raw).unwrap();
+                    let is_probe = start == 0 && end == 0;
+                    let generation = if is_probe {
+                        count.load(Ordering::SeqCst)
+                    } else {
+                        count.fetch_add(1, Ordering::SeqCst)
+                    };
+                    let replaced = replace && generation > 0;
+                    let total = if replaced { SIZE + 1024 } else { SIZE };
+                    let byte = if replaced { 9u8 } else { 7u8 };
+                    axum::response::Response::builder()
+                        .status(206)
+                        .header("content-range", format!("bytes {start}-{end}/{total}"))
+                        .body(axum::body::Body::from(vec![
+                            byte;
+                            (end - start + 1) as usize
+                        ]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("replaced.bin");
+        let attempt = try_http_concurrent_range_download(
+            HttpRangeRequest {
+                client: reqwest::Client::new(),
+                url: format!("http://{addr}/replaced.bin"),
+                headers: Vec::new(),
+                local_path: local.to_string_lossy().into_owned(),
+                provider_type: super::super::ProviderType::WebDav,
+                streams: 4,
+                max_streams: 4,
+                cutoff: 1024 * 1024,
+                known_size: None,
+            },
+            None,
+        )
+        .await;
+        server.abort();
+        assert_eq!(windows.load(Ordering::SeqCst), 4);
+        if replace {
+            if local.exists() {
+                let bytes = tokio::fs::read(&local).await.unwrap();
+                assert!(
+                    bytes.contains(&7) && bytes.contains(&9),
+                    "fixture must produce mixed generations"
+                );
+            }
+            assert!(
+                matches!(attempt, HttpRangeAttempt::Fallback(None)),
+                "a larger, fully replaced object must not publish mixed generations"
+            );
+            assert!(!local.exists());
+        } else {
+            assert!(matches!(attempt, HttpRangeAttempt::Completed));
+            assert_eq!(
+                tokio::fs::read(&local).await.unwrap(),
+                vec![7u8; SIZE as usize]
+            );
+        }
+        assert!(!aerotmp_path_for(&local).exists());
     }
 
     /// This is the path WebDAV and Koofr take, and it holds a validator from

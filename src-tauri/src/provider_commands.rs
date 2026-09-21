@@ -13161,7 +13161,7 @@ fn normalize_then_bound_compare_rows(
     ))
 }
 
-fn bound_compare_rows(
+pub(crate) fn bound_compare_rows(
     local_root: &str,
     local_files: &mut HashMap<String, crate::sync::FileInfo>,
     remote_files: &mut HashMap<String, crate::sync::FileInfo>,
