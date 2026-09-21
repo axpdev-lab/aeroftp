@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Nimi ei voi sisältää merkkejä / tai \\, jaksoa .. eikä null-merkkiä."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent-hyväksyntä",
+            "whyTitle": "Miksi erillinen ikkuna?",
+            "whyBody": "Tämä hyväksyntä avautuu keskustelun ulkopuolelle, jotta agentin siellä lukema ja näyttämä sisältö ei voi vahvistaa toimintoa puolestasi.",
+            "wantsTo": "AeroAgent haluaa:",
+            "scopeOnce": "Hyväksyy täsmälleen tämän toiminnon kerran.",
+            "scopeSession": "Hyväksyy tämän työkalun keskustelun loppuajaksi.",
+            "approve": "Hyväksy"
         }
     }
 }

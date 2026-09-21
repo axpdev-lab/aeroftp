@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Nama tidak boleh mengandungi / atau \\, jujukan .., atau aksara null."
+        },
+        "aiApproval": {
+            "windowTitle": "Kelulusan AeroAgent",
+            "whyTitle": "Mengapa tetingkap berasingan?",
+            "whyBody": "Kelulusan ini dibuka di luar sembang, supaya kandungan yang dibaca dan dipaparkan oleh ejen di sana tidak dapat mengesahkan tindakan bagi pihak anda.",
+            "wantsTo": "AeroAgent mahu:",
+            "scopeOnce": "Meluluskan tindakan ini sekali sahaja.",
+            "scopeSession": "Meluluskan alat ini untuk baki sesi sembang.",
+            "approve": "Luluskan"
         }
     }
 }

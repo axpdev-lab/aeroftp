@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Nama tidak boleh berisi / atau \\, urutan .., atau karakter null."
+        },
+        "aiApproval": {
+            "windowTitle": "Persetujuan AeroAgent",
+            "whyTitle": "Mengapa jendela terpisah?",
+            "whyBody": "Persetujuan ini terbuka di luar obrolan, sehingga konten yang dibaca dan ditampilkan agen di sana tidak dapat mengonfirmasi tindakan atas nama Anda.",
+            "wantsTo": "AeroAgent ingin:",
+            "scopeOnce": "Menyetujui tindakan ini persis satu kali.",
+            "scopeSession": "Menyetujui alat ini selama sisa sesi obrolan.",
+            "approve": "Setujui"
         }
     }
 }

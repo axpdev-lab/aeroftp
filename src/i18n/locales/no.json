@@ -5714,6 +5714,15 @@
         },
         "rename": {
             "invalidCharacters": "Et navn kan ikke inneholde / eller \\, sekvensen .. eller et null-tegn."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent-godkjenning",
+            "whyTitle": "Hvorfor et eget vindu?",
+            "whyBody": "Denne godkjenningen åpnes utenfor chatten, slik at innhold agenten leser og viser der ikke kan bekrefte en handling på dine vegne.",
+            "wantsTo": "AeroAgent vil:",
+            "scopeOnce": "Godkjenner nøyaktig denne handlingen én gang.",
+            "scopeSession": "Godkjenner dette verktøyet resten av chatøkten.",
+            "approve": "Godkjenn"
         }
     }
 }

@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Nazwa nie może zawierać / ani \\, sekwencji .. ani znaku null."
+        },
+        "aiApproval": {
+            "windowTitle": "Zatwierdzenie AeroAgent",
+            "whyTitle": "Dlaczego osobne okno?",
+            "whyBody": "To zatwierdzenie otwiera się poza czatem, aby treść, którą agent tam czyta i pokazuje, nie mogła potwierdzić działania w Twoim imieniu.",
+            "wantsTo": "AeroAgent chce:",
+            "scopeOnce": "Zatwierdza dokładnie tę akcję jeden raz.",
+            "scopeSession": "Zatwierdza to narzędzie do końca sesji czatu.",
+            "approve": "Zatwierdź"
         }
     }
 }

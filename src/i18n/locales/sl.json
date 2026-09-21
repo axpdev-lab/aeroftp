@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Ime ne sme vsebovati / ali \\, zaporedja .. ali ničelnega znaka."
+        },
+        "aiApproval": {
+            "windowTitle": "Odobritev AeroAgent",
+            "whyTitle": "Zakaj ločeno okno?",
+            "whyBody": "Ta odobritev se odpre zunaj klepeta, da vsebina, ki jo agent tam bere in prikazuje, ne more potrditi dejanja v vašem imenu.",
+            "wantsTo": "AeroAgent želi:",
+            "scopeOnce": "Odobri natanko to dejanje enkrat.",
+            "scopeSession": "Odobri to orodje do konca seje klepeta.",
+            "approve": "Odobri"
         }
     }
 }

@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Názov nesmie obsahovať / ani \\, sekvenciu .. ani nulový znak."
+        },
+        "aiApproval": {
+            "windowTitle": "Schválenie AeroAgent",
+            "whyTitle": "Prečo samostatné okno?",
+            "whyBody": "Toto schválenie sa otvára mimo chatu, aby obsah, ktorý tam agent číta a zobrazuje, nemohol potvrdiť akciu za vás.",
+            "wantsTo": "AeroAgent chce:",
+            "scopeOnce": "Schváli presne túto akciu raz.",
+            "scopeSession": "Schváli tento nástroj po zvyšok relácie chatu.",
+            "approve": "Schváliť"
         }
     }
 }

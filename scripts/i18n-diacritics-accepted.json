@@ -185,6 +185,13 @@
       "twin": "kopię",
       "reason": "Correct nominative forms; the accented twins are the accusative of the same words."
     },
+    "pl\u001faiApproval.wantsTo\u001fAeroAgent chce:": {
+      "locale": "pl",
+      "key": "aiApproval.wantsTo",
+      "folded": "chce",
+      "twin": "chcę",
+      "reason": "chce is the third person (AeroAgent wants); the accented twin is the first person (I want)."
+    },
     "ro\u001fcontextMenu.importLinkFailed\u001fNu s-a putut importa link-ul": {
       "locale": "ro",
       "key": "contextMenu.importLinkFailed",

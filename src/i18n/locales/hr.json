@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Naziv ne smije sadržavati / ni \\, niz .. ni nul-znak."
+        },
+        "aiApproval": {
+            "windowTitle": "Odobrenje za AeroAgent",
+            "whyTitle": "Zašto zaseban prozor?",
+            "whyBody": "Ovo se odobrenje otvara izvan chata kako sadržaj koji agent ondje čita i prikazuje ne bi mogao potvrditi radnju u vaše ime.",
+            "wantsTo": "AeroAgent želi:",
+            "scopeOnce": "Odobrava točno ovu radnju jednom.",
+            "scopeSession": "Odobrava ovaj alat do kraja sesije chata.",
+            "approve": "Odobri"
         }
     }
 }

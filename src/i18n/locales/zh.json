@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "名称不能包含 / 或 \\、.. 序列或空字符。"
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent 审批",
+            "whyTitle": "为什么使用单独的窗口？",
+            "whyBody": "此审批在聊天之外打开，因此代理在聊天中读取和显示的内容无法代替你确认操作。",
+            "wantsTo": "AeroAgent 想要：",
+            "scopeOnce": "仅批准这一次具体操作。",
+            "scopeSession": "在本次聊天会话剩余时间内批准此工具。",
+            "approve": "批准"
         }
     }
 }

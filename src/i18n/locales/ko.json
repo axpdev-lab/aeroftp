@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "이름에는 / 또는 \\, .. 시퀀스, 널 문자를 사용할 수 없습니다."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent 승인",
+            "whyTitle": "왜 별도의 창인가요?",
+            "whyBody": "이 승인은 채팅 밖에서 열리므로, 에이전트가 채팅에서 읽고 보여 주는 내용이 사용자를 대신해 작업을 승인할 수 없습니다.",
+            "wantsTo": "AeroAgent가 원하는 작업:",
+            "scopeOnce": "이 작업을 정확히 한 번만 승인합니다.",
+            "scopeSession": "이 채팅 세션이 끝날 때까지 이 도구를 승인합니다.",
+            "approve": "승인"
         }
     }
 }

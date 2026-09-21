@@ -5714,6 +5714,15 @@
         },
         "rename": {
             "invalidCharacters": "Un nom no pot contenir / ni \\, la seqüència .. ni un caràcter nul."
+        },
+        "aiApproval": {
+            "windowTitle": "Aprovació d'AeroAgent",
+            "whyTitle": "Per què una finestra a part?",
+            "whyBody": "Aquesta aprovació s'obre fora del xat, perquè el contingut que l'agent hi llegeix i mostra no pugui confirmar una acció en nom vostre.",
+            "wantsTo": "AeroAgent vol:",
+            "scopeOnce": "Aprova aquesta acció exacta una sola vegada.",
+            "scopeSession": "Aprova aquesta eina per a la resta de la sessió de xat.",
+            "approve": "Aprova"
         }
     }
 }

@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Jina haliwezi kuwa na / au \\, mfuatano .., wala herufi tupu."
+        },
+        "aiApproval": {
+            "windowTitle": "Idhini ya AeroAgent",
+            "whyTitle": "Kwa nini dirisha tofauti?",
+            "whyBody": "Idhini hii inafunguka nje ya mazungumzo, ili maudhui ambayo wakala anasoma na kuonyesha huko yasiweze kuthibitisha kitendo kwa niaba yako.",
+            "wantsTo": "AeroAgent inataka:",
+            "scopeOnce": "Inaidhinisha kitendo hiki hasa mara moja.",
+            "scopeSession": "Inaidhinisha zana hii kwa muda uliobaki wa kikao cha mazungumzo.",
+            "approve": "Idhinisha"
         }
     }
 }

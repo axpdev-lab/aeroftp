@@ -5714,6 +5714,15 @@
         },
         "rename": {
             "invalidCharacters": "Un nome non pode conter / nin \\, a secuencia .. nin un carácter nulo."
+        },
+        "aiApproval": {
+            "windowTitle": "Aprobación de AeroAgent",
+            "whyTitle": "Por que unha xanela á parte?",
+            "whyBody": "Esta aprobación ábrese fóra do chat, para que o contido que o axente le e mostra alí non poida confirmar unha acción no teu nome.",
+            "wantsTo": "AeroAgent quere:",
+            "scopeOnce": "Aproba esta acción exacta unha soa vez.",
+            "scopeSession": "Aproba esta ferramenta durante o resto da sesión de chat.",
+            "approve": "Aprobar"
         }
     }
 }

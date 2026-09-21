@@ -3056,7 +3056,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                         executedToolSignaturesRef.current.add(`${tc.toolName}::${JSON.stringify(tc.args)}`);
                                     }
                                     const levels = buildExecutionLevels(pendingToolCalls);
-                                    const results = await executePipeline(levels, executeTool);
+                                    // The user approved these in the panel: in expert mode that
+                                    // is the confirmation, so no second one per tool.
+                                    const results = await executePipeline(levels, tc =>
+                                        executeTool(tc, 0, undefined, { panelApproved: true }));
                                     setPendingToolCalls([]);
                                     const combinedResult = results.filter(Boolean).join('\n---\n');
                                     if (combinedResult && multiStepContextRef.current && !autoStopRef.current) {
@@ -3071,7 +3074,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                     setIsLoading(true);
                                     const tc = pendingToolCalls.find(t => t.id === id);
                                     if (!tc) { setIsLoading(false); return; }
-                                    const result = await executeTool(tc);
+                                    const result = await executeTool(tc, 0, undefined, { panelApproved: true });
                                     const remaining = pendingToolCalls.filter(t => t.id !== id);
                                     setPendingToolCalls(remaining);
                                     if (remaining.length === 0 && result && multiStepContextRef.current && !autoStopRef.current) {
