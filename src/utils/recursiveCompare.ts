@@ -79,8 +79,18 @@ const statusToBucket = (
             return leftIsLocal ? 'newer-left' : 'newer-right';
         case 'remote_newer':
             return leftIsLocal ? 'newer-right' : 'newer-left';
-        default:
+        default: {
+            // Exhaustive by construction: every `SyncStatus` above maps to a
+            // bucket. This matters more than it looks, because the totals
+            // rebuild the `same` bucket by subtracting the rows that landed
+            // in a bucket from what the scan examined, so a status dropped
+            // here would not vanish, it would be counted as an identical
+            // file. Adding a variant to the union without mapping it fails
+            // this assignment at build time instead.
+            const unmapped: never = status;
+            void unmapped;
             return null;
+        }
     }
 };
 
@@ -190,6 +200,15 @@ export const adaptFileComparisons = (
         // file rows, and both-sides directory rows are dropped above, so the
         // row-derived `same` stats stay empty and the overwrite is exact.
         // Clamped at zero against any backend/adapter drift.
+        //
+        // By subtraction, deliberately, and not from `summary.identical_count`
+        // even though the backend ships it: subtracting keeps the panel's
+        // "Differences" number equal to the rows it actually lists, which is
+        // the number a reader can check by eye. Taking the identical count
+        // straight from the backend would count a dropped row as neither, and
+        // the panel would claim a difference it does not show. The two agree
+        // today, since a directory on both sides is always classified
+        // identical, which is exactly what the drop above removes.
         const examinedCount = Math.max(0, Math.floor(summary.examined_count));
         const examinedBytes = Math.max(0, summary.examined_bytes);
         const rowCount = totals.count - stats.same.count;

@@ -162,6 +162,78 @@ describe('adaptFileComparisons: backend summary', () => {
         expect(outOfSyncBytes).toBe(0.75);
     });
 
+    // The panel's "Differences" figure is `totals.count - stats.same.count`,
+    // rendered right above the rows it lists. The two have to agree, or the
+    // panel claims a difference it does not show. The adapter drops the rows
+    // for directories present on both sides, which the backend counts as
+    // examined, so this is the case where they could drift apart.
+    it('absorbs the dropped both-sides directory rows into same, not into the differences', () => {
+        const rows: FileComparison[] = [
+            fc('shared', 'identical', {
+                is_dir: true,
+                local_info: info({ name: 'shared', size: 4096, is_dir: true }),
+                remote_info: info({ name: 'shared', size: 0, is_dir: true }),
+            }),
+            fc('shared/b.txt', 'local_only', {
+                local_info: info({ name: 'b.txt', size: 300 }),
+                remote_info: null,
+            }),
+        ];
+        // The scan examined the directory, the identical file and the missing
+        // one: three entries, two of them nothing to act on.
+        const withDirectory: CompareSummary = {
+            examined_count: 3,
+            identical_count: 2,
+            examined_bytes: 400,
+            identical_bytes: 100,
+        };
+        const result = adaptFileComparisons(rows, true, withDirectory);
+
+        expect(result.entries).toHaveLength(1);
+        expect(result.entries[0].relativePath).toBe('shared/b.txt');
+        expect(result.buckets.same).toHaveLength(0);
+        expect(result.stats.same.count).toBe(2);
+        expect(result.totals.count - result.stats.same.count).toBe(result.entries.length);
+        expect((result.totals.count - result.stats.same.count) / result.totals.count).toBeCloseTo(
+            1 / 3,
+        );
+    });
+
+    // The invariant behind the choice to rebuild `same` by subtraction rather
+    // than read `summary.identical_count`: whatever the summary says, the
+    // "Differences" figure must equal the rows the panel lists underneath it.
+    // Today's backend cannot produce this input, because it classifies a
+    // directory present on both sides as identical, so the two formulas agree
+    // and no realistic case separates them. This is the guard for the day one
+    // of them moves: reading the identical count straight from the wire would
+    // announce two differences while showing one row.
+    it('keeps the differences figure equal to the listed rows for any summary', () => {
+        const rows: FileComparison[] = [
+            fc('shared', 'local_newer', {
+                is_dir: true,
+                local_info: info({ name: 'shared', size: 4096, is_dir: true }),
+                remote_info: info({ name: 'shared', size: 0, is_dir: true }),
+            }),
+            fc('shared/b.txt', 'local_only', {
+                local_info: info({ name: 'b.txt', size: 300 }),
+                remote_info: null,
+            }),
+        ];
+        // The directory row is dropped as noise, yet the backend counted it as
+        // examined and did NOT count it as identical.
+        const dirNotIdentical: CompareSummary = {
+            examined_count: 3,
+            identical_count: 1,
+            examined_bytes: 400,
+            identical_bytes: 100,
+        };
+        const result = adaptFileComparisons(rows, true, dirNotIdentical);
+
+        expect(result.entries).toHaveLength(1);
+        expect(result.stats.same.count).toBe(2);
+        expect(result.totals.count - result.stats.same.count).toBe(result.entries.length);
+    });
+
     it('reports zero differences over the full examined denominator', () => {
         const full: CompareSummary = {
             examined_count: 3,

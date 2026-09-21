@@ -331,6 +331,23 @@ export const namesToMirrorRightToLeft = (result: CompareResult): string[] => [
     ...result.buckets['newer-right'].map((entry) => entry.name),
 ];
 
+/**
+ * How many entries a bucket counts but does not carry as rows.
+ *
+ * `stats` and `buckets` answer two different questions: the stats count what
+ * the scan classified, the buckets hold the rows it can list. The recursive
+ * backend path reports identical files as a total instead of sending one row
+ * each, so `stats.same.count` can exceed `buckets.same.length` while every
+ * other bucket keeps the two equal. Any surface that prints a per-bucket count
+ * has to take it from the stats and say how many entries it is not listing:
+ * reading a count off rows that were never sent is what made the compare panel
+ * report every scan as fully out of sync.
+ */
+export const unlistedEntryCount = (counted: number, listed: number): number => {
+    if (!Number.isFinite(counted) || !Number.isFinite(listed)) return 0;
+    return Math.max(0, Math.floor(counted) - Math.max(0, Math.floor(listed)));
+};
+
 export const __TEST_ONLY__ = {
     BUCKETS,
 };
