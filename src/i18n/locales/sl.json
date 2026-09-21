@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} elementov, začenši z {name}, je na pogonu brez uporabnega koša. Premik v koš bi jih kopiral v koš domače mape, kar lahko traja dolgo in zahteva prosti prostor. Jih raje trajno izbrišem?",
             "copyToHomeTrash": "Kopiraj v koš domače mape",
             "permanentAfterFailure": "{count} elementov, začenši z {name}, ni bilo mogoče premakniti v koš. Jih trajno izbrišem? Tega ni mogoče razveljaviti.",
-            "kept": "{name} je ohranjen: nič ni bilo izbrisano"
+            "kept": "Element {name} je ohranjen: nič ni bilo izbrisano",
+            "keptMultiple": "Ostalo na mestu, ni izbrisano: {count} elementov"
         },
         "quickLook": {
             "noPreview": "Predogled ni na voljo",

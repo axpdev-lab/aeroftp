@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "Vipengee {count}, kuanzia {name}, viko kwenye hifadhi isiyo na tupio linaloweza kutumika. Kuvihamishia kwenye tupio kungevinakili kwenye tupio la folda yako ya nyumbani, jambo linaloweza kuchukua muda mrefu na kuhitaji nafasi. Futa kabisa badala yake?",
             "copyToHomeTrash": "Nakili kwenye Tupio la nyumbani",
             "permanentAfterFailure": "Vipengee {count}, kuanzia {name}, havikuweza kuhamishiwa kwenye tupio. Futa kabisa? Hatua hii haiwezi kutenduliwa.",
-            "kept": "{name} kimehifadhiwa: hakuna kilichofutwa"
+            "kept": "{name} kimehifadhiwa: hakuna kilichofutwa",
+            "keptMultiple": "Vimeachwa mahali pake, havikufutwa: vipengee {count}"
         },
         "quickLook": {
             "noPreview": "Hakuna onyesho linalopatikana",

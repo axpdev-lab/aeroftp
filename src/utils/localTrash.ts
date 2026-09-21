@@ -31,7 +31,7 @@ export interface LocalTrashDeps {
 export interface LocalTrashResult {
   /** Items that left their folder, by trash or by permanent delete. */
   removed: string[];
-  /** Items the user chose to keep when asked. */
+  /** Items left in place: the user chose to keep them, or the operation was cancelled first. */
   kept: string[];
   failed: { path: string; error: string }[];
 }
@@ -44,24 +44,31 @@ export async function trashLocalPaths(
   const needsCopy: string[] = [];
   const refused: { path: string; error: string }[] = [];
 
-  for (const path of paths) {
-    if (deps.isCancelled?.()) break;
+  for (const [index, path] of paths.entries()) {
+    if (deps.isCancelled?.()) {
+      result.kept.push(...paths.slice(index));
+      break;
+    }
     try {
       await deps.invoke('delete_to_trash', { path });
       result.removed.push(path);
     } catch (err) {
       const error = String(err);
-      if (error.includes(TRASH_NEEDS_HOME_COPY)) needsCopy.push(path);
+      if (error.startsWith(`${TRASH_NEEDS_HOME_COPY}:`)) needsCopy.push(path);
       else refused.push({ path, error });
     }
   }
 
   if (needsCopy.length > 0) {
-    const choice = await deps.askHomeCopy(needsCopy);
+    const choice = deps.isCancelled?.() ? 'cancel' : await deps.askHomeCopy(needsCopy);
     if (choice === 'cancel') {
       result.kept.push(...needsCopy);
     } else {
-      for (const path of needsCopy) {
+      for (const [index, path] of needsCopy.entries()) {
+        if (deps.isCancelled?.()) {
+          result.kept.push(...needsCopy.slice(index));
+          break;
+        }
         try {
           if (choice === 'copy') {
             await deps.invoke('delete_to_trash', { path, allowHomeCopy: true });
@@ -76,10 +83,14 @@ export async function trashLocalPaths(
     }
   }
 
-  if (refused.length > 0 && deps.askPermanentAfterFailure) {
+  if (refused.length > 0 && deps.askPermanentAfterFailure && !deps.isCancelled?.()) {
     const confirmed = await deps.askPermanentAfterFailure(refused.map(r => r.path));
     if (confirmed) {
-      for (const { path } of refused) {
+      for (const [index, { path }] of refused.entries()) {
+        if (deps.isCancelled?.()) {
+          result.kept.push(...refused.slice(index).map(r => r.path));
+          break;
+        }
         try {
           await deps.invoke('delete_local_file', { path });
           result.removed.push(path);

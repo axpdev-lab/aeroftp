@@ -3011,7 +3011,14 @@ const App: React.FC = () => {
       else if (showAboutDialog) setShowAboutDialog(false);
       else if (showSettingsPanel) setShowSettingsPanel(false);
       else if (inputDialog) setInputDialog(null);
-      else if (confirmDialog) setConfirmDialog(null);
+      // Through onCancel, not a bare clear: several confirmations are awaited
+      // as promises (trash choices, overwrite prompts) and settle only there,
+      // so clearing the dialog directly left them pending, and a batch latch
+      // with them.
+      else if (confirmDialog) {
+        if (confirmDialog.onCancel) confirmDialog.onCancel();
+        else setConfirmDialog(null);
+      }
       else if (selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0 || selectedLocalFiles2.size > 0) {
         setSelectedRemoteFiles(new Set());
         setSelectedLocalFiles(new Set());
@@ -12992,6 +12999,9 @@ const App: React.FC = () => {
         failedFiles.push(name);
         notify.error(t('toast.deleteFail'), `${name}: ${error}`);
       }
+      if (outcome.kept.length > 0) {
+        notify.info(t('trash.keptMultiple', { count: outcome.kept.length }));
+      }
       setScanningState(INITIAL_SCANNING_STATE);
       if (panel.currentPath) await panel.load(panel.currentPath);
       panel.setSelection(new Set());
@@ -16254,6 +16264,9 @@ const App: React.FC = () => {
               for (const { path, error } of outcome.failed) {
                 const fileName = path.split(/[\\/]/).pop() || path;
                 notify.error(t('toast.deleteFail'), `${fileName}: ${error}`);
+              }
+              if (outcome.kept.length > 0) {
+                notify.info(t('trash.keptMultiple', { count: outcome.kept.length }));
               }
               loadLocalFiles(currentLocalPath);
             }}

@@ -74,4 +74,35 @@ describe('trashLocalPaths', () => {
     expect(permanentCalls(calls)).toEqual([]);
     expect(result.kept).toEqual(['/x', '/y']);
   });
+
+  it('does not read the marker out of an ordinary error that quotes it', async () => {
+    const invoke = vi.fn(async (cmd: string, args: Record<string, unknown>) => {
+      if (cmd === 'delete_to_trash') throw `Failed to move to trash: permission denied on /data/${TRASH_NEEDS_HOME_COPY}/x`;
+      return args;
+    });
+    const askHomeCopy = vi.fn(async () => 'copy' as const);
+    const result = await trashLocalPaths(['/data/TRASH_NEEDS_HOME_COPY/x'], { invoke, askHomeCopy });
+
+    expect(askHomeCopy).not.toHaveBeenCalled();
+    expect(result.failed.map(f => f.path)).toEqual(['/data/TRASH_NEEDS_HOME_COPY/x']);
+  });
+
+  it('stops the deferred copies or deletes once the operation is cancelled', async () => {
+    const { calls, invoke } = backend({ '/m/a': 'copy', '/m/b': 'copy', '/m/c': 'copy' });
+    let cancelled = false;
+    const wrapped = vi.fn(async (cmd: string, args: Record<string, unknown>) => {
+      const out = await invoke(cmd, args);
+      if (args.allowHomeCopy) cancelled = true; // cancel during the first copy
+      return out;
+    });
+    const result = await trashLocalPaths(['/m/a', '/m/b', '/m/c'], {
+      invoke: wrapped,
+      askHomeCopy: async () => 'copy',
+      isCancelled: () => cancelled,
+    });
+
+    expect(calls.filter(c => c.args.allowHomeCopy === true).map(c => c.args.path)).toEqual(['/m/a']);
+    expect(result.removed).toEqual(['/m/a']);
+    expect(result.kept).toEqual(['/m/b', '/m/c']);
+  });
 });

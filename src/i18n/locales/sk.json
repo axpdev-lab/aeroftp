@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} položiek, počnúc {name}, je na jednotke bez použiteľného koša. Presunutie do koša by ich skopírovalo do koša v domovskom priečinku, čo môže trvať dlho a vyžaduje voľné miesto. Zmazať ich namiesto toho trvalo?",
             "copyToHomeTrash": "Kopírovať do koša v domovskom priečinku",
             "permanentAfterFailure": "{count} položiek, počnúc {name}, sa nepodarilo presunúť do koša. Zmazať ich trvalo? Túto akciu nie je možné vrátiť.",
-            "kept": "{name} bolo ponechané: nič sa nezmazalo"
+            "kept": "Položka {name} zostala zachovaná: nič sa nezmazalo",
+            "keptMultiple": "Ponechané na mieste, nezmazané: {count} položiek"
         },
         "quickLook": {
             "noPreview": "Náhľad nedostupný",

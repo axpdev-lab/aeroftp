@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} elementas(-ai), pradedant {name}, yra diske be tinkamos šiukšlinės. Perkėlus juos į šiukšlinę, jie būtų nukopijuoti į namų aplanko šiukšlinę, o tai gali ilgai užtrukti ir reikalauja laisvos vietos. Ištrinti juos visam laikui?",
             "copyToHomeTrash": "Kopijuoti į namų aplanko šiukšlinę",
             "permanentAfterFailure": "Nepavyko perkelti į šiukšlinę {count} elemento(-ų), pradedant {name}. Ištrinti juos visam laikui? To negalima atšaukti.",
-            "kept": "{name} paliktas: niekas neištrinta"
+            "kept": "Elementas {name} paliktas: niekas neištrinta",
+            "keptMultiple": "Palikta vietoje, neištrinta: {count} elem."
         },
         "quickLook": {
             "noPreview": "Peržiūra nepasiekiama",

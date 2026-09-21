@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} item(s), te beginnen met {name}, staan op een schijf zonder bruikbare prullenbak. Naar de prullenbak verplaatsen zou ze kopiëren naar de prullenbak in je thuismap, wat lang kan duren en daar vrije ruimte vereist. In plaats daarvan permanent verwijderen?",
             "copyToHomeTrash": "Kopiëren naar prullenbak in thuismap",
             "permanentAfterFailure": "{count} item(s), te beginnen met {name}, konden niet naar de prullenbak worden verplaatst. Permanent verwijderen? Dit kan niet ongedaan worden gemaakt.",
-            "kept": "{name} is behouden: er is niets verwijderd"
+            "kept": "{name} is behouden: er is niets verwijderd",
+            "keptMultiple": "Op hun plaats gelaten, niet verwijderd: {count} item(s)"
         },
         "quickLook": {
             "noPreview": "Geen voorbeeld beschikbaar",

@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} üksust, alates {name}, asuvad kettal, millel pole kasutatavat prügikasti. Prügikasti viimine kopeeriks need kodukausta prügikasti, mis võib võtta kaua aega ja vajab vaba ruumi. Kas kustutada need hoopis jäädavalt?",
             "copyToHomeTrash": "Kopeeri kodukausta prügikasti",
             "permanentAfterFailure": "{count} üksust, alates {name}, ei õnnestunud prügikasti viia. Kas kustutada need jäädavalt? Seda ei saa tagasi võtta.",
-            "kept": "{name} jäeti alles: midagi ei kustutatud"
+            "kept": "{name} jäeti alles: midagi ei kustutatud",
+            "keptMultiple": "Jäeti alles, ei kustutatud: {count} üksust"
         },
         "quickLook": {
             "noPreview": "Eelvaade pole saadaval",

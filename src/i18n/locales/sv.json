@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} objekt, med början på {name}, ligger på en enhet utan användbar papperskorg. Att flytta dem till papperskorgen skulle kopiera dem till papperskorgen i din hemmapp, vilket kan ta lång tid och kräver ledigt utrymme. Radera dem permanent i stället?",
             "copyToHomeTrash": "Kopiera till hemmappens papperskorg",
             "permanentAfterFailure": "{count} objekt, med början på {name}, kunde inte flyttas till papperskorgen. Radera dem permanent? Det går inte att ångra.",
-            "kept": "{name} behölls: inget raderades"
+            "kept": "{name} behölls: inget raderades",
+            "keptMultiple": "Lämnade kvar, inte raderade: {count} objekt"
         },
         "quickLook": {
             "noPreview": "Ingen förhandsgranskning tillgänglig",

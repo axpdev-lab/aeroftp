@@ -107,6 +107,11 @@ mod imp {
         parent: Writable,
     ) -> TrashRoute {
         match trash_dir {
+            // The copy into the home trash would succeed and removing the
+            // original would not, leaving an orphaned copy: refuse first.
+            Writable::Denied if parent == Writable::Denied => TrashRoute::ParentNotWritable {
+                parent: full.parent().unwrap_or(full).to_path_buf(),
+            },
             Writable::Denied => TrashRoute::HomeCopy {
                 topdir: topdir.to_path_buf(),
             },
@@ -317,6 +322,28 @@ mod imp {
         }
 
         #[test]
+        fn an_item_directly_under_a_read_only_root_is_refused_not_copied() {
+            if running_as_root() {
+                eprintln!("SKIPPED: running as root, a read-only mode does not deny access");
+                return;
+            }
+            let fx = fixture();
+            let item = fx.drive.join("loose.bin");
+            std::fs::write(&item, b"x").unwrap();
+            set_mode(&fx.drive, 0o555);
+            let got = route(&item, &fx.home_trash, &fx.mounts, UID);
+            set_mode(&fx.drive, 0o755);
+            // Copying into the home trash would succeed and removing the
+            // original would not: refuse before the copy, not after it.
+            assert_eq!(
+                got,
+                TrashRoute::ParentNotWritable {
+                    parent: fx.drive.clone()
+                }
+            );
+        }
+
+        #[test]
         fn a_drive_whose_root_is_writable_keeps_its_own_trash() {
             let fx = fixture();
             let item = fx.drive.join("file.txt");
@@ -382,7 +409,9 @@ mod imp {
             std::fs::create_dir(&admin).unwrap();
             std::fs::create_dir(admin.join(UID.to_string())).unwrap();
             set_mode(&admin, 0o777);
-            let item = fx.drive.join("docs.txt");
+            let folder = fx.drive.join("docs");
+            std::fs::create_dir(&folder).unwrap();
+            let item = folder.join("docs.txt");
             std::fs::write(&item, b"x").unwrap();
             set_mode(&fx.drive, 0o555);
             let got = route(&item, &fx.home_trash, &fx.mounts, UID);

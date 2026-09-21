@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} elementu, {name} lehenengoa, zakarrontzi erabilgarririk ez duen unitate batean daude. Zakarrontzira eramateak etxeko karpetako zakarrontzira kopiatuko lituzke, eta horrek denbora luzea eta leku librea behar ditzake. Betirako ezabatu nahi dituzu?",
             "copyToHomeTrash": "Kopiatu etxeko zakarrontzira",
             "permanentAfterFailure": "Ezin izan dira zakarrontzira eraman {count} elementu, {name} lehenengoa. Betirako ezabatu nahi dituzu? Ezin da desegin.",
-            "kept": "{name} gorde da: ez da ezer ezabatu"
+            "kept": "{name} gorde da: ez da ezer ezabatu",
+            "keptMultiple": "Bere lekuan utzita, ezabatu gabe: {count} elementu"
         },
         "quickLook": {
             "noPreview": "Ez dago aurrebistarik",

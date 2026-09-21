@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} Element(e), beginnend mit {name}, liegen auf einem Laufwerk ohne nutzbaren Papierkorb. Beim Verschieben in den Papierkorb würden sie in den Papierkorb Ihres Home-Ordners kopiert, was lange dauern kann und dort freien Speicher benötigt. Stattdessen endgültig löschen?",
             "copyToHomeTrash": "In Home-Papierkorb kopieren",
             "permanentAfterFailure": "{count} Element(e), beginnend mit {name}, konnten nicht in den Papierkorb verschoben werden. Endgültig löschen? Dies kann nicht rückgängig gemacht werden.",
-            "kept": "{name} wurde behalten: Es wurde nichts gelöscht"
+            "kept": "{name} wurde behalten: Es wurde nichts gelöscht",
+            "keptMultiple": "An Ort und Stelle belassen, nicht gelöscht: {count} Element(e)"
         },
         "quickLook": {
             "noPreview": "Keine Vorschau verfügbar",

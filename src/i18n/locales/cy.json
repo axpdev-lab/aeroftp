@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "Mae {count} eitem, gan ddechrau gyda {name}, ar yriant heb sbwriel y gallwch ei ddefnyddio. Byddai eu symud i'r sbwriel yn eu copïo i'r sbwriel yn eich ffolder cartref, a all gymryd amser hir ac mae angen lle rhydd yno. Eu dileu'n barhaol yn lle hynny?",
             "copyToHomeTrash": "Copïo i Sbwriel y Cartref",
             "permanentAfterFailure": "Methwyd symud {count} eitem, gan ddechrau gyda {name}, i'r sbwriel. Eu dileu'n barhaol? Ni ellir dadwneud hyn.",
-            "kept": "Cadwyd {name}: ni ddilëwyd dim"
+            "kept": "Cadwyd {name}: ni ddilëwyd dim",
+            "keptMultiple": "Wedi'u gadael yn eu lle, heb eu dileu: {count} eitem"
         },
         "quickLook": {
             "noPreview": "Dim rhagolwg ar gael",

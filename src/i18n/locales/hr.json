@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} stavki, počevši od {name}, nalazi se na pogonu bez upotrebljivog smeća. Premještanje u smeće kopiralo bi ih u smeće vaše osobne mape, što može dugo trajati i zahtijeva slobodan prostor. Trajno ih izbrisati umjesto toga?",
             "copyToHomeTrash": "Kopiraj u smeće osobne mape",
             "permanentAfterFailure": "{count} stavki, počevši od {name}, nije bilo moguće premjestiti u smeće. Trajno ih izbrisati? Ovo se ne može poništiti.",
-            "kept": "{name} je zadržano: ništa nije izbrisano"
+            "kept": "Stavka {name} je zadržana: ništa nije izbrisano",
+            "keptMultiple": "Ostavljeno na mjestu, nije izbrisano: {count} stavki"
         },
         "quickLook": {
             "noPreview": "Nema dostupnog pregleda",

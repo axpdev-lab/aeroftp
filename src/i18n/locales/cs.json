@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} položek, počínaje {name}, je na jednotce bez použitelného koše. Přesunutí do koše by je zkopírovalo do koše v domovské složce, což může trvat dlouho a vyžaduje volné místo. Smazat je místo toho trvale?",
             "copyToHomeTrash": "Kopírovat do koše v domovské složce",
             "permanentAfterFailure": "{count} položek, počínaje {name}, nebylo možné přesunout do koše. Smazat je trvale? Tuto akci nelze vrátit.",
-            "kept": "{name} bylo ponecháno: nic nebylo smazáno"
+            "kept": "Položka {name} zůstala zachována: nic nebylo smazáno",
+            "keptMultiple": "Ponecháno na místě, nesmazáno: {count} položek"
         },
         "quickLook": {
             "noPreview": "Náhled nedostupný",

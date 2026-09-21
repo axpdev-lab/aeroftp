@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "{count} item(ns), começando por {name}, estão em uma unidade sem lixeira utilizável. Movê-los para a lixeira os copiaria para a lixeira da sua pasta pessoal, o que pode demorar e exige espaço livre. Excluí-los permanentemente?",
             "copyToHomeTrash": "Copiar para a lixeira pessoal",
             "permanentAfterFailure": "Não foi possível mover {count} item(ns), começando por {name}, para a lixeira. Excluí-los permanentemente? Esta ação não pode ser desfeita.",
-            "kept": "{name} foi mantido: nada foi excluído"
+            "kept": "Item {name} mantido: nada foi excluído",
+            "keptMultiple": "Mantidos no lugar, não excluídos: {count} item(ns)"
         },
         "quickLook": {
             "noPreview": "Prévia não disponível",

@@ -3373,7 +3373,8 @@
             "homeCopyPrompt": "以 {name} 开头的 {count} 个项目位于没有可用回收站的驱动器上。将它们移到回收站会把它们复制到主文件夹的回收站，这可能耗时较长并需要足够的可用空间。改为永久删除吗？",
             "copyToHomeTrash": "复制到主文件夹回收站",
             "permanentAfterFailure": "以 {name} 开头的 {count} 个项目无法移到回收站。要永久删除吗？此操作无法撤销。",
-            "kept": "已保留 {name}：未删除任何内容"
+            "kept": "已保留 {name}：未删除任何内容",
+            "keptMultiple": "已保留原处、未删除：{count} 个项目"
         },
         "quickLook": {
             "noPreview": "无法预览",
