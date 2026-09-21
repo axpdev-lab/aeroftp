@@ -94,6 +94,26 @@ describe('adaptFileComparisons — recursive paths', () => {
 });
 
 describe('adaptFileComparisons — directory filtering', () => {
+    it('does not turn a file/directory mismatch into an identical summary entry', () => {
+        for (const directoryOnLocal of [true, false]) {
+            for (const leftIsLocal of [true, false]) {
+                const result = adaptFileComparisons([
+                    fc('collision', 'size_mismatch', {
+                        is_dir: true,
+                        local_info: info({ is_dir: directoryOnLocal, size: directoryOnLocal ? 0 : 100 }),
+                        remote_info: info({ is_dir: !directoryOnLocal, size: directoryOnLocal ? 100 : 0 }),
+                    }),
+                ], leftIsLocal, {
+                    examined_count: 1, identical_count: 0,
+                    examined_bytes: 100, identical_bytes: 0,
+                });
+                expect(result.stats.same.count).toBe(0);
+                expect(result.stats.conflict.count).toBe(1);
+                expect(result.buckets.conflict[0].relativePath).toBe('collision');
+                expect(result.totals.count).toBe(1);
+            }
+        }
+    });
     it('keeps a genuinely new directory but drops a both-sides directory', () => {
         const rows: FileComparison[] = [
             fc('newdir', 'local_only', { is_dir: true, local_info: info({ is_dir: true }) }),

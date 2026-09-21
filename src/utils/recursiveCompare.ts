@@ -145,8 +145,9 @@ export const adaptFileComparisons = (
 
         // Drop directory rows that are present on both sides: their size and
         // mtime are filesystem block metadata, not content, so any compare
-        // verdict on them is noise. Keep only genuinely new directories.
-        if (fc.is_dir && bucket !== 'only-left' && bucket !== 'only-right') {
+        // verdict on them is noise. A file/directory mismatch is a real
+        // difference and must not be counted as identical by the summary.
+        if (fc.local_info?.is_dir && fc.remote_info?.is_dir) {
             continue;
         }
 
