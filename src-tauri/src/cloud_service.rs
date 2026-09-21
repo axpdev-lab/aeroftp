@@ -504,11 +504,13 @@ impl CloudService {
         // Get file listings
         // CLAUDE-AV-B3-16: local scan now reports completeness too (unstattable
         // entries used to be silently dropped, which looked like RemoteOnly).
-        let (local_files, local_complete) = self.scan_local_folder(&config).await?;
-        let (remote_files, remote_complete) = self.scan_remote_folder(ftp_manager, &config).await?;
+        let (mut local_files, local_complete) = self.scan_local_folder(&config).await?;
+        let (mut remote_files, remote_complete) =
+            self.scan_remote_folder(ftp_manager, &config).await?;
 
         let local_str = config.local_folder.to_string_lossy().to_string();
         let remote_str = config.remote_folder.clone();
+        Self::bound_local_scan_paths(&local_str, &mut local_files, &mut remote_files);
 
         // Load prior sync index (if any) for delete propagation + conflict detection.
         let index = self.load_index(&config);
@@ -726,8 +728,8 @@ impl CloudService {
 
         // Get file listings
         // CLAUDE-AV-B3-16: local scan reports completeness (see scan_local_folder).
-        let (local_files, local_complete) = self.scan_local_folder(config).await?;
-        let (remote_files, remote_complete) = if remote_present || ensure_remote {
+        let (mut local_files, local_complete) = self.scan_local_folder(config).await?;
+        let (mut remote_files, remote_complete) = if remote_present || ensure_remote {
             match self
                 .scan_remote_folder_with_provider(provider, config)
                 .await
@@ -751,6 +753,7 @@ impl CloudService {
 
         let local_str = config.local_folder.to_string_lossy().to_string();
         let remote_str = config.remote_folder.clone();
+        Self::bound_local_scan_paths(&local_str, &mut local_files, &mut remote_files);
 
         // Load prior sync index (if any) for delete propagation + conflict detection.
         let index = self.load_index(config);
@@ -1105,6 +1108,27 @@ impl CloudService {
             }
             SyncAction::AskUser => {}
         }
+    }
+
+    /// A local link was skipped, not deleted. Bound both sides before comparing
+    /// so its remote twin cannot authorize a delete or a download through the
+    /// link. The shared bound also covers links in a file's parent directories
+    /// and unreadable local prefixes. Entries outside these paths still sync;
+    /// the existing baseline carry-forward retains entries we did not compare.
+    fn bound_local_scan_paths(
+        local_root: &str,
+        locals: &mut HashMap<String, FileInfo>,
+        remotes: &mut HashMap<String, FileInfo>,
+    ) {
+        let bound = crate::sync_core::ScanBound::for_sync(
+            local_root,
+            locals.keys().map(String::as_str),
+            remotes.keys().map(String::as_str),
+            &crate::sync_core::ScanBoundaries::default(),
+            crate::sync_core::ScanBoundaries::default(),
+        );
+        locals.retain(|path, _| !bound.covers(path));
+        remotes.retain(|path, _| !bound.covers(path));
     }
 
     /// Scan local folder and build file info map.
@@ -2600,7 +2624,19 @@ mod secval_b_tests {
         }
         async fn list(&mut self, _path: &str) -> Result<Vec<ProviderRemoteEntry>, ProviderError> {
             let mut out = Vec::new();
+            let mut directories = std::collections::HashSet::new();
             for (full, (size, mtime)) in &self.stored {
+                if let Some(rest) = full.strip_prefix(&format!("{}/", self.cwd)) {
+                    if let Some((name, _)) = rest.split_once('/') {
+                        if directories.insert(name.to_string()) {
+                            out.push(ProviderRemoteEntry::directory(
+                                name.to_string(),
+                                format!("{}/{}", self.cwd, name),
+                            ));
+                        }
+                        continue;
+                    }
+                }
                 let (parent, name) = parent_and_name(full);
                 if parent == self.cwd && !self.omit.contains(&name) {
                     let mut e = ProviderRemoteEntry::directory(name.clone(), full.clone());
@@ -2731,6 +2767,124 @@ mod secval_b_tests {
                 .build()
                 .expect("runtime")
                 .block_on(lead5_body())
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn local_symlink_keeps_remote_file_and_prior_baseline() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime")
+                .block_on(async {
+                    for (directory_link, root_link) in [(false, false), (true, false), (true, true)]
+                    {
+                        let root = tempfile::tempdir().unwrap();
+                        let local = root.path().join("local");
+                        if root_link {
+                            // A root explicitly chosen through a symlink stays
+                            // usable; only links below that root bound the run.
+                            let backing = root.path().join("backing");
+                            std::fs::create_dir(&backing).unwrap();
+                            std::os::unix::fs::symlink(&backing, &local).unwrap();
+                        } else {
+                            std::fs::create_dir(&local).unwrap();
+                        }
+                        let linked_file = if directory_link {
+                            "linked/data.txt"
+                        } else {
+                            "linked.txt"
+                        };
+                        if directory_link {
+                            std::fs::create_dir(local.join("linked")).unwrap();
+                        }
+                        for name in ["keep.txt", linked_file, "deleted.txt"] {
+                            std::fs::write(local.join(name), name).unwrap();
+                        }
+                        let config = CloudConfig {
+                            enabled: true,
+                            local_folder: local.clone(),
+                            remote_folder: "/symlink-review".into(),
+                            sync_direction: CompareDirection::Bidirectional,
+                            ..Default::default()
+                        };
+                        let deletes = Arc::new(AtomicUsize::new(0));
+                        let mut provider = OmittingProvider {
+                            cwd: "/".into(),
+                            stored: HashMap::new(),
+                            omit: vec![],
+                            deletes: deletes.clone(),
+                        };
+                        let svc = CloudService::new();
+                        svc.init(config.clone()).await;
+                        let first = svc
+                            .perform_full_sync_with_provider(&mut provider)
+                            .await
+                            .unwrap();
+                        assert!(first.errors.is_empty(), "{:?}", first.errors);
+                        assert_eq!(first.file_details.len(), 3);
+
+                        // The bytes still exist behind a link; the scan intentionally
+                        // does not follow it. This is not a user deletion.
+                        let target = root.path().join("relocated.txt");
+                        let link_path = local.join(if directory_link {
+                            "linked"
+                        } else {
+                            linked_file
+                        });
+                        std::fs::rename(&link_path, &target).unwrap();
+                        std::os::unix::fs::symlink(&target, &link_path).unwrap();
+                        std::fs::remove_file(local.join("deleted.txt")).unwrap();
+                        let second = svc
+                            .perform_full_sync_with_provider(&mut provider)
+                            .await
+                            .unwrap();
+                        assert!(second.errors.is_empty(), "{:?}", second.errors);
+                        assert!(
+                            provider
+                                .stored
+                                .contains_key(&format!("/symlink-review/{linked_file}")),
+                            "AeroCloud deleted the remote twin of a skipped local symlink"
+                        );
+                        assert_eq!(second.deleted, 1, "only the real deletion is propagated");
+                        assert_eq!(deletes.load(Ordering::SeqCst), 1);
+                        let target_file = if directory_link {
+                            target.join("data.txt")
+                        } else {
+                            target
+                        };
+                        assert_eq!(std::fs::read(&target_file).unwrap(), linked_file.as_bytes());
+                        let baseline = svc.load_index(&config).unwrap();
+                        assert!(baseline.files.contains_key(linked_file));
+                        assert!(!baseline.files.contains_key("deleted.txt"));
+
+                        // Without a baseline this same unseen path reads as a new
+                        // remote file. It must not cause a download through the link.
+                        let mut empty_baseline = baseline;
+                        empty_baseline.files.clear();
+                        save_sync_index(&empty_baseline).unwrap();
+                        let fresh = svc
+                            .perform_full_sync_with_provider(&mut provider)
+                            .await
+                            .unwrap();
+                        assert!(fresh.errors.is_empty(), "{:?}", fresh.errors);
+                        assert_eq!(fresh.downloaded, 0);
+                        assert_eq!(std::fs::read(&target_file).unwrap(), linked_file.as_bytes());
+                    }
+                })
         });
         match prev_xdg {
             Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
