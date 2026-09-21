@@ -12,7 +12,7 @@ Every feature, design decision and architectural choice is human-driven. AI acce
 
 ### Code Implementation
 
-AI tools (primarily Claude Code, with Codex and Gemini for specific tasks) were used to write code **according to detailed specifications** provided by the developer. The workflow follows a consistent pattern:
+AI tools were used to write code **according to detailed specifications** provided by the developer. The workflow follows a consistent pattern:
 
 1. **Human defines the specification**: feature scope, API design, data structures, security requirements, UI behavior
 2. **AI generates implementation**: code is produced following the spec, project conventions, and existing patterns
@@ -71,14 +71,18 @@ Reviewers and auditors can verify the human-driven development model by examinin
 - **Security audit trail**: `docs/dev/` contains audit reports showing human triage of AI-generated findings
 - **Issue tracker**: Feature requests, bug reports, and design discussions reflect human decision-making
 
-## Tools Used
+## How the Work Is Divided
 
-| Tool | Primary Use |
-|------|-------------|
-| Claude Code (Anthropic) | Code implementation, refactoring, security audits, translations |
-| Codex (OpenAI) | Code review, alternative implementations, counter-audits |
-| Gemini (Google) | Translations, documentation drafting |
-| GLM (Zhipu) | Batch translation for CJK languages |
+Several AI assistants are used, from more than one vendor, and the mix changes over time. They are deliberately not named here. A list of products dates quickly, and naming them reads as endorsement rather than as disclosure. What matters for transparency is the kind of work they do, and that has stayed stable:
+
+| Role | What it covers |
+|------|----------------|
+| Implementation | Writing code to a specification, refactoring, following the conventions already in the repository |
+| Independent review | A different assistant reviews what another produced, including security audits and counter-audits |
+| Translation | Propagating the 47 locales from the English reference |
+| Documentation | Drafting and keeping documents like this one current |
+
+Using more than one assistant is a deliberate choice rather than a preference. A review by the same tool that wrote the code repeats that tool's blind spots, so review work is given to a different one, and the reviewer never merges its own findings.
 
 ## Contact
 
