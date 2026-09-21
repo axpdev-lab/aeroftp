@@ -876,6 +876,8 @@ pub struct ProviderDownloadExecutor {
     session_model: ProviderExecutorSessionModel,
     /// Runtime capability snapshot used by the batch DAG builder (DAG-P1-01).
     capabilities: TransferCapabilities,
+    /// Caller-specific fan-out threshold, in addition to the shared size floor.
+    download_cutoff: u64,
     /// Whole-file attempts per entry id (DAG-P2-07 retry telemetry).
     attempt_counts: AttemptCounts,
     /// Warm-connection reuse pool (PD-FTP-2). Clone-pool workers that finished
@@ -904,9 +906,17 @@ impl ProviderDownloadExecutor {
             cancel_token,
             capabilities: finalize_capabilities_for_session_model(&capabilities, &session_model),
             session_model,
+            download_cutoff: 0,
             attempt_counts: AttemptCounts::default(),
             warm_workers: WarmWorkerPool::default(),
         }
+    }
+
+    /// Apply a caller's minimum file size for segmented downloads. The default
+    /// leaves existing callers on the shared eligibility/anti-fragmentation gate.
+    pub fn with_download_cutoff(mut self, cutoff: u64) -> Self {
+        self.download_cutoff = cutoff;
+        self
     }
 
     async fn clone_worker(&self) -> Result<WarmWorker, String> {
@@ -1154,6 +1164,10 @@ impl ProviderDownloadExecutor {
         dl_start: std::time::Instant,
         file_size: u64,
     ) -> Option<Result<(), String>> {
+        if file_size < self.download_cutoff {
+            return None;
+        }
+
         // Single-source-of-truth gate: capability + session-pool kind +
         // anti-fragmentation count + pool-cap clamp.
         let (requested_segments, max_segments) = segmented_runtime_request(

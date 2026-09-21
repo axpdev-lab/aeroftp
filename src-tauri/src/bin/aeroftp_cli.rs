@@ -7068,6 +7068,23 @@ fn resolve_cli_sftp_download_tuning(cli: &Cli, is_sftp: bool) -> Option<CliSftpD
     })
 }
 
+/// Resolve the same stream count and cutoff for direct and shared-batch downloads.
+/// SFTP overrides have already been resolved, including explicit concurrency
+/// taking precedence over a preset's connection count.
+fn resolve_cli_download_tuning(
+    cli: &Cli,
+    sftp_tuning: Option<CliSftpDownloadTuning>,
+) -> (usize, u64) {
+    let streams = sftp_tuning
+        .map(|tuning| tuning.connections)
+        .unwrap_or_else(|| cli.multi_thread_streams.clamp(1, 16));
+    let cutoff = sftp_tuning.map(|tuning| tuning.cutoff).unwrap_or_else(|| {
+        parse_size_filter(&cli.multi_thread_cutoff).unwrap_or(250 * 1024 * 1024)
+    });
+    // Provider setters apply this same lower bound.
+    (streams, cutoff.max(1024 * 1024))
+}
+
 fn expand_aliases(args: &[String], config: &CliConfigFile) -> Result<Vec<String>, String> {
     let mut expanded = args.to_vec();
     let mut seen = std::collections::HashSet::new();
@@ -10345,6 +10362,9 @@ async fn run_shared_provider_download_batch(
     use ftp_client_gui_lib::transfer_settings::TransferSettingsInput;
 
     let workers = effective_parallel_workers(cli);
+    let sftp_tuning =
+        resolve_cli_sftp_download_tuning(cli, base.provider_type() == ProviderType::Sftp);
+    let (streams, cutoff) = resolve_cli_download_tuning(cli, sftp_tuning);
     let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
 
     // DAG-P1-02: one live snapshot owns capability-aware settings and the
@@ -10355,10 +10375,13 @@ async fn run_shared_provider_download_batch(
             max_concurrent: Some(workers as u32),
             retry_count: None,
             timeout_seconds: None,
-            // The shared download executor uses the provider's measured Auto
-            // preference when its range, pool and file-size gates allow it.
             download_segments:
-                ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::MeasuredDefault,
+                ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Explicit(
+                    streams as u32,
+                ),
+            // CLI preset/concurrency precedence is resolved above. Passing the
+            // preset again would override --sftp-concurrency in the executor.
+            // The connected provider and its clones already carry read-ahead.
             sftp_download_preset: None,
         },
     )
@@ -10379,6 +10402,22 @@ async fn run_shared_provider_download_batch(
             .take()
             .expect("base provider must still be present");
         return Err(base);
+    }
+
+    if !cli.quiet && !cli.json && !cli.machine {
+        use ftp_client_gui_lib::transfer_dag::Capability;
+        let ceiling = if matches!(
+            capabilities.strict_concurrent_range_download,
+            Capability::Supported | Capability::SupportedAfterProbe
+        ) {
+            streams.min(model.max_leases())
+        } else {
+            1
+        };
+        eprintln!(
+            "Download policy: up to {} streams per file (requested {}, cutoff {}); smaller files use 1 stream",
+            ceiling, streams, format_size(cutoff)
+        );
     }
 
     // --max-transfer: pre-flight truncate to the remaining session budget
@@ -10457,14 +10496,17 @@ async fn run_shared_provider_download_batch(
     let dyn_sink: Arc<dyn TransferEventSink> = sink.clone();
 
     let resolved_download_segments = runtime_settings.download_segments.clone();
-    let executor = Arc::new(ProviderDownloadExecutor::new(
-        dyn_sink.clone(),
-        provider_arc.clone(),
-        runtime_settings,
-        cancel_token,
-        model,
-        capabilities,
-    ));
+    let executor = Arc::new(
+        ProviderDownloadExecutor::new(
+            dyn_sink.clone(),
+            provider_arc.clone(),
+            runtime_settings,
+            cancel_token,
+            model,
+            capabilities,
+        )
+        .with_download_cutoff(cutoff),
+    );
 
     // `BatchProgressSnapshot.bytes_transferred` is monotonic (sum of
     // succeeded `entry.size`); the observer fires after every task, so the
@@ -28550,26 +28592,16 @@ async fn create_and_connect_with(
     // the flag help so rclone users know what they are getting.
     let is_sftp = provider.provider_type() == ProviderType::Sftp;
     let sftp_tuning = resolve_cli_sftp_download_tuning(cli, is_sftp);
-    let effective_mt_streams = sftp_tuning
-        .map(|tuning| tuning.connections)
-        .unwrap_or_else(|| cli.multi_thread_streams.clamp(1, 16));
+    let (effective_mt_streams, mt_cutoff) = resolve_cli_download_tuning(cli, sftp_tuning);
     if effective_mt_streams > 1 || sftp_tuning.is_some_and(|tuning| tuning.preset.is_some()) {
-        let mt_cutoff = if let Some(tuning) = sftp_tuning {
-            tuning.cutoff
-        } else {
-            match parse_size_filter(&cli.multi_thread_cutoff) {
-                Ok(v) => v,
-                Err(e) => {
-                    if cli.verbose > 0 {
-                        eprintln!(
-                            "Warning: invalid --multi-thread-cutoff '{}': {} (using 250M)",
-                            cli.multi_thread_cutoff, e
-                        );
-                    }
-                    250 * 1024 * 1024
-                }
+        if sftp_tuning.is_none() && cli.verbose > 0 {
+            if let Err(e) = parse_size_filter(&cli.multi_thread_cutoff) {
+                eprintln!(
+                    "Warning: invalid --multi-thread-cutoff '{}': {} (using 250M)",
+                    cli.multi_thread_cutoff, e
+                );
             }
-        };
+        }
         provider.set_multi_thread_download(effective_mt_streams, mt_cutoff);
         if cli.verbose > 0 {
             let knob = if is_sftp && cli.sftp_concurrency > 0 {
@@ -72350,8 +72382,9 @@ mod tests {
 
     #[test]
     fn test_cap_files_to_max_transfer() {
-        // This test owns the process-global session counter (no other
-        // test touches it), so it is deterministic under parallel runs.
+        // Shared-batch fixtures also account bytes in this process. Serialize
+        // those writers with this test's exact counter assertions.
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
         let files: Vec<(String, String, u64)> = vec![
             ("a".into(), "a".into(), 40),
             ("b".into(), "b".into(), 40),
@@ -75265,6 +75298,325 @@ mod tests {
         }
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("mem-tree".to_string())
+        }
+    }
+
+    static SESSION_TRANSFER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
+
+    /// Records the actual provider path selected by the shared CLI batch, with
+    /// independent clones and deterministic bytes for both transfer methods.
+    #[derive(Clone)]
+    struct BatchDownloadProbe {
+        kind: ProviderType,
+        whole: Arc<AtomicU64>,
+        ranges: Arc<AtomicU64>,
+    }
+
+    impl BatchDownloadProbe {
+        const SIZE: u64 = 16 * 1024 * 1024;
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for BatchDownloadProbe {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            self.kind
+        }
+        fn display_name(&self) -> String {
+            "mem-tree".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            let _ = path;
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.whole.fetch_add(1, Ordering::SeqCst);
+            std::fs::write(local_path, vec![42; Self::SIZE as usize])
+                .map_err(ProviderError::IoError)
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            let _ = path;
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Ok(RemoteEntry::file(
+                "object".to_string(),
+                path.to_string(),
+                Self::SIZE,
+            ))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            let _ = path;
+            Ok(Self::SIZE)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            let _ = path;
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("mem-tree".to_string())
+        }
+
+        fn transfer_executor_kind(
+            &self,
+        ) -> ftp_client_gui_lib::providers::ProviderTransferExecutorKind {
+            use ftp_client_gui_lib::providers::ProviderTransferExecutorKind;
+            match self.kind {
+                ProviderType::Sftp => ProviderTransferExecutorKind::SftpConnectionPool,
+                ProviderType::Ftp | ProviderType::Ftps => {
+                    ProviderTransferExecutorKind::FtpConnectionPool
+                }
+                _ => ProviderTransferExecutorKind::HttpClonePool,
+            }
+        }
+        fn transfer_executor_max_sessions(&self) -> u16 {
+            8
+        }
+        fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            Ok(Box::new(self.clone()))
+        }
+        fn transfer_capabilities(&self) -> ftp_client_gui_lib::transfer_dag::TransferCapabilities {
+            use ftp_client_gui_lib::transfer_dag::{Capability, TransferCapabilities};
+            TransferCapabilities {
+                file_parallel: Capability::Supported,
+                session_pool: Capability::Supported,
+                strict_concurrent_range_download: if matches!(
+                    self.kind,
+                    ProviderType::Box
+                        | ProviderType::Dropbox
+                        | ProviderType::DrimeCloud
+                        | ProviderType::Uploadcare
+                ) {
+                    Capability::Unsupported
+                } else {
+                    Capability::Supported
+                },
+                max_file_slots: Some(8),
+                ..TransferCapabilities::default()
+            }
+        }
+        async fn read_range(
+            &mut self,
+            _path: &str,
+            _offset: u64,
+            len: u64,
+        ) -> Result<Vec<u8>, ProviderError> {
+            self.ranges.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![42; len as usize])
+        }
+    }
+
+    async fn probe_cli_shared_download(mut cli: Cli, kind: ProviderType) -> (u32, u64, u64) {
+        let _session = SESSION_TRANSFER_TEST_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("object");
+        cli.quiet = true;
+        cli.parallel = 8;
+        let probe = BatchDownloadProbe {
+            kind,
+            whole: Arc::default(),
+            ranges: Arc::default(),
+        };
+        let outcome = match run_shared_provider_download_batch(
+            Box::new(probe.clone()),
+            &[(
+                "/object".to_string(),
+                output.to_string_lossy().into_owned(),
+                BatchDownloadProbe::SIZE,
+            )],
+            &cli,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(_) => panic!("the clone-backed fixture must use the shared batch"),
+        };
+        assert_eq!(outcome.downloaded, 1, "{:?}", outcome.errors);
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+        assert_eq!(
+            std::fs::read(output).unwrap(),
+            vec![42; BatchDownloadProbe::SIZE as usize]
+        );
+        (
+            outcome.download_segments.count(),
+            probe.whole.load(Ordering::SeqCst),
+            probe.ranges.load(Ordering::SeqCst),
+        )
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_one_stream_uses_canonical_download() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 1;
+        cli.multi_thread_cutoff = "1M".to_string();
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::WebDav).await,
+            (1, 1, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_four_streams_use_four_ranges() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 4;
+        cli.multi_thread_cutoff = "1M".to_string();
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::WebDav).await,
+            (4, 0, 4)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_below_cutoff_uses_canonical_download() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 4;
+        cli.multi_thread_cutoff = "32M".to_string();
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::WebDav).await,
+            (4, 1, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_sftp_concurrency_overrides_generic_streams() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 1;
+        cli.sftp_concurrency = 4;
+        cli.multi_thread_cutoff = "1M".to_string();
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::Sftp).await,
+            (4, 0, 4)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_sftp_preset_and_explicit_concurrency_keep_precedence() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 8;
+        cli.multi_thread_cutoff = "1M".to_string();
+        cli.sftp_download_preset = Some(SftpDownloadPreset::Compatibility);
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::Sftp).await,
+            (1, 1, 0)
+        );
+
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 1;
+        cli.multi_thread_cutoff = "1M".to_string();
+        cli.sftp_download_preset = Some(SftpDownloadPreset::Efficient);
+        cli.sftp_concurrency = 4;
+        // The explicit connection count wins, but the preset's 250 MiB
+        // cutoff still wins over the generic cutoff, exactly as direct get.
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::Sftp).await,
+            (4, 1, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_policy_covers_all_pool_backends() {
+        for kind in [
+            ProviderType::S3,
+            ProviderType::Azure,
+            ProviderType::WebDav,
+            ProviderType::Backblaze,
+            ProviderType::Sftp,
+            ProviderType::Ftp,
+            ProviderType::Ftps,
+        ] {
+            let mut cli = test_cli();
+            cli.multi_thread_streams = 1;
+            cli.multi_thread_cutoff = "1M".to_string();
+            assert_eq!(
+                probe_cli_shared_download(cli, kind).await,
+                (1, 1, 0),
+                "{kind:?}"
+            );
+
+            let mut cli = test_cli();
+            cli.multi_thread_streams = 3;
+            // Equality must admit ranges; below-cutoff is tested separately.
+            cli.multi_thread_cutoff = "16M".to_string();
+            assert_eq!(
+                probe_cli_shared_download(cli, kind).await,
+                (3, 0, 3),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_non_range_pool_backends_stay_whole_file() {
+        for kind in [
+            ProviderType::Box,
+            ProviderType::Dropbox,
+            ProviderType::DrimeCloud,
+            ProviderType::Uploadcare,
+        ] {
+            let mut cli = test_cli();
+            cli.multi_thread_streams = 3;
+            cli.multi_thread_cutoff = "1M".to_string();
+            assert_eq!(
+                probe_cli_shared_download(cli, kind).await,
+                (3, 1, 0),
+                "{kind:?}"
+            );
         }
     }
 
