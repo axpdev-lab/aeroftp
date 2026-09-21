@@ -1003,3 +1003,28 @@ jobs:
           installers-regex: '_x64-setup\.exe$|_x64_en-US\.msi$'
           fork-user: axpnet
           token: ${{ secrets.WINGET_TOKEN }}
+
+  publish-flatpark:
+    # FlatPark (https://flatpark.org) packages the official .deb as a Flatpak
+    # through extra-data and polls our releases once a day; this ping lets it
+    # open the update as soon as the release exists, instead of up to a day
+    # later. It has to live here rather than in an `on: release` workflow,
+    # because a release created with GITHUB_TOKEN triggers no other workflow.
+    # Same ordering reason as publish-winget: FlatPark validates the tag
+    # against the published release, so it must exist first. No token is sent:
+    # the endpoint takes the repository from its own catalog and only checks
+    # public state. continue-on-error keeps a FlatPark outage from marking the
+    # release run red; the daily poll still picks the release up.
+    needs: [linux-validate, build-and-release, publish-github-release]
+    if: ${{ startsWith(github.ref, 'refs/tags/') && needs.linux-validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    continue-on-error: true
+    steps:
+      - name: Notify FlatPark
+        uses: flatpark/publish-action@b67fca1b80b095541bc011967e0a35292bed14d8 # v1.0.2
+        with:
+          # The Flatpak ID stays com.aeroftp.AeroFTP after the 4.2.0 identifier
+          # rename: moving a Flatpak ID needs an end-of-life rebase on their side.
+          app-id: com.aeroftp.AeroFTP
+          tag: ${{ github.ref_name }}

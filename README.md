@@ -67,7 +67,7 @@
 
 | Platform | Status | Packages | Notes |
 |----------|--------|----------|-------|
-| **Linux** | Stable | `.deb`, `.rpm`, `.snap`, `.AppImage`, AUR | GNOME, KDE Plasma, XFCE, Hyprland, Sway, i3 (X11 & Wayland) |
+| **Linux** | Stable | `.deb`, `.rpm`, `.snap`, `.AppImage`, AUR, Flatpak (FlatPark) | GNOME, KDE Plasma, XFCE, Hyprland, Sway, i3 (X11 & Wayland) |
 | **Windows** | Stable | `.msi`, `.exe`, `.zip` portable, winget | Fully tested, not Microsoft Store signed |
 | **macOS (Intel & Apple Silicon)** | Stable | `.dmg` (aarch64), `.dmg` (x64) | Not Apple code-signed, requires `xattr` workaround |
 
@@ -730,9 +730,9 @@ sudo snap install aeroftp
 
 #### AUR (Arch Linux)
 ```bash
-yay - S aeroftp-bin
+yay -S aeroftp-bin
 # or
-paru - S aeroftp-bin
+paru -S aeroftp-bin
 ```
 
 <p align="center">
@@ -742,6 +742,14 @@ paru - S aeroftp-bin
 </p>
 
 > Available on Arch Linux and derivatives (Manjaro, EndeavourOS, Garuda). Binary package - no compilation needed.
+
+#### Flatpak (FlatPark)
+```bash
+flatpak remote-add --if-not-exists flatpark https://dl.flatpark.org/flatpark.flatpakrepo
+flatpak install flatpark com.aeroftp.AeroFTP
+```
+
+> Community repository, co-maintained with us: it installs the official `.deb` from our releases unmodified and follows every new release ([app page](https://flatpark.org/apps/com.aeroftp.AeroFTP)). The Flatpak ID stays `com.aeroftp.AeroFTP`. A Flatpak install keeps its own configuration, so on first run AeroFTP offers to import an existing native one (a copy, with the vault still locked behind its password).
 
 #### Launchpad PPA (Ubuntu / Debian)
 
