@@ -975,7 +975,15 @@ jobs:
 
   # Publish to Windows Package Manager (winget) on tag pushes
   publish-winget:
-    needs: [linux-validate, build-and-release]
+    # `publish-github-release` belongs in this list even though nothing is
+    # consumed from it as an artifact: the action below resolves the release by
+    # tag through the API, so the release has to exist before this job starts.
+    # Without the dependency the two run in parallel and this one can lose the
+    # race, which it did at v4.2.0: it asked for the release at 16:06:13 and the
+    # release was published at 16:06:26, so it failed with a bare 404 that reads
+    # like a token or identifier problem and is neither. The implicit success()
+    # on `needs` is what makes this enough.
+    needs: [linux-validate, build-and-release, publish-github-release]
     if: ${{ startsWith(github.ref, 'refs/tags/') && needs.linux-validate.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
