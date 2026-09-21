@@ -3369,7 +3369,11 @@
             "emptyTrash": "Tong Sampah kosong",
             "itemCount": "{count} item dalam Tong Sampah",
             "moveToTrash": "Pindah ke Tong Sampah",
-            "restoreConfirm": "Pulihkan {name} ke lokasi asalnya?"
+            "restoreConfirm": "Pulihkan {name} ke lokasi asalnya?",
+            "homeCopyPrompt": "{count} item, bermula dengan {name}, berada pada pemacu tanpa tong sampah yang boleh digunakan. Memindahkannya ke tong sampah akan menyalinnya ke tong sampah dalam folder rumah anda, yang boleh mengambil masa lama dan memerlukan ruang kosong. Padam secara kekal sahaja?",
+            "copyToHomeTrash": "Salin ke Tong Sampah folder rumah",
+            "permanentAfterFailure": "{count} item, bermula dengan {name}, tidak dapat dipindahkan ke tong sampah. Padam secara kekal? Tindakan ini tidak boleh dibuat asal.",
+            "kept": "{name} dikekalkan: tiada apa yang dipadam"
         },
         "quickLook": {
             "noPreview": "Tiada pratonton tersedia",

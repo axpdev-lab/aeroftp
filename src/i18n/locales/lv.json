@@ -3369,7 +3369,11 @@
             "emptyTrash": "Atkritne ir tukša",
             "itemCount": "{count} vienumi atkritnes",
             "moveToTrash": "Pārvietot uz atkritni",
-            "restoreConfirm": "Atjaunot {name} sākotnējā vietā?"
+            "restoreConfirm": "Atjaunot {name} sākotnējā vietā?",
+            "homeCopyPrompt": "{count} vienums(-i), sākot ar {name}, atrodas diskā bez izmantojamas atkritnes. Pārvietošana uz atkritni tos kopētu uz mājas mapes atkritni, kas var aizņemt ilgu laiku un prasa brīvu vietu. Dzēst tos neatgriezeniski?",
+            "copyToHomeTrash": "Kopēt uz mājas mapes atkritni",
+            "permanentAfterFailure": "{count} vienumu(-us), sākot ar {name}, neizdevās pārvietot uz atkritni. Dzēst tos neatgriezeniski? To nevar atsaukt.",
+            "kept": "{name} tika saglabāts: nekas netika dzēsts"
         },
         "quickLook": {
             "noPreview": "Priekšskatījums nav pieejams",

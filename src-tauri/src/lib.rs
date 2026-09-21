@@ -209,6 +209,7 @@ mod plugins;
 pub mod proc_stats;
 pub mod profile_auth_state;
 mod profile_export;
+mod trash_guard;
 // The CLI's import listings mark a profile whose endpoint would need cleartext
 // consent, and they share the predicate with the S3 provider rather than
 // re-deciding it. The module stays private; only the predicate is re-exported.

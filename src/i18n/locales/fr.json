@@ -3369,7 +3369,11 @@
             "emptyTrash": "La corbeille est vide",
             "itemCount": "{count} éléments dans la corbeille",
             "moveToTrash": "Mettre à la corbeille",
-            "restoreConfirm": "Restaurer {name} a son emplacement d'origine ?"
+            "restoreConfirm": "Restaurer {name} a son emplacement d'origine ?",
+            "homeCopyPrompt": "{count} élément(s), à commencer par {name}, se trouvent sur un lecteur sans corbeille utilisable. Les placer dans la corbeille les copierait dans la corbeille de votre dossier personnel, ce qui peut être long et demande de l'espace libre. Les supprimer définitivement ?",
+            "copyToHomeTrash": "Copier dans la corbeille personnelle",
+            "permanentAfterFailure": "{count} élément(s), à commencer par {name}, n'ont pas pu être placés dans la corbeille. Les supprimer définitivement ? Cette action est irréversible.",
+            "kept": "{name} a été conservé : rien n'a été supprimé"
         },
         "quickLook": {
             "noPreview": "Aucun aperçu disponible",

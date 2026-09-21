@@ -3334,7 +3334,11 @@
             "emptyTrash": "ゴミ箱は空です",
             "itemCount": "ゴミ箱に {count} 件",
             "moveToTrash": "ゴミ箱に移動",
-            "restoreConfirm": "{name} を元の場所に復元しますか？"
+            "restoreConfirm": "{name} を元の場所に復元しますか？",
+            "homeCopyPrompt": "{name} を含む {count} 個の項目は、使用できるゴミ箱がないドライブにあります。ゴミ箱に移動するとホームフォルダーのゴミ箱にコピーされ、時間がかかるうえ空き容量も必要です。代わりに完全に削除しますか？",
+            "copyToHomeTrash": "ホームのゴミ箱にコピー",
+            "permanentAfterFailure": "{name} を含む {count} 個の項目をゴミ箱に移動できませんでした。完全に削除しますか？この操作は元に戻せません。",
+            "kept": "{name} は保持されました: 何も削除されていません"
         },
         "quickLook": {
             "noPreview": "プレビューはありません",

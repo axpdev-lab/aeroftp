@@ -4212,7 +4212,11 @@
             "restore": "Restore",
             "restoreAll": "Restore All",
             "restoreConfirm": "Restore {name} to its original location?",
-            "title": "Trash"
+            "title": "Trash",
+            "homeCopyPrompt": "{count} item(s), starting with {name}, are on a drive without a trash you can use. Moving them to the trash would copy them into the trash in your home folder, which can take a long time and needs free space there. Delete them permanently instead?",
+            "copyToHomeTrash": "Copy to Home Trash",
+            "permanentAfterFailure": "{count} item(s), starting with {name}, could not be moved to the trash. Delete them permanently? This cannot be undone.",
+            "kept": "{name} was kept: nothing was deleted"
         },
         "ui": {
             "clearSearch": "Clear search",

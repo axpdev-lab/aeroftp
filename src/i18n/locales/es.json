@@ -3369,7 +3369,11 @@
             "emptyTrash": "La papelera está vacía",
             "itemCount": "{count} elementos en la Papelera",
             "moveToTrash": "Mover a la papelera",
-            "restoreConfirm": "¿Restaurar {name} a su ubicación original?"
+            "restoreConfirm": "¿Restaurar {name} a su ubicación original?",
+            "homeCopyPrompt": "{count} elemento(s), empezando por {name}, están en una unidad sin una papelera utilizable. Moverlos a la papelera los copiaría a la papelera de tu carpeta personal, lo que puede tardar mucho y requiere espacio libre. ¿Eliminarlos permanentemente?",
+            "copyToHomeTrash": "Copiar a la papelera personal",
+            "permanentAfterFailure": "No se pudieron mover a la papelera {count} elemento(s), empezando por {name}. ¿Eliminarlos permanentemente? Esta acción no se puede deshacer.",
+            "kept": "Se conservó {name}: no se eliminó nada"
         },
         "quickLook": {
             "noPreview": "Vista previa no disponible",

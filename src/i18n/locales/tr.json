@@ -3369,7 +3369,11 @@
             "emptyTrash": "Çöp Kutusu boş",
             "itemCount": "Çöp Kutusunda {count} öğe",
             "moveToTrash": "Çöp Kutusuna Taşı",
-            "restoreConfirm": "{name} orijinal konumuna geri yüklensin mi?"
+            "restoreConfirm": "{name} orijinal konumuna geri yüklensin mi?",
+            "homeCopyPrompt": "{name} ile başlayan {count} öğe, kullanılabilir bir çöp kutusu olmayan bir sürücüde. Bunları çöp kutusuna taşımak, ana klasörünüzdeki çöp kutusuna kopyalanmalarına yol açar; bu uzun sürebilir ve boş alan gerektirir. Bunun yerine kalıcı olarak silinsin mi?",
+            "copyToHomeTrash": "Ana klasör çöp kutusuna kopyala",
+            "permanentAfterFailure": "{name} ile başlayan {count} öğe çöp kutusuna taşınamadı. Kalıcı olarak silinsin mi? Bu işlem geri alınamaz.",
+            "kept": "{name} korundu: hiçbir şey silinmedi"
         },
         "quickLook": {
             "noPreview": "Önizleme mevcut değil",

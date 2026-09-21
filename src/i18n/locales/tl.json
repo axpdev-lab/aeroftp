@@ -3369,7 +3369,11 @@
             "emptyTrash": "Walang laman ang Basurahan",
             "itemCount": "{count} item sa Basurahan",
             "moveToTrash": "Ilipat sa Basurahan",
-            "restoreConfirm": "Ibalik ang {name} sa orihinal na lokasyon nito?"
+            "restoreConfirm": "Ibalik ang {name} sa orihinal na lokasyon nito?",
+            "homeCopyPrompt": "Ang {count} item, simula sa {name}, ay nasa drive na walang magagamit na basurahan. Kapag inilipat sa basurahan, makokopya ang mga ito sa basurahan ng iyong home folder, na maaaring matagal at nangangailangan ng bakanteng espasyo. Tanggalin na lang nang permanente?",
+            "copyToHomeTrash": "Kopyahin sa Basurahan ng home",
+            "permanentAfterFailure": "Hindi mailipat sa basurahan ang {count} item, simula sa {name}. Tanggalin nang permanente? Hindi na ito maibabalik.",
+            "kept": "Pinanatili ang {name}: walang tinanggal"
         },
         "quickLook": {
             "noPreview": "Walang available na preview",

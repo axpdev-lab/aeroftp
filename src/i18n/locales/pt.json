@@ -3369,7 +3369,11 @@
             "emptyTrash": "A Lixeira está vazia",
             "itemCount": "{count} itens na Lixeira",
             "moveToTrash": "Mover para a Lixeira",
-            "restoreConfirm": "Restaurar {name} para o local original?"
+            "restoreConfirm": "Restaurar {name} para o local original?",
+            "homeCopyPrompt": "{count} item(ns), começando por {name}, estão em uma unidade sem lixeira utilizável. Movê-los para a lixeira os copiaria para a lixeira da sua pasta pessoal, o que pode demorar e exige espaço livre. Excluí-los permanentemente?",
+            "copyToHomeTrash": "Copiar para a lixeira pessoal",
+            "permanentAfterFailure": "Não foi possível mover {count} item(ns), começando por {name}, para a lixeira. Excluí-los permanentemente? Esta ação não pode ser desfeita.",
+            "kept": "{name} foi mantido: nada foi excluído"
         },
         "quickLook": {
             "noPreview": "Prévia não disponível",

@@ -3369,7 +3369,11 @@
             "emptyTrash": "Prügikast on tühi",
             "itemCount": "{count} üksust prügikastis",
             "moveToTrash": "Teisalda prügikasti",
-            "restoreConfirm": "Taasta {name} algsesse asukohta?"
+            "restoreConfirm": "Taasta {name} algsesse asukohta?",
+            "homeCopyPrompt": "{count} üksust, alates {name}, asuvad kettal, millel pole kasutatavat prügikasti. Prügikasti viimine kopeeriks need kodukausta prügikasti, mis võib võtta kaua aega ja vajab vaba ruumi. Kas kustutada need hoopis jäädavalt?",
+            "copyToHomeTrash": "Kopeeri kodukausta prügikasti",
+            "permanentAfterFailure": "{count} üksust, alates {name}, ei õnnestunud prügikasti viia. Kas kustutada need jäädavalt? Seda ei saa tagasi võtta.",
+            "kept": "{name} jäeti alles: midagi ei kustutatud"
         },
         "quickLook": {
             "noPreview": "Eelvaade pole saadaval",

@@ -3369,7 +3369,11 @@
             "emptyTrash": "Šiukšlinė tuščia",
             "itemCount": "{count} elementų šiukšlinėje",
             "moveToTrash": "Perkelti į šiukšlinę",
-            "restoreConfirm": "Atkurti {name} į pradinę vietą?"
+            "restoreConfirm": "Atkurti {name} į pradinę vietą?",
+            "homeCopyPrompt": "{count} elementas(-ai), pradedant {name}, yra diske be tinkamos šiukšlinės. Perkėlus juos į šiukšlinę, jie būtų nukopijuoti į namų aplanko šiukšlinę, o tai gali ilgai užtrukti ir reikalauja laisvos vietos. Ištrinti juos visam laikui?",
+            "copyToHomeTrash": "Kopijuoti į namų aplanko šiukšlinę",
+            "permanentAfterFailure": "Nepavyko perkelti į šiukšlinę {count} elemento(-ų), pradedant {name}. Ištrinti juos visam laikui? To negalima atšaukti.",
+            "kept": "{name} paliktas: niekas neištrinta"
         },
         "quickLook": {
             "noPreview": "Peržiūra nepasiekiama",

@@ -3369,7 +3369,11 @@
             "emptyTrash": "Rusl Tómt",
             "itemCount": "{count} hlutir í Rusli",
             "moveToTrash": "Færa í Rusl",
-            "restoreConfirm": "Endurheimta {name} á upprunalegan stað?"
+            "restoreConfirm": "Endurheimta {name} á upprunalegan stað?",
+            "homeCopyPrompt": "{count} atriði, fyrst {name}, eru á drifi án nothæfrar ruslafötu. Að færa þau í ruslið myndi afrita þau í ruslið í heimamöppunni, sem getur tekið langan tíma og þarf laust pláss. Eyða þeim varanlega í staðinn?",
+            "copyToHomeTrash": "Afrita í rusl heimamöppu",
+            "permanentAfterFailure": "Ekki tókst að færa {count} atriði, fyrst {name}, í ruslið. Eyða þeim varanlega? Ekki er hægt að afturkalla þetta.",
+            "kept": "{name} var haldið: engu var eytt"
         },
         "quickLook": {
             "noPreview": "Engin forskoðun tiltæk",
