@@ -3369,7 +3369,12 @@
             "emptyTrash": "La paperera és buida",
             "itemCount": "{count} elements a la paperera",
             "moveToTrash": "Moure a la paperera",
-            "restoreConfirm": "Restaurar {name} a la seva ubicació original?"
+            "restoreConfirm": "Restaurar {name} a la seva ubicació original?",
+            "homeCopyPrompt": "{count} element(s), començant per {name}, són en una unitat sense una paperera utilitzable. Moure'ls a la paperera els copiaria a la paperera de la carpeta personal, cosa que pot trigar molt i requereix espai lliure. Voleu eliminar-los permanentment?",
+            "copyToHomeTrash": "Copia a la paperera personal",
+            "permanentAfterFailure": "No s'han pogut moure a la paperera {count} element(s), començant per {name}. Voleu eliminar-los permanentment? Aquesta acció no es pot desfer.",
+            "kept": "S'ha conservat {name}: no s'ha eliminat res",
+            "keptMultiple": "Deixats al seu lloc, sense eliminar: {count} element(s)"
         },
         "quickLook": {
             "noPreview": "No hi ha previsualització disponible",

@@ -3369,7 +3369,12 @@
             "emptyTrash": "A Kuka üres",
             "itemCount": "{count} elem a Kukában",
             "moveToTrash": "Áthelyezés a Kukába",
-            "restoreConfirm": "Visszaállítja a(z) {name} elemet az eredeti helyére?"
+            "restoreConfirm": "Visszaállítja a(z) {name} elemet az eredeti helyére?",
+            "homeCopyPrompt": "{count} elem, kezdve ezzel: {name}, olyan meghajtón van, amelynek nincs használható kukája. A kukába helyezés a saját mappa kukájába másolná őket, ami sokáig tarthat és szabad helyet igényel. Inkább véglegesen törli őket?",
+            "copyToHomeTrash": "Másolás a saját mappa kukájába",
+            "permanentAfterFailure": "{count} elemet, kezdve ezzel: {name}, nem sikerült a kukába helyezni. Véglegesen törli őket? Ez nem vonható vissza.",
+            "kept": "{name} megmaradt: semmi sem lett törölve",
+            "keptMultiple": "A helyén maradt, nem törölve: {count} elem"
         },
         "quickLook": {
             "noPreview": "Nincs elérhető előnézet",

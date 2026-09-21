@@ -3369,7 +3369,12 @@
             "emptyTrash": "Sampah Kosong",
             "itemCount": "{count} item di Sampah",
             "moveToTrash": "Pindahkan ke Sampah",
-            "restoreConfirm": "Pulihkan {name} ke lokasi aslinya?"
+            "restoreConfirm": "Pulihkan {name} ke lokasi aslinya?",
+            "homeCopyPrompt": "{count} item, dimulai dari {name}, berada di drive tanpa tempat sampah yang dapat digunakan. Memindahkannya ke tempat sampah akan menyalinnya ke tempat sampah di folder beranda Anda, yang bisa memakan waktu lama dan membutuhkan ruang kosong. Hapus permanen saja?",
+            "copyToHomeTrash": "Salin ke Sampah di folder beranda",
+            "permanentAfterFailure": "{count} item, dimulai dari {name}, tidak dapat dipindahkan ke tempat sampah. Hapus permanen? Tindakan ini tidak dapat dibatalkan.",
+            "kept": "{name} dipertahankan: tidak ada yang dihapus",
+            "keptMultiple": "Dibiarkan di tempatnya, tidak dihapus: {count} item"
         },
         "quickLook": {
             "noPreview": "Tidak ada pratinjau tersedia",

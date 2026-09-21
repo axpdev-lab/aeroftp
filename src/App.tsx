@@ -200,6 +200,7 @@ import {
   type TransferQueueJournalDto,
 } from './utils/transferQueueJournal';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
+import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
@@ -969,7 +970,7 @@ const App: React.FC = () => {
   }, [scanningState.active]);
 
   // Dialogs
-  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void; confirmLabel?: string; confirmColor?: 'red' | 'blue' | 'green' } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void; confirmLabel?: string; confirmColor?: 'red' | 'blue' | 'green'; secondaryLabel?: string; onSecondary?: () => void } | null>(null);
   const [pendingUnifiedTransferPlan, setPendingUnifiedTransferPlan] = useState<{
     plan: UnifiedTransferPlan;
     sourceLocalPanelId?: 'local' | 'local2';
@@ -3010,7 +3011,14 @@ const App: React.FC = () => {
       else if (showAboutDialog) setShowAboutDialog(false);
       else if (showSettingsPanel) setShowSettingsPanel(false);
       else if (inputDialog) setInputDialog(null);
-      else if (confirmDialog) setConfirmDialog(null);
+      // Through onCancel, not a bare clear: several confirmations are awaited
+      // as promises (trash choices, overwrite prompts) and settle only there,
+      // so clearing the dialog directly left them pending, and a batch latch
+      // with them.
+      else if (confirmDialog) {
+        if (confirmDialog.onCancel) confirmDialog.onCancel();
+        else setConfirmDialog(null);
+      }
       else if (selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0 || selectedLocalFiles2.size > 0) {
         setSelectedRemoteFiles(new Set());
         setSelectedLocalFiles(new Set());
@@ -12922,6 +12930,38 @@ const App: React.FC = () => {
     }
   });
 
+  // Moving local items to the trash can need the user's say (a drive with no
+  // usable trash, or a trash that refused): see utils/localTrash.ts.
+  const askHomeCopy = (paths: string[]) => new Promise<HomeCopyChoice>(resolve => {
+    const name = paths[0].split(/[\\/]/).pop() || paths[0];
+    setConfirmDialog({
+      message: t('trash.homeCopyPrompt', { count: paths.length, name }),
+      confirmLabel: t('trash.deletePermanently'),
+      confirmColor: 'red',
+      onConfirm: () => { setConfirmDialog(null); resolve('permanent'); },
+      secondaryLabel: t('trash.copyToHomeTrash'),
+      onSecondary: () => { setConfirmDialog(null); resolve('copy'); },
+      onCancel: () => { setConfirmDialog(null); resolve('cancel'); },
+    });
+  });
+
+  const askPermanentAfterTrashFailure = (paths: string[]) => new Promise<boolean>(resolve => {
+    const name = paths[0].split(/[\\/]/).pop() || paths[0];
+    setConfirmDialog({
+      message: t('trash.permanentAfterFailure', { count: paths.length, name }),
+      confirmLabel: t('trash.deletePermanently'),
+      confirmColor: 'red',
+      onConfirm: () => { setConfirmDialog(null); resolve(true); },
+      onCancel: () => { setConfirmDialog(null); resolve(false); },
+    });
+  });
+
+  const localTrashDeps = (isCancelled?: () => boolean): LocalTrashDeps => ({
+    invoke: (cmd, args) => invoke(cmd, args),
+    askHomeCopy,
+    isCancelled,
+  });
+
   const deleteMultipleLocalFiles = withBatchLatch((filesOverride?: string[], localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
     const panel = getActiveLocalState(localPanelId);
     const names = filesOverride || Array.from(panel.selection);
@@ -12942,23 +12982,25 @@ const App: React.FC = () => {
         setScanningState({ active: true, folderName: `${names.length} items`, message: t('activity.delete_scanning') || `Deleting ${names.length} items...`, operation: 'delete' });
       }
 
-      for (const name of names) {
-        if (batchCancelledRef.current) break;
-
-        const file = panel.files.find(f => f.name === name);
-        if (file) {
-          try {
-            await invoke('delete_to_trash', { path: file.path });
-            if (file.is_dir) {
-              deletedFolders.push(file.path);
-            } else {
-              deletedFiles.push(file.path);
-            }
-          } catch (err) {
-            failedFiles.push(name);
-            notify.error(t('toast.deleteFail'), `${name}: ${String(err)}`);
-          }
-        }
+      const selected = names
+        .map(name => panel.files.find(f => f.name === name))
+        .filter((file): file is NonNullable<typeof file> => Boolean(file));
+      const outcome = await trashLocalPaths(
+        selected.map(file => file.path),
+        localTrashDeps(() => batchCancelledRef.current),
+      );
+      for (const file of selected) {
+        if (!outcome.removed.includes(file.path)) continue;
+        if (file.is_dir) deletedFolders.push(file.path);
+        else deletedFiles.push(file.path);
+      }
+      for (const { path, error } of outcome.failed) {
+        const name = path.split(/[\\/]/).pop() || path;
+        failedFiles.push(name);
+        notify.error(t('toast.deleteFail'), `${name}: ${error}`);
+      }
+      if (outcome.kept.length > 0) {
+        notify.info(t('trash.keptMultiple', { count: outcome.kept.length }));
       }
       setScanningState(INITIAL_SCANNING_STATE);
       if (panel.currentPath) await panel.load(panel.currentPath);
@@ -13074,15 +13116,17 @@ const App: React.FC = () => {
 
     const performDelete = async () => {
       const logId = humanLog.logStart('DELETE', { filename: path });
-      try {
-        await invoke('delete_to_trash', { path });
+      const outcome = await trashLocalPaths([path], localTrashDeps());
+      if (outcome.removed.includes(path)) {
         humanLog.logSuccess('DELETE', { filename: path }, logId);
         notify.success(t('toast.deleted'), fileName);
         await loadLocalFiles(currentLocalPath);
-      }
-      catch (error) {
+      } else if (outcome.failed.length > 0) {
         humanLog.logError('DELETE', { filename: path }, logId);
-        notify.error(t('toast.deleteFail'), String(error));
+        notify.error(t('toast.deleteFail'), outcome.failed[0].error);
+      } else {
+        // The user chose to keep it when asked: nothing happened, say so.
+        humanLog.updateEntry(logId, { status: 'success', message: t('trash.kept', { name: fileName }) });
       }
     };
 
@@ -15883,7 +15927,7 @@ const App: React.FC = () => {
         {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
         {settings.showTransferProgress !== false && <TransferToastContainer onOpen={transferQueue.show} />}
         <GlobalTooltip />
-        {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} confirmLabel={confirmDialog.confirmLabel} confirmColor={confirmDialog.confirmColor} />}
+        {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} confirmLabel={confirmDialog.confirmLabel} confirmColor={confirmDialog.confirmColor} secondaryLabel={confirmDialog.secondaryLabel} onSecondary={confirmDialog.onSecondary} />}
         {pendingUnifiedTransferPlan && (
           <UnifiedTransferPlanDialog
             plan={pendingUnifiedTransferPlan.plan}
@@ -16211,17 +16255,18 @@ const App: React.FC = () => {
               );
             }}
             onDeleteFiles={async (paths) => {
-              for (const p of paths) {
-                try {
-                  await invoke('delete_to_trash', { path: p });
-                } catch {
-                  try {
-                    await invoke('delete_local_file', { path: p });
-                  } catch (err) {
-                    const fileName = p.split(/[\\/]/).pop() || p;
-                    notify.error(t('toast.deleteFail'), `${fileName}: ${String(err)}`);
-                  }
-                }
+              // A trash failure used to fall through to a permanent delete
+              // with no question asked; now the user decides.
+              const outcome = await trashLocalPaths(paths, {
+                ...localTrashDeps(),
+                askPermanentAfterFailure: askPermanentAfterTrashFailure,
+              });
+              for (const { path, error } of outcome.failed) {
+                const fileName = path.split(/[\\/]/).pop() || path;
+                notify.error(t('toast.deleteFail'), `${fileName}: ${error}`);
+              }
+              if (outcome.kept.length > 0) {
+                notify.info(t('trash.keptMultiple', { count: outcome.kept.length }));
               }
               loadLocalFiles(currentLocalPath);
             }}

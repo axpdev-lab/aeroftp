@@ -3758,7 +3758,12 @@
             "emptyTrash": "Il Cestino è vuoto",
             "itemCount": "{count} elementi nel Cestino",
             "moveToTrash": "Sposta nel Cestino",
-            "restoreConfirm": "Ripristinare {name} nella posizione originale?"
+            "restoreConfirm": "Ripristinare {name} nella posizione originale?",
+            "homeCopyPrompt": "{count} elementi, a partire da {name}, si trovano su un'unità senza un cestino utilizzabile. Spostarli nel cestino li copierebbe nel cestino della cartella home, un'operazione che può richiedere molto tempo e spazio libero. Eliminarli definitivamente?",
+            "copyToHomeTrash": "Copia nel Cestino della home",
+            "permanentAfterFailure": "Non è stato possibile spostare nel cestino {count} elementi, a partire da {name}. Eliminarli definitivamente? L'operazione non può essere annullata.",
+            "kept": "Elemento {name} mantenuto: non è stato eliminato nulla",
+            "keptMultiple": "Lasciati al loro posto, non eliminati: {count} elementi"
         },
         "quickLook": {
             "noPreview": "Anteprima non disponibile",

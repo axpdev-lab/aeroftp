@@ -3369,7 +3369,12 @@
             "emptyTrash": "휴지통이 비어 있습니다",
             "itemCount": "휴지통에 {count}개 항목",
             "moveToTrash": "휴지통으로 이동",
-            "restoreConfirm": "{name}을(를) 원래 위치로 복원하시겠습니까?"
+            "restoreConfirm": "{name}을(를) 원래 위치로 복원하시겠습니까?",
+            "homeCopyPrompt": "{name}을(를) 포함한 {count}개 항목이 사용할 수 있는 휴지통이 없는 드라이브에 있습니다. 휴지통으로 이동하면 홈 폴더의 휴지통으로 복사되며, 시간이 오래 걸리고 여유 공간이 필요할 수 있습니다. 대신 영구 삭제할까요?",
+            "copyToHomeTrash": "홈 휴지통으로 복사",
+            "permanentAfterFailure": "{name}을(를) 포함한 {count}개 항목을 휴지통으로 이동할 수 없습니다. 영구 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
+            "kept": "{name}이(가) 유지되었습니다: 삭제된 항목이 없습니다",
+            "keptMultiple": "삭제하지 않고 그대로 둔 항목: {count}개"
         },
         "quickLook": {
             "noPreview": "미리보기를 사용할 수 없습니다",

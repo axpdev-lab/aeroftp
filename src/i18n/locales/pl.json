@@ -3369,7 +3369,12 @@
             "emptyTrash": "Kosz jest pusty",
             "itemCount": "{count} elementów w koszu",
             "moveToTrash": "Przenieś do kosza",
-            "restoreConfirm": "Przywrócić {name} do oryginalnej lokalizacji?"
+            "restoreConfirm": "Przywrócić {name} do oryginalnej lokalizacji?",
+            "homeCopyPrompt": "{count} element(y), zaczynając od {name}, znajduje się na dysku bez dostępnego kosza. Przeniesienie ich do kosza skopiowałoby je do kosza w folderze domowym, co może długo trwać i wymaga wolnego miejsca. Usunąć je trwale?",
+            "copyToHomeTrash": "Kopiuj do kosza w folderze domowym",
+            "permanentAfterFailure": "Nie udało się przenieść do kosza {count} element(ów), zaczynając od {name}. Usunąć je trwale? Tej operacji nie można cofnąć.",
+            "kept": "Zachowano {name}: nic nie zostało usunięte",
+            "keptMultiple": "Pozostawione na miejscu, nieusunięte: {count} element(y)"
         },
         "quickLook": {
             "noPreview": "Podgląd niedostępny",

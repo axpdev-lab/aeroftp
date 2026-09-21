@@ -888,9 +888,17 @@ pub async fn local_trash(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
 
         progress(ctx, "local_trash", idx as u32 + 1, total as u32, &filename);
 
-        match trash::delete(path) {
-            Ok(_) => trashed.push(filename),
-            Err(e) => errors.push(json!({ "file": filename, "error": e.to_string() })),
+        // Same guard as the GUI command, with the home-trash copy never
+        // allowed: the agent cannot ask the user whether copying a whole
+        // tree into the home folder is what they meant.
+        let owned = path.clone();
+        let outcome =
+            tokio::task::spawn_blocking(move || crate::filesystem::trash_blocking(&owned, false))
+                .await
+                .unwrap_or_else(|e| Err(format!("Trash task failed: {e}")));
+        match outcome {
+            Ok(()) => trashed.push(filename),
+            Err(e) => errors.push(json!({ "file": filename, "error": e })),
         }
     }
 

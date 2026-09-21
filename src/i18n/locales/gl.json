@@ -3369,7 +3369,12 @@
             "emptyTrash": "O lixo está baleiro",
             "itemCount": "{count} elementos no lixo",
             "moveToTrash": "Mover ao lixo",
-            "restoreConfirm": "Restaurar {name} á súa localización orixinal?"
+            "restoreConfirm": "Restaurar {name} á súa localización orixinal?",
+            "homeCopyPrompt": "{count} elemento(s), comezando por {name}, están nunha unidade sen un lixo utilizable. Movelos ao lixo copiaríaos ao lixo do cartafol persoal, o que pode tardar moito e precisa espazo libre. Eliminalos permanentemente?",
+            "copyToHomeTrash": "Copiar ao lixo persoal",
+            "permanentAfterFailure": "Non se puideron mover ao lixo {count} elemento(s), comezando por {name}. Eliminalos permanentemente? Esta acción non se pode desfacer.",
+            "kept": "Conservouse {name}: non se eliminou nada",
+            "keptMultiple": "Deixados no seu sitio, sen eliminar: {count} elemento(s)"
         },
         "quickLook": {
             "noPreview": "Non hai vista previa",

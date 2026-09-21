@@ -3369,7 +3369,12 @@
             "emptyTrash": "Papirkurven er tom",
             "itemCount": "{count} elementer i papirkurven",
             "moveToTrash": "Flytt til papirkurv",
-            "restoreConfirm": "Gjenopprett {name} til opprinnelig plassering?"
+            "restoreConfirm": "Gjenopprett {name} til opprinnelig plassering?",
+            "homeCopyPrompt": "{count} element(er), med start i {name}, ligger på en stasjon uten en brukbar papirkurv. Å flytte dem til papirkurven ville kopiere dem til papirkurven i hjemmemappen, noe som kan ta lang tid og krever ledig plass. Slette dem permanent i stedet?",
+            "copyToHomeTrash": "Kopier til hjemmemappens papirkurv",
+            "permanentAfterFailure": "{count} element(er), med start i {name}, kunne ikke flyttes til papirkurven. Slette dem permanent? Dette kan ikke angres.",
+            "kept": "{name} ble beholdt: ingenting ble slettet",
+            "keptMultiple": "Latt stå, ikke slettet: {count} element(er)"
         },
         "quickLook": {
             "noPreview": "Ingen forhåndsvisning tilgjengelig",
