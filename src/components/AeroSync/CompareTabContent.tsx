@@ -21,6 +21,7 @@ import type {
     CompareResult,
     CompareResultEntry,
 } from '../../utils/compareEndpoints';
+import { unlistedEntryCount } from '../../utils/compareEndpoints';
 import {
     buildCompareExportRows,
     compareExportFilename,
@@ -128,16 +129,24 @@ const formatOutOfSyncPct = (numerator: number, denominator: number): string => {
 interface BucketSectionProps {
     bucket: CompareBucket;
     entries: CompareResultEntry[];
+    /**
+     * Entries the scan classified into this bucket, which is not always the
+     * number of rows: the recursive path counts identical files without
+     * sending one row each. Always the bucket's `stats.count`, never
+     * `entries.length`.
+     */
+    count: number;
     bytes: number;
     initiallyOpen: boolean;
 }
 
-const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, bytes, initiallyOpen }) => {
+const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, count, bytes, initiallyOpen }) => {
     const [open, setOpen] = React.useState(initiallyOpen);
     const meta = BUCKET_META[bucket];
     const Icon = meta.icon;
     const truncated = entries.length > MAX_PREVIEW_ROWS;
     const visible = truncated ? entries.slice(0, MAX_PREVIEW_ROWS) : entries;
+    const unlisted = unlistedEntryCount(count, entries.length);
 
     return (
         <div className={`rounded-md border-l-4 border border-gray-200 dark:border-gray-700 ${meta.accentClass}`}>
@@ -153,7 +162,7 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, bytes, i
                         {meta.label}
                     </span>
                     <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium text-gray-700 shadow-sm dark:bg-gray-900/40 dark:text-gray-200">
-                        {entries.length}
+                        {count}
                     </span>
                     <span className="text-[11px] text-gray-500 dark:text-gray-400">{formatBytes(bytes)}</span>
                 </div>
@@ -167,7 +176,11 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, bytes, i
                 <div className="border-t border-gray-200 px-3 py-2 dark:border-gray-700">
                     <p className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{meta.description}</p>
                     {entries.length === 0 ? (
-                        <p className="text-xs italic text-gray-400 dark:text-gray-500">No entries.</p>
+                        <p className="text-xs italic text-gray-400 dark:text-gray-500">
+                            {unlisted > 0
+                                ? `Counted but not listed: the scan reports identical files as a total instead of one row each, so large trees stay fast.`
+                                : 'No entries.'}
+                        </p>
                     ) : (
                         <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white/60 dark:border-gray-700 dark:bg-gray-900/30">
                             <table className="w-full text-[11px]">
@@ -205,6 +218,11 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, bytes, i
                             {truncated && (
                                 <p className="border-t border-gray-200 px-3 py-1 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
                                     Showing first {MAX_PREVIEW_ROWS} of {entries.length} entries.
+                                </p>
+                            )}
+                            {unlisted > 0 && (
+                                <p className="border-t border-gray-200 px-3 py-1 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                    {unlisted} more counted but not listed.
                                 </p>
                             )}
                         </div>
@@ -379,6 +397,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
                         key={bucket}
                         bucket={bucket}
                         entries={result.buckets[bucket]}
+                        count={result.stats[bucket].count}
                         bytes={result.stats[bucket].bytes}
                         initiallyOpen={bucket !== 'same' && result.buckets[bucket].length > 0}
                     />

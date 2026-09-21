@@ -10,6 +10,7 @@ import {
     compareEntries,
     namesToMirrorLeftToRight,
     namesToMirrorRightToLeft,
+    unlistedEntryCount,
 } from './compareEndpoints';
 
 describe('compareEntries — bucket coverage', () => {
@@ -205,6 +206,33 @@ describe('mirror selectors', () => {
         );
         expect(namesToMirrorLeftToRight(result).sort()).toEqual(['a.bin', 'c.bin']);
         expect(namesToMirrorRightToLeft(result).sort()).toEqual(['d.bin']);
+    });
+});
+
+// A bucket's count comes from its stats, never from the rows it carries: the
+// recursive backend path counts identical files without sending one row each,
+// so a panel reading the count off the rows would print 0 next to a non-zero
+// byte figure, which is the shape of the defect that made every compare read
+// as fully out of sync.
+describe('unlistedEntryCount', () => {
+    it('reports how many counted entries a bucket does not carry as rows', () => {
+        expect(unlistedEntryCount(12, 0)).toBe(12);
+        expect(unlistedEntryCount(12, 5)).toBe(7);
+    });
+
+    it('is zero when every counted entry is listed', () => {
+        expect(unlistedEntryCount(4, 4)).toBe(0);
+        expect(unlistedEntryCount(0, 0)).toBe(0);
+    });
+
+    it('never goes negative, so a drift cannot print a negative remainder', () => {
+        expect(unlistedEntryCount(3, 9)).toBe(0);
+        expect(unlistedEntryCount(-5, 0)).toBe(0);
+    });
+
+    it('answers zero on a non-finite count instead of rendering NaN', () => {
+        expect(unlistedEntryCount(Number.NaN, 2)).toBe(0);
+        expect(unlistedEntryCount(Number.POSITIVE_INFINITY, 2)).toBe(0);
     });
 });
 

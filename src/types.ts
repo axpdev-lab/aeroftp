@@ -894,6 +894,27 @@ export interface FileComparison {
   previously_synced?: boolean;
 }
 
+/**
+ * How many entries (and bytes) a recursive compare classified, including the
+ * identical files the difference rows omit. The backend ships this next to
+ * the rows so the Compare tab divides by what the scan examined instead of
+ * by what the rows carry (which used to force every non-empty compare to
+ * read as 100% out of sync). Field names match the Rust `CompareSummary`
+ * serialization (snake_case).
+ */
+export interface CompareSummary {
+  examined_count: number;
+  identical_count: number;
+  examined_bytes: number;
+  identical_bytes: number;
+}
+
+/** A recursive compare answer: difference rows plus the summary above. */
+export interface CompareReport {
+  differences: FileComparison[];
+  summary: CompareSummary;
+}
+
 export type ConflictStrategy =
   | "ask"
   | "newer"

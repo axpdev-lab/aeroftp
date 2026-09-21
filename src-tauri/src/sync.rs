@@ -93,6 +93,39 @@ pub struct FileComparison {
     pub previously_synced: bool,
 }
 
+/// How many entries (and bytes) a compare classified, including the identical
+/// files the differences vector omits.
+///
+/// The Compare tab used to derive its "out of sync" percentage from the rows
+/// alone, whose `same` bucket is always empty because identical files are
+/// never emitted. That made every non-empty compare read as 100% out of sync.
+/// The compare commands now ship this summary next to the rows, so the tab
+/// divides by what the scan examined instead of by what the rows carry.
+///
+/// Only classified paths count: excluded, filtered, traversal-rejected, and
+/// scan-bounded paths never reach the classifier (the bound withdraws them
+/// from both maps first), so none of them can inflate the identical share.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompareSummary {
+    /// Every path the classifier judged (differences plus identical files).
+    pub examined_count: u64,
+    /// Examined paths with status Identical, including the both-sides
+    /// directory rows the differences vector still carries (the frontend
+    /// drops those rows, landing them back in `same`, so the counts meet).
+    pub identical_count: u64,
+    /// Bytes at stake over every examined path (larger side, dirs zero).
+    pub examined_bytes: u64,
+    /// Bytes at stake over the identical paths.
+    pub identical_bytes: u64,
+}
+
+/// A compare answer: the actionable difference rows plus the summary above.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompareReport {
+    pub differences: Vec<FileComparison>,
+    pub summary: CompareSummary,
+}
+
 fn default_error_correction_pct() -> u32 {
     ERROR_CORRECTION_DEFAULT_PCT
 }
@@ -3162,15 +3195,35 @@ pub fn save_sync_index(index: &SyncIndex) -> Result<(), String> {
     Ok(())
 }
 
-/// Enhanced comparison that uses the sync index to detect true conflicts.
-/// If both local and remote changed since the index snapshot, it's a Conflict.
-pub fn build_comparison_results_with_index(
+/// Bytes at stake for one classified path: the larger side, directories zero.
+/// Mirrors the frontend adapter (`recursiveCompare.ts`), which prices a bucket
+/// row the same way, so the summary and the rows reconcile exactly.
+fn compare_path_bytes(local: Option<&FileInfo>, remote: Option<&FileInfo>) -> u64 {
+    let side = |info: Option<&FileInfo>| match info {
+        Some(f) if !f.is_dir => f.size,
+        _ => 0,
+    };
+    side(local).max(side(remote))
+}
+
+/// Classify a local/remote pair into difference rows plus the summary above.
+///
+/// This holds the loop `build_comparison_results_with_index` used to own; that
+/// entry point stays as a thin wrapper so the sync engine keeps receiving the
+/// rows it decides on, while the compare commands return the full report.
+pub fn classify_with_summary(
     local_files: HashMap<String, FileInfo>,
     remote_files: HashMap<String, FileInfo>,
     options: &CompareOptions,
     index: Option<&SyncIndex>,
-) -> Vec<FileComparison> {
+) -> CompareReport {
     let mut results = Vec::new();
+    let mut summary = CompareSummary {
+        examined_count: 0,
+        identical_count: 0,
+        examined_bytes: 0,
+        identical_bytes: 0,
+    };
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
 
@@ -3256,7 +3309,10 @@ pub fn build_comparison_results_with_index(
             .map(|idx| idx.files.contains_key(&path) && !idx.unverified_keys.contains(&path))
             .unwrap_or(false);
 
-        if status != SyncStatus::Identical || is_dir {
+        // Read before the push below moves `status` into the row.
+        let is_identical = status == SyncStatus::Identical;
+
+        if !is_identical || is_dir {
             let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
             results.push(FileComparison {
                 relative_path: path,
@@ -3268,10 +3324,37 @@ pub fn build_comparison_results_with_index(
                 previously_synced,
             });
         }
+
+        // The counts travel while the identical rows do not: this is the only
+        // place that still sees the files the filter above omits.
+        let at_stake = compare_path_bytes(local, remote);
+        summary.examined_count += 1;
+        summary.examined_bytes = summary.examined_bytes.saturating_add(at_stake);
+        if is_identical {
+            summary.identical_count += 1;
+            summary.identical_bytes = summary.identical_bytes.saturating_add(at_stake);
+        }
     }
 
     results.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
-    results
+    CompareReport {
+        differences: results,
+        summary,
+    }
+}
+
+/// Enhanced comparison that uses the sync index to detect true conflicts.
+/// If both local and remote changed since the index snapshot, it's a Conflict.
+///
+/// Thin wrapper over `classify_with_summary` for the sync engine, which
+/// decides on rows and never needs the summary.
+pub fn build_comparison_results_with_index(
+    local_files: HashMap<String, FileInfo>,
+    remote_files: HashMap<String, FileInfo>,
+    options: &CompareOptions,
+    index: Option<&SyncIndex>,
+) -> Vec<FileComparison> {
+    classify_with_summary(local_files, remote_files, options, index).differences
 }
 
 // ============ Phase 2: Error Taxonomy ============
@@ -8001,5 +8084,111 @@ mod tests {
             ),
             SyncAction::Upload
         );
+    }
+
+    // ============================================================
+    // Compare percentage: the summary travels, not the rows
+    // ============================================================
+
+    /// The user repro behind the "always 100% out of sync" report: two files
+    /// on the left, one of them (identical) on the right. The differences
+    /// vector still carries a single row (identical files are not emitted),
+    /// but the summary counts the file the rows omit, so the caller can
+    /// report one difference out of two examined entries (50% by count).
+    #[test]
+    fn test_compare_report_counts_the_identical_files_its_rows_omit() {
+        let now = Utc::now();
+        let mut local: HashMap<String, FileInfo> = HashMap::new();
+        let mut remote: HashMap<String, FileInfo> = HashMap::new();
+        local.insert("a.txt".to_string(), mk_file_info("a.txt", 100, Some(now)));
+        local.insert("b.txt".to_string(), mk_file_info("b.txt", 300, Some(now)));
+        remote.insert("a.txt".to_string(), mk_file_info("a.txt", 100, Some(now)));
+
+        let opts = CompareOptions {
+            compare_timestamp: true,
+            compare_size: true,
+            ..Default::default()
+        };
+        let report = classify_with_summary(local, remote, &opts, None);
+
+        assert_eq!(
+            report.differences.len(),
+            1,
+            "identical files stay out of the rows"
+        );
+        assert_eq!(report.differences[0].relative_path, "b.txt");
+        assert_eq!(report.summary.examined_count, 2);
+        assert_eq!(report.summary.identical_count, 1);
+        assert_eq!(
+            report.differences.len() as u64,
+            report.summary.examined_count - report.summary.identical_count,
+            "rows plus identical files cover every examined entry"
+        );
+    }
+
+    /// Byte twin of the repro above: the missing 300-byte file over 400
+    /// examined bytes reads as 75% out of sync, not 100%.
+    #[test]
+    fn test_compare_report_bytes_cover_the_identical_files_its_rows_omit() {
+        let now = Utc::now();
+        let mut local: HashMap<String, FileInfo> = HashMap::new();
+        let mut remote: HashMap<String, FileInfo> = HashMap::new();
+        local.insert("a.txt".to_string(), mk_file_info("a.txt", 100, Some(now)));
+        local.insert("b.txt".to_string(), mk_file_info("b.txt", 300, Some(now)));
+        remote.insert("a.txt".to_string(), mk_file_info("a.txt", 100, Some(now)));
+
+        let opts = CompareOptions {
+            compare_timestamp: true,
+            compare_size: true,
+            ..Default::default()
+        };
+        let report = classify_with_summary(local, remote, &opts, None);
+
+        assert_eq!(report.summary.examined_bytes, 400);
+        assert_eq!(report.summary.identical_bytes, 100);
+    }
+
+    /// An empty pair examines nothing: the caller renders no percentage
+    /// instead of dividing by zero.
+    #[test]
+    fn test_compare_report_summary_is_zero_on_an_empty_pair() {
+        let opts = CompareOptions::default();
+        let report = classify_with_summary(HashMap::new(), HashMap::new(), &opts, None);
+
+        assert!(report.differences.is_empty());
+        assert_eq!(report.summary.examined_count, 0);
+        assert_eq!(report.summary.identical_count, 0);
+        assert_eq!(report.summary.examined_bytes, 0);
+        assert_eq!(report.summary.identical_bytes, 0);
+    }
+
+    /// Excluded paths are not examined, so they must not inflate the summary:
+    /// a tree whose only content is ignored reads as empty, not as identical.
+    #[test]
+    fn test_compare_report_summary_skips_excluded_paths() {
+        let now = Utc::now();
+        let mut local: HashMap<String, FileInfo> = HashMap::new();
+        let mut remote: HashMap<String, FileInfo> = HashMap::new();
+        local.insert(
+            "node_modules/dep/index.js".to_string(),
+            mk_file_info("index.js", 50, Some(now)),
+        );
+        remote.insert(
+            "node_modules/dep/index.js".to_string(),
+            mk_file_info("index.js", 50, Some(now)),
+        );
+
+        let opts = CompareOptions {
+            compare_timestamp: true,
+            compare_size: true,
+            exclude_patterns: vec!["node_modules".to_string()],
+            ..Default::default()
+        };
+        let report = classify_with_summary(local, remote, &opts, None);
+
+        assert!(report.differences.is_empty());
+        assert_eq!(report.summary.examined_count, 0);
+        assert_eq!(report.summary.identical_count, 0);
+        assert_eq!(report.summary.examined_bytes, 0);
     }
 }
