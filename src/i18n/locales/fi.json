@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent haluaa:",
             "scopeOnce": "Hyväksyy täsmälleen tämän toiminnon kerran.",
             "scopeSession": "Hyväksyy tämän työkalun keskustelun loppuajaksi.",
-            "approve": "Hyväksy"
+            "approve": "Hyväksy",
+            "rememberForChat": "Salli tämä työkalu tämän keskustelun loppuun"
         }
     }
 }

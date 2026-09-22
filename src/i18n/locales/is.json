@@ -5728,7 +5728,8 @@
             "wantsTo": "AeroAgent vill:",
             "scopeOnce": "Samþykkir nákvæmlega þessa aðgerð einu sinni.",
             "scopeSession": "Samþykkir þetta verkfæri það sem eftir er af spjallinu.",
-            "approve": "Samþykkja"
+            "approve": "Samþykkja",
+            "rememberForChat": "Leyfa þetta verkfæri það sem eftir er af þessu spjalli"
         }
     }
 }

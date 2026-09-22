@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent wil:",
             "scopeOnce": "Keurt precies deze actie één keer goed.",
             "scopeSession": "Keurt dit hulpmiddel goed voor de rest van de chatsessie.",
-            "approve": "Goedkeuren"
+            "approve": "Goedkeuren",
+            "rememberForChat": "Dit hulpmiddel toestaan voor de rest van deze chat"
         }
     }
 }

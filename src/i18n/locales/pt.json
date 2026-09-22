@@ -5709,7 +5709,8 @@
             "wantsTo": "O AeroAgent quer:",
             "scopeOnce": "Aprova esta ação exata uma única vez.",
             "scopeSession": "Aprova esta ferramenta pelo resto da sessão de chat.",
-            "approve": "Aprovar"
+            "approve": "Aprovar",
+            "rememberForChat": "Permitir esta ferramenta pelo resto deste chat"
         }
     }
 }

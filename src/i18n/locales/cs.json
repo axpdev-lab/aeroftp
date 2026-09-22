@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent chce:",
             "scopeOnce": "Schválí přesně tuto akci jednou.",
             "scopeSession": "Schválí tento nástroj po zbytek relace chatu.",
-            "approve": "Schválit"
+            "approve": "Schválit",
+            "rememberForChat": "Povolit tento nástroj po zbytek tohoto chatu"
         }
     }
 }

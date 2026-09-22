@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent şunu yapmak istiyor:",
             "scopeOnce": "Tam olarak bu eylemi bir kez onaylar.",
             "scopeSession": "Bu aracı sohbet oturumunun geri kalanı için onaylar.",
-            "approve": "Onayla"
+            "approve": "Onayla",
+            "rememberForChat": "Bu sohbetin geri kalanı için bu araca izin ver"
         }
     }
 }

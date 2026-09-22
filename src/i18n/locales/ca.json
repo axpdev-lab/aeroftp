@@ -5728,7 +5728,8 @@
             "wantsTo": "AeroAgent vol:",
             "scopeOnce": "Aprova aquesta acció exacta una sola vegada.",
             "scopeSession": "Aprova aquesta eina per a la resta de la sessió de xat.",
-            "approve": "Aprova"
+            "approve": "Aprova",
+            "rememberForChat": "Permet aquesta eina durant la resta d'aquest xat"
         }
     }
 }

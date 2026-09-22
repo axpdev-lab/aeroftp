@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent želi:",
             "scopeOnce": "Odobrava točno ovu radnju jednom.",
             "scopeSession": "Odobrava ovaj alat do kraja sesije chata.",
-            "approve": "Odobri"
+            "approve": "Odobri",
+            "rememberForChat": "Dopusti ovaj alat do kraja ovog chata"
         }
     }
 }

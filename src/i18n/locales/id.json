@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent ingin:",
             "scopeOnce": "Menyetujui tindakan ini persis satu kali.",
             "scopeSession": "Menyetujui alat ini selama sisa sesi obrolan.",
-            "approve": "Setujui"
+            "approve": "Setujui",
+            "rememberForChat": "Izinkan alat ini selama sisa obrolan ini"
         }
     }
 }

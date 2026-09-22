@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent 想要：",
             "scopeOnce": "仅批准这一次具体操作。",
             "scopeSession": "在本次聊天会话剩余时间内批准此工具。",
-            "approve": "批准"
+            "approve": "批准",
+            "rememberForChat": "在本次聊天的剩余时间内允许此工具"
         }
     }
 }

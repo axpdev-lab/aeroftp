@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent vill:",
             "scopeOnce": "Godkänner exakt den här åtgärden en gång.",
             "scopeSession": "Godkänner det här verktyget under resten av chattsessionen.",
-            "approve": "Godkänn"
+            "approve": "Godkänn",
+            "rememberForChat": "Tillåt det här verktyget under resten av chatten"
         }
     }
 }

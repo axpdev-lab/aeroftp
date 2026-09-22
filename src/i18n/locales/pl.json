@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent chce:",
             "scopeOnce": "Zatwierdza dokładnie tę akcję jeden raz.",
             "scopeSession": "Zatwierdza to narzędzie do końca sesji czatu.",
-            "approve": "Zatwierdź"
+            "approve": "Zatwierdź",
+            "rememberForChat": "Zezwól na to narzędzie do końca tego czatu"
         }
     }
 }

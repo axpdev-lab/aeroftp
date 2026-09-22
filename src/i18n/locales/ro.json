@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent vrea să:",
             "scopeOnce": "Aprobă exact această acțiune o singură dată.",
             "scopeSession": "Aprobă acest instrument pentru restul sesiunii de chat.",
-            "approve": "Aprobă"
+            "approve": "Aprobă",
+            "rememberForChat": "Permite acest instrument pentru restul acestui chat"
         }
     }
 }

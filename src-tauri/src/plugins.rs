@@ -395,10 +395,18 @@ pub async fn prepare_plugin_tool_approval(
     }))
     .map_err(|e| format!("Failed to build plugin approval scope: {}", e))?;
 
+    // A chat-wide grant covers this plugin tool whatever its arguments.
+    let session_scope_key = serde_json::to_string(&json!({
+        "plugin_id": plugin_id,
+        "tool_name": tool_name,
+    }))
+    .map_err(|e| format!("Failed to build plugin approval scope: {}", e))?;
+
     Ok(ai_tools::prepare_backend_approval_request(
         session_id.as_deref(),
         &synthetic_tool_name,
         scope_key,
+        session_scope_key,
         tool.danger_level != "high",
         format!(
             "AeroAgent wants to: Run Plugin Tool\n\n  plugin: {}\n  tool: {}\n  command: {}",
