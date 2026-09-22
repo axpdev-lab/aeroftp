@@ -234,13 +234,18 @@ export const InternxtLogo: React.FC<LogoProps> = ({ size = 24 }) => (
 // Proton Drive: generic cloud mark. Proton forbids third-party use of its
 // logos, trademarks, and design elements (Drive SDK README, Product and
 // legal requirements). Keep this swap in this file.
+// Proton Drive: a generic purple folder drawn for AeroFTP, not Proton's logo.
+// Proton's rules for third-party apps forbid its logo and trademarks, so this
+// only recalls the product's colour, like the other provider icons, and the
+// connection screen states that AeroFTP is not affiliated with Proton.
 export const ProtonDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-        <path
-            fill="#64748B"
-            d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
-        />
-    </svg>
+    <img
+        src="/icons/providers/protondrive.svg"
+        alt="Proton Drive"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
 );
 
 // Jianguoyun / Nutstore: acorn icon (PNG, no SVG available)
