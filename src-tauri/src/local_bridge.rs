@@ -211,9 +211,21 @@ fn filen_desktop_installed() -> Option<bool> {
 /// Probe the install/active status of a local bridge helper app. Reusable core
 /// shared by the Tauri command and the CLI `profiles --health` view.
 ///
-/// `kind` is one of `filen-webdav`, `filen-s3`, `megacmd-webdav`. `port`
+/// `kind` is one of `filen-webdav`, `filen-s3`, `megacmd-webdav`, or
+/// `proton-cli` (installed binary and signed-in session, no port). `port`
 /// overrides the default loopback port (e.g. a custom MEGAcmd WebDAV port).
 pub async fn probe_bridge(kind: &str, port: Option<u16>) -> Result<BridgeStatus, String> {
+    // The Proton Drive CLI is not a loopback bridge: "installed" is the
+    // binary, "active" is a signed-in session (a root listing that answers).
+    if kind == "proton-cli" {
+        let (installed, signed_in) = crate::providers::proton::cli_session_status().await;
+        return Ok(BridgeStatus {
+            installed,
+            active: signed_in,
+            port: 0,
+            install_known: true,
+        });
+    }
     let default_port =
         bridge_kind_default_port(kind).ok_or_else(|| format!("unknown bridge kind: {}", kind))?;
     let port = port.unwrap_or(default_port);

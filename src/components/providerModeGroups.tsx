@@ -60,7 +60,7 @@ export interface ProviderMode {
 }
 
 /** Local bridge helper apps probed by the backend `bridge_status` command. */
-export type BridgeKind = 'filen-webdav' | 'filen-s3' | 'megacmd-webdav';
+export type BridgeKind = 'filen-webdav' | 'filen-s3' | 'megacmd-webdav' | 'proton-cli';
 
 export interface ProviderModeGroup {
     /** Stable group identifier; used for the `key` prop and as a
@@ -231,6 +231,8 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 description:
                     'Drives the official Proton Drive CLI installed and signed in on this machine. You sign in in the browser; AeroFTP never sees your Proton password.',
                 badge: 'LOCAL',
+                // Status banner: installed, signed in, or neither.
+                bridgeKind: 'proton-cli',
             },
         ],
     },

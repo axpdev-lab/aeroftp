@@ -3361,7 +3361,9 @@
             "inactive": "Mae {app} wedi'i osod ond nid yw'r bont leol yn ymateb ar 127.0.0.1:{port}. Cychwynnwch ef a mewngofnodwch.",
             "notInstalled": "Ni chanfuwyd {app} ar y peiriant hwn. Gosodwch ef i ddefnyddio'r modd hwn.",
             "saveDisabled": "Mae cadw wedi'i analluogi nes bod {app} wedi'i osod.",
-            "recheck": "Ailwirio"
+            "recheck": "Ailwirio",
+            "cliSignedIn": "Mae {app} wedi'i osod ac wedi mewngofnodi.",
+            "cliNotSignedIn": "Mae {app} wedi'i osod ond heb fewngofnodi. Rhedwch \"proton-drive auth login\" mewn terfynell a gorffen yn y porwr."
         },
         "trash": {
             "title": "Sbwriel",

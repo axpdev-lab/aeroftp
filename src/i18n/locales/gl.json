@@ -3361,7 +3361,9 @@
             "inactive": "{app} está instalado pero a ponte local non responde en 127.0.0.1:{port}. Iníciao e inicia sesión.",
             "notInstalled": "Non se atopou {app} neste equipo. Instálao para usar este modo.",
             "saveDisabled": "O gardado está desactivado ata que {app} estea instalado.",
-            "recheck": "Volver a comprobar"
+            "recheck": "Volver a comprobar",
+            "cliSignedIn": "{app} está instalado e coa sesión iniciada.",
+            "cliNotSignedIn": "{app} está instalado pero sen sesión iniciada. Executa \"proton-drive auth login\" nun terminal e remata no navegador."
         },
         "trash": {
             "title": "Lixo",

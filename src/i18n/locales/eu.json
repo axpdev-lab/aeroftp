@@ -3361,7 +3361,9 @@
             "inactive": "{app} instalatuta dago baina tokiko zubiak ez du erantzuten 127.0.0.1:{port} helbidean. Abiarazi eta hasi saioa.",
             "notInstalled": "{app} ez da aurkitu ordenagailu honetan. Instalatu modu hau erabiltzeko.",
             "saveDisabled": "Gordetzea desgaituta dago {app} instalatu arte.",
-            "recheck": "Egiaztatu berriro"
+            "recheck": "Egiaztatu berriro",
+            "cliSignedIn": "{app} instalatuta dago eta saioa hasita du.",
+            "cliNotSignedIn": "{app} instalatuta dago baina saioa ez du hasita. Exekutatu \"proton-drive auth login\" terminal batean eta amaitu nabigatzailean."
         },
         "trash": {
             "title": "Zakarrontzia",

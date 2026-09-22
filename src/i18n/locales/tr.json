@@ -3361,7 +3361,9 @@
             "inactive": "{app} yüklü ancak yerel köprü 127.0.0.1:{port} üzerinde yanıt vermiyor. Başlatın ve oturum açın.",
             "notInstalled": "Bu makinede {app} bulunamadı. Bu modu kullanmak için yükleyin.",
             "saveDisabled": "{app} yüklenene kadar kaydetme devre dışı.",
-            "recheck": "Yeniden denetle"
+            "recheck": "Yeniden denetle",
+            "cliSignedIn": "{app} yüklü ve oturum açık.",
+            "cliNotSignedIn": "{app} yüklü ancak oturum açılmamış. Bir terminalde \"proton-drive auth login\" komutunu çalıştırın ve tarayıcıda tamamlayın."
         },
         "trash": {
             "title": "Çöp Kutusu",

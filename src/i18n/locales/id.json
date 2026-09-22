@@ -3361,7 +3361,9 @@
             "inactive": "{app} terpasang tetapi jembatan lokal tidak merespons di 127.0.0.1:{port}. Mulai dan masuk.",
             "notInstalled": "{app} tidak ditemukan di mesin ini. Pasang untuk menggunakan mode ini.",
             "saveDisabled": "Penyimpanan dinonaktifkan hingga {app} dipasang.",
-            "recheck": "Periksa ulang"
+            "recheck": "Periksa ulang",
+            "cliSignedIn": "{app} sudah terpasang dan sudah masuk.",
+            "cliNotSignedIn": "{app} sudah terpasang tetapi belum masuk. Jalankan \"proton-drive auth login\" di terminal dan selesaikan di browser."
         },
         "trash": {
             "title": "Sampah",

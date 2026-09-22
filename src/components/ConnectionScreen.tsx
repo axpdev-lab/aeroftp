@@ -3752,7 +3752,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         'googledrive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive', 'yandexdisk',
         // #369: MEGA API/CMD now uses the two-column layout too, so the wide
         // card gives the MEGA MODES bar room and its S4 tab no longer wraps.
-        'mega'];
+        'mega',
+        // Proton Drive follows the MEGA / Filen layout: setup on the left.
+        'proton'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 
@@ -5469,16 +5471,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         )}
                                     </div>
                                 ) : protocol === 'proton' ? (
-                                    <div className="space-y-4 pt-2">
-                                        <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200">
-                                            <p className="font-medium mb-1">{t('connection.protonCliTitle')}</p>
-                                            <p className="opacity-80">{t('connection.protonCliBody')}</p>
-                                            <p className="mt-2 opacity-80">{t('connection.protonConnectHint')}</p>
-                                            <p className="mt-2 opacity-70">{t('connection.protonUnofficial')}</p>
+                                    /* Proton Drive: same two-column layout as MEGA / Filen.
+                                       The setup box collapses once the status banner above
+                                       reports the CLI installed and signed in. */
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        {/* LEFT COLUMN: setup */}
+                                        <div className="space-y-3">
+                                            <CollapsibleSetupBox
+                                                key="setup-proton-cli"
+                                                title={t('connection.protonCliTitle')}
+                                                tone="amber"
+                                                bridgeState={bridgeUiState}
+                                                isBridge={isBridgeMode}
+                                            >
+                                                <p>{t('connection.protonCliBody')}</p>
+                                                <p className="mt-2">{t('connection.protonConnectHint')}</p>
+                                            </CollapsibleSetupBox>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">{t('connection.protonUnofficial')}</p>
                                         </div>
+                                        {/* RIGHT COLUMN */}
                                         {renderRightColumn({
-                                            disabled: loading,
-                                            buttonColorClass: 'bg-slate-700 hover:bg-slate-800',
+                                            disabled: loading || bridgeSaveBlocked,
+                                            buttonColorClass: 'bg-purple-600 hover:bg-purple-700',
                                             connectionNameKey: 'Proton Drive',
                                             showCancelSaveAsNew: true,
                                         })}

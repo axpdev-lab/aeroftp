@@ -3361,7 +3361,9 @@
             "inactive": "{app} imesakinishwa lakini daraja la ndani halijibu kwenye 127.0.0.1:{port}. Lianzishe na uingie.",
             "notInstalled": "{app} haikupatikana kwenye mashine hii. Isakinishe ili kutumia hali hii.",
             "saveDisabled": "Kuhifadhi kumezimwa hadi {app} isakinishwe.",
-            "recheck": "Kagua tena"
+            "recheck": "Kagua tena",
+            "cliSignedIn": "{app} imesakinishwa na imeingia.",
+            "cliNotSignedIn": "{app} imesakinishwa lakini haijaingia. Endesha \"proton-drive auth login\" kwenye terminal na ukamilishe kwenye kivinjari."
         },
         "trash": {
             "title": "Tupio",

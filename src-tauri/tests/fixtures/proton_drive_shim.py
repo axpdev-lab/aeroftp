@@ -18,6 +18,12 @@ with open(LOG, "a") as f:
 with open(os.path.join(HERE, "env.log"), "a") as f:
     f.write(json.dumps(sorted(k for k in os.environ if k.startswith("AEROFTP_"))) + "\n")
 verb = args[0] if args else ""
+# Stand-in for a CLI that is installed but has no session: every command
+# answers the way proton-drive does before `auth login`. A marker file next to
+# the per-test link, not an environment variable, so parallel tests never see it.
+if os.path.exists(os.path.join(HERE, "signed_out")):
+    print("Error: You need to login first. Run `proton-drive auth login`.", file=sys.stderr)
+    sys.exit(1)
 sub = args[1] if len(args) > 1 else ""
 if verb == "filesystem" and sub == "download":
     dest = pathlib.Path(args[-1])

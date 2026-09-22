@@ -3361,7 +3361,9 @@
             "inactive": "{app} ir instalēts, taču vietējais tilts neatbild adresē 127.0.0.1:{port}. Palaidiet to un piesakieties.",
             "notInstalled": "{app} netika atrasts šajā datorā. Instalējiet to, lai izmantotu šo režīmu.",
             "saveDisabled": "Saglabāšana ir atspējota, līdz {app} ir instalēts.",
-            "recheck": "Pārbaudīt vēlreiz"
+            "recheck": "Pārbaudīt vēlreiz",
+            "cliSignedIn": "{app} ir instalēts un pieteicies.",
+            "cliNotSignedIn": "{app} ir instalēts, bet nav pieteicies. Palaidiet \"proton-drive auth login\" terminālī un pabeidziet pārlūkā."
         },
         "trash": {
             "title": "Atkritne",

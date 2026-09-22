@@ -3361,7 +3361,9 @@
             "inactive": "Naka-install ang {app} ngunit hindi tumutugon ang lokal na tulay sa 127.0.0.1:{port}. Simulan ito at mag-sign in.",
             "notInstalled": "Hindi natagpuan ang {app} sa makinang ito. I-install ito para gamitin ang mode na ito.",
             "saveDisabled": "Naka-disable ang pag-save hangga't hindi naka-install ang {app}.",
-            "recheck": "Suriin muli"
+            "recheck": "Suriin muli",
+            "cliSignedIn": "Naka-install at naka-sign in ang {app}.",
+            "cliNotSignedIn": "Naka-install ang {app} pero hindi naka-sign in. Patakbuhin ang \"proton-drive auth login\" sa terminal at tapusin sa browser."
         },
         "trash": {
             "title": "Basurahan",

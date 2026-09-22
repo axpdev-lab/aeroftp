@@ -3361,7 +3361,9 @@
             "inactive": "{app} je instaliran, ali lokalni most ne odgovara na 127.0.0.1:{port}. Pokrenite ga i prijavite se.",
             "notInstalled": "{app} nije pronađen na ovom računalu. Instalirajte ga za korištenje ovog načina rada.",
             "saveDisabled": "Spremanje je onemogućeno dok se {app} ne instalira.",
-            "recheck": "Ponovno provjeri"
+            "recheck": "Ponovno provjeri",
+            "cliSignedIn": "{app} je instaliran i prijavljen.",
+            "cliNotSignedIn": "{app} je instaliran, ali nije prijavljen. Pokrenite \"proton-drive auth login\" u terminalu i dovršite u pregledniku."
         },
         "trash": {
             "title": "Smeće",
