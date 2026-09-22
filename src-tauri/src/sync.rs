@@ -2732,6 +2732,7 @@ async fn sync_download_transfer(
                 file_size,
                 download_segments,
                 download_segments as usize,
+                crate::provider_transfer_executor::SegmentCutoff::Default,
             )
         {
             tracing::info!(

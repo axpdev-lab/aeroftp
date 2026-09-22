@@ -2522,24 +2522,40 @@ impl StorageProvider for B2Provider {
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
             match self.size(remote_path).await {
-                Ok(size) if size >= self.multi_thread_cutoff => {
-                    let (attempt_progress, fallback_progress) =
-                        super::multi_thread::share_progress(progress);
-                    match self
-                        .parallel_download_if_unchanged(
-                            remote_path,
-                            local_path,
-                            size,
-                            self.multi_thread_streams,
-                            attempt_progress,
-                        )
-                        .await
-                    {
-                        Ok(true) => return Ok(()),
-                        // Refused, not failed: the single-stream path below
-                        // keeps reporting through the half that stayed here.
-                        Ok(false) => fallback_progress,
-                        Err(e) => return Err(e),
+                Ok(size) => {
+                    // R21: the shared planner decides (explicit cutoff +
+                    // provider floor via the setter, 16 clamp, 1 MiB minimum
+                    // window), so the single-file path agrees with batch/pget.
+                    let planned = crate::provider_transfer_executor::plan_segment_count(
+                        size,
+                        self.multi_thread_streams,
+                        MULTI_THREAD_MAX_STREAMS,
+                        crate::provider_transfer_executor::SegmentCutoff::Explicit(
+                            self.multi_thread_cutoff,
+                        ),
+                        MULTI_THREAD_CUTOFF_FLOOR,
+                    );
+                    if planned < 2 {
+                        progress
+                    } else {
+                        let (attempt_progress, fallback_progress) =
+                            super::multi_thread::share_progress(progress);
+                        match self
+                            .parallel_download_if_unchanged(
+                                remote_path,
+                                local_path,
+                                size,
+                                planned,
+                                attempt_progress,
+                            )
+                            .await
+                        {
+                            Ok(true) => return Ok(()),
+                            // Refused, not failed: the single-stream path below
+                            // keeps reporting through the half that stayed here.
+                            Ok(false) => fallback_progress,
+                            Err(e) => return Err(e),
+                        }
                     }
                 }
                 _ => progress,

@@ -3337,6 +3337,7 @@ pub async fn provider_download_file(
                 file_size,
                 requested,
                 requested as usize,
+                crate::provider_transfer_executor::SegmentCutoff::Default,
             )
         {
             info!(
