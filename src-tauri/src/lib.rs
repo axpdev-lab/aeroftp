@@ -8088,6 +8088,13 @@ where
         .open(&tmp_path)?;
     let outcome = fill(&mut file).and_then(|written| {
         drop(file);
+        // Replacing an existing regular file keeps its permissions, as the
+        // in-place truncation this replaces did (an executable stays one).
+        if let Ok(existing) = std::fs::symlink_metadata(out_path) {
+            if existing.is_file() {
+                std::fs::set_permissions(&tmp_path, existing.permissions())?;
+            }
+        }
         std::fs::rename(&tmp_path, out_path).map(|()| written)
     });
     if outcome.is_err() {
@@ -20827,6 +20834,29 @@ mod sevenz_mhe_tests {
             "unhelpful error: {err}"
         );
         assert_eq!(std::fs::read_dir(&none).unwrap().count(), 0);
+    }
+
+    // Overwriting a file that already exists keeps its permissions: before the
+    // atomic writer, extraction truncated the file in place and its mode
+    // survived, so a temporary file created with default permissions must not
+    // turn an executable script into a plain file.
+    #[cfg(unix)]
+    #[test]
+    fn replacing_an_existing_file_keeps_its_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("run.sh");
+        std::fs::write(&target, b"old").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        super::write_entry_atomically(&target, |f| {
+            use std::io::Write;
+            f.write_all(b"new")?;
+            Ok(3)
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755, "mode after replace: {mode:o}");
     }
 
     // The dialog's Fast/Normal/Maximum buttons (and the CLI's --level) must
