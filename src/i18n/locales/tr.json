@@ -1363,6 +1363,7 @@
             "usedScanDone": "Kullanılan depolama hesaplandı",
             "usedScanDoneDetail": "{files} dosyada {used}",
             "usedScanTruncated": "kısmi: tarama sınırına ulaşıldı",
+            "usedScanUnreadable": "kısmi: {count} klasör okunamadı",
             "usedScanFailed": "Kullanılan depolama taraması başarısız oldu",
             "usedScanEmpty": "{path} yolunun taraması hiç dosya bulamadı; önbellekteki değer korundu. Yolu veya sunucunun özyinelemeli listeleme desteğini kontrol edin."
         },

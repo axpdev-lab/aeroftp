@@ -1363,6 +1363,7 @@
             "usedScanDone": "Hifadhi iliyotumika imekokotolewa",
             "usedScanDoneDetail": "{used} katika faili {files}",
             "usedScanTruncated": "kwa sehemu: kikomo cha uchanganuzi kimefikiwa",
+            "usedScanUnreadable": "sehemu: folda {count} hazikuweza kusomwa",
             "usedScanFailed": "Uchanganuzi wa hifadhi iliyotumika umeshindwa",
             "usedScanEmpty": "Uchanganuzi wa njia {path} haukupata faili; thamani iliyohifadhiwa kwenye akiba ilihifadhiwa. Angalia njia au usaidizi wa seva kwa orodha ya kujirudia."
         },

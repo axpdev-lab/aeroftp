@@ -1363,6 +1363,7 @@
             "usedScanDone": "Nakalkula ang nagamit na storage",
             "usedScanDoneDetail": "{used} sa {files} na file",
             "usedScanTruncated": "bahagya: naabot na ang limitasyon ng pag-scan",
+            "usedScanUnreadable": "bahagya: {count} folder ang hindi mabasa",
             "usedScanFailed": "Nabigo ang pag-scan ng nagamit na storage",
             "usedScanEmpty": "Walang nakitang file ang pag-scan ng {path}; pinanatili ang naka-cache na halaga. Suriin ang path o ang suporta ng server sa recursive listing."
         },

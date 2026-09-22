@@ -1363,6 +1363,7 @@
             "usedScanDone": "Penyimpanan terpakai dihitung",
             "usedScanDoneDetail": "{used} di {files} berkas",
             "usedScanTruncated": "parsial: batas pemindaian tercapai",
+            "usedScanUnreadable": "sebagian: {count} folder tidak dapat dibaca",
             "usedScanFailed": "Pemindaian penyimpanan terpakai gagal",
             "usedScanEmpty": "Pemindaian {path} tidak menemukan berkas; angka yang tersimpan di cache dipertahankan. Periksa jalur atau dukungan daftar rekursif server."
         },

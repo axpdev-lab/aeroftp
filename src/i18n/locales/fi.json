@@ -1363,6 +1363,7 @@
             "usedScanDone": "Käytetty tallennustila laskettu",
             "usedScanDoneDetail": "{used} yhteensä {files} tiedostossa",
             "usedScanTruncated": "osittainen: skannausraja saavutettu",
+            "usedScanUnreadable": "osittainen: {count} kansiota ei voitu lukea",
             "usedScanFailed": "Käytetyn tallennustilan skannaus epäonnistui",
             "usedScanEmpty": "Polun {path} skannaus ei löytänyt tiedostoja; välimuistissa ollut arvo säilytettiin. Tarkista polku tai palvelimen rekursiivisen listauksen tuki."
         },

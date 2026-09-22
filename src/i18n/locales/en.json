@@ -3764,6 +3764,7 @@
             "usedScanDone": "Used storage calculated",
             "usedScanDoneDetail": "{used} across {files} files",
             "usedScanTruncated": "partial: scan limit reached",
+            "usedScanUnreadable": "partial: {count} folder(s) could not be read",
             "usedScanFailed": "Used-storage scan failed",
             "usedScanEmpty": "Scan of {path} found no files; the cached figure was kept. Check the path or the server's recursive-listing support."
         },

@@ -1363,6 +1363,7 @@
             "usedScanDone": "使用ストレージを計算しました",
             "usedScanDoneDetail": "{files} 個のファイルで {used}",
             "usedScanTruncated": "一部のみ: スキャン上限に達しました",
+            "usedScanUnreadable": "一部のみ: {count} 個のフォルダーを読み取れませんでした",
             "usedScanFailed": "使用ストレージのスキャンに失敗しました",
             "usedScanEmpty": "{path} のスキャンでファイルが見つかりませんでした。キャッシュされた値が保持されました。パス、またはサーバーの再帰的リスト表示のサポートを確認してください。"
         },

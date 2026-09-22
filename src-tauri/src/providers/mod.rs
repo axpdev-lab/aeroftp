@@ -489,6 +489,14 @@ pub trait StorageProvider: Send + Sync {
     /// Get display name for this provider instance
     fn display_name(&self) -> String;
 
+    /// Folders a used-storage scan of `root` walks. The default is `root`
+    /// itself. A provider whose root is not one tree of the user's own files
+    /// (Proton Drive lists shared views and other people's files beside them)
+    /// names the folders that are the user's storage instead.
+    fn used_scan_roots(&self, root: &str) -> Vec<String> {
+        vec![root.to_string()]
+    }
+
     /// Get the authenticated account email/username (if available after connect)
     fn account_email(&self) -> Option<String> {
         None

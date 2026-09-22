@@ -1363,6 +1363,7 @@
             "usedScanDone": "Porabljena shramba izračunana",
             "usedScanDoneDetail": "{used} v {files} datotekah",
             "usedScanTruncated": "delno: dosežena meja pregledovanja",
+            "usedScanUnreadable": "delno: {count} map ni bilo mogoče prebrati",
             "usedScanFailed": "Pregledovanje porabljene shrambe ni uspelo",
             "usedScanEmpty": "Pregled poti {path} ni našel datotek; ohranjena je bila predpomnjena vrednost. Preverite pot ali podporo strežnika za rekurzivni izpis."
         },

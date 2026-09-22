@@ -1363,6 +1363,7 @@
             "usedScanDone": "Erabilitako biltegiratzea kalkulatuta",
             "usedScanDoneDetail": "{used} {files} fitxategitan",
             "usedScanTruncated": "partziala: eskaneatze-muga gainditu da",
+            "usedScanUnreadable": "partziala: ezin izan dira {count} karpeta irakurri",
             "usedScanFailed": "Erabilitako biltegiratzearen eskaneatzeak huts egin du",
             "usedScanEmpty": "{path} eskaneatzeak ez du fitxategirik aurkitu; cacheko balioa mantendu da. Egiaztatu bidea edo zerbitzariaren zerrendatze errekurtsiboaren euskarria."
         },

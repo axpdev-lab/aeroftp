@@ -1363,6 +1363,7 @@
             "usedScanDone": "Använd lagring beräknad",
             "usedScanDoneDetail": "{used} i {files} filer",
             "usedScanTruncated": "delvis: skanningsgränsen nådd",
+            "usedScanUnreadable": "delvis: {count} mapp(ar) kunde inte läsas",
             "usedScanFailed": "Skanning av använd lagring misslyckades",
             "usedScanEmpty": "Skanning av {path} hittade inga filer; det cachade värdet behölls. Kontrollera sökvägen eller serverns stöd för rekursiv listning."
         },

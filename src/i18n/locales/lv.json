@@ -1363,6 +1363,7 @@
             "usedScanDone": "Izmantotā krātuve aprēķināta",
             "usedScanDoneDetail": "{used} {files} failos",
             "usedScanTruncated": "daļēji: sasniegts skenēšanas ierobežojums",
+            "usedScanUnreadable": "daļējs: {count} mapes nevarēja nolasīt",
             "usedScanFailed": "Izmantotās krātuves skenēšana neizdevās",
             "usedScanEmpty": "{path} skenēšanā netika atrasts neviens fails; kešatmiņā saglabātais skaitlis tika paturēts. Pārbaudiet ceļu vai servera rekursīvā saraksta atbalstu."
         },

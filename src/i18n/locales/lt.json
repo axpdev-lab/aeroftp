@@ -1363,6 +1363,7 @@
             "usedScanDone": "Naudojama saugykla apskaičiuota",
             "usedScanDoneDetail": "{used} per {files} failus",
             "usedScanTruncated": "dalinis: pasiekta nuskaitymo riba",
+            "usedScanUnreadable": "dalinis: nepavyko nuskaityti {count} aplankų",
             "usedScanFailed": "Naudojamos saugyklos nuskaitymas nepavyko",
             "usedScanEmpty": "Nuskaitant {path} failų nerasta; talpykloje saugotas skaičius išliko. Patikrinkite kelią arba serverio rekursyvaus sąrašo palaikymą."
         },

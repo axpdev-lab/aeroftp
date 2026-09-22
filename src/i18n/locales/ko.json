@@ -1363,6 +1363,7 @@
             "usedScanDone": "사용 용량 계산 완료",
             "usedScanDoneDetail": "{files}개 파일에서 {used}",
             "usedScanTruncated": "부분: 스캔 한도에 도달함",
+            "usedScanUnreadable": "일부: 폴더 {count}개를 읽을 수 없습니다",
             "usedScanFailed": "사용 용량 스캔 실패",
             "usedScanEmpty": "{path} 스캔에서 파일을 찾지 못했습니다. 캐시된 값이 유지되었습니다. 경로 또는 서버의 재귀 목록 지원을 확인하세요."
         },

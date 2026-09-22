@@ -451,6 +451,33 @@ fn ensure_not_section(abs: &str) -> Result<(), ProviderError> {
     Ok(())
 }
 
+/// Sections that hold the account's own storage, the ones a used-storage scan
+/// of the root counts. Left out: `shared-by-me` and `photos-shared-by-me`
+/// repeat items already under my-files and photos, `shared-with-me` and
+/// `photos-shared-with-me` are other people's files, `albums` groups photos
+/// already under photos.
+const OWN_STORAGE_SECTIONS: &[&str] = &[
+    "/my-files",
+    "/devices",
+    "/photos",
+    "/trash",
+    "/photos-trash",
+];
+
+/// A section the CLI lists in the root but cannot open: measured with 0.8.0,
+/// `albums` and `photos` answer `Path type ... is not supported` and
+/// `photos-shared-by-me` fails with `TypeError: Invalid photo node type`.
+fn explain_unlistable(path: &str, err: ProviderError) -> ProviderError {
+    let text = err.to_string().to_lowercase();
+    if text.contains("is not supported") || text.contains("invalid photo node type") {
+        return ProviderError::NotSupported(format!(
+            "The Proton Drive CLI cannot open \"{}\" yet. Use the Proton Drive web or mobile app for photos and albums.",
+            first_segment(path)
+        ));
+    }
+    err
+}
+
 fn first_segment(path: &str) -> &str {
     path.trim_start_matches('/').split('/').next().unwrap_or("")
 }
@@ -676,6 +703,14 @@ impl StorageProvider for ProtonCliProvider {
         self.account_email.clone()
     }
 
+    fn used_scan_roots(&self, root: &str) -> Vec<String> {
+        if normalize_abs(root) == "/" {
+            OWN_STORAGE_SECTIONS.iter().map(|s| s.to_string()).collect()
+        } else {
+            vec![normalize_abs(root)]
+        }
+    }
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         self.binary = resolve_proton_drive(self.config.binary_path.as_deref());
         if !binary_exists(&self.binary) {
@@ -725,7 +760,7 @@ impl StorageProvider for ProtonCliProvider {
             .await
             .map_err(|e| match e {
                 ProviderError::NotFound(_) => ProviderError::NotFound(target.clone()),
-                other => other,
+                other => explain_unlistable(&target, other),
             })?;
         parse_list_json(&stdout, &target)
     }
@@ -742,7 +777,7 @@ impl StorageProvider for ProtonCliProvider {
                 ProviderError::NotFound(_) => {
                     ProviderError::NotFound(format!("Invalid directory: {new_path}"))
                 }
-                other => other,
+                other => explain_unlistable(&new_path, other),
             })?;
         self.current_path = new_path;
         Ok(())
@@ -1690,6 +1725,78 @@ mod cli_sequence_tests {
         p.list("/shared-with-me").await.unwrap();
         p.upload(&local, "/my-files/IMG_1.jpg", None).await.unwrap();
         assert_eq!(verbs(&read_argv(&dir), "upload").len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A used-storage scan of the root counts the account's own storage only:
+    /// never the shared views (repeats and other people's files) nor albums.
+    /// Photos, which the CLI cannot open yet, are counted as an unreadable
+    /// folder, so the figure is declared a lower bound instead of a total.
+    #[tokio::test]
+    async fn a_root_scan_counts_own_storage_and_names_what_it_could_not_read() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("my-files.json"),
+            r#"[{"name":{"ok":true,"value":"a.bin"},"uid":"U1","type":"file","activeRevision":{"claimedSize":1000}}]"#,
+        )
+        .unwrap();
+        let mut p: Box<dyn super::super::StorageProvider> = Box::new(provider(&shim));
+        let never = std::sync::atomic::AtomicBool::new(false);
+        let scan = crate::used_scan::scan_used_bytes(&mut p, "/", None, 10_000, &never, |_, _| {})
+            .await
+            .unwrap();
+        let listed: Vec<String> = verbs(&read_argv(&dir), "list")
+            .iter()
+            .filter_map(|a| a.iter().skip(2).find(|x| !x.starts_with('-')).cloned())
+            .collect();
+        for walked in [
+            "/my-files",
+            "/devices",
+            "/photos",
+            "/trash",
+            "/photos-trash",
+        ] {
+            assert!(
+                listed.iter().any(|l| l == walked),
+                "{walked} not walked: {listed:?}"
+            );
+        }
+        for skipped in [
+            "/",
+            "/shared-by-me",
+            "/shared-with-me",
+            "/albums",
+            "/photos-shared-by-me",
+            "/photos-shared-with-me",
+        ] {
+            assert!(
+                !listed.iter().any(|l| l == skipped),
+                "{skipped} must not be counted: {listed:?}"
+            );
+        }
+        assert_eq!(scan.file_count, 1, "{scan:?}");
+        assert_eq!(
+            scan.unreadable_dirs, 1,
+            "photos is unreadable with CLI 0.8.0: {scan:?}"
+        );
+        assert!(
+            scan.truncated && !scan.hit_cap,
+            "a lower bound, not a cap: {scan:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn opening_a_photo_section_says_the_cli_cannot_yet() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let mut p = provider(&shim);
+        let err = p.list("/photos").await.unwrap_err();
+        match err {
+            ProviderError::NotSupported(m) => assert!(m.contains("cannot open \"photos\""), "{m}"),
+            other => panic!("expected a clear NotSupported, got {other:?}"),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

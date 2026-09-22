@@ -1363,6 +1363,7 @@
             "usedScanDone": "Brukt lagring beregnet",
             "usedScanDoneDetail": "{used} på tvers av {files} filer",
             "usedScanTruncated": "delvis: skannegrense nådd",
+            "usedScanUnreadable": "delvis: {count} mappe(r) kunne ikke leses",
             "usedScanFailed": "Skanning av brukt lagring mislyktes",
             "usedScanEmpty": "Skanning av {path} fant ingen filer; den bufrede verdien ble beholdt. Sjekk banen eller serverens støtte for rekursiv listing."
         },

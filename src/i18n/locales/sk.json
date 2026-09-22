@@ -1363,6 +1363,7 @@
             "usedScanDone": "Využité úložisko vypočítané",
             "usedScanDoneDetail": "{used} v {files} súboroch",
             "usedScanTruncated": "čiastočné: dosiahnutý limit prehľadávania",
+            "usedScanUnreadable": "čiastočné: {count} priečinkov nebolo možné prečítať",
             "usedScanFailed": "Prehľadávanie využitého úložiska zlyhalo",
             "usedScanEmpty": "Prehľadávanie cesty {path} nenašlo žiadne súbory; ponechala sa hodnota z vyrovnávacej pamäte. Skontrolujte cestu alebo podporu rekurzívneho výpisu na serveri."
         },

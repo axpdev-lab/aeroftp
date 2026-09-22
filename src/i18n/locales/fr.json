@@ -1363,6 +1363,7 @@
             "usedScanDone": "Stockage utilisé calculé",
             "usedScanDoneDetail": "{used} répartis sur {files} fichiers",
             "usedScanTruncated": "partiel : limite d'analyse atteinte",
+            "usedScanUnreadable": "partiel : {count} dossier(s) illisible(s)",
             "usedScanFailed": "Échec de l'analyse du stockage utilisé",
             "usedScanEmpty": "L'analyse de {path} n'a trouvé aucun fichier ; la valeur en cache a été conservée. Vérifiez le chemin ou la prise en charge du listage récursif par le serveur."
         },

@@ -1363,6 +1363,7 @@
             "usedScanDone": "Notuð geymsla reiknuð",
             "usedScanDoneDetail": "{used} í {files} skrám",
             "usedScanTruncated": "að hluta: skönnunarmörkum náð",
+            "usedScanUnreadable": "að hluta: ekki tókst að lesa {count} möppu(r)",
             "usedScanFailed": "Skönnun á notaðri geymslu mistókst",
             "usedScanEmpty": "Skönnun á {path} fann engar skrár; gildið í skyndiminni var haldið. Athugaðu slóðina eða stuðning þjónsins við endurkvæma upptalningu."
         },

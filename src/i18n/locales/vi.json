@@ -1363,6 +1363,7 @@
             "usedScanDone": "Đã tính dung lượng đã dùng",
             "usedScanDoneDetail": "{used} trong {files} tệp",
             "usedScanTruncated": "một phần: đã đạt giới hạn quét",
+            "usedScanUnreadable": "một phần: không đọc được {count} thư mục",
             "usedScanFailed": "Quét dung lượng đã dùng thất bại",
             "usedScanEmpty": "Quét đường dẫn {path} không tìm thấy tệp nào; đã giữ giá trị trong bộ nhớ đệm. Hãy kiểm tra đường dẫn hoặc khả năng liệt kê đệ quy của máy chủ."
         },

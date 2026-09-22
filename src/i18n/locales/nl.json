@@ -1363,6 +1363,7 @@
             "usedScanDone": "Gebruikte opslag berekend",
             "usedScanDoneDetail": "{used} over {files} bestanden",
             "usedScanTruncated": "gedeeltelijk: scanlimiet bereikt",
+            "usedScanUnreadable": "gedeeltelijk: {count} map(pen) konden niet worden gelezen",
             "usedScanFailed": "Scan van gebruikte opslag mislukt",
             "usedScanEmpty": "Scan van {path} vond geen bestanden; de gecachte waarde is behouden. Controleer het pad of de ondersteuning van de server voor recursieve weergave."
         },

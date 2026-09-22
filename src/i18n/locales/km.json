@@ -1363,6 +1363,7 @@
             "usedScanDone": "បានគណនាទំហំផ្ទុកដែលប្រើ",
             "usedScanDoneDetail": "{used} ក្នុង {files} ឯកសារ",
             "usedScanTruncated": "មិនពេញលេញ៖ បានឈានដល់ដែនកំណត់ស្កេន",
+            "usedScanUnreadable": "មួយផ្នែក៖ មិនអាចអានថត {count} បានទេ",
             "usedScanFailed": "ការស្កេនទំហំផ្ទុកដែលប្រើបានបរាជ័យ",
             "usedScanEmpty": "ការស្កេន {path} រកមិនឃើញឯកសារ; តម្លៃក្នុង cache ត្រូវបានរក្សាទុក។ សូមពិនិត្យផ្លូវ ឬការគាំទ្ររាយឈ្មោះ recursive របស់ម៉ាស៊ីនមេ។"
         },

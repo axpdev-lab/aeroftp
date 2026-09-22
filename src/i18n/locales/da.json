@@ -1363,6 +1363,7 @@
             "usedScanDone": "Brugt lagerplads beregnet",
             "usedScanDoneDetail": "{used} fordelt på {files} filer",
             "usedScanTruncated": "delvist: scanningsgrænse nået",
+            "usedScanUnreadable": "delvis: {count} mappe(r) kunne ikke læses",
             "usedScanFailed": "Scanning af brugt lagerplads mislykkedes",
             "usedScanEmpty": "Scanningen af {path} fandt ingen filer; det cachelagrede tal blev bevaret. Tjek stien eller serverens understøttelse af rekursiv visning."
         },

@@ -1363,6 +1363,7 @@
             "usedScanDone": "Storfa a ddefnyddiwyd wedi'i chyfrifo",
             "usedScanDoneDetail": "{used} ar draws {files} ffeil",
             "usedScanTruncated": "rhannol: cyrhaeddwyd y terfyn sganio",
+            "usedScanUnreadable": "rhannol: nid oedd modd darllen {count} ffolder",
             "usedScanFailed": "Methodd sgan y storfa a ddefnyddiwyd",
             "usedScanEmpty": "Ni chanfu sgan {path} unrhyw ffeiliau; cadwyd y ffigur o'r storfa. Gwiriwch y llwybr neu gefnogaeth rhestru ailadroddus y gweinydd."
         },

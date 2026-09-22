@@ -30,6 +30,17 @@ describe('usedScanBoundKey', () => {
         expect(usedScanBoundKey({ truncated: false, cancelled: false })).toBeNull();
     });
 
+    it('names unreadable folders apart from the caps', () => {
+        // Proton Drive, 2026-09-22: 23 files counted, Photos not openable by the
+        // CLI, and the note said "scan limit reached".
+        expect(usedScanBoundKey({ truncated: true, unreadable_dirs: 1, hit_cap: false }))
+            .toBe('statusBar.usedScanUnreadable');
+        expect(usedScanBoundKey({ truncated: true, unreadable_dirs: 1, hit_cap: true }))
+            .toBe('statusBar.usedScanTruncated');
+        expect(usedScanBoundKey({ truncated: true, cancelled: true, unreadable_dirs: 2 }))
+            .toBe('transfer.cancelled');
+    });
+
     it('treats a missing cancelled field as not-cancelled (additive default)', () => {
         expect(usedScanBoundKey({ truncated: false })).toBeNull();
         expect(usedScanBoundKey({ truncated: true })).toBe('statusBar.usedScanTruncated');

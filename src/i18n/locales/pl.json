@@ -1363,6 +1363,7 @@
             "usedScanDone": "Zajęte miejsce obliczone",
             "usedScanDoneDetail": "{used} w {files} plikach",
             "usedScanTruncated": "częściowo: osiągnięto limit skanowania",
+            "usedScanUnreadable": "częściowe: nie można odczytać {count} folderów",
             "usedScanFailed": "Skanowanie zajętego miejsca nie powiodło się",
             "usedScanEmpty": "Skan ścieżki {path} nie znalazł plików; zachowano wartość z pamięci podręcznej. Sprawdź ścieżkę lub obsługę listowania rekurencyjnego przez serwer."
         },

@@ -1363,6 +1363,7 @@
             "usedScanDone": "Storan digunakan telah dikira",
             "usedScanDoneDetail": "{used} merentas {files} fail",
             "usedScanTruncated": "separa: had imbasan dicapai",
+            "usedScanUnreadable": "separa: {count} folder tidak dapat dibaca",
             "usedScanFailed": "Imbasan storan digunakan gagal",
             "usedScanEmpty": "Imbasan {path} tidak menjumpai fail; nilai dalam cache dikekalkan. Semak laluan atau sokongan penyenaraian rekursif pelayan."
         },

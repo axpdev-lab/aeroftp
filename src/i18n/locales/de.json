@@ -1363,6 +1363,7 @@
             "usedScanDone": "Belegter Speicher berechnet",
             "usedScanDoneDetail": "{used} in {files} Dateien",
             "usedScanTruncated": "teilweise: Scan-Limit erreicht",
+            "usedScanUnreadable": "teilweise: {count} Ordner konnten nicht gelesen werden",
             "usedScanFailed": "Scan des belegten Speichers fehlgeschlagen",
             "usedScanEmpty": "Der Scan von {path} fand keine Dateien; der zwischengespeicherte Wert wurde beibehalten. Prüfen Sie den Pfad oder die Unterstützung rekursiver Auflistung durch den Server."
         },

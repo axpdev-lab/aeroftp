@@ -1795,6 +1795,7 @@
             "usedScanDone": "Spazio usato calcolato",
             "usedScanDoneDetail": "{used} su {files} file",
             "usedScanTruncated": "parziale: limite di scansione raggiunto",
+            "usedScanUnreadable": "parziale: {count} cartella/e non leggibili",
             "usedScanFailed": "Scansione dello spazio usato non riuscita",
             "usedScanEmpty": "La scansione di {path} non ha trovato file; il valore in cache è stato mantenuto. Verifica il percorso o il supporto dell'elenco ricorsivo del server."
         },

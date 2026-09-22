@@ -1363,6 +1363,7 @@
             "usedScanDone": "Emmagatzematge utilitzat calculat",
             "usedScanDoneDetail": "{used} en {files} fitxers",
             "usedScanTruncated": "parcial: s'ha assolit el límit d'escaneig",
+            "usedScanUnreadable": "parcial: no s'han pogut llegir {count} carpeta/es",
             "usedScanFailed": "L'escaneig de l'emmagatzematge utilitzat ha fallat",
             "usedScanEmpty": "L'escaneig de {path} no ha trobat cap fitxer; s'ha mantingut el valor de la memòria cau. Comproveu el camí o el suport de llistat recursiu del servidor."
         },

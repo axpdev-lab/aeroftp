@@ -1363,6 +1363,7 @@
             "usedScanDone": "Armazenamento usado calculado",
             "usedScanDoneDetail": "{used} em {files} arquivos",
             "usedScanTruncated": "parcial: limite de verificação atingido",
+            "usedScanUnreadable": "parcial: não foi possível ler {count} pasta(s)",
             "usedScanFailed": "Falha na verificação do armazenamento usado",
             "usedScanEmpty": "A verificação de {path} não encontrou arquivos; o valor em cache foi mantido. Verifique o caminho ou o suporte do servidor à listagem recursiva."
         },

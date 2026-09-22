@@ -1363,6 +1363,7 @@
             "usedScanDone": "Kasutatud salvestusruum arvutatud",
             "usedScanDoneDetail": "{used} {files} failis",
             "usedScanTruncated": "osaline: skannimispiir saavutatud",
+            "usedScanUnreadable": "osaline: {count} kausta ei õnnestunud lugeda",
             "usedScanFailed": "Kasutatud salvestusruumi skannimine ebaõnnestus",
             "usedScanEmpty": "Tee {path} skannimisel ei leitud faile; vahemällu salvestatud väärtus säilitati. Kontrollige teed või serveri rekursiivse loendamise tuge."
         },

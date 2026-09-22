@@ -1363,6 +1363,7 @@
             "usedScanDone": "Használt tárhely kiszámítva",
             "usedScanDoneDetail": "{used} összesen {files} fájlban",
             "usedScanTruncated": "részleges: elérted a vizsgálati korlátot",
+            "usedScanUnreadable": "részleges: {count} mappa nem olvasható",
             "usedScanFailed": "A használt tárhely vizsgálata sikertelen",
             "usedScanEmpty": "A(z) {path} vizsgálata nem talált fájlt; a gyorsítótárazott érték megmaradt. Ellenőrizd az útvonalat vagy a szerver rekurzív listázási támogatását."
         },

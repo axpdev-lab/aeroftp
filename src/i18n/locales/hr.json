@@ -1363,6 +1363,7 @@
             "usedScanDone": "Iskorištena pohrana izračunata",
             "usedScanDoneDetail": "{used} u {files} datoteka",
             "usedScanTruncated": "djelomično: dosegnuto je ograničenje skeniranja",
+            "usedScanUnreadable": "djelomično: {count} mapa nije moguće pročitati",
             "usedScanFailed": "Skeniranje iskorištene pohrane nije uspjelo",
             "usedScanEmpty": "Skeniranje putanje {path} nije pronašlo datoteke; zadržana je predmemorirana vrijednost. Provjerite putanju ili podršku poslužitelja za rekurzivno izlistavanje."
         },

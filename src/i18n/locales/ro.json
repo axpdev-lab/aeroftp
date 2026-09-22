@@ -1363,6 +1363,7 @@
             "usedScanDone": "Spațiul folosit a fost calculat",
             "usedScanDoneDetail": "{used} în {files} fișiere",
             "usedScanTruncated": "parțial: limita de scanare atinsă",
+            "usedScanUnreadable": "parțial: {count} dosar(e) nu au putut fi citite",
             "usedScanFailed": "Scanarea spațiului folosit a eșuat",
             "usedScanEmpty": "Scanarea căii {path} nu a găsit fișiere; valoarea din cache a fost păstrată. Verifică calea sau suportul serverului pentru listarea recursivă."
         },

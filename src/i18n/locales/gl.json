@@ -1363,6 +1363,7 @@
             "usedScanDone": "Almacenamento usado calculado",
             "usedScanDoneDetail": "{used} en {files} ficheiros",
             "usedScanTruncated": "parcial: alcanzouse o límite de escaneo",
+            "usedScanUnreadable": "parcial: non se puideron ler {count} cartafol(es)",
             "usedScanFailed": "O escaneo do almacenamento usado fallou",
             "usedScanEmpty": "O escaneo de {path} non atopou ficheiros; mantívose o valor en caché. Comprobe a ruta ou o soporte de listaxe recursiva do servidor."
         },
