@@ -21,7 +21,11 @@ export const GeminiCodeBlock: React.FC<GeminiCodeBlockProps> = ({ code, language
     const isSuccess = outcome === 'OUTCOME_OK';
 
     const handleCopy = async () => {
-        await copyText(code);
+        try {
+            await copyText(code);
+        } catch {
+            return;
+        }
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };

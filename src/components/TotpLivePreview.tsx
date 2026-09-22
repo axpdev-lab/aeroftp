@@ -45,13 +45,9 @@ export const TotpLivePreview: React.FC<TotpLivePreviewProps> = ({ secret, t, inl
   const handleCopy = async () => {
     if (!code) return;
     try {
-      await invoke('copy_to_clipboard', { text: code });
+      await copyText(code);
     } catch {
-      try {
-        await copyText(code);
-      } catch {
-        return;
-      }
+      return;
     }
     setCopied(true);
     if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);

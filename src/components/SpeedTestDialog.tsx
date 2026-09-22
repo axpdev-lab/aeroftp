@@ -436,7 +436,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
         copyText(buildMethodologyReport(outcomes, buildCtx())).then(() => {
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1800);
-        });
+        }, () => undefined);
     }, [buildCtx, buildOutcomes]);
 
     const copyMarkdown = useCallback(() => {
@@ -445,7 +445,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
         copyText(buildMarkdownReport(outcomes, buildCtx())).then(() => {
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1800);
-        });
+        }, () => undefined);
     }, [buildCtx, buildOutcomes]);
 
     const exportJson = useCallback(() => {

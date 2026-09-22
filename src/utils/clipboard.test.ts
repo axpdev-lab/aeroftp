@@ -27,4 +27,19 @@ describe('clipboard writes', () => {
             );
         expect(offenders).toEqual([]);
     });
+
+    it('never call the native command directly, so a failure falls back and is reported once', () => {
+        // A direct call skipped the web fallback, and a site that retried
+        // through copyText after it ran the native command twice.
+        const offenders = Object.entries(sources)
+            .filter(([path]) => path !== './clipboard.ts')
+            .flatMap(([path, text]) =>
+                text
+                    .split('\n')
+                    .map((line, i) => ({ line, n: i + 1 }))
+                    .filter(({ line }) => /\binvoke\s*(<[^>]*>)?\s*\(\s*['"]copy_to_clipboard['"]/.test(line))
+                    .map(({ n }) => `${path}:${n}`),
+            );
+        expect(offenders).toEqual([]);
+    });
 });

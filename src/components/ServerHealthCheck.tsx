@@ -340,7 +340,7 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
         copyText(lines.join('\n')).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        });
+        }, () => undefined);
     }, [targetServers, results]);
 
     // Summary stats

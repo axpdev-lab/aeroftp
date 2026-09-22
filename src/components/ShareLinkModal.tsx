@@ -258,9 +258,11 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
       setState('success');
 
       // Auto-copy link to clipboard
-      await invoke('copy_to_clipboard', { text: result.url }).catch(() => {});
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2000);
+      // Say "copied" only when it was: the link stays on screen either way.
+      if (await copyText(result.url).then(() => true, () => false)) {
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2000);
+      }
 
       log.updateEntry(logId, { status: 'success', message: t('activity.share_link_created', { provider: providerName, filename: fileName }) });
     } catch (err) {
@@ -297,7 +299,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
 
   const copyToClipboard = async (text: string, type: 'link' | 'password' | 'all') => {
     try {
-      await invoke('copy_to_clipboard', { text });
+      await copyText(text);
       if (type === 'link') {
         setLinkCopied(true);
         setTimeout(() => setLinkCopied(false), 2000);
@@ -309,8 +311,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
         setTimeout(() => setAllCopied(false), 2000);
       }
     } catch {
-      // Fallback: try navigator.clipboard
-      try { await copyText(text); } catch { /* ignore */ }
+      // Both clipboard paths failed: leave the button without its check mark.
     }
   };
 

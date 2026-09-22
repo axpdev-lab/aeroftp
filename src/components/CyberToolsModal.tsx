@@ -4,6 +4,7 @@
 import { useState, useCallback, useEffect, useRef, type DragEvent as ReactDragEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { pickFile } from '../utils/pickPath';
+import { copyText } from '../utils/clipboard';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import {
     X, Hash, Lock, KeyRound, Copy, Check, FileSearch, Type,
@@ -98,7 +99,7 @@ const CopyButton: React.FC<{ text: string; label?: string }> = ({ text, label })
     const [copied, setCopied] = useState(false);
     const handleCopy = useCallback(async () => {
         try {
-            await invoke('copy_to_clipboard', { text });
+            await copyText(text);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch { /* clipboard may fail in some environments */ }

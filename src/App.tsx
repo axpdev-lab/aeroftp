@@ -13651,11 +13651,8 @@ const App: React.FC = () => {
               try {
                 const url = await invoke<string>('filelu_clone_file', { path: file.path });
                 if (url) {
-                  try {
-                    await copyText(url);
-                  } catch {
-                    await invoke('copy_to_clipboard', { text: url });
-                  }
+                  // The clone succeeded; a failed copy is reported on its own.
+                  await copyText(url).catch(() => notify.error(t('toast.copyFailed')));
                 }
                 notify.success(t('filelu.cloneSuccess'));
                 loadRemoteFiles(undefined, true);
@@ -13860,7 +13857,7 @@ const App: React.FC = () => {
         action: async () => {
           try {
             const shareUrl = await invoke<string>('generate_share_link_remote', { remotePath: file.path });
-            await invoke('copy_to_clipboard', { text: shareUrl });
+            await copyText(shareUrl);
             notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
           } catch (err) {
             notify.error(t('toast.generateShareLinkFailed'), String(err));
@@ -13887,7 +13884,7 @@ const App: React.FC = () => {
               initialPath: activeSession?.serverInitialPath || '',
               remotePath: file.path,
             });
-            await invoke('copy_to_clipboard', { text: shareUrl });
+            await copyText(shareUrl);
             notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
           } catch (err) {
             notify.error(t('contextMenu.shareLinkFailed'), String(err));
@@ -13934,7 +13931,7 @@ const App: React.FC = () => {
                 setRemoteFiles(prev => prev.map(r => r.path === file.path ? { ...r, permissions: 'public' } : r));
                 notify.info(t('contextMenu.creatingShareLink'), t('contextMenu.shareLinkMoment'));
                 const result = await invoke<{ url: string; password: string | null }>('provider_create_share_link', { path: file.path });
-                await invoke('copy_to_clipboard', { text: result.url });
+                await copyText(result.url);
                 notify.success(t('contextMenu.shareLinkCopied'), result.url);
                 humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Made file public + shared' });
               } catch (err: unknown) {
@@ -14184,10 +14181,10 @@ const App: React.FC = () => {
             const url = `https://raw.githubusercontent.com/${ghOwner}/${ghRepo}/${ghBranch}/${filePath}`;
             try {
               await copyText(url);
+              notify.success(t('github.rawUrlCopied'));
             } catch {
-              await invoke('copy_to_clipboard', { text: url });
+              notify.error(t('toast.copyFailed'));
             }
-            notify.success(t('github.rawUrlCopied'));
           },
         });
         items.push({
@@ -15081,7 +15078,7 @@ const App: React.FC = () => {
         action: async () => {
           try {
             const shareUrl = await invoke<string>('generate_share_link', { localPath: file.path });
-            await invoke('copy_to_clipboard', { text: shareUrl });
+            await copyText(shareUrl);
             notify.success(t('toast.shareUrlCopied'), shareUrl);
           } catch (err) {
             notify.error(t('toast.shareLinkFailed'), String(err));
@@ -16026,14 +16023,24 @@ const App: React.FC = () => {
                     <div className="flex items-center gap-1.5">
                       <div className="text-blue-600 dark:text-blue-400 break-all cursor-pointer hover:underline flex-1" onClick={async (e) => {
                         const el = e.currentTarget;
-                        await invoke('copy_to_clipboard', { text: String(link.attributes.link || '') });
+                        try {
+                          await copyText(String(link.attributes.link || ''));
+                        } catch {
+                          notify.error(t('toast.copyFailed'));
+                          return;
+                        }
                         el.classList.add('text-green-500', 'dark:text-green-400');
                         el.textContent = `✓ ${t('contextMenu.shareLinkCopied')}`;
                         setTimeout(() => { el.classList.remove('text-green-500', 'dark:text-green-400'); el.textContent = String(link.attributes.link || ''); }, 1500);
                       }}>{String(link.attributes.link || '')}</div>
                       <button onClick={async (e) => {
                         const el = e.currentTarget;
-                        await invoke('copy_to_clipboard', { text: String(link.attributes.link || '') });
+                        try {
+                          await copyText(String(link.attributes.link || ''));
+                        } catch {
+                          notify.error(t('toast.copyFailed'));
+                          return;
+                        }
                         el.textContent = '✓';
                         setTimeout(() => { el.textContent = '📋'; }, 1500);
                       }} className="shrink-0 px-1.5 py-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-xs" title={t('contextMenu.shareLinkCopied')}>📋</button>
