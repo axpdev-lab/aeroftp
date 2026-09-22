@@ -19,6 +19,7 @@ import Prism from 'prismjs';
 import DOMPurify from 'dompurify';
 import { useI18n } from '../../../i18n';
 import './TextViewer.css';
+import { copyText } from '../../../utils/clipboard';
 
 interface TextViewerProps extends ViewerBaseProps {
     className?: string;
@@ -351,7 +352,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
     // Copy to clipboard
     const copyToClipboard = async () => {
         try {
-            await navigator.clipboard.writeText(content);
+            await copyText(content);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch (err) {
@@ -387,7 +388,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
             const dropper = new (window as any).EyeDropper();
             const result = await dropper.open();
             setPickedColor(result.sRGBHex);
-            await navigator.clipboard.writeText(result.sRGBHex);
+            await copyText(result.sRGBHex);
         } catch {
             // User cancelled
             setPickedColor(null);

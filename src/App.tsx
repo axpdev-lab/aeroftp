@@ -199,6 +199,7 @@ import {
   type JournalDescriptorFields,
   type TransferQueueJournalDto,
 } from './utils/transferQueueJournal';
+import { copyText } from './utils/clipboard';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
 import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
@@ -13651,7 +13652,7 @@ const App: React.FC = () => {
                 const url = await invoke<string>('filelu_clone_file', { path: file.path });
                 if (url) {
                   try {
-                    await navigator.clipboard.writeText(url);
+                    await copyText(url);
                   } catch {
                     await invoke('copy_to_clipboard', { text: url });
                   }
@@ -13823,8 +13824,8 @@ const App: React.FC = () => {
         disabled: !hasClipboard || (fileClipboardRef.current?.isRemote && fileClipboardRef.current?.operation === 'copy' && !aeroVaultOverlaySession?.sessionId && currentProtocol && !SERVER_COPY_PROVIDERS.includes(currentProtocol)),
         divider: true,
       },
-      { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success(t('contextMenu.pathCopied')); } },
-      { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success(t('contextMenu.nameCopied')); } },
+      { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { copyText(file.path).then(() => notify.success(t('contextMenu.pathCopied')), () => notify.error(t('toast.copyFailed'))); } },
+      { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { copyText(file.name).then(() => notify.success(t('contextMenu.nameCopied')), () => notify.error(t('toast.copyFailed'))); } },
     ];
 
     // Copy FTP/SFTP URL: only for traditional protocols
@@ -13833,8 +13834,10 @@ const App: React.FC = () => {
       items.push({
         label: t('contextMenu.copyUrl', { scheme: scheme.toUpperCase() }), icon: <Link2 size={14} />, action: () => {
           const url = `${scheme}://${currentUsername}@${currentServer}${file.path}`;
-          navigator.clipboard.writeText(url);
-          notify.success(t('contextMenu.urlCopied', { scheme: scheme.toUpperCase() }));
+          copyText(url).then(
+              () => notify.success(t('contextMenu.urlCopied', { scheme: scheme.toUpperCase() })),
+              () => notify.error(t('toast.copyFailed')),
+          );
         }
       });
     }
@@ -14180,7 +14183,7 @@ const App: React.FC = () => {
             const filePath = file.path.replace(/^\//, '');
             const url = `https://raw.githubusercontent.com/${ghOwner}/${ghRepo}/${ghBranch}/${filePath}`;
             try {
-              await navigator.clipboard.writeText(url);
+              await copyText(url);
             } catch {
               await invoke('copy_to_clipboard', { text: url });
             }
@@ -14854,8 +14857,8 @@ const App: React.FC = () => {
         disabled: !hasClipboard,
         divider: true,
       },
-      { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success(t('contextMenu.pathCopied')); } },
-      { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success(t('contextMenu.nameCopied')); }, divider: true },
+      { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { copyText(file.path).then(() => notify.success(t('contextMenu.pathCopied')), () => notify.error(t('toast.copyFailed'))); } },
+      { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { copyText(file.name).then(() => notify.success(t('contextMenu.nameCopied')), () => notify.error(t('toast.copyFailed'))); }, divider: true },
       { label: t('contextMenu.openInFileManager'), icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
       // Directory-specific actions: Calculate Size, Find Duplicates, Disk Usage.
       // Same list the empty-area and breadcrumb menus raise, so a folder answers
@@ -15408,7 +15411,7 @@ const App: React.FC = () => {
       },
       {
         label: t('contextMenu.copyPath'), icon: <Copy size={14} />,
-        action: () => { navigator.clipboard.writeText(dirPath); notify.success(t('contextMenu.pathCopied')); },
+        action: () => { copyText(dirPath).then(() => notify.success(t('contextMenu.pathCopied')), () => notify.error(t('toast.copyFailed'))); },
         divider: true,
       },
       ...directoryActionItems(dirPath),
@@ -18063,8 +18066,10 @@ const App: React.FC = () => {
                             `${f.is_dir ? 'd' : '-'}\t${f.size}\t${f.modified || ''}\t${f.name}`
                           );
                           const header = `# Remote files: ${currentRemotePath} (${sortedRemoteFiles.length} entries)\n# type\tsize\tmodified\tname`;
-                          navigator.clipboard.writeText(header + '\n' + lines.join('\n'));
-                          notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedRemoteFiles.length }));
+                          copyText(header + '\n' + lines.join('\n')).then(
+                              () => notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedRemoteFiles.length })),
+                              () => notify.error(t('toast.copyFailed')),
+                          );
                         }}
                         className="flex-shrink-0 p-1.5 rounded text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                         title={t('debug.copyFileListToClipboard')}
@@ -18997,8 +19002,10 @@ const App: React.FC = () => {
                             {/* Copy Path */}
                             <button
                               onClick={() => {
-                                navigator.clipboard.writeText(previewFile.path);
-                                notify.success(t('toast.clipboardCopied'), t('toast.pathCopied'));
+                                copyText(previewFile.path).then(
+                                    () => notify.success(t('toast.clipboardCopied'), t('toast.pathCopied')),
+                                    () => notify.error(t('toast.copyFailed')),
+                                );
                               }}
                               className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-xs rounded-lg flex items-center justify-center gap-2 transition-colors"
                             >

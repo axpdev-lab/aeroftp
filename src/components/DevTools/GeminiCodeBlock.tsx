@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { Play, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { copyText } from '../../utils/clipboard';
 
 interface GeminiCodeBlockProps {
     code: string;
@@ -20,7 +21,7 @@ export const GeminiCodeBlock: React.FC<GeminiCodeBlockProps> = ({ code, language
     const isSuccess = outcome === 'OUTCOME_OK';
 
     const handleCopy = async () => {
-        await navigator.clipboard.writeText(code);
+        await copyText(code);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };

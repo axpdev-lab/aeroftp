@@ -21,6 +21,7 @@ import {
     updateTransferStatus,
     type AddItemOptions,
 } from './transferQueueActions';
+import { copyText } from '../utils/clipboard';
 
 // `staged` was added by TQ-3 (APPENDIX-TRANSFER-QUEUE). It represents an
 // entry that was added to the queue without launching: the user can prune,
@@ -148,7 +149,7 @@ const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry
         const time = item.startTime && item.endTime ? ` ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
         const err = item.error ? ` [${item.error}]` : '';
         const path = item.path ? ` (${item.path})` : '';
-        navigator.clipboard.writeText(`${dir} ${st} ${item.filename}${path} ${sz}${time}${err}`);
+        void copyText(`${dir} ${st} ${item.filename}${path} ${sz}${time}${err}`).catch(() => undefined);
     };
 
     return (
@@ -166,7 +167,7 @@ const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry
             )}
             {item.status === 'error' && item.error && (
                 menuItem(<Copy size={12} />, t('transfer.copyError'), () => {
-                    navigator.clipboard.writeText(item.error || '');
+                    void copyText(item.error || '').catch(() => undefined);
                 })
             )}
             {onRemove && item.status !== 'transferring' && (
@@ -381,7 +382,7 @@ const QueueItemRow = React.memo<QueueItemRowProps>(({
                         const sz = item.size > 0 ? formatBytes(item.size) : '0 B';
                         const time = item.startTime && item.endTime ? ` ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
                         const err = item.error ? ` [${item.error}]` : '';
-                        navigator.clipboard.writeText(`${dir} ${st} ${item.filename} ${sz}${time}${err}`);
+                        void copyText(`${dir} ${st} ${item.filename} ${sz}${time}${err}`).catch(() => undefined);
                     }}
                     className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
                     title={t('transfer.copy')}
@@ -643,7 +644,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                         return `${num} ${dir} ${st} ${folder}${item.filename}${count}${sz}${time}${err}`;
                                     }).join('\n');
                                     const header = `Transfer Queue [${displayCompleted}/${displayTotal}]`;
-                                    navigator.clipboard.writeText(`${header}\n${lines}`);
+                                    void copyText(`${header}\n${lines}`).catch(() => undefined);
                                 }}
                                 disabled={items.length === 0}
                                 className={`p-1 rounded transition-colors ${items.length > 0 ? 'text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-200 dark:hover:bg-gray-700' : 'text-gray-300 dark:text-gray-700 cursor-not-allowed'}`}

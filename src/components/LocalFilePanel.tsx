@@ -39,6 +39,7 @@ import { BridgeConfigBadge } from './BridgeConfigBadge';
 import type { BridgeSourceDescriptor } from './bridge/bridgeSources';
 import type { PanelKey } from '../hooks/useDragAndDrop';
 import { PanelEndpointSelector } from './PanelEndpointSelector';
+import { copyText } from '../utils/clipboard';
 
 // ============================================================================
 // Types
@@ -704,8 +705,12 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                     `${f.is_dir ? 'd' : '-'}\t${f.size}\t${f.modified || ''}\t${f.name}`
                   );
                   const header = `# Local files: ${currentPath} (${sortedFiles.length} entries)\n# type\tsize\tmodified\tname`;
-                  navigator.clipboard.writeText(header + '\n' + lines.join('\n'));
-                  notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedFiles.length }));
+                  copyText(header + '\n' + lines.join('\n')).then(
+                      () => notify.success(t('debug.title'), t('debug.filesCopied', { count: sortedFiles.length })),
+                      // This panel's notify has no error channel: no toast
+                      // rather than a green one saying the copy failed.
+                      () => undefined,
+                  );
                 }}
                 className="flex-shrink-0 p-1.5 rounded text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                 title={t('debug.copyFileListToClipboard')}

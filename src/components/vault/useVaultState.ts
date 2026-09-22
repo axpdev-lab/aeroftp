@@ -13,6 +13,7 @@ import { formatSize } from '../../utils/formatters';
 import { useTranslation } from '../../i18n';
 import { guardedUnlisten } from '../../hooks/useTauriListener';
 import { splitPathsByType } from './pathStaging';
+import { copyText } from '../../utils/clipboard';
 
 /** Where Error Correction parity lives relative to the vault container. */
 export type RecoveryPlacement = 'embedded' | 'detached' | 'both';
@@ -1771,7 +1772,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setError(null);
         try {
             const content = await buildVaultReport('txt');
-            await navigator.clipboard.writeText(content);
+            await copyText(content);
             setSuccess(t('vault.reportCopied'));
         } catch (e) {
             setError(mapVaultError(e, t));

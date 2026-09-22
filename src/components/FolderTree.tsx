@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronRight, Folder, Loader2, FolderPlus, Copy, PlusCircle } from 'lucide-react';
 import { SubDirectory } from '../types/aerofile';
+import { copyText } from '../utils/clipboard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -331,7 +332,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   }, [contextMenu.visible, closeContextMenu]);
 
   const handleCopyPath = useCallback(() => {
-    navigator.clipboard.writeText(contextMenu.path);
+    void copyText(contextMenu.path).catch(() => undefined);
     closeContextMenu();
   }, [contextMenu.path, closeContextMenu]);
 

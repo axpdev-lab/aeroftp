@@ -23,6 +23,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { copyText } from '../utils/clipboard';
 
 interface AboutDialogProps {
     isOpen: boolean;
@@ -204,9 +205,10 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
     }, [systemInfo, appVersion, t]);
 
     const copyTechnicalInfo = () => {
-        navigator.clipboard.writeText(technicalText);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        copyText(technicalText).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }, () => undefined);
     };
 
     if (!isOpen) return null;

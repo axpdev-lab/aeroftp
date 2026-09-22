@@ -56,6 +56,7 @@ import { ChatHistoryManager } from './ChatHistoryManager';
 import { useKeyboardShortcuts, getDefaultShortcuts } from './useKeyboardShortcuts';
 import { initBudgetManager, checkBudget, recordSpending, getConversationCost, type BudgetCheckResult, type ConversationCost } from './CostBudgetManager';
 import { CostBudgetIndicator } from './CostBudgetIndicator';
+import { copyText } from '../../utils/clipboard';
 
 /** Maximum autonomous steps: now driven by AGENT_MODE_MAX_STEPS */
 
@@ -1871,9 +1872,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         });
     }, [setExpandedMessages]);
     const handleCopyMessage = useCallback((m: Message) => {
-        navigator.clipboard.writeText(m.content.replace(/<[^>]*>/g, ''));
-        setCopiedId(m.id);
-        setTimeout(() => setCopiedId(null), 1500);
+        copyText(m.content.replace(/<[^>]*>/g, '')).then(() => {
+            setCopiedId(m.id);
+            setTimeout(() => setCopiedId(null), 1500);
+        }, () => undefined);
     }, []);
     const handleForkMessage = useCallback((id: string) => {
         rowHandlersRef.current.forkConversation(id);
@@ -3275,7 +3277,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                             <button
                                                 onClick={() => {
                                                     const text = `Remote: ${remotePath || 'N/A'}\nLocal: ${localPath || 'N/A'}`;
-                                                    navigator.clipboard.writeText(text);
+                                                    void copyText(text).catch(() => undefined);
                                                     setShowContextMenu(false);
                                                 }}
                                                 className={`w-full px-3 py-2 text-left ${ct.dropdownItem} flex items-center gap-2 ${ct.textSecondary}`}

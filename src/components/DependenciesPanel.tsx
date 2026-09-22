@@ -6,6 +6,7 @@ import { X, RefreshCw, Package, CheckCircle, AlertTriangle, ArrowUpCircle, Loade
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { copyText } from '../utils/clipboard';
 
 /** One direct dependency, as build.rs derived it from the manifests and Cargo.lock. */
 interface DependencyInfo {
@@ -98,9 +99,10 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                 .map(d => `${d.name.padEnd(30)} ${d.version.padEnd(18)} ${(offeredVersion(d) || '-').padEnd(18)} ${STATUS_LABEL[d.status]}`),
         ]);
         const text = `${t('dependencies.copyTitle')}\n${'='.repeat(75)}` + lines.join('\n');
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        copyText(text).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }, () => undefined);
     }, [deps, categories, t]);
 
     // Load dependencies from backend

@@ -11,6 +11,7 @@ import { useTranslation } from '../i18n';
 import type { EffectiveTheme } from '../hooks/useTheme';
 import { TRANSFER_EVENT_BRIDGE } from '../hooks/useTransferEvents';
 import { usePointerDrag } from '../hooks/usePointerDrag';
+import { copyText } from '../utils/clipboard';
 
 // ─── Shared timestamp helper ───────────────────────────────────────────────
 function ts() {
@@ -695,7 +696,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
 
     const copyLogs = useCallback(() => {
         const text = logs.map(l => `[${l.timestamp}] [${l.source.toUpperCase()}] [${l.level}] ${l.message}`).join('\n');
-        navigator.clipboard.writeText(text);
+        void copyText(text).catch(() => undefined);
     }, [logs]);
 
     // Close export dropdown on outside click
@@ -766,7 +767,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                 lines.push(`- [${tag}] ${label}${dur}: ${r.message ?? ''}`);
             }
         }
-        navigator.clipboard.writeText(lines.join('\n'));
+        void copyText(lines.join('\n')).catch(() => undefined);
     }, [testResults]);
 
     const runExportBundle = useCallback(async () => {

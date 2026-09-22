@@ -12,6 +12,7 @@ import { useTranslation } from '../i18n';
 import { formatDate } from '../utils';
 import { ServerProfile, isOAuthProvider, isFourSharedProvider } from '../types';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { copyText } from '../utils/clipboard';
 
 interface CheckDetail {
     name: string;
@@ -336,7 +337,7 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
         const u = Array.from(results.values()).filter(r => r.status === 'unreachable' || r.status === 'error').length;
         lines.push(`Summary: ${h} healthy, ${d} degraded, ${u} unreachable (${results.size} total)`);
 
-        navigator.clipboard.writeText(lines.join('\n')).then(() => {
+        copyText(lines.join('\n')).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         });

@@ -6,6 +6,7 @@ import { X, Copy, Check, ExternalLink } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { copyText } from '../utils/clipboard';
 
 interface McpDialogProps {
     isOpen: boolean;
@@ -30,7 +31,7 @@ const McpDialog: React.FC<McpDialogProps> = ({ isOpen, onClose }) => {
 
     const copyToClipboard = async (text: string, field: string) => {
         try {
-            await navigator.clipboard.writeText(text);
+            await copyText(text);
             setCopiedField(field);
             setTimeout(() => setCopiedField(null), 2000);
         } catch { /* ignore */ }

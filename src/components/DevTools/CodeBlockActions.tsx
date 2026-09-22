@@ -7,6 +7,7 @@ import { pickSave } from '../../utils/pickPath';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import { useTranslation } from '../../i18n';
 import { DiffPreview } from './DiffPreview';
+import { copyText } from '../../utils/clipboard';
 
 // SEC: Command denylist matching backend ai_tools.rs DENIED_COMMAND_PATTERNS
 // Prevents destructive commands from being dispatched to PTY via "Run in Terminal"
@@ -56,7 +57,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
 
     const handleCopy = useCallback(async () => {
         try {
-            await navigator.clipboard.writeText(code);
+            await copyText(code);
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
         } catch {

@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { KeyRound, Copy, Check } from 'lucide-react';
+import { copyText } from '../utils/clipboard';
 
 interface TotpLivePreviewProps {
   /** Raw base32 secret as typed in the "TOTP Secret (saved)" field. */
@@ -47,7 +48,7 @@ export const TotpLivePreview: React.FC<TotpLivePreviewProps> = ({ secret, t, inl
       await invoke('copy_to_clipboard', { text: code });
     } catch {
       try {
-        await navigator.clipboard.writeText(code);
+        await copyText(code);
       } catch {
         return;
       }

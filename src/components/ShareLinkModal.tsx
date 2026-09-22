@@ -13,6 +13,7 @@ import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { ProviderType } from '../types';
 import { getUiLocale } from '../utils/formatters';
+import { copyText } from '../utils/clipboard';
 
 /** Backend response from provider_create_share_link */
 interface ShareLinkResult {
@@ -309,7 +310,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
       }
     } catch {
       // Fallback: try navigator.clipboard
-      try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
+      try { await copyText(text); } catch { /* ignore */ }
     }
   };
 

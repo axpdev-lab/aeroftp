@@ -2,16 +2,17 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { copyText } from '../utils/clipboard';
 
 /**
  * Copy-to-clipboard with the "green tick for a moment" acknowledgement the app
  * uses everywhere (Ehud #369, #274).
  *
- * Copy goes through the Rust `copy_to_clipboard` command rather than
- * `navigator.clipboard`, which is what every other copy affordance in the app
- * does: under WebKitGTK the web clipboard API is only available in a secure
- * context and silently rejects often enough that the button would look broken.
+ * Copy goes through `copyText` (the Rust `copy_to_clipboard` command, with the
+ * web API only as a fallback), like every other copy affordance in the app:
+ * under WebKitGTK the web clipboard API is only available in a secure context
+ * and silently rejects often enough that the button would look broken.
+ * `utils/clipboard.test.ts` keeps it that way.
  *
  * `copied` flips back to false after `resetMs`, and the pending timer is
  * dropped on unmount, since a dialog closed right after a copy would otherwise
@@ -23,7 +24,7 @@ export function useClipboardCopy(resetMs = 2000) {
 
     const copy = useCallback(async (text: string) => {
         try {
-            await invoke('copy_to_clipboard', { text });
+            await copyText(text);
             setCopied(true);
             if (resetRef.current) clearTimeout(resetRef.current);
             resetRef.current = setTimeout(() => setCopied(false), resetMs);

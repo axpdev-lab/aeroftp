@@ -12,6 +12,7 @@ import { pickFile } from '../utils/pickPath';
 import { KeyRound, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { copyText } from '../utils/clipboard';
 
 interface SlotSummary {
     id: number;
@@ -489,8 +490,7 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            void navigator.clipboard
-                                                ?.writeText(shownRecoveryCode)
+                                            void copyText(shownRecoveryCode)
                                                 .catch(() => undefined);
                                         }}
                                         className="px-2 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700"
