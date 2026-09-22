@@ -1363,7 +1363,7 @@
             "usedScanDone": "Đã tính dung lượng đã dùng",
             "usedScanDoneDetail": "{used} trong {files} tệp",
             "usedScanTruncated": "một phần: đã đạt giới hạn quét",
-            "usedScanUnreadable": "một phần: không đọc được {count} thư mục",
+            "usedScanUnreadable": "một phần, thư mục không đọc được: {count}",
             "usedScanFailed": "Quét dung lượng đã dùng thất bại",
             "usedScanEmpty": "Quét đường dẫn {path} không tìm thấy tệp nào; đã giữ giá trị trong bộ nhớ đệm. Hãy kiểm tra đường dẫn hoặc khả năng liệt kê đệ quy của máy chủ."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "Đang kết nối đến {server} ({protocol})...",
             "connect_success": "Đã kết nối! Tôi đã kết nối với {server} qua {protocol}",
-            "resume_transfers": "Đang tiếp tục {count} lượt truyền đã khôi phục trên {server}",
-            "resume_transfers_no_profile": "Đang tiếp tục {count} lượt truyền đã khôi phục",
+            "resume_transfers": "Đang tiếp tục các lượt truyền đã khôi phục trên {server}: {count}",
+            "resume_transfers_no_profile": "Đang tiếp tục các lượt truyền đã khôi phục: {count}",
             "connect_error": "Không thể kết nối đến {server}. Tôi sẽ kiểm tra thông tin đăng nhập.",
             "connect_error_path_not_found": "Đã đăng nhập vào {server}, nhưng không tìm thấy đường dẫn từ xa '{path}'. Hãy chỉnh sửa Đường dẫn từ xa của hồ sơ hoặc xóa trống để dùng thư mục gốc của máy chủ.",
             "disconnect_start": "Đang ngắt kết nối khỏi máy chủ...",

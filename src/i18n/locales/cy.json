@@ -1363,7 +1363,7 @@
             "usedScanDone": "Storfa a ddefnyddiwyd wedi'i chyfrifo",
             "usedScanDoneDetail": "{used} ar draws {files} ffeil",
             "usedScanTruncated": "rhannol: cyrhaeddwyd y terfyn sganio",
-            "usedScanUnreadable": "rhannol: nid oedd modd darllen {count} ffolder",
+            "usedScanUnreadable": "rhannol, ffolderi na ellid eu darllen: {count}",
             "usedScanFailed": "Methodd sgan y storfa a ddefnyddiwyd",
             "usedScanEmpty": "Ni chanfu sgan {path} unrhyw ffeiliau; cadwyd y ffigur o'r storfa. Gwiriwch y llwybr neu gefnogaeth rhestru ailadroddus y gweinydd."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "Yn cysylltu a {server} ({protocol})...",
             "connect_success": "Wedi cysylltu a {server} drwy {protocol}",
-            "resume_transfers": "Yn ailddechrau {count} trosglwyddiad a adferwyd ar {server}",
-            "resume_transfers_no_profile": "Yn ailddechrau {count} trosglwyddiad a adferwyd",
+            "resume_transfers": "Yn ailddechrau trosglwyddiadau a adferwyd ar {server}: {count}",
+            "resume_transfers_no_profile": "Yn ailddechrau trosglwyddiadau a adferwyd: {count}",
             "connect_error": "Methwyd cysylltu a {server}. Gwiriwch fanylion.",
             "connect_error_path_not_found": "Wedi mewngofnodi i {server}, ond ni chanfuwyd y llwybr pell '{path}'. Golygwch faes Llwybr Pell y proffil neu ei glirio i ddefnyddio cartref y gweinydd.",
             "disconnect_start": "Yn datgysylltu o'r gweinydd...",

@@ -1363,7 +1363,7 @@
             "usedScanDone": "Izmantotā krātuve aprēķināta",
             "usedScanDoneDetail": "{used} {files} failos",
             "usedScanTruncated": "daļēji: sasniegts skenēšanas ierobežojums",
-            "usedScanUnreadable": "daļējs: {count} mapes nevarēja nolasīt",
+            "usedScanUnreadable": "daļēji, nenolasāmas mapes: {count}",
             "usedScanFailed": "Izmantotās krātuves skenēšana neizdevās",
             "usedScanEmpty": "{path} skenēšanā netika atrasts neviens fails; kešatmiņā saglabātais skaitlis tika paturēts. Pārbaudiet ceļu vai servera rekursīvā saraksta atbalstu."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "Savienojas ar {server} ({protocol})...",
             "connect_success": "Savienots ar {server} caur {protocol}",
-            "resume_transfers": "Atsāk {count} atjaunotu pārsūtīšanu serverī {server}",
-            "resume_transfers_no_profile": "Atsāk {count} atjaunotu pārsūtīšanu",
+            "resume_transfers": "Atsāk atjaunotās pārsūtīšanas serverī {server}: {count}",
+            "resume_transfers_no_profile": "Atsāk atjaunotās pārsūtīšanas: {count}",
             "connect_error": "Savienojums ar {server} neizdevās. Pārbaudiet akreditācijas datus.",
             "connect_error_path_not_found": "Pieteikšanās serverī {server} izdevās, taču attālais ceļš '{path}' netika atrasts. Rediģējiet profila lauku Attālais ceļš vai notīriet to, lai izmantotu servera sākuma mapi.",
             "disconnect_start": "Atvienojas no servera...",

@@ -92,8 +92,8 @@ export function isRestorableJournalStatus(status: JournalStatus | string): boole
  * The `ProviderError` Display prefixes (src-tauri/src/providers/types.rs) of
  * failures that a new attempt cannot fix: the destination refuses, the file or
  * name is not acceptable there, or the operation does not exist. Matched with
- * their exact case and colon anywhere in the message, since the transfer layer
- * wraps them ("Upload failed: Permission denied: ..."). Left out on purpose,
+ * their exact case and colon at the start of the message, after the wrappers
+ * the transfer layer adds ("Upload failed: Permission denied: ..."). Left out on purpose,
  * because a later attempt can succeed: a lost connection or a timeout, an
  * expired login, a missing path, a name that already exists (overwrite), a
  * configuration the user can fix. Narrower than `classifyErrorFast`
@@ -110,9 +110,16 @@ const PERMANENT_ERROR_MARKERS = [
     'Restricted character ',
 ];
 
+/** The wrappers the transfer layer puts in front of a provider error. */
+const TRANSFER_ERROR_WRAPPER = /^(?:(?:Upload|Download|Transfer) failed: )*/;
+
 export function isPermanentTransferError(error: string | undefined | null): boolean {
     if (!error) return false;
-    return PERMANENT_ERROR_MARKERS.some((marker) => error.includes(marker));
+    // Only the provider error that opens the message counts: a server's own
+    // text quoted further on ("Server error: upstream said Permission denied:
+    // retry later") is not a classification.
+    const unwrapped = error.replace(TRANSFER_ERROR_WRAPPER, '');
+    return PERMANENT_ERROR_MARKERS.some((marker) => unwrapped.startsWith(marker));
 }
 
 /**

@@ -231,6 +231,8 @@ describe('isRestorableJournalEntry', () => {
 
     it('matches the Display prefix, not a lowercase mention inside a server message', () => {
         expect(isPermanentTransferError('Server error: upstream said permission denied: retry later')).toBe(false);
+        expect(isPermanentTransferError('Server error: upstream said Permission denied: retry later')).toBe(false);
+        expect(isPermanentTransferError('Transfer failed: Upload failed: Permission denied: x')).toBe(true);
         expect(isPermanentTransferError(undefined)).toBe(false);
     });
 });

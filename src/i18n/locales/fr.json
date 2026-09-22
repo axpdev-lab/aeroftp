@@ -1363,7 +1363,7 @@
             "usedScanDone": "Stockage utilisé calculé",
             "usedScanDoneDetail": "{used} répartis sur {files} fichiers",
             "usedScanTruncated": "partiel : limite d'analyse atteinte",
-            "usedScanUnreadable": "partiel : {count} dossier(s) illisible(s)",
+            "usedScanUnreadable": "partiel, dossiers illisibles : {count}",
             "usedScanFailed": "Échec de l'analyse du stockage utilisé",
             "usedScanEmpty": "L'analyse de {path} n'a trouvé aucun fichier ; la valeur en cache a été conservée. Vérifiez le chemin ou la prise en charge du listage récursif par le serveur."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "Connexion à {server}... ({protocol})",
             "connect_success": "Connecté à {server} avec succès ({protocol})",
-            "resume_transfers": "Reprise de {count} transfert(s) restauré(s) sur {server}",
-            "resume_transfers_no_profile": "Reprise de {count} transfert(s) restauré(s)",
+            "resume_transfers": "Reprise des transferts restaurés sur {server} : {count}",
+            "resume_transfers_no_profile": "Reprise des transferts restaurés : {count}",
             "connect_error": "Échec de la connexion à {server}. Vérifiez vos identifiants.",
             "connect_error_path_not_found": "Connecté à {server}, mais le chemin distant '{path}' est introuvable. Modifiez le Chemin distant du profil ou videz-le pour utiliser le dossier racine du serveur.",
             "disconnect_start": "Déconnexion en cours...",

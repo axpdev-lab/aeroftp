@@ -1363,7 +1363,7 @@
             "usedScanDone": "사용 용량 계산 완료",
             "usedScanDoneDetail": "{files}개 파일에서 {used}",
             "usedScanTruncated": "부분: 스캔 한도에 도달함",
-            "usedScanUnreadable": "일부: 폴더 {count}개를 읽을 수 없습니다",
+            "usedScanUnreadable": "부분, 읽을 수 없는 폴더: {count}",
             "usedScanFailed": "사용 용량 스캔 실패",
             "usedScanEmpty": "{path} 스캔에서 파일을 찾지 못했습니다. 캐시된 값이 유지되었습니다. 경로 또는 서버의 재귀 목록 지원을 확인하세요."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "{server} ({protocol})에 연결 중...",
             "connect_success": "{protocol}을 통해 {server}에 연결됨",
-            "resume_transfers": "{server}에서 복원된 전송 {count}개를 재개하는 중",
-            "resume_transfers_no_profile": "복원된 전송 {count}개를 재개하는 중",
+            "resume_transfers": "{server}에서 복원된 전송 재개 중: {count}",
+            "resume_transfers_no_profile": "복원된 전송 재개 중: {count}",
             "connect_error": "{server} 연결 실패. 자격 증명을 확인하세요.",
             "connect_error_path_not_found": "{server}에 로그인했지만 원격 경로 '{path}'를 찾을 수 없습니다. 프로필의 원격 경로를 편집하거나 비워서 서버 홈을 사용하세요.",
             "disconnect_start": "서버에서 연결 끊는 중...",

@@ -1363,7 +1363,7 @@
             "usedScanDone": "Nakalkula ang nagamit na storage",
             "usedScanDoneDetail": "{used} sa {files} na file",
             "usedScanTruncated": "bahagya: naabot na ang limitasyon ng pag-scan",
-            "usedScanUnreadable": "bahagya: {count} folder ang hindi mabasa",
+            "usedScanUnreadable": "bahagya, mga folder na hindi mabasa: {count}",
             "usedScanFailed": "Nabigo ang pag-scan ng nagamit na storage",
             "usedScanEmpty": "Walang nakitang file ang pag-scan ng {path}; pinanatili ang naka-cache na halaga. Suriin ang path o ang suporta ng server sa recursive listing."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "Kumokonekta sa {server} ({protocol})...",
             "connect_success": "Nakakonekta na! Nakakonekta ako sa {server} sa pamamagitan ng {protocol}",
-            "resume_transfers": "Itinutuloy ang {count} naibalik na transfer sa {server}",
-            "resume_transfers_no_profile": "Itinutuloy ang {count} naibalik na transfer",
+            "resume_transfers": "Itinutuloy ang mga naibalik na transfer sa {server}: {count}",
+            "resume_transfers_no_profile": "Itinutuloy ang mga naibalik na transfer: {count}",
             "connect_error": "Hindi makakonekta sa {server}. Titingnan ko ang aking mga kredensyal.",
             "connect_error_path_not_found": "Naka-log in sa {server}, ngunit hindi natagpuan ang malayong landas na '{path}'. I-edit ang Malayong Landas ng profile o burahin ito upang gamitin ang home ng server.",
             "disconnect_start": "Nadidiskonekta mula sa server...",

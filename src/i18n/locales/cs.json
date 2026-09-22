@@ -1363,7 +1363,7 @@
             "usedScanDone": "Využité úložiště vypočítáno",
             "usedScanDoneDetail": "{used} v {files} souborech",
             "usedScanTruncated": "částečně: dosažen limit prohledávání",
-            "usedScanUnreadable": "částečné: {count} složek nelze přečíst",
+            "usedScanUnreadable": "částečně, nečitelné složky: {count}",
             "usedScanFailed": "Prohledání využitého úložiště selhalo",
             "usedScanEmpty": "Prohledání cesty {path} nenašlo žádné soubory; uložená hodnota byla zachována. Zkontrolujte cestu nebo podporu rekurzivního výpisu na serveru."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "Připojování k {server} ({protocol})...",
             "connect_success": "Připojeno k {server} přes {protocol}",
-            "resume_transfers": "Obnovování {count} obnovených přenosů na {server}",
-            "resume_transfers_no_profile": "Obnovování {count} obnovených přenosů",
+            "resume_transfers": "Obnovování obnovených přenosů na {server}: {count}",
+            "resume_transfers_no_profile": "Obnovování obnovených přenosů: {count}",
             "connect_error": "Připojení k {server} selhalo. Zkontrolujte přihlašovací údaje.",
             "connect_error_path_not_found": "Přihlášení k {server} proběhlo úspěšně, ale vzdálená cesta '{path}' nebyla nalezena. Upravte v profilu pole Vzdálená cesta nebo jej vymažte, chcete-li použít domovskou složku serveru.",
             "disconnect_start": "Odpojování od serveru...",

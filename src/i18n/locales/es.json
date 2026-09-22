@@ -1363,7 +1363,7 @@
             "usedScanDone": "Almacenamiento usado calculado",
             "usedScanDoneDetail": "{used} en {files} archivos",
             "usedScanTruncated": "parcial: se alcanzó el límite de escaneo",
-            "usedScanUnreadable": "parcial: no se pudieron leer {count} carpeta(s)",
+            "usedScanUnreadable": "parcial, carpetas no legibles: {count}",
             "usedScanFailed": "El escaneo del almacenamiento usado falló",
             "usedScanEmpty": "El escaneo de {path} no encontró archivos; se mantuvo el valor en caché. Compruebe la ruta o el soporte de listado recursivo del servidor."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "Conectando a {server}... ({protocol})",
             "connect_success": "Conectado a {server} correctamente ({protocol})",
-            "resume_transfers": "Reanudando {count} transferencia(s) restaurada(s) en {server}",
-            "resume_transfers_no_profile": "Reanudando {count} transferencia(s) restaurada(s)",
+            "resume_transfers": "Reanudando transferencias restauradas en {server}: {count}",
+            "resume_transfers_no_profile": "Reanudando transferencias restauradas: {count}",
             "connect_error": "Error de conexión a {server}. Verifique credenciales.",
             "connect_error_path_not_found": "Sesión iniciada en {server}, pero no se encontró la ruta remota '{path}'. Edita la Ruta remota del perfil o déjala vacía para usar la carpeta inicial del servidor.",
             "disconnect_start": "Desconectando...",

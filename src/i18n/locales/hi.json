@@ -1363,7 +1363,7 @@
             "usedScanDone": "उपयोग किया गया भंडारण गणना किया गया",
             "usedScanDoneDetail": "{files} फ़ाइलों में {used}",
             "usedScanTruncated": "आंशिक: स्कैन सीमा तक पहुँच गया",
-            "usedScanUnreadable": "आंशिक: {count} फ़ोल्डर पढ़े नहीं जा सके",
+            "usedScanUnreadable": "आंशिक, न पढ़े जा सके फ़ोल्डर: {count}",
             "usedScanFailed": "उपयोग-भंडारण स्कैन विफल रहा",
             "usedScanEmpty": "{path} के स्कैन में कोई फ़ाइल नहीं मिली; कैश किया गया मान बनाए रखा गया। पथ या सर्वर के पुनरावर्ती-सूचीकरण समर्थन की जाँच करें।"
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "{server} ({protocol}) से कनेक्ट हो रहा है...",
             "connect_success": "{protocol} के माध्यम से {server} से जुड़ा",
-            "resume_transfers": "{server} पर {count} पुनर्स्थापित स्थानांतरण फिर से शुरू हो रहे हैं",
-            "resume_transfers_no_profile": "{count} पुनर्स्थापित स्थानांतरण फिर से शुरू हो रहे हैं",
+            "resume_transfers": "{server} पर पुनर्स्थापित स्थानांतरण फिर से शुरू हो रहे हैं: {count}",
+            "resume_transfers_no_profile": "पुनर्स्थापित स्थानांतरण फिर से शुरू हो रहे हैं: {count}",
             "connect_error": "{server} से कनेक्शन विफल। क्रेडेंशियल जांचें।",
             "connect_error_path_not_found": "{server} में लॉग इन हो गया, लेकिन रिमोट पथ '{path}' नहीं मिला। प्रोफ़ाइल का रिमोट पथ संपादित करें या सर्वर होम उपयोग करने के लिए इसे खाली करें।",
             "disconnect_start": "सर्वर से डिस्कनेक्ट हो रहा है...",

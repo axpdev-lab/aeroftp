@@ -1363,7 +1363,7 @@
             "usedScanDone": "Belegter Speicher berechnet",
             "usedScanDoneDetail": "{used} in {files} Dateien",
             "usedScanTruncated": "teilweise: Scan-Limit erreicht",
-            "usedScanUnreadable": "teilweise: {count} Ordner konnten nicht gelesen werden",
+            "usedScanUnreadable": "teilweise, nicht lesbare Ordner: {count}",
             "usedScanFailed": "Scan des belegten Speichers fehlgeschlagen",
             "usedScanEmpty": "Der Scan von {path} fand keine Dateien; der zwischengespeicherte Wert wurde beibehalten. Prüfen Sie den Pfad oder die Unterstützung rekursiver Auflistung durch den Server."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "Verbinde mit {server} ({protocol})...",
             "connect_success": "Verbunden mit {server} über {protocol}",
-            "resume_transfers": "{count} wiederhergestellte Übertragung(en) auf {server} werden fortgesetzt",
-            "resume_transfers_no_profile": "{count} wiederhergestellte Übertragung(en) werden fortgesetzt",
+            "resume_transfers": "Wiederhergestellte Übertragungen auf {server} werden fortgesetzt: {count}",
+            "resume_transfers_no_profile": "Wiederhergestellte Übertragungen werden fortgesetzt: {count}",
             "connect_error": "Verbindung zu {server} fehlgeschlagen. Anmeldedaten prüfen.",
             "connect_error_path_not_found": "Bei {server} angemeldet, aber der Remote-Pfad '{path}' wurde nicht gefunden. Bearbeiten Sie den Remote-Pfad des Profils oder leeren Sie ihn, um das Home-Verzeichnis des Servers zu verwenden.",
             "disconnect_start": "Trenne vom Server...",

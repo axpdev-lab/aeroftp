@@ -698,7 +698,7 @@ impl KDriveProvider {
                 if status.as_u16() == 404 {
                     return Err(ProviderError::NotFound(sanitize_api_error(&body)));
                 }
-                return Err(api_failure("Find file failed", None, &body));
+                return Err(api_failure("Find file failed", Some(status), &body));
             }
 
             let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
@@ -1080,8 +1080,9 @@ impl StorageProvider for KDriveProvider {
         let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(api_failure("Download failed", None, &body));
+            return Err(api_failure("Download failed", Some(status), &body));
         }
 
         // H2: Size-limited download to prevent OOM on large files
@@ -1344,8 +1345,9 @@ impl StorageProvider for KDriveProvider {
         let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(api_failure("Stat failed", None, &body));
+            return Err(api_failure("Stat failed", Some(status), &body));
         }
 
         let api_resp: ApiResponse<KDriveFile> = resp.json().await.map_err(|e| {
@@ -2052,6 +2054,16 @@ mod api_failure_tests {
             matches!(upload, ProviderError::PermissionDenied(_)),
             "{upload:?}"
         );
+    }
+
+    #[test]
+    fn a_bare_403_is_a_refusal_even_without_a_readable_body() {
+        let err = api_failure(
+            "Download failed",
+            Some(StatusCode::FORBIDDEN),
+            "<html>Forbidden</html>",
+        );
+        assert!(matches!(err, ProviderError::PermissionDenied(_)), "{err:?}");
     }
 
     #[test]

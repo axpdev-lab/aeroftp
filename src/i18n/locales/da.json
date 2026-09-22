@@ -1363,7 +1363,7 @@
             "usedScanDone": "Brugt lagerplads beregnet",
             "usedScanDoneDetail": "{used} fordelt på {files} filer",
             "usedScanTruncated": "delvist: scanningsgrænse nået",
-            "usedScanUnreadable": "delvis: {count} mappe(r) kunne ikke læses",
+            "usedScanUnreadable": "delvist, ulæselige mapper: {count}",
             "usedScanFailed": "Scanning af brugt lagerplads mislykkedes",
             "usedScanEmpty": "Scanningen af {path} fandt ingen filer; det cachelagrede tal blev bevaret. Tjek stien eller serverens understøttelse af rekursiv visning."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "Forbinder til {server} ({protocol})...",
             "connect_success": "Forbundet til {server} via {protocol}",
-            "resume_transfers": "Genoptager {count} gendannet/gendannede overførsel(er) på {server}",
-            "resume_transfers_no_profile": "Genoptager {count} gendannet/gendannede overførsel(er)",
+            "resume_transfers": "Genoptager gendannede overførsler på {server}: {count}",
+            "resume_transfers_no_profile": "Genoptager gendannede overførsler: {count}",
             "connect_error": "Forbindelse til {server} mislykkedes. Tjek legitimationsoplysninger.",
             "connect_error_path_not_found": "Logget ind på {server}, men fjernstien '{path}' blev ikke fundet. Redigér profilens Fjernsti, eller ryd den for at bruge serverens hjemmemappe.",
             "disconnect_start": "Afbryder forbindelse til server...",

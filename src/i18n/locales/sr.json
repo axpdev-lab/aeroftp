@@ -1363,7 +1363,7 @@
             "usedScanDone": "Заузето складиште израчунато",
             "usedScanDoneDetail": "{used} у {files} датотека",
             "usedScanTruncated": "делимично: достигнут лимит скенирања",
-            "usedScanUnreadable": "делимично: {count} фасцикли није могуће прочитати",
+            "usedScanUnreadable": "делимично, нечитљиве фасцикле: {count}",
             "usedScanFailed": "Скенирање заузетог складишта није успело",
             "usedScanEmpty": "Скенирање путање {path} није пронашло датотеке; задржана је кеширана вредност. Проверите путању или подршку сервера за рекурзивно листање."
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "Отварам везу са {server} ({protocol})...",
             "connect_success": "Веза је спремна: повезан сам са {server} путем {protocol}",
-            "resume_transfers": "Настављање {count} враћених преноса на {server}",
-            "resume_transfers_no_profile": "Настављање {count} враћених преноса",
+            "resume_transfers": "Настављање враћених преноса на {server}: {count}",
+            "resume_transfers_no_profile": "Настављање враћених преноса: {count}",
             "connect_error": "Нисам могао да се повежем са {server}. Проверићу моје акредитиве и подешавања.",
             "connect_error_path_not_found": "Пријава на {server} је успела, али удаљена путања '{path}' није пронађена. Уредите поље Удаљена путања у профилу или га обришите да бисте користили почетну фасциклу сервера.",
             "disconnect_start": "Затварам везу са сервером...",

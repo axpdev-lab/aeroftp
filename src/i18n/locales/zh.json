@@ -1363,7 +1363,7 @@
             "usedScanDone": "已计算出已用存储",
             "usedScanDoneDetail": "{files} 个文件中共 {used}",
             "usedScanTruncated": "部分完成：已达到扫描上限",
-            "usedScanUnreadable": "部分完成：{count} 个文件夹无法读取",
+            "usedScanUnreadable": "部分完成，无法读取的文件夹：{count}",
             "usedScanFailed": "已用存储扫描失败",
             "usedScanEmpty": "扫描路径 {path} 未找到任何文件；已保留缓存中的数值。请检查路径或服务器对递归列目录的支持。"
         },
@@ -1550,8 +1550,8 @@
         "activity": {
             "connect_start": "正在连接到 {server} ({protocol})...",
             "connect_success": "已连接！我已通过 {protocol} 连接到 {server}",
-            "resume_transfers": "正在 {server} 上继续 {count} 个已恢复的传输",
-            "resume_transfers_no_profile": "正在继续 {count} 个已恢复的传输",
+            "resume_transfers": "正在 {server} 上继续已恢复的传输：{count}",
+            "resume_transfers_no_profile": "正在继续已恢复的传输：{count}",
             "connect_error": "无法连接到 {server}。我会检查我的凭据。",
             "connect_error_path_not_found": "已登录到 {server}，但未找到远程路径 '{path}'。请编辑配置文件的远程路径，或将其清空以使用服务器主目录。",
             "disconnect_start": "正在断开与服务器的连接...",
