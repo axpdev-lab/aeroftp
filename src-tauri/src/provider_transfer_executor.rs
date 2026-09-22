@@ -242,18 +242,6 @@ pub fn plan_segment_count(
     }
 }
 
-/// Effective segment count after the anti-fragmentation rule
-/// (`SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE`). Mirrors `pget_effective_segments`
-/// in `bin/aeroftp_cli.rs`. Returns 0 to signal "do not segment".
-///
-/// This is the single source of truth shared by the GUI executor
-/// (`ProviderDownloadExecutor`) and the GUI single-file path
-/// (`provider_download_file`) so the same anti-fragmentation policy
-/// holds across both surfaces.
-pub fn provider_segmented_effective_count(file_size: u64, requested: u32) -> usize {
-    plan_segment_count(file_size, requested as usize, 16, SegmentCutoff::Default, 0)
-}
-
 fn is_plain_github_provider(provider: &mut dyn StorageProvider) -> bool {
     provider.provider_type() == ProviderType::GitHub
         && !crate::crypt_overlay_provider::is_crypt_overlay_provider(provider)
@@ -2182,7 +2170,8 @@ mod tests {
         const EDGE_SEGMENTS: u64 =
             SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET / SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE;
         const DECLARED_MARGIN: u64 = 8;
-        let clamped = provider_segmented_effective_count(4 * 1024 * 1024 * 1024, 64) as u64;
+        let clamped =
+            plan_segment_count(4 * 1024 * 1024 * 1024, 64, 16, SegmentCutoff::Default, 0) as u64;
         assert!(
             clamped * DECLARED_MARGIN <= EDGE_SEGMENTS,
             "the segment count is no longer {DECLARED_MARGIN} times clear of the edge: \
@@ -2202,14 +2191,14 @@ mod tests {
     fn effective_segments_below_file_floor_returns_zero() {
         // 4 MiB file with 4 segments requested: below the 8 MiB floor,
         // segmented path must be skipped.
-        let n = provider_segmented_effective_count(4 * 1024 * 1024, 4);
+        let n = plan_segment_count(4 * 1024 * 1024, 4, 16, SegmentCutoff::Default, 0);
         assert_eq!(n, 0);
     }
 
     #[test]
     fn effective_segments_single_request_returns_zero() {
         // Even a large file with `segments == 1` is just single-stream.
-        let n = provider_segmented_effective_count(64 * 1024 * 1024, 1);
+        let n = plan_segment_count(64 * 1024 * 1024, 1, 16, SegmentCutoff::Default, 0);
         assert_eq!(n, 0);
     }
 
@@ -2217,7 +2206,7 @@ mod tests {
     fn effective_segments_full_file_above_floor_returns_request() {
         // 64 MiB / 4 = 16 MiB per chunk, well above the 1 MiB
         // anti-fragmentation floor.
-        let n = provider_segmented_effective_count(64 * 1024 * 1024, 4);
+        let n = plan_segment_count(64 * 1024 * 1024, 4, 16, SegmentCutoff::Default, 0);
         assert_eq!(n, 4);
     }
 
@@ -2226,7 +2215,7 @@ mod tests {
         // The executor itself clamps to 16 inside `effective_segments`
         // (`download_segments` is also clamped at resolve time, but the
         // helper must stay defensive).
-        let n = provider_segmented_effective_count(1024 * 1024 * 1024, 64);
+        let n = plan_segment_count(1024 * 1024 * 1024, 64, 16, SegmentCutoff::Default, 0);
         assert_eq!(n, 16);
     }
 
@@ -2235,7 +2224,7 @@ mod tests {
         // 9 MiB / 16 segments would mean ~576 KiB per chunk, below the
         // 1 MiB minimum. The helper must reduce the count so each chunk
         // is at least 1 MiB.
-        let n = provider_segmented_effective_count(9 * 1024 * 1024, 16);
+        let n = plan_segment_count(9 * 1024 * 1024, 16, 16, SegmentCutoff::Default, 0);
         // 9 MiB / 1 MiB = 9 → cap at 9.
         assert_eq!(n, 9);
     }

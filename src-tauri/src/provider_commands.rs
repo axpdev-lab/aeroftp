@@ -3326,7 +3326,14 @@ pub async fn provider_download_file(
     // through to the legacy single-stream branch below.
     let mut segmented_result: Option<Result<(), String>> = None;
     // Auto and SFTP presets retain the GUI's 250 MiB fan-out cutoff. An
-    // explicit segment count may use the shared helper's smaller file floor.
+    // explicit segment count is user intent, so it takes the explicit rule:
+    // no 8 MiB engine floor, only the provider floor and the 1 MiB minimum
+    // window (same as an explicit CLI cutoff; G2).
+    let segment_cutoff = if download_segments.is_some() {
+        crate::provider_transfer_executor::SegmentCutoff::Explicit(0)
+    } else {
+        crate::provider_transfer_executor::SegmentCutoff::Default
+    };
     if partial_offset == 0
         && (download_segments.is_some() || file_size >= DEFAULT_MULTI_THREAD_CUTOFF_BYTES)
     {
@@ -3337,7 +3344,7 @@ pub async fn provider_download_file(
                 file_size,
                 requested,
                 requested as usize,
-                crate::provider_transfer_executor::SegmentCutoff::Default,
+                segment_cutoff,
             )
         {
             info!(

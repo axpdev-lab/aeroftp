@@ -7053,8 +7053,12 @@ fn multi_thread_cutoff_from_env(
     env_value: Option<&str>,
     effective: &str,
 ) -> bool {
+    // Stop at the option terminator: `jobs add` accepts trailing command
+    // tokens after `--`, where a `--multi-thread-cutoff` token is positional
+    // data, not the flag.
     let on_command_line = raw_args
         .iter()
+        .take_while(|arg| arg.as_str() != "--")
         .any(|arg| arg == "--multi-thread-cutoff" || arg.starts_with("--multi-thread-cutoff="));
     !on_command_line && env_value == Some(effective)
 }
@@ -75830,6 +75834,21 @@ mod tests {
         assert!(multi_thread_cutoff_from_env(&bare, Some("abc"), "abc"));
         assert!(!multi_thread_cutoff_from_env(&bare, None, "abc"));
         assert!(!multi_thread_cutoff_from_env(&bare, Some("250M"), "abc"));
+        // A `--multi-thread-cutoff` token after `--` is positional data
+        // (`jobs add` trailing command), not the flag.
+        let after_terminator = vec![
+            "aeroftp-cli".to_string(),
+            "jobs".to_string(),
+            "add".to_string(),
+            "--".to_string(),
+            "--multi-thread-cutoff".to_string(),
+            "abc".to_string(),
+        ];
+        assert!(multi_thread_cutoff_from_env(
+            &after_terminator,
+            Some("abc"),
+            "abc"
+        ));
     }
 
     #[tokio::test]
