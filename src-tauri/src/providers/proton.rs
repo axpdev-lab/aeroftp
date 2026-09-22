@@ -422,6 +422,35 @@ fn join_path(parent: &str, name: &str) -> String {
     }
 }
 
+/// The CLI's `/` is not a folder: it lists the account sections (my-files,
+/// devices, photos, trash, the shared views...). Nothing can be created in it,
+/// and the sections themselves are fixed.
+fn is_root_or_section(abs: &str) -> bool {
+    parent_of(abs) == "/"
+}
+
+/// Refuses a write whose destination folder is the root, before the CLI runs
+/// and answers with a bare `Path "/" is not supported`.
+fn ensure_parent_writable(parent: &str) -> Result<(), ProviderError> {
+    if parent == "/" {
+        return Err(ProviderError::PermissionDenied(
+            "The Proton Drive root only holds the account sections (my-files, devices, photos, trash and the shared views). Open my-files, or another section, to add files or folders.".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Refuses renaming, moving, copying or deleting the root or a section.
+fn ensure_not_section(abs: &str) -> Result<(), ProviderError> {
+    if is_root_or_section(abs) {
+        return Err(ProviderError::PermissionDenied(format!(
+            "\"{}\" is a Proton Drive section: it cannot be renamed, moved, copied or deleted.",
+            basename(abs)
+        )));
+    }
+    Ok(())
+}
+
 fn first_segment(path: &str) -> &str {
     path.trim_start_matches('/').split('/').next().unwrap_or("")
 }
@@ -844,10 +873,11 @@ impl StorageProvider for ProtonCliProvider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let remote = self.resolve_path(remote_path);
+        let parent = parent_of(&remote);
+        ensure_parent_writable(&parent)?;
         if let Some(ref cb) = on_progress {
             cb(0, 0);
         }
-        let parent = parent_of(&remote);
         let local_cli = normalize_local_path_for_cli(local_path);
         let local_name = basename(&local_cli.replace('\\', "/"));
         let dest_name = basename(&remote);
@@ -889,6 +919,7 @@ impl StorageProvider for ProtonCliProvider {
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let abs = self.resolve_path(path);
         let parent = parent_of(&abs);
+        ensure_parent_writable(&parent)?;
         let name = basename(&abs);
         self.run_cli(
             &["filesystem", "create-folder", &parent, "--", &name],
@@ -900,6 +931,7 @@ impl StorageProvider for ProtonCliProvider {
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let abs = self.resolve_path(path);
+        ensure_not_section(&abs)?;
         self.run_cli(&["filesystem", "trash", &abs], META_TIMEOUT_SECS)
             .await?;
         Ok(())
@@ -915,6 +947,7 @@ impl StorageProvider for ProtonCliProvider {
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
         let abs = self.resolve_path(path);
+        ensure_not_section(&abs)?;
         let in_trash = is_in_trash_path(&abs);
         let trash_root = if first_segment(&abs) == "photos-trash" {
             "/photos-trash"
@@ -983,8 +1016,10 @@ impl StorageProvider for ProtonCliProvider {
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from = self.resolve_path(from);
         let to = self.resolve_path(to);
+        ensure_not_section(&from)?;
         let from_parent = parent_of(&from);
         let to_parent = parent_of(&to);
+        ensure_parent_writable(&to_parent)?;
         let to_name = basename(&to);
         if from_parent == to_parent {
             self.run_cli(
@@ -1055,7 +1090,9 @@ impl StorageProvider for ProtonCliProvider {
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from = self.resolve_path(from);
         let to = self.resolve_path(to);
+        ensure_not_section(&from)?;
         let parent = parent_of(&to);
+        ensure_parent_writable(&parent)?;
         let name = basename(&to);
         if name == basename(&from) {
             self.run_cli(&["filesystem", "copy", &from, &parent], META_TIMEOUT_SECS)
@@ -1591,6 +1628,68 @@ mod cli_sequence_tests {
             deletes[0].last().map(|s| s.as_str()),
             Some("/trash/dup.txt")
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `/` lists the account sections and is not a folder: a write there, or a
+    /// rename, move, copy or delete of a section, is refused with a clear
+    /// message before the CLI runs. Reading the root and the sections, and
+    /// writing inside a section, still work.
+    #[tokio::test]
+    async fn the_root_takes_no_writes_and_sections_stay_fixed() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let mut p = provider(&shim);
+        let local = dir.join("IMG_1.jpg");
+        std::fs::write(&local, b"x").unwrap();
+        let local = local.to_string_lossy().into_owned();
+
+        let refused: Vec<(&str, ProviderError)> = vec![
+            (
+                "upload to /",
+                p.upload(&local, "/IMG_1.jpg", None).await.unwrap_err(),
+            ),
+            ("mkdir in /", p.mkdir("/new").await.unwrap_err()),
+            ("delete a section", p.delete("/my-files").await.unwrap_err()),
+            (
+                "purge a section",
+                p.delete_permanent("/photos").await.unwrap_err(),
+            ),
+            (
+                "rename a section",
+                p.rename("/devices", "/devices2").await.unwrap_err(),
+            ),
+            (
+                "move into /",
+                p.rename("/my-files/a.txt", "/a.txt").await.unwrap_err(),
+            ),
+            (
+                "copy a section",
+                p.server_copy("/trash", "/my-files/t").await.unwrap_err(),
+            ),
+            (
+                "copy into /",
+                p.server_copy("/my-files/a.txt", "/a.txt")
+                    .await
+                    .unwrap_err(),
+            ),
+        ];
+        for (what, err) in &refused {
+            assert!(
+                matches!(err, ProviderError::PermissionDenied(_)),
+                "{what}: expected a clear refusal, got {err:?}"
+            );
+        }
+        let argv = read_argv(&dir);
+        assert!(
+            argv.is_empty(),
+            "the CLI must not run for a refused write: {argv:?}"
+        );
+
+        p.list("/").await.unwrap();
+        p.list("/shared-with-me").await.unwrap();
+        p.upload(&local, "/my-files/IMG_1.jpg", None).await.unwrap();
+        assert_eq!(verbs(&read_argv(&dir), "upload").len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
