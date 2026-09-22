@@ -5728,7 +5728,8 @@
             "wantsTo": "AeroAgent-ek hau egin nahi du:",
             "scopeOnce": "Ekintza zehatz hau behin bakarrik onesten du.",
             "scopeSession": "Tresna hau txat-saioaren gainerakoan onesten du.",
-            "approve": "Onetsi"
+            "approve": "Onetsi",
+            "rememberForChat": "Baimendu tresna hau txat honen gainerakoan"
         }
     }
 }

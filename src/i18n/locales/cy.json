@@ -5728,7 +5728,8 @@
             "wantsTo": "Mae AeroAgent eisiau:",
             "scopeOnce": "Yn cymeradwyo'r union weithred hon unwaith.",
             "scopeSession": "Yn cymeradwyo'r offeryn hwn am weddill y sesiwn sgwrsio.",
-            "approve": "Cymeradwyo"
+            "approve": "Cymeradwyo",
+            "rememberForChat": "Caniatáu'r offeryn hwn am weddill y sgwrs hon"
         }
     }
 }

@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent möchte:",
             "scopeOnce": "Gibt genau diese Aktion einmal frei.",
             "scopeSession": "Gibt dieses Werkzeug für den Rest der Chatsitzung frei.",
-            "approve": "Freigeben"
+            "approve": "Freigeben",
+            "rememberForChat": "Dieses Werkzeug für den Rest dieses Chats erlauben"
         }
     }
 }

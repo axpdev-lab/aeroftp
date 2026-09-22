@@ -162,6 +162,29 @@ pub async fn list_plugins(app: tauri::AppHandle) -> Result<Vec<PluginManifest>, 
 }
 
 /// Execute a plugin tool by spawning a subprocess
+/// Approval scopes of a plugin tool call: the exact call, and the same call
+/// without its arguments, under which a chat-wide grant is stored. Preparing
+/// and executing must build both the same way, or a remembered grant is found
+/// by the first and missed by the second.
+fn plugin_approval_scopes(
+    plugin_id: &str,
+    tool_name: &str,
+    args: &Value,
+) -> Result<(String, String), String> {
+    let call = serde_json::to_string(&json!({
+        "plugin_id": plugin_id,
+        "tool_name": tool_name,
+        "args": args,
+    }))
+    .map_err(|e| format!("Failed to build plugin approval scope: {}", e))?;
+    let session = serde_json::to_string(&json!({
+        "plugin_id": plugin_id,
+        "tool_name": tool_name,
+    }))
+    .map_err(|e| format!("Failed to build plugin approval scope: {}", e))?;
+    Ok((call, session))
+}
+
 #[tauri::command]
 pub async fn execute_plugin_tool(
     app: tauri::AppHandle,
@@ -201,16 +224,13 @@ pub async fn execute_plugin_tool(
     let args_value: Value =
         serde_json::from_str(&args_json).map_err(|e| format!("Invalid plugin args JSON: {}", e))?;
     let approval_tool_name = format!("plugin:{}:{}", plugin_id, tool_name);
-    let approval_scope_key = serde_json::to_string(&json!({
-        "plugin_id": plugin_id,
-        "tool_name": tool_name,
-        "args": args_value,
-    }))
-    .map_err(|e| format!("Failed to build plugin approval scope: {}", e))?;
+    let (approval_scope_key, session_scope_key) =
+        plugin_approval_scopes(&plugin_id, &tool_name, &args_value)?;
     ai_tools::ensure_ai_tool_approval(
         session_id.as_deref(),
         &approval_tool_name,
         &approval_scope_key,
+        &session_scope_key,
         approval_grant_id.as_deref(),
     )
     .await?;
@@ -388,17 +408,14 @@ pub async fn prepare_plugin_tool_approval(
     let args_value: Value =
         serde_json::from_str(&args_json).map_err(|e| format!("Invalid plugin args JSON: {}", e))?;
     let synthetic_tool_name = format!("plugin:{}:{}", plugin_id, tool_name);
-    let scope_key = serde_json::to_string(&json!({
-        "plugin_id": plugin_id,
-        "tool_name": tool_name,
-        "args": args_value,
-    }))
-    .map_err(|e| format!("Failed to build plugin approval scope: {}", e))?;
+    let (scope_key, session_scope_key) =
+        plugin_approval_scopes(&plugin_id, &tool_name, &args_value)?;
 
     Ok(ai_tools::prepare_backend_approval_request(
         session_id.as_deref(),
         &synthetic_tool_name,
         scope_key,
+        session_scope_key,
         tool.danger_level != "high",
         format!(
             "AeroAgent wants to: Run Plugin Tool\n\n  plugin: {}\n  tool: {}\n  command: {}",

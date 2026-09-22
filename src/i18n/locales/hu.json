@@ -5709,7 +5709,8 @@
             "wantsTo": "Az AeroAgent ezt szeretné:",
             "scopeOnce": "Pontosan ezt a műveletet hagyja jóvá egyszer.",
             "scopeSession": "Ezt az eszközt a csevegés hátralévő részére hagyja jóvá.",
-            "approve": "Jóváhagyás"
+            "approve": "Jóváhagyás",
+            "rememberForChat": "Az eszköz engedélyezése a csevegés hátralévő részére"
         }
     }
 }

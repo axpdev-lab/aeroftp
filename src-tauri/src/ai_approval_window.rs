@@ -27,13 +27,29 @@ pub struct ApprovalPrompt {
     pub action: String,
     /// The details lines (paths, command, credentials notice).
     pub message: String,
-    /// True when approving remembers the tool for the chat session.
+    /// True when the chat panel already asked for a chat-wide approval.
+    pub remember_for_session: bool,
+    /// True when this tool may be allowed for the rest of the chat: the
+    /// window then offers the choice (never for delete, trash, shell...).
+    pub allow_session_grant: bool,
+}
+
+/// The user's answer in the approval window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApprovalDecision {
+    pub approved: bool,
+    /// The "for the rest of this chat" box was ticked.
     pub remember_for_session: bool,
 }
 
+const REFUSED: ApprovalDecision = ApprovalDecision {
+    approved: false,
+    remember_for_session: false,
+};
+
 struct Pending {
     prompt: ApprovalPrompt,
-    responder: oneshot::Sender<bool>,
+    responder: oneshot::Sender<ApprovalDecision>,
 }
 
 static PENDING: LazyLock<Mutex<HashMap<String, Pending>>> =
@@ -47,7 +63,7 @@ fn pending() -> std::sync::MutexGuard<'static, HashMap<String, Pending>> {
 
 /// Registers a prompt under a fresh label and returns the label with the
 /// receiver that resolves to the user's decision.
-fn register(prompt: ApprovalPrompt) -> (String, oneshot::Receiver<bool>) {
+fn register(prompt: ApprovalPrompt) -> (String, oneshot::Receiver<ApprovalDecision>) {
     let label = format!("{LABEL_PREFIX}{}", uuid::Uuid::new_v4().simple());
     let (responder, receiver) = oneshot::channel();
     pending().insert(label.clone(), Pending { prompt, responder });
@@ -67,7 +83,7 @@ fn prompt_for(label: &str) -> Result<ApprovalPrompt, String> {
 
 /// Delivers a decision from the window with this label, refused for any other
 /// window. Consumes the request, so a decision is taken at most once.
-fn decide(label: &str, approved: bool) -> Result<(), String> {
+fn decide(label: &str, decision: ApprovalDecision) -> Result<(), String> {
     if !label.starts_with(LABEL_PREFIX) {
         return Err("Only the approval window can answer an approval request.".to_string());
     }
@@ -75,7 +91,7 @@ fn decide(label: &str, approved: bool) -> Result<(), String> {
         .remove(label)
         .ok_or_else(|| "This approval request is no longer pending.".to_string())?;
     // The waiting side may have given up already; nothing else to do then.
-    let _ = entry.responder.send(approved);
+    let _ = entry.responder.send(decision);
     Ok(())
 }
 
@@ -86,8 +102,11 @@ fn forget(label: &str) {
 }
 
 /// Shows `prompt` in a new approval window and waits for the user's answer.
-/// `Ok(false)` when the user refuses or closes the window.
-pub(crate) async fn ask(app: &tauri::AppHandle, prompt: ApprovalPrompt) -> Result<bool, String> {
+/// A refusal when the user refuses or closes the window.
+pub(crate) async fn ask(
+    app: &tauri::AppHandle,
+    prompt: ApprovalPrompt,
+) -> Result<ApprovalDecision, String> {
     let (label, receiver) = register(prompt);
 
     // Building a window touches GTK on Linux: marshal it onto the main thread
@@ -114,7 +133,7 @@ pub(crate) async fn ask(app: &tauri::AppHandle, prompt: ApprovalPrompt) -> Resul
     }
 
     // A dropped sender means the window closed without answering.
-    Ok(receiver.await.unwrap_or(false))
+    Ok(receiver.await.unwrap_or(REFUSED))
 }
 
 fn build_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
@@ -166,8 +185,15 @@ pub async fn ai_approval_prompt(window: tauri::WebviewWindow) -> Result<Approval
 pub async fn ai_approval_decide(
     window: tauri::WebviewWindow,
     approved: bool,
+    remember_for_session: Option<bool>,
 ) -> Result<(), String> {
-    decide(window.label(), approved)?;
+    decide(
+        window.label(),
+        ApprovalDecision {
+            approved,
+            remember_for_session: approved && remember_for_session.unwrap_or(false),
+        },
+    )?;
     let _ = window.close();
     Ok(())
 }
@@ -181,8 +207,14 @@ mod tests {
             action: "Write Local File".to_string(),
             message: "path: /tmp/x".to_string(),
             remember_for_session: false,
+            allow_session_grant: true,
         }
     }
+
+    const YES: ApprovalDecision = ApprovalDecision {
+        approved: true,
+        remember_for_session: false,
+    };
 
     #[test]
     fn approval_windows_count_as_secondary_and_lose_the_app_menu() {
@@ -197,7 +229,7 @@ mod tests {
     #[test]
     fn the_main_window_cannot_answer_a_pending_request() {
         let (label, mut receiver) = register(prompt());
-        assert!(decide("main", true).is_err());
+        assert!(decide("main", YES).is_err());
         assert!(prompt_for("main").is_err());
         // Still pending, still unanswered.
         assert!(receiver.try_recv().is_err());
@@ -208,7 +240,7 @@ mod tests {
     #[test]
     fn an_unknown_approval_label_cannot_answer_either() {
         let (label, mut receiver) = register(prompt());
-        assert!(decide(&format!("{LABEL_PREFIX}forged"), true).is_err());
+        assert!(decide(&format!("{LABEL_PREFIX}forged"), YES).is_err());
         assert!(receiver.try_recv().is_err());
         forget(&label);
     }
@@ -217,10 +249,10 @@ mod tests {
     fn the_approval_window_answers_once() {
         let (label, mut receiver) = register(prompt());
         assert_eq!(prompt_for(&label).unwrap(), prompt());
-        decide(&label, true).unwrap();
-        assert_eq!(receiver.try_recv(), Ok(true));
+        decide(&label, YES).unwrap();
+        assert_eq!(receiver.try_recv(), Ok(YES));
         assert!(
-            decide(&label, true).is_err(),
+            decide(&label, YES).is_err(),
             "a second decision must be refused"
         );
     }
@@ -232,7 +264,7 @@ mod tests {
         let answer = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap()
-            .block_on(async { receiver.await.unwrap_or(false) });
-        assert!(!answer);
+            .block_on(async { receiver.await.unwrap_or(REFUSED) });
+        assert!(!answer.approved);
     }
 }

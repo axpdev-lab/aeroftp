@@ -5728,7 +5728,8 @@
             "wantsTo": "AeroAgent vil:",
             "scopeOnce": "Godkjenner nøyaktig denne handlingen én gang.",
             "scopeSession": "Godkjenner dette verktøyet resten av chatøkten.",
-            "approve": "Godkjenn"
+            "approve": "Godkjenn",
+            "rememberForChat": "Tillat dette verktøyet resten av denne chatten"
         }
     }
 }

@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent が次の操作を求めています:",
             "scopeOnce": "この操作を 1 回だけ承認します。",
             "scopeSession": "このチャットセッションの残りの間、このツールを承認します。",
-            "approve": "承認"
+            "approve": "承認",
+            "rememberForChat": "このチャットの残りの間、このツールを許可する"
         }
     }
 }

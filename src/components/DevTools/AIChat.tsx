@@ -1445,7 +1445,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     });
 
                     if (!grant.approved || !grant.grantId) {
-                        throw new Error('Operation was not approved in the desktop security prompt.');
+                        throw new Error('Operation was not approved in the approval window.');
                     }
 
                     return await invokePluginTool(grant.grantId);
@@ -1506,7 +1506,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             });
 
             if (!grant.approved || !grant.grantId) {
-                throw new Error('Operation was not approved in the desktop security prompt.');
+                throw new Error('Operation was not approved in the approval window.');
             }
 
             return await invokeBuiltInTool(grant.grantId);

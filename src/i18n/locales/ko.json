@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent가 원하는 작업:",
             "scopeOnce": "이 작업을 정확히 한 번만 승인합니다.",
             "scopeSession": "이 채팅 세션이 끝날 때까지 이 도구를 승인합니다.",
-            "approve": "승인"
+            "approve": "승인",
+            "rememberForChat": "이 채팅이 끝날 때까지 이 도구 허용"
         }
     }
 }

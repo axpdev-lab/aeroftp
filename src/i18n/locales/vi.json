@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent muốn:",
             "scopeOnce": "Phê duyệt đúng hành động này một lần.",
             "scopeSession": "Phê duyệt công cụ này trong phần còn lại của phiên trò chuyện.",
-            "approve": "Phê duyệt"
+            "approve": "Phê duyệt",
+            "rememberForChat": "Cho phép công cụ này trong phần còn lại của cuộc trò chuyện"
         }
     }
 }

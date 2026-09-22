@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent nori:",
             "scopeOnce": "Patvirtina būtent šį veiksmą vieną kartą.",
             "scopeSession": "Patvirtina šį įrankį iki pokalbio seanso pabaigos.",
-            "approve": "Patvirtinti"
+            "approve": "Patvirtinti",
+            "rememberForChat": "Leisti šį įrankį iki šio pokalbio pabaigos"
         }
     }
 }

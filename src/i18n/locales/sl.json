@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent želi:",
             "scopeOnce": "Odobri natanko to dejanje enkrat.",
             "scopeSession": "Odobri to orodje do konca seje klepeta.",
-            "approve": "Odobri"
+            "approve": "Odobri",
+            "rememberForChat": "Dovoli to orodje do konca tega klepeta"
         }
     }
 }

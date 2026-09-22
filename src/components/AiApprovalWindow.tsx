@@ -10,7 +10,11 @@ import { useTranslation } from '../i18n';
 interface ApprovalPrompt {
     action: string;
     message: string;
+    /** The chat panel already asked for a chat-wide approval. */
     rememberForSession: boolean;
+    /** This tool may be allowed for the rest of the chat (never delete,
+     *  trash, shell, extraction...), so the box is offered. */
+    allowSessionGrant: boolean;
 }
 
 /**
@@ -24,6 +28,8 @@ const AiApprovalWindow: React.FC = () => {
     const [prompt, setPrompt] = useState<ApprovalPrompt | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [sending, setSending] = useState(false);
+    // Unticked by default: each approval covers one call unless asked.
+    const [rememberForChat, setRememberForChat] = useState(false);
     const cancelRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
@@ -41,12 +47,15 @@ const AiApprovalWindow: React.FC = () => {
         if (sending) return;
         setSending(true);
         try {
-            await invoke('ai_approval_decide', { approved });
+            await invoke('ai_approval_decide', {
+                approved,
+                rememberForSession: approved && rememberForChat,
+            });
         } catch (e) {
             setError(String(e));
             setSending(false);
         }
-    }, [sending]);
+    }, [sending, rememberForChat]);
 
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
@@ -107,8 +116,21 @@ const AiApprovalWindow: React.FC = () => {
                                 {prompt.message}
                             </pre>
                         )}
+                        {prompt.allowSessionGrant && !prompt.rememberForSession && (
+                            <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={rememberForChat}
+                                    onChange={(e) => setRememberForChat(e.target.checked)}
+                                    className="rounded border-gray-400"
+                                />
+                                {t('aiApproval.rememberForChat')}
+                            </label>
+                        )}
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {prompt.rememberForSession ? t('aiApproval.scopeSession') : t('aiApproval.scopeOnce')}
+                            {prompt.rememberForSession || rememberForChat
+                                ? t('aiApproval.scopeSession')
+                                : t('aiApproval.scopeOnce')}
                         </p>
                     </>
                 )}

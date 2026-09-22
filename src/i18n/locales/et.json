@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent soovib:",
             "scopeOnce": "Kinnitab täpselt selle toimingu üks kord.",
             "scopeSession": "Kinnitab selle tööriista vestluse lõpuni.",
-            "approve": "Kinnita"
+            "approve": "Kinnita",
+            "rememberForChat": "Luba see tööriist selle vestluse lõpuni"
         }
     }
 }

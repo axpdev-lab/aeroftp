@@ -279,6 +279,9 @@ struct AiToolApprovalRequest {
     session_key: String,
     tool_name: String,
     scope_key: String,
+    /// Scope of a "for the rest of this chat" grant: the tool and its
+    /// context (working folder, connected server), without the arguments.
+    session_scope_key: String,
     created_at_ms: u64,
     allow_session_grant: bool,
     message: String,
@@ -307,6 +310,8 @@ pub struct AiToolApprovalPreparation {
 pub struct AiToolApprovalGrantResponse {
     pub approved: bool,
     pub grant_id: Option<String>,
+    /// True when the grant covers the tool for the rest of the chat.
+    pub remembered_for_session: bool,
 }
 
 static AI_TOOL_APPROVAL_REQUESTS: LazyLock<
@@ -548,10 +553,16 @@ fn has_matching_session_grant(
     })
 }
 
+/// `scope_key` identifies this exact call; `session_scope_key` is the same
+/// call without its arguments, which is what a chat-wide grant was stored
+/// under (see `grant_ai_tool_approval`). A call that `prepare` let through on
+/// a chat-wide grant arrives here with no grant id, so the check must look
+/// for that grant under the session scope, not the per-call one.
 pub(crate) async fn ensure_ai_tool_approval(
     session_id: Option<&str>,
     tool_name: &str,
     scope_key: &str,
+    session_scope_key: &str,
     approval_grant_id: Option<&str>,
 ) -> Result<(), String> {
     let session_key = cache_session_key(session_id);
@@ -586,7 +597,7 @@ pub(crate) async fn ensure_ai_tool_approval(
         return Ok(());
     }
 
-    if has_matching_session_grant(&grants, &session_key, tool_name, scope_key, now) {
+    if has_matching_session_grant(&grants, &session_key, tool_name, session_scope_key, now) {
         return Ok(());
     }
 
@@ -597,6 +608,7 @@ pub(crate) async fn prepare_backend_approval_request(
     session_id: Option<&str>,
     tool_name: &str,
     scope_key: String,
+    session_scope_key: String,
     allow_session_grant: bool,
     message: String,
 ) -> AiToolApprovalPreparation {
@@ -606,7 +618,10 @@ pub(crate) async fn prepare_backend_approval_request(
         let now = current_time_ms();
         let mut grants = AI_TOOL_APPROVAL_GRANTS.lock().await;
         prune_ai_tool_approval_grants(&mut grants);
-        if has_matching_session_grant(&grants, &session_key, tool_name, &scope_key, now) {
+        // A chat-wide grant is matched on the tool and its context, not on the
+        // arguments: allowing `local_mkdir` for the chat must cover the next
+        // folder too, not only a repeat of the same call.
+        if has_matching_session_grant(&grants, &session_key, tool_name, &session_scope_key, now) {
             return AiToolApprovalPreparation {
                 approval_required: false,
                 request_id: None,
@@ -620,6 +635,7 @@ pub(crate) async fn prepare_backend_approval_request(
         session_key,
         tool_name: tool_name.to_string(),
         scope_key,
+        session_scope_key,
         created_at_ms: current_time_ms(),
         allow_session_grant,
         message,
@@ -634,6 +650,20 @@ pub(crate) async fn prepare_backend_approval_request(
         request_id: Some(request_id),
         allow_session_grant,
     }
+}
+
+/// Scope of a chat-wide grant: the tool and its context, without arguments.
+fn build_session_scope_key(
+    tool_name: &str,
+    context_local_path: Option<&str>,
+    remote_context: Option<&str>,
+) -> Result<String, String> {
+    serde_json::to_string(&json!({
+        "tool": tool_name,
+        "context_local_path": context_local_path,
+        "remote_context": remote_context,
+    }))
+    .map_err(|e| format!("Failed to build AI approval session scope: {}", e))
 }
 
 fn build_tool_cache_key(
@@ -1921,11 +1951,17 @@ pub async fn prepare_ai_tool_approval(
         context_local_path.as_deref(),
         remote_context.as_deref(),
     )?;
+    let session_scope_key = build_session_scope_key(
+        &tool_name,
+        context_local_path.as_deref(),
+        remote_context.as_deref(),
+    )?;
     let allow_session_grant = allows_session_grant(&tool_name, &args);
     Ok(prepare_backend_approval_request(
         session_id.as_deref(),
         &tool_name,
         scope_key,
+        session_scope_key,
         allow_session_grant,
         build_ai_tool_approval_message(&tool_name, &args),
     )
@@ -1956,24 +1992,30 @@ pub async fn grant_ai_tool_approval(
     // In safe/normal mode, always show the approval window as a second factor.
     // It is a separate window that only the backend opens and only it can
     // answer (see `ai_approval_window`), so the chat webview cannot approve.
+    let mut remember_for_session = remember_for_session;
     if !skip_native_dialog {
         let (action, details) = split_approval_message(&request.message);
-        let approved = crate::ai_approval_window::ask(
+        let decision = crate::ai_approval_window::ask(
             &app,
             crate::ai_approval_window::ApprovalPrompt {
                 action,
                 message: details,
                 remember_for_session,
+                allow_session_grant: request.allow_session_grant,
             },
         )
         .await?;
 
-        if !approved {
+        if !decision.approved {
             return Ok(AiToolApprovalGrantResponse {
                 approved: false,
                 grant_id: None,
+                remembered_for_session: false,
             });
         }
+        // The window's "for the rest of this chat" box, honoured only for a
+        // tool that allows it (never delete, trash, shell, extraction...).
+        remember_for_session |= decision.remember_for_session && request.allow_session_grant;
     }
 
     let grant_id = Uuid::new_v4().to_string();
@@ -1990,7 +2032,13 @@ pub async fn grant_ai_tool_approval(
         AiToolApprovalGrant {
             session_key: request.session_key,
             tool_name: request.tool_name,
-            scope_key: request.scope_key,
+            // A chat-wide grant covers the tool in this context, whatever the
+            // arguments; a one-shot grant covers exactly this call.
+            scope_key: if remember_for_session {
+                request.session_scope_key
+            } else {
+                request.scope_key
+            },
             created_at_ms: current_time_ms(),
             expires_at_ms: current_time_ms().saturating_add(ttl_ms),
             remember_for_session,
@@ -2000,6 +2048,7 @@ pub async fn grant_ai_tool_approval(
     Ok(AiToolApprovalGrantResponse {
         approved: true,
         grant_id: Some(grant_id),
+        remembered_for_session: remember_for_session,
     })
 }
 
@@ -2030,10 +2079,16 @@ pub async fn execute_ai_tool(
             context_local_path.as_deref(),
             remote_context.as_deref(),
         )?;
+        let session_scope_key = build_session_scope_key(
+            &tool_name,
+            context_local_path.as_deref(),
+            remote_context.as_deref(),
+        )?;
         ensure_ai_tool_approval(
             session_id.as_deref(),
             &tool_name,
             &scope_key,
+            &session_scope_key,
             approval_grant_id.as_deref(),
         )
         .await?;
@@ -2050,6 +2105,124 @@ pub async fn execute_ai_tool(
     crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &args)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod session_grant_tests {
+    use super::*;
+
+    fn key(tool: &str, path: &str) -> String {
+        build_tool_cache_key(tool, &json!({ "path": path }), Some("/work"), None).unwrap()
+    }
+
+    fn session_key_for(tool: &str) -> String {
+        build_session_scope_key(tool, Some("/work"), None).unwrap()
+    }
+
+    /// Record what a "remember for this chat" approval leaves behind, the way
+    /// `grant_ai_tool_approval` does after the user said yes.
+    async fn remember(session: &str, tool: &str, path: &str) {
+        let prep = prepare_backend_approval_request(
+            Some(session),
+            tool,
+            key(tool, path),
+            session_key_for(tool),
+            true,
+            "m".into(),
+        )
+        .await;
+        let request = AI_TOOL_APPROVAL_REQUESTS
+            .lock()
+            .await
+            .remove(prep.request_id.as_deref().unwrap())
+            .unwrap();
+        AI_TOOL_APPROVAL_GRANTS.lock().await.insert(
+            Uuid::new_v4().to_string(),
+            AiToolApprovalGrant {
+                session_key: request.session_key,
+                tool_name: request.tool_name,
+                // What grant_ai_tool_approval stores for a chat-wide grant.
+                scope_key: request.session_scope_key,
+                created_at_ms: current_time_ms(),
+                expires_at_ms: current_time_ms() + AI_SESSION_GRANT_TTL_MS,
+                remember_for_session: true,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn a_tool_allowed_for_the_chat_is_not_asked_again_for_another_path() {
+        let session = format!("s-{}", Uuid::new_v4());
+        remember(&session, "local_mkdir", "/work/batch-a").await;
+        let next = prepare_backend_approval_request(
+            Some(&session),
+            "local_mkdir",
+            key("local_mkdir", "/work/batch-b"),
+            session_key_for("local_mkdir"),
+            true,
+            "m".into(),
+        )
+        .await;
+        assert!(
+            !next.approval_required,
+            "the chat-wide approval did not cover batch-b"
+        );
+    }
+
+    /// The frontend runs a call that `prepare` let through with no grant id,
+    /// so the execution-time check has to find the chat-wide grant too.
+    #[tokio::test]
+    async fn a_call_let_through_by_a_chat_approval_also_passes_execution() {
+        let session = format!("s-{}", Uuid::new_v4());
+        remember(&session, "local_mkdir", "/work/batch-a").await;
+        ensure_ai_tool_approval(
+            Some(&session),
+            "local_mkdir",
+            &key("local_mkdir", "/work/batch-b"),
+            &session_key_for("local_mkdir"),
+            None,
+        )
+        .await
+        .expect("the chat-wide approval was accepted by prepare but refused at execution");
+        let other_tool = ensure_ai_tool_approval(
+            Some(&session),
+            "local_write",
+            &key("local_write", "/work/batch-b"),
+            &session_key_for("local_write"),
+            None,
+        )
+        .await;
+        assert!(
+            other_tool.is_err(),
+            "a grant for local_mkdir let local_write run"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_chat_approval_covers_neither_another_tool_nor_another_chat() {
+        let session = format!("s-{}", Uuid::new_v4());
+        remember(&session, "local_mkdir", "/work/batch-a").await;
+        let other_tool = prepare_backend_approval_request(
+            Some(&session),
+            "local_write",
+            key("local_write", "/work/batch-a"),
+            session_key_for("local_write"),
+            true,
+            "m".into(),
+        )
+        .await;
+        assert!(other_tool.approval_required);
+        let other_chat = prepare_backend_approval_request(
+            Some("another-chat"),
+            "local_mkdir",
+            key("local_mkdir", "/work/batch-b"),
+            session_key_for("local_mkdir"),
+            true,
+            "m".into(),
+        )
+        .await;
+        assert!(other_chat.approval_required);
+    }
 }
 
 #[cfg(test)]

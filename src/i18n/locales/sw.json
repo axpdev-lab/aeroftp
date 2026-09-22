@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent inataka:",
             "scopeOnce": "Inaidhinisha kitendo hiki hasa mara moja.",
             "scopeSession": "Inaidhinisha zana hii kwa muda uliobaki wa kikao cha mazungumzo.",
-            "approve": "Idhinisha"
+            "approve": "Idhinisha",
+            "rememberForChat": "Ruhusu zana hii kwa muda uliobaki wa mazungumzo haya"
         }
     }
 }

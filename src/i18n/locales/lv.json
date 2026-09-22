@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent vēlas:",
             "scopeOnce": "Apstiprina tieši šo darbību vienu reizi.",
             "scopeSession": "Apstiprina šo rīku līdz tērzēšanas sesijas beigām.",
-            "approve": "Apstiprināt"
+            "approve": "Apstiprināt",
+            "rememberForChat": "Atļaut šo rīku līdz šīs tērzēšanas beigām"
         }
     }
 }

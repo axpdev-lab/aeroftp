@@ -5728,7 +5728,8 @@
             "wantsTo": "Gusto ng AeroAgent na:",
             "scopeOnce": "Inaaprubahan ang eksaktong aksyong ito nang isang beses.",
             "scopeSession": "Inaaprubahan ang tool na ito sa natitirang bahagi ng chat session.",
-            "approve": "Aprubahan"
+            "approve": "Aprubahan",
+            "rememberForChat": "Payagan ang tool na ito sa natitirang bahagi ng chat na ito"
         }
     }
 }

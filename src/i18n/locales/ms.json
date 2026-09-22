@@ -5709,7 +5709,8 @@
             "wantsTo": "AeroAgent mahu:",
             "scopeOnce": "Meluluskan tindakan ini sekali sahaja.",
             "scopeSession": "Meluluskan alat ini untuk baki sesi sembang.",
-            "approve": "Luluskan"
+            "approve": "Luluskan",
+            "rememberForChat": "Benarkan alat ini untuk baki sembang ini"
         }
     }
 }
