@@ -286,15 +286,17 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
                 options.insert("useSsl".to_string(), serde_json::Value::Bool(true));
             }
         "ftps" => {
-            // Track implicit vs explicit
+            // Implicit vs explicit, under `tlsMode`: the key the GUI stores
+            // and the connection reads (an `ftpsMode` was read by nothing, so
+            // an explicit site on port 21 connected as implicit FTPS).
             if ftps == 1 {
                 options.insert(
-                    "ftpsMode".to_string(),
+                    "tlsMode".to_string(),
                     serde_json::Value::String("implicit".to_string()),
                 );
             } else {
                 options.insert(
-                    "ftpsMode".to_string(),
+                    "tlsMode".to_string(),
                     serde_json::Value::String("explicit".to_string()),
                 );
             }
@@ -515,22 +517,21 @@ pub fn export_winscp(
         let protocol = server.protocol.as_deref().unwrap_or("ftp");
 
         // Map AeroFTP protocol to WinSCP FSProtocol + Ftps
+        // FTP follows the TLS mode the connection uses
+        // (`bridge_shared::ftp_tls_mode_for_export`): WinSCP's Ftps=1 is
+        // implicit, 3 explicit. It has no "TLS if available", so that mode
+        // requires TLS rather than export a session that sends the password
+        // in clear where AeroFTP would have encrypted it.
         let (fs_protocol, ftps) = match protocol {
             "sftp" => (2u32, 0u32),
-            "ftp" => (5, 0),
-            "ftps" => {
-                let mode = server
-                    .options
-                    .as_ref()
-                    .and_then(|o| o.get("ftpsMode"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("explicit");
-                if mode == "implicit" {
-                    (5, 1)
-                } else {
-                    (5, 3)
-                }
-            }
+            "ftp" | "ftps" => match crate::bridge_shared::ftp_tls_mode_for_export(
+                protocol,
+                server.options.as_ref(),
+            ) {
+                Some("implicit") => (5, 1),
+                Some("explicit") | Some("explicit_if_available") => (5, 3),
+                _ => (5, 0),
+            },
             "webdav" => {
                 let use_ssl = server
                     .options
@@ -713,6 +714,24 @@ FSProtocol=1
         let mapped = map_session("test", &fields).unwrap();
         assert_eq!(mapped.protocol, "ftp");
         assert_eq!(mapped.port, 21);
+    }
+
+    #[test]
+    fn test_map_session_ftps_explicit_stores_tls_mode() {
+        let mut fields = HashMap::new();
+        fields.insert("HostName".to_string(), "secure.example.com".to_string());
+        fields.insert("FSProtocol".to_string(), "5".to_string());
+        fields.insert("Ftps".to_string(), "3".to_string());
+
+        let mapped = map_session("test", &fields).unwrap();
+        assert_eq!(mapped.protocol, "ftps");
+        assert_eq!(mapped.port, 21);
+        // Stored under the key the connection reads, or the site on port 21
+        // would be opened as implicit FTPS.
+        assert_eq!(
+            mapped.options.as_ref().and_then(|o| o.get("tlsMode")),
+            Some(&serde_json::json!("explicit"))
+        );
     }
 
     #[test]

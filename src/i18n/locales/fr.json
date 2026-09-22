@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Besoin d'aide ou envie de signaler un bogue ? Nous sommes là pour vous aider.",
             "sourceforgeReviews": "Écrire un avis sur SourceForge",
-            "writeReview": "Écrire un avis"
+            "writeReview": "Écrire un avis",
+            "team": {
+                "title": "L'équipe Axpdev Lab",
+                "apRole": "Fondateur, développeur, mainteneur, co-concepteur",
+                "ekRole": "Chercheur, ingénieur assurance qualité, co-concepteur"
+            }
         },
         "support": {
             "title": "Soutenir AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "La corbeille est vide",
             "itemCount": "{count} éléments dans la corbeille",
             "moveToTrash": "Mettre à la corbeille",
-            "restoreConfirm": "Restaurer {name} a son emplacement d'origine ?"
+            "restoreConfirm": "Restaurer {name} a son emplacement d'origine ?",
+            "homeCopyPrompt": "{count} élément(s), à commencer par {name}, se trouvent sur un lecteur sans corbeille utilisable. Les placer dans la corbeille les copierait dans la corbeille de votre dossier personnel, ce qui peut être long et demande de l'espace libre. Les supprimer définitivement ?",
+            "copyToHomeTrash": "Copier dans la corbeille personnelle",
+            "permanentAfterFailure": "{count} élément(s), à commencer par {name}, n'ont pas pu être placés dans la corbeille. Les supprimer définitivement ? Cette action est irréversible.",
+            "kept": "Élément {name} conservé : rien n'a été supprimé",
+            "keptMultiple": "Laissés en place, non supprimés : {count} élément(s)"
         },
         "quickLook": {
             "noPreview": "Aucun aperçu disponible",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Un nom ne peut pas contenir / ni \\, la séquence .. ni un caractère nul."
+        },
+        "aiApproval": {
+            "windowTitle": "Approbation AeroAgent",
+            "whyTitle": "Pourquoi une fenêtre séparée ?",
+            "whyBody": "Cette approbation s'ouvre en dehors du chat, afin que le contenu que l'agent y lit et affiche ne puisse pas confirmer une action à votre place.",
+            "wantsTo": "AeroAgent souhaite :",
+            "scopeOnce": "Approuve cette action précise une seule fois.",
+            "scopeSession": "Approuve cet outil pour le reste de la session de chat.",
+            "approve": "Approuver"
         }
     }
 }

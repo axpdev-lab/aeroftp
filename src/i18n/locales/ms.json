@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Perlukan bantuan atau ingin melaporkan pepijat? Kami sedia membantu.",
             "sourceforgeReviews": "Tulis ulasan di SourceForge",
-            "writeReview": "Tulis ulasan"
+            "writeReview": "Tulis ulasan",
+            "team": {
+                "title": "Pasukan Axpdev Lab",
+                "apRole": "Pengasas, pembangun, penyelenggara, pereka bersama",
+                "ekRole": "Penyelidik, jurutera jaminan kualiti, pereka bersama"
+            }
         },
         "support": {
             "title": "Sokong AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Tong Sampah kosong",
             "itemCount": "{count} item dalam Tong Sampah",
             "moveToTrash": "Pindah ke Tong Sampah",
-            "restoreConfirm": "Pulihkan {name} ke lokasi asalnya?"
+            "restoreConfirm": "Pulihkan {name} ke lokasi asalnya?",
+            "homeCopyPrompt": "{count} item, bermula dengan {name}, berada pada pemacu tanpa tong sampah yang boleh digunakan. Memindahkannya ke tong sampah akan menyalinnya ke tong sampah dalam folder rumah anda, yang boleh mengambil masa lama dan memerlukan ruang kosong. Padam secara kekal sahaja?",
+            "copyToHomeTrash": "Salin ke Tong Sampah dalam folder rumah",
+            "permanentAfterFailure": "{count} item, bermula dengan {name}, tidak dapat dipindahkan ke tong sampah. Padam secara kekal? Tindakan ini tidak boleh dibuat asal.",
+            "kept": "{name} dikekalkan: tiada apa yang dipadam",
+            "keptMultiple": "Dibiarkan di tempatnya, tidak dipadam: {count} item"
         },
         "quickLook": {
             "noPreview": "Tiada pratonton tersedia",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Nama tidak boleh mengandungi / atau \\, jujukan .., atau aksara null."
+        },
+        "aiApproval": {
+            "windowTitle": "Kelulusan AeroAgent",
+            "whyTitle": "Mengapa tetingkap berasingan?",
+            "whyBody": "Kelulusan ini dibuka di luar sembang, supaya kandungan yang dibaca dan dipaparkan oleh ejen di sana tidak dapat mengesahkan tindakan bagi pihak anda.",
+            "wantsTo": "AeroAgent mahu:",
+            "scopeOnce": "Meluluskan tindakan ini sekali sahaja.",
+            "scopeSession": "Meluluskan alat ini untuk baki sesi sembang.",
+            "approve": "Luluskan"
         }
     }
 }

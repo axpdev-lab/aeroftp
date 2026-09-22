@@ -790,6 +790,16 @@ mod tests {
         );
     }
 
+    // Linux only, and the gate is the answer rather than a retreat. The case
+    // this states is that resolution keeps searching past an empty directory and
+    // picks `aeroftp.desktop` over the `AeroFTP.desktop` candidate that comes
+    // first in the list. On a case-insensitive filesystem (NTFS, and APFS as
+    // shipped) the existence check for the first candidate finds the file
+    // written under the second spelling and wins, so there is no assertion that
+    // could distinguish them: the test was red on Windows with
+    // left: Some("AeroFTP.desktop"), right: Some("aeroftp.desktop"). On top of
+    // that, `.desktop` entries are an XDG surface that does not exist off Linux.
+    #[cfg(target_os = "linux")]
     #[test]
     fn desktop_id_resolution_searches_every_directory() {
         let (_tmp, second) = desktop_dir_with(&["aeroftp.desktop"]);

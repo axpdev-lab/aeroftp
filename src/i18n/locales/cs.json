@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Potřebujete pomoc nebo chcete nahlásit chybu? Jsme tu, abychom vám pomohli.",
             "sourceforgeReviews": "Napsat recenzi na SourceForge",
-            "writeReview": "Napsat recenzi"
+            "writeReview": "Napsat recenzi",
+            "team": {
+                "title": "Tým Axpdev Lab",
+                "apRole": "Zakladatel, vývojář, správce, spoluautor designu",
+                "ekRole": "Výzkumník, inženýr zajištění kvality, spoluautor designu"
+            }
         },
         "support": {
             "title": "Podpořte AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Koš je prázdný",
             "itemCount": "{count} položek v koši",
             "moveToTrash": "Přesunout do koše",
-            "restoreConfirm": "Obnovit {name} do původního umístění?"
+            "restoreConfirm": "Obnovit {name} do původního umístění?",
+            "homeCopyPrompt": "{count} položek, počínaje {name}, je na jednotce bez použitelného koše. Přesunutí do koše by je zkopírovalo do koše v domovské složce, což může trvat dlouho a vyžaduje volné místo. Smazat je místo toho trvale?",
+            "copyToHomeTrash": "Kopírovat do koše v domovské složce",
+            "permanentAfterFailure": "{count} položek, počínaje {name}, nebylo možné přesunout do koše. Smazat je trvale? Tuto akci nelze vrátit.",
+            "kept": "Položka {name} zůstala zachována: nic nebylo smazáno",
+            "keptMultiple": "Ponecháno na místě, nesmazáno: {count} položek"
         },
         "quickLook": {
             "noPreview": "Náhled nedostupný",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Název nesmí obsahovat / ani \\, sekvenci .. ani nulový znak."
+        },
+        "aiApproval": {
+            "windowTitle": "Schválení AeroAgent",
+            "whyTitle": "Proč samostatné okno?",
+            "whyBody": "Toto schválení se otevírá mimo chat, aby obsah, který tam agent čte a zobrazuje, nemohl potvrdit akci za vás.",
+            "wantsTo": "AeroAgent chce:",
+            "scopeOnce": "Schválí přesně tuto akci jednou.",
+            "scopeSession": "Schválí tento nástroj po zbytek relace chatu.",
+            "approve": "Schválit"
         }
     }
 }

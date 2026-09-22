@@ -1506,11 +1506,10 @@ impl B2Provider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         use crate::providers::multi_thread::{
-            aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
-            ConcurrentRangeOutcome,
+            run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
         };
         use std::collections::VecDeque;
-        use std::path::{Path, PathBuf};
+        use std::path::PathBuf;
         use std::sync::Arc;
 
         let streams = streams.clamp(2, MULTI_THREAD_MAX_STREAMS);
@@ -1581,11 +1580,19 @@ impl B2Provider {
                             .read_range(&remote, start_off + written, sub_len)
                             .await
                             .map_err(|e| {
-                                ProviderError::TransferFailed(format!(
+                                let text = format!(
                                     "b2 multi-thread: read_range at offset {} failed: {}",
                                     start_off + written,
                                     e
-                                ))
+                                );
+                                // The offset is added to the message, and a
+                                // refusal stays one on the way up.
+                                match e {
+                                    ProviderError::ParallelRefused(_) => {
+                                        ProviderError::ParallelRefused(text)
+                                    }
+                                    _ => ProviderError::TransferFailed(text),
+                                }
                             })?;
                         if data.is_empty() {
                             return Err(ProviderError::TransferFailed(format!(
@@ -1618,19 +1625,87 @@ impl B2Provider {
             tokio_util::sync::CancellationToken::new(),
             on_progress,
         )
-        .await?;
+        .await;
 
         match outcome {
-            ConcurrentRangeOutcome::Completed => {
-                let temp = aerotmp_path_for(Path::new(local_path));
-                tokio::fs::rename(&temp, local_path).await.map_err(|e| {
-                    ProviderError::Other(format!("b2 multi-thread finalize: {}", e))
-                })?;
-                Ok(())
-            }
-            ConcurrentRangeOutcome::ServerIgnoredRange => Err(ProviderError::NotSupported(
+            // The windows are in `<local>.aerotmp` and the file is not
+            // published here: the caller reads the object again through the
+            // session it already holds and publishes only if it did not move.
+            Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
+            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(ProviderError::NotSupported(
                 "b2 multi-thread: server returned 200 (ignored Range)".to_string(),
             )),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Run the parallel download and publish it only if the object did not
+    /// move while the windows were reading it.
+    ///
+    /// `Ok(true)` it is published, `Ok(false)` it was refused and the caller
+    /// takes its single-stream path, `Err` a real failure. Both readings go
+    /// through this session rather than a new one, the same shape the other
+    /// providers use.
+    async fn parallel_download_if_unchanged(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        streams: usize,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<bool, ProviderError> {
+        use super::multi_thread::{
+            aerotmp_path_for, parallel_refused, range_source_changed_through,
+            read_range_source_through, source_changed,
+        };
+        use std::path::Path;
+
+        let before = match read_range_source_through(self, remote_path).await {
+            Ok(reading) => match reading.matches_planned_size(total_size) {
+                Ok(()) => reading,
+                Err(why) => {
+                    tracing::warn!("{}", parallel_refused("b2 multi-thread", remote_path, &why));
+                    return Ok(false);
+                }
+            },
+            Err(why) => {
+                tracing::warn!("{}", parallel_refused("b2 multi-thread", remote_path, &why));
+                return Ok(false);
+            }
+        };
+
+        match self
+            .download_multi_thread(remote_path, local_path, total_size, streams, on_progress)
+            .await
+        {
+            Ok(()) => {}
+            // A window answered for another range, or with a body that is not
+            // the length it declared. The engine already removed the staged
+            // file, and one stream does not depend on the server's ranges.
+            Err(e @ ProviderError::ParallelRefused(_)) => {
+                tracing::warn!("{}; downloading on a single stream", e);
+                return Ok(false);
+            }
+            Err(e) => return Err(e),
+        }
+
+        let temp = aerotmp_path_for(Path::new(local_path));
+        if let Some(what) = range_source_changed_through(self, remote_path, &before).await {
+            let _ = tokio::fs::remove_file(&temp).await;
+            tracing::warn!("{}", source_changed("b2 multi-thread", remote_path, &what));
+            return Ok(false);
+        }
+        match tokio::fs::rename(&temp, local_path).await {
+            Ok(()) => Ok(true),
+            Err(e) => {
+                // The engine handed the temp over when it reported the windows
+                // complete, so nothing else will remove it.
+                let _ = tokio::fs::remove_file(&temp).await;
+                Err(ProviderError::Other(format!(
+                    "b2 multi-thread finalize: {}",
+                    e
+                )))
+            }
         }
     }
 
@@ -2435,22 +2510,33 @@ impl StorageProvider for B2Provider {
         // cutoff, and B2's range-honouring endpoint is available. Mirrors the
         // S3 path: a `stat` hiccup just falls through to single-stream so a
         // one-off mismatch never fails an otherwise downloadable transfer.
-        // Once committed we return the result (any hard error surfaces to the
-        // caller's retry envelope); we do not silently re-stream here.
+        // Once committed a hard error surfaces to the caller's retry envelope;
+        // a refusal to read the object in parallel, or to publish a file that
+        // moved under the windows, takes the single-stream path below instead,
+        // which reads one consistent view.
         let progress = if self.multi_thread_streams >= 2
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
             match self.size(remote_path).await {
                 Ok(size) if size >= self.multi_thread_cutoff => {
-                    return self
-                        .download_multi_thread(
+                    let (attempt_progress, fallback_progress) =
+                        super::multi_thread::share_progress(progress);
+                    match self
+                        .parallel_download_if_unchanged(
                             remote_path,
                             local_path,
                             size,
                             self.multi_thread_streams,
-                            progress,
+                            attempt_progress,
                         )
-                        .await;
+                        .await
+                    {
+                        Ok(true) => return Ok(()),
+                        // Refused, not failed: the single-stream path below
+                        // keeps reporting through the half that stayed here.
+                        Ok(false) => fallback_progress,
+                        Err(e) => return Err(e),
+                    }
                 }
                 _ => progress,
             }
@@ -3461,6 +3547,15 @@ impl StorageProvider for B2Provider {
                 "b2_download_file_by_name (range)",
             ));
         }
+        // The caller writes what comes back at the offset it asked for, so a
+        // whole file answered to a ranged request would put the head of the
+        // object there and still add up to the right length, and a 206 that
+        // does not name its window would do the same with a success code.
+        let answered = resp
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string());
         let bytes = resp
             .bytes()
             .await
@@ -3470,7 +3565,21 @@ impl StorageProvider for B2Provider {
             bytes.len() as u64,
         )
         .await;
-        Ok(bytes.to_vec())
+        match super::multi_thread::ranged_answer(
+            status,
+            answered.as_deref(),
+            bytes.len() as u64,
+            offset,
+            end,
+        ) {
+            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
+            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
+                Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
+            }
+            Err(why) => Err(ProviderError::ParallelRefused(
+                super::multi_thread::parallel_refused("b2 range read", path, &why),
+            )),
+        }
     }
 }
 
@@ -4783,5 +4892,124 @@ mod tests {
         parts.sort_by_key(|p| p.part_number);
         let sha1s: Vec<String> = parts.into_iter().map(|p| p.etag).collect();
         assert_eq!(sha1s, vec!["a", "b", "c"]);
+    }
+
+    const RANGED_SIZE: usize = 8 * 1024 * 1024;
+
+    /// A connected provider whose server lists `/big.bin`, serves it whole to
+    /// a plain GET, and answers every ranged GET with `ranged`.
+    async fn provider_on_a_server_answering_ranges_with(
+        ranged: fn() -> axum::response::Response,
+    ) -> B2Provider {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| async move {
+                if req.method() == axum::http::Method::POST {
+                    let listing = serde_json::json!({
+                        "files": [{
+                            "fileName": "big.bin",
+                            "action": "upload",
+                            "contentLength": RANGED_SIZE,
+                            "uploadTimestamp": 1_700_000_000_000i64,
+                        }],
+                        "nextFileName": null,
+                    });
+                    return axum::response::Response::builder()
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(listing.to_string()))
+                        .unwrap();
+                }
+                if req.headers().contains_key("range") {
+                    return ranged();
+                }
+                axum::response::Response::builder()
+                    .body(axum::body::Body::from(vec![7u8; RANGED_SIZE]))
+                    .unwrap()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = empty_provider();
+        provider.api_url = format!("http://{addr}");
+        provider.download_url = format!("http://{addr}");
+        provider.auth_token = SecretString::new("token".to_string().into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        provider.multi_thread_streams = 4;
+        provider.multi_thread_cutoff = 1024 * 1024;
+        provider
+    }
+
+    /// A refusal is a type, not a phrase: a server error whose message happens
+    /// to contain the words of one is a failed download, and sending it to a
+    /// single stream would hide the error the server gave.
+    #[tokio::test]
+    async fn a_server_error_that_quotes_a_refusal_is_still_a_failure() {
+        let mut provider = provider_on_a_server_answering_ranges_with(|| {
+            let body = serde_json::json!({
+                "status": 403,
+                "code": "access_denied",
+                "message": format!("policy: {}", super::super::multi_thread::PARALLEL_REFUSED_MARKER),
+            });
+            axum::response::Response::builder()
+                .status(403)
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(body.to_string()))
+                .unwrap()
+        })
+        .await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let err = provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect_err("a 403 on the windows is a failure, whatever its text says");
+        assert!(!matches!(err, ProviderError::ParallelRefused(_)), "{err}");
+        assert!(!out.exists(), "nothing may be published");
+    }
+
+    /// A ranged GET answered with a `Content-Range` for another window is a
+    /// refusal to read in parallel, not a failed download: the object is still
+    /// there to read on one stream, and the progress callback follows it.
+    #[tokio::test]
+    async fn a_window_answered_for_another_range_falls_back_to_one_stream() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Arc;
+        // A 206 that names a window nobody asked for.
+        let mut provider = provider_on_a_server_answering_ranges_with(|| {
+            axum::response::Response::builder()
+                .status(206)
+                .header("content-range", format!("bytes 1-16/{}", RANGED_SIZE))
+                .body(axum::body::Body::from(vec![9u8; 16]))
+                .unwrap()
+        })
+        .await;
+        const SIZE: usize = RANGED_SIZE;
+
+        let reported = Arc::new(AtomicU64::new(0));
+        let sink = Arc::clone(&reported);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        provider
+            .download(
+                "/big.bin",
+                out.to_str().unwrap(),
+                Some(Box::new(move |done, _total| {
+                    sink.store(done, Ordering::SeqCst);
+                })),
+            )
+            .await
+            .expect("a refused window must finish on a single stream");
+        assert_eq!(std::fs::read(&out).expect("published"), vec![7u8; SIZE]);
+        assert_eq!(
+            reported.load(Ordering::SeqCst),
+            SIZE as u64,
+            "the single-stream fallback must keep reporting progress"
+        );
     }
 }

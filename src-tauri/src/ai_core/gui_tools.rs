@@ -684,6 +684,7 @@ pub async fn dispatch_gui_tool(
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "file".to_string());
                 let local_path = format!("{}/{}", local_dir.trim_end_matches('/'), filename);
+                validate_path(&local_path, "local_path")?;
 
                 emit_tool_progress(
                     &app,

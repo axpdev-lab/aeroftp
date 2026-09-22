@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Tarvitsetko apua tai haluatko ilmoittaa virheestä? Autamme mielellämme.",
             "sourceforgeReviews": "Kirjoita arvostelu SourceForgessa",
-            "writeReview": "Kirjoita arvostelu"
+            "writeReview": "Kirjoita arvostelu",
+            "team": {
+                "title": "Axpdev Labin tiimi",
+                "apRole": "Perustaja, kehittäjä, ylläpitäjä, yhteissuunnittelija",
+                "ekRole": "Tutkija, laadunvarmistusinsinööri, yhteissuunnittelija"
+            }
         },
         "support": {
             "title": "Tue AeroFTP:tä",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Roskakori on tyhjä",
             "itemCount": "{count} kohdetta roskakorissa",
             "moveToTrash": "Siirrä roskakoriin",
-            "restoreConfirm": "Palautetaanko {name} alkuperäiseen sijaintiinsa?"
+            "restoreConfirm": "Palautetaanko {name} alkuperäiseen sijaintiinsa?",
+            "homeCopyPrompt": "{count} kohdetta, alkaen kohteesta {name}, on asemalla, jolla ei ole käytettävää roskakoria. Roskakoriin siirtäminen kopioisi ne kotikansion roskakoriin, mikä voi kestää kauan ja vaatii vapaata tilaa. Poistetaanko ne pysyvästi?",
+            "copyToHomeTrash": "Kopioi kotikansion roskakoriin",
+            "permanentAfterFailure": "{count} kohdetta, alkaen kohteesta {name}, ei voitu siirtää roskakoriin. Poistetaanko ne pysyvästi? Tätä ei voi kumota.",
+            "kept": "{name} säilytettiin: mitään ei poistettu",
+            "keptMultiple": "Jätetty paikalleen, ei poistettu: {count} kohdetta"
         },
         "quickLook": {
             "noPreview": "Esikatselua ei saatavilla",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Nimi ei voi sisältää merkkejä / tai \\, jaksoa .. eikä null-merkkiä."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent-hyväksyntä",
+            "whyTitle": "Miksi erillinen ikkuna?",
+            "whyBody": "Tämä hyväksyntä avautuu keskustelun ulkopuolelle, jotta agentin siellä lukema ja näyttämä sisältö ei voi vahvistaa toimintoa puolestasi.",
+            "wantsTo": "AeroAgent haluaa:",
+            "scopeOnce": "Hyväksyy täsmälleen tämän toiminnon kerran.",
+            "scopeSession": "Hyväksyy tämän työkalun keskustelun loppuajaksi.",
+            "approve": "Hyväksy"
         }
     }
 }

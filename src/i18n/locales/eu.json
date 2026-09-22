@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Laguntza behar duzu edo akats baten berri eman nahi duzu? Hemen gaude laguntzeko.",
             "sourceforgeReviews": "Idatzi iritzi bat SourceForge-n",
-            "writeReview": "Idatzi kritika bat"
+            "writeReview": "Idatzi kritika bat",
+            "team": {
+                "title": "Axpdev Lab taldea",
+                "apRole": "Sortzailea, garatzailea, mantentzailea, diseinukidea",
+                "ekRole": "Ikertzailea, kalitatea bermatzeko ingeniaria, diseinukidea"
+            }
         },
         "support": {
             "title": "Lagundu AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Zakarrontzia hutsik dago",
             "itemCount": "{count} elementu zakarrontzian",
             "moveToTrash": "Mugitu zakarrontzira",
-            "restoreConfirm": "Lehengoratu {name} bere jatorrizko kokapenera?"
+            "restoreConfirm": "Lehengoratu {name} bere jatorrizko kokapenera?",
+            "homeCopyPrompt": "{count} elementu, {name} lehenengoa, zakarrontzi erabilgarririk ez duen unitate batean daude. Zakarrontzira eramateak etxeko karpetako zakarrontzira kopiatuko lituzke, eta horrek denbora luzea eta leku librea behar ditzake. Betirako ezabatu nahi dituzu?",
+            "copyToHomeTrash": "Kopiatu etxeko zakarrontzira",
+            "permanentAfterFailure": "Ezin izan dira zakarrontzira eraman {count} elementu, {name} lehenengoa. Betirako ezabatu nahi dituzu? Ezin da desegin.",
+            "kept": "{name} gorde da: ez da ezer ezabatu",
+            "keptMultiple": "Bere lekuan utzita, ezabatu gabe: {count} elementu"
         },
         "quickLook": {
             "noPreview": "Ez dago aurrebistarik",
@@ -5710,6 +5720,15 @@
         },
         "rename": {
             "invalidCharacters": "Izen batek ezin du / edo \\ eduki, ezta .. sekuentzia edo karaktere nulua ere."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent onespena",
+            "whyTitle": "Zergatik leiho bereizi bat?",
+            "whyBody": "Onespen hau txatetik kanpo irekitzen da, agenteak bertan irakurri eta erakusten duen edukiak zure izenean ekintzarik berretsi ez dezan.",
+            "wantsTo": "AeroAgent-ek hau egin nahi du:",
+            "scopeOnce": "Ekintza zehatz hau behin bakarrik onesten du.",
+            "scopeSession": "Tresna hau txat-saioaren gainerakoan onesten du.",
+            "approve": "Onetsi"
         }
     }
 }

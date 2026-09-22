@@ -119,9 +119,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# OpenSSH rejects this checked-in fixture key when a fresh worktree gives
-# it group/other read bits.
-chmod 600 "$CAPTURE_DIR/keys/id_ed25519"
+# The fixture key is generated, not checked in (see fixture_key.sh).
+# shellcheck source=fixture_key.sh
+source "$CAPTURE_DIR/fixture_key.sh"
+ensure_fixture_key "$CAPTURE_DIR"
 
 stop_stack
 if [[ "$STACK_MODE" == "compose" ]]; then

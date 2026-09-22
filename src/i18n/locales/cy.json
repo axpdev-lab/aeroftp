@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Angen cymorth neu am roi gwybod am wall? Rydym yma i helpu.",
             "sourceforgeReviews": "Ysgrifennwch adolygiad ar SourceForge",
-            "writeReview": "Ysgrifennu adolygiad"
+            "writeReview": "Ysgrifennu adolygiad",
+            "team": {
+                "title": "Tîm Axpdev Lab",
+                "apRole": "Sylfaenydd, datblygwr, cynhaliwr, cyd-ddylunydd",
+                "ekRole": "Ymchwilydd, peiriannydd sicrhau ansawdd, cyd-ddylunydd"
+            }
         },
         "support": {
             "title": "Cefnogi AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Mae'r Sbwriel yn wag",
             "itemCount": "{count} eitem yn y Sbwriel",
             "moveToTrash": "Symud i'r Sbwriel",
-            "restoreConfirm": "Adfer {name} i'w leoliad gwreiddiol?"
+            "restoreConfirm": "Adfer {name} i'w leoliad gwreiddiol?",
+            "homeCopyPrompt": "Mae {count} eitem, gan ddechrau gyda {name}, ar yriant heb sbwriel y gallwch ei ddefnyddio. Byddai eu symud i'r sbwriel yn eu copïo i'r sbwriel yn eich ffolder cartref, a all gymryd amser hir ac mae angen lle rhydd yno. Eu dileu'n barhaol yn lle hynny?",
+            "copyToHomeTrash": "Copïo i Sbwriel y Cartref",
+            "permanentAfterFailure": "Methwyd symud {count} eitem, gan ddechrau gyda {name}, i'r sbwriel. Eu dileu'n barhaol? Ni ellir dadwneud hyn.",
+            "kept": "Cadwyd {name}: ni ddilëwyd dim",
+            "keptMultiple": "Wedi'u gadael yn eu lle, heb eu dileu: {count} eitem"
         },
         "quickLook": {
             "noPreview": "Dim rhagolwg ar gael",
@@ -5710,6 +5720,15 @@
         },
         "rename": {
             "invalidCharacters": "Ni all enw gynnwys / na \\, y dilyniant .., na nod nwl."
+        },
+        "aiApproval": {
+            "windowTitle": "Cymeradwyaeth AeroAgent",
+            "whyTitle": "Pam ffenestr ar wahân?",
+            "whyBody": "Mae'r gymeradwyaeth hon yn agor y tu allan i'r sgwrs, fel na all y cynnwys y mae'r asiant yn ei ddarllen a'i ddangos yno gadarnhau gweithred ar eich rhan.",
+            "wantsTo": "Mae AeroAgent eisiau:",
+            "scopeOnce": "Yn cymeradwyo'r union weithred hon unwaith.",
+            "scopeSession": "Yn cymeradwyo'r offeryn hwn am weddill y sesiwn sgwrsio.",
+            "approve": "Cymeradwyo"
         }
     }
 }

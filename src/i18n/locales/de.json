@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Brauchen Sie Hilfe oder möchten Sie einen Fehler melden? Wir sind für Sie da.",
             "sourceforgeReviews": "Bewertung auf SourceForge schreiben",
-            "writeReview": "Bewertung schreiben"
+            "writeReview": "Bewertung schreiben",
+            "team": {
+                "title": "Das Axpdev Lab Team",
+                "apRole": "Gründer, Entwickler, Maintainer, Co-Designer",
+                "ekRole": "Forscher, Ingenieur für Qualitätssicherung, Co-Designer"
+            }
         },
         "support": {
             "title": "AeroFTP unterstützen",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Papierkorb ist leer",
             "itemCount": "{count} Elemente im Papierkorb",
             "moveToTrash": "In den Papierkorb verschieben",
-            "restoreConfirm": "{name} an den ursprünglichen Ort wiederherstellen?"
+            "restoreConfirm": "{name} an den ursprünglichen Ort wiederherstellen?",
+            "homeCopyPrompt": "{count} Element(e), beginnend mit {name}, liegen auf einem Laufwerk ohne nutzbaren Papierkorb. Beim Verschieben in den Papierkorb würden sie in den Papierkorb Ihres Home-Ordners kopiert, was lange dauern kann und dort freien Speicher benötigt. Stattdessen endgültig löschen?",
+            "copyToHomeTrash": "In Home-Papierkorb kopieren",
+            "permanentAfterFailure": "{count} Element(e), beginnend mit {name}, konnten nicht in den Papierkorb verschoben werden. Endgültig löschen? Dies kann nicht rückgängig gemacht werden.",
+            "kept": "{name} wurde behalten: Es wurde nichts gelöscht",
+            "keptMultiple": "An Ort und Stelle belassen, nicht gelöscht: {count} Element(e)"
         },
         "quickLook": {
             "noPreview": "Keine Vorschau verfügbar",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Ein Name darf weder / noch \\, die Folge .. oder ein Nullzeichen enthalten."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent-Freigabe",
+            "whyTitle": "Warum ein eigenes Fenster?",
+            "whyBody": "Diese Freigabe öffnet sich außerhalb des Chats, damit Inhalte, die der Agent dort liest und anzeigt, keine Aktion in Ihrem Namen bestätigen können.",
+            "wantsTo": "AeroAgent möchte:",
+            "scopeOnce": "Gibt genau diese Aktion einmal frei.",
+            "scopeSession": "Gibt dieses Werkzeug für den Rest der Chatsitzung frei.",
+            "approve": "Freigeben"
         }
     }
 }

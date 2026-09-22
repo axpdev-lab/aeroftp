@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Vajate abi või soovite veast teatada? Oleme siin, et aidata.",
             "sourceforgeReviews": "Kirjuta arvustus SourceForge'is",
-            "writeReview": "Kirjuta arvustus"
+            "writeReview": "Kirjuta arvustus",
+            "team": {
+                "title": "Axpdev Labi meeskond",
+                "apRole": "Asutaja, arendaja, hooldaja, kaasdisainer",
+                "ekRole": "Teadur, kvaliteedi tagamise insener, kaasdisainer"
+            }
         },
         "support": {
             "title": "Toeta AeroFTP-d",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Prügikast on tühi",
             "itemCount": "{count} üksust prügikastis",
             "moveToTrash": "Teisalda prügikasti",
-            "restoreConfirm": "Taasta {name} algsesse asukohta?"
+            "restoreConfirm": "Taasta {name} algsesse asukohta?",
+            "homeCopyPrompt": "{count} üksust, alates {name}, asuvad kettal, millel pole kasutatavat prügikasti. Prügikasti viimine kopeeriks need kodukausta prügikasti, mis võib võtta kaua aega ja vajab vaba ruumi. Kas kustutada need hoopis jäädavalt?",
+            "copyToHomeTrash": "Kopeeri kodukausta prügikasti",
+            "permanentAfterFailure": "{count} üksust, alates {name}, ei õnnestunud prügikasti viia. Kas kustutada need jäädavalt? Seda ei saa tagasi võtta.",
+            "kept": "{name} jäeti alles: midagi ei kustutatud",
+            "keptMultiple": "Jäeti alles, ei kustutatud: {count} üksust"
         },
         "quickLook": {
             "noPreview": "Eelvaade pole saadaval",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Nimi ei tohi sisaldada märke / ega \\, jada .. ega nullmärki."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgenti kinnitus",
+            "whyTitle": "Miks eraldi aken?",
+            "whyBody": "See kinnitus avaneb vestlusest väljaspool, et sisu, mida agent seal loeb ja näitab, ei saaks sinu eest toimingut kinnitada.",
+            "wantsTo": "AeroAgent soovib:",
+            "scopeOnce": "Kinnitab täpselt selle toimingu üks kord.",
+            "scopeSession": "Kinnitab selle tööriista vestluse lõpuni.",
+            "approve": "Kinnita"
         }
     }
 }

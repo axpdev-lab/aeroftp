@@ -305,15 +305,18 @@ fn map_server(server: &FileZillaServer) -> Option<MappedProfile> {
     // Build protocol-specific options
     let mut options = serde_json::Map::new();
 
+    // Implicit vs explicit, under `tlsMode`: the key the GUI stores and the
+    // connection reads (an `ftpsMode` was read by nothing, so an explicit site
+    // on port 21 connected as implicit FTPS).
     if protocol == "ftps" {
         if fz_protocol == 3 {
             options.insert(
-                "ftpsMode".to_string(),
+                "tlsMode".to_string(),
                 serde_json::Value::String("implicit".to_string()),
             );
         } else {
             options.insert(
-                "ftpsMode".to_string(),
+                "tlsMode".to_string(),
                 serde_json::Value::String("explicit".to_string()),
             );
         }
@@ -554,21 +557,18 @@ pub fn export_filezilla(
 
         // Map AeroFTP protocol to FileZilla Protocol value
         let fz_protocol = match protocol {
-            "ftp" => 0,
             "sftp" => 1,
-            "ftps" => {
-                let mode = server
-                    .options
-                    .as_ref()
-                    .and_then(|o| o.get("ftpsMode"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("explicit");
-                if mode == "implicit" {
-                    3
-                } else {
-                    4
-                }
-            }
+            // FTP follows the TLS mode the connection uses
+            // (`bridge_shared::ftp_tls_mode_for_export`): 3 implicit,
+            // 4 explicit, 0 explicit if the server offers it.
+            "ftp" | "ftps" => match crate::bridge_shared::ftp_tls_mode_for_export(
+                protocol,
+                server.options.as_ref(),
+            ) {
+                Some("implicit") => 3,
+                Some("explicit") => 4,
+                _ => 0,
+            },
             "s3" => 6,
             _ => continue,
         };
@@ -715,6 +715,12 @@ mod tests {
         let mapped = map_server(&server).unwrap();
         assert_eq!(mapped.protocol, "ftps");
         assert_eq!(mapped.port, 21);
+        // Stored under the key the connection reads, or the site on port 21
+        // would be opened as implicit FTPS.
+        assert_eq!(
+            mapped.options.as_ref().and_then(|o| o.get("tlsMode")),
+            Some(&serde_json::json!("explicit"))
+        );
     }
 
     #[test]

@@ -190,6 +190,7 @@ impl TransferError {
             ProviderError::ConnectionFailed(s) => classify_raw_message(s),
             ProviderError::NetworkError(s) => classify_network_message(s),
             ProviderError::TransferFailed(s)
+            | ProviderError::ParallelRefused(s)
             | ProviderError::ServerError(s)
             | ProviderError::Other(s)
             | ProviderError::Unknown(s) => classify_raw_message(s),

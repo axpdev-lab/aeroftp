@@ -79,7 +79,7 @@ fn take_transfer_attempts(counts: &AttemptCounts, entry_id: &str) -> Option<u32>
         .remove(entry_id)
 }
 use crate::transfer_settings::{
-    default_download_segments_for, resolve_transfer_settings_for_capabilities,
+    download_segments_preference_for, resolve_transfer_settings_for_capabilities,
     ResolvedTransferSettings, TransferSettingsInput, DEFAULT_MAX_CONCURRENT, MAX_MAX_CONCURRENT,
     MIN_MAX_CONCURRENT,
 };
@@ -215,7 +215,7 @@ fn segmented_runtime_request(
     (
         sftp_tuning
             .map(|tuning| tuning.connections as u32)
-            .unwrap_or(settings.download_segments),
+            .unwrap_or(settings.download_segments.count()),
         sftp_tuning
             .map(|tuning| tuning.connections)
             .unwrap_or(session_max_leases),
@@ -289,7 +289,7 @@ pub fn provider_segmented_download_eligible(
 /// sibling on success; on any error the engine's `TempFileGuard`
 /// drops the temp.
 pub async fn run_provider_segmented_download(
-    primary: &dyn StorageProvider,
+    primary: &mut dyn StorageProvider,
     remote_path: &str,
     local_path: &str,
     file_size: u64,
@@ -298,8 +298,9 @@ pub async fn run_provider_segmented_download(
     cancel_token: CancellationToken,
 ) -> Result<(), String> {
     use crate::providers::multi_thread::{
-        aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
-        ConcurrentRangeOutcome,
+        aerotmp_path_for, parallel_refused, range_source_changed_through,
+        read_range_source_through, run_concurrent_range_download, source_changed,
+        ConcurrentRangeConfig, ConcurrentRangeOutcome,
     };
     use crate::providers::ProviderError;
     use std::collections::VecDeque;
@@ -309,12 +310,32 @@ pub async fn run_provider_segmented_download(
         return Err("segmented download: refusing to run with fewer than 2 segments".to_string());
     }
 
+    // What the object looks like before the windows start. Each worker reads
+    // a different window, so an object replaced while they run is assembled
+    // out of two versions, with every window the length it asked for and the
+    // total exactly right: nothing downstream can tell. The reading is used
+    // twice, to pin the ranges where the provider has a validator and to
+    // refuse the publish if the object moved anyway.
+    // Read on the caller's session, which is open and idle while the windows
+    // run on their own: opening one costs a full handshake on SFTP and FTP,
+    // about 1.3 seconds each, and that cost would be paid per file.
+    let before = match read_range_source_through(primary, remote_path).await {
+        Ok(reading) => match reading.matches_planned_size(file_size) {
+            Ok(()) => reading,
+            Err(why) => return Err(parallel_refused("segmented download", remote_path, &why)),
+        },
+        Err(why) => return Err(parallel_refused("segmented download", remote_path, &why)),
+    };
+
     // Pre-acquire N independent workers. The first failure aborts the
     // segmented path so the caller can fall back to single-stream.
     let mut workers: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(segments);
     for i in 0..segments {
         match primary.clone_for_transfer() {
-            Ok(w) => workers.push(w),
+            Ok(mut w) => {
+                w.set_range_validator(before.validator());
+                workers.push(w);
+            }
             Err(e) => {
                 for mut w in workers {
                     let _ = w.disconnect().await;
@@ -429,11 +450,20 @@ pub async fn run_provider_segmented_download(
     match outcome {
         Ok(ConcurrentRangeOutcome::Completed) => {
             let temp = aerotmp_path_for(Path::new(local_path));
-            if let Err(e) = tokio::fs::rename(&temp, local_path).await {
-                let _ = tokio::fs::remove_file(&temp).await;
-                return Err(format!("segmented download: finalize failed: {}", e));
+            let changed = range_source_changed_through(primary, remote_path, &before).await;
+            match changed {
+                Some(what) => {
+                    let _ = tokio::fs::remove_file(&temp).await;
+                    Err(source_changed("segmented download", remote_path, &what))
+                }
+                None => match tokio::fs::rename(&temp, local_path).await {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        let _ = tokio::fs::remove_file(&temp).await;
+                        Err(format!("segmented download: finalize failed: {}", e))
+                    }
+                },
             }
-            Ok(())
         }
         Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(
             "segmented download: server ignored Range; falling back to single-stream".to_string(),
@@ -682,7 +712,11 @@ pub async fn resolve_provider_executor_runtime(
         );
     };
 
-    let advertised = provider.transfer_capabilities();
+    let mut advertised = provider.transfer_capabilities();
+    // Bind the Auto policy to this same live provider snapshot, even when a
+    // provider overrides `transfer_capabilities` with a minimal snapshot.
+    advertised.preferred_download_segments =
+        Some(download_segments_preference_for(provider.provider_type()));
     let kind = provider.transfer_executor_kind();
     let can_clone = provider.clone_for_transfer().is_ok();
     let runtime_caps = compose_runtime_transfer_capabilities(&advertised, kind, can_clone);
@@ -712,7 +746,6 @@ pub async fn resolve_provider_transfer_runtime(
     ProviderExecutorSessionModel,
     TransferCapabilities,
 ) {
-    let input = fill_download_segments_default(provider, input).await;
     let requested_max_concurrent = input
         .max_concurrent
         .unwrap_or(DEFAULT_MAX_CONCURRENT)
@@ -720,6 +753,10 @@ pub async fn resolve_provider_transfer_runtime(
     let (session_model, capabilities) =
         resolve_provider_executor_runtime(provider, requested_max_concurrent).await;
     let runtime_settings = resolve_transfer_settings_for_capabilities(input, &capabilities);
+    tracing::info!(
+        "download streams requested: {}",
+        runtime_settings.download_segments
+    );
 
     debug_assert_eq!(
         runtime_settings.max_concurrent as usize,
@@ -728,23 +765,6 @@ pub async fn resolve_provider_transfer_runtime(
     );
 
     (runtime_settings, session_model, capabilities)
-}
-
-/// "Auto" download streams (`None`) become the provider's measured default
-/// (`default_download_segments_for`); an explicit value is kept as is. Read
-/// from the live provider so the GUI, which sends `undefined` for Auto, gets
-/// the same table the CLI documents.
-async fn fill_download_segments_default(
-    provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
-    mut input: TransferSettingsInput,
-) -> TransferSettingsInput {
-    if input.download_segments.is_none() {
-        let provider_type = provider.lock().await.as_ref().map(|p| p.provider_type());
-        if let Some(provider_type) = provider_type {
-            input.download_segments = Some(default_download_segments_for(provider_type));
-        }
-    }
-    input
 }
 
 /// Thin async wrapper over [`resolve_session_model`]: locks the provider,
@@ -856,6 +876,8 @@ pub struct ProviderDownloadExecutor {
     session_model: ProviderExecutorSessionModel,
     /// Runtime capability snapshot used by the batch DAG builder (DAG-P1-01).
     capabilities: TransferCapabilities,
+    /// Caller-specific fan-out threshold, in addition to the shared size floor.
+    download_cutoff: u64,
     /// Whole-file attempts per entry id (DAG-P2-07 retry telemetry).
     attempt_counts: AttemptCounts,
     /// Warm-connection reuse pool (PD-FTP-2). Clone-pool workers that finished
@@ -884,9 +906,17 @@ impl ProviderDownloadExecutor {
             cancel_token,
             capabilities: finalize_capabilities_for_session_model(&capabilities, &session_model),
             session_model,
+            download_cutoff: 0,
             attempt_counts: AttemptCounts::default(),
             warm_workers: WarmWorkerPool::default(),
         }
+    }
+
+    /// Apply a caller's minimum file size for segmented downloads. The default
+    /// leaves existing callers on the shared eligibility/anti-fragmentation gate.
+    pub fn with_download_cutoff(mut self, cutoff: u64) -> Self {
+        self.download_cutoff = cutoff;
+        self
     }
 
     async fn clone_worker(&self) -> Result<WarmWorker, String> {
@@ -1134,6 +1164,10 @@ impl ProviderDownloadExecutor {
         dl_start: std::time::Instant,
         file_size: u64,
     ) -> Option<Result<(), String>> {
+        if file_size < self.download_cutoff {
+            return None;
+        }
+
         // Single-source-of-truth gate: capability + session-pool kind +
         // anti-fragmentation count + pool-cap clamp.
         let (requested_segments, max_segments) = segmented_runtime_request(
@@ -2138,7 +2172,7 @@ mod tests {
             max_concurrent: 4,
             retry_count: 3,
             timeout_seconds: 30,
-            download_segments: 1,
+            download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
             sftp_download_preset: Some(
                 crate::sftp_download_tuning::SftpDownloadPreset::MaximumTested,
             ),
@@ -2516,18 +2550,23 @@ mod tests {
         let (auto, _, _) =
             resolve_provider_transfer_runtime(&holder, TransferSettingsInput::default()).await;
         assert_eq!(
-            auto.download_segments, 4,
+            auto.download_segments.count(),
+            4,
             "Auto on S3 is the measured 4 streams"
         );
         let (explicit, _, _) = resolve_provider_transfer_runtime(
             &holder,
             TransferSettingsInput {
-                download_segments: Some(2),
+                download_segments: crate::transfer_settings::DownloadSegmentsRequest::Explicit(2),
                 ..TransferSettingsInput::default()
             },
         )
         .await;
-        assert_eq!(explicit.download_segments, 2, "an explicit value is kept");
+        assert_eq!(
+            explicit.download_segments.count(),
+            2,
+            "an explicit value is kept"
+        );
     }
 
     #[test]
@@ -2905,7 +2944,7 @@ mod tests {
                 max_concurrent: 1,
                 retry_count,
                 timeout_seconds: 30,
-                download_segments: 1,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
                 sftp_download_preset: None,
             },
             cancel_token,

@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Segítségre van szüksége, vagy hibát szeretne jelenteni? Itt vagyunk, hogy segítsünk.",
             "sourceforgeReviews": "Véleményt ír a SourceForge-on",
-            "writeReview": "Vélemény írása"
+            "writeReview": "Vélemény írása",
+            "team": {
+                "title": "Az Axpdev Lab csapata",
+                "apRole": "Alapító, fejlesztő, karbantartó, társtervező",
+                "ekRole": "Kutató, minőségbiztosítási mérnök, társtervező"
+            }
         },
         "support": {
             "title": "Támogasd az AeroFTP-t",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "A Kuka üres",
             "itemCount": "{count} elem a Kukában",
             "moveToTrash": "Áthelyezés a Kukába",
-            "restoreConfirm": "Visszaállítja a(z) {name} elemet az eredeti helyére?"
+            "restoreConfirm": "Visszaállítja a(z) {name} elemet az eredeti helyére?",
+            "homeCopyPrompt": "{count} elem, kezdve ezzel: {name}, olyan meghajtón van, amelynek nincs használható kukája. A kukába helyezés a saját mappa kukájába másolná őket, ami sokáig tarthat és szabad helyet igényel. Inkább véglegesen törli őket?",
+            "copyToHomeTrash": "Másolás a saját mappa kukájába",
+            "permanentAfterFailure": "{count} elemet, kezdve ezzel: {name}, nem sikerült a kukába helyezni. Véglegesen törli őket? Ez nem vonható vissza.",
+            "kept": "{name} megmaradt: semmi sem lett törölve",
+            "keptMultiple": "A helyén maradt, nem törölve: {count} elem"
         },
         "quickLook": {
             "noPreview": "Nincs elérhető előnézet",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "A név nem tartalmazhat / vagy \\ jelet, .. sorozatot, sem null karaktert."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent jóváhagyás",
+            "whyTitle": "Miért külön ablak?",
+            "whyBody": "Ez a jóváhagyás a csevegésen kívül nyílik meg, így az ügynök által ott olvasott és megjelenített tartalom nem hagyhat jóvá műveletet az Ön nevében.",
+            "wantsTo": "Az AeroAgent ezt szeretné:",
+            "scopeOnce": "Pontosan ezt a műveletet hagyja jóvá egyszer.",
+            "scopeSession": "Ezt az eszközt a csevegés hátralévő részére hagyja jóvá.",
+            "approve": "Jóváhagyás"
         }
     }
 }

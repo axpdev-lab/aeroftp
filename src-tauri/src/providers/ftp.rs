@@ -19,7 +19,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::checksum_matrix;
 use super::multi_thread::{
-    aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+    aerotmp_path_for, parallel_refused, range_source_changed_through, read_range_source_through,
+    run_concurrent_range_download, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
 };
 use super::{
     ChecksumCapability, FtpConfig, FtpTlsMode, ProviderError, ProviderTransferExecutorKind,
@@ -139,10 +140,87 @@ impl FtpProvider {
         self.connect().await
     }
 
+    /// The path that the primary session and a freshly dialled worker both
+    /// resolve to the same file.
+    ///
+    /// A worker reconnects from the connection spec and starts at the login
+    /// directory, while this session may have changed directory since. A
+    /// relative path would then name two different files, and the readings
+    /// would describe one object while the windows assembled another.
+    fn absolute_remote_path(&self, remote_path: &str) -> String {
+        if remote_path.starts_with('/') {
+            remote_path.to_string()
+        } else {
+            format!(
+                "{}/{}",
+                self.current_path.trim_end_matches('/'),
+                remote_path.trim_start_matches("./")
+            )
+        }
+    }
+
+    /// Run the parallel download and publish it only if the object did not
+    /// move while the windows were reading it.
+    ///
+    /// `Ok(true)` it is published, `Ok(false)` it was refused and the caller
+    /// takes its single-stream path, `Err` a real failure. Both readings of
+    /// the object go through this session, which is open and idle while the
+    /// windows run on their own connections. Opening a session for them would
+    /// cost a full control connection and login twice on every segmented
+    /// download, and that cost is fixed: it weighs most exactly where the
+    /// transfer is fastest.
+    async fn parallel_download_if_unchanged(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<bool, ProviderError> {
+        // One resolved path for the readings and for the windows: see
+        // `absolute_remote_path`.
+        let resolved = self.absolute_remote_path(remote_path);
+        let before = match read_range_source_through(self, &resolved).await {
+            Ok(reading) => match reading.matches_planned_size(total_size) {
+                Ok(()) => reading,
+                Err(why) => {
+                    tracing::warn!("{}", parallel_refused("FTP intra-file", &resolved, &why));
+                    return Ok(false);
+                }
+            },
+            Err(why) => {
+                tracing::warn!("{}", parallel_refused("FTP intra-file", &resolved, &why));
+                return Ok(false);
+            }
+        };
+
+        self.download_intra_file_pooled(&resolved, local_path, total_size, on_progress)
+            .await?;
+
+        let temp = aerotmp_path_for(Path::new(local_path));
+        if let Some(what) = range_source_changed_through(self, &resolved, &before).await {
+            let _ = tokio::fs::remove_file(&temp).await;
+            tracing::warn!("{}", source_changed("FTP intra-file", &resolved, &what));
+            return Ok(false);
+        }
+        match tokio::fs::rename(&temp, local_path).await {
+            Ok(()) => {
+                tracing::info!("FTP: intra-file download complete: {}", remote_path);
+                Ok(true)
+            }
+            Err(e) => {
+                // The engine handed the temp over when it reported the windows
+                // complete, so nothing else will remove it.
+                let _ = tokio::fs::remove_file(&temp).await;
+                Err(ProviderError::IoError(e))
+            }
+        }
+    }
+
     /// PD-FTP-1: split one large file into N gap-free windows, each
     /// downloaded over its **own** independent FTP connection (REST+RETR,
     /// the exact connection model of the FTP session pool and PD-SFTP-2),
-    /// assembled into a pre-allocated `.aerotmp` and atomically renamed.
+    /// assembled into a pre-allocated `.aerotmp`, which the caller publishes
+    /// once it has read the object again.
     /// Reuses the shared [`run_concurrent_range_download`] orchestrator so
     /// HTTP, SFTP and FTP share one engine, not a fourth implementation.
     ///
@@ -207,23 +285,20 @@ impl FtpProvider {
             }
         };
 
-        match run_concurrent_range_download(
+        let outcome = run_concurrent_range_download(
             cfg,
             write_one_range,
             CancellationToken::new(),
             on_progress,
         )
-        .await?
-        {
-            ConcurrentRangeOutcome::Completed => {
-                let temp = aerotmp_path_for(Path::new(local_path));
-                tokio::fs::rename(&temp, local_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                tracing::info!("FTP: intra-file download complete: {}", remote_path);
-                Ok(())
-            }
-            ConcurrentRangeOutcome::ServerIgnoredRange => {
+        .await;
+
+        match outcome {
+            // The windows are in `<local>.aerotmp` and the file is not
+            // published here: the caller reads the object again through the
+            // session it already holds and publishes only if it did not move.
+            Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
+            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
                 // Unreachable for FTP: REST+RETR cannot "ignore" a range.
                 // Never silently re-download (it would double the bytes).
                 let _ = tokio::fs::remove_file(aerotmp_path_for(Path::new(local_path))).await;
@@ -232,6 +307,7 @@ impl FtpProvider {
                         .to_string(),
                 ))
             }
+            Err(e) => Err(e),
         }
     }
 
@@ -242,7 +318,18 @@ impl FtpProvider {
     /// session than the control channel.  TLS 1.2 session-ID resumption is
     /// non-destructive and satisfies the RFC 4217 requirement that every data
     /// connection resumes the *same* session as the control connection.
-    /// This matches the behaviour of FileZilla, WinSCP, and CyberDuck.
+    ///
+    /// This used to add "matches the behaviour of FileZilla, WinSCP, and
+    /// CyberDuck". The Cyberduck half is withdrawn: measured on 2026-09-19
+    /// against a stock vsftpd (`require_ssl_reuse` left at its default), the
+    /// `duck` 9.5.4 native CLI connects, authenticates and lists over explicit
+    /// FTPS and then cannot transfer, leaving a zero-byte file on the server.
+    /// The symptom is consistent with the reuse requirement above but was not
+    /// proven for it, since that build exposes no TLS-version knob to flip;
+    /// for rclone the same run proved it, because `--ftp-disable-tls13` turns
+    /// a `426 Failure reading network stream` into a completed transfer. What
+    /// stands is the reason for the cap, not the list of clients that share
+    /// it.
     fn make_tls_connector(&self) -> Result<AsyncRustlsConnector, ProviderError> {
         // Name the crypto backend explicitly rather than relying on rustls'
         // process-level default. Both `aws-lc-rs` and `ring` are in the
@@ -1338,13 +1425,31 @@ impl StorageProvider for FtpProvider {
         // we can re-dial N independent FTP connections. Without all three
         // this is a no-op and the single-stream path below is unchanged:
         // honest non-regression, no protocol overclaim.
+        let mut on_progress = on_progress;
         if self.multi_thread_streams >= 2
             && total_size >= self.multi_thread_cutoff
             && self.connection_spec.is_some()
         {
-            return self
-                .download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
-                .await;
+            let (attempt_progress, fallback_progress) =
+                super::multi_thread::share_progress(on_progress.take());
+            on_progress = fallback_progress;
+            match self
+                .parallel_download_if_unchanged(
+                    remote_path,
+                    local_path,
+                    total_size,
+                    attempt_progress,
+                )
+                .await
+            {
+                Ok(true) => return Ok(()),
+                // Refused, not failed: one stream reads one consistent view of
+                // the object, which is what the parallel path could not
+                // promise here, and it reports through the half of the
+                // progress callback that stayed here.
+                Ok(false) => {}
+                Err(e) => return Err(e),
+            }
         }
 
         // Single-stream download with one reconnect-and-retry on a desynced
@@ -3544,6 +3649,39 @@ async fn ftp_download_one_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A window worker dials its own connection and starts where the login
+    /// leaves it, not where this session has since moved. A relative path
+    /// would name one file for the readings that decide, and another for the
+    /// windows that download, and both could have the planned size.
+    #[test]
+    fn a_relative_path_is_resolved_against_this_session_before_the_windows_run() {
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "example.invalid".to_string(),
+            port: 21,
+            username: "u".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+        provider.current_path = "/srv/backups".to_string();
+        assert_eq!(
+            provider.absolute_remote_path("dump.tar"),
+            "/srv/backups/dump.tar"
+        );
+        assert_eq!(
+            provider.absolute_remote_path("./dump.tar"),
+            "/srv/backups/dump.tar"
+        );
+        assert_eq!(
+            provider.absolute_remote_path("/elsewhere/dump.tar"),
+            "/elsewhere/dump.tar",
+            "an absolute path is already unambiguous"
+        );
+        provider.current_path = "/".to_string();
+        assert_eq!(provider.absolute_remote_path("dump.tar"), "/dump.tar");
+    }
 
     /// A permanent refusal that is not about the path must not be reported as
     /// one. The condition used to be any 5xx, so "530 Not logged in" reached the

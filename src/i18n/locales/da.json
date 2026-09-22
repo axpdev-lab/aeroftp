@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Har du brug for hjælp eller vil du rapportere en fejl? Vi er her for at hjælpe.",
             "sourceforgeReviews": "Skriv en anmeldelse på SourceForge",
-            "writeReview": "Skriv en anmeldelse"
+            "writeReview": "Skriv en anmeldelse",
+            "team": {
+                "title": "Axpdev Lab-teamet",
+                "apRole": "Grundlægger, udvikler, vedligeholder, meddesigner",
+                "ekRole": "Forsker, kvalitetssikringsingeniør, meddesigner"
+            }
         },
         "support": {
             "title": "Støt AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Papirkurven er tom",
             "itemCount": "{count} elementer i papirkurven",
             "moveToTrash": "Flyt til papirkurv",
-            "restoreConfirm": "Gendan {name} til dens oprindelige placering?"
+            "restoreConfirm": "Gendan {name} til dens oprindelige placering?",
+            "homeCopyPrompt": "{count} element(er), begyndende med {name}, ligger på et drev uden en brugbar papirkurv. At flytte dem til papirkurven ville kopiere dem til papirkurven i din hjemmemappe, hvilket kan tage lang tid og kræver ledig plads. Slet dem permanent i stedet?",
+            "copyToHomeTrash": "Kopiér til hjemmemappens papirkurv",
+            "permanentAfterFailure": "{count} element(er), begyndende med {name}, kunne ikke flyttes til papirkurven. Slet dem permanent? Dette kan ikke fortrydes.",
+            "kept": "{name} blev beholdt: intet blev slettet",
+            "keptMultiple": "Efterladt på plads, ikke slettet: {count} element(er)"
         },
         "quickLook": {
             "noPreview": "Ingen forhåndsvisning tilgængelig",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Et navn må ikke indeholde / eller \\, sekvensen .. eller et nul-tegn."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent-godkendelse",
+            "whyTitle": "Hvorfor et separat vindue?",
+            "whyBody": "Denne godkendelse åbnes uden for chatten, så indhold, som agenten læser og viser der, ikke kan bekræfte en handling på dine vegne.",
+            "wantsTo": "AeroAgent vil:",
+            "scopeOnce": "Godkender præcis denne handling én gang.",
+            "scopeSession": "Godkender dette værktøj resten af chatsessionen.",
+            "approve": "Godkend"
         }
     }
 }

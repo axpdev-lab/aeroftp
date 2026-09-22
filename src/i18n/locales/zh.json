@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "需要帮助或想要报告问题？我们随时为您提供协助。",
             "sourceforgeReviews": "在SourceForge上撰写评论",
-            "writeReview": "写评论"
+            "writeReview": "写评论",
+            "team": {
+                "title": "Axpdev Lab 团队",
+                "apRole": "创始人、开发者、维护者、联合设计者",
+                "ekRole": "研究员、质量保证工程师、联合设计者"
+            }
         },
         "support": {
             "title": "支持 AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "回收站为空",
             "itemCount": "回收站中有 {count} 个项目",
             "moveToTrash": "移动到回收站",
-            "restoreConfirm": "将 {name} 还原到原始位置？"
+            "restoreConfirm": "将 {name} 还原到原始位置？",
+            "homeCopyPrompt": "以 {name} 开头的 {count} 个项目位于没有可用回收站的驱动器上。将它们移到回收站会把它们复制到主文件夹的回收站，这可能耗时较长并需要足够的可用空间。改为永久删除吗？",
+            "copyToHomeTrash": "复制到主文件夹回收站",
+            "permanentAfterFailure": "以 {name} 开头的 {count} 个项目无法移到回收站。要永久删除吗？此操作无法撤销。",
+            "kept": "已保留 {name}：未删除任何内容",
+            "keptMultiple": "已保留原处、未删除：{count} 个项目"
         },
         "quickLook": {
             "noPreview": "无法预览",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "名称不能包含 / 或 \\、.. 序列或空字符。"
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent 审批",
+            "whyTitle": "为什么使用单独的窗口？",
+            "whyBody": "此审批在聊天之外打开，因此代理在聊天中读取和显示的内容无法代替你确认操作。",
+            "wantsTo": "AeroAgent 想要：",
+            "scopeOnce": "仅批准这一次具体操作。",
+            "scopeSession": "在本次聊天会话剩余时间内批准此工具。",
+            "approve": "批准"
         }
     }
 }

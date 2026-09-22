@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Trebate pomoć ili želite prijaviti pogrešku? Tu smo da pomognemo.",
             "sourceforgeReviews": "Napiši recenziju na SourceForge",
-            "writeReview": "Napiši recenziju"
+            "writeReview": "Napiši recenziju",
+            "team": {
+                "title": "Tim Axpdev Laba",
+                "apRole": "Osnivač, programer, održavatelj, sudizajner",
+                "ekRole": "Istraživač, inženjer za osiguranje kvalitete, sudizajner"
+            }
         },
         "support": {
             "title": "Podrži AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Smeće je prazno",
             "itemCount": "{count} stavki u smeću",
             "moveToTrash": "Premjesti u smeće",
-            "restoreConfirm": "Vratiti {name} na izvornu lokaciju?"
+            "restoreConfirm": "Vratiti {name} na izvornu lokaciju?",
+            "homeCopyPrompt": "{count} stavki, počevši od {name}, nalazi se na pogonu bez upotrebljivog smeća. Premještanje u smeće kopiralo bi ih u smeće vaše osobne mape, što može dugo trajati i zahtijeva slobodan prostor. Trajno ih izbrisati umjesto toga?",
+            "copyToHomeTrash": "Kopiraj u smeće osobne mape",
+            "permanentAfterFailure": "{count} stavki, počevši od {name}, nije bilo moguće premjestiti u smeće. Trajno ih izbrisati? Ovo se ne može poništiti.",
+            "kept": "Stavka {name} je zadržana: ništa nije izbrisano",
+            "keptMultiple": "Ostavljeno na mjestu, nije izbrisano: {count} stavki"
         },
         "quickLook": {
             "noPreview": "Nema dostupnog pregleda",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Naziv ne smije sadržavati / ni \\, niz .. ni nul-znak."
+        },
+        "aiApproval": {
+            "windowTitle": "Odobrenje za AeroAgent",
+            "whyTitle": "Zašto zaseban prozor?",
+            "whyBody": "Ovo se odobrenje otvara izvan chata kako sadržaj koji agent ondje čita i prikazuje ne bi mogao potvrditi radnju u vaše ime.",
+            "wantsTo": "AeroAgent želi:",
+            "scopeOnce": "Odobrava točno ovu radnju jednom.",
+            "scopeSession": "Odobrava ovaj alat do kraja sesije chata.",
+            "approve": "Odobri"
         }
     }
 }

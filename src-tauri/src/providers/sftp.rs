@@ -22,7 +22,7 @@ use russh::keys::{
     self, known_hosts, Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate,
 };
 use russh::{compression, Preferred};
-use russh_sftp::client::SftpSession;
+use russh_sftp::client::{RawSftpSession, SftpSession};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -31,7 +31,9 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
 use super::multi_thread::{
-    aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+    aerotmp_path_for, parallel_refused, run_concurrent_range_download, share_progress,
+    source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
+    AFTER_TRANSFER_READ_RETRY,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -424,6 +426,47 @@ impl SftpReadaheadSetting {
 /// SFTP Provider
 ///
 /// Provides secure file transfer over SSH using the SFTP protocol.
+/// The OpenSSH extension that gives SFTP the replace semantics POSIX has and
+/// plain SFTP does not.
+///
+/// `SSH_FXP_RENAME` in SFTP protocol 3 is specified to FAIL when the
+/// destination already exists, and a server answers it with a bare
+/// `SSH_FX_FAILURE` that says nothing else. So every caller that publishes a
+/// staged temporary over a live file failed, on every server: the CLI and MCP
+/// `edit`, the AeroCrypt marker publish, the crypt configuration writes. G119.
+/// The control that settled it: the same overwrite, on the same server in the
+/// same minute, succeeds through OpenSSH's own `sftp` client, because that
+/// client sends this extension.
+const POSIX_RENAME_EXTENSION: &str = "posix-rename@openssh.com";
+
+/// The `posix-rename@openssh.com` payload: two SSH strings, old then new.
+///
+/// Wire-identical to `hardlink@openssh.com`, whose `HardlinkExtension` in
+/// russh-sftp would encode it just as well. A named struct is used instead so
+/// the packet that goes out says what it is.
+#[derive(serde::Serialize)]
+struct PosixRenamePayload {
+    oldpath: String,
+    newpath: String,
+}
+
+/// What one connection knows about [`POSIX_RENAME_EXTENSION`].
+///
+/// `SftpSession` keeps both the advertised extension map and `extended()` to
+/// itself, so the answer has to come from a `RawSftpSession` of our own, on a
+/// second channel. It is opened lazily, on the first rename that finds its
+/// destination occupied, so a connection that never replaces a file never
+/// pays for it, and the answer is remembered so a server without the
+/// extension does not cost a channel per attempt.
+enum PosixRenameSupport {
+    /// Not asked yet on this connection.
+    Unasked,
+    /// Advertised, and this session performs it.
+    Available(Box<RawSftpSession>),
+    /// Not advertised by this server.
+    Absent,
+}
+
 pub struct SftpProvider {
     config: SftpConfig,
     /// SSH connection handle (shared so rsync-over-SSH can open exec channels on the same session).
@@ -466,6 +509,11 @@ pub struct SftpProvider {
     /// only while this remains unspecified; GUI/CLI configuration replaces it
     /// with an isolated explicit value.
     sftp_readahead: SftpReadaheadSetting,
+    /// What this connection knows about `posix-rename@openssh.com`; see
+    /// [`PosixRenameSupport`]. Deliberately NOT carried over by
+    /// `clone_for_transfer`: a pool worker dials its own connection, so it
+    /// must ask its own server rather than inherit an answer about another.
+    posix_rename: PosixRenameSupport,
     /// Test-only hook. Production never cancels this token; read-ahead used
     /// to watch a local `CancellationToken::new()` that no caller cancelled.
     /// Each download replaces the token in the slot, so two concurrent
@@ -501,6 +549,7 @@ impl SftpProvider {
             multi_thread_streams: 1,
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
             sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
+            posix_rename: PosixRenameSupport::Unasked,
             transfer_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
             fail_readahead_write: Arc::new(AtomicBool::new(false)),
         }
@@ -584,11 +633,106 @@ impl SftpProvider {
         Ok(())
     }
 
+    /// The object as this session sees it now, read on the connection that is
+    /// already open.
+    ///
+    /// Going through the trait's `stat` would mean a session of its own, and
+    /// on SFTP a session is a full handshake: about 1.3 seconds on the lab
+    /// link, twice per segmented download, whether or not anything changed.
+    async fn range_source_reading(
+        sftp: &SftpSession,
+        full_path: &str,
+    ) -> Result<RangeSourceFingerprint, String> {
+        let metadata = sftp
+            .metadata(full_path)
+            .await
+            .map_err(|e| format!("it could not be read ({e})"))?;
+        let entry = Self::metadata_to_entry(String::new(), full_path.to_string(), &metadata);
+        Ok(RangeSourceFingerprint::of(&entry))
+    }
+
+    /// Run the parallel download and publish it only if the object did not
+    /// move while the windows were reading it.
+    ///
+    /// `Ok(true)` it is published, `Ok(false)` it was refused and the caller
+    /// takes its single-stream path, `Err` a real failure. Both readings of
+    /// the object go through this session, which is open and idle while the
+    /// windows run on their own connections. Opening a session for them would
+    /// cost a full SFTP handshake twice on every segmented download, about
+    /// 1.3 seconds each on the lab link, and that cost is fixed: it weighs
+    /// most exactly where the transfer is fastest.
+    async fn parallel_download_if_unchanged(
+        &self,
+        remote_path: &str,
+        full_path: &str,
+        local_path: &str,
+        total_size: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<bool, ProviderError> {
+        let sftp = self.get_sftp()?;
+        let before = match Self::range_source_reading(sftp, full_path).await {
+            Ok(reading) => match reading.matches_planned_size(total_size) {
+                Ok(()) => reading,
+                Err(why) => {
+                    tracing::warn!("{}", parallel_refused("SFTP intra-file", remote_path, &why));
+                    return Ok(false);
+                }
+            },
+            Err(why) => {
+                tracing::warn!("{}", parallel_refused("SFTP intra-file", remote_path, &why));
+                return Ok(false);
+            }
+        };
+
+        self.download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
+            .await?;
+
+        // One retry, the same tolerance the shared comparison gives the other
+        // providers: this reading decides whether bytes already on disk are
+        // kept, and a hiccup is not proof that the object moved.
+        let changed = match Self::range_source_reading(sftp, full_path).await {
+            Ok(after) => before.differs_from(&after),
+            Err(first) => {
+                tracing::warn!(
+                    "SFTP intra-file: {} could not be read after the transfer ({}), reading once more",
+                    full_path,
+                    first
+                );
+                tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+                match Self::range_source_reading(sftp, full_path).await {
+                    Ok(after) => before.differs_from(&after),
+                    Err(why) => Some(format!(
+                        "it could not be read again after the transfer: {why}"
+                    )),
+                }
+            }
+        };
+        let temp = aerotmp_path_for(Path::new(local_path));
+        if let Some(what) = changed {
+            let _ = tokio::fs::remove_file(&temp).await;
+            tracing::warn!("{}", source_changed("SFTP intra-file", remote_path, &what));
+            return Ok(false);
+        }
+        match tokio::fs::rename(&temp, local_path).await {
+            Ok(()) => {
+                tracing::info!("SFTP: intra-file download complete: {}", remote_path);
+                Ok(true)
+            }
+            Err(e) => {
+                // The engine handed the temp over when it reported the windows
+                // complete, so nothing else will remove it.
+                let _ = tokio::fs::remove_file(&temp).await;
+                Err(ProviderError::IoError(e))
+            }
+        }
+    }
+
     /// PD-SFTP-2 intra-file download: split a large file into N gap-free
     /// windows, each streamed over its **own independent SSH connection**
     /// (the exact connection model of the file-level pool: spec re-dial with
     /// host-key pin, no shared SSH handle/channel), assembled into a
-    /// pre-allocated `.aerotmp` and atomically renamed. Reuses the shared
+    /// pre-allocated `.aerotmp`, which the caller publishes once it has read
+    /// the object again. Reuses the shared
     /// [`run_concurrent_range_download`] orchestrator (plan / temp / RAII
     /// cleanup / bounded concurrency / progress / cancel) so HTTP and SFTP
     /// share one engine, not a fifth implementation.
@@ -680,23 +824,20 @@ impl SftpProvider {
             }
         };
 
-        match run_concurrent_range_download(
+        let outcome = run_concurrent_range_download(
             cfg,
             write_one_range,
             CancellationToken::new(),
             on_progress,
         )
-        .await?
-        {
-            ConcurrentRangeOutcome::Completed => {
-                let temp = aerotmp_path_for(Path::new(local_path));
-                tokio::fs::rename(&temp, local_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                tracing::info!("SFTP: intra-file download complete: {}", remote_path);
-                Ok(())
-            }
-            ConcurrentRangeOutcome::ServerIgnoredRange => {
+        .await;
+
+        match outcome {
+            // The windows are in `<local>.aerotmp` and the file is not
+            // published here: the caller reads the object again through the
+            // session it already holds and publishes only if it did not move.
+            Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
+            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
                 // Unreachable for SFTP: seek+read cannot "ignore" a range.
                 // Never silently re-download (it would double the bytes).
                 let _ = tokio::fs::remove_file(aerotmp_path_for(Path::new(local_path))).await;
@@ -704,6 +845,7 @@ impl SftpProvider {
                     "SFTP intra-file: unexpected range-ignored outcome".to_string(),
                 ))
             }
+            Err(e) => Err(e),
         }
     }
 
@@ -926,6 +1068,62 @@ impl SftpProvider {
     }
 
     /// Get SFTP session or error if not connected
+    /// Open, once per connection, the raw SFTP session used for
+    /// `posix-rename@openssh.com`, and report whether this server offers it.
+    ///
+    /// `Ok(None)` means the server does not advertise the extension. That is a
+    /// fact about the server and not a failure, so the caller turns it into a
+    /// refusal the user can act on rather than into a retry.
+    ///
+    /// The channel is a second one on the same SSH connection, which is why
+    /// the ordering holds: the client does not send the rename until the
+    /// upload's `SSH_FXP_CLOSE` has been answered on the first channel, so the
+    /// second `sftp-server` never sees a half-written temporary.
+    async fn posix_rename_session(&mut self) -> Result<Option<&RawSftpSession>, ProviderError> {
+        if matches!(self.posix_rename, PosixRenameSupport::Unasked) {
+            let handle = self.ssh_handle.clone().ok_or(ProviderError::NotConnected)?;
+            let channel = {
+                let guard = handle.lock().await;
+                guard.channel_open_session().await.map_err(|e| {
+                    classify_russh_err(e, |s| {
+                        ProviderError::ServerError(format!(
+                            "Failed to open a channel to ask for {POSIX_RENAME_EXTENSION}: {s}"
+                        ))
+                    })
+                })?
+            };
+            channel.request_subsystem(true, "sftp").await.map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!(
+                        "Failed to request the SFTP subsystem for {POSIX_RENAME_EXTENSION}: {s}"
+                    ))
+                })
+            })?;
+            let session = RawSftpSession::new(channel.into_stream());
+            let version = session.init().await.map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!(
+                        "Failed to negotiate the SFTP session for {POSIX_RENAME_EXTENSION}: {s}"
+                    ))
+                })
+            })?;
+            self.posix_rename = if version.extensions.contains_key(POSIX_RENAME_EXTENSION) {
+                PosixRenameSupport::Available(Box::new(session))
+            } else {
+                tracing::info!(
+                    "SFTP: {} does not advertise {}; replacing a file in place is not available",
+                    self.config.host,
+                    POSIX_RENAME_EXTENSION
+                );
+                PosixRenameSupport::Absent
+            };
+        }
+        Ok(match &self.posix_rename {
+            PosixRenameSupport::Available(session) => Some(session),
+            _ => None,
+        })
+    }
+
     fn get_sftp(&self) -> Result<&SftpSession, ProviderError> {
         self.sftp.as_ref().ok_or(ProviderError::NotConnected)
     }
@@ -1401,6 +1599,12 @@ impl StorageProvider for SftpProvider {
             let _ = sftp.close().await;
         }
 
+        // The posix-rename answer belongs to the connection that was asked,
+        // not to this struct: the next `connect()` may reach a different
+        // server, and an inherited "Absent" would refuse a replace the new
+        // server can do.
+        self.posix_rename = PosixRenameSupport::Unasked;
+
         // Close SSH handle. Arc<Mutex<_>> means other clones (e.g. rsync-over-SSH borrowers)
         // may still hold references; the disconnect message is sent through the shared sender,
         // which is exactly what we want: the session is tore down once for everyone.
@@ -1647,7 +1851,7 @@ impl StorageProvider for SftpProvider {
                 return Err(classify_russh_err(error, ProviderError::NotFound));
             }
         };
-        let total_size = metadata.size.unwrap_or(0);
+        let mut total_size = metadata.size.unwrap_or(0);
         // The OPEN above is speculation, fired next to the STAT to overlap the
         // two round trips. Its failure is not the download's failure: the fresh
         // STAT can still select the pooled, read-ahead or pipelined path, and
@@ -1689,14 +1893,42 @@ impl StorageProvider for SftpProvider {
         // re-dial N independent SSH connections (the SftpConnectionPool kind).
         // Without all three this is a no-op and the single-stream path below
         // is unchanged: honest non-regression, no protocol overclaim.
+        let mut on_progress = on_progress;
+        // Set when the parallel path refused to publish: the object is moving,
+        // so the fallback must read it on one handle. The read-ahead and
+        // pipelined paths below open several handles to the same path, a few
+        // milliseconds apart, and a replacement inside that burst would put
+        // the fallback back in the hole the refusal just avoided.
+        let mut source_is_moving = false;
         if self.multi_thread_streams >= 2
             && total_size >= self.multi_thread_cutoff
             && self.connection_spec.is_some()
         {
             close_preopened!();
-            return self
-                .download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
-                .await;
+            // Half of the callback goes with the attempt and half stays, so
+            // the path a refusal falls back to keeps reporting.
+            let (attempt_progress, fallback_progress) = share_progress(on_progress.take());
+            on_progress = fallback_progress;
+            match self
+                .parallel_download_if_unchanged(
+                    remote_path,
+                    &full_path,
+                    local_path,
+                    total_size,
+                    attempt_progress,
+                )
+                .await
+            {
+                Ok(true) => return Ok(()),
+                // Refused, not failed: the object is not the one the windows
+                // were planned for, or it could not be read again to prove it
+                // stayed put. One stream reads one consistent view, which is
+                // exactly what the parallel path could not promise, so take
+                // the path below instead of failing a download that has a
+                // correct way to finish.
+                Ok(false) => source_is_moving = true,
+                Err(e) => return Err(e),
+            }
         }
 
         // Sliding-window read-ahead downloader (our own, no crate fork). Takes
@@ -1704,7 +1936,8 @@ impl StorageProvider for SftpProvider {
         // guardrails: known size, no active
         // bandwidth cap (the serial loop owns precise throttling).
         if let Some(requested_window) = self.sftp_readahead.requested_window() {
-            if total_size > 0
+            if !source_is_moving
+                && total_size > 0
                 && self.download_limit_bps == 0
                 && crate::transfer_dag::governor::global()
                     .bandwidth()
@@ -1727,19 +1960,32 @@ impl StorageProvider for SftpProvider {
                         *slot = CancellationToken::new();
                         slot.clone()
                     };
-                    sftp_readahead_download(
+                    let (attempt_progress, fallback_progress) = share_progress(on_progress.take());
+                    on_progress = fallback_progress;
+                    match sftp_readahead_download(
                         sftp,
                         &full_path,
                         total_size,
                         local_path,
                         self.buffer_size,
                         window,
-                        on_progress,
+                        attempt_progress,
                         &cancel,
                         Arc::clone(&self.fail_readahead_write),
                     )
-                    .await?;
-                    return Ok(());
+                    .await
+                    {
+                        Ok(()) => return Ok(()),
+                        Err(e @ ProviderError::ParallelRefused(_)) => {
+                            // Read on several handles and the object moved
+                            // between the opens, or it is not the object the
+                            // transfer was planned for: the serial path below
+                            // reads on one handle.
+                            tracing::warn!("{}; downloading on a single handle", e);
+                            source_is_moving = true;
+                        }
+                        Err(e) => return Err(e),
+                    }
                 }
             }
         }
@@ -1751,7 +1997,8 @@ impl StorageProvider for SftpProvider {
         // loop owns the exact throttling, including the process-global cap);
         // the SHA-256 live gate guards it.
         if let Some(window) = sftp_read_pipeline_window() {
-            if total_size > 0
+            if !source_is_moving
+                && total_size > 0
                 && self.download_limit_bps == 0
                 && crate::transfer_dag::governor::global()
                     .bandwidth()
@@ -1764,25 +2011,61 @@ impl StorageProvider for SftpProvider {
                     .map_err(|e| {
                         ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
                     })?;
-                sftp_pipelined_download(
+                let (attempt_progress, fallback_progress) = share_progress(on_progress.take());
+                on_progress = fallback_progress;
+                match sftp_pipelined_download(
                     sftp,
                     &full_path,
                     total_size,
                     &mut atomic,
                     self.buffer_size,
                     window,
-                    on_progress,
+                    attempt_progress,
                 )
-                .await?;
-                atomic.commit().await.map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-                })?;
-                tracing::info!(
-                    "SFTP: Download complete (pipelined, window={}): {} bytes",
-                    window,
-                    total_size
-                );
-                return Ok(());
+                .await
+                {
+                    Ok(()) => {
+                        atomic.commit().await.map_err(|e| {
+                            ProviderError::TransferFailed(format!(
+                                "Failed to finalize download: {}",
+                                e
+                            ))
+                        })?;
+                        tracing::info!(
+                            "SFTP: Download complete (pipelined, window={}): {} bytes",
+                            window,
+                            total_size
+                        );
+                        return Ok(());
+                    }
+                    // Read on several handles and the object moved under
+                    // them: the staged file goes with `atomic`, and the
+                    // serial path below reads on one handle.
+                    Err(e @ ProviderError::ParallelRefused(_)) => {
+                        tracing::warn!("{}; downloading on a single handle", e);
+                        source_is_moving = true;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+
+        if source_is_moving {
+            // Everything below is bounded by `total_size`, which was read
+            // before the object moved: keeping it would publish a file cut to
+            // a length that is no longer the object's.
+            if let Ok(sftp) = self.get_sftp() {
+                if let Ok(fresh) = Self::range_source_reading(sftp, &full_path).await {
+                    if fresh.size() != total_size {
+                        tracing::warn!(
+                            "SFTP: {} is {} bytes now and was {}, the single-handle download uses the new size",
+                            full_path,
+                            fresh.size(),
+                            total_size
+                        );
+                        total_size = fresh.size();
+                    }
+                }
             }
         }
 
@@ -2488,6 +2771,56 @@ impl StorageProvider for SftpProvider {
         Ok(())
     }
 
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(self.posix_rename_session().await?.is_some())
+    }
+
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        use russh_sftp::protocol::{Packet, StatusCode};
+
+        let from_path = self.normalize_path(from);
+        let to_path = self.normalize_path(to);
+
+        tracing::info!("SFTP: Replacing {} with {}", to_path, from_path);
+
+        // Encoded before the session is borrowed, so the borrow lives only as
+        // long as the request itself.
+        let payload = russh_sftp::ser::to_bytes(&PosixRenamePayload {
+            oldpath: from_path.clone(),
+            newpath: to_path.clone(),
+        })
+        .map(|bytes| bytes.to_vec())
+        .map_err(|e| {
+            ProviderError::ServerError(format!("Failed to encode {POSIX_RENAME_EXTENSION}: {e}"))
+        })?;
+
+        let Some(session) = self.posix_rename_session().await? else {
+            return Err(ProviderError::NotSupported(format!(
+                "cannot replace `{to_path}` atomically: this SFTP server does not announce \
+                 `{POSIX_RENAME_EXTENSION}`, and plain SFTP rename is specified to refuse a \
+                 destination that already exists. `{to_path}` is unchanged. To overwrite it \
+                 anyway, upload over it with `put`, which truncates and rewrites in place: \
+                 that is not atomic either, but it is your choice and its bad moment is a \
+                 partial file rather than no file."
+            )));
+        };
+
+        match session.extended(POSIX_RENAME_EXTENSION, payload).await {
+            Ok(Packet::Status(status)) if status.status_code == StatusCode::Ok => Ok(()),
+            Ok(Packet::Status(status)) => Err(ProviderError::ServerError(format!(
+                "Failed to replace: {} ({:?})",
+                status.error_message, status.status_code
+            ))),
+            Ok(_) => Err(ProviderError::ServerError(format!(
+                "Failed to replace: the server answered {POSIX_RENAME_EXTENSION} with a packet \
+                 that is not a status"
+            ))),
+            Err(e) => Err(classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!("Failed to replace: {s}"))
+            })),
+        }
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
@@ -2760,20 +3093,21 @@ impl StorageProvider for SftpProvider {
         // explicit offsets. In principle a single file could be written
         // by multiple concurrent `SSH_FXP_WRITE` packets at different
         // offsets over one channel, but in practice (a) most servers
-        // serialise writes on the open file handle, (b) `russh-sftp`
-        // does not expose per-write concurrency controls, and (c) the
-        // ssh2-libssh2 SCP backend we use for uploads (workaround for
-        // russh 0.57 write buffering races on embedded SFTP servers like
-        // WD MyCloud NAS) is strictly stream-oriented. Real file-level
-        // parallelism on SFTP comes from `SftpConnectionPool` re-dialling
-        // independent SSH channels (see `transfer_executor_kind` below).
+        // serialise writes on the open file handle, and (b) `russh-sftp`
+        // does not expose per-write concurrency controls; `upload` above
+        // streams the file through one `sftp.create` handle. Real
+        // file-level parallelism on SFTP comes from `SftpConnectionPool`
+        // re-dialling independent SSH channels (see
+        // `transfer_executor_kind` below).
         //
         // Wiring a per-part SFTP backend is tracked as T-DEBT-09
-        // (`--sftp-concurrency` flag) for v4.x: it would require both
-        // dropping the SCP write workaround and parametrising
-        // `SftpConnectionPool` with a per-file fan-out. Until then we
-        // leave `supports_multipart=false` and let the runner pick the
-        // legacy single-stream path.
+        // (`--sftp-concurrency` flag) for v4.x. The pool is not the
+        // missing piece: it already hands out one lease per file, which
+        // is the file-level concurrency described above. What is missing
+        // is one level down, inside a single file: a per-part fan-out
+        // and a writer that can address parts on the upload path. Until
+        // then we leave `supports_multipart=false` and let the runner
+        // pick the legacy single-stream path.
         super::TransferOptimizationHints {
             supports_resume_download: false,
             supports_resume_upload: false,
@@ -3454,6 +3788,36 @@ async fn sftp_readahead_download(
 ) -> Result<(), ProviderError> {
     use tokio::io::AsyncWriteExt;
 
+    // This path opens as many handles as the window, all at once, a few
+    // milliseconds apart. A handle already open keeps reading the file it was
+    // opened on, so the risk is not the transfer but that burst: an object
+    // replaced inside it would be read as two versions. The window is far
+    // narrower than a whole transfer, but the check costs one round trip on
+    // the session that is already there.
+    // The transfer is bounded by `total_size`, read by the caller earlier, so
+    // a reading that does not match it means this download would publish a
+    // file cut to a length the object no longer has. Refusing here costs
+    // nothing: not a byte has been read.
+    let before = match SftpProvider::range_source_reading(sftp, full_path).await {
+        Ok(reading) => match reading.matches_planned_size(total_size) {
+            Ok(()) => reading,
+            Err(why) => {
+                return Err(ProviderError::ParallelRefused(parallel_refused(
+                    "SFTP readahead",
+                    full_path,
+                    &why,
+                )))
+            }
+        },
+        Err(why) => {
+            return Err(ProviderError::ParallelRefused(parallel_refused(
+                "SFTP readahead",
+                full_path,
+                &why,
+            )))
+        }
+    };
+
     // Keep the exclusive handle returned by create_new through commit: no
     // symlink following and no create/reopen TOCTOU window.
     let (file, temp_guard) = create_sftp_readahead_temp(local_path, total_size).await?;
@@ -3490,6 +3854,35 @@ async fn sftp_readahead_download(
         .await
         .map_err(|e| ProviderError::TransferFailed(format!("Failed to sync download: {}", e)))?;
     drop(out);
+
+    {
+        let changed = match SftpProvider::range_source_reading(sftp, full_path).await {
+            Ok(after) => before.differs_from(&after),
+            Err(first) => {
+                tracing::warn!(
+                    "SFTP readahead: {} could not be read after the transfer ({}), reading once more",
+                    full_path,
+                    first
+                );
+                tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+                match SftpProvider::range_source_reading(sftp, full_path).await {
+                    Ok(after) => before.differs_from(&after),
+                    Err(why) => Some(format!(
+                        "it could not be read again after the transfer: {why}"
+                    )),
+                }
+            }
+        };
+        if let Some(what) = changed {
+            // The guard removes the staged file. The caller reads this as a
+            // refusal and downloads on one handle instead.
+            return Err(ProviderError::ParallelRefused(source_changed(
+                "SFTP readahead",
+                full_path,
+                &what,
+            )));
+        }
+    }
 
     tokio::fs::rename(&guard.path, local_path)
         .await
@@ -3540,6 +3933,31 @@ async fn sftp_pipelined_download(
     let window = window.clamp(2, 64);
     let chunks_needed = total_size.div_ceil(chunk).max(1) as usize;
     let eff_window = window.min(chunks_needed);
+
+    // Several handles onto disjoint stripes of one path is the shape
+    // `sftp_readahead_download` guards, and the guard is the same: the object
+    // is read before the handles open and again once they are closed, and a
+    // file that moved in between is refused rather than handed to the caller
+    // to commit. Both readings cost one round trip on this session.
+    let before = match SftpProvider::range_source_reading(sftp, full_path).await {
+        Ok(reading) => match reading.matches_planned_size(total_size) {
+            Ok(()) => reading,
+            Err(why) => {
+                return Err(ProviderError::ParallelRefused(parallel_refused(
+                    "SFTP pipeline",
+                    full_path,
+                    &why,
+                )))
+            }
+        },
+        Err(why) => {
+            return Err(ProviderError::ParallelRefused(parallel_refused(
+                "SFTP pipeline",
+                full_path,
+                &why,
+            )))
+        }
+    };
 
     // `eff_window` handles, all on the SAME session: one SSH channel, the
     // RawSftpSession multiplexes the concurrent reads by request id.
@@ -3614,6 +4032,32 @@ async fn sftp_pipelined_download(
     .await;
     close_sftp_files(handles).await;
     streamed?;
+
+    let changed = match SftpProvider::range_source_reading(sftp, full_path).await {
+        Ok(after) => before.differs_from(&after),
+        Err(first) => {
+            tracing::warn!(
+                "SFTP pipeline: {} could not be read after the transfer ({}), reading once more",
+                full_path,
+                first
+            );
+            tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+            match SftpProvider::range_source_reading(sftp, full_path).await {
+                Ok(after) => before.differs_from(&after),
+                Err(why) => Some(format!(
+                    "it could not be read again after the transfer: {why}"
+                )),
+            }
+        }
+    };
+    if let Some(what) = changed {
+        // The caller drops the staged file and downloads on one handle.
+        return Err(ProviderError::ParallelRefused(source_changed(
+            "SFTP pipeline",
+            full_path,
+            &what,
+        )));
+    }
     Ok(())
 }
 

@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Necesitas axuda ou queres informar dun erro? Estamos aquí para axudarte.",
             "sourceforgeReviews": "Escribir unha recensión en SourceForge",
-            "writeReview": "Escribe unha resena"
+            "writeReview": "Escribe unha resena",
+            "team": {
+                "title": "Equipo de Axpdev Lab",
+                "apRole": "Fundador, desenvolvedor, mantedor, codeseñador",
+                "ekRole": "Investigador, enxeñeiro de garantía de calidade, codeseñador"
+            }
         },
         "support": {
             "title": "Apoia AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "O lixo está baleiro",
             "itemCount": "{count} elementos no lixo",
             "moveToTrash": "Mover ao lixo",
-            "restoreConfirm": "Restaurar {name} á súa localización orixinal?"
+            "restoreConfirm": "Restaurar {name} á súa localización orixinal?",
+            "homeCopyPrompt": "{count} elemento(s), comezando por {name}, están nunha unidade sen un lixo utilizable. Movelos ao lixo copiaríaos ao lixo do cartafol persoal, o que pode tardar moito e precisa espazo libre. Eliminalos permanentemente?",
+            "copyToHomeTrash": "Copiar ao lixo persoal",
+            "permanentAfterFailure": "Non se puideron mover ao lixo {count} elemento(s), comezando por {name}. Eliminalos permanentemente? Esta acción non se pode desfacer.",
+            "kept": "Conservouse {name}: non se eliminou nada",
+            "keptMultiple": "Deixados no seu sitio, sen eliminar: {count} elemento(s)"
         },
         "quickLook": {
             "noPreview": "Non hai vista previa",
@@ -5710,6 +5720,15 @@
         },
         "rename": {
             "invalidCharacters": "Un nome non pode conter / nin \\, a secuencia .. nin un carácter nulo."
+        },
+        "aiApproval": {
+            "windowTitle": "Aprobación de AeroAgent",
+            "whyTitle": "Por que unha xanela á parte?",
+            "whyBody": "Esta aprobación ábrese fóra do chat, para que o contido que o axente le e mostra alí non poida confirmar unha acción no teu nome.",
+            "wantsTo": "AeroAgent quere:",
+            "scopeOnce": "Aproba esta acción exacta unha soa vez.",
+            "scopeSession": "Aproba esta ferramenta durante o resto da sesión de chat.",
+            "approve": "Aprobar"
         }
     }
 }

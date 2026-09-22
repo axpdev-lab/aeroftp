@@ -395,6 +395,10 @@ pub struct S3Provider {
     /// Minimum file size (bytes) above which multi-thread download is engaged.
     /// Below this threshold, the standard single-stream path is always used.
     multi_thread_cutoff: u64,
+    /// ETag every `read_range` on this session must match, set by a caller
+    /// that reads several windows of one object in parallel. `None` leaves
+    /// ranges unpinned, which is right for a single read.
+    range_validator: Option<String>,
     /// KE-B1.1: Override for multipart upload parallelism. `None` keeps the
     /// historical 4-part-in-flight ceiling used by both `upload_multipart_streaming`
     /// and the server-side multipart copy planner. Set via
@@ -518,6 +522,7 @@ impl S3Provider {
             upload_chunk_override: None,
             multi_thread_streams: 1,
             multi_thread_cutoff: Self::MULTI_THREAD_CUTOFF_DEFAULT,
+            range_validator: None,
             upload_concurrency_override: None,
             no_check_bucket: false,
             disable_checksum: false,
@@ -562,6 +567,14 @@ impl S3Provider {
         }
         if self.is_filen_s3_endpoint() {
             return Ok(S3DeltaOutcome::Refused("multipart_unsupported"));
+        }
+        // Filebase answers 501 to `UploadPartCopy`, the call a delta is made of,
+        // which the copy path already knows (`copy_via_multipart`). Without this
+        // gate every `put --delta` opened a multipart session, took the 501,
+        // aborted and fell back, and the in-process memory of the refusal does
+        // not outlive one CLI invocation.
+        if self.is_filebase_endpoint() {
+            return Ok(S3DeltaOutcome::Refused("range_copy_unsupported"));
         }
         let identity = self.endpoint_identity();
         if range_copy_rejected(&identity) {
@@ -3394,6 +3407,7 @@ impl S3Provider {
         key: &str,
         local_path: &str,
         total_size: u64,
+        validator: String,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let streams = self
@@ -3507,8 +3521,9 @@ impl S3Provider {
             let key_owned = key.to_string();
             let temp = temp_path.clone();
             let agg = aggregate.clone();
+            let etag = validator.clone();
             joinset.spawn(async move {
-                download_range_to_offset(provider, key_owned, temp, start, end, agg).await
+                download_range_to_offset(provider, key_owned, temp, start, end, etag, agg).await
             });
         }
 
@@ -3549,12 +3564,83 @@ impl S3Provider {
             return Err(err);
         }
 
+        // Every window asked for this version with `If-Match`, but a gateway
+        // that ignores the header would have served whatever was current at
+        // the time. Read the object once more before publishing: on such a
+        // backend this is the only thing between it and a file made of two
+        // versions. The guard removes the staged file on the way out.
+        if let Some(what) = self.object_moved_since(key, &validator, total_size).await {
+            return Err(ProviderError::ParallelRefused(format!(
+                "Object {} {} ({})",
+                key,
+                super::multi_thread::SOURCE_CHANGED_MARKER,
+                what
+            )));
+        }
+
         // All ranges committed: atomic rename .aerotmp → final path.
         tokio::fs::rename(&temp_path, &final_pathbuf)
             .await
             .map_err(ProviderError::IoError)?;
         guard.committed = true;
         Ok(())
+    }
+
+    /// `Some(reason)` when a second HEAD describes an object that is not the
+    /// one the first HEAD described.
+    ///
+    /// One retry, because this reading decides whether bytes already on disk
+    /// are kept: a single hiccup should not discard a download that is
+    /// finished and correct, while a backend that is really gone answers
+    /// badly twice.
+    async fn object_moved_since(&self, key: &str, etag: &str, size: u64) -> Option<String> {
+        let mut last_error = None;
+        for attempt in 0..2 {
+            if attempt == 1 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+            match self.s3_request(Method::HEAD, key, None, None).await {
+                Ok(head) if head.status() == StatusCode::OK => {
+                    let now_tag = head
+                        .headers()
+                        .get(reqwest::header::ETAG)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| v.trim().to_string());
+                    match now_tag.as_deref() {
+                        Some(after) if after != etag => {
+                            return Some(format!("entity tag {} became {}", etag, after));
+                        }
+                        // The parallel path only starts with a strong tag, so
+                        // an answer without one is not "nothing to compare",
+                        // it is an endpoint that stopped pinning the bytes.
+                        None => {
+                            return Some(format!(
+                                "entity tag {} is no longer reported, so nothing pins the bytes",
+                                etag
+                            ));
+                        }
+                        Some(_) => {}
+                    }
+                    let now_size = head
+                        .headers()
+                        .get(reqwest::header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.parse::<u64>().ok());
+                    if let Some(after) = now_size {
+                        if after != size {
+                            return Some(format!("size {} became {}", size, after));
+                        }
+                    }
+                    return None;
+                }
+                Ok(other) => last_error = Some(format!("HEAD answered {}", other.status())),
+                Err(e) => last_error = Some(e.to_string()),
+            }
+        }
+        Some(format!(
+            "it could not be read again after the transfer: {}",
+            last_error.unwrap_or_else(|| "no answer".to_string())
+        ))
     }
 
     /// List all object keys under a given prefix (non-recursive, no delimiter).
@@ -4242,7 +4328,29 @@ impl StorageProvider for S3Provider {
         {
             match self.s3_request(Method::HEAD, key, None, None).await {
                 Ok(head) if head.status() == StatusCode::OK => {
-                    let size = head.content_length().unwrap_or(0);
+                    // The Content-Length header, not `content_length()`: on a
+                    // HEAD response that is the body's size hint, always 0, so
+                    // every file fell under the cutoff and went single-stream.
+                    let size = head
+                        .headers()
+                        .get(reqwest::header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.trim().parse::<u64>().ok())
+                        .unwrap_or(0);
+                    // Every range GET is pinned to this ETag with `If-Match`:
+                    // the workers issue independent requests, and an object
+                    // replaced between them by one of the same size would
+                    // otherwise pass every byte count and commit a file made
+                    // of two versions. Without a validator the split is not
+                    // attempted at all.
+                    let validator = head
+                        .headers()
+                        .get(reqwest::header::ETAG)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| v.trim().to_string())
+                        // A weak tag is not usable: `If-Match` compares
+                        // strongly, so it would refuse every window.
+                        .filter(|v| !v.is_empty() && !v.starts_with("W/"));
                     let accepts_ranges = head
                         .headers()
                         .get("accept-ranges")
@@ -4250,9 +4358,49 @@ impl StorageProvider for S3Provider {
                         .map(|s| !s.eq_ignore_ascii_case("none"))
                         .unwrap_or(true);
                     if size >= self.multi_thread_cutoff && accepts_ranges {
-                        return self
-                            .download_multi_thread(key, local_path, size, on_progress)
-                            .await;
+                        if let Some(etag) = validator {
+                            let (attempt_progress, fallback_progress) =
+                                super::multi_thread::share_progress(on_progress);
+                            match self
+                                .download_multi_thread(
+                                    key,
+                                    local_path,
+                                    size,
+                                    etag,
+                                    attempt_progress,
+                                )
+                                .await
+                            {
+                                Ok(()) => return Ok(()),
+                                Err(e @ ProviderError::ParallelRefused(_)) => {
+                                    // Refused, not failed: the object moved
+                                    // while the windows were reading it, and a
+                                    // single stream reads one consistent view,
+                                    // reporting through the half of the
+                                    // progress callback that stayed here.
+                                    warn!("S3: {}; downloading on a single stream", e);
+                                    // A copy with the parallel path off, rather
+                                    // than a size hint that lies about the
+                                    // object: the clone shares the HTTP client
+                                    // and the credentials.
+                                    let mut single = self.clone();
+                                    single.multi_thread_streams = 1;
+                                    return single
+                                        .download_with_size_hint(
+                                            remote_path,
+                                            local_path,
+                                            size_hint,
+                                            fallback_progress,
+                                        )
+                                        .await;
+                                }
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        warn!(
+                            "S3 multi-thread download disabled: no strong ETag on the HEAD of {}, so ranges cannot be pinned to one version",
+                            key
+                        );
                     }
                     if !accepts_ranges {
                         warn!(
@@ -5551,7 +5699,14 @@ impl StorageProvider for S3Provider {
                 u64::MAX
             },
             multipart_part_size: self.dag_aligned_part_size() as u64,
-            multipart_max_parallel: 4,
+            // The parts the DAG keeps in flight are this provider's upload
+            // concurrency (`--s3-upload-concurrency`), not a constant: the
+            // hint is the only way that setting reaches the DAG engine, which
+            // is the default one. Measured before the wiring, 300 MB over a
+            // 100 ms link: legacy 5.92 s at 1 part against 1.84 s at 8, DAG
+            // 2.19 s against 2.18 s, because it always used four.
+            multipart_max_parallel: u8::try_from(self.effective_upload_concurrency())
+                .unwrap_or(u8::MAX),
             supports_range_download: true,
             supports_resume_download: true,
             supports_server_checksum: true,
@@ -5602,6 +5757,23 @@ impl StorageProvider for S3Provider {
         self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
     }
 
+    fn set_range_validator(&mut self, validator: Option<String>) {
+        // `stat` publishes the ETag unquoted, the header wants the quoted
+        // form. A weak tag is dropped rather than sent: If-Match compares
+        // strongly, so a weak one would refuse every window instead of
+        // pinning it, and the caller still compares the object before and
+        // after the transfer.
+        self.range_validator = validator.and_then(|tag| {
+            if tag.starts_with("W/") {
+                None
+            } else if tag.starts_with('"') {
+                Some(tag)
+            } else {
+                Some(format!("\"{tag}\""))
+            }
+        });
+    }
+
     async fn read_range(
         &mut self,
         path: &str,
@@ -5632,18 +5804,64 @@ impl StorageProvider for S3Provider {
             .ok_or_else(|| ProviderError::Other("read_range end overflows u64".to_string()))?;
         let range_value = format!("bytes={}-{}", offset, end);
 
+        // A pinned session is reading several windows of one object at once:
+        // If-Match makes the server refuse a window that would come from a
+        // newer version, instead of handing back bytes that assemble into a
+        // file made of two.
+        let validator = self.range_validator.clone();
+        let mut headers: Vec<(&str, &str)> = vec![("range", &range_value)];
+        if let Some(ref tag) = validator {
+            headers.push(("if-match", tag));
+        }
         let response = self
-            .s3_request_ext(Method::GET, key, None, None, &[("range", &range_value)])
+            .s3_request_ext(Method::GET, key, None, None, &headers)
             .await?;
 
         match response.status() {
-            StatusCode::PARTIAL_CONTENT | StatusCode::OK => {
+            StatusCode::PARTIAL_CONTENT => {
+                // The caller writes these bytes at the offset it asked for, so
+                // the answer has to say it is that window, and carry it.
+                let answered = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|value| value.trim().to_string());
                 let bytes = response
                     .bytes()
                     .await
                     .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                Ok(bytes.to_vec())
+                match super::multi_thread::ranged_answer(
+                    StatusCode::PARTIAL_CONTENT,
+                    answered.as_deref(),
+                    bytes.len() as u64,
+                    offset,
+                    end,
+                ) {
+                    Ok(_) => Ok(bytes.to_vec()),
+                    Err(why) => Err(ProviderError::ParallelRefused(
+                        super::multi_thread::parallel_refused("S3 range read", path, &why),
+                    )),
+                }
             }
+            StatusCode::OK => {
+                // Range ignored: this is the whole object. Handing it back
+                // would put its head at the window's offset, and slicing it
+                // here would mean fetching the entire object for every window.
+                // Refuse, and the caller reads one stream instead.
+                Err(ProviderError::ParallelRefused(
+                    super::multi_thread::parallel_refused(
+                        "S3 range read",
+                        path,
+                        "the server ignored the range and answered with the whole object",
+                    ),
+                ))
+            }
+            StatusCode::PRECONDITION_FAILED => Err(ProviderError::ParallelRefused(format!(
+                "Object {} {}: the range request no longer matches the version the download \
+                 started from",
+                key,
+                super::multi_thread::SOURCE_CHANGED_MARKER
+            ))),
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
             StatusCode::RANGE_NOT_SATISFIABLE => Err(ProviderError::NotSupported(
                 "Server does not support range requests".to_string(),
@@ -6772,17 +6990,69 @@ async fn download_range_to_offset(
     temp_path: PathBuf,
     start: u64,
     end: u64,
+    validator: String,
     aggregate: Arc<AtomicU64>,
 ) -> Result<(), ProviderError> {
     let range_value = format!("bytes={}-{}", start, end);
     let response = provider
-        .s3_request_ext(Method::GET, &key, None, None, &[("range", &range_value)])
+        .s3_request_ext(
+            Method::GET,
+            &key,
+            None,
+            None,
+            &[("range", &range_value), ("if-match", &validator)],
+        )
         .await?;
 
     let status = response.status();
     match status {
-        StatusCode::PARTIAL_CONTENT | StatusCode::OK => {}
+        StatusCode::PARTIAL_CONTENT => {
+            // The window is written at its own offset, so a body that is not
+            // the window asked for puts the wrong bytes there while the total
+            // still adds up, and no comparison of the object would see it.
+            // The server has to say which range it is answering with.
+            // The same parser the other readers use: a header that starts
+            // like the right one and does not parse is not the right one.
+            let answered = response
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+                .map(|value| value.trim().to_string());
+            if !super::multi_thread::content_range_matches(answered.as_deref(), start, end) {
+                return Err(ProviderError::ParallelRefused(
+                    super::multi_thread::parallel_refused(
+                        "S3 multi-thread",
+                        &key,
+                        &format!(
+                            "the server answered {:?} to a request for bytes {}-{}",
+                            answered.unwrap_or_default(),
+                            start,
+                            end
+                        ),
+                    ),
+                ));
+            }
+        }
+        StatusCode::OK => {
+            // Range ignored: the body is the whole object, and writing its
+            // prefix at this window's offset would corrupt the file to
+            // exactly the right length.
+            return Err(ProviderError::ParallelRefused(
+                super::multi_thread::parallel_refused(
+                    "S3 multi-thread",
+                    &key,
+                    "the server ignored the range and answered with the whole object",
+                ),
+            ));
+        }
         StatusCode::NOT_FOUND => return Err(ProviderError::NotFound(key)),
+        StatusCode::PRECONDITION_FAILED => {
+            return Err(ProviderError::ParallelRefused(format!(
+                "Object {key} {}: the range request no longer matches the version the \
+                 download started from",
+                super::multi_thread::SOURCE_CHANGED_MARKER
+            )));
+        }
         StatusCode::RANGE_NOT_SATISFIABLE => {
             return Err(ProviderError::NotSupported(
                 "Server rejected Range request mid-flight (file may have changed)".to_string(),
@@ -6817,15 +7087,20 @@ async fn download_range_to_offset(
         )
         .await;
         if written + chunk_len > expected {
-            // Server returned more than requested: truncate to the planned
-            // window so we don't trample a neighboring range.
-            let allowed = (expected - written) as usize;
-            file.write_all(&chunk[..allowed])
-                .await
-                .map_err(ProviderError::IoError)?;
-            aggregate.fetch_add(allowed as u64, Ordering::Relaxed);
-            written = expected;
-            break;
+            // The server said one window and is sending more than it. Cutting
+            // the extra away would keep whatever arrived first and call it the
+            // window; there is no reason to believe it is. Refuse, and the
+            // caller reads this file on a single stream.
+            return Err(ProviderError::ParallelRefused(
+                super::multi_thread::parallel_refused(
+                    "S3 multi-thread",
+                    &key,
+                    &format!(
+                        "the server said bytes {}-{} and is sending more than {} bytes",
+                        start, end, expected
+                    ),
+                ),
+            ));
         }
         file.write_all(&chunk)
             .await
@@ -9212,6 +9487,643 @@ mod tests {
         );
     }
 
+    #[test]
+    fn upload_concurrency_reaches_the_dag_hint() {
+        // `--s3-upload-concurrency` only reaches the DAG engine, which is the
+        // default one, through this hint. With the hint pinned at 4 the flag
+        // was accepted and ignored there: measured over a 100 ms link on a
+        // 300 MB upload, the legacy path went from 5.92 s at 1 part to 1.84 s
+        // at 8, while the DAG stayed at 2.19 s and 2.18 s.
+        let mut p = make_provider(None);
+        assert_eq!(
+            p.transfer_optimization_hints().multipart_max_parallel as usize,
+            S3Provider::UPLOAD_CONCURRENCY_DEFAULT
+        );
+        // Exercise the setting through the capability snapshot and the actual
+        // multipart graph shape. A hint-only assertion would miss a later
+        // resolver that silently pins the graph to a fixed slot count.
+        for requested in [1, 8] {
+            p.set_upload_concurrency(requested);
+            let caps = p.transfer_capabilities();
+            let graph = crate::transfer_dag::TransferDagBuilder::shaped_file(
+                crate::transfer_dag::TransferDirection::Upload,
+                &caps,
+                300 * 1024 * 1024,
+            );
+            assert!(graph.transfer.len() > 1);
+            assert_eq!(graph.profile.max_chunk_slots as usize, requested);
+            let nodes = graph.dag.nodes();
+            if requested == 1 {
+                assert_eq!(nodes[graph.transfer[1]].depends_on, vec![graph.transfer[0]]);
+            } else {
+                assert_eq!(nodes[graph.transfer[1]].depends_on, vec![graph.acquire]);
+            }
+        }
+        p.set_upload_concurrency(8);
+        assert_eq!(p.transfer_optimization_hints().multipart_max_parallel, 8);
+        p.set_upload_concurrency(0); // reset to the default
+        assert_eq!(
+            p.transfer_optimization_hints().multipart_max_parallel as usize,
+            S3Provider::UPLOAD_CONCURRENCY_DEFAULT
+        );
+    }
+
+    #[tokio::test]
+    async fn multi_thread_download_engages_on_the_head_content_length_header() {
+        // The probe read `Response::content_length()` on the HEAD response,
+        // which is the body's size hint: 0 for a HEAD, whatever the header
+        // says. So a file above the cutoff was always downloaded on one
+        // stream. The header is the size.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        const SIZE: usize = 2 * 1024 * 1024;
+        let body: Arc<Vec<u8>> = Arc::new((0..SIZE).map(|i| (i % 251) as u8).collect());
+        let ranged = Arc::new(AtomicUsize::new(0));
+        let (served, hits) = (Arc::clone(&body), Arc::clone(&ranged));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (body, hits) = (Arc::clone(&served), Arc::clone(&hits));
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .header("etag", "\"v1\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    // Every range request must pin the version the HEAD saw.
+                    if req.headers().get("range").is_some()
+                        && req.headers().get("if-match").and_then(|v| v.to_str().ok())
+                            != Some("\"v1\"")
+                    {
+                        return axum::response::Response::builder()
+                            .status(428)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let range = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.strip_prefix("bytes="))
+                        .and_then(|v| v.split_once('-'))
+                        .and_then(|(a, b)| {
+                            Some((a.parse::<usize>().ok()?, b.parse::<usize>().ok()?))
+                        });
+                    match range {
+                        Some((a, b)) => {
+                            hits.fetch_add(1, Ordering::SeqCst);
+                            axum::response::Response::builder()
+                                .status(206)
+                                .header("content-range", format!("bytes {a}-{b}/{SIZE}"))
+                                .body(axum::body::Body::from(body[a..=b].to_vec()))
+                                .unwrap()
+                        }
+                        None => axum::response::Response::new(axum::body::Body::from(
+                            body.as_ref().clone(),
+                        )),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect("download");
+        assert_eq!(std::fs::read(&out).expect("read"), *body);
+        assert_eq!(
+            ranged.load(Ordering::SeqCst),
+            4,
+            "a file above the cutoff must be fetched as 4 ranges"
+        );
+    }
+
+    /// Helper for the two range-pinning tests: a server that answers HEAD with
+    /// `SIZE` and the given ETag, and ranges with `status_for_range`.
+    #[cfg(test)]
+    async fn spawn_range_server(
+        size: usize,
+        etag: Option<&'static str>,
+        range_status: u16,
+    ) -> (
+        std::net::SocketAddr,
+        std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let gets = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&gets);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        let mut builder = axum::response::Response::builder()
+                            .header("content-length", size.to_string())
+                            .header("accept-ranges", "bytes");
+                        if let Some(tag) = etag {
+                            builder = builder.header("etag", tag);
+                        }
+                        return builder.body(axum::body::Body::empty()).unwrap();
+                    }
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    if req.headers().get("range").is_some() && range_status != 206 {
+                        return axum::response::Response::builder()
+                            .status(range_status)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    axum::response::Response::new(axum::body::Body::from(vec![7u8; size]))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        (addr, gets)
+    }
+
+    #[tokio::test]
+    async fn a_head_without_an_etag_keeps_the_download_on_one_stream() {
+        // The workers send independent range requests. With no validator to
+        // pin them to one version, splitting would be unsafe, so the download
+        // stays single-stream instead of racing an object that can change.
+        use std::sync::atomic::Ordering;
+        const SIZE: usize = 2 * 1024 * 1024;
+        let (addr, gets) = spawn_range_server(SIZE, None, 206).await;
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect("download");
+        assert_eq!(std::fs::metadata(&out).expect("stat").len(), SIZE as u64);
+        assert_eq!(
+            gets.load(Ordering::SeqCst),
+            1,
+            "without an ETag the file must be fetched on one stream"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_object_replaced_mid_download_falls_back_instead_of_mixing_versions() {
+        // 412 is what a server answers when the pinned ETag no longer matches.
+        // The windows must not be published, because the bytes of two versions
+        // would pass every length check; the download itself still finishes,
+        // on one stream, which reads one consistent version.
+        const SIZE: usize = 2 * 1024 * 1024;
+        let (addr, _gets) = spawn_range_server(SIZE, Some("\"v1\""), 412).await;
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let reported = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let sink = std::sync::Arc::clone(&reported);
+        provider
+            .download(
+                "/big.bin",
+                out.to_str().unwrap(),
+                Some(Box::new(move |done, _total| {
+                    sink.store(done, std::sync::atomic::Ordering::SeqCst);
+                })),
+            )
+            .await
+            .expect("the refusal falls back to a single stream, which succeeds");
+        assert_eq!(
+            std::fs::metadata(&out)
+                .expect("the file is published")
+                .len(),
+            SIZE as u64,
+            "one whole version"
+        );
+        assert_eq!(
+            reported.load(std::sync::atomic::Ordering::SeqCst),
+            SIZE as u64,
+            "the single-stream fallback must keep reporting progress"
+        );
+    }
+
+    /// Pinning the windows is not enough on a backend that ignores the
+    /// header: the object has to be read again before the file is published,
+    /// or that backend is the one case where the mixture still reaches disk.
+    #[tokio::test]
+    async fn a_backend_that_ignores_the_pin_is_caught_before_the_file_is_published() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        const SIZE: usize = 2 * 1024 * 1024;
+        let heads = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&heads);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        // Replaced while the windows were in flight: the HEAD
+                        // that plans them sees v1, the one before publishing
+                        // sees v2.
+                        let tag = if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                            "\"v1\""
+                        } else {
+                            "\"v2\""
+                        };
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .header("etag", tag)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    // If-Match arrives and is ignored, as such a gateway does.
+                    // A window carries the old bytes, a plain GET the new
+                    // ones, so a file made of both is visible in the content.
+                    match req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(requested_window)
+                    {
+                        Some((start, end)) => axum::response::Response::builder()
+                            .status(206)
+                            .header("content-range", format!("bytes {}-{}/{}", start, end, SIZE))
+                            .body(axum::body::Body::from(vec![7u8; end - start + 1]))
+                            .unwrap(),
+                        None => axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::from(vec![9u8; SIZE]))
+                            .unwrap(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect("the refusal falls back to a single stream, which succeeds");
+        let bytes = std::fs::read(&out).expect("the file is published");
+        assert_eq!(bytes.len(), SIZE, "one whole version");
+        assert!(
+            bytes.iter().all(|byte| *byte == 9u8),
+            "the published file must be one version, not the windows mixed with it"
+        );
+    }
+
+    /// Start and end of the window a `bytes=start-end` header asks for.
+    fn requested_window(raw: &str) -> Option<(usize, usize)> {
+        let (start, end) = raw.strip_prefix("bytes=")?.split_once('-')?;
+        Some((start.parse().ok()?, end.parse().ok()?))
+    }
+
+    /// The shared segmented executor is the multi-stream path the transfer
+    /// queue and the GUI take. It reads its windows through `read_range`, one
+    /// per worker, so an object replaced while they are in flight is assembled
+    /// out of two versions: every window has the length it asked for, the
+    /// total matches, and the rename publishes the mixture.
+    #[tokio::test]
+    async fn the_segmented_executor_refuses_an_object_replaced_under_it() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        const SIZE: usize = 8 * 1024 * 1024;
+        let heads = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&heads);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        // The object is replaced while the windows are in
+                        // flight: the first reading sees v1, later ones v2.
+                        let tag = if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                            "\"v1\""
+                        } else {
+                            "\"v2\""
+                        };
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .header("etag", tag)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let (start, end) = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(requested_window)
+                        .unwrap_or((0, SIZE - 1));
+                    axum::response::Response::builder()
+                        .status(206)
+                        .header("content-range", format!("bytes {}-{}/{}", start, end, SIZE))
+                        .body(axum::body::Body::from(vec![7u8; end - start + 1]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let err = crate::provider_transfer_executor::run_provider_segmented_download(
+            &mut provider,
+            "/big.bin",
+            out.to_str().unwrap(),
+            SIZE as u64,
+            4,
+            None,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err("an object that changed under the reader must not be published");
+        assert!(
+            err.contains("changed while it was being downloaded"),
+            "{err}"
+        );
+        assert!(!out.exists(), "no file may be committed");
+    }
+
+    /// The native multi-thread path writes each window straight to the file at
+    /// its offset, so a `Content-Range` that starts like the right one and
+    /// does not parse must not be taken for it.
+    #[tokio::test]
+    async fn the_native_path_refuses_a_range_header_that_does_not_parse() {
+        const SIZE: usize = 2 * 1024 * 1024;
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .header("etag", "\"v1\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    match req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(requested_window)
+                    {
+                        // Looks like the window that was asked for, and the
+                        // total is not a number.
+                        Some((start, end)) => axum::response::Response::builder()
+                            .status(206)
+                            .header(
+                                "content-range",
+                                format!("bytes {}-{}/not-a-total", start, end),
+                            )
+                            .body(axum::body::Body::from(vec![7u8; end - start + 1]))
+                            .unwrap(),
+                        None => axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::from(vec![9u8; SIZE]))
+                            .unwrap(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect("the refusal falls back to a single stream, which succeeds");
+        let bytes = std::fs::read(&out).expect("the file is published");
+        assert_eq!(bytes.len(), SIZE, "one whole version");
+        assert!(
+            bytes.iter().all(|byte| *byte == 9u8),
+            "the file must come from the single stream, not from windows nobody could validate"
+        );
+    }
+
+    /// The shared segmented executor reads its windows through `read_range`
+    /// and writes each one at its own offset. A server that ignores the range
+    /// answers with the whole object, so its head would land in the middle of
+    /// the file and the total would still be exactly right.
+    #[tokio::test]
+    async fn the_segmented_executor_refuses_a_server_that_ignores_the_range() {
+        const SIZE: usize = 8 * 1024 * 1024;
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .header("etag", "\"v1\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    // The range is ignored: 200 with the whole object.
+                    axum::response::Response::builder()
+                        .status(200)
+                        .body(axum::body::Body::from(vec![7u8; SIZE]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let err = crate::provider_transfer_executor::run_provider_segmented_download(
+            &mut provider,
+            "/big.bin",
+            out.to_str().unwrap(),
+            SIZE as u64,
+            4,
+            None,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err(
+            "a server that ignores the range must not have its answer written at an offset",
+        );
+        assert!(
+            err.contains("ignored the range"),
+            "the refusal must name what happened: {err}"
+        );
+        assert!(!out.exists(), "no file may be committed");
+    }
+
+    /// The window plan is built from a size the caller probed earlier, and the
+    /// reading that pins the windows is taken later. An object replaced
+    /// between the two is consistent everywhere the pin looks, so every window
+    /// succeeds and the file is published cut to the old length.
+    #[tokio::test]
+    async fn the_segmented_executor_refuses_a_plan_built_for_another_size() {
+        const PLANNED: usize = 8 * 1024 * 1024;
+        const ACTUAL: usize = 6 * 1024 * 1024;
+        let (addr, _gets) = spawn_range_server(ACTUAL, Some("\"v2\""), 206).await;
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let err = crate::provider_transfer_executor::run_provider_segmented_download(
+            &mut provider,
+            "/big.bin",
+            out.to_str().unwrap(),
+            PLANNED as u64,
+            4,
+            None,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err("a plan built for another size must not run");
+        assert!(
+            err.contains("planned for 8388608 bytes and the object now has 6291456"),
+            "{err}"
+        );
+        assert!(!out.exists(), "no file may be committed");
+    }
+
+    /// The comparison before and after the transfer catches an object that
+    /// changed, but only once the bytes have been paid for. Where the protocol
+    /// has a validator the windows carry it, so the server refuses the first
+    /// window that would come from a newer version.
+    #[tokio::test]
+    async fn segmented_ranges_are_pinned_to_the_version_of_the_first_reading() {
+        use std::sync::{Arc, Mutex};
+        const SIZE: usize = 8 * 1024 * 1024;
+        let pins: Arc<Mutex<Vec<Option<String>>>> = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::clone(&pins);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .header("etag", "\"v1\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let (start, end) = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(requested_window)
+                        .unwrap_or((0, SIZE - 1));
+                    seen.lock().unwrap().push(
+                        req.headers()
+                            .get("if-match")
+                            .and_then(|v| v.to_str().ok())
+                            .map(String::from),
+                    );
+                    axum::response::Response::builder()
+                        .status(206)
+                        .header("content-range", format!("bytes {}-{}/{}", start, end, SIZE))
+                        .body(axum::body::Body::from(vec![7u8; end - start + 1]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        crate::provider_transfer_executor::run_provider_segmented_download(
+            &mut provider,
+            "/big.bin",
+            out.to_str().unwrap(),
+            SIZE as u64,
+            4,
+            None,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect("an unchanged object downloads");
+        assert_eq!(std::fs::metadata(&out).expect("stat").len(), SIZE as u64);
+
+        let pins = pins.lock().unwrap();
+        assert!(!pins.is_empty(), "the windows must have been read");
+        assert!(
+            pins.iter().all(|pin| pin.as_deref() == Some("\"v1\"")),
+            "every window must be pinned to the version the first reading saw: {pins:?}"
+        );
+    }
+
+    /// A window the server refuses because the pin no longer matches must
+    /// read as what it is, not as a transport failure.
+    #[tokio::test]
+    async fn a_refused_pin_names_the_object_that_changed() {
+        const SIZE: usize = 8 * 1024 * 1024;
+        let (addr, _gets) = spawn_range_server(SIZE, Some("\"v1\""), 412).await;
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_range_validator(Some("v1".to_string()));
+        let err = provider
+            .read_range("/big.bin", 0, 1024)
+            .await
+            .expect_err("a refused pin must fail the read");
+        assert!(
+            format!("{err}").contains("changed while it was being downloaded"),
+            "{err}"
+        );
+    }
+
     #[tokio::test]
     async fn multipart_server_side_copy_re_emits_the_source_mtime_at_initiation() {
         // Above COPY_OBJECT_MAX the copy goes through UploadPartCopy, which
@@ -9283,6 +10195,29 @@ mod tests {
     // works, `?versions` listing must never be attempted). The gates live on
     // `is_filebase_endpoint` / `copy_via_multipart` / `supports_versions`;
     // these tests pin all three.
+
+    #[tokio::test]
+    async fn filebase_refuses_a_delta_before_any_request() {
+        let mut provider = make_provider(Some("https://s3.filebase.io"));
+        // The credentials are fake: a request that reached Filebase would
+        // come back as an error, so an `Ok(Refused)` proves the gate answered
+        // before any request was made.
+        provider.connected = true;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("large.bin");
+        std::fs::File::create(&local)
+            .unwrap()
+            .set_len(super::super::s3_delta_plan::DELTA_MIN_FILE_SIZE + 1)
+            .unwrap();
+        let outcome = provider
+            .try_delta_upload(&local, "large.bin", None)
+            .await
+            .expect("refused, not failed");
+        assert!(
+            matches!(outcome, S3DeltaOutcome::Refused("range_copy_unsupported")),
+            "{outcome:?}"
+        );
+    }
 
     #[test]
     fn filebase_endpoint_detection_is_case_insensitive_and_host_specific() {

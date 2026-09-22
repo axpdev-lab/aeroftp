@@ -1293,6 +1293,21 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         }));
     }
 
+    // Asked before the temporary exists, not after: a backend that cannot put
+    // one file over another refuses while the server is still untouched, so
+    // the refusal the agent reads can say that nothing was written (G119).
+    if !backend
+        .supports_atomic_replace()
+        .await
+        .map_err(ToolError::Exec)?
+    {
+        return Err(ToolError::Exec(format!(
+            "cannot edit `{path}` in place: this server offers no atomic way to put one \
+             file over another, and doing it in two steps would leave a moment with no \
+             file at all. Nothing was written and `{path}` is unchanged."
+        )));
+    }
+
     let temp_path = edit_temp_path(&path);
     reject_restricted_leaf(backend.as_ref(), &temp_path).await?;
     if let Err(e) = backend
@@ -1302,9 +1317,10 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         let _ = backend.delete(&temp_path).await;
         return Err(ToolError::Exec(e));
     }
-    // Rename atomicity depends on the backend, but this avoids direct target
-    // truncation before the replacement bytes are fully uploaded.
-    if let Err(e) = backend.rename(&temp_path, &path).await {
+    // `replace` and not `rename`: the destination exists by definition here,
+    // and `rename` keeps refusing that case so an ordinary move cannot
+    // destroy a file the caller did not mean to lose.
+    if let Err(e) = backend.replace(&temp_path, &path).await {
         let _ = backend.delete(&temp_path).await;
         return Err(ToolError::Exec(e));
     }
@@ -5007,5 +5023,58 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].0, "");
         assert!(!calls[0].2);
+    }
+
+    /// SECVAL-A (v4.2.0 pre-release validation, lead 7): the real MCP
+    /// `aeroftp_download_file` handler validates `local_path`, then runs
+    /// `create_dir_all(parent)` BEFORE the backend download. With a missing
+    /// intermediate directory under a denied HOME prefix the validator must
+    /// refuse, and nothing may be created inside `~/.ssh`. The fake backend's
+    /// `download` always errors, so the only side effect a pass-through can
+    /// leave is the directory tree.
+    #[test]
+    fn secval_a_download_file_refuses_missing_dir_under_home_ssh() {
+        // Synchronous on purpose: the shared environment lock is a std mutex
+        // and must not be held across an `.await`.
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(dir.path())
+            .expect("canonical tempdir")
+            .join("home");
+        std::fs::create_dir_all(home.join(".ssh")).expect("create ~/.ssh");
+        let prev = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let target = home.join(".ssh").join("nested").join("authorized_keys");
+        let ctx = test_ctx(Arc::new(FakeBackend::sample()));
+        let out = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+            .block_on(download_file(
+                &ctx,
+                &json!({
+                    "server": "s",
+                    "remote_path": "/pub/key",
+                    "local_path": target.to_str().expect("utf8"),
+                }),
+            ));
+        match prev {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        let created = home.join(".ssh").join("nested").exists();
+        let msg = match &out {
+            Ok(v) => format!("Ok({v})"),
+            Err(e) => format!("Err({e})"),
+        };
+        assert!(
+            !created,
+            "download_file created {} inside the denied ~/.ssh; result: {msg}",
+            home.join(".ssh").join("nested").display()
+        );
+        assert!(
+            msg.contains("denied"),
+            "expected a denylist refusal, got: {msg}"
+        );
     }
 }

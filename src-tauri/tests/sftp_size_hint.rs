@@ -95,6 +95,10 @@ struct WireCounts {
     /// once. Combined with `fail_read_after`, this keeps sibling readers
     /// in-flight so dropping them cannot sneak a close in before the assert.
     read_delay_ms: AtomicU32,
+    /// Set by the first READ in the second half of `/moving.bin`: from then
+    /// on the path is `/moving.bin.v2`, one byte longer and made of other
+    /// bytes, for STAT and READ alike. An object replaced mid-transfer.
+    moved: AtomicBool,
 }
 
 fn w32(out: &mut Vec<u8>, v: u32) {
@@ -152,6 +156,14 @@ struct TestSftpHandler {
 }
 
 impl TestSftpHandler {
+    /// The bytes a path holds right now; see `WireCounts::moved`.
+    fn current(&self, path: &str) -> Option<&Vec<u8>> {
+        if path == "/moving.bin" && self.counts.moved.load(Ordering::SeqCst) {
+            return self.files.get("/moving.bin.v2");
+        }
+        self.files.get(path)
+    }
+
     /// Processes one packet. The reply is sent through `session`; a STAT
     /// reply is deferred by STAT_DELAY on a spawned task so a pipelined
     /// client's OPEN is observed while the reply is still pending.
@@ -186,7 +198,7 @@ impl TestSftpHandler {
                     return;
                 };
                 let path = rstr(data, &mut pos).unwrap_or_default();
-                let reply = match self.files.get(&path).filter(|_| path != "/stat-denied.bin") {
+                let reply = match self.current(&path).filter(|_| path != "/stat-denied.bin") {
                     Some(content) => {
                         let mut r = vec![SSH_FXP_ATTRS];
                         w32(&mut r, id);
@@ -274,8 +286,16 @@ impl TestSftpHandler {
                 let Some(len) = r32(data, &mut pos) else {
                     return;
                 };
-                let content = self.handles.get(&handle).and_then(|p| self.files.get(p));
-                let Some(content) = content else {
+                let path = self.handles.get(&handle).cloned().unwrap_or_default();
+                if path == "/moving.bin"
+                    && self
+                        .files
+                        .get(&path)
+                        .is_some_and(|v1| offset as usize >= v1.len() / 2)
+                {
+                    self.counts.moved.store(true, Ordering::SeqCst);
+                }
+                let Some(content) = self.current(&path) else {
                     self.send(channel, status(id, SSH_FX_FAILURE, "bad handle"), session);
                     return;
                 };
@@ -551,6 +571,9 @@ async fn hinted_download_overlaps_stat_and_open() {
     files.insert("/stat-denied.bin".to_string(), payload.clone());
     files.insert("/empty.bin".to_string(), Vec::new());
     files.insert("/under-size.bin".to_string(), payload.clone());
+    files.insert("/moving.bin".to_string(), vec![0xAA; 1024 * 1024]);
+    let moving_v2 = vec![0xBB; 1024 * 1024 + 1];
+    files.insert("/moving.bin.v2".to_string(), moving_v2.clone());
     let (port, counts) = start_server(files).await;
     let mut provider = connect(port).await;
 
@@ -817,6 +840,38 @@ async fn hinted_download_overlaps_stat_and_open() {
         0,
         "pipelined download left handles to Drop"
     );
+
+    // 14b. The object is replaced while the pipelined handles are reading
+    // it. The file must not be published as half of each version: the
+    // refusal sends the download to one handle, which reads the new object.
+    let local = home.join("out-pipeline-moving.bin");
+    let progress = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = Arc::clone(&progress);
+    provider
+        .download_with_size_hint(
+            "/moving.bin",
+            local.to_str().unwrap(),
+            None,
+            Some(Box::new(move |done, total| {
+                observed.lock().unwrap().push((done, total))
+            })),
+        )
+        .await
+        .expect("an object replaced under the pipeline finishes on one handle");
+    assert!(
+        counts.moved.load(Ordering::SeqCst),
+        "the fixture never moved"
+    );
+    assert!(
+        std::fs::read(&local).unwrap() == moving_v2,
+        "the published file is not the object that replaced the first one"
+    );
+    assert_eq!(
+        progress.lock().unwrap().last(),
+        Some(&(moving_v2.len() as u64, moving_v2.len() as u64)),
+        "the single-handle fallback must keep reporting progress"
+    );
+    assert_eq!(counts.handles.load(Ordering::SeqCst), 0);
     unsafe { std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE") };
 
     // 15. Upload opens a write handle then fails the WRITE. shutdown used

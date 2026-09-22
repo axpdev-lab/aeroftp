@@ -83,7 +83,28 @@ pub trait RemoteBackend: Send + Sync {
     async fn mkdir(&self, path: &str) -> Result<(), String>;
 
     /// Rename/move a remote file.
+    ///
+    /// Does NOT promise to replace an existing destination: see
+    /// [`replace`](RemoteBackend::replace) for that, and
+    /// `StorageProvider::rename` for why the two are kept apart.
     async fn rename(&self, from: &str, to: &str) -> Result<(), String>;
+
+    /// Put `from` in place of `to`, atomically where the backend can, whether
+    /// or not `to` already exists.
+    ///
+    /// The default forwards to `rename`, which is what this trait did before
+    /// the method existed; the real backends forward to the provider's own
+    /// `replace` so the agent surface gets the same fix as the CLI (G119).
+    async fn replace(&self, from: &str, to: &str) -> Result<(), String> {
+        self.rename(from, to).await
+    }
+
+    /// Whether [`replace`](RemoteBackend::replace) can put one file in place
+    /// of another without a moment in which neither is there. Ask BEFORE
+    /// staging a temporary, never after.
+    async fn supports_atomic_replace(&self) -> Result<bool, String> {
+        Ok(true)
+    }
 
     /// Search for files matching a pattern.
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String>;

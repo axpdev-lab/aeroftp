@@ -508,6 +508,7 @@ Host roundtrip
         // (unix/macOS) pointing at a temp dir that contains .ssh/config.
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
+            let _env = crate::test_env::lock();
             let prev = std::env::var("HOME").ok();
             let dir = std::env::temp_dir().join(format!(
                 "aeroftp-ssh-home-{}",

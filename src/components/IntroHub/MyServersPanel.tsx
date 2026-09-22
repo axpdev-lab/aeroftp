@@ -2,7 +2,8 @@ import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus, FileKey } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus, FileKey } from 'lucide-react';
+import { Bucket } from '../connectionMethodIcons';
 import { AeroCryptRecoveryKitModal } from '../AeroCryptRecoveryKitModal';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, getServerCryptOverlay } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
@@ -331,7 +332,7 @@ interface MyServersPanelProps {
 
 const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: React.ReactNode; iconColor: string }[] = [
     { id: 'protocols', labelKey: 'introHub.category.protocols', icon: <ServerIcon size={18} />, iconColor: 'text-blue-500 dark:text-blue-400' },
-    { id: 'object-storage', labelKey: 'introHub.category.objectStorage', icon: <Database size={18} />, iconColor: 'text-orange-500 dark:text-orange-400' },
+    { id: 'object-storage', labelKey: 'introHub.category.objectStorage', icon: <Bucket size={18} />, iconColor: 'text-orange-500 dark:text-orange-400' },
     { id: 'webdav', labelKey: 'introHub.category.webdav', icon: <Globe size={18} />, iconColor: 'text-emerald-500 dark:text-emerald-400' },
     { id: 'cloud-storage', labelKey: 'introHub.category.cloudStorage', icon: <Cloud size={18} />, iconColor: 'text-sky-500 dark:text-sky-400' },
     { id: 'media-services', labelKey: 'introHub.category.mediaServices', icon: <Camera size={18} />, iconColor: 'text-pink-500 dark:text-pink-400' },

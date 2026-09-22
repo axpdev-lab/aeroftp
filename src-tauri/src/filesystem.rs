@@ -1664,12 +1664,47 @@ pub async fn calculate_folder_size(path: String) -> Result<FolderSizeResult, Str
 
 // ─── Command 7: delete_to_trash ─────────────────────────────────────────────
 
-/// Moves a file or directory to the system trash/recycle bin.
-#[tauri::command]
-pub async fn delete_to_trash(path: String) -> Result<(), String> {
-    validate_path(&path)?;
+/// Marker at the start of the error `delete_to_trash` returns when the trash
+/// would have to copy the item into the home trash (see `trash_guard`). The
+/// frontend matches on it and asks the user how to proceed.
+pub(crate) const TRASH_NEEDS_HOME_COPY_MARKER: &str = "TRASH_NEEDS_HOME_COPY";
 
-    trash::delete(&path).map_err(|e| format!("Failed to move to trash: {}", e))
+/// Moves a file or directory to the system trash/recycle bin.
+///
+/// On Linux, when the item's drive has no trash this user can write, the
+/// trash crate copies the item into the home trash across devices. That is
+/// refused with [`TRASH_NEEDS_HOME_COPY_MARKER`] unless `allow_home_copy` is
+/// set, so a "move to trash" never silently becomes a copy of a large tree
+/// into the home folder.
+#[tauri::command]
+pub async fn delete_to_trash(path: String, allow_home_copy: Option<bool>) -> Result<(), String> {
+    validate_path(&path)?;
+    let allow_home_copy = allow_home_copy.unwrap_or(false);
+    // trash::delete is blocking and, on the copy path, can run for minutes.
+    tokio::task::spawn_blocking(move || trash_blocking(&path, allow_home_copy))
+        .await
+        .map_err(|e| format!("Trash task failed: {e}"))?
+}
+
+/// The guarded `trash::delete`, shared by the GUI command and AeroAgent's
+/// local trash tool.
+pub(crate) fn trash_blocking(path: &str, allow_home_copy: bool) -> Result<(), String> {
+    match crate::trash_guard::route_for(Path::new(path)) {
+        Some(crate::trash_guard::TrashRoute::HomeCopy { topdir }) if !allow_home_copy => {
+            return Err(format!(
+                "{TRASH_NEEDS_HOME_COPY_MARKER}: {path} is on {}, which has no trash this user can write; moving it to the trash would copy it into the home trash",
+                topdir.display()
+            ));
+        }
+        Some(crate::trash_guard::TrashRoute::ParentNotWritable { parent }) => {
+            return Err(format!(
+                "Failed to move to trash: permission denied on {}",
+                parent.display()
+            ));
+        }
+        _ => {}
+    }
+    trash::delete(path).map_err(|e| format!("Failed to move to trash: {}", e))
 }
 
 // ─── Command 8: list_trash_items ────────────────────────────────────────────

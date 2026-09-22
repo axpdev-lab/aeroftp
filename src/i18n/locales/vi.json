@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Bạn cần trợ giúp hoặc muốn báo lỗi? Chúng tôi luôn sẵn sàng hỗ trợ.",
             "sourceforgeReviews": "Viết đánh giá trên SourceForge",
-            "writeReview": "Viết đánh giá"
+            "writeReview": "Viết đánh giá",
+            "team": {
+                "title": "Nhóm Axpdev Lab",
+                "apRole": "Nhà sáng lập, nhà phát triển, người bảo trì, người đồng thiết kế",
+                "ekRole": "Nhà nghiên cứu, kỹ sư đảm bảo chất lượng, người đồng thiết kế"
+            }
         },
         "support": {
             "title": "Hỗ trợ AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Thùng rác trống",
             "itemCount": "{count} mục trong Thùng rác",
             "moveToTrash": "Chuyển vào Thùng rác",
-            "restoreConfirm": "Khôi phục {name} về vị trí ban đầu?"
+            "restoreConfirm": "Khôi phục {name} về vị trí ban đầu?",
+            "homeCopyPrompt": "{count} mục, bắt đầu từ {name}, nằm trên ổ đĩa không có thùng rác dùng được. Chuyển chúng vào thùng rác sẽ sao chép chúng vào thùng rác trong thư mục chính của bạn, việc này có thể mất nhiều thời gian và cần dung lượng trống. Xóa vĩnh viễn thay vào đó?",
+            "copyToHomeTrash": "Sao chép vào thùng rác thư mục chính",
+            "permanentAfterFailure": "Không thể chuyển {count} mục, bắt đầu từ {name}, vào thùng rác. Xóa vĩnh viễn? Không thể hoàn tác thao tác này.",
+            "kept": "Đã giữ lại {name}: không có gì bị xóa",
+            "keptMultiple": "Giữ nguyên tại chỗ, không xóa: {count} mục"
         },
         "quickLook": {
             "noPreview": "Không có bản xem trước",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Tên không được chứa / hoặc \\, chuỗi .. hay ký tự null."
+        },
+        "aiApproval": {
+            "windowTitle": "Phê duyệt AeroAgent",
+            "whyTitle": "Vì sao dùng cửa sổ riêng?",
+            "whyBody": "Phê duyệt này mở bên ngoài cuộc trò chuyện, để nội dung mà tác tử đọc và hiển thị ở đó không thể xác nhận một hành động thay bạn.",
+            "wantsTo": "AeroAgent muốn:",
+            "scopeOnce": "Phê duyệt đúng hành động này một lần.",
+            "scopeSession": "Phê duyệt công cụ này trong phần còn lại của phiên trò chuyện.",
+            "approve": "Phê duyệt"
         }
     }
 }

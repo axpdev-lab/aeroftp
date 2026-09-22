@@ -341,7 +341,7 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
         {
             id: 'object-storage',
             labelKey: 'introHub.category.objectStorage',
-            icon: 'Database',
+            icon: 'Bucket',
             count: s3Providers.length,
             items: s3Providers,
         },

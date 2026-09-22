@@ -55,6 +55,8 @@ pub mod ai_stream;
 mod ai_tools;
 pub mod app_events;
 mod archive_browse;
+#[cfg(target_os = "linux")]
+mod localhost_security;
 mod openai_responses;
 
 /// Registered Tauri (GUI) command names, generated at build time from the
@@ -65,9 +67,12 @@ mod openai_responses;
 pub mod command_registry {
     include!(concat!(env!("OUT_DIR"), "/tauri_commands.rs"));
 }
+pub mod alloc_tuning;
 pub mod archive_progress;
 pub mod aws_credentials_import;
 pub mod bridge_commands;
+#[cfg(test)]
+mod bridge_export_endpoint_tests;
 pub mod bridge_shared;
 mod chat_history;
 pub mod cloud_config;
@@ -131,6 +136,30 @@ pub mod peer;
 pub mod peer_commands;
 pub mod peer_identity;
 pub mod portable;
+
+#[cfg(test)]
+mod only_main_window_tests {
+    #[test]
+    fn secrets_and_shell_answer_the_main_window_only() {
+        assert!(super::only_main_window("main", "get_credential").is_ok());
+        for label in ["extract", "extract-2", "splashscreen", ""] {
+            let err = super::only_main_window(label, "get_credential").unwrap_err();
+            assert!(err.contains("get_credential"), "{err}");
+        }
+    }
+}
+
+/// One lock for every library test that changes a process-wide environment
+/// variable such as `HOME`. Tests run on parallel threads of one process, so a
+/// lock per module serialises a module against itself and nothing else: two
+/// modules each holding their own lock still overwrite each other's `HOME`.
+#[cfg(test)]
+pub(crate) mod test_env {
+    pub(crate) fn lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
 pub mod portal_chooser;
 pub mod profile_loader;
 mod rsync_output;
@@ -157,6 +186,7 @@ pub mod aerorsync;
 #[cfg(feature = "aerorsync")]
 pub mod aerorsync_adapter;
 pub mod agent_session;
+mod ai_approval_window;
 pub mod dedupe;
 mod file_associations;
 mod file_tags;
@@ -180,6 +210,7 @@ mod plugins;
 pub mod proc_stats;
 pub mod profile_auth_state;
 mod profile_export;
+mod trash_guard;
 // The CLI's import listings mark a profile whose endpoint would need cleartext
 // consent, and they share the predicate with the S3 provider rather than
 // re-deciding it. The module stays private; only the predicate is re-exported.
@@ -2137,8 +2168,6 @@ async fn download_update_artifact(
 #[derive(Serialize, Clone)]
 enum VerificationMode {
     SigstoreVerified,
-    VerificationUnavailable,
-    #[allow(dead_code)]
     VerificationFailed,
 }
 
@@ -2282,7 +2311,7 @@ fn verify_sigstore_bundle(
         Ok(f) => f,
         Err(_) => {
             return Ok(UpdateVerificationInfo {
-                mode: VerificationMode::VerificationUnavailable,
+                mode: VerificationMode::VerificationFailed,
                 workflow_identity: None,
                 oidc_issuer: None,
                 artifact_sha256,
@@ -2303,7 +2332,7 @@ fn verify_sigstore_bundle(
         Ok(value) => value,
         Err(e) => {
             return Ok(UpdateVerificationInfo {
-                mode: VerificationMode::VerificationUnavailable,
+                mode: VerificationMode::VerificationFailed,
                 workflow_identity: None,
                 oidc_issuer: None,
                 artifact_sha256,
@@ -2330,7 +2359,7 @@ fn verify_sigstore_bundle(
         Ok(b) => b,
         Err(e) => {
             return Ok(UpdateVerificationInfo {
-                mode: VerificationMode::VerificationUnavailable,
+                mode: VerificationMode::VerificationFailed,
                 workflow_identity: None,
                 oidc_issuer: None,
                 artifact_sha256,
@@ -2369,18 +2398,20 @@ fn verify_sigstore_bundle(
             verifier_version: SIGSTORE_VERIFIER_VERSION,
         }),
         Err(e) => {
-            // Sigstore verification errors should NEVER block the user from installing.
-            // The artifact is already downloaded and SHA256-verified. Sigstore is a supply-chain
-            // transparency bonus, not a gate. Treat all verification errors as non-blocking.
+            // A bundle that does not verify blocks the install. Every current
+            // release publishes a bundle for every artifact, so a failure here
+            // means the artifact, the bundle or the identity is not what the
+            // release workflow signed; installing anyway would make the
+            // signature decorative.
             Ok(UpdateVerificationInfo {
-                mode: VerificationMode::VerificationUnavailable,
+                mode: VerificationMode::VerificationFailed,
                 workflow_identity: Some(identity),
                 oidc_issuer: Some(SIGSTORE_OIDC_ISSUER.to_string()),
                 artifact_sha256,
                 bundle_present: true,
                 bundle_parsed: true,
                 bundle_fetch_failed: false,
-                message: format!("Signature verification unavailable: {}", e),
+                message: format!("Signature verification failed: {}", e),
                 bundle_metadata,
                 digest_match,
                 verifier_version: SIGSTORE_VERIFIER_VERSION,
@@ -2463,8 +2494,8 @@ struct PortableInfo {
 }
 
 #[tauri::command]
-async fn portable_info(app: tauri::AppHandle) -> PortableInfo {
-    tokio::task::spawn_blocking(move || portable_info_blocking(app))
+async fn portable_info() -> PortableInfo {
+    tokio::task::spawn_blocking(portable_info_blocking)
         .await
         .unwrap_or_else(|err| {
             tracing::warn!("portable_info task failed: {err}");
@@ -2473,10 +2504,10 @@ async fn portable_info(app: tauri::AppHandle) -> PortableInfo {
 }
 
 /// The body of `portable_info`, kept synchronous and run on the blocking pool.
-fn portable_info_blocking(app: tauri::AppHandle) -> PortableInfo {
+fn portable_info_blocking() -> PortableInfo {
     let is_portable = portable::is_portable();
     let data_root = if is_portable {
-        portable::app_data_dir(&app)
+        portable::app_data_dir()
             .ok()
             .map(|p| p.display().to_string())
     } else {
@@ -2786,9 +2817,10 @@ async fn download_update(app: AppHandle, url: String) -> Result<DownloadUpdateRe
         &asset.asset_name,
     )
     .await?;
-    // A missing optional bundle (404) is a legitimate SHA-only release. Any
-    // other fetch failure must remain visible to the verifier/UI instead of
-    // masquerading as "no signature published".
+    // Every release the updater can reach publishes a Sigstore bundle for each
+    // artifact, so a bundle that cannot be fetched is a failed verification,
+    // not a release without signatures: the verifier then finds no bundle and
+    // answers `VerificationFailed`, and the fetch error is kept in the message.
     let bundle_fetch_error =
         download_optional_file_to_path(&client, &asset.bundle_url, &bundle_path, "AeroFTP")
             .await
@@ -2925,8 +2957,7 @@ fn write_update_marker(
     format: &str,
     verification_mode: &str,
 ) {
-    let verified =
-        verification_mode == "SigstoreVerified" || verification_mode == "VerificationUnavailable";
+    let verified = verification_mode == "SigstoreVerified";
     if let Ok(config_dir) = portable::app_config_dir(app) {
         let marker = config_dir.join("last-update.json");
         let data = serde_json::json!({
@@ -3191,10 +3222,10 @@ async fn install_windows_update(
 
     #[cfg(windows)]
     {
+        // Same gate as the Linux and macOS installers: only bytes this process
+        // downloaded and verified in this session reach the helper.
+        ensure_update_artifact_verified(&downloaded_path)?;
         let downloaded = std::path::Path::new(&downloaded_path);
-        if !downloaded.exists() {
-            return Err("Downloaded file not found".to_string());
-        }
 
         let ext = downloaded
             .extension()
@@ -3805,12 +3836,17 @@ async fn download_files_batch(
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
-            // GTC-1: FTP GUI batch stays on `FtpDownloadExecutor`
-            // (no-double-pool invariant); the segments knob only
-            // matters on the `ProviderDownloadExecutor` path.
-            download_segments: None,
+            // This legacy executor never reads download_segments. Claiming
+            // the measured FTP 8 here would misreport actual execution.
+            download_segments: transfer_settings::DownloadSegmentsRequest::Single {
+                reason: "legacy FTP batch executor has no segmented path".to_string(),
+            },
             sftp_download_preset: None,
         },
+    );
+    info!(
+        "legacy FTP transfer stream policy: {}",
+        runtime_settings.download_segments
     );
 
     let cancel_token = state.reset_cancel_state().await;
@@ -4040,12 +4076,15 @@ async fn upload_files_batch(
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
-            // GTC-1: FTP GUI batch stays on `FtpDownloadExecutor`
-            // (no-double-pool invariant); the segments knob only
-            // matters on the `ProviderDownloadExecutor` path.
-            download_segments: None,
+            download_segments: transfer_settings::DownloadSegmentsRequest::Single {
+                reason: "upload path has no download leg".to_string(),
+            },
             sftp_download_preset: None,
         },
+    );
+    info!(
+        "legacy FTP transfer stream policy: {}",
+        runtime_settings.download_segments
     );
 
     let cancel_token = state.reset_cancel_state().await;
@@ -4572,12 +4611,17 @@ async fn download_folder(
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
-            // GTC-1: FTP GUI batch stays on `FtpDownloadExecutor`
-            // (no-double-pool invariant); the segments knob only
-            // matters on the `ProviderDownloadExecutor` path.
-            download_segments: None,
+            // This legacy executor never reads download_segments. Claiming
+            // the measured FTP 8 here would misreport actual execution.
+            download_segments: transfer_settings::DownloadSegmentsRequest::Single {
+                reason: "legacy FTP batch executor has no segmented path".to_string(),
+            },
             sftp_download_preset: None,
         },
+    );
+    info!(
+        "legacy FTP transfer stream policy: {}",
+        runtime_settings.download_segments
     );
     info!(
         "Downloading folder: {} -> {} (concurrency={}, retries={}, timeout={}s)",
@@ -5109,12 +5153,15 @@ async fn upload_folder(
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
-            // GTC-1: FTP GUI batch stays on `FtpDownloadExecutor`
-            // (no-double-pool invariant); the segments knob only
-            // matters on the `ProviderDownloadExecutor` path.
-            download_segments: None,
+            download_segments: transfer_settings::DownloadSegmentsRequest::Single {
+                reason: "upload path has no download leg".to_string(),
+            },
             sftp_download_preset: None,
         },
+    );
+    info!(
+        "legacy FTP transfer stream policy: {}",
+        runtime_settings.download_segments
     );
     info!(
         "Uploading folder recursively: {} -> {} (concurrency={}, retries={}, timeout={}s)",
@@ -5970,7 +6017,17 @@ mod safe_picker_start_dir_tests {
             .join("aeroftp-does-not-exist-xyz")
             .join("nested-missing");
         let got = safe_picker_start_dir_blocking(Some(stale.to_string_lossy().into_owned()));
-        assert_eq!(got, Some(base.to_string_lossy().into_owned()));
+        // Compared as paths and not as strings. The contract is which directory
+        // the picker opens at, and `std::env::temp_dir()` on Windows hands back
+        // that directory WITH a trailing separator while the walk-up returns it
+        // without one: two spellings of the same directory failed a string
+        // comparison and said nothing about the behaviour. `Path` comparison
+        // ignores the trailing separator and is what the assertion meant.
+        assert_eq!(
+            got.as_deref().map(std::path::Path::new),
+            Some(base.as_path()),
+            "the picker must open at the existing ancestor"
+        );
     }
 
     #[test]
@@ -6942,6 +6999,13 @@ mod rename_local_exdev_tests {
         assert_eq!(std::fs::read(&to).unwrap(), b"b");
     }
 
+    // Unix only, and the gate is the answer rather than a retreat. The path
+    // under test is a GVFS mount, which exists on Linux and nowhere else, and
+    // its colon is what the test is about. On Windows a colon is the drive
+    // separator, so `validate_path` refuses the string for a reason that has
+    // nothing to do with the claim being made, and there is no Windows path of
+    // this shape to substitute: the case cannot be stated there at all.
+    #[cfg(unix)]
     #[test]
     fn validate_path_allows_gvfs_mtp_host_colon() {
         // Colon in the mount leaf is not a URL scheme; must not be rejected.
@@ -7665,7 +7729,8 @@ async fn extract_archive(
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let subfolder = std::path::Path::new(&output_dir).join(&archive_stem);
+        let subfolder =
+            std::path::Path::new(&output_dir).join(safe_extract_folder_name(&archive_stem));
         subfolder.to_string_lossy().to_string()
     } else {
         output_dir.clone()
@@ -7706,12 +7771,11 @@ async fn extract_archive(
                     .map_err(|e| format!("Failed to create parent directory: {}", e))?;
             }
 
-            let mut outfile =
-                File::create(&outpath).map_err(|e| format!("Failed to create file: {}", e))?;
-
             let declared = file.size();
-            copy_entry_bounded(&mut file, &mut outfile, declared)
-                .map_err(|e| format!("Failed to extract file: {}", e))?;
+            write_entry_atomically(&outpath, |outfile| {
+                copy_entry_bounded(&mut file, outfile, declared)
+            })
+            .map_err(|e| format!("Failed to extract file: {}", e))?;
         }
     }
 
@@ -7960,11 +8024,10 @@ pub(crate) fn is_safe_archive_entry(entry_name: &str) -> bool {
         return false;
     }
     // Reject path traversal via ".." in any component (handles both / and \ separators)
-    if entry_name
-        .split('/')
-        .chain(entry_name.split('\\'))
-        .any(|c| c == "..")
-    {
+    // Split on BOTH separators at once: a component bounded by `/` on one side
+    // and `\\` on the other (`a/..\\x`) is a parent-dir component for Windows
+    // path parsing, and two independent splits never see it as "..".
+    if entry_name.split(['/', '\\']).any(|c| c == "..") {
         return false;
     }
     // Reject null bytes
@@ -7996,6 +8059,66 @@ fn copy_entry_bounded<R: std::io::Read + ?Sized, W: std::io::Write>(
     Ok(written)
 }
 
+/// Writes one extracted entry to `out_path` through a sibling temporary file
+/// that is renamed into place only when `fill` succeeds. Extraction can fail
+/// half way through an entry (a wrong 7z password is only detected while
+/// decoding, a corrupt stream, the size cap), and writing straight to the final
+/// path then left a partial file behind or, worse, truncated a file the user
+/// already had at that path. With this, a failed entry leaves the destination
+/// exactly as it was.
+fn write_entry_atomically<F>(out_path: &std::path::Path, fill: F) -> std::io::Result<u64>
+where
+    F: FnOnce(&mut std::fs::File) -> std::io::Result<u64>,
+{
+    let parent = out_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let name = out_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "entry".to_string());
+    let tmp_path = parent.join(format!(
+        ".{name}.aeroftp-part-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    ));
+    // create_new: never reuse or follow something already at the temporary path.
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp_path)?;
+    let outcome = fill(&mut file).and_then(|written| {
+        drop(file);
+        // Replacing an existing regular file keeps its permissions, as the
+        // in-place truncation this replaces did (an executable stays one).
+        if let Ok(existing) = std::fs::symlink_metadata(out_path) {
+            if existing.is_file() {
+                std::fs::set_permissions(&tmp_path, existing.permissions())?;
+            }
+        }
+        std::fs::rename(&tmp_path, out_path).map(|()| written)
+    });
+    if outcome.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    outcome
+}
+
+/// A 7z extraction error in words: the library's Debug form
+/// (`MaybeBadPassword(Custom { kind: InvalidData, .. })`) told neither the user
+/// nor AeroAgent that the password was the problem.
+fn describe_7z_error(err: &sevenz_rust2::Error) -> String {
+    match err {
+        sevenz_rust2::Error::PasswordRequired => {
+            "This 7z archive is encrypted: a password is required to extract it".to_string()
+        }
+        sevenz_rust2::Error::MaybeBadPassword(_) => {
+            "Wrong password for this 7z archive (or the archive is damaged)".to_string()
+        }
+        other => other.to_string(),
+    }
+}
+
 /// Absolute floor for a single-stream (gz/xz/bz2) decompression cap: a raw codec
 /// stream carries no reliable declared size, so we cap the plaintext at
 /// `max(compressed_len * ratio, this)`. A tiny bomb still cannot exceed this;
@@ -8023,7 +8146,7 @@ async fn extract_7z(
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "extracted".to_string());
         Path::new(&output_dir)
-            .join(&archive_name)
+            .join(safe_extract_folder_name(&archive_name))
             .to_string_lossy()
             .to_string()
     } else {
@@ -8046,8 +8169,8 @@ async fn extract_7z(
         .map(|p| Password::from(p.expose_secret()))
         .unwrap_or_else(Password::empty);
 
-    let mut archive =
-        ArchiveReader::new(reader, pwd).map_err(|e| format!("Failed to read 7z archive: {}", e))?;
+    let mut archive = ArchiveReader::new(reader, pwd)
+        .map_err(|e| format!("Failed to read 7z archive: {}", describe_7z_error(&e)))?;
 
     let dest = Path::new(&final_output_dir);
 
@@ -8071,14 +8194,15 @@ async fn extract_7z(
             if entry.is_directory() {
                 fs::create_dir_all(&out_path)?;
             } else {
-                let mut outfile = File::create(&out_path)?;
                 let declared = entry.size();
-                copy_entry_bounded(reader, &mut outfile, declared)?;
+                write_entry_atomically(&out_path, |outfile| {
+                    copy_entry_bounded(reader, outfile, declared)
+                })?;
             }
 
             Ok(true) // continue
         })
-        .map_err(|e| format!("Failed to extract 7z archive: {}", e))?;
+        .map_err(|e| format!("Failed to extract 7z archive: {}", describe_7z_error(&e)))?;
 
     Ok(final_output_dir)
 }
@@ -8991,7 +9115,9 @@ async fn extract_single_impl(
     let member_name = single_stream_member_name(&archive_name, &codec);
 
     let dest_dir = if create_subfolder {
-        Path::new(&output_dir).join(archive_extract_stem(&archive_name))
+        Path::new(&output_dir).join(safe_extract_folder_name(&archive_extract_stem(
+            &archive_name,
+        )))
     } else {
         Path::new(&output_dir).to_path_buf()
     };
@@ -9016,17 +9142,17 @@ async fn extract_single_impl(
         "bz2" => Box::new(bzip2::read::BzDecoder::new(infile)),
         other => return Err(format!("Unrecognized single-stream format: {}", other)),
     };
-    let mut outfile =
-        File::create(&out_path).map_err(|e| format!("Failed to create output file: {}", e))?;
-    let written = {
+    let over_cap =
+        std::io::Error::other("Decompressed stream exceeds the size limit (compression bomb?)");
+    write_entry_atomically(&out_path, |outfile| {
         let mut limited = std::io::Read::take(&mut *reader, cap.saturating_add(1));
-        std::io::copy(&mut limited, &mut outfile)
-            .map_err(|e| format!("Failed to decompress: {}", e))?
-    };
-    if written > cap {
-        let _ = std::fs::remove_file(&out_path);
-        return Err("Decompressed stream exceeds the size limit (compression bomb?)".to_string());
-    }
+        let written = std::io::copy(&mut limited, outfile)?;
+        if written > cap {
+            return Err(over_cap);
+        }
+        Ok(written)
+    })
+    .map_err(|e| format!("Failed to decompress: {}", e))?;
 
     Ok(dest_dir.to_string_lossy().to_string())
 }
@@ -9097,7 +9223,7 @@ fn tar_final_output(
         } else {
             stem.to_string()
         };
-        let subfolder = out.join(&folder_name);
+        let subfolder = out.join(safe_extract_folder_name(&folder_name));
         std::fs::create_dir_all(&subfolder).map_err(|e| format!("Failed to create dir: {}", e))?;
         Ok(subfolder)
     } else {
@@ -9116,7 +9242,6 @@ fn tar_unpack(
     reader: Box<dyn std::io::Read>,
     final_output: &std::path::Path,
 ) -> Result<(String, Vec<String>), String> {
-    use std::fs::File;
     let mut ar = tar::Archive::new(reader);
 
     // Skipped-link notes so an unsafe (or unsupported) link is never dropped silently.
@@ -9226,11 +9351,11 @@ fn tar_unpack(
                 })?;
             }
 
-            let mut outfile = File::create(&out_path)
-                .map_err(|e| format!("Failed to create file '{}': {}", entry_path, e))?;
             let declared = entry.header().size().unwrap_or(0);
-            copy_entry_bounded(&mut entry, &mut outfile, declared)
-                .map_err(|e| format!("Failed to extract '{}': {}", entry_path, e))?;
+            write_entry_atomically(&out_path, |outfile| {
+                copy_entry_bounded(&mut entry, outfile, declared)
+            })
+            .map_err(|e| format!("Failed to extract '{}': {}", entry_path, e))?;
         }
     }
 
@@ -9282,7 +9407,7 @@ async fn extract_rar(
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "extracted".to_string());
-        Path::new(&output_dir).join(&archive_name)
+        Path::new(&output_dir).join(safe_extract_folder_name(&archive_name))
     } else {
         Path::new(&output_dir).to_path_buf()
     };
@@ -9392,6 +9517,26 @@ struct ExtractProbe {
     archive_bytes: u64,
 }
 
+/// The per-archive subfolder name used when `create_subfolder` is set: the
+/// stem, unless it is empty or a path component with a meaning of its own
+/// (`.` or `..`), which names such as `...zip`, `...tar.gz` or `..tar.gz`
+/// produce. Joining `..` put the extraction root in the PARENT of the chosen
+/// output folder.
+pub(crate) fn safe_extract_folder_name(stem: &str) -> &str {
+    // One path component only: the name comes from an archive name a caller
+    // supplies (`resolve_unique_extract_dir` takes it as is), and `../outside`
+    // or `a\\..\\b` joined to the parent would leave it.
+    let last = stem.rsplit(['/', '\\']).next().unwrap_or(stem);
+    // A drive prefix (`C:name`) survives the split and, on Windows, makes
+    // `join` resolve against that drive instead of the parent. A colon is not
+    // a valid file-name character there, so such a name falls back as well.
+    match last.trim() {
+        "" | "." | ".." => "extracted",
+        _ if last.contains(':') => "extracted",
+        _ => last,
+    }
+}
+
 /// Strip the full archive extension from a file name, returning the stem used to
 /// name an "Extract to folder" subfolder. Handles the multi-part tar extensions
 /// (.tar.gz / .tar.xz / .tar.bz2) and the aero* + general single extensions,
@@ -9433,11 +9578,7 @@ fn unique_extract_dir_with<P: Fn(&std::path::Path) -> bool>(
     exists: P,
 ) -> Result<std::path::PathBuf, String> {
     let stem = archive_extract_stem(archive_name);
-    let stem = if stem.trim().is_empty() {
-        "extracted"
-    } else {
-        stem.as_str()
-    };
+    let stem = safe_extract_folder_name(&stem);
     let first = parent.join(stem);
     if !exists(&first) {
         return Ok(first);
@@ -9649,6 +9790,27 @@ fn detect_desktop_lang() -> String {
     "en".to_string()
 }
 
+/// URL of one of the app's own HTML pages for a secondary window. Release
+/// builds on Linux serve the frontend from the local server on 14321, like the
+/// main window; elsewhere the page comes from the bundled assets.
+pub(crate) fn app_page_url(page: &str) -> WebviewUrl {
+    #[cfg(dev)]
+    {
+        WebviewUrl::App(page.into())
+    }
+    #[cfg(all(not(dev), target_os = "linux"))]
+    {
+        WebviewUrl::External(
+            url::Url::parse(&format!("http://127.0.0.1:14321/{page}"))
+                .expect("valid localhost URL"),
+        )
+    }
+    #[cfg(all(not(dev), not(target_os = "linux")))]
+    {
+        WebviewUrl::App(page.into())
+    }
+}
+
 fn open_extract_window(app: &AppHandle, mode: &str, path: &str) {
     // LT1 / tracker Known #7: WebviewWindowBuilder::build touches GTK on Linux.
     // Callers include the single-instance D-Bus callback (zbus thread, NOT the
@@ -9670,23 +9832,7 @@ fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
         .to_string();
     let init = format!("window.__AEROFTP_EXTRACT__ = {payload};");
 
-    let url: WebviewUrl = {
-        #[cfg(dev)]
-        {
-            WebviewUrl::App("extract.html".into())
-        }
-        #[cfg(all(not(dev), target_os = "linux"))]
-        {
-            WebviewUrl::External(
-                url::Url::parse("http://127.0.0.1:14321/extract.html")
-                    .expect("valid localhost URL"),
-            )
-        }
-        #[cfg(all(not(dev), not(target_os = "linux")))]
-        {
-            WebviewUrl::App("extract.html".into())
-        }
-    };
+    let url = app_page_url("extract.html");
 
     let n = EXTRACT_WINDOW_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let label = if n == 0 {
@@ -10914,11 +11060,11 @@ fn rebuild_menu_on_main(
 
 use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use sync::{
-    build_comparison_results_with_index, classify_sync_error, delete_sync_journal,
-    journal_sig_filename, load_sync_index, load_sync_journal, save_sync_index, save_sync_journal,
-    select_canary_sample, should_exclude, sign_journal, verify_local_file, CanaryResult,
-    CanarySampleResult, CanarySummary, CompareOptions, FileComparison, FileInfo, RetryPolicy,
-    SyncEcStatus, SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+    classify_sync_error, classify_with_summary, delete_sync_journal, journal_sig_filename,
+    load_sync_index, load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample,
+    should_exclude, sign_journal, verify_local_file, CanaryResult, CanarySampleResult,
+    CanarySummary, CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus,
+    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -11170,7 +11316,7 @@ async fn compare_directories(
     remote_path: String,
     options: Option<CompareOptions>,
     progress_id: Option<String>,
-) -> Result<Vec<FileComparison>, String> {
+) -> Result<CompareReport, String> {
     let mut options = options.unwrap_or_default();
     sync::apply_error_correction_excludes(&mut options);
 
@@ -11255,16 +11401,56 @@ async fn compare_directories(
 
     // Load sync index if available for conflict detection
     let index = load_sync_index(&local_path, &remote_path).ok().flatten();
-    let results =
-        build_comparison_results_with_index(local_files, remote_files, &options, index.as_ref());
+    let report = classify_walked_pair(
+        &local_path,
+        None,
+        local_files,
+        remote_files,
+        &options,
+        index.as_ref(),
+    );
 
     info!(
-        "Comparison complete: {} differences found (index: {})",
-        results.len(),
+        "Comparison complete: {} differences out of {} examined (index: {})",
+        report.differences.len(),
+        report.summary.examined_count,
         if index.is_some() { "used" } else { "none" }
     );
 
-    Ok(results)
+    Ok(report)
+}
+
+/// Classify a pair whose local side (or both sides, when `right_root` is a
+/// local directory too) came from the walker above.
+///
+/// That walker skips links and says nothing about it, so a path behind a local
+/// link is absent from its side while the twin is still on the other one. The
+/// rows are bounded first, with the same bound the provider compare applies:
+/// a path under a local link is left out on both sides, and classifies as
+/// nothing instead of as a file that one side deleted.
+fn classify_walked_pair(
+    left_root: &str,
+    right_root: Option<&str>,
+    mut left_files: HashMap<String, FileInfo>,
+    mut right_files: HashMap<String, FileInfo>,
+    options: &CompareOptions,
+    index: Option<&SyncIndex>,
+) -> CompareReport {
+    provider_commands::bound_compare_rows(
+        left_root,
+        &mut left_files,
+        &mut right_files,
+        crate::sync_core::ScanBoundaries::default(),
+    );
+    if let Some(right_root) = right_root {
+        provider_commands::bound_compare_rows(
+            right_root,
+            &mut right_files,
+            &mut left_files,
+            crate::sync_core::ScanBoundaries::default(),
+        );
+    }
+    classify_with_summary(left_files, right_files, options, index)
 }
 
 /// GAP-10: recursive comparison of two local directories.
@@ -11273,10 +11459,10 @@ async fn compare_directories(
 /// flat, top-level classify, so a Mirror / Backup preset only ever acted on
 /// the first directory level. This command scans both trees with the same
 /// `get_local_files_recursive_with_progress` walker that `compare_directories`
-/// uses for the local side, then reuses `build_comparison_results_with_index`
-/// so the unified Compare / Plan tabs and the runner operate on every nested
-/// level. The `left` directory maps onto `local_info`, `right` onto
-/// `remote_info`; the frontend adapts the result with `leftIsLocal = true`.
+/// uses for the local side, then reuses `classify_with_summary` so the
+/// unified Compare / Plan tabs and the runner operate on every nested level.
+/// The `left` directory maps onto `local_info`, `right` onto `remote_info`;
+/// the frontend adapts the result with `leftIsLocal = true`.
 #[tauri::command]
 async fn compare_local_directories(
     app: AppHandle,
@@ -11285,7 +11471,7 @@ async fn compare_local_directories(
     right_path: String,
     options: Option<CompareOptions>,
     progress_id: Option<String>,
-) -> Result<Vec<FileComparison>, String> {
+) -> Result<CompareReport, String> {
     let mut options = options.unwrap_or_default();
     sync::apply_error_correction_excludes(&mut options);
 
@@ -11349,16 +11535,23 @@ async fn compare_local_directories(
     // The sync index is keyed by the (left, right) path pair, so previous
     // local-local runs feed conflict detection just like the remote case.
     let index = load_sync_index(&left_path, &right_path).ok().flatten();
-    let results =
-        build_comparison_results_with_index(left_files, right_files, &options, index.as_ref());
+    let report = classify_walked_pair(
+        &left_path,
+        Some(&right_path),
+        left_files,
+        right_files,
+        &options,
+        index.as_ref(),
+    );
 
     info!(
-        "Local comparison complete: {} differences found (index: {})",
-        results.len(),
+        "Local comparison complete: {} differences out of {} examined (index: {})",
+        report.differences.len(),
+        report.summary.examined_count,
         if index.is_some() { "used" } else { "none" }
     );
 
-    Ok(results)
+    Ok(report)
 }
 
 /// Compute SHA-256 hash of a local file (streaming, 64KB chunks)
@@ -11382,9 +11575,9 @@ async fn compute_sha256(path: &std::path::Path) -> Option<String> {
 /// CLAUDE-AV-B3-13: marker embedded in the error a compare command returns when
 /// the local scan could not see the whole tree.
 ///
-/// The compare commands answer with a flat `Vec<FileComparison>`, so there is no
-/// field in which to say "this scan was partial". Rather than widen the payload,
-/// the refusal travels in the error string behind a stable marker, the same way
+/// The compare summary counts only classified paths, so there is no field in
+/// which to say "this scan was partial". Rather than widen the payload, the
+/// refusal travels in the error string behind a stable marker, the same way
 /// `CONNECT_CANCELLED` / `DEST_EXISTS` already do. The frontend matches on it
 /// (`src/utils/scanCompleteness.ts`) and fails closed instead of dropping to its
 /// flat top-level fallback, which would rebuild an actionable delete plan and
@@ -16299,8 +16492,29 @@ async fn get_credential_store_status(
     })
 }
 
+/// Commands that hand out secrets or a shell answer the main window only.
+///
+/// Tauri 2.11 applies its ACL to plugin commands, not to app commands, so every
+/// app command is callable from every webview of the app, including the
+/// extract window, which needs eleven commands and none of these. A webview
+/// that is not `main` has no legitimate reason to read or write the vault or to
+/// drive a terminal, so the command refuses it instead of relying on nothing
+/// hostile ever running there.
+pub(crate) fn only_main_window(label: &str, what: &str) -> Result<(), String> {
+    if label == "main" {
+        Ok(())
+    } else {
+        Err(format!("{what} is not available in the {label} window"))
+    }
+}
+
 #[tauri::command]
-async fn store_credential(account: String, password: String) -> Result<(), String> {
+async fn store_credential(
+    webview: tauri::Webview,
+    account: String,
+    password: String,
+) -> Result<(), String> {
+    only_main_window(webview.label(), "store_credential")?;
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     // Dual-write. The vault is written for every key (source of truth +
@@ -16313,7 +16527,8 @@ async fn store_credential(account: String, password: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-async fn get_credential(account: String) -> Result<String, String> {
+async fn get_credential(webview: tauri::Webview, account: String) -> Result<String, String> {
+    only_main_window(webview.label(), "get_credential")?;
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     store
@@ -16322,7 +16537,8 @@ async fn get_credential(account: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn delete_credential(account: String) -> Result<(), String> {
+async fn delete_credential(webview: tauri::Webview, account: String) -> Result<(), String> {
+    only_main_window(webview.label(), "delete_credential")?;
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     // Dual-delete. Removes from the vault and, for the prefix-classified keys
@@ -17767,6 +17983,11 @@ pub fn run() {
     #[cfg(not(debug_assertions))]
     let _ = install_crypto_provider();
 
+    // #814 renamed the application identifier. Carry the identifier-scoped
+    // state that cannot stay pinned to the legacy one (window state, and the
+    // macOS WebKit store) before any plugin reads it or any window opens.
+    portable::carry_identifier_scoped_state();
+
     // DAG-P2-01: construct the process-global hierarchical transfer governor
     // once, at GUI startup. Every transfer path (GUI, embedded MCP, TUI) reaches
     // the same singleton via `governor::global()`.
@@ -17844,8 +18065,9 @@ pub fn run() {
     // protocol does not support web workers, canvas rendering, or iframe CSS in WebKitGTK.
     // Risk assessment:
     //   - Traffic is loopback-only (127.0.0.1), not exposed on network interfaces
-    //   - Exploitation requires same-machine access (local privilege escalation prerequisite)
-    //   - All sensitive data (credentials, tokens) flows through Tauri IPC commands, NOT HTTP
+    //   - Another local account can reserve the fixed port before this app starts
+    //   - Tauri IPC commands are available to the UI, so server ownership is verified
+    //     before any webview loads this origin
     //   - tauri-plugin-localhost is explicitly bound to 127.0.0.1
     // This cannot be changed to HTTPS without a local TLS certificate infrastructure that
     // would add complexity with minimal security benefit for localhost-only traffic.
@@ -17856,14 +18078,20 @@ pub fn run() {
     // See docs/dev/platform/MACOS-UNIFIED-AUDIT-2026-03-30.md
     #[cfg(target_os = "linux")]
     let port: u16 = 14321;
+    #[cfg(target_os = "linux")]
+    let localhost_nonce = uuid::Uuid::new_v4().to_string();
 
     let mut builder = tauri::Builder::default();
 
     #[cfg(target_os = "linux")]
     {
+        let response_nonce = localhost_nonce.clone();
         builder = builder.plugin(
             tauri_plugin_localhost::Builder::new(port)
                 .host("127.0.0.1")
+                .on_request(move |_, response| {
+                    response.add_header("X-AeroFTP-UI-Nonce", response_nonce.as_str());
+                })
                 .build(),
         );
     }
@@ -17889,9 +18117,23 @@ pub fn run() {
                 // entries that still use the old crate name).
                 .level_for("aeroftp", log::LevelFilter::Trace)
                 .level_for("ftp_client_gui_lib", log::LevelFilter::Trace)
-                // Fan-out backend logs to the webview via the `log://log` event,
-                // consumed by the in-app DebugPanel. Stdout + LogDir targets are
-                // preserved by default; this one is additive.
+                // Stdout, the log file and the Webview fan-out (the `log://log`
+                // event consumed by the in-app DebugPanel). The file target is
+                // an explicit folder rather than the default `LogDir`, which
+                // follows the configured identifier and moved to an empty
+                // folder with the #814 rename; `portable::log_dir` keeps the
+                // folder every earlier release wrote to.
+                .clear_targets()
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Stdout,
+                ))
+                .target(tauri_plugin_log::Target::new(match portable::log_dir() {
+                    Some(path) => tauri_plugin_log::TargetKind::Folder {
+                        path,
+                        file_name: None,
+                    },
+                    None => tauri_plugin_log::TargetKind::LogDir { file_name: None },
+                }))
                 .target(tauri_plugin_log::Target::new(
                     tauri_plugin_log::TargetKind::Webview,
                 ))
@@ -18036,54 +18278,27 @@ pub fn run() {
             // frontend events without threading a handle through every call.
             crate::app_events::register_app_handle(app.handle().clone());
 
-            // Wait for tauri-plugin-localhost to bind the loopback port before
-            // any webview tries to load from it.
-            //
-            // The plugin spawns its actix server on a background thread during
-            // its own `Plugin::initialize`. On the warm path (manual launch),
-            // the bind beats the splash creation by an order of magnitude. On
-            // cold OS-autostart with the app launched alongside login services
-            // and minimised to tray, the bind can lose by 100-500ms: long
-            // enough for WebKit to GET 127.0.0.1:14321 and render
-            // "Could not connect to 127.0.0.1: Connection refused" inside
-            // the splash and the main window. Restarting the app from the
-            // tray hides the issue because by then the port is already up.
-            //
-            // Short blocking poll: zero cost on the warm path (the connect
-            // succeeds on the first attempt), bounded by 5s on the cold path
-            // before we fall through with a warning.
-            #[cfg(all(not(dev), target_os = "linux"))]
-            {
-                use std::net::{SocketAddr, TcpStream};
-                use std::time::{Duration, Instant};
-
-                let addr: SocketAddr = format!("127.0.0.1:{}", port)
-                    .parse()
-                    .expect("valid localhost addr");
-                let deadline = Instant::now() + Duration::from_secs(5);
-                let mut last_err: Option<std::io::Error> = None;
-                while Instant::now() < deadline {
-                    match TcpStream::connect_timeout(&addr, Duration::from_millis(150)) {
-                        Ok(_) => {
-                            last_err = None;
-                            break;
-                        }
-                        Err(e) => {
-                            last_err = Some(e);
-                            std::thread::sleep(Duration::from_millis(50));
-                        }
-                    }
+            // The plugin binds on a background thread. A plain TCP connect
+            // would also accept another user's server that reserved the fixed
+            // port first. Verify a fresh response nonce before creating any
+            // webview, including the cold-start extract window. Our listener
+            // then keeps the unchanged origin reserved while the app runs.
+            #[cfg(target_os = "linux")]
+            if !cfg!(dev) {
+                if let Err(reason) =
+                    localhost_security::wait_for_owned_server(port, &localhost_nonce)
+                {
+                    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+                    log::error!("Cannot start AeroFTP UI: {reason}");
+                    app.dialog()
+                        .message(format!("AeroFTP cannot start safely. {reason}"))
+                        .title("AeroFTP UI port unavailable")
+                        .kind(MessageDialogKind::Error)
+                        .buttons(MessageDialogButtons::Ok)
+                        .blocking_show();
+                    return Err(reason.into());
                 }
-                if let Some(e) = last_err {
-                    log::warn!(
-                        "tauri-plugin-localhost did not bind 127.0.0.1:{} within 5s ({}); \
-                         splash and main window may briefly show a connection-refused page",
-                        port,
-                        e
-                    );
-                } else {
-                    log::info!("tauri-plugin-localhost is listening on 127.0.0.1:{}", port);
-                }
+                log::info!("Verified AeroFTP UI server on 127.0.0.1:{port}");
             }
 
             // OS "Extract here / to folder" verb on a COLD launch (no instance was
@@ -19277,8 +19492,9 @@ pub fn run() {
             ai_tools::validate_tool_args,
             ai_tools::prepare_ai_tool_approval,
             ai_tools::grant_ai_tool_approval,
+            ai_approval_window::ai_approval_prompt,
+            ai_approval_window::ai_approval_decide,
             ai_tools::execute_ai_tool,
-            ai_tools::shell_execute,
             ai_tools::clipboard_read_image,
             plugins::prepare_plugin_tool_approval,
             // Context Intelligence commands
@@ -20539,6 +20755,119 @@ mod sevenz_mhe_tests {
         assert_eq!(restored, content);
     }
 
+    // AeroAgent's archive tools use content-only encryption (header in the
+    // clear) with one block per file, the case the -mhe test above does not
+    // cover. A wrong 7z password is only detected while decoding, so this also
+    // pins what a failed extraction leaves behind: nothing, and in particular
+    // not a truncated copy of a file that was already at the destination.
+    #[tokio::test]
+    async fn password_7z_content_only_multi_file_roundtrips_and_fails_cleanly() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("test1.txt");
+        let b = dir.path().join("test2.txt");
+        std::fs::write(&a, b"first file, plain text for the archive test").unwrap();
+        std::fs::write(&b, b"second file with different content, second block").unwrap();
+        let out = dir.path().join("with_pass.7z");
+        compress_7z_core(
+            vec![
+                a.to_string_lossy().to_string(),
+                b.to_string_lossy().to_string(),
+            ],
+            out.to_string_lossy().to_string(),
+            Some("Test123!".to_string()),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("compress");
+
+        let dest = dir.path().join("out");
+        extract_7z_core(
+            out.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+            Some("Test123!".to_string()),
+            false,
+        )
+        .await
+        .expect("extract with the right password");
+        assert_eq!(
+            std::fs::read(dest.join("test1.txt")).unwrap(),
+            std::fs::read(&a).unwrap()
+        );
+        assert_eq!(
+            std::fs::read(dest.join("test2.txt")).unwrap(),
+            std::fs::read(&b).unwrap()
+        );
+
+        // A wrong password over a destination that already holds a file of the
+        // same name: the error says so, and the existing file is untouched.
+        let wrong = dir.path().join("wrong");
+        std::fs::create_dir(&wrong).unwrap();
+        std::fs::write(wrong.join("test1.txt"), b"the user's own file").unwrap();
+        let err = extract_7z_core(
+            out.to_string_lossy().to_string(),
+            wrong.to_string_lossy().to_string(),
+            Some("not-it".to_string()),
+            false,
+        )
+        .await
+        .expect_err("a wrong password must fail");
+        assert!(err.contains("Wrong password"), "unhelpful error: {err}");
+        assert_eq!(
+            std::fs::read(wrong.join("test1.txt")).unwrap(),
+            b"the user's own file"
+        );
+        let names: Vec<String> = std::fs::read_dir(&wrong)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["test1.txt".to_string()],
+            "left behind: {names:?}"
+        );
+
+        // No password at all: said as such, nothing written.
+        let none = dir.path().join("none");
+        let err = extract_7z_core(
+            out.to_string_lossy().to_string(),
+            none.to_string_lossy().to_string(),
+            None,
+            false,
+        )
+        .await
+        .expect_err("no password must fail");
+        assert!(
+            err.contains("password is required"),
+            "unhelpful error: {err}"
+        );
+        assert_eq!(std::fs::read_dir(&none).unwrap().count(), 0);
+    }
+
+    // Overwriting a file that already exists keeps its permissions: before the
+    // atomic writer, extraction truncated the file in place and its mode
+    // survived, so a temporary file created with default permissions must not
+    // turn an executable script into a plain file.
+    #[cfg(unix)]
+    #[test]
+    fn replacing_an_existing_file_keeps_its_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("run.sh");
+        std::fs::write(&target, b"old").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        super::write_entry_atomically(&target, |f| {
+            use std::io::Write;
+            f.write_all(b"new")?;
+            Ok(3)
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755, "mode after replace: {mode:o}");
+    }
+
     // The dialog's Fast/Normal/Maximum buttons (and the CLI's --level) must
     // actually reach the LZMA2 encoder. Before the fix compress_7z_impl ignored
     // the level and always used the library default preset, so every level
@@ -21571,6 +21900,68 @@ mod arch_install_format_tests {
 mod scan_completeness_gate_tests {
     use super::*;
 
+    /// The walker skips links. A file replaced by a link to its moved bytes
+    /// is then absent from the walk while its twin is still on the other side,
+    /// and a Mirror preset turns that row into a delete of the twin. The row
+    /// must not exist, on either side of a dual-local pair, while a file that
+    /// really is on one side only keeps its row.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_skipped_link_is_not_classified_as_absent() {
+        let left = tempfile::tempdir().expect("left");
+        let right = tempfile::tempdir().expect("right");
+        let moved = tempfile::tempdir().expect("moved");
+        for root in [left.path(), right.path()] {
+            std::fs::create_dir(root.join("dir")).expect("mkdir");
+            std::fs::write(root.join("file.txt"), b"f").expect("file");
+            std::fs::write(root.join("dir/inner.txt"), b"i").expect("inner");
+        }
+        std::fs::write(right.path().join("only-right.txt"), b"r").expect("only right");
+        // Left: a file and a directory become links to where their bytes went.
+        std::fs::rename(left.path().join("file.txt"), moved.path().join("file.txt")).unwrap();
+        std::os::unix::fs::symlink(moved.path().join("file.txt"), left.path().join("file.txt"))
+            .unwrap();
+        std::fs::rename(left.path().join("dir"), moved.path().join("dir")).unwrap();
+        std::os::unix::fs::symlink(moved.path().join("dir"), left.path().join("dir")).unwrap();
+
+        let left_root = left.path().to_str().unwrap();
+        let right_root = right.path().to_str().unwrap();
+        let options = CompareOptions::default();
+        let paths = |report: CompareReport| -> Vec<String> {
+            report
+                .differences
+                .into_iter()
+                .map(|row| row.relative_path)
+                .collect()
+        };
+
+        // Remote pair: the right side stands for a server listing.
+        let (left_files, _) = scan(left_root).await;
+        let (right_files, _) = scan(right_root).await;
+        let rows = paths(classify_walked_pair(
+            left_root,
+            None,
+            left_files,
+            right_files,
+            &options,
+            None,
+        ));
+        assert_eq!(rows, vec!["only-right.txt".to_string()], "remote pair");
+
+        // Dual-local pair, with the links on the RIGHT this time.
+        let (left_files, _) = scan(right_root).await;
+        let (right_files, _) = scan(left_root).await;
+        let rows = paths(classify_walked_pair(
+            right_root,
+            Some(left_root),
+            left_files,
+            right_files,
+            &options,
+            None,
+        ));
+        assert_eq!(rows, vec!["only-right.txt".to_string()], "dual-local pair");
+    }
+
     async fn scan(
         root: &str,
     ) -> (
@@ -21886,5 +22277,282 @@ mod update_verification_tests {
         // An unknown content length reports 0 rather than a fabricated fraction.
         assert_eq!(compute_update_download_progress(500, 0, false), 0);
         assert_eq!(compute_update_download_progress(0, 0, true), 100);
+    }
+}
+
+#[cfg(test)]
+mod update_verification_fails_closed_tests {
+    use super::*;
+
+    fn mode(info: &UpdateVerificationInfo) -> String {
+        serde_json::to_value(&info.mode)
+            .unwrap()
+            .as_str()
+            .unwrap_or("?")
+            .to_string()
+    }
+
+    #[test]
+    fn a_missing_bundle_fails_verification() {
+        let dir = tempfile::tempdir().unwrap();
+        let artifact = dir.path().join("AeroFTP_9.9.9_amd64.deb");
+        std::fs::write(&artifact, b"artifact").unwrap();
+        let info = verify_sigstore_bundle(
+            &artifact,
+            &dir.path().join("absent.sigstore.json"),
+            "v9.9.9",
+        )
+        .expect("no trust root is needed to refuse a missing bundle");
+        assert_eq!(mode(&info), "VerificationFailed");
+        assert!(!info.bundle_present);
+    }
+
+    #[test]
+    fn an_unparseable_bundle_fails_verification() {
+        let dir = tempfile::tempdir().unwrap();
+        let artifact = dir.path().join("AeroFTP_9.9.9_amd64.deb");
+        std::fs::write(&artifact, b"artifact").unwrap();
+        for (name, body) in [
+            ("not-json.sigstore.json", b"not json".as_slice()),
+            // Valid JSON that is not a bundle object. An object with a stray
+            // `mediaType` deserialises as a bundle and takes the verifier to
+            // the network trust root, which made this test depend on the
+            // network and fail when the root could not be refreshed.
+            ("not-a-bundle.sigstore.json", b"[1, 2, 3]".as_slice()),
+        ] {
+            let bundle = dir.path().join(name);
+            std::fs::write(&bundle, body).unwrap();
+            let info = verify_sigstore_bundle(&artifact, &bundle, "v9.9.9")
+                .expect("no trust root is needed to refuse a bundle that does not parse");
+            assert_eq!(mode(&info), "VerificationFailed", "{name}");
+            assert!(info.bundle_present, "{name}");
+        }
+    }
+}
+
+// Tests for the archive leads of the v4.2.0 pre-release audit (mixed
+// separators in entry names, `...zip` and `...tar.gz` subfolders, caller-named
+// extract folders). Each asserts the safe property; each failed on the code
+// before the fix.
+#[cfg(test)]
+mod secval_b_tests {
+    use super::*;
+
+    #[test]
+    fn an_extract_folder_name_is_one_path_component() {
+        assert_eq!(safe_extract_folder_name("photos"), "photos");
+        assert_eq!(safe_extract_folder_name("../outside"), "outside");
+        assert_eq!(safe_extract_folder_name(r"a\..\b"), "b");
+        assert_eq!(safe_extract_folder_name("x/.."), "extracted");
+        assert_eq!(safe_extract_folder_name(".."), "extracted");
+        assert_eq!(safe_extract_folder_name("C:evil"), "extracted");
+        assert_eq!(safe_extract_folder_name(r"D:\\x\\C:evil"), "extracted");
+        let parent = std::path::Path::new("/tmp/secval-root");
+        let dir = parent.join(safe_extract_folder_name(&archive_extract_stem(
+            "../outside.zip",
+        )));
+        assert_eq!(dir.parent(), Some(parent), "{}", dir.display());
+    }
+    use std::io::Write as _;
+
+    /// Windows path grammar oracle: a component is bounded by EITHER separator
+    /// (Win32 normalisation and std::path on Windows both treat `/` and `\`
+    /// alike). Returns true when the name climbs above the extraction root.
+    fn escapes_under_windows_grammar(name: &str) -> bool {
+        let mut depth: i64 = 0;
+        for c in name.split(['/', '\\']) {
+            match c {
+                "" | "." => {}
+                ".." => {
+                    depth -= 1;
+                    if depth < 0 {
+                        return true;
+                    }
+                }
+                _ => depth += 1,
+            }
+        }
+        false
+    }
+
+    fn zip_with_entry(path: &std::path::Path, entry: &str, body: &[u8]) {
+        let f = std::fs::File::create(path).unwrap();
+        let mut w = zip::ZipWriter::new(f);
+        let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        w.start_file(entry, opts).unwrap();
+        w.write_all(body).unwrap();
+        w.finish().unwrap();
+    }
+
+    // Lead 1, part A: the guard and the Windows grammar disagree.
+    #[test]
+    fn lead1_mixed_separator_parent_components_are_rejected() {
+        for name in [
+            "a/..\\../..\\x",           // climbs two levels on Windows
+            "a/..\\../..\\../..\\evil", // three levels
+            "a\\../..\\..\\x",          // variant starting with a backslash boundary
+        ] {
+            assert!(
+                escapes_under_windows_grammar(name),
+                "oracle precondition: {name:?} must climb above the root under Windows grammar"
+            );
+            assert!(
+                !is_safe_archive_entry(name),
+                "is_safe_archive_entry accepted {name:?}, which escapes the destination on Windows"
+            );
+        }
+    }
+
+    // Lead 1, part B: the zip crate's own Windows-grammar validator
+    // (`enclosed_name`, built on typed_path::Utf8WindowsPath on every platform)
+    // refuses the very entry AeroFTP's guard lets through, and the real ZIP
+    // extractor then joins it (on Linux the backslash is a literal character,
+    // so here it stays inside dest; on Windows the same join walks out).
+    #[tokio::test]
+    async fn lead1_zip_entry_reaches_the_join_on_every_platform() {
+        let root = tempfile::tempdir().unwrap();
+        let archive = root.path().join("mixed.zip");
+        let name = "a/..\\../..\\x.txt";
+        zip_with_entry(&archive, name, b"payload");
+
+        let f = std::fs::File::open(&archive).unwrap();
+        let mut za = zip::ZipArchive::new(f).unwrap();
+        let entry = za.by_index(0).unwrap();
+        assert_eq!(entry.name(), name, "zip crate returns the raw name");
+        let zip_crate_says = entry.enclosed_name();
+        let guard_says = is_safe_archive_entry(entry.name());
+        drop(entry);
+        eprintln!("zip enclosed_name = {zip_crate_says:?}; is_safe_archive_entry = {guard_says}");
+
+        let dest = root.path().join("out");
+        std::fs::create_dir_all(&dest).unwrap();
+        let out = extract_archive_core(
+            archive.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+        let literal = dest.join("a").join("..\\..").join("..\\x.txt");
+        eprintln!(
+            "extracted into {out}; literal-name file on this platform exists = {}",
+            literal.exists()
+        );
+        assert!(
+            zip_crate_says.is_none(),
+            "zip's Windows-grammar validator must reject the name"
+        );
+        assert!(
+            !guard_says,
+            "AeroFTP guard accepted a name the zip crate's own validator rejects"
+        );
+    }
+
+    // Lead 2: stems that `file_stem` / `archive_extract_stem` turn into `..`.
+    #[test]
+    fn lead2_stem_values() {
+        use std::path::Path;
+        let stem = |n: &str| {
+            Path::new("/x")
+                .join(n)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+        };
+        eprintln!(
+            "file_stem: ...zip={:?} ..zip={:?} ..tar.gz={:?} ...tar.gz={:?} ...7z={:?} ...rar={:?}",
+            stem("...zip"),
+            stem("..zip"),
+            stem("..tar.gz"),
+            stem("...tar.gz"),
+            stem("...7z"),
+            stem("...rar")
+        );
+        eprintln!(
+            "archive_extract_stem: ...zip={:?} ..tar.gz={:?} ...tar.gz={:?} ...gz={:?}",
+            archive_extract_stem("...zip"),
+            archive_extract_stem("..tar.gz"),
+            archive_extract_stem("...tar.gz"),
+            archive_extract_stem("...gz")
+        );
+        let root = tempfile::tempdir().unwrap();
+        let out = root.path().join("downloads");
+        std::fs::create_dir_all(&out).unwrap();
+        for name in ["..tar.gz", "...tar.gz", "...tgz", "...tar"] {
+            let archive = out.join(name);
+            let resolved =
+                tar_final_output(&archive.to_string_lossy(), &out.to_string_lossy(), true).unwrap();
+            eprintln!("tar_final_output({name}) = {}", resolved.display());
+        }
+        // GUI "Extract to folder" path: the unique resolver sees `parent/..`
+        // as existing and moves on to `.. (2)`, a plain folder name.
+        let gui = unique_extract_dir_with(&out, "...zip", |p| p.exists()).unwrap();
+        eprintln!("unique_extract_dir_with(...zip) = {}", gui.display());
+        assert!(
+            gui.starts_with(&out)
+                && !gui
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir)),
+            "GUI resolver must stay inside the chosen folder: {}",
+            gui.display()
+        );
+    }
+
+    #[tokio::test]
+    async fn lead2_create_subfolder_never_writes_outside_output_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let downloads = root.path().join("downloads");
+        std::fs::create_dir_all(&downloads).unwrap();
+        let archive = downloads.join("...zip");
+        zip_with_entry(&archive, "planted.txt", b"from the archive");
+
+        let out = extract_archive_core(
+            archive.to_string_lossy().to_string(),
+            downloads.to_string_lossy().to_string(),
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+        eprintln!("extract_archive(create_subfolder=true) returned {out}");
+        assert!(
+            !root.path().join("planted.txt").exists(),
+            "an entry of `...zip` landed in the PARENT of output_dir ({})",
+            root.path().display()
+        );
+    }
+
+    #[tokio::test]
+    async fn lead2_tar_create_subfolder_never_writes_outside_output_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let downloads = root.path().join("downloads");
+        std::fs::create_dir_all(&downloads).unwrap();
+        let archive = downloads.join("...tar.gz");
+        {
+            let f = std::fs::File::create(&archive).unwrap();
+            let gz = flate2::write::GzEncoder::new(f, flate2::Compression::default());
+            let mut b = tar::Builder::new(gz);
+            let body = b"from the tarball";
+            let mut h = tar::Header::new_gnu();
+            h.set_size(body.len() as u64);
+            h.set_mode(0o644);
+            h.set_cksum();
+            b.append_data(&mut h, "planted-tar.txt", &body[..]).unwrap();
+            b.into_inner().unwrap().finish().unwrap();
+        }
+        let out = extract_tar_as_core(
+            archive.to_string_lossy().to_string(),
+            downloads.to_string_lossy().to_string(),
+            true,
+            "tar.gz".to_string(),
+        )
+        .await
+        .unwrap();
+        eprintln!("extract_tar_as_core(create_subfolder=true) returned {out}");
+        assert!(
+            !root.path().join("planted-tar.txt").exists(),
+            "an entry of `...tar.gz` landed in the PARENT of output_dir"
+        );
     }
 }

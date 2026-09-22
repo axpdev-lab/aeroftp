@@ -16,7 +16,6 @@ use std::process::Stdio;
 use std::sync::LazyLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, State};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tokio::process::Command as TokioCommand;
 use uuid::Uuid;
 
@@ -133,6 +132,7 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
         _ => matches!(
             tool_name,
             "remote_upload"
+                | "remote_download"
                 | "remote_delete"
                 | "remote_rename"
                 | "remote_mkdir"
@@ -152,6 +152,7 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 | "archive_decompress"
                 | "clipboard_write"
                 | "coding_checkpoint_restore"
+                | "coding_checkpoint_create"
                 | "coding_apply_patch"
                 | "coding_git_stage"
                 | "coding_git_commit"
@@ -162,6 +163,7 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 // LLM-chosen workspace_root. Despite its ReadOnly classification it can execute
                 // arbitrary workspace code, exactly like run_checks/verify, so it MUST be gated.
                 | "coding_diagnostics"
+                | "agent_memory_write"
                 | "shell_execute"
         ),
     }
@@ -481,18 +483,19 @@ pub(crate) fn build_ai_tool_approval_message(tool_name: &str, args: &Value) -> S
         lines.push("Runs a shell command on this machine.".to_string());
     }
 
-    lines.push(String::new());
-    lines.push("This confirmation runs in the desktop process, not in the webview.".to_string());
-
     lines.join("\n")
 }
 
-fn approval_scope_message(remember_for_session: bool) -> &'static str {
-    if remember_for_session {
-        "Grant scope: remember this tool for the current chat session."
-    } else {
-        "Grant scope: approve this exact tool plus argument set once."
-    }
+/// Splits an approval message ("AeroAgent wants to: <action>", a blank line,
+/// then the details) into the action and the details, for the approval window.
+fn split_approval_message(message: &str) -> (String, String) {
+    let (head, details) = message.split_once("\n\n").unwrap_or((message, ""));
+    let action = head
+        .strip_prefix("AeroAgent wants to: ")
+        .unwrap_or(head)
+        .trim()
+        .to_string();
+    (action, details.trim_end().to_string())
 }
 
 fn prune_ai_tool_approval_requests(requests: &mut HashMap<String, AiToolApprovalRequest>) {
@@ -1477,8 +1480,10 @@ pub async fn clipboard_read_image() -> Result<Option<String>, String> {
 }
 
 /// Execute a shell command and capture output.
-/// Used by AeroAgent's shell_execute tool.
-#[tauri::command]
+/// Used by AeroAgent's shell_execute tool, ONLY through the approval-gated
+/// dispatcher (`execute_ai_tool` -> `system_tools::shell_execute`). SECVAL-A
+/// lead 3 (candidate fix): no longer a Tauri command, so no webview can reach it
+/// without the backend grant.
 pub async fn shell_execute(
     command: String,
     working_dir: Option<String>,
@@ -1947,31 +1952,21 @@ pub async fn grant_ai_tool_approval(
     }
 
     // When the frontend already showed an approval panel (expert mode),
-    // skip the native OS dialog to avoid double-confirmation.
-    // In safe/normal mode, always show the OS dialog as a second factor.
+    // skip the approval window to avoid double-confirmation.
+    // In safe/normal mode, always show the approval window as a second factor.
+    // It is a separate window that only the backend opens and only it can
+    // answer (see `ai_approval_window`), so the chat webview cannot approve.
     if !skip_native_dialog {
-        let label = human_tool_label(&request.tool_name);
-        let dialog_title = if remember_for_session {
-            format!("AeroAgent - {} (session)", label)
-        } else {
-            format!("AeroAgent - {}", label)
-        };
-        let dialog_message = format!(
-            "{}\n\n{}",
-            request.message,
-            approval_scope_message(remember_for_session)
-        );
-
-        let approved = tokio::task::spawn_blocking(move || {
-            app.dialog()
-                .message(dialog_message)
-                .title(dialog_title)
-                .kind(MessageDialogKind::Warning)
-                .buttons(MessageDialogButtons::OkCancel)
-                .blocking_show()
-        })
-        .await
-        .map_err(|error| format!("Failed to show backend approval dialog: {}", error))?;
+        let (action, details) = split_approval_message(&request.message);
+        let approved = crate::ai_approval_window::ask(
+            &app,
+            crate::ai_approval_window::ApprovalPrompt {
+                action,
+                message: details,
+                remember_for_session,
+            },
+        )
+        .await?;
 
         if !approved {
             return Ok(AiToolApprovalGrantResponse {
@@ -2059,8 +2054,61 @@ pub async fn execute_ai_tool(
 
 #[cfg(test)]
 mod approval_tests {
-    use super::{build_ai_tool_approval_details, requires_backend_write_approval};
+    use super::{
+        build_ai_tool_approval_details, build_ai_tool_approval_message,
+        requires_backend_write_approval, split_approval_message,
+    };
     use serde_json::json;
+
+    #[test]
+    fn the_approval_window_gets_the_action_and_the_details_apart() {
+        let message =
+            build_ai_tool_approval_message("local_write", &json!({"path": "/home/u/a.txt"}));
+        let (action, details) = split_approval_message(&message);
+        assert_eq!(action, "Write Local File");
+        assert!(
+            details.contains("/home/u/a.txt"),
+            "details lost the path: {details}"
+        );
+        assert!(!details.contains("AeroAgent wants to"));
+        // The old native-dialog line is gone: the window explains itself.
+        assert!(!message.contains("desktop process"));
+    }
+
+    #[test]
+    fn every_gui_tool_that_writes_local_data_requires_backend_approval() {
+        let args = json!({});
+        for tool in [
+            "local_write",
+            "local_mkdir",
+            "local_delete",
+            "local_rename",
+            "local_edit",
+            "local_move_files",
+            "local_batch_rename",
+            "local_copy_files",
+            "local_trash",
+            "remote_download",
+            "download_files",
+            "archive_compress",
+            "archive_decompress",
+            "coding_checkpoint_create",
+            "coding_checkpoint_restore",
+            "coding_apply_patch",
+            "coding_git_stage",
+            "coding_git_commit",
+            "coding_run_checks",
+            "coding_verify",
+            "coding_diagnostics",
+            "agent_memory_write",
+            "shell_execute",
+        ] {
+            assert!(
+                requires_backend_write_approval(tool, &args),
+                "{tool} bypasses the backend grant"
+            );
+        }
+    }
 
     #[test]
     fn coding_diagnostics_requires_approval() {

@@ -43,8 +43,14 @@
 //!   5  Invalid config / usage error
 //!   6  Authentication failed
 //!   7  Not supported
-//!   8  Timeout, or a `--max-transfer` budget reached on purpose (G106:
-//!      two meanings on one code; `--json` distinguishes them, see `over_budget`)
+//!   8  The run stopped at a limit and NOTHING failed. One meaning, not two:
+//!      the run did what it could inside the limit it was given, and the
+//!      decision is whether to raise the limit.
+//!      Which limit depends on the command. For most of them it is a timeout
+//!      (`ProviderError::Timeout` maps here). For `sync` it is the
+//!      `--max-transfer` budget, because a timeout that fails a transfer is
+//!      a failure and reports 4 instead. `--json` names the budget with an
+//!      `over_budget` count; a timeout has no such field.
 //!   99 Unknown error
 
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -135,7 +141,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     about = "AeroFTP CLI - Multi-protocol file transfer client",
     version,
     long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, and Drime.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\n\nAI agents: use --machine (recommended) or --format json.\n  'aeroftp --machine --profile NAME ls /path --json'   → pure data on stdout\n  'aeroftp agent-info --json'                        → capability discovery\n  'aeroftp agent-bootstrap --json'                   → canonical workflows",
-    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli --machine --profile \"My Server\" ls /path --json   (recommended for agents)\n  aeroftp-cli agent-bootstrap --json                         AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp-script\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n\nEXIT CODE 8 CARRIES TWO MEANINGS: a timeout, and a --max-transfer budget\nreached on purpose. They are not the same event and only one is worth\nretrying. With --json the two are told apart without guessing: a reached\nbudget reports \"status\": \"partial\" and an over_budget count of the files it\nleft behind, while a timeout does not.\n 99  Unknown error            130  Interrupted (SIGINT)"
+    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli --machine --profile \"My Server\" ls /path --json   (recommended for agents)\n  aeroftp-cli agent-bootstrap --json                         AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp-script\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Stopped at a limit, nothing failed\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n 99  Unknown error            130  Interrupted (SIGINT)\n\nEXIT CODE 8 MEANS ONE THING: the run stopped at a limit and NOTHING failed.\nThe run did what it could inside the limit it was given, and the decision is\nwhether to raise it. WHICH limit depends on the command: for most it is a\ntimeout, and for sync it is the --max-transfer budget, because there a\ntimeout that fails a transfer is a failure and reports 4 instead. With --json\na reached budget is named by an over_budget count of the files it left\nbehind; a timeout has no such field."
 )]
 struct Cli {
     /// Output format
@@ -635,8 +641,8 @@ struct Cli {
 
     /// SFTP single-file download tuning preset. Presets configure independent
     /// SSH connections, read-ahead, and the multi-connection cutoff together.
-    /// `efficient` matches the GUI default. The option is ignored for non-SFTP
-    /// providers.
+    /// `fast` (eight connections) matches the GUI default. The option is
+    /// ignored for non-SFTP providers.
     #[arg(
         long,
         global = true,
@@ -5970,6 +5976,9 @@ struct CliSyncResult {
     /// path; additive and omitted otherwise, so historical JSON is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats>,
+    /// Requested stream policy passed to the shared executor, with origin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    download_segments: Option<ftp_client_gui_lib::transfer_settings::ResolvedDownloadSegments>,
 }
 
 /// Single plan entry surfaced in `sync --dry-run --json`.
@@ -7059,6 +7068,23 @@ fn resolve_cli_sftp_download_tuning(cli: &Cli, is_sftp: bool) -> Option<CliSftpD
     })
 }
 
+/// Resolve the same stream count and cutoff for direct and shared-batch downloads.
+/// SFTP overrides have already been resolved, including explicit concurrency
+/// taking precedence over a preset's connection count.
+fn resolve_cli_download_tuning(
+    cli: &Cli,
+    sftp_tuning: Option<CliSftpDownloadTuning>,
+) -> (usize, u64) {
+    let streams = sftp_tuning
+        .map(|tuning| tuning.connections)
+        .unwrap_or_else(|| cli.multi_thread_streams.clamp(1, 16));
+    let cutoff = sftp_tuning.map(|tuning| tuning.cutoff).unwrap_or_else(|| {
+        parse_size_filter(&cli.multi_thread_cutoff).unwrap_or(250 * 1024 * 1024)
+    });
+    // Provider setters apply this same lower bound.
+    (streams, cutoff.max(1024 * 1024))
+}
+
 fn expand_aliases(args: &[String], config: &CliConfigFile) -> Result<Vec<String>, String> {
     let mut expanded = args.to_vec();
     let mut seen = std::collections::HashSet::new();
@@ -7145,6 +7171,18 @@ fn print_error(format: OutputFormat, msg: &str, code: i32) {
     }
 }
 
+/// Transport protocols and native integrations as the generated provider
+/// inventory counts them. The banner said "23 providers" by hand while the
+/// registry grew past it; reading the checked-in inventory, which CI keeps in
+/// step with the registry, means the number cannot fall behind again.
+fn banner_provider_counts() -> (u64, u64) {
+    let inventory: serde_json::Value =
+        serde_json::from_str(include_str!("../../../docs/PROVIDER-INVENTORY.json"))
+            .unwrap_or_default();
+    let count = |key: &str| inventory["counts"][key].as_u64().unwrap_or(0);
+    (count("transport_protocols"), count("native_integrations"))
+}
+
 /// Truthy test for the `AEROFTP_STRICT` env toggle. Accepts the common
 /// spellings (`1`, `true`, `yes`, `on`, case-insensitive, surrounding
 /// whitespace tolerated) so the documented `AEROFTP_STRICT=1` works; unset,
@@ -7220,7 +7258,9 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::NotFound(_) => 2,
         ProviderError::PermissionDenied(_) | ProviderError::ReadOnly(_) => 3,
         ProviderError::TransferFailed(msg) if provider_error_message_looks_not_found(msg) => 2,
-        ProviderError::TransferFailed(_) | ProviderError::Cancelled => 4,
+        ProviderError::TransferFailed(_)
+        | ProviderError::ParallelRefused(_)
+        | ProviderError::Cancelled => 4,
         ProviderError::InvalidConfig(_)
         | ProviderError::InvalidPath(_)
         | ProviderError::FileTooLarge(_)
@@ -10223,6 +10263,7 @@ fn absorb_engine_stats(
 struct SharedDownloadOutcome {
     downloaded: u32,
     errors: Vec<String>,
+    download_segments: ftp_client_gui_lib::transfer_settings::ResolvedDownloadSegments,
     /// G102: files this batch did NOT transfer because `--max-transfer` was
     /// already spent. They are neither failures nor "already current", so
     /// neither `errors` nor the caller's `skipped` counter could carry them,
@@ -10321,6 +10362,9 @@ async fn run_shared_provider_download_batch(
     use ftp_client_gui_lib::transfer_settings::TransferSettingsInput;
 
     let workers = effective_parallel_workers(cli);
+    let sftp_tuning =
+        resolve_cli_sftp_download_tuning(cli, base.provider_type() == ProviderType::Sftp);
+    let (streams, cutoff) = resolve_cli_download_tuning(cli, sftp_tuning);
     let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
 
     // DAG-P1-02: one live snapshot owns capability-aware settings and the
@@ -10331,9 +10375,13 @@ async fn run_shared_provider_download_batch(
             max_concurrent: Some(workers as u32),
             retry_count: None,
             timeout_seconds: None,
-            // CLI segmented downloads use the dedicated `pget` path, not
-            // the GUI provider executor, so the executor stays single-stream.
-            download_segments: None,
+            download_segments:
+                ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Explicit(
+                    streams as u32,
+                ),
+            // CLI preset/concurrency precedence is resolved above. Passing the
+            // preset again would override --sftp-concurrency in the executor.
+            // The connected provider and its clones already carry read-ahead.
             sftp_download_preset: None,
         },
     )
@@ -10354,6 +10402,22 @@ async fn run_shared_provider_download_batch(
             .take()
             .expect("base provider must still be present");
         return Err(base);
+    }
+
+    if !cli.quiet && !cli.json && !cli.machine {
+        use ftp_client_gui_lib::transfer_dag::Capability;
+        let ceiling = if matches!(
+            capabilities.strict_concurrent_range_download,
+            Capability::Supported | Capability::SupportedAfterProbe
+        ) {
+            streams.min(model.max_leases())
+        } else {
+            1
+        };
+        eprintln!(
+            "Download policy: up to {} streams per file (requested {}, cutoff {}); smaller files use 1 stream",
+            ceiling, streams, format_size(cutoff)
+        );
     }
 
     // --max-transfer: pre-flight truncate to the remaining session budget
@@ -10431,14 +10495,18 @@ async fn run_shared_provider_download_batch(
     let sink = Arc::new(CliBatchSink::new());
     let dyn_sink: Arc<dyn TransferEventSink> = sink.clone();
 
-    let executor = Arc::new(ProviderDownloadExecutor::new(
-        dyn_sink.clone(),
-        provider_arc.clone(),
-        runtime_settings,
-        cancel_token,
-        model,
-        capabilities,
-    ));
+    let resolved_download_segments = runtime_settings.download_segments.clone();
+    let executor = Arc::new(
+        ProviderDownloadExecutor::new(
+            dyn_sink.clone(),
+            provider_arc.clone(),
+            runtime_settings,
+            cancel_token,
+            model,
+            capabilities,
+        )
+        .with_download_cutoff(cutoff),
+    );
 
     // `BatchProgressSnapshot.bytes_transferred` is monotonic (sum of
     // succeeded `entry.size`); the observer fires after every task, so the
@@ -10478,6 +10546,7 @@ async fn run_shared_provider_download_batch(
     Ok(SharedDownloadOutcome {
         downloaded: batch_result.completed,
         errors: sink.take_errors(),
+        download_segments: resolved_download_segments,
         over_budget: max_transfer_skipped as u32,
         engine_stats: batch_result.engine_stats,
     })
@@ -10557,9 +10626,10 @@ async fn run_shared_provider_upload_batch(
             max_concurrent: Some(workers as u32),
             retry_count: None,
             timeout_seconds: None,
-            // CLI segmented downloads use the dedicated `pget` path, not
-            // the GUI provider executor, so the executor stays single-stream.
-            download_segments: None,
+            download_segments:
+                ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Single {
+                    reason: "upload path has no download leg".to_string(),
+                },
             sftp_download_preset: None,
         },
     )
@@ -26138,7 +26208,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
             "5": "invalid usage",
             "6": "auth failed",
             "7": "not supported",
-            "8": "timeout",
+            "8": "stopped at a limit, nothing failed (timeout, or the --max-transfer budget on sync)",
             "9": "already exists / directory not empty",
             "10": "server or parse error",
             "11": "local I/O error",
@@ -28524,26 +28594,16 @@ async fn create_and_connect_with(
     // the flag help so rclone users know what they are getting.
     let is_sftp = provider.provider_type() == ProviderType::Sftp;
     let sftp_tuning = resolve_cli_sftp_download_tuning(cli, is_sftp);
-    let effective_mt_streams = sftp_tuning
-        .map(|tuning| tuning.connections)
-        .unwrap_or_else(|| cli.multi_thread_streams.clamp(1, 16));
+    let (effective_mt_streams, mt_cutoff) = resolve_cli_download_tuning(cli, sftp_tuning);
     if effective_mt_streams > 1 || sftp_tuning.is_some_and(|tuning| tuning.preset.is_some()) {
-        let mt_cutoff = if let Some(tuning) = sftp_tuning {
-            tuning.cutoff
-        } else {
-            match parse_size_filter(&cli.multi_thread_cutoff) {
-                Ok(v) => v,
-                Err(e) => {
-                    if cli.verbose > 0 {
-                        eprintln!(
-                            "Warning: invalid --multi-thread-cutoff '{}': {} (using 250M)",
-                            cli.multi_thread_cutoff, e
-                        );
-                    }
-                    250 * 1024 * 1024
-                }
+        if sftp_tuning.is_none() && cli.verbose > 0 {
+            if let Err(e) = parse_size_filter(&cli.multi_thread_cutoff) {
+                eprintln!(
+                    "Warning: invalid --multi-thread-cutoff '{}': {} (using 250M)",
+                    cli.multi_thread_cutoff, e
+                );
             }
-        };
+        }
         provider.set_multi_thread_download(effective_mt_streams, mt_cutoff);
         if cli.verbose > 0 {
             let knob = if is_sftp && cli.sftp_concurrency > 0 {
@@ -32016,7 +32076,8 @@ async fn pget_segmented_download(
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
-        aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
+        aerotmp_path_for, open_after_transfer, range_source_changed_through,
+        read_range_source_through, run_concurrent_range_download, ConcurrentRangeConfig,
         ConcurrentRangeOutcome,
     };
 
@@ -32045,10 +32106,54 @@ async fn pget_segmented_download(
     // actual_segments) and each window is served on its own connection. On
     // ANY connection failure, fall honestly back to a single-stream
     // download rather than overclaim parallelism.
+    // One connection reads the object before the windows start and again
+    // before the file is published. Each window is a separate connection, so
+    // an object replaced while they are in flight would be assembled out of
+    // two versions: every window the length it asked for, the total exactly
+    // right, and nothing to tell it apart. The reading connection is closed
+    // for the duration of the transfer rather than left idle: it would hold a
+    // slot the windows may need, and a server's idle timeout would close it
+    // exactly when the second reading matters most.
+    let mut checker = match create_and_connect(url, cli, format).await {
+        Ok((provider, _)) => provider,
+        Err(_) => {
+            if !quiet {
+                eprintln!("pget: no connection to read {remote_path} with; single download");
+            }
+            return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+        }
+    };
+    let before = match read_range_source_through(checker.as_mut(), remote_path).await {
+        Ok(reading) => match reading.matches_planned_size(file_size) {
+            Ok(()) => reading,
+            Err(why) => {
+                let _ = checker.disconnect().await;
+                if !quiet {
+                    eprintln!("pget: refusing to read {remote_path} in parallel: {why}");
+                }
+                return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+            }
+        },
+        Err(why) => {
+            let _ = checker.disconnect().await;
+            if !quiet {
+                eprintln!("pget: refusing to read {remote_path} in parallel: {why}");
+            }
+            return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+        }
+    };
+    let _ = checker.disconnect().await;
+
     let mut conns: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(actual_segments);
     for i in 0..actual_segments {
         match create_and_connect(url, cli, format).await {
-            Ok((p, _)) => conns.push(p),
+            Ok((mut p, _)) => {
+                // Pin every window to the version the first reading saw, as
+                // the shared executor does: on S3 this is the `If-Match` that
+                // refuses a window the moment the object is replaced.
+                p.set_range_validator(before.validator());
+                conns.push(p)
+            }
             Err(_) => {
                 for mut c in conns {
                     let _ = c.disconnect().await;
@@ -32231,6 +32336,35 @@ async fn pget_segmented_download(
             // The engine left `<local>.aerotmp` committed; atomically
             // promote it to the final path like every other CLI transfer.
             let temp = aerotmp_path_for(Path::new(local_path));
+            // A session of its own for the second reading, opened now rather
+            // than kept idle through the transfer: the connections that read
+            // the windows are closed by the engine, and a session parked for
+            // minutes is the first thing a server's idle timeout drops.
+            // Opened twice if need be: the window connections have just
+            // closed, and one refused connection must not discard a transfer
+            // that is complete.
+            let reopened = open_after_transfer(|| create_and_connect(url, cli, format)).await;
+            let changed = match reopened {
+                Ok((mut session, _)) => {
+                    // The shared comparison, so this reading retries once like
+                    // the others before it discards a finished download.
+                    let changed =
+                        range_source_changed_through(session.as_mut(), remote_path, &before).await;
+                    let _ = session.disconnect().await;
+                    changed
+                }
+                Err(_) => Some(
+                    "it could not be read again after the transfer: no session to read it with"
+                        .to_string(),
+                ),
+            };
+            if let Some(what) = changed {
+                let _ = tokio::fs::remove_file(&temp).await;
+                if !quiet {
+                    eprintln!("pget: {remote_path} was not published ({what}); single download");
+                }
+                return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+            }
             if let Err(e) = tokio::fs::rename(&temp, local_path).await {
                 let _ = tokio::fs::remove_file(&temp).await;
                 print_error(format, &format!("pget: finalize failed: {}", e), 4);
@@ -32554,6 +32688,7 @@ async fn cmd_get_recursive(
     // DAG-P2-07 (block E): engine-level stats when this folder download ran on
     // the converged DAG-engine path; stays `None` on the legacy fallback.
     let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
+    let mut download_segments = None;
 
     // PD-CLI-CONV-B: converge the file-level batch on the shared provider
     // executor + orchestrator (sink-agnostic) for pool-backed providers
@@ -32582,6 +32717,7 @@ async fn cmd_get_recursive(
             // to close, reintroduced one line later. Raised by CodeRabbit.
             errors.extend(outcome.errors);
             engine_stats = outcome.engine_stats;
+            download_segments = Some(outcome.download_segments);
         }
         Err(mut base) => {
             let _ = base.disconnect().await;
@@ -32667,6 +32803,7 @@ async fn cmd_get_recursive(
                 skipped_links: Vec::new(),
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
+                download_segments,
             });
         }
     }
@@ -32807,6 +32944,7 @@ async fn cmd_get_glob(
     // DAG-P2-07 (block E): engine-level stats when this glob download ran on
     // the converged DAG-engine path; stays `None` on the legacy fallback.
     let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
+    let mut download_segments = None;
 
     // PD-CLI-CONV-C: converge the glob file-level batch on the SAME shared
     // provider executor + orchestrator `aeroftp get -r` uses
@@ -32830,6 +32968,7 @@ async fn cmd_get_glob(
             over_budget = outcome.over_budget;
             errors.extend(outcome.errors);
             engine_stats = outcome.engine_stats;
+            download_segments = Some(outcome.download_segments);
         }
         Err(mut base) => {
             let _ = base.disconnect().await;
@@ -32910,6 +33049,7 @@ async fn cmd_get_glob(
                 skipped_links: Vec::new(),
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
+                download_segments,
             });
         }
     }
@@ -33593,6 +33733,7 @@ async fn cmd_put_recursive(
                 skipped_links: Vec::new(),
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
+                download_segments: None,
             });
         }
     }
@@ -34888,6 +35029,12 @@ async fn publish_cli_edit_via_temp_rename(
     local_temp_path: &str,
     remote_path: &str,
 ) -> Result<(), ProviderError> {
+    // Asked before the temporary exists, not after. A backend that cannot put
+    // one file over another refuses here, while the server is still untouched,
+    // so the refusal can say that nothing was written and be telling the truth
+    // (G119).
+    ftp_client_gui_lib::providers::ensure_atomic_replace(provider, remote_path).await?;
+
     let remote_temp_path = cli_edit_temp_path(remote_path);
     if let Err(e) = provider
         .upload(local_temp_path, &remote_temp_path, None)
@@ -34896,9 +35043,10 @@ async fn publish_cli_edit_via_temp_rename(
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
     }
-    // Rename atomicity depends on the backend, but temp+rename avoids direct
-    // target truncation before replacement bytes are fully uploaded.
-    if let Err(e) = provider.rename(&remote_temp_path, remote_path).await {
+    // `replace` and not `rename`: the destination exists by definition here,
+    // and `rename` deliberately keeps refusing that case so an ordinary `mv`
+    // cannot destroy a file the user did not mean to lose.
+    if let Err(e) = provider.replace(&remote_temp_path, remote_path).await {
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
     }
@@ -36916,7 +37064,9 @@ async fn cmd_export_bridge(
 
     // Each arm builds the matching typed Vec and calls the matching
     // `export_<src>` (shared signature
-    // `(&[<Src>ExportServer], &HashMap<String,String>, &Path) -> Result<usize,String>`).
+    // `(&[<Src>ExportServer], &HashMap<String,String>, &Path) -> Result<R,String>`,
+    // where `R` is a count or an outcome that also names what it refused).
+    use ftp_client_gui_lib::bridge_shared::ExportReport;
     macro_rules! run_export {
         ($ty:ident, $f:expr) => {{
             let exportable: Vec<$ty> = collected
@@ -36933,11 +37083,11 @@ async fn cmd_export_bridge(
                     initial_path: p.initial_path.clone(),
                 })
                 .collect();
-            $f(&exportable, &collected.passwords, &target_path)
+            $f(&exportable, &collected.passwords, &target_path).map(ExportReport::into_export_parts)
         }};
     }
 
-    let result: Result<usize, String> = match src {
+    let result: Result<(usize, Vec<(String, String)>), String> = match src {
         "aws" => run_export!(AwsExportServer, export_aws_credentials),
         "ssh" => run_export!(SshExportServer, export_ssh_config),
         "mc" => run_export!(McExportServer, export_mc),
@@ -36954,8 +37104,17 @@ async fn cmd_export_bridge(
     };
 
     match result {
-        Ok(count) => {
-            emit_export_success(json, label, count, &target_path, &collected.skipped);
+        Ok((count, refused)) => {
+            // Two lists of refusals reach the operator as one: the profiles
+            // the protocol filter dropped, and the ones the exporter itself
+            // could not write or had no room for (single-repository formats).
+            let mut skipped = collected.skipped.clone();
+            skipped.extend(refused);
+            if count == 0 {
+                emit_empty_export(json, format, &skipped);
+                return 4;
+            }
+            emit_export_success(json, label, count, &target_path, &skipped);
             0
         }
         Err(e) => {
@@ -48250,6 +48409,7 @@ async fn cmd_sync(
                     unseen_paths: unseen_paths.clone(),
                     // Dry run performs no transfer, so there is no engine job.
                     stats: None,
+                    download_segments: None,
                 });
             }
         }
@@ -48295,6 +48455,7 @@ async fn cmd_sync(
     // snapshot for the `--json` result via `absorb_engine_stats`. `None` while
     // both stay on the legacy per-file fallback (no DAG engine).
     let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
+    let mut download_segments = None;
 
     let upload_jobs: Vec<(String, String, String, u64)> = to_upload
         .iter()
@@ -48825,6 +48986,7 @@ async fn cmd_sync(
                     over_budget += outcome.over_budget;
                     errors.extend(outcome.errors);
                     absorb_engine_stats(&mut engine_stats, outcome.engine_stats);
+                    download_segments = Some(outcome.download_segments);
                     false
                 }
                 Err(mut base) => {
@@ -49067,6 +49229,7 @@ async fn cmd_sync(
                 skipped_links: reported_links.clone(),
                 unseen_paths: unseen_paths.clone(),
                 stats: engine_stats,
+                download_segments,
             });
         }
     }
@@ -53229,6 +53392,17 @@ async fn cmd_crypt_to_headed(
         let _ = provider.disconnect().await;
         return 11;
     }
+    // Asked while the server is still untouched (G119): if this backend cannot
+    // put one file over another, refusing now means the marker really is
+    // unchanged and no temporary was left behind.
+    if let Err(e) =
+        ftp_client_gui_lib::providers::ensure_atomic_replace(provider.as_mut(), &config_path).await
+    {
+        let code = provider_error_to_exit_code(&e);
+        print_error(format, &format!("{e}"), code);
+        let _ = provider.disconnect().await;
+        return code;
+    }
     let remote_tmp = format!("{config_path}.aerotmp-{}", uuid::Uuid::new_v4());
     if let Err(e) = provider
         .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -53274,7 +53448,7 @@ async fn cmd_crypt_to_headed(
         let _ = provider.disconnect().await;
         return 4;
     }
-    if let Err(e) = provider.rename(&remote_tmp, &config_path).await {
+    if let Err(e) = provider.replace(&remote_tmp, &config_path).await {
         let _ = provider.delete(&remote_tmp).await;
         let code = provider_error_to_exit_code(&e);
         print_error(
@@ -53464,6 +53638,17 @@ async fn cmd_crypt_migrate_marker(
             let _ = provider.disconnect().await;
             return 11;
         }
+        // Asked while the server is still untouched (G119), see the sibling
+        // above: the refusal has to be able to say the marker is unchanged.
+        if let Err(e) =
+            ftp_client_gui_lib::providers::ensure_atomic_replace(provider.as_mut(), &current_path)
+                .await
+        {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("{e}"), code);
+            let _ = provider.disconnect().await;
+            return code;
+        }
         let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
         if let Err(e) = provider
             .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -53509,7 +53694,7 @@ async fn cmd_crypt_migrate_marker(
             let _ = provider.disconnect().await;
             return 4;
         }
-        if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+        if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
             let _ = provider.delete(&remote_tmp).await;
             let code = provider_error_to_exit_code(&e);
             print_error(
@@ -54456,6 +54641,15 @@ async fn publish_crypt_marker(
         print_error(format, &format!("Cannot stage AeroCrypt marker: {e}"), 11);
         return Err(11);
     }
+    // Asked while the server is still untouched (G119), see the siblings
+    // above: the refusal has to be able to say the marker is unchanged.
+    if let Err(e) =
+        ftp_client_gui_lib::providers::ensure_atomic_replace(provider, &current_path).await
+    {
+        let code = provider_error_to_exit_code(&e);
+        print_error(format, &format!("{e}"), code);
+        return Err(code);
+    }
     let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
     if let Err(e) = provider
         .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -54498,7 +54692,7 @@ async fn publish_crypt_marker(
         );
         return Err(4);
     }
-    if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+    if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
         let _ = provider.delete(&remote_tmp).await;
         let code = provider_error_to_exit_code(&e);
         print_error(
@@ -56163,6 +56357,7 @@ async fn cmd_put_glob(
                 skipped_links: Vec::new(),
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
+                download_segments: None,
             });
         }
     }
@@ -62312,7 +62507,23 @@ fn cmd_inventory(markdown: bool, check: Option<&str>) -> i32 {
 
 #[cfg(test)]
 mod inventory_tests {
-    use super::{build_inventory_doc, inventory_doc_inconsistencies};
+    use super::{banner_provider_counts, build_inventory_doc, inventory_doc_inconsistencies};
+
+    #[test]
+    fn banner_counts_come_from_the_generated_inventory() {
+        // `banner_provider_counts` falls back to zero rather than failing the
+        // banner, so a renamed key or a moved file would print "0 protocols"
+        // without a word. This is the word.
+        let (protocols, integrations) = banner_provider_counts();
+        assert!(
+            protocols > 0,
+            "transport_protocols missing from the inventory"
+        );
+        assert!(
+            integrations > 0,
+            "native_integrations missing from the inventory"
+        );
+    }
 
     /// `build_inventory_doc` calls `Cli::command()`, and clap building the full
     /// command tree for this large enum overflows the default 2 MB test stack
@@ -64097,6 +64308,11 @@ fn install_mcp_signal_guard() {
 
 #[tokio::main]
 async fn main() {
+    // Serve multipart part buffers from mmap, so a freed part goes back to the
+    // kernel instead of being retained in a per-thread arena (see the module
+    // docs for the measurement).
+    ftp_client_gui_lib::alloc_tuning::tune_for_transfer_buffers();
+
     // Reset SIGPIPE to default behavior (exit silently on broken pipe)
     #[cfg(unix)]
     unsafe {
@@ -64127,6 +64343,7 @@ async fn main() {
     };
     let show_banner = is_top_level_invocation && !banner_suppressed;
     if show_banner {
+        let (protocols, integrations) = banner_provider_counts();
         // Green (#00d26a) for "Aero", Blue (#0095ff) for "FTP"
         if use_color() {
             let g = "\x1b[1;38;2;0;210;106m"; // green
@@ -64140,8 +64357,10 @@ async fn main() {
             eprintln!("  {g}/_/ _ \\_\\___|_|  \\___/ {b}|_|     |_| |_|    {r}");
             eprintln!();
             eprintln!(
-                "  \x1b[1;37mAeroFTP\x1b[0m  {g}v{}{r}  {b}|{r}  23 providers, {} via direct URL  {b}|{r}  pget  {b}|{r}  mcp  {b}|{r}  ai agent  {b}|{r}  vault profiles",
+                "  \x1b[1;37mAeroFTP\x1b[0m  {g}v{}{r}  {b}|{r}  {} protocols, {} native integrations, {} via direct URL  {b}|{r}  pget  {b}|{r}  mcp  {b}|{r}  ai agent  {b}|{r}  vault profiles",
                 env!("CARGO_PKG_VERSION"),
+                protocols,
+                integrations,
                 SUPPORTED_URL_SCHEMES.len()
             );
             eprintln!("\x1b[38;2;140;140;160m  transfer engine for operators, shell users, and terminal obsessives{r}");
@@ -64154,8 +64373,10 @@ async fn main() {
             eprintln!("  /_/   \\_\\___|_|  \\___/ |_|     |_| |_|    ");
             eprintln!();
             eprintln!(
-                "  AeroFTP  v{}  |  23 providers, {} via direct URL  |  pget  |  mcp  |  ai agent  |  vault profiles",
+                "  AeroFTP  v{}  |  {} protocols, {} native integrations, {} via direct URL  |  pget  |  mcp  |  ai agent  |  vault profiles",
                 env!("CARGO_PKG_VERSION"),
+                protocols,
+                integrations,
                 SUPPORTED_URL_SCHEMES.len()
             );
             eprintln!("  transfer engine for operators, shell users, and terminal obsessives");
@@ -70665,6 +70886,49 @@ mod tests {
         }
     }
 
+    #[test]
+    fn s3_upload_concurrency_flag_changes_the_planned_multipart_parallelism() {
+        use ftp_client_gui_lib::providers::{s3::S3Provider, S3Config};
+        use ftp_client_gui_lib::transfer_dag::{
+            TransferDagBuilder, TransferDirection as DagDirection,
+        };
+
+        for requested in [1, 8] {
+            let mut cli = test_cli();
+            cli.s3_upload_concurrency = requested;
+            let mut provider: Box<dyn StorageProvider> = Box::new(
+                S3Provider::new(S3Config {
+                    endpoint: None,
+                    region: "us-east-1".to_string(),
+                    access_key_id: "test-key".to_string(),
+                    secret_access_key: secrecy::SecretString::from("test-secret".to_string()),
+                    session_token: None,
+                    role_arn: None,
+                    role_external_id: None,
+                    role_session_name: None,
+                    role_duration_seconds: None,
+                    role_mfa_serial: None,
+                    role_mfa_token_code: None,
+                    bucket: "test-bucket".to_string(),
+                    prefix: None,
+                    path_style: true,
+                    storage_class: None,
+                    sse_mode: None,
+                    sse_kms_key_id: None,
+                    verify_cert: true,
+                    allow_cleartext_endpoint: false,
+                })
+                .expect("test S3 provider"),
+            );
+            apply_s3_runtime_knobs(&mut provider, &cli);
+            let caps = provider.transfer_capabilities();
+            let graph =
+                TransferDagBuilder::shaped_file(DagDirection::Upload, &caps, 300 * 1024 * 1024);
+            assert!(graph.transfer.len() > 1);
+            assert_eq!(graph.profile.max_chunk_slots as usize, requested);
+        }
+    }
+
     fn agent_cli(auto_approve: &str, yes: bool) -> Cli {
         Cli {
             command: Commands::Agent {
@@ -72120,8 +72384,9 @@ mod tests {
 
     #[test]
     fn test_cap_files_to_max_transfer() {
-        // This test owns the process-global session counter (no other
-        // test touches it), so it is deterministic under parallel runs.
+        // Shared-batch fixtures also account bytes in this process. Serialize
+        // those writers with this test's exact counter assertions.
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
         let files: Vec<(String, String, u64)> = vec![
             ("a".into(), "a".into(), 40),
             ("b".into(), "b".into(), 40),
@@ -75038,6 +75303,325 @@ mod tests {
         }
     }
 
+    static SESSION_TRANSFER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
+
+    /// Records the actual provider path selected by the shared CLI batch, with
+    /// independent clones and deterministic bytes for both transfer methods.
+    #[derive(Clone)]
+    struct BatchDownloadProbe {
+        kind: ProviderType,
+        whole: Arc<AtomicU64>,
+        ranges: Arc<AtomicU64>,
+    }
+
+    impl BatchDownloadProbe {
+        const SIZE: u64 = 16 * 1024 * 1024;
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for BatchDownloadProbe {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            self.kind
+        }
+        fn display_name(&self) -> String {
+            "mem-tree".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            let _ = path;
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.whole.fetch_add(1, Ordering::SeqCst);
+            std::fs::write(local_path, vec![42; Self::SIZE as usize])
+                .map_err(ProviderError::IoError)
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            let _ = path;
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Ok(RemoteEntry::file(
+                "object".to_string(),
+                path.to_string(),
+                Self::SIZE,
+            ))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            let _ = path;
+            Ok(Self::SIZE)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            let _ = path;
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("mem-tree".to_string())
+        }
+
+        fn transfer_executor_kind(
+            &self,
+        ) -> ftp_client_gui_lib::providers::ProviderTransferExecutorKind {
+            use ftp_client_gui_lib::providers::ProviderTransferExecutorKind;
+            match self.kind {
+                ProviderType::Sftp => ProviderTransferExecutorKind::SftpConnectionPool,
+                ProviderType::Ftp | ProviderType::Ftps => {
+                    ProviderTransferExecutorKind::FtpConnectionPool
+                }
+                _ => ProviderTransferExecutorKind::HttpClonePool,
+            }
+        }
+        fn transfer_executor_max_sessions(&self) -> u16 {
+            8
+        }
+        fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            Ok(Box::new(self.clone()))
+        }
+        fn transfer_capabilities(&self) -> ftp_client_gui_lib::transfer_dag::TransferCapabilities {
+            use ftp_client_gui_lib::transfer_dag::{Capability, TransferCapabilities};
+            TransferCapabilities {
+                file_parallel: Capability::Supported,
+                session_pool: Capability::Supported,
+                strict_concurrent_range_download: if matches!(
+                    self.kind,
+                    ProviderType::Box
+                        | ProviderType::Dropbox
+                        | ProviderType::DrimeCloud
+                        | ProviderType::Uploadcare
+                ) {
+                    Capability::Unsupported
+                } else {
+                    Capability::Supported
+                },
+                max_file_slots: Some(8),
+                ..TransferCapabilities::default()
+            }
+        }
+        async fn read_range(
+            &mut self,
+            _path: &str,
+            _offset: u64,
+            len: u64,
+        ) -> Result<Vec<u8>, ProviderError> {
+            self.ranges.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![42; len as usize])
+        }
+    }
+
+    async fn probe_cli_shared_download(mut cli: Cli, kind: ProviderType) -> (u32, u64, u64) {
+        let _session = SESSION_TRANSFER_TEST_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("object");
+        cli.quiet = true;
+        cli.parallel = 8;
+        let probe = BatchDownloadProbe {
+            kind,
+            whole: Arc::default(),
+            ranges: Arc::default(),
+        };
+        let outcome = match run_shared_provider_download_batch(
+            Box::new(probe.clone()),
+            &[(
+                "/object".to_string(),
+                output.to_string_lossy().into_owned(),
+                BatchDownloadProbe::SIZE,
+            )],
+            &cli,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(_) => panic!("the clone-backed fixture must use the shared batch"),
+        };
+        assert_eq!(outcome.downloaded, 1, "{:?}", outcome.errors);
+        assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+        assert_eq!(
+            std::fs::read(output).unwrap(),
+            vec![42; BatchDownloadProbe::SIZE as usize]
+        );
+        (
+            outcome.download_segments.count(),
+            probe.whole.load(Ordering::SeqCst),
+            probe.ranges.load(Ordering::SeqCst),
+        )
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_one_stream_uses_canonical_download() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 1;
+        cli.multi_thread_cutoff = "1M".to_string();
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::WebDav).await,
+            (1, 1, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_four_streams_use_four_ranges() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 4;
+        cli.multi_thread_cutoff = "1M".to_string();
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::WebDav).await,
+            (4, 0, 4)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_below_cutoff_uses_canonical_download() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 4;
+        cli.multi_thread_cutoff = "32M".to_string();
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::WebDav).await,
+            (4, 1, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_sftp_concurrency_overrides_generic_streams() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 1;
+        cli.sftp_concurrency = 4;
+        cli.multi_thread_cutoff = "1M".to_string();
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::Sftp).await,
+            (4, 0, 4)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_sftp_preset_and_explicit_concurrency_keep_precedence() {
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 8;
+        cli.multi_thread_cutoff = "1M".to_string();
+        cli.sftp_download_preset = Some(SftpDownloadPreset::Compatibility);
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::Sftp).await,
+            (1, 1, 0)
+        );
+
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 1;
+        cli.multi_thread_cutoff = "1M".to_string();
+        cli.sftp_download_preset = Some(SftpDownloadPreset::Efficient);
+        cli.sftp_concurrency = 4;
+        // The explicit connection count wins, but the preset's 250 MiB
+        // cutoff still wins over the generic cutoff, exactly as direct get.
+        assert_eq!(
+            probe_cli_shared_download(cli, ProviderType::Sftp).await,
+            (4, 1, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_policy_covers_all_pool_backends() {
+        for kind in [
+            ProviderType::S3,
+            ProviderType::Azure,
+            ProviderType::WebDav,
+            ProviderType::Backblaze,
+            ProviderType::Sftp,
+            ProviderType::Ftp,
+            ProviderType::Ftps,
+        ] {
+            let mut cli = test_cli();
+            cli.multi_thread_streams = 1;
+            cli.multi_thread_cutoff = "1M".to_string();
+            assert_eq!(
+                probe_cli_shared_download(cli, kind).await,
+                (1, 1, 0),
+                "{kind:?}"
+            );
+
+            let mut cli = test_cli();
+            cli.multi_thread_streams = 3;
+            // Equality must admit ranges; below-cutoff is tested separately.
+            cli.multi_thread_cutoff = "16M".to_string();
+            assert_eq!(
+                probe_cli_shared_download(cli, kind).await,
+                (3, 0, 3),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_non_range_pool_backends_stay_whole_file() {
+        for kind in [
+            ProviderType::Box,
+            ProviderType::Dropbox,
+            ProviderType::DrimeCloud,
+            ProviderType::Uploadcare,
+        ] {
+            let mut cli = test_cli();
+            cli.multi_thread_streams = 3;
+            cli.multi_thread_cutoff = "1M".to_string();
+            assert_eq!(
+                probe_cli_shared_download(cli, kind).await,
+                (3, 1, 0),
+                "{kind:?}"
+            );
+        }
+    }
+
     /// A scratch directory holding a local tree and a `--files-from` list.
     struct FilesFromFixture {
         dir: tempfile::TempDir,
@@ -77213,8 +77797,15 @@ mod tests {
         remote_files: HashMap<String, Vec<u8>>,
         uploads: Vec<(String, Vec<u8>)>,
         renames: Vec<(String, String)>,
+        /// Recorded separately from `renames` on purpose: the two verbs are
+        /// what G119 is about, and a test that could not tell them apart
+        /// would pass whichever one the publish path used.
+        replaces: Vec<(String, String)>,
         deleted: Vec<String>,
         rename_fails_with: Option<String>,
+        replace_fails_with: Option<String>,
+        /// What this fake answers to `supports_atomic_replace`.
+        atomic_replace: bool,
         /// When set, `stat` fails with this instead of answering.
         stat_fails_with: Option<String>,
     }
@@ -77225,8 +77816,11 @@ mod tests {
                 remote_files: HashMap::new(),
                 uploads: Vec::new(),
                 renames: Vec::new(),
+                replaces: Vec::new(),
                 deleted: Vec::new(),
                 rename_fails_with: None,
+                replace_fails_with: None,
+                atomic_replace: true,
                 stat_fails_with: None,
             }
         }
@@ -77328,6 +77922,12 @@ mod tests {
             if let Some(msg) = &self.rename_fails_with {
                 return Err(ProviderError::TransferFailed(msg.clone()));
             }
+            // Refuses an occupied destination, the way SFTP protocol 3 does.
+            // This is what makes the publish tests real: a publish path that
+            // went back to `rename` would fail here instead of passing.
+            if self.remote_files.contains_key(to) {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
             let data = self
                 .remote_files
                 .remove(from)
@@ -77335,6 +77935,23 @@ mod tests {
             self.remote_files.insert(to.to_string(), data);
             self.renames.push((from.to_string(), to.to_string()));
             Ok(())
+        }
+
+        async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            if let Some(msg) = &self.replace_fails_with {
+                return Err(ProviderError::TransferFailed(msg.clone()));
+            }
+            let data = self
+                .remote_files
+                .remove(from)
+                .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+            self.remote_files.insert(to.to_string(), data);
+            self.replaces.push((from.to_string(), to.to_string()));
+            Ok(())
+        }
+
+        async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+            Ok(self.atomic_replace)
         }
 
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -77391,7 +78008,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cli_edit_publish_uploads_to_temp_then_renames_over_target() {
+    async fn cli_edit_publish_uploads_to_temp_then_replaces_the_target() {
         let local = NamedTempFile::new().expect("temp file");
         std::fs::write(local.path(), b"new text").expect("write replacement");
         let local_path = local.path().to_string_lossy().to_string();
@@ -77415,8 +78032,14 @@ mod tests {
             "edit must never upload replacement bytes directly to the target"
         );
         assert_eq!(
-            provider.renames,
+            provider.replaces,
             vec![(temp_path.clone(), "/target.txt".to_string())]
+        );
+        assert!(
+            provider.renames.is_empty(),
+            "publishing must go through `replace`: `rename` is the verb that keeps \
+             refusing an occupied destination, so that an ordinary move cannot destroy \
+             a file the user did not mean to lose (G119)"
         );
         assert_eq!(
             provider.remote_files.get("/target.txt").map(Vec::as_slice),
@@ -77430,7 +78053,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cli_edit_publish_deletes_staged_temp_when_rename_fails() {
+    async fn cli_edit_publish_deletes_staged_temp_when_replace_fails() {
         let local = NamedTempFile::new().expect("temp file");
         std::fs::write(local.path(), b"new text").expect("write replacement");
         let local_path = local.path().to_string_lossy().to_string();
@@ -77438,22 +78061,62 @@ mod tests {
         provider
             .remote_files
             .insert("/target.txt".to_string(), b"old text".to_vec());
-        provider.rename_fails_with = Some("rename failed".to_string());
+        provider.replace_fails_with = Some("replace failed".to_string());
 
         let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("rename failed"), "got: {err}");
+        assert!(err.to_string().contains("replace failed"), "got: {err}");
 
         let temp_path = provider.uploads[0].0.clone();
         assert_eq!(provider.deleted, vec![temp_path.clone()]);
         assert!(
             !provider.remote_files.contains_key(&temp_path),
-            "rename failure cleanup must remove the staged temp"
+            "replace failure cleanup must remove the staged temp"
         );
         assert_eq!(
             provider.remote_files.get("/target.txt").map(Vec::as_slice),
             Some(b"old text".as_slice())
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_edit_publish_refuses_before_it_uploads_anything() {
+        // The half of G119 that only a run shows: the capability question has
+        // to come BEFORE the temporary exists. Asked after, the error would
+        // say "nothing was written" while a temporary sat on the server.
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.atomic_replace = false;
+
+        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
+            .await
+            .unwrap_err();
+
+        assert!(
+            provider.uploads.is_empty(),
+            "the refusal must arrive before anything is staged; uploads: {:?}",
+            provider.uploads
+        );
+        assert!(provider.replaces.is_empty() && provider.renames.is_empty());
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"old text".as_slice()),
+            "the target must be exactly as it was"
+        );
+        let text = err.to_string();
+        assert!(
+            text.contains("Nothing was written"),
+            "the error must say the server is untouched, got: {text}"
+        );
+        assert!(
+            text.contains("put"),
+            "the error must name the explicit alternative, got: {text}"
         );
     }
 

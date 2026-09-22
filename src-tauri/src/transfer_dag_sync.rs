@@ -1011,6 +1011,13 @@ pub async fn execute_sync_dag(
     sink: &mut dyn SyncProgressSink,
 ) -> SyncReport {
     let start = Instant::now();
+    let resolved_segments = crate::transfer_settings::resolve_download_segments(
+        &opts.download_segments,
+        Some(crate::transfer_settings::download_segments_preference_for(
+            provider.provider_type(),
+        )),
+    );
+    tracing::info!("sync DAG download streams requested: {}", resolved_segments);
     // DAG-P2-07 (block E): bracket the whole sync job with a process resource
     // sample; `None` off Linux or when `/proc` is unreadable, never fabricated.
     let resource_guard = crate::proc_stats::ResourceSampleGuard::begin();
@@ -1315,7 +1322,7 @@ pub async fn execute_sync_dag(
             transfers.as_slice(),
             local_root,
             remote_root,
-            opts.download_segments,
+            resolved_segments.count(),
             opts.delta_policy,
             &opts.error_correction,
             normal_workers,
@@ -1717,7 +1724,9 @@ mod tests {
             conflict_mode: crate::sync::ConflictMode::Newer,
             scan: Default::default(),
             error_correction: Default::default(),
-            download_segments: 1,
+            download_segments: crate::transfer_settings::DownloadSegmentsRequest::Single {
+                reason: "test fixture uses a single stream".to_string(),
+            },
             max_backlog: crate::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
             schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
         }

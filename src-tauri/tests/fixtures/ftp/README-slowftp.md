@@ -619,3 +619,23 @@ makes a counter a guard:
 The `USER` count is the control in the same reading. Without it a `DELE` of zero
 could equally mean the client never reached the server, and the assertion would
 pass for the wrong reason.
+
+## `--retr-stall` applies to every RETR, so a healthy download needs a second instance
+
+The `RETR` arm does not look at the path it was given: it serves `--file-size`
+bytes for any name, hands over `--retr-before-stall` of them, and then stalls for
+`--retr-stall` seconds whatever the file was called. So on an instance started
+with a stall there is **no such thing** as a healthy download, and a test that
+wants one as a precondition cannot get it by asking for a different file name.
+
+`tests/live_ftp_stall_retry.rs` needs both, and runs two instances:
+
+```bash
+./slowftp.py --port 2135 --feat nomlsd --lines 1 --file-size 65536 \
+             --retr-before-stall 4096 --retr-stall 35 &   # the stall
+./slowftp.py --port 2136 --feat nomlsd --lines 1 --file-size 65536 &  # healthy
+```
+
+Measured, not assumed: pointing that test's precondition at port 2135 fails with
+"the healthy path must complete", which is what a single-instance runbook would
+have produced on every run.

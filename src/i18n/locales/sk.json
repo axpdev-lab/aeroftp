@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Potrebujete pomoc alebo chcete nahlásiť chybu? Sme tu, aby sme vám pomohli.",
             "sourceforgeReviews": "Napísať recenziu na SourceForge",
-            "writeReview": "Napísať recenziu"
+            "writeReview": "Napísať recenziu",
+            "team": {
+                "title": "Tím Axpdev Lab",
+                "apRole": "Zakladateľ, vývojár, správca, spoluautor dizajnu",
+                "ekRole": "Výskumník, inžinier zabezpečenia kvality, spoluautor dizajnu"
+            }
         },
         "support": {
             "title": "Podporte AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Kôš je prázdny",
             "itemCount": "{count} položiek v koši",
             "moveToTrash": "Presunúť do koša",
-            "restoreConfirm": "Obnoviť {name} do pôvodného umiestnenia?"
+            "restoreConfirm": "Obnoviť {name} do pôvodného umiestnenia?",
+            "homeCopyPrompt": "{count} položiek, počnúc {name}, je na jednotke bez použiteľného koša. Presunutie do koša by ich skopírovalo do koša v domovskom priečinku, čo môže trvať dlho a vyžaduje voľné miesto. Zmazať ich namiesto toho trvalo?",
+            "copyToHomeTrash": "Kopírovať do koša v domovskom priečinku",
+            "permanentAfterFailure": "{count} položiek, počnúc {name}, sa nepodarilo presunúť do koša. Zmazať ich trvalo? Túto akciu nie je možné vrátiť.",
+            "kept": "Položka {name} zostala zachovaná: nič sa nezmazalo",
+            "keptMultiple": "Ponechané na mieste, nezmazané: {count} položiek"
         },
         "quickLook": {
             "noPreview": "Náhľad nedostupný",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Názov nesmie obsahovať / ani \\, sekvenciu .. ani nulový znak."
+        },
+        "aiApproval": {
+            "windowTitle": "Schválenie AeroAgent",
+            "whyTitle": "Prečo samostatné okno?",
+            "whyBody": "Toto schválenie sa otvára mimo chatu, aby obsah, ktorý tam agent číta a zobrazuje, nemohol potvrdiť akciu za vás.",
+            "wantsTo": "AeroAgent chce:",
+            "scopeOnce": "Schváli presne túto akciu raz.",
+            "scopeSession": "Schváli tento nástroj po zvyšok relácie chatu.",
+            "approve": "Schváliť"
         }
     }
 }

@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Potrzebujesz pomocy lub chcesz zgłosić błąd? Jesteśmy tu, aby pomóc.",
             "sourceforgeReviews": "Napisz recenzję na SourceForge",
-            "writeReview": "Napisz recenzję"
+            "writeReview": "Napisz recenzję",
+            "team": {
+                "title": "Zespół Axpdev Lab",
+                "apRole": "Założyciel, programista, opiekun projektu, współprojektant",
+                "ekRole": "Badacz, inżynier ds. zapewnienia jakości, współprojektant"
+            }
         },
         "support": {
             "title": "Wesprzyj AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Kosz jest pusty",
             "itemCount": "{count} elementów w koszu",
             "moveToTrash": "Przenieś do kosza",
-            "restoreConfirm": "Przywrócić {name} do oryginalnej lokalizacji?"
+            "restoreConfirm": "Przywrócić {name} do oryginalnej lokalizacji?",
+            "homeCopyPrompt": "{count} element(y), zaczynając od {name}, znajduje się na dysku bez dostępnego kosza. Przeniesienie ich do kosza skopiowałoby je do kosza w folderze domowym, co może długo trwać i wymaga wolnego miejsca. Usunąć je trwale?",
+            "copyToHomeTrash": "Kopiuj do kosza w folderze domowym",
+            "permanentAfterFailure": "Nie udało się przenieść do kosza {count} element(ów), zaczynając od {name}. Usunąć je trwale? Tej operacji nie można cofnąć.",
+            "kept": "Zachowano {name}: nic nie zostało usunięte",
+            "keptMultiple": "Pozostawione na miejscu, nieusunięte: {count} element(y)"
         },
         "quickLook": {
             "noPreview": "Podgląd niedostępny",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Nazwa nie może zawierać / ani \\, sekwencji .. ani znaku null."
+        },
+        "aiApproval": {
+            "windowTitle": "Zatwierdzenie AeroAgent",
+            "whyTitle": "Dlaczego osobne okno?",
+            "whyBody": "To zatwierdzenie otwiera się poza czatem, aby treść, którą agent tam czyta i pokazuje, nie mogła potwierdzić działania w Twoim imieniu.",
+            "wantsTo": "AeroAgent chce:",
+            "scopeOnce": "Zatwierdza dokładnie tę akcję jeden raz.",
+            "scopeSession": "Zatwierdza to narzędzie do końca sesji czatu.",
+            "approve": "Zatwierdź"
         }
     }
 }

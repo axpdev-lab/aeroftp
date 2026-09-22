@@ -456,6 +456,14 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
             chrono::Utc::now().timestamp_millis(),
             uuid::Uuid::new_v4()
         ));
+        // Asked before ANY temporary exists, local or remote (G119). The
+        // remote half is the contract, "the marker is unchanged"; the local
+        // half is why this sits above the `write` and not below it, because
+        // the `?` here returns before the `remove_file` further down and
+        // would leave the staging file in the temp directory.
+        crate::providers::ensure_atomic_replace(provider, &current_path)
+            .await
+            .map_err(|e| e.to_string())?;
         tokio::fs::write(&temp, rebuilt_marker.as_bytes())
             .await
             .map_err(|e| format!("Failed to stage AeroCrypt marker: {e}"))?;
@@ -484,7 +492,7 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
         let staged_text = String::from_utf8(staged)
             .map_err(|e| format!("Staged AeroCrypt marker is not valid UTF-8: {e}"))?;
         validate_marker_for_migration(&staged_text, &password, keyfile_digest).await?;
-        if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+        if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
             let _ = provider.delete(&remote_tmp).await;
             return Err(format!("Failed to publish verified AeroCrypt marker: {e}"));
         }
@@ -811,6 +819,13 @@ async fn publish_headed_marker(
         chrono::Utc::now().timestamp_millis(),
         uuid::Uuid::new_v4()
     ));
+    // Above the `write` for the same reason as its sibling in
+    // `restore_headerless_marker`: the remote contract is "the marker is
+    // unchanged", and asking here also keeps the `?` from returning past the
+    // `remove_file` below and stranding the local staging file (G119).
+    crate::providers::ensure_atomic_replace(provider, &current_path)
+        .await
+        .map_err(|e| e.to_string())?;
     tokio::fs::write(&temp, marker_text.as_bytes())
         .await
         .map_err(|e| format!("Failed to stage AeroCrypt marker: {e}"))?;
@@ -846,7 +861,7 @@ async fn publish_headed_marker(
             "staged AeroCrypt marker failed unlock verification: {e}"
         ));
     }
-    if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+    if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
         let _ = provider.delete(&remote_tmp).await;
         return Err(format!("Failed to publish verified AeroCrypt marker: {e}"));
     }

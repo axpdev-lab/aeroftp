@@ -91,9 +91,13 @@ pub fn decrypt_rel_aerocrypt(master_key: &[u8; 32], rel_path: &str) -> Option<St
 /// the CLI / MCP via [`unlock_overlay_keys`].
 pub enum CryptCompareKeys {
     Rclone(RcloneCryptKeys),
-    /// AeroCrypt master key. Content-size mapping is deferred (see
-    /// [`CryptCompareKeys::decrypted_size`]), so Compare is name-aware only.
-    AeroCrypt([u8; 32]),
+    /// AeroCrypt master key, and whether the overlay's objects are the v3
+    /// codec (v3 and v4 configs), whose ciphertext size maps to the plaintext
+    /// size. Legacy v1/v2 overlays leave it false and keep the raw size.
+    AeroCrypt {
+        master_key: [u8; 32],
+        v3_objects: bool,
+    },
 }
 
 impl Drop for CryptCompareKeys {
@@ -102,7 +106,7 @@ impl Drop for CryptCompareKeys {
         // drop guarantee of AeroCryptKeys / RcloneCryptKeys. The Rclone variant
         // holds a RcloneCryptKeys, which zeroizes its own key material via its
         // own Drop, so only the bare master-key array needs wiping here.
-        if let Self::AeroCrypt(master_key) = self {
+        if let Self::AeroCrypt { master_key, .. } = self {
             master_key.zeroize();
         }
     }
@@ -114,7 +118,7 @@ impl CryptCompareKeys {
     pub fn decrypt_rel(&self, rel: &str) -> Option<String> {
         match self {
             Self::Rclone(keys) => decrypt_rel_rclone(keys, rel),
-            Self::AeroCrypt(master_key) => decrypt_rel_aerocrypt(master_key, rel),
+            Self::AeroCrypt { master_key, .. } => decrypt_rel_aerocrypt(master_key, rel),
         }
     }
 
@@ -122,14 +126,18 @@ impl CryptCompareKeys {
     ///
     /// `sync_core::RemoteEntry` rows are files only (directories are recursed,
     /// never emitted), so the rclone mapping applies to every row. AeroCrypt
-    /// content-size decryption needs the versioned overlay container decoder
-    /// and is deliberately deferred: AeroCrypt Compare matches by name, and a
-    /// size-policy compare may still re-flag AeroCrypt files until the
-    /// follow-up lands.
+    /// v3 and v4 objects map through the v3 container length
+    /// ([`crate::aerocrypt::overlay::v3_decrypted_size`]). This used to return
+    /// the ciphertext size for every AeroCrypt overlay, so `check`, `reconcile`
+    /// and `check_tree` reported every AeroCrypt file as differing in size.
+    /// Legacy v1/v2 overlays still keep the raw size.
     pub fn decrypted_size(&self, size: u64) -> u64 {
         match self {
             Self::Rclone(_) => rclone_decrypted_size(size),
-            Self::AeroCrypt(_) => size,
+            Self::AeroCrypt {
+                v3_objects: true, ..
+            } => crate::aerocrypt::overlay::v3_decrypted_size(size),
+            Self::AeroCrypt { .. } => size,
         }
     }
 
@@ -309,9 +317,12 @@ pub async fn unlock_overlay_keys(
             };
             // Shared with crypt_overlay_provider::derive_aerocrypt_overlay_keys_from_config:
             // v3 KDF + MAC, or v4 keyslot unlock to OMK (raw header for config_mac belt).
-            let (_cfg, master_key) =
+            let (cfg, master_key) =
                 overlay::unlock_overlay_from_config(&config_str, password, keyfile_digest)?;
-            Ok(CryptCompareKeys::AeroCrypt(master_key))
+            Ok(CryptCompareKeys::AeroCrypt {
+                master_key,
+                v3_objects: overlay::config_decrypted_size(&cfg, 0).is_some(),
+            })
         }
         other => Err(format!("Unsupported crypt overlay kind: {}", other)),
     }
@@ -422,27 +433,43 @@ mod tests {
         assert!(!rclone.wrong_key_suspected(0, 0));
         // AeroCrypt is MAC-verified at unlock and its config row legitimately
         // drops, so the all-drop heuristic must never fire for it.
-        let aero = CryptCompareKeys::AeroCrypt([7u8; 32]);
+        let aero = CryptCompareKeys::AeroCrypt {
+            master_key: [7u8; 32],
+            v3_objects: true,
+        };
         assert!(!aero.wrong_key_suspected(5, 0));
     }
 
     #[test]
-    fn normalize_remote_entries_aerocrypt_decrypts_names_and_defers_size() {
+    fn normalize_remote_entries_aerocrypt_decrypts_names_and_maps_v3_size() {
         let master_key = [7u8; 32];
         let encrypted_rel = ["alpha", "beta", "report.txt"]
             .into_iter()
             .map(|segment| crate::aerocrypt::names::encrypt_filename(&master_key, segment).unwrap())
             .collect::<Vec<_>>()
             .join("/");
-        let entries = vec![entry(&encrypted_rel, 123), entry("not-base64-$$$", 999)];
 
-        let normalized =
-            normalize_remote_entries(entries, &CryptCompareKeys::AeroCrypt(master_key));
+        // A real v3 object, so the size under test is one the codec produced.
+        let (cfg, cfg_key) = v3_overlay_config();
+        let blob = crate::aerocrypt::overlay::encrypt_data(&cfg, &cfg_key, &[5u8; 70_000]).unwrap();
+        let entries = vec![
+            entry(&encrypted_rel, blob.len() as u64),
+            entry("not-base64-$$$", 999),
+        ];
+
+        let normalized = normalize_remote_entries(
+            entries,
+            &CryptCompareKeys::AeroCrypt {
+                master_key,
+                v3_objects: true,
+            },
+        );
 
         assert_eq!(normalized.len(), 1);
         assert_eq!(normalized[0].rel_path, "alpha/beta/report.txt");
-        // AeroCrypt size is deferred: the row keeps its raw ciphertext size.
-        assert_eq!(normalized[0].size, 123);
+        // The ciphertext size maps back to the plaintext size, so a size
+        // compare against the local file matches instead of flagging it.
+        assert_eq!(normalized[0].size, 70_000);
         assert_eq!(normalized[0].checksum_alg, None);
         assert_eq!(normalized[0].checksum_hex, None);
     }
@@ -563,6 +590,21 @@ mod tests {
     /// Provider holding a v3 config at `<scope>/.aeroftp-crypt.json`: a keyfile
     /// vault when `keyfile_digest` is `Some` (kdf_inputs + vault_id, MAC over
     /// the extended info string), a plain password-only vault otherwise.
+    /// A parsed v3 overlay config and its master key, for tests that need a
+    /// real v3 object rather than a made-up ciphertext length.
+    fn v3_overlay_config() -> (crate::aerocrypt::overlay::OverlayConfig, [u8; 32]) {
+        use crate::aerocrypt::overlay;
+        let salt = overlay::random_salt_v3();
+        let tmp = overlay::OverlayConfig::v3_bootstrap(salt);
+        let master_key = overlay::derive_master_key_with_keyfile(&tmp, "pw", None)
+            .expect("derive fixture master key");
+        let json = overlay::init_config_v3(&salt, &master_key).expect("build fixture config");
+        (
+            overlay::parse_config(&json).expect("parse fixture config"),
+            master_key,
+        )
+    }
+
     fn provider_with_v3_config(
         scope: &str,
         password: &str,
@@ -631,7 +673,7 @@ mod tests {
         let keys = unlock_overlay_keys(&mut kf_vault, &params, "pw", "", Some(&digest))
             .await
             .expect("correct password + keyfile must unlock");
-        assert!(matches!(keys, CryptCompareKeys::AeroCrypt(_)));
+        assert!(matches!(keys, CryptCompareKeys::AeroCrypt { .. }));
 
         // Password-only on a keyfile vault fails closed with the frozen string.
         let err = unlock_err(
@@ -732,7 +774,7 @@ mod tests {
         let keys = unlock_overlay_keys(&mut prov, &params, "pw", "", None)
             .await
             .expect("headerless overlay must unlock from local_config_json");
-        assert!(matches!(keys, CryptCompareKeys::AeroCrypt(_)));
+        assert!(matches!(keys, CryptCompareKeys::AeroCrypt { .. }));
         // The unlock must NOT have written a marker (headerless stays headerless).
         assert!(
             prov.files.is_empty(),

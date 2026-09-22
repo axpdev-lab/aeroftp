@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Hulp nodig of wil je een bug melden? We staan voor je klaar.",
             "sourceforgeReviews": "Schrijf een review op SourceForge",
-            "writeReview": "Schrijf een review"
+            "writeReview": "Schrijf een review",
+            "team": {
+                "title": "Het Axpdev Lab-team",
+                "apRole": "Oprichter, ontwikkelaar, maintainer, mede-ontwerper",
+                "ekRole": "Onderzoeker, kwaliteitsborgingsingenieur, mede-ontwerper"
+            }
         },
         "support": {
             "title": "Steun AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Prullenbak is leeg",
             "itemCount": "{count} items in prullenbak",
             "moveToTrash": "Naar prullenbak verplaatsen",
-            "restoreConfirm": "{name} herstellen naar de oorspronkelijke locatie?"
+            "restoreConfirm": "{name} herstellen naar de oorspronkelijke locatie?",
+            "homeCopyPrompt": "{count} item(s), te beginnen met {name}, staan op een schijf zonder bruikbare prullenbak. Naar de prullenbak verplaatsen zou ze kopiëren naar de prullenbak in je thuismap, wat lang kan duren en daar vrije ruimte vereist. In plaats daarvan permanent verwijderen?",
+            "copyToHomeTrash": "Kopiëren naar prullenbak in thuismap",
+            "permanentAfterFailure": "{count} item(s), te beginnen met {name}, konden niet naar de prullenbak worden verplaatst. Permanent verwijderen? Dit kan niet ongedaan worden gemaakt.",
+            "kept": "{name} is behouden: er is niets verwijderd",
+            "keptMultiple": "Op hun plaats gelaten, niet verwijderd: {count} item(s)"
         },
         "quickLook": {
             "noPreview": "Geen voorbeeld beschikbaar",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Een naam mag geen / of \\, de reeks .. of een null-teken bevatten."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent-goedkeuring",
+            "whyTitle": "Waarom een apart venster?",
+            "whyBody": "Deze goedkeuring opent buiten de chat, zodat inhoud die de agent daar leest en toont geen actie namens jou kan bevestigen.",
+            "wantsTo": "AeroAgent wil:",
+            "scopeOnce": "Keurt precies deze actie één keer goed.",
+            "scopeSession": "Keurt dit hulpmiddel goed voor de rest van de chatsessie.",
+            "approve": "Goedkeuren"
         }
     }
 }

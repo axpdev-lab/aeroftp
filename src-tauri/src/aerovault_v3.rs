@@ -136,7 +136,7 @@ fn lock_path_for(vault_path: &Path) -> Result<PathBuf, String> {
 /// answer is uncertain (e.g. the OS refuses to report) it returns `true`, so a
 /// live writer's lock is never mistaken for stale and reclaimed (audit M9).
 #[cfg(unix)]
-fn process_is_alive(pid: u32) -> bool {
+pub(crate) fn process_is_alive(pid: u32) -> bool {
     if pid == 0 {
         return false;
     }
@@ -149,7 +149,7 @@ fn process_is_alive(pid: u32) -> bool {
 }
 
 #[cfg(windows)]
-fn process_is_alive(pid: u32) -> bool {
+pub(crate) fn process_is_alive(pid: u32) -> bool {
     // Minimal kernel32 FFI (no extra `windows` crate features): open the process
     // with the least privilege and read its exit code. STILL_ACTIVE (259) means it
     // is still running. A failed open with ERROR_ACCESS_DENIED means the process
@@ -180,7 +180,7 @@ fn process_is_alive(pid: u32) -> bool {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn process_is_alive(_pid: u32) -> bool {
+pub(crate) fn process_is_alive(_pid: u32) -> bool {
     true // conservative: unknown platform never reclaims a lock
 }
 

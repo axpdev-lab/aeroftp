@@ -65,6 +65,8 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         extract: resolve(__dirname, 'extract.html'),
+        // AeroAgent approval window: its own bundle, nothing of the chat.
+        'ai-approval': resolve(__dirname, 'ai-approval.html'),
       },
     },
   },

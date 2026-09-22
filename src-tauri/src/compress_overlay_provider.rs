@@ -333,6 +333,17 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.rename(from, to).await
     }
 
+    /// Forwarded for the same reason as every other verb here: the trait
+    /// default would fall back to `rename` and reach the inner provider's
+    /// refusing path instead of its replacing one (G119).
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.inner.replace(from, to).await
+    }
+
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        self.inner.supports_atomic_replace().await
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         // Return wire size (deferred semantics). Caller sees logical name.
         self.inner.stat(path).await
@@ -352,6 +363,12 @@ impl StorageProvider for CompressOverlayProvider {
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         self.inner.server_info().await
+    }
+
+    fn listing_is_authoritative(&self) -> bool {
+        // The wrapper lists what the inner provider lists: a listing that can
+        // omit stored objects stays non-authoritative through the overlay.
+        self.inner.listing_is_authoritative()
     }
 
     fn reports_exact_size(&self) -> bool {

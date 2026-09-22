@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "お困りですか、それともバグを報告しますか？ 喜んでお手伝いします。",
             "sourceforgeReviews": "SourceForgeでレビューを書く",
-            "writeReview": "レビューを書く"
+            "writeReview": "レビューを書く",
+            "team": {
+                "title": "Axpdev Lab チーム",
+                "apRole": "創設者、開発者、メンテナー、共同デザイナー",
+                "ekRole": "研究者、品質保証エンジニア、共同デザイナー"
+            }
         },
         "support": {
             "title": "AeroFTPを支援",
@@ -3335,7 +3340,12 @@
             "emptyTrash": "ゴミ箱は空です",
             "itemCount": "ゴミ箱に {count} 件",
             "moveToTrash": "ゴミ箱に移動",
-            "restoreConfirm": "{name} を元の場所に復元しますか？"
+            "restoreConfirm": "{name} を元の場所に復元しますか？",
+            "homeCopyPrompt": "{name} を含む {count} 個の項目は、使用できるゴミ箱がないドライブにあります。ゴミ箱に移動するとホームフォルダーのゴミ箱にコピーされ、時間がかかるうえ空き容量も必要です。代わりに完全に削除しますか？",
+            "copyToHomeTrash": "ホームのゴミ箱にコピー",
+            "permanentAfterFailure": "{name} を含む {count} 個の項目をゴミ箱に移動できませんでした。完全に削除しますか？この操作は元に戻せません。",
+            "kept": "{name} は保持されました: 何も削除されていません",
+            "keptMultiple": "削除せずにそのまま残した項目: {count} 個"
         },
         "quickLook": {
             "noPreview": "プレビューはありません",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "名前に / や \\、.. の並び、null 文字は使用できません。"
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent の承認",
+            "whyTitle": "なぜ別ウィンドウなのですか？",
+            "whyBody": "この承認はチャットの外で開くため、エージェントがチャット内で読み取って表示した内容が、あなたに代わって操作を承認することはできません。",
+            "wantsTo": "AeroAgent が次の操作を求めています:",
+            "scopeOnce": "この操作を 1 回だけ承認します。",
+            "scopeSession": "このチャットセッションの残りの間、このツールを承認します。",
+            "approve": "承認"
         }
     }
 }

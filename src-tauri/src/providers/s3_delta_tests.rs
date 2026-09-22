@@ -224,6 +224,7 @@ async fn s3_adapter_middle_append_and_successive_delta_have_independent_wire_rat
         .unwrap();
     file.write_all(b"edit").await.unwrap();
     drop(file);
+    let seeded_len = std::fs::metadata(&local).unwrap().len();
     for (index, expected_wire) in [GRID, 9 * 1024 * 1024, 0].into_iter().enumerate() {
         if index == 1 {
             let mut file = tokio::fs::OpenOptions::new()
@@ -238,8 +239,29 @@ async fn s3_adapter_middle_append_and_successive_delta_have_independent_wire_rat
             // the buffered handle stays open and the file is still growing,
             // which the source guard correctly reports as source_changed: the
             // middle edit above already drops its handle for the same reason.
-            file.flush().await.unwrap();
+            // `sync_all` and not `flush`: flush completes the write tokio has in
+            // flight, `sync_all` also waits for the filesystem. The distinction
+            // costs nothing here and removes one of the two candidate causes
+            // below from the picture.
+            file.sync_all().await.unwrap();
             drop(file);
+
+            // The precondition this loop has always depended on, stated out
+            // loud so that when it is not met the test says WHICH thing was
+            // not ready instead of failing later with `source_changed`, which
+            // is the guard doing its job on a file that really is still
+            // growing. Two candidate causes produce that same refusal on a CI
+            // runner and nowhere else: the append not having landed, and the
+            // recorded modification time settling between the two reads the
+            // guard compares. This assertion separates them: if it fires, it
+            // was the append; if it holds and the transfer still refuses, it
+            // was not.
+            let landed = tokio::fs::metadata(&local).await.unwrap().len();
+            assert_eq!(
+                landed,
+                seeded_len + 9 * 1024 * 1024,
+                "the 9 MiB append had not landed before the transfer planned over it"
+            );
         }
         mock.seen.wire.store(0, Ordering::SeqCst);
         mock.seen.copy_headers.lock().unwrap().clear();
@@ -474,7 +496,7 @@ async fn s3_adapter_batch_dag_seeds_completion_etag_through_clone_pool_hooks() {
         max_concurrent: 1,
         retry_count: 0,
         timeout_seconds: 300,
-        download_segments: 1,
+        download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
         sftp_download_preset: None,
     };
     let executor = Arc::new(ProviderUploadExecutor::new(

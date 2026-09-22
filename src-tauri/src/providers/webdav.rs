@@ -3546,6 +3546,49 @@ impl StorageProvider for WebDavProvider {
         }
     }
 
+    /// `MOVE` with `Overwrite: T`, which is the one difference from
+    /// [`rename`](Self::rename) and the whole point of the method.
+    ///
+    /// RFC 4918 section 10.6 makes `Overwrite: F` mean "fail with 412 if the
+    /// destination exists", and that is deliberately what `rename` keeps
+    /// sending: a user renaming one file onto another must not lose the
+    /// second one silently. Publishing a staged temporary is the opposite
+    /// case, where the destination is meant to go, and section 9.9.3 says the
+    /// server deletes it as part of the MOVE, so this is a single request and
+    /// not a delete followed by a move (G119).
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let destination = self.build_url(to);
+        let move_depth = match self.stat(from).await {
+            Ok(entry) => webdav_move_depth_header(Some(&entry)),
+            Err(_) => webdav_move_depth_header(None),
+        };
+
+        let response = self
+            .send_replaying_digest(|| {
+                self.request(webdav_methods::move_method(), from)
+                    .header("Destination", &destination)
+                    .header("Overwrite", "T")
+                    .header("Depth", move_depth)
+            })
+            .await?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(from.to_string())),
+            StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
+                "Destination parent does not exist".to_string(),
+            )),
+            status => Err(ProviderError::ServerError(format!(
+                "MOVE failed with status: {}",
+                status
+            ))),
+        }
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -4672,21 +4715,31 @@ impl StorageProvider for WebDavProvider {
         let status = response.status();
         match status {
             StatusCode::PARTIAL_CONTENT | StatusCode::OK => {
+                let answered = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|value| value.to_str().ok())
+                    .map(|value| value.to_string());
                 let bytes = response
                     .bytes()
                     .await
                     .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                // If server ignores Range and returns full content, slice to requested range
-                if status == StatusCode::OK {
-                    if offset >= bytes.len() as u64 {
-                        Ok(Vec::new())
-                    } else {
-                        let start = offset as usize;
-                        let end = std::cmp::min(start.saturating_add(len as usize), bytes.len());
-                        Ok(bytes[start..end].to_vec())
+                // A 206 that does not name the window it carries is written at
+                // this offset just the same, so it has to say which range it is.
+                match super::multi_thread::ranged_answer(
+                    status,
+                    answered.as_deref(),
+                    bytes.len() as u64,
+                    offset,
+                    end,
+                ) {
+                    Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
+                    Ok(super::multi_thread::RangedAnswer::WholeObject) => {
+                        Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
                     }
-                } else {
-                    Ok(bytes.to_vec())
+                    Err(why) => Err(ProviderError::ParallelRefused(
+                        super::multi_thread::parallel_refused("WebDAV range read", path, &why),
+                    )),
                 }
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),

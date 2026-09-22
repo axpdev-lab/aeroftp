@@ -1132,28 +1132,11 @@ pub async fn export_bridge_config(
         serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {e}"))?;
     let store = CredentialStore::from_cache();
 
-    // What an exporter reports back. Most only count the remotes they wrote;
-    // rclone also names the profiles it refused, so the caller can show them
-    // beside the ones the protocol filter dropped instead of counting a remote
-    // that was never written.
-    trait ExportReport {
-        fn into_export_parts(self) -> (usize, Vec<Value>);
-    }
-    impl ExportReport for usize {
-        fn into_export_parts(self) -> (usize, Vec<Value>) {
-            (self, Vec::new())
-        }
-    }
-    impl ExportReport for rclone_import::RcloneExportOutcome {
-        fn into_export_parts(self) -> (usize, Vec<Value>) {
-            let refused = self
-                .skipped
-                .into_iter()
-                .map(|s| json!({ "name": s.name, "reason": s.reason }))
-                .collect();
-            (self.exported, refused)
-        }
-    }
+    // What an exporter reports back: the count it wrote and, for the ones
+    // that can refuse a profile, the profiles it refused, so the caller shows
+    // them beside the ones the protocol filter dropped instead of counting a
+    // remote that was never written. Shared with the CLI.
+    use crate::bridge_shared::ExportReport;
 
     // Each arm builds the typed Vec for that source, filtering by the
     // supported-protocol set and resolving `server_<id>` secrets.
@@ -1273,7 +1256,11 @@ pub async fn export_bridge_config(
             let (exported, refused) = $f(&typed, &passwords, path)
                 .map_err(|e| e.to_string())?
                 .into_export_parts();
-            skipped.extend(refused);
+            skipped.extend(
+                refused
+                    .into_iter()
+                    .map(|(name, reason)| json!({ "name": name, "reason": reason })),
+            );
             json!({
                 "exported": exported,
                 "total": total,

@@ -91,53 +91,131 @@ pub(crate) fn validate_path(path: &str, param: &str) -> Result<(), String> {
             return Err(format!("{}: path traversal ('..') not allowed", param));
         }
     }
-    let resolved = std::fs::canonicalize(path).or_else(|_| {
-        std::path::Path::new(path)
-            .parent()
-            .map(std::fs::canonicalize)
-            .unwrap_or(Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "no parent",
-            )))
-    });
-    if let Ok(canonical) = resolved {
-        let s = canonical.to_string_lossy();
-        let denied = [
-            "/proc",
-            "/sys",
-            "/dev",
-            "/boot",
-            "/root",
-            "/etc/shadow",
-            "/etc/passwd",
-            "/etc/ssh",
-            "/etc/sudoers",
+    // SECVAL-A lead 7 (candidate fix): check where a write would actually land
+    // even when the tail of the path does not exist yet. The previous code
+    // canonicalized the path or its parent and skipped the whole denylist when
+    // both failed, so `~/.ssh/nested/key` passed. Nothing resolvable: refuse.
+    let Some(canonical) = resolve_existing_prefix(std::path::Path::new(path)) else {
+        return Err(format!(
+            "{}: cannot resolve path for the sensitive-path check: {}",
+            param, path
+        ));
+    };
+    let s = comparable_path(&canonical.to_string_lossy(), cfg!(windows));
+    let normalized = comparable_path(&normalized, cfg!(windows));
+    let denied = [
+        "/proc",
+        "/sys",
+        "/dev",
+        "/boot",
+        "/root",
+        "/etc/shadow",
+        "/etc/passwd",
+        "/etc/ssh",
+        "/etc/sudoers",
+    ];
+    if denied.iter().any(|d| path_matches_prefix(&s, d)) {
+        return Err(format!("{}: access to system path denied: {}", param, s));
+    }
+    // `home_dir_string` falls back to USERPROFILE: on Windows HOME is usually
+    // unset, and reading HOME alone skipped the whole home denylist there.
+    if let Some(home) = home_dir_string() {
+        let home_denied = [
+            ".ssh",
+            ".gnupg",
+            ".aws",
+            ".kube",
+            ".config/gcloud",
+            ".docker",
+            ".config/aeroftp",
+            ".vault-token",
         ];
-        if denied.iter().any(|d| path_matches_prefix(&s, d)) {
-            return Err(format!("{}: access to system path denied: {}", param, s));
+        // HOME as given and as resolved: HOME can itself sit behind a symlink
+        // (`/home -> /var/home`), and the canonical path would then never match.
+        let mut homes = vec![comparable_path(&home, cfg!(windows))];
+        if let Ok(real) = std::fs::canonicalize(&home) {
+            let real = comparable_path(&real.to_string_lossy(), cfg!(windows));
+            if !homes.contains(&real) {
+                homes.push(real);
+            }
         }
-        if let Ok(home) = std::env::var("HOME") {
-            let home_denied = [
-                ".ssh",
-                ".gnupg",
-                ".aws",
-                ".kube",
-                ".config/gcloud",
-                ".docker",
-                ".config/aeroftp",
-                ".vault-token",
-            ];
+        for h in &homes {
             for sensitive in &home_denied {
-                if path_matches_prefix(&s, &format!("{}/{}", home, sensitive)) {
+                let prefix = comparable_path(&format!("{}/{}", h, sensitive), cfg!(windows));
+                if path_matches_prefix(&s, &prefix) || path_matches_prefix(&normalized, &prefix) {
                     return Err(format!("{}: access to sensitive path denied: {}", param, s));
                 }
             }
         }
-        if path_matches_prefix(&s, "/run/secrets") {
-            return Err(format!("{}: access to system path denied: {}", param, s));
-        }
+    }
+    if path_matches_prefix(&s, "/run/secrets") {
+        return Err(format!("{}: access to system path denied: {}", param, s));
     }
     Ok(())
+}
+
+/// One spelling for every path the denylist compares: the Windows verbatim
+/// prefix that `canonicalize` adds (`\\?\`) removed, backslashes turned into
+/// slashes, no trailing slash, and lower case where the filesystem ignores
+/// case. Without it a canonical Windows path (`\\?\C:\Users\me\.ssh`) never
+/// matched the `/`-joined prefixes, and `.SSH` did not match `.ssh`.
+pub(crate) fn comparable_path(path: &str, case_insensitive: bool) -> String {
+    let path = path
+        .strip_prefix(r"\\?\UNC\")
+        .map(|rest| format!(r"\\{rest}"))
+        .unwrap_or_else(|| path.strip_prefix(r"\\?\").unwrap_or(path).to_string());
+    let mut out = path.replace('\\', "/");
+    while out.len() > 1 && out.ends_with('/') {
+        out.pop();
+    }
+    if case_insensitive {
+        out = out.to_lowercase();
+    }
+    out
+}
+
+/// Canonical form of `path` even when its tail does not exist yet: walk up to
+/// the deepest ancestor that exists, canonicalize it (following symlinks) and
+/// re-append the missing components. A dangling symlink met on the way is
+/// followed through `read_link`, so the check sees where a write would land.
+/// `None` when nothing resolves; the caller refuses (fail closed).
+fn resolve_existing_prefix(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut current = if path.as_os_str().is_empty() {
+        std::path::PathBuf::from(".")
+    } else {
+        path.to_path_buf()
+    };
+    let mut tail: Vec<std::ffi::OsString> = Vec::new();
+    let mut hops = 0u32;
+    loop {
+        if let Ok(base) = std::fs::canonicalize(&current) {
+            let mut out = base;
+            for component in tail.iter().rev() {
+                out.push(component);
+            }
+            return Some(out);
+        }
+        if let Ok(meta) = std::fs::symlink_metadata(&current) {
+            if meta.file_type().is_symlink() {
+                hops += 1;
+                if hops > 40 {
+                    return None;
+                }
+                let target = std::fs::read_link(&current).ok()?;
+                current = match current.parent() {
+                    Some(parent) if target.is_relative() => parent.join(target),
+                    _ => target,
+                };
+                continue;
+            }
+        }
+        tail.push(current.file_name()?.to_os_string());
+        current = match current.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+            Some(_) => std::path::PathBuf::from("."),
+            None => return None,
+        };
+    }
 }
 
 fn ensure_not_symlink(path: &std::path::Path, param: &str) -> Result<(), String> {
@@ -810,9 +888,17 @@ pub async fn local_trash(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
 
         progress(ctx, "local_trash", idx as u32 + 1, total as u32, &filename);
 
-        match trash::delete(path) {
-            Ok(_) => trashed.push(filename),
-            Err(e) => errors.push(json!({ "file": filename, "error": e.to_string() })),
+        // Same guard as the GUI command, with the home-trash copy never
+        // allowed: the agent cannot ask the user whether copying a whole
+        // tree into the home folder is what they meant.
+        let owned = path.clone();
+        let outcome =
+            tokio::task::spawn_blocking(move || crate::filesystem::trash_blocking(&owned, false))
+                .await
+                .unwrap_or_else(|e| Err(format!("Trash task failed: {e}")));
+        match outcome {
+            Ok(()) => trashed.push(filename),
+            Err(e) => errors.push(json!({ "file": filename, "error": e })),
         }
     }
 
@@ -1732,17 +1818,15 @@ pub async fn hash_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
 #[cfg(test)]
 mod tests {
     use super::resolve_local_path;
-    use std::sync::Mutex;
 
     // resolve_local_path reads the process-global HOME/USERPROFILE env vars and
     // several tests mutate them. cargo runs tests in parallel threads within a
     // single process, so without serialization one test clearing HOME races
     // another that expects it set (surfaced as a flaky tilde-expansion failure).
     // Every env-mutating test takes this lock so they never overlap.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn with_home<T>(home: &str, f: impl FnOnce() -> T) -> T {
-        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env = crate::test_env::lock();
         let prev = std::env::var("HOME").ok();
         std::env::set_var("HOME", home);
         let out = f();
@@ -1812,7 +1896,7 @@ mod tests {
     fn tilde_without_home_falls_back_to_base() {
         // If $HOME is unset and $USERPROFILE is unset, `~` is treated as a
         // regular relative path and joined with base.
-        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env = crate::test_env::lock();
         let prev_home = std::env::var("HOME").ok();
         let prev_userprofile = std::env::var("USERPROFILE").ok();
         std::env::remove_var("HOME");
@@ -1826,5 +1910,172 @@ mod tests {
             Some(v) => std::env::set_var("USERPROFILE", v),
             None => std::env::remove_var("USERPROFILE"),
         }
+    }
+}
+
+/// SECVAL-A (v4.2.0 pre-release validation, lead 7): the sensitive-path
+/// denylist must hold for a write target whose parent directory does not exist
+/// yet. Each probe runs against a throwaway HOME. The first test is the control
+/// (an existing parent is refused today); the others probe the missing-ancestor
+/// branch where both canonicalize calls fail.
+#[cfg(test)]
+mod secval_a_tests {
+    use super::validate_path;
+    use std::path::Path;
+
+    fn with_temp_home<T>(f: impl FnOnce(&Path) -> T) -> T {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(dir.path())
+            .expect("canonical tempdir")
+            .join("home");
+        std::fs::create_dir_all(&home).expect("create home");
+        let prev = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let out = f(&home);
+        match prev {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        out
+    }
+
+    fn check(p: &Path) -> Result<(), String> {
+        validate_path(p.to_str().expect("utf8 path"), "local_path")
+    }
+
+    #[test]
+    fn secval_a_control_existing_ssh_parent_is_denied() {
+        with_temp_home(|home| {
+            std::fs::create_dir_all(home.join(".ssh")).unwrap();
+            let r = check(&home.join(".ssh").join("authorized_keys"));
+            assert!(r.is_err(), "control: expected a refusal, got {r:?}");
+        });
+    }
+
+    #[test]
+    fn secval_a_missing_intermediate_dir_under_ssh_is_denied() {
+        with_temp_home(|home| {
+            std::fs::create_dir_all(home.join(".ssh")).unwrap();
+            let p = home.join(".ssh").join("nested").join("authorized_keys");
+            let r = check(&p);
+            assert!(r.is_err(), "fail-open: {} -> {r:?}", p.display());
+        });
+    }
+
+    #[test]
+    fn secval_a_missing_ssh_dir_on_fresh_account_is_denied() {
+        with_temp_home(|home| {
+            let p = home.join(".ssh").join("authorized_keys");
+            let r = check(&p);
+            assert!(r.is_err(), "fail-open: {} -> {r:?}", p.display());
+        });
+    }
+
+    #[test]
+    fn secval_a_new_subdir_under_config_aeroftp_is_denied() {
+        with_temp_home(|home| {
+            std::fs::create_dir_all(home.join(".config").join("aeroftp")).unwrap();
+            let p = home
+                .join(".config")
+                .join("aeroftp")
+                .join("plugins")
+                .join("x")
+                .join("plugin.json");
+            let r = check(&p);
+            assert!(r.is_err(), "fail-open: {} -> {r:?}", p.display());
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secval_a_symlinked_ancestor_with_missing_tail_is_denied() {
+        with_temp_home(|home| {
+            std::fs::create_dir_all(home.join(".ssh")).unwrap();
+            let work = home.join("work");
+            std::fs::create_dir_all(&work).unwrap();
+            std::os::unix::fs::symlink(home.join(".ssh"), work.join("link")).unwrap();
+            let p = work.join("link").join("nested").join("authorized_keys");
+            let r = check(&p);
+            assert!(
+                r.is_err(),
+                "fail-open through symlink: {} -> {r:?}",
+                p.display()
+            );
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn secval_a_dangling_symlink_leaf_into_ssh_is_denied() {
+        with_temp_home(|home| {
+            std::fs::create_dir_all(home.join(".ssh")).unwrap();
+            let work = home.join("work");
+            std::fs::create_dir_all(&work).unwrap();
+            // The link exists, its target does not: a write through it would
+            // create ~/.ssh/authorized_keys.
+            let leaf = work.join("notes.txt");
+            std::os::unix::fs::symlink(home.join(".ssh").join("authorized_keys"), &leaf).unwrap();
+            let r = check(&leaf);
+            assert!(
+                r.is_err(),
+                "fail-open through dangling symlink: {} -> {r:?}",
+                leaf.display()
+            );
+        });
+    }
+
+    #[test]
+    fn secval_a_ordinary_missing_write_target_is_allowed() {
+        // Regression guard for the fix: a new file in a new folder under a
+        // non-sensitive part of HOME must stay allowed.
+        with_temp_home(|home| {
+            let p = home.join("Downloads").join("new").join("file.bin");
+            let r = check(&p);
+            assert!(r.is_ok(), "false refusal: {} -> {r:?}", p.display());
+        });
+    }
+}
+
+#[cfg(test)]
+mod windows_home_denylist_tests {
+    use super::*;
+
+    #[test]
+    fn a_canonical_windows_path_matches_the_home_prefix() {
+        let home = comparable_path(r"C:\Users\Me", true);
+        let target = comparable_path(r"\\?\C:\Users\me\.SSH\id_ed25519", true);
+        assert!(
+            path_matches_prefix(&target, &format!("{home}/.ssh")),
+            "{target}"
+        );
+        let unc = comparable_path(r"\\?\UNC\server\share\x\", true);
+        assert_eq!(unc, "//server/share/x");
+        // Case is kept where the filesystem distinguishes it.
+        assert_eq!(comparable_path("/home/Me/.SSH/", false), "/home/Me/.SSH");
+    }
+
+    #[test]
+    fn the_home_denylist_applies_when_only_userprofile_is_set() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap().join("profile");
+        std::fs::create_dir_all(home.join(".ssh")).unwrap();
+        let prev_home = std::env::var_os("HOME");
+        let prev_profile = std::env::var_os("USERPROFILE");
+        std::env::remove_var("HOME");
+        std::env::set_var("USERPROFILE", &home);
+        let target = home.join(".ssh").join("authorized_keys");
+        let result = validate_path(target.to_str().unwrap(), "local_path");
+        match prev_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        match prev_profile {
+            Some(v) => std::env::set_var("USERPROFILE", v),
+            None => std::env::remove_var("USERPROFILE"),
+        }
+        let err = result.expect_err("~/.ssh must be denied with only USERPROFILE set");
+        assert!(err.contains("sensitive path denied"), "{err}");
     }
 }

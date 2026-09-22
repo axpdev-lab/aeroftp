@@ -78,6 +78,9 @@ PY
 # user can pre-create for `tee` to follow (CWE-377).
 LIVE_LOG="$(mktemp "${TMPDIR:-/tmp}/aerorsync-real-capture.XXXXXX")"
 
+# shellcheck source=fixture_key.sh
+source "$CAPTURE_DIR/fixture_key.sh"
+
 cleanup() {
   rm -f "$LIVE_LOG"
   if [[ "$KEEP_STACK" != "1" ]]; then
@@ -87,6 +90,7 @@ cleanup() {
 trap cleanup EXIT
 
 docker compose -f "$CAPTURE_DIR/docker-compose.real-rsync.yml" down --remove-orphans >/dev/null 2>&1 || true
+ensure_fixture_key "$CAPTURE_DIR"
 docker compose -f "$CAPTURE_DIR/docker-compose.real-rsync.yml" up -d --build
 
 for _ in $(seq 1 30); do

@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Aveți nevoie de ajutor sau doriți să raportați o eroare? Suntem aici să vă ajutăm.",
             "sourceforgeReviews": "Scrie o recenzie pe SourceForge",
-            "writeReview": "Scrie o recenzie"
+            "writeReview": "Scrie o recenzie",
+            "team": {
+                "title": "Echipa Axpdev Lab",
+                "apRole": "Fondator, dezvoltator, întreținător, co-designer",
+                "ekRole": "Cercetător, inginer de asigurare a calității, co-designer"
+            }
         },
         "support": {
             "title": "Susține AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Coșul de gunoi este gol",
             "itemCount": "{count} elemente în Coșul de gunoi",
             "moveToTrash": "Mută în Coșul de gunoi",
-            "restoreConfirm": "Restaurați {name} în locația originală?"
+            "restoreConfirm": "Restaurați {name} în locația originală?",
+            "homeCopyPrompt": "{count} element(e), începând cu {name}, se află pe o unitate fără un coș de gunoi utilizabil. Mutarea lor în coș le-ar copia în coșul din dosarul personal, ceea ce poate dura mult și necesită spațiu liber. Le ștergeți definitiv?",
+            "copyToHomeTrash": "Copiază în coșul dosarului personal",
+            "permanentAfterFailure": "{count} element(e), începând cu {name}, nu au putut fi mutate în coș. Le ștergeți definitiv? Acțiunea nu poate fi anulată.",
+            "kept": "Elementul {name} a fost păstrat: nu s-a șters nimic",
+            "keptMultiple": "Lăsate pe loc, neșterse: {count} element(e)"
         },
         "quickLook": {
             "noPreview": "Previzualizare indisponibilă",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Un nume nu poate conține / sau \\, secvența .. ori un caracter nul."
+        },
+        "aiApproval": {
+            "windowTitle": "Aprobare AeroAgent",
+            "whyTitle": "De ce o fereastră separată?",
+            "whyBody": "Această aprobare se deschide în afara chatului, astfel încât conținutul pe care agentul îl citește și îl afișează acolo să nu poată confirma o acțiune în numele tău.",
+            "wantsTo": "AeroAgent vrea să:",
+            "scopeOnce": "Aprobă exact această acțiune o singură dată.",
+            "scopeSession": "Aprobă acest instrument pentru restul sesiunii de chat.",
+            "approve": "Aprobă"
         }
     }
 }

@@ -118,7 +118,7 @@ Live integration tests are gated behind credentials or Docker fixtures and are m
 
 ## Release cadence
 
-Before tagging a release we run the deterministic suite (Rust and frontend) and the lab-backed integration tests, and CI builds on Linux, Windows, and macOS must be green before the tag is pushed. Live cloud verification for the providers marked "Live (manual)" is performed per release cycle and recorded with byte-identity proof.
+Before tagging a release we run the deterministic suite (Rust and frontend) and the lab-backed integration tests, and CI builds on Linux, Windows, and macOS must be green before the tag is pushed. Since v4.2.0 the Rust library unit tests also run on a Windows runner (windows-2022, MSVC), with two limits the lane states itself: it builds without the local speech-to-text feature, and it runs only when a change touches the delta-sync paths its workflow watches. Live cloud verification for the providers marked "Live (manual)" is performed per release cycle and recorded with byte-identity proof.
 
 The pre-release smoke above (`npm run smoke`) is the pre-tag step of the release checklist in `docs/RELEASE.md`; its matrix is the record of which lanes a release was actually tested against. We are expanding coverage with systematic deterministic parsing and error-mapping tests for the providers that currently have unit coverage only. The goal is that a change on a provider's side or in a third-party dependency is caught by a failing test rather than by a user. Because this is ongoing work, the coverage matrix above is updated continuously as new tests land.
 

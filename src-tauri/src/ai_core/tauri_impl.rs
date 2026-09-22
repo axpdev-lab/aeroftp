@@ -564,6 +564,59 @@ impl RemoteBackend for TauriRemoteBackend {
         }
     }
 
+    async fn replace(&self, from: &str, to: &str) -> Result<(), String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.replace(from, to).await.map_err(|e| e.to_string());
+                }
+                // No StorageProvider active: this branch is a plain FTP
+                // session, and `FtpManager::replace` is `RNFR`/`RNTO`, which
+                // carries none of the SFTP prohibition that G119 is about.
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                mgr.replace(from, to).await.map_err(|e| e.to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .replace(from, to)
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    async fn supports_atomic_replace(&self) -> Result<bool, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.supports_atomic_replace().await.map_err(|e| e.to_string());
+                }
+                // Plain FTP, as in `replace` above. `true` here carries the
+                // meaning the trait gives it, "no known obstacle" and not
+                // "verified": `RNFR`/`RNTO` is not forbidden from replacing
+                // the way SFTP protocol 3 is. Whether a given server actually
+                // replaces is ITS business and is not measured here, and
+                // `FtpManager::replace` names the known exception, IIS FTP,
+                // which refuses with 550. On such a server this answer is
+                // optimistic and the failure arrives at publication instead
+                // of at the preflight.
+                //
+                // It is nonetheless the answer this path already gave before
+                // the question had a name, so nothing on it gets worse; what
+                // would be wrong is answering for a provider nobody asked,
+                // which is why the branch above asks it.
+                Ok(true)
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .supports_atomic_replace()
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
         match self {
             TauriRemoteBackend::Active { app } => {

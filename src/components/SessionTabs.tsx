@@ -3,7 +3,8 @@
 
 import * as React from 'react';
 import { useState, useRef, useCallback } from 'react';
-import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck, Folder, Flame } from 'lucide-react';
+import { X, Plus, Loader2, Wifi, WifiOff, Cloud, CloudOff, Server, Lock, ShieldCheck, Folder, Flame } from 'lucide-react';
+import { Bucket } from './connectionMethodIcons';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
 import type { LocalTab } from '../types/aerofile';
 import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, GitLabLogo, ImmichLogo, PROVIDER_LOGOS } from './ProviderLogos';
@@ -118,7 +119,7 @@ const ProviderIcon: React.FC<{
         case 'webdav':
             return <Cloud size={size} className={`${combinedClass} text-orange-500`} />;
         case 's3':
-            return <Database size={size} className={`${combinedClass} text-amber-600`} />;
+            return <Bucket size={size} className={`${combinedClass} text-amber-600`} />;
         case 'mega':
             return <span className={opacityClass}><MegaLogo size={size} /></span>;
         case 'box':

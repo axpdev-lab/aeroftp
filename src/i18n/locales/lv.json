@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Nepieciešama palīdzība vai vēlaties ziņot par kļūdu? Mēs esam šeit, lai palīdzētu.",
             "sourceforgeReviews": "Uzrakstiet atsauksmi SourceForge",
-            "writeReview": "Rakstīt atsauksmi"
+            "writeReview": "Rakstīt atsauksmi",
+            "team": {
+                "title": "Axpdev Lab komanda",
+                "apRole": "Dibinātājs, izstrādātājs, uzturētājs, līdzdizainers",
+                "ekRole": "Pētnieks, kvalitātes nodrošināšanas inženieris, līdzdizainers"
+            }
         },
         "support": {
             "title": "Atbalstīt AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Atkritne ir tukša",
             "itemCount": "{count} vienumi atkritnes",
             "moveToTrash": "Pārvietot uz atkritni",
-            "restoreConfirm": "Atjaunot {name} sākotnējā vietā?"
+            "restoreConfirm": "Atjaunot {name} sākotnējā vietā?",
+            "homeCopyPrompt": "{count} vienums(-i), sākot ar {name}, atrodas diskā bez izmantojamas atkritnes. Pārvietošana uz atkritni tos kopētu uz mājas mapes atkritni, kas var aizņemt ilgu laiku un prasa brīvu vietu. Dzēst tos neatgriezeniski?",
+            "copyToHomeTrash": "Kopēt uz mājas mapes atkritni",
+            "permanentAfterFailure": "{count} vienumu(-us), sākot ar {name}, neizdevās pārvietot uz atkritni. Dzēst tos neatgriezeniski? To nevar atsaukt.",
+            "kept": "Vienums {name} tika saglabāts: nekas netika dzēsts",
+            "keptMultiple": "Atstāti vietā, nav dzēsti: {count} vienumi"
         },
         "quickLook": {
             "noPreview": "Priekšskatījums nav pieejams",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Nosaukumā nedrīkst būt / vai \\, secība .. vai nulles rakstzīme."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent apstiprinājums",
+            "whyTitle": "Kāpēc atsevišķs logs?",
+            "whyBody": "Šis apstiprinājums tiek atvērts ārpus tērzēšanas, lai saturs, ko aģents tur lasa un rāda, nevarētu jūsu vārdā apstiprināt darbību.",
+            "wantsTo": "AeroAgent vēlas:",
+            "scopeOnce": "Apstiprina tieši šo darbību vienu reizi.",
+            "scopeSession": "Apstiprina šo rīku līdz tērzēšanas sesijas beigām.",
+            "approve": "Apstiprināt"
         }
     }
 }

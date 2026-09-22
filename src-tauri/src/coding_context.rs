@@ -279,6 +279,17 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].kind, "folder");
         let entries = result[0].entries.as_ref().expect("entries");
-        assert_eq!(entries[0].path, "src/main.rs");
+        // `relative_display` produces a display string, so on Windows a
+        // backslash is the correct shape and not a defect: the path never
+        // crosses a boundary that requires a forward slash (it is not a key, it
+        // does not go on the wire, nothing compares it). The expectation is
+        // therefore built from the platform's separator instead of written by
+        // hand, which is what made this red on Windows with
+        // left: "src\\main.rs", right: "src/main.rs".
+        let expected = std::path::Path::new("src")
+            .join("main.rs")
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(entries[0].path, expected);
     }
 }

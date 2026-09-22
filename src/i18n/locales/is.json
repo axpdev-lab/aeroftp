@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Þarftu aðstoð eða viltu tilkynna villu? Við erum hér til að hjálpa.",
             "sourceforgeReviews": "Skrifaðu umsögn á SourceForge",
-            "writeReview": "Skrifa umfjollun"
+            "writeReview": "Skrifa umfjollun",
+            "team": {
+                "title": "Teymi Axpdev Lab",
+                "apRole": "Stofnandi, forritari, umsjónarmaður, meðhönnuður",
+                "ekRole": "Rannsakandi, gæðatryggingarverkfræðingur, meðhönnuður"
+            }
         },
         "support": {
             "title": "Styðja AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Rusl Tómt",
             "itemCount": "{count} hlutir í Rusli",
             "moveToTrash": "Færa í Rusl",
-            "restoreConfirm": "Endurheimta {name} á upprunalegan stað?"
+            "restoreConfirm": "Endurheimta {name} á upprunalegan stað?",
+            "homeCopyPrompt": "{count} atriði, fyrst {name}, eru á drifi án nothæfrar ruslafötu. Að færa þau í ruslið myndi afrita þau í ruslið í heimamöppunni, sem getur tekið langan tíma og þarf laust pláss. Eyða þeim varanlega í staðinn?",
+            "copyToHomeTrash": "Afrita í rusl heimamöppu",
+            "permanentAfterFailure": "Ekki tókst að færa {count} atriði, fyrst {name}, í ruslið. Eyða þeim varanlega? Ekki er hægt að afturkalla þetta.",
+            "kept": "{name} var haldið: engu var eytt",
+            "keptMultiple": "Skilið eftir á sínum stað, ekki eytt: {count} atriði"
         },
         "quickLook": {
             "noPreview": "Engin forskoðun tiltæk",
@@ -5710,6 +5720,15 @@
         },
         "rename": {
             "invalidCharacters": "Nafn má ekki innihalda / eða \\, röðina .. eða núlltákn."
+        },
+        "aiApproval": {
+            "windowTitle": "Samþykki AeroAgent",
+            "whyTitle": "Af hverju sérstakur gluggi?",
+            "whyBody": "Þetta samþykki opnast utan spjallsins svo að efni sem umboðsmaðurinn les og sýnir þar geti ekki staðfest aðgerð fyrir þína hönd.",
+            "wantsTo": "AeroAgent vill:",
+            "scopeOnce": "Samþykkir nákvæmlega þessa aðgerð einu sinni.",
+            "scopeSession": "Samþykkir þetta verkfæri það sem eftir er af spjallinu.",
+            "approve": "Samþykkja"
         }
     }
 }

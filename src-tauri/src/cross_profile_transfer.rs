@@ -68,7 +68,7 @@ pub struct CrossProfileTransferResult {
 #[derive(Debug, Clone)]
 pub struct CrossProfileCopyOptions {
     pub source_size: Option<u64>,
-    pub download_segments: u32,
+    pub download_segments: crate::transfer_settings::DownloadSegmentsRequest,
     pub cancel_token: CancellationToken,
 }
 
@@ -76,7 +76,10 @@ impl Default for CrossProfileCopyOptions {
     fn default() -> Self {
         Self {
             source_size: None,
-            download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
+            download_segments: crate::transfer_settings::DownloadSegmentsRequest::Single {
+                reason: "standalone copy has no source-size hint for segmented download"
+                    .to_string(),
+            },
             cancel_token: CancellationToken::new(),
         }
     }
@@ -182,14 +185,24 @@ async fn download_source_to_temp(
         ));
     }
 
-    if options.download_segments > 1 {
+    let resolved = crate::transfer_settings::resolve_download_segments(
+        &options.download_segments,
+        Some(crate::transfer_settings::download_segments_preference_for(
+            source.provider_type(),
+        )),
+    );
+    tracing::info!(
+        "cross-profile source download streams requested: {}",
+        resolved
+    );
+    if resolved.count() > 1 {
         if let Some(source_size) = options.source_size {
             if let Some(segments) =
                 crate::provider_transfer_executor::provider_segmented_download_eligible(
                     source,
                     source_size,
-                    options.download_segments,
-                    options.download_segments as usize,
+                    resolved.count(),
+                    resolved.count() as usize,
                 )
             {
                 tracing::info!(

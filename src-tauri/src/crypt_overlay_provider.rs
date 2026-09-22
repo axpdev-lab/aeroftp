@@ -263,19 +263,18 @@ impl OverlayKeys {
     /// Map an on-wire (ciphertext) file size back to the plaintext size.
     ///
     /// Both kinds now have a deterministic overhead map: rclone-crypt via
-    /// [`rclone_decrypted_size`], AeroCrypt v3 via [`overlay::v3_decrypted_size`]
-    /// (fixed header + per-block nonce/tag). Legacy AeroCrypt v1/v2 overlays are
-    /// read-only and keep the deferred behaviour (return the ciphertext length),
-    /// since their container header differs and the v3 decoder does not apply.
+    /// [`rclone_decrypted_size`], AeroCrypt v3 and v4 via
+    /// [`overlay::config_decrypted_size`] (a v4 vault's objects are the v3 codec;
+    /// this arm used to match `V3` only, so a vault migrated to keyslots reported
+    /// its ciphertext size). Legacy AeroCrypt v1/v2 overlays are read-only and
+    /// keep the deferred behaviour (return the ciphertext length), since their
+    /// container header differs and the v3 decoder does not apply.
     fn decrypted_size(&self, size: u64) -> u64 {
         match self {
             Self::Rclone(_) => rclone_decrypted_size(size),
-            Self::AeroCrypt {
-                config: OverlayConfig::V3 { .. },
-                ..
-            } => overlay::v3_decrypted_size(size),
-            // Legacy v1/v2 overlays are read-only; keep the deferred behaviour.
-            Self::AeroCrypt { .. } => size,
+            Self::AeroCrypt { config, .. } => {
+                overlay::config_decrypted_size(config, size).unwrap_or(size)
+            }
         }
     }
 
@@ -288,11 +287,7 @@ impl OverlayKeys {
     fn size_is_exact(&self) -> bool {
         match self {
             Self::Rclone(_) => true,
-            Self::AeroCrypt {
-                config: OverlayConfig::V3 { .. },
-                ..
-            } => true,
-            Self::AeroCrypt { .. } => false,
+            Self::AeroCrypt { config, .. } => overlay::config_decrypted_size(config, 0).is_some(),
         }
     }
 
@@ -1128,6 +1123,22 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.rename(&enc_from, &enc_to).await
     }
 
+    /// Forwarded rather than left to the trait default, because the default
+    /// falls back to `rename` and would take the inner provider's refusing
+    /// path instead of its replacing one. The AeroCrypt marker is published
+    /// through exactly this wrapper, so a default here would have kept the
+    /// defect alive where it matters most (G119).
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.refuse_crossing_the_anchor("Replace", from, to)?;
+        let (enc_from, from_is_dir) = self.map_existing(from, AccessKind::Write).await?;
+        let enc_to = self.map(to, from_is_dir, AccessKind::Write)?;
+        self.inner.replace(&enc_from, &enc_to).await
+    }
+
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        self.inner.supports_atomic_replace().await
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         let mut entry = self.inner.stat(&enc).await?;
@@ -1350,6 +1361,12 @@ impl StorageProvider for CryptOverlayProvider {
 
     fn supports_thumbnails(&self) -> bool {
         false
+    }
+
+    fn listing_is_authoritative(&self) -> bool {
+        // The wrapper lists what the inner provider lists: a listing that can
+        // omit stored objects stays non-authoritative through the overlay.
+        self.inner.listing_is_authoritative()
     }
 
     fn reports_exact_size(&self) -> bool {
@@ -2172,6 +2189,13 @@ pub async fn restore_headed_marker_from_config(
     )
     .map_err(|e| format!("Rebuilt AeroCrypt marker failed verification: {e}"))?;
 
+    // Asked while the server is still untouched (G119): a backend that cannot
+    // put one file over another refuses here, before a temporary exists, so
+    // the refusal can truthfully say the marker is unchanged.
+    crate::providers::ensure_atomic_replace(provider, config_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let staged = tempfile::NamedTempFile::new()
         .map_err(|e| format!("Cannot stage AeroCrypt marker: {e}"))?;
     std::fs::write(staged.path(), marker_text.as_bytes())
@@ -2195,7 +2219,7 @@ pub async fn restore_headed_marker_from_config(
                 .to_string(),
         );
     }
-    if let Err(e) = provider.rename(&remote_tmp, config_path).await {
+    if let Err(e) = provider.replace(&remote_tmp, config_path).await {
         let _ = provider.delete(&remote_tmp).await;
         return Err(format!("Cannot publish verified AeroCrypt marker: {e}"));
     }
@@ -2684,6 +2708,20 @@ mod tests {
         let master_key = overlay::derive_master_key(&tmp, "overlay-pass").unwrap();
         let json = overlay::init_config_v3(&salt, &master_key).unwrap();
         let config = overlay::parse_config(&json).unwrap();
+        OverlayKeys::AeroCrypt { master_key, config }
+    }
+
+    /// The same vault migrated to v4 keyslots. Its objects are still the v3
+    /// codec under OMK, so sizes must map exactly as for v3.
+    fn aerocrypt_v4_keys() -> OverlayKeys {
+        let v3 = aerocrypt_keys();
+        let OverlayKeys::AeroCrypt { master_key, config } = &v3 else {
+            unreachable!()
+        };
+        let master_key = *master_key;
+        let v4_json = overlay::migrate_v3_to_v4(config, &master_key).unwrap();
+        let config = overlay::parse_config(&v4_json).unwrap();
+        assert!(matches!(config, OverlayConfig::V4 { .. }));
         OverlayKeys::AeroCrypt { master_key, config }
     }
 
@@ -3247,6 +3285,9 @@ mod tests {
         // sync drops the size check rather than re-syncing every file every cycle.
         assert!(rclone_keys(FilenameEncryption::Standard, true, ".bin").size_is_exact());
         assert!(aerocrypt_keys().size_is_exact());
+        // A vault migrated to keyslots keeps v3 objects: exact too. It used to
+        // report inexact, so a GUI Compare dropped the size check on v4.
+        assert!(aerocrypt_v4_keys().size_is_exact());
         assert!(!aerocrypt_v2_keys().size_is_exact());
     }
 
@@ -3255,6 +3296,7 @@ mod tests {
         for keys in [
             rclone_keys(FilenameEncryption::Standard, true, ".bin"),
             aerocrypt_keys(),
+            aerocrypt_v4_keys(),
         ] {
             for size in [0usize, 1, 100, 65_536, 65_537, 200_000] {
                 let plaintext = vec![7u8; size];

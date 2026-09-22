@@ -76,57 +76,149 @@ where
     Ok(Option::<HashMap<String, String>>::deserialize(de)?.unwrap_or_default())
 }
 
-/// Parse a Duplicacy `storage` URL into `(protocol, provider_id, host,
-/// initial_path)`. Returns `None` for OAuth-only schemes
+/// A Duplicacy `storage` URL taken apart.
+struct ParsedStorage {
+    protocol: &'static str,
+    provider_id: Option<String>,
+    /// Bare `host[:port]` for SFTP and S3 (whose scheme travels in the
+    /// `endpoint` option); the whole URL for WebDAV, which reads it from `host`.
+    host: String,
+    /// Only when the URL carries one.
+    port: Option<u32>,
+    /// The `user@` of the URL, when present.
+    username: Option<String>,
+    initial_path: Option<String>,
+    options: Vec<(&'static str, Option<String>)>,
+    /// S3 only: the `minio://` / `minios://` forms address buckets path-style.
+    path_style: bool,
+}
+
+/// `[user@]host[:port]` -> (user, host, port).
+fn split_authority(a: &str) -> (Option<String>, String, Option<u32>) {
+    let (user, hostport) = match a.rsplit_once('@') {
+        Some((u, h)) => (Some(u.to_string()).filter(|u| !u.is_empty()), h),
+        None => (None, a),
+    };
+    match hostport.rsplit_once(':') {
+        Some((h, p)) if !h.ends_with(']') || h.starts_with('[') => match p.parse::<u32>() {
+            Ok(port) => (user, h.to_string(), Some(port)),
+            Err(_) => (user, hostport.to_string(), None),
+        },
+        _ => (user, hostport.to_string(), None),
+    }
+}
+
+/// Parse a Duplicacy `storage` URL. Returns `None` for OAuth-only schemes
 /// (`gcd`/`one`/`dropbox`) so the caller can emit an OAuth skipped reason,
 /// and for any unknown scheme.
 ///
-/// Reconciled to the real `crate::bridge_shared` API (spec drafts referenced
-/// the pre-refactor `crate::rclone_import_shared`).
-fn parse_storage_url(u: &str) -> Option<(&'static str, Option<String>, String, Option<String>)> {
+/// Forms (Duplicacy's own): `b2://bucket`, `s3://[region@]host/bucket/path`
+/// and `s3c://` (HTTPS, virtual-host), `minio://` (HTTP) and `minios://`
+/// (HTTPS) with path-style buckets, `wasabi://[region@]host/bucket/path`,
+/// `sftp://user@host[:port]/relative` or `//absolute`, `webdav://` (HTTPS) and
+/// `webdav-http://user@host[:port]/path`.
+fn parse_storage_url(u: &str) -> Option<ParsedStorage> {
     let (scheme, rest) = u.split_once("://")?;
+    let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
     match scheme {
         // b2://bucket -> backblaze-b2, bucket lands in initial_path
-        "b2" => Some((
-            "s3",
-            Some("backblaze-b2".to_string()),
-            String::new(),
-            (!rest.is_empty()).then(|| rest.to_string()),
-        )),
-        // s3|minio|wasabi://host[/path]
-        "s3" | "minio" | "wasabi" => {
-            let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+        "b2" => Some(ParsedStorage {
+            protocol: "s3",
+            provider_id: Some("backblaze-b2".to_string()),
+            host: String::new(),
+            port: None,
+            username: None,
+            initial_path: (!rest.is_empty()).then(|| rest.to_string()),
+            options: Vec::new(),
+            path_style: false,
+        }),
+        "s3" | "s3c" | "minio" | "minios" | "wasabi" => {
+            // For S3 the `user@` slot is the region, not a user.
+            let (region, host, port) = split_authority(authority);
+            if host.is_empty() {
+                return None;
+            }
+            let http = scheme == "minio";
+            let path_style = matches!(scheme, "minio" | "minios");
             // Prefer the explicit scheme token; fall back to endpoint host
             // inference for a custom/unknown host.
             let mut pid = crate::bridge_shared::map_s3_provider(scheme);
             if pid == "custom-s3" {
-                pid = crate::bridge_shared::map_s3_provider_from_endpoint(host);
+                pid = crate::bridge_shared::map_s3_provider_from_endpoint(&host);
             }
-            Some((
-                "s3",
-                Some(pid.to_string()),
-                host.to_string(),
-                (!path.is_empty()).then(|| path.to_string()),
-            ))
+            // `amazon.com` is Duplicacy's spelling of AWS. AWS stays implicit:
+            // an explicit endpoint switches the S3 connection to path-style,
+            // which AWS refuses for newer buckets.
+            let aws = host == "amazon.com"
+                || crate::bridge_shared::map_s3_provider_from_endpoint(&host) == "amazon-s3";
+            let authority = match port {
+                Some(p) => format!("{host}:{p}"),
+                None => host.clone(),
+            };
+            // `host` stays the bare authority (what the profile list shows);
+            // the scheme travels in `options.endpoint`, which the S3
+            // connection reads first, as a MinIO profile made in the GUI does.
+            let endpoint =
+                (!aws).then(|| format!("{}://{authority}", if http { "http" } else { "https" }));
+            let host_field = if aws { String::new() } else { authority };
+            let bucket = path.split('/').next().unwrap_or("").to_string();
+            Some(ParsedStorage {
+                protocol: "s3",
+                provider_id: Some(if aws { "amazon-s3" } else { pid }.to_string()),
+                host: host_field,
+                // The S3 connection adds a stored port that differs from the
+                // scheme default to the endpoint: keep them consistent.
+                port: Some(port.unwrap_or(if http { 80 } else { 443 })),
+                username: None,
+                initial_path: (!path.is_empty()).then(|| path.to_string()),
+                options: vec![
+                    ("endpoint", endpoint),
+                    ("region", region),
+                    ("bucket", Some(bucket).filter(|b| !b.is_empty())),
+                ],
+                path_style,
+            })
         }
-        // sftp://[user@]host[/path]
         "sftp" => {
-            let hostpart = rest.split('/').next().unwrap_or(rest);
-            // strip a leading "user@"
-            let host = hostpart.split('@').next_back().unwrap_or(hostpart);
-            let path = rest
-                .split_once('/')
-                .map(|(_, p)| format!("/{p}"))
-                .filter(|p| p != "/");
-            Some(("sftp", None, host.to_string(), path))
+            let (user, host, port) = split_authority(authority);
+            // Duplicacy: `host/rel` is relative to the home, `host//abs` absolute.
+            let initial_path = (!path.is_empty()).then(|| path.to_string());
+            Some(ParsedStorage {
+                protocol: "sftp",
+                provider_id: None,
+                host,
+                port,
+                username: user,
+                initial_path,
+                options: Vec::new(),
+                path_style: false,
+            })
         }
-        // webdav://host[/path]
-        "webdav" => Some((
-            "webdav",
-            Some("custom-webdav".to_string()),
-            rest.split('/').next().unwrap_or(rest).to_string(),
-            None,
-        )),
+        "webdav" | "webdav-http" => {
+            let (user, host, port) = split_authority(authority);
+            let scheme = if scheme == "webdav" { "https" } else { "http" };
+            let authority = match port {
+                Some(p) => format!("{host}:{p}"),
+                None => host,
+            };
+            // The storage path is part of the WebDAV URL, not a start folder.
+            let path = path.trim_end_matches('/');
+            let url = if path.is_empty() {
+                format!("{scheme}://{authority}")
+            } else {
+                format!("{scheme}://{authority}/{path}")
+            };
+            Some(ParsedStorage {
+                protocol: "webdav",
+                provider_id: Some("custom-webdav".to_string()),
+                host: url,
+                port: Some(port.unwrap_or(if scheme == "https" { 443 } else { 80 })),
+                username: user,
+                initial_path: None,
+                options: Vec::new(),
+                path_style: false,
+            })
+        }
         // gcd / one / dropbox -> OAuth, handled as a skipped remote by caller
         _ => None,
     }
@@ -212,7 +304,17 @@ pub fn import_duplicacy_with_env(
 
     for st in list {
         let parsed = parse_storage_url(&st.storage);
-        let Some((proto, pid, host, path_opt)) = parsed else {
+        let Some(ParsedStorage {
+            protocol: proto,
+            provider_id: pid,
+            host,
+            port: url_port,
+            username: url_user,
+            initial_path: path_opt,
+            options: url_opts,
+            path_style: url_path_style,
+        }) = parsed
+        else {
             // Unknown scheme: OAuth providers (gcd/one/dropbox) get the
             // OAuth reason; anything else is reported as unsupported.
             let scheme = st
@@ -271,6 +373,14 @@ pub fn import_duplicacy_with_env(
             ),
         };
 
+        // SFTP and WebDAV carry their user in the storage URL, not in `keys`.
+        let username = if username.is_empty() {
+            url_user.unwrap_or_default()
+        } else {
+            username
+        };
+        let mut url_opts = url_opts;
+
         // Secret-policy bookkeeping: a missing credential means either an
         // SSH key file is referenced (path only, no bytes) or the secret
         // lives in the runtime env. Both leave the credential unset, so the
@@ -296,7 +406,14 @@ pub fn import_duplicacy_with_env(
             ("repo_id", Some(st.name.clone())),
         ];
         opt_pairs.append(&mut extra_opts);
-        let options = serde_json::Value::Object(crate::bridge_shared::json_map(&opt_pairs));
+        opt_pairs.append(&mut url_opts);
+        let mut options_map = crate::bridge_shared::json_map(&opt_pairs);
+        // A boolean, as the GUI stores it: `provider_connect` takes
+        // `path_style: Option<bool>` and refuses the string "true".
+        if url_path_style {
+            options_map.insert("pathStyle".to_string(), serde_json::Value::Bool(true));
+        }
+        let options = serde_json::Value::Object(options_map);
 
         let id = format!(
             "duplicacy-{}-{}",
@@ -308,7 +425,7 @@ pub fn import_duplicacy_with_env(
             id,
             name: format!("Duplicacy {}", st.name),
             host,
-            port: crate::bridge_shared::default_port_for(proto),
+            port: url_port.unwrap_or_else(|| crate::bridge_shared::default_port_for(proto)),
             username,
             protocol: Some(proto.to_string()),
             initial_path: path_opt,
@@ -351,70 +468,190 @@ pub struct DuplicacyExportServer {
     pub initial_path: Option<String>,
 }
 
-/// Export profiles to a `.duplicacy/preferences` JSON array.
-///
-/// Duplicacy's preferences IS an array, so every exportable profile becomes
-/// one entry. Unsupported protocols (OAuth backends, anything without a
-/// Duplicacy storage URL form) are skipped without aborting the batch. The
-/// file is written `0600` via `atomic_write_600` because the `keys` block
-/// carries plaintext secrets. Returns the number of entries written.
-pub fn export_duplicacy(
-    servers: &[DuplicacyExportServer],
-    passwords: &HashMap<String, String>,
-    out: &Path,
-) -> Result<usize, String> {
-    let mut entries: Vec<serde_json::Value> = Vec::new();
+/// A profile's Duplicacy `storage` URL and `keys` block, or why it has none.
+fn duplicacy_storage_for(
+    server: &DuplicacyExportServer,
+    secret: Option<&str>,
+) -> Result<(String, serde_json::Value), String> {
+    let proto = server.protocol.as_deref().unwrap_or("");
+    let path = server.initial_path.clone().unwrap_or_default();
+    let endpoint = crate::bridge_shared::resolve_export_endpoint(
+        proto,
+        &server.host,
+        server.port,
+        &server.username,
+        server.options.as_ref(),
+        server.provider_id.as_deref(),
+    )?;
+    let opt = |k: &str| {
+        server
+            .options
+            .as_ref()
+            .and_then(|v| v.get(k))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
 
-    for server in servers {
-        let secret = passwords.get(&server.name).map(|s| s.as_str());
-        let path = server.initial_path.clone().unwrap_or_default();
-
-        let (url, keys) = match (server.protocol.as_deref(), server.provider_id.as_deref()) {
-            (Some("s3"), Some("backblaze-b2")) => (
-                format!("b2://{path}"),
-                serde_json::json!({
-                    "b2_id": server.username,
-                    "b2_key": secret.unwrap_or(""),
-                }),
-            ),
-            (Some("s3"), _) => (
-                format!("s3://{}/{}", server.host, path),
+    match (proto, server.provider_id.as_deref()) {
+        ("s3", Some("backblaze-b2")) => Ok((
+            format!("b2://{}", opt("bucket").unwrap_or(path)),
+            serde_json::json!({
+                "b2_id": server.username,
+                "b2_key": secret.unwrap_or(""),
+            }),
+        )),
+        ("s3", _) => {
+            // s3://[region@]host/bucket/path (HTTPS, virtual-host); Duplicacy
+            // spells path-style as minio:// (HTTP) or minios:// (HTTPS). No
+            // endpoint of its own: AWS, `amazon.com` in Duplicacy's syntax.
+            let (scheme, host) = match &endpoint {
+                Some(ep) if ep.s3_path_style => {
+                    (if ep.is_tls() { "minios" } else { "minio" }, ep.authority())
+                }
+                Some(ep) if !ep.is_tls() => {
+                    return Err(format!(
+                        "cleartext S3 endpoint {} with virtual-host buckets: \
+                         Duplicacy's s3:// is HTTPS only",
+                        ep.base_url()
+                    ))
+                }
+                Some(ep) => ("s3", ep.authority()),
+                None => ("s3", "amazon.com".to_string()),
+            };
+            let region = opt("region").map(|r| format!("{r}@")).unwrap_or_default();
+            // Bucket, then the start folder inside it when that is not the bucket itself.
+            let bucket = opt("bucket");
+            let tail = match &bucket {
+                Some(b) => {
+                    let p = path.trim_matches('/');
+                    if p.is_empty() || p == b || p.starts_with(&format!("{b}/")) {
+                        if p.is_empty() {
+                            b.clone()
+                        } else {
+                            p.to_string()
+                        }
+                    } else {
+                        format!("{b}/{p}")
+                    }
+                }
+                None => path.trim_matches('/').to_string(),
+            };
+            Ok((
+                format!("{scheme}://{region}{host}/{tail}"),
                 serde_json::json!({
                     "s3_id": server.username,
                     "s3_secret": secret.unwrap_or(""),
                 }),
-            ),
-            (Some("sftp"), _) => {
-                // Preserve a key-file reference if the profile carried
-                // one; otherwise emit ssh_password.
-                let key_path = server
-                    .options
-                    .as_ref()
-                    .and_then(|v| v.as_object())
-                    .and_then(|m| m.get("private_key_path"))
-                    .and_then(|v| v.as_str());
-                let keys = if let Some(kp) = key_path {
-                    serde_json::json!({ "ssh_key_file": kp })
-                } else {
-                    serde_json::json!({ "ssh_password": secret.unwrap_or("") })
-                };
-                (
-                    format!("sftp://{}@{}{}", server.username, server.host, path),
-                    keys,
-                )
+            ))
+        }
+        ("sftp", _) => {
+            // Preserve a key-file reference if the profile carried
+            // one; otherwise emit ssh_password.
+            let key_path = server
+                .options
+                .as_ref()
+                .and_then(|v| v.as_object())
+                .and_then(|m| m.get("private_key_path"))
+                .and_then(|v| v.as_str());
+            let keys = if let Some(kp) = key_path {
+                serde_json::json!({ "ssh_key_file": kp })
+            } else {
+                serde_json::json!({ "ssh_password": secret.unwrap_or("") })
+            };
+            let authority = if server.port == 22 || server.port == 0 {
+                server.host.clone()
+            } else {
+                format!("{}:{}", server.host, server.port)
+            };
+            // Duplicacy reads `host/rel` from the home and `host//abs` as
+            // absolute: an absolute start folder keeps its leading slash.
+            Ok((
+                format!("sftp://{}@{}/{}", server.username, authority, path),
+                keys,
+            ))
+        }
+        ("webdav", _) => {
+            let ep = endpoint.ok_or_else(|| "WebDAV profile has no server URL".to_string())?;
+            let scheme = if ep.is_tls() { "webdav" } else { "webdav-http" };
+            let mut full = ep.path.trim_start_matches('/').to_string();
+            let start = path.trim_matches('/');
+            if !start.is_empty() {
+                if !full.is_empty() {
+                    full.push('/');
+                }
+                full.push_str(start);
             }
-            (Some("webdav"), _) => (
-                format!("webdav://{}{}", server.host, path),
+            Ok((
+                format!("{scheme}://{}@{}/{}", server.username, ep.authority(), full),
                 serde_json::json!({ "password": secret.unwrap_or("") }),
-            ),
-            // OAuth backends and anything else have no Duplicacy storage
-            // URL form: skip without aborting the batch.
-            _ => continue,
+            ))
+        }
+        (other, _) => Err(format!("protocol {other:?} has no Duplicacy storage form")),
+    }
+}
+
+/// Export profiles to a `.duplicacy/preferences` JSON array.
+///
+/// Duplicacy's preferences IS an array, so every exportable profile becomes
+/// one entry. A profile with no Duplicacy storage form is reported as
+/// skipped with the reason, without aborting the batch. The storage URL is
+/// built from the endpoint the connection uses
+/// ([`crate::bridge_shared::resolve_export_endpoint`]). The file is written
+/// `0600` via `atomic_write_600` because the `keys` block carries plaintext
+/// secrets.
+pub fn export_duplicacy(
+    servers: &[DuplicacyExportServer],
+    passwords: &HashMap<String, String>,
+    out: &Path,
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
+
+    for server in servers {
+        let secret = passwords.get(&server.name).map(|s| s.as_str());
+        let (url, keys) = match duplicacy_storage_for(server, secret) {
+            Ok(v) => v,
+            Err(reason) => {
+                outcome.skip(&server.name, reason);
+                continue;
+            }
         };
 
+        // Duplicacy picks a storage by `name` (`-storage <name>`), so every
+        // entry needs its own; the first keeps "default", the one Duplicacy
+        // uses without a flag. Snapshot ids take no spaces.
+        let token: String = server
+            .name
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect();
+        let token = token.trim_matches('-').to_string();
+        let token = if token.is_empty() {
+            "aeroftp".to_string()
+        } else {
+            token
+        };
+        let mut name = if entries.is_empty() {
+            "default".to_string()
+        } else {
+            token.clone()
+        };
+        let mut n = 2;
+        while entries.iter().any(|e| e["name"] == name.as_str()) {
+            name = format!("{token}-{n}");
+            n += 1;
+        }
+
         entries.push(serde_json::json!({
-            "name": "default",
-            "id": server.name,
+            "name": name,
+            "id": token,
             "repository": "",
             "storage": url,
             "encrypted": true,
@@ -425,7 +662,8 @@ pub fn export_duplicacy(
     let body = serde_json::to_vec_pretty(&serde_json::Value::Array(entries.clone()))
         .map_err(|e| format!("serialize preferences: {e}"))?;
     crate::bridge_shared::atomic_write_600(out, &body)?;
-    Ok(entries.len())
+    outcome.exported = entries.len();
+    Ok(outcome)
 }
 
 #[cfg(test)]
@@ -495,7 +733,10 @@ mod tests {
             .unwrap();
         assert_eq!(ssh.protocol.as_deref(), Some("sftp"));
         assert_eq!(ssh.host, "nas.example.com");
-        assert_eq!(ssh.initial_path.as_deref(), Some("/srv/backup"));
+        // Duplicacy reads `host/srv/backup` relative to the home (absolute is
+        // `host//srv/backup`), and the `user@` of the URL is the SSH user.
+        assert_eq!(ssh.initial_path.as_deref(), Some("srv/backup"));
+        assert_eq!(ssh.username, "deploy");
         assert_eq!(ssh.credential.as_deref(), Some("sshpw"));
         assert_eq!(ssh.port, 22);
 
@@ -610,7 +851,8 @@ mod tests {
         std::fs::create_dir_all(&out_dir).unwrap();
         let out = out_dir.join("preferences");
         let n = export_duplicacy(&export_servers, &passwords, &out).unwrap();
-        assert_eq!(n, 3); // b2 + s3 + sftp, oauth was already skipped
+        assert_eq!(n.exported, 3); // b2 + s3 + sftp, oauth was already skipped
+        assert!(n.skipped.is_empty());
 
         // export -> import again, assert metadata idempotence (b2 + s3)
         let r2 = import_duplicacy_with_env(&out, &|_| None).unwrap();
@@ -638,12 +880,16 @@ mod tests {
 
     #[test]
     fn default_path_none_without_env() {
+        // Process-wide env: serialised with every other test that edits it.
+        let _env = crate::test_env::lock();
         std::env::remove_var("DUPLICACY_REPOSITORY");
         assert!(default_duplicacy_config_path().is_none());
     }
 
     #[test]
     fn default_path_env_override() {
+        // Process-wide env: serialised with every other test that edits it.
+        let _env = crate::test_env::lock();
         // Build a working dir with .duplicacy/preferences and point the env
         // var at it; default path must resolve to that file, then None when
         // the file is absent.

@@ -429,6 +429,18 @@ impl RemoteBackend for CliRemoteBackend {
         p.rename(from, to).await.map_err(|e| e.to_string())
     }
 
+    async fn replace(&self, from: &str, to: &str) -> Result<(), String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected")?;
+        p.replace(from, to).await.map_err(|e| e.to_string())
+    }
+
+    async fn supports_atomic_replace(&self) -> Result<bool, String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected")?;
+        p.supports_atomic_replace().await.map_err(|e| e.to_string())
+    }
+
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;

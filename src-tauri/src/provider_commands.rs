@@ -31,8 +31,8 @@ use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEnt
 use crate::transfer_event_sink::{AppHandleSink, GuiDagObserver, TransferEventSink};
 use crate::transfer_orchestrator::{execute_batch, ProgressObserver, TransferBatch};
 use crate::transfer_settings::{
-    default_download_segments_for, TransferSettingsInput, DEFAULT_MULTI_THREAD_CUTOFF_BYTES,
-    MAX_DOWNLOAD_SEGMENTS, MIN_DOWNLOAD_SEGMENTS,
+    download_segments_preference_for, resolve_download_segments, DownloadSegmentsRequest,
+    TransferSettingsInput, DEFAULT_MULTI_THREAD_CUTOFF_BYTES,
 };
 use crate::util::AbortOnDrop;
 
@@ -3047,7 +3047,7 @@ async fn detect_7z_meta_remote(
 /// the GUI never called it for them. Returns the stream count armed.
 pub(crate) fn arm_download_streams(
     provider: &mut dyn StorageProvider,
-    download_segments: Option<u32>,
+    download_segments: &DownloadSegmentsRequest,
     sftp_download_preset: Option<SftpDownloadPreset>,
 ) -> u32 {
     if provider.provider_type() == ProviderType::Sftp {
@@ -3055,15 +3055,22 @@ pub(crate) fn arm_download_streams(
             let tuning = preset.resolve();
             provider.set_multi_thread_download(tuning.connections, tuning.multi_connection_cutoff);
             provider.set_sftp_readahead(tuning.readahead_window);
+            info!(
+                "download streams requested: {}",
+                crate::transfer_settings::ResolvedDownloadSegments::sftp_preset(preset)
+            );
             return tuning.connections as u32;
         }
     }
-    let segments = download_segments
-        .unwrap_or_else(|| default_download_segments_for(provider.provider_type()))
-        .clamp(MIN_DOWNLOAD_SEGMENTS, MAX_DOWNLOAD_SEGMENTS);
-    if segments >= 2 {
-        provider.set_multi_thread_download(segments as usize, DEFAULT_MULTI_THREAD_CUTOFF_BYTES);
-    }
+    let resolved = resolve_download_segments(
+        download_segments,
+        Some(download_segments_preference_for(provider.provider_type())),
+    );
+    let segments = resolved.count();
+    info!("download streams requested: {}", resolved);
+    // Re-arm on every request, including one stream: otherwise an earlier
+    // Auto/explicit multi-stream download can leak into a later Single call.
+    provider.set_multi_thread_download(segments as usize, DEFAULT_MULTI_THREAD_CUTOFF_BYTES);
     segments
 }
 
@@ -3120,7 +3127,11 @@ pub async fn provider_download_file(
     }
 
     let file_size = provider.size(&remote_path).await.unwrap_or(0);
-    arm_download_streams(provider.as_mut(), download_segments, sftp_download_preset);
+    let armed_segments = arm_download_streams(
+        provider.as_mut(),
+        &DownloadSegmentsRequest::from(download_segments),
+        sftp_download_preset,
+    );
     let app_progress = app.clone();
     let tid_progress = transfer_id.clone();
     let fname_progress = filename.clone();
@@ -3314,39 +3325,42 @@ pub async fn provider_download_file(
     // legacy resume must not be silently dropped. On hard failure we fall
     // through to the legacy single-stream branch below.
     let mut segmented_result: Option<Result<(), String>> = None;
-    if partial_offset == 0 {
-        if let Some(requested) = download_segments {
-            if let Some(segments) =
-                crate::provider_transfer_executor::provider_segmented_download_eligible(
-                    provider.as_ref(),
-                    file_size,
-                    requested,
-                    requested as usize,
-                )
-            {
-                info!(
-                    "Segmented download: {} segments on {} ({} bytes)",
-                    segments, filename, file_size
+    // Auto and SFTP presets retain the GUI's 250 MiB fan-out cutoff. An
+    // explicit segment count may use the shared helper's smaller file floor.
+    if partial_offset == 0
+        && (download_segments.is_some() || file_size >= DEFAULT_MULTI_THREAD_CUTOFF_BYTES)
+    {
+        let requested = armed_segments;
+        if let Some(segments) =
+            crate::provider_transfer_executor::provider_segmented_download_eligible(
+                provider.as_ref(),
+                file_size,
+                requested,
+                requested as usize,
+            )
+        {
+            info!(
+                "Segmented download: {} segments on {} ({} bytes)",
+                segments, filename, file_size
+            );
+            let cancel = tokio_util::sync::CancellationToken::new();
+            let outcome = crate::provider_transfer_executor::run_provider_segmented_download(
+                provider.as_mut(),
+                &remote_path,
+                &local_path,
+                file_size,
+                segments,
+                progress_cb.take(),
+                cancel,
+            )
+            .await;
+            if let Err(ref e) = outcome {
+                warn!(
+                    "Segmented download failed, falling back to provider download: {}",
+                    e
                 );
-                let cancel = tokio_util::sync::CancellationToken::new();
-                let outcome = crate::provider_transfer_executor::run_provider_segmented_download(
-                    provider.as_ref(),
-                    &remote_path,
-                    &local_path,
-                    file_size,
-                    segments,
-                    progress_cb.take(),
-                    cancel,
-                )
-                .await;
-                if let Err(ref e) = outcome {
-                    warn!(
-                        "Segmented download failed, falling back to single-stream: {}",
-                        e
-                    );
-                }
-                segmented_result = Some(outcome);
             }
+            segmented_result = Some(outcome);
         }
     }
 
@@ -3577,7 +3591,7 @@ pub async fn provider_download_folder(
         max_concurrent,
         retry_count,
         timeout_seconds,
-        download_segments,
+        download_segments: download_segments.into(),
         sftp_download_preset,
     };
 
@@ -3639,7 +3653,9 @@ pub async fn provider_upload_folder(
         // Upload-side intra-file parallelism is a separate slice (out
         // of scope for GTC-1); upload paths keep single-stream legacy
         // behaviour regardless of the requested segments knob.
-        download_segments: None,
+        download_segments: DownloadSegmentsRequest::Single {
+            reason: "upload path has no download leg".to_string(),
+        },
         sftp_download_preset: None,
     };
 
@@ -3783,7 +3799,7 @@ async fn provider_download_folder_inner(
             .ok_or("Not connected to any provider")?;
         arm_download_streams(
             provider.as_mut(),
-            transfer_settings.download_segments,
+            &transfer_settings.download_segments,
             transfer_settings.sftp_download_preset,
         );
     }
@@ -6915,8 +6931,8 @@ pub async fn provider_compare_directories(
     crypt_kind: Option<String>,
     options: Option<crate::sync::CompareOptions>,
     progress_id: Option<String>,
-) -> Result<Vec<crate::sync::FileComparison>, String> {
-    use crate::sync::{build_comparison_results_with_index, load_sync_index, FileInfo};
+) -> Result<crate::sync::CompareReport, String> {
+    use crate::sync::{classify_with_summary, load_sync_index, FileInfo};
 
     let mut options = options.unwrap_or_default();
     crate::sync::apply_error_correction_excludes(&mut options);
@@ -7289,15 +7305,15 @@ pub async fn provider_compare_directories(
     );
 
     let index = load_sync_index(&local_path, &remote_path).ok().flatten();
-    let results =
-        build_comparison_results_with_index(local_files, remote_files, &options, index.as_ref());
+    let report = classify_with_summary(local_files, remote_files, &options, index.as_ref());
     info!(
-        "Provider compare complete: {} differences found (index: {})",
-        results.len(),
+        "Provider compare complete: {} differences out of {} examined (index: {})",
+        report.differences.len(),
+        report.summary.examined_count,
         if index.is_some() { "used" } else { "none" }
     );
 
-    Ok(results)
+    Ok(report)
 }
 
 // ============ 4shared OAuth 1.0 Commands ============
@@ -13148,7 +13164,7 @@ fn normalize_then_bound_compare_rows(
     ))
 }
 
-fn bound_compare_rows(
+pub(crate) fn bound_compare_rows(
     local_root: &str,
     local_files: &mut HashMap<String, crate::sync::FileInfo>,
     remote_files: &mut HashMap<String, crate::sync::FileInfo>,
@@ -13732,15 +13748,39 @@ mod tests {
         let mut s3 = PoolTreeProvider::fan(1, 1);
         s3.provider_type = ProviderType::S3;
         let armed = std::sync::Arc::clone(&s3.armed_streams);
-        assert_eq!(arm_download_streams(&mut s3, None, None), 4);
+        assert_eq!(
+            arm_download_streams(&mut s3, &DownloadSegmentsRequest::MeasuredDefault, None),
+            4
+        );
         assert_eq!(armed.load(Ordering::SeqCst), 4, "Auto on S3 arms 4 streams");
-        assert_eq!(arm_download_streams(&mut s3, Some(3), None), 3);
+        assert_eq!(
+            arm_download_streams(&mut s3, &DownloadSegmentsRequest::Explicit(3), None),
+            3
+        );
         assert_eq!(armed.load(Ordering::SeqCst), 3, "an explicit value is kept");
+        assert_eq!(
+            arm_download_streams(
+                &mut s3,
+                &DownloadSegmentsRequest::Single {
+                    reason: "user selected one stream".to_string(),
+                },
+                None,
+            ),
+            1
+        );
+        assert_eq!(
+            armed.load(Ordering::SeqCst),
+            1,
+            "Single disarms prior fan-out"
+        );
 
         let mut webdav = PoolTreeProvider::fan(1, 1);
         webdav.provider_type = ProviderType::WebDav;
         let armed = std::sync::Arc::clone(&webdav.armed_streams);
-        assert_eq!(arm_download_streams(&mut webdav, None, None), 8);
+        assert_eq!(
+            arm_download_streams(&mut webdav, &DownloadSegmentsRequest::MeasuredDefault, None),
+            8
+        );
         assert_eq!(
             armed.load(Ordering::SeqCst),
             8,
@@ -13750,13 +13790,28 @@ mod tests {
         let mut unmeasured = PoolTreeProvider::fan(1, 1);
         unmeasured.provider_type = ProviderType::Backblaze;
         let armed = std::sync::Arc::clone(&unmeasured.armed_streams);
-        assert_eq!(arm_download_streams(&mut unmeasured, None, None), 1);
-        assert_eq!(armed.load(Ordering::SeqCst), 0, "one stream arms nothing");
+        assert_eq!(
+            arm_download_streams(
+                &mut unmeasured,
+                &DownloadSegmentsRequest::MeasuredDefault,
+                None
+            ),
+            1
+        );
+        assert_eq!(
+            armed.load(Ordering::SeqCst),
+            1,
+            "one stream disarms prior fan-out"
+        );
 
         let mut sftp = PoolTreeProvider::fan(1, 1);
         let armed = std::sync::Arc::clone(&sftp.armed_streams);
         assert_eq!(
-            arm_download_streams(&mut sftp, Some(2), Some(SftpDownloadPreset::Fast)),
+            arm_download_streams(
+                &mut sftp,
+                &DownloadSegmentsRequest::Explicit(2),
+                Some(SftpDownloadPreset::Fast)
+            ),
             8
         );
         assert_eq!(

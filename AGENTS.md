@@ -143,8 +143,8 @@ hides who the account is (host, username) and not how the connection is shaped.
 | `crypt kit-verify` | `aeroftp-cli crypt kit-verify --profile NAME --kit ./kit.txt` | Re-parse a saved Emergency Kit / marker and confirm it matches the active profile keystore (offline; no password) |
 | `batch` | `aeroftp-cli batch script.aeroftp-script` | Run batch script (.aeroftp-script) |
 | `import` | `aeroftp-cli import rclone [--json]` | Import profiles from rclone/FileZilla |
-| `profile-export` | `aeroftp-cli profile-export backup.aeroftp [--include-credentials]` | Export profiles to an encrypted `.aeroftp` backup (GUI-compatible; secrets opt-in) |
-| `profile-import` | `aeroftp-cli profile-import backup.aeroftp` | Import profiles from an encrypted `.aeroftp` backup (reads GUI-exported files) |
+| `profile-export` | `aeroftp-cli profile-export --output backup.aeroftp [--include-credentials]` | Export profiles to an encrypted `.aeroftp` backup (GUI-compatible; secrets opt-in) |
+| `profile-import` | `aeroftp-cli profile-import --input backup.aeroftp` | Import profiles from an encrypted `.aeroftp` backup (reads GUI-exported files; existing profiles are skipped, never overwritten) |
 
 ### Info Operations
 
@@ -154,6 +154,7 @@ hides who the account is (host, username) and not how the connection is shaped.
 | `df` | `aeroftp-cli df --profile NAME [--json]` | Storage quota |
 | `about` | `aeroftp-cli about --profile NAME [--json]` | Provider/server info with quota when available |
 | `profiles` | `aeroftp-cli profiles [--json]` | List saved servers |
+| `pwd` | `aeroftp-cli pwd NAME [--json]` | Base path every relative path resolves against, read from the saved profile without connecting |
 | `agent-info` | `aeroftp-cli agent-info --json` | Full capabilities JSON |
 
 ## Output Modes
@@ -187,15 +188,16 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 | 1 | Connection error | Retry or report to user |
 | 2 | Not found | Check path spelling |
 | 3 | Permission denied | Report to user |
-| 4 | Transfer failed | Retry once, then report |
+| 4 | Transfer failed or partial | Read the JSON `status` and errors before retrying: a partial run can also mean a scan did not read the whole tree |
 | 5 | Invalid usage | Fix command syntax |
 | 6 | Auth failed | Ask user to re-authorize |
 | 7 | Not supported | Use alternative approach |
-| 8 | Timeout | Retry with longer timeout |
-| 9 | Already exists | File exists (--immutable/--no-clobber) |
+| 8 | Stopped at a limit, nothing failed | Raise the limit: a timeout on most commands, the `--max-transfer` budget on `sync` (JSON `over_budget`) |
+| 9 | Already exists / directory not empty | Do not overwrite or delete unless the user asks: the target exists (`--immutable`, `--no-clobber`) or the directory is not empty |
 | 10 | Server/parse error | Check server status |
 | 11 | I/O error | Check disk space/permissions |
 | 99 | Unknown | Report to user |
+| 130 | Interrupted (SIGINT) | Stop: the run was cancelled |
 
 ## Safety Guidelines
 
@@ -395,31 +397,14 @@ Full orchestration documentation with a verified field test report: **[Agent Orc
 
 ## Transfer Engine
 
-Starting with v4.0.0 AeroFTP has a shared, provider-agnostic DAG core and
-several production runners. Do not infer the runtime path from a builder or a
-capability flag alone; check the command path and provider binding.
+Starting with v4.0.0 AeroFTP has a shared, provider-agnostic DAG core and several production runners. Do not infer the runtime path from a builder or a capability flag alone; check the command path and provider binding.
 
-- **Single-file `get` / `put`** normally reach the shaped-file runner. The
-  multipart lifecycle is real. Independent wire-level part workers are
-  currently present for S3, Backblaze B2, Azure Blob, and Nextcloud chunked
-  v2; other providers can serialize their provider calls behind a shared
-  session even when their graph contains multiple part nodes.
-- **Batch** reaches `execute_batch_dag`, but currently builds with default
-  capabilities and its generic settings clamp file concurrency. It is a DAG
-  wrapper, not yet capability-driven cloud batch fan-out.
-- **Non-dry-run sync** reaches `execute_sync_dag`; local/remote scan and
-  planning happen before graph execution, and the file driver processes the
-  plan serially. Dry-run stays on the planning path.
-- **Server-side copy** uses `server_side_copy_with_fallback` in the normal GUI
-  and CLI copy call sites. A native provider copy avoids local payload bytes;
-  the `shaped_copy` builder is not the normal copy-command orchestrator.
-- **Segmented download** uses the legacy `JoinSet` path by default. The DAG
-  `shaped_ranges` path is available only with `AEROFTP_RANGE_GRAPH=1`.
+- **Single-file `get` / `put`** normally reach the shaped-file runner. The multipart lifecycle is real. Independent wire-level part workers are currently present for S3, Backblaze B2, Azure Blob, Nextcloud chunked v2, Dropbox, Box, Filen, Drime and Uploadcare; other providers can serialize their provider calls behind a shared session even when their graph contains multiple part nodes.
+- **Batch** reaches `execute_batch_dag` and **non-dry-run sync** reaches `execute_sync_dag`; both stream per-file subgraphs through a bounded frontier, shaped from the provider's runtime capabilities. Providers with a clone or session pool (S3, Backblaze B2, Azure Blob, WebDAV, SFTP, FTP, Dropbox, Box, Filen, Drime and Uploadcare) run files in parallel up to their live session ceiling; single-session providers, a failed clone probe and every delta request stay serial. Sync scans and plans before the graph runs, and dry-run stays on the planning path.
+- **Server-side copy** in the GUI, CLI `cp` and the CLI WebDAV `COPY` handler runs `execute_copy_dag`, a `shaped_copy` graph: one `ServerSideCopy` node, or a download then upload when the provider rejects the native copy with a recoverable error. A native provider copy moves no payload bytes through the client.
+- **Segmented download** runs on the `shaped_ranges` graph, the only production range scheduler; there is no environment switch. Files at or above `--multi-thread-cutoff` (default `250M`) use `--multi-thread-streams` range streams (default 4) where the provider supports them; smaller files and other providers use one stream.
 
-The GUI, CLI, and MCP surfaces share these primitives where their call paths
-reach them, but they do not guarantee identical wire behavior. Capabilities,
-concurrency flags, and AIMD settings apply only where the selected runner
-consumes them.
+The GUI, CLI, and MCP surfaces share these primitives where their call paths reach them, but they do not guarantee identical wire behavior. Capabilities, concurrency flags, and AIMD settings apply only where the selected runner consumes them.
 
 Architecture details: [docs.aeroftp.app/architecture/dag-transfer-engine](https://docs.aeroftp.app/architecture/dag-transfer-engine).
 
@@ -435,4 +420,4 @@ Saved profiles cover both direct-auth and browser-authorized providers.
 
 ---
 
-*AeroFTP CLI v4.1.x - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
+*AeroFTP CLI v4.2.x - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*

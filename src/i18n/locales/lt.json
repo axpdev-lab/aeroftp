@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "Reikia pagalbos ar norite pranešti apie klaidą? Esame čia, kad padėtume.",
             "sourceforgeReviews": "Parašykite atsiliepimą SourceForge",
-            "writeReview": "Parašyti atsiliepimą"
+            "writeReview": "Parašyti atsiliepimą",
+            "team": {
+                "title": "Axpdev Lab komanda",
+                "apRole": "Įkūrėjas, kūrėjas, prižiūrėtojas, dizaino bendraautoris",
+                "ekRole": "Tyrėjas, kokybės užtikrinimo inžinierius, dizaino bendraautoris"
+            }
         },
         "support": {
             "title": "Palaikykite AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "Šiukšlinė tuščia",
             "itemCount": "{count} elementų šiukšlinėje",
             "moveToTrash": "Perkelti į šiukšlinę",
-            "restoreConfirm": "Atkurti {name} į pradinę vietą?"
+            "restoreConfirm": "Atkurti {name} į pradinę vietą?",
+            "homeCopyPrompt": "{count} elementas(-ai), pradedant {name}, yra diske be tinkamos šiukšlinės. Perkėlus juos į šiukšlinę, jie būtų nukopijuoti į namų aplanko šiukšlinę, o tai gali ilgai užtrukti ir reikalauja laisvos vietos. Ištrinti juos visam laikui?",
+            "copyToHomeTrash": "Kopijuoti į namų aplanko šiukšlinę",
+            "permanentAfterFailure": "Nepavyko perkelti į šiukšlinę {count} elemento(-ų), pradedant {name}. Ištrinti juos visam laikui? To negalima atšaukti.",
+            "kept": "Elementas {name} paliktas: niekas neištrinta",
+            "keptMultiple": "Palikta vietoje, neištrinta: {count} elem."
         },
         "quickLook": {
             "noPreview": "Peržiūra nepasiekiama",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Pavadinime negali būti / ar \\, sekos .. ar nulinio simbolio."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent patvirtinimas",
+            "whyTitle": "Kodėl atskiras langas?",
+            "whyBody": "Šis patvirtinimas atsidaro už pokalbio ribų, kad turinys, kurį agentas ten skaito ir rodo, negalėtų patvirtinti veiksmo jūsų vardu.",
+            "wantsTo": "AeroAgent nori:",
+            "scopeOnce": "Patvirtina būtent šį veiksmą vieną kartą.",
+            "scopeSession": "Patvirtina šį įrankį iki pokalbio seanso pabaigos.",
+            "approve": "Patvirtinti"
         }
     }
 }

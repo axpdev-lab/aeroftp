@@ -5,6 +5,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    // Same allocator tuning as the CLI: the transfer engine, and so the
+    // part-sized buffers it owns, are shared with the desktop app.
+    ftp_client_gui_lib::alloc_tuning::tune_for_transfer_buffers();
+
     // Windows portable auto-updater: when the previous AeroFTP swapped its
     // .exe in place, it relaunches the new build with
     // `--post-update-cleanup <path-to-old-exe>`. Pick that up before Tauri

@@ -1524,7 +1524,12 @@
             "documentation": "Documentation",
             "supportDesc": "¿Necesitas ayuda o quieres informar de un error? Estamos aquí para ayudarte.",
             "sourceforgeReviews": "Escribir una reseña en SourceForge",
-            "writeReview": "Escribir una reseña"
+            "writeReview": "Escribir una reseña",
+            "team": {
+                "title": "Equipo de Axpdev Lab",
+                "apRole": "Fundador, desarrollador, mantenedor, codiseñador",
+                "ekRole": "Investigador, ingeniero de aseguramiento de la calidad, codiseñador"
+            }
         },
         "support": {
             "title": "Apoyar AeroFTP",
@@ -3370,7 +3375,12 @@
             "emptyTrash": "La papelera está vacía",
             "itemCount": "{count} elementos en la Papelera",
             "moveToTrash": "Mover a la papelera",
-            "restoreConfirm": "¿Restaurar {name} a su ubicación original?"
+            "restoreConfirm": "¿Restaurar {name} a su ubicación original?",
+            "homeCopyPrompt": "{count} elemento(s), empezando por {name}, están en una unidad sin una papelera utilizable. Moverlos a la papelera los copiaría a la papelera de tu carpeta personal, lo que puede tardar mucho y requiere espacio libre. ¿Eliminarlos permanentemente?",
+            "copyToHomeTrash": "Copiar a la papelera personal",
+            "permanentAfterFailure": "No se pudieron mover a la papelera {count} elemento(s), empezando por {name}. ¿Eliminarlos permanentemente? Esta acción no se puede deshacer.",
+            "kept": "Se conservó {name}: no se eliminó nada",
+            "keptMultiple": "Dejados en su lugar, sin eliminar: {count} elemento(s)"
         },
         "quickLook": {
             "noPreview": "Vista previa no disponible",
@@ -5691,6 +5701,15 @@
         },
         "rename": {
             "invalidCharacters": "Un nombre no puede contener / ni \\, la secuencia .. ni un carácter nulo."
+        },
+        "aiApproval": {
+            "windowTitle": "Aprobación de AeroAgent",
+            "whyTitle": "¿Por qué una ventana aparte?",
+            "whyBody": "Esta aprobación se abre fuera del chat, para que el contenido que el agente lee y muestra allí no pueda confirmar una acción en tu nombre.",
+            "wantsTo": "AeroAgent quiere:",
+            "scopeOnce": "Aprueba esta acción exacta una sola vez.",
+            "scopeSession": "Aprueba esta herramienta durante el resto de la sesión de chat.",
+            "approve": "Aprobar"
         }
     }
 }

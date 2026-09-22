@@ -361,6 +361,10 @@ export interface ProviderOptions {
 
   // FTP/FTPS-specific
   tlsMode?: FtpTlsMode; // TLS encryption mode
+  /** Where the WinSCP / FileZilla importers used to store the FTPS mode.
+   *  Read as a fallback for `tlsMode` so a profile imported before they
+   *  wrote `tlsMode` connects with its real mode (explicit on port 21). */
+  ftpsMode?: FtpTlsMode;
   verifyCert?: boolean; // Verify server certificate (default: true)
   /** Swift only. Accept a catalog-issued cleartext object-store endpoint after
    *  an HTTPS Keystone session. Undefined or false keeps the downgrade guard
@@ -894,6 +898,27 @@ export interface FileComparison {
   sync_reason: string;
   /** True if this file existed in a previous sync index (for bisync delete detection) */
   previously_synced?: boolean;
+}
+
+/**
+ * How many entries (and bytes) a recursive compare classified, including the
+ * identical files the difference rows omit. The backend ships this next to
+ * the rows so the Compare tab divides by what the scan examined instead of
+ * by what the rows carry (which used to force every non-empty compare to
+ * read as 100% out of sync). Field names match the Rust `CompareSummary`
+ * serialization (snake_case).
+ */
+export interface CompareSummary {
+  examined_count: number;
+  identical_count: number;
+  examined_bytes: number;
+  identical_bytes: number;
+}
+
+/** A recursive compare answer: difference rows plus the summary above. */
+export interface CompareReport {
+  differences: FileComparison[];
+  summary: CompareSummary;
 }
 
 export type ConflictStrategy =
