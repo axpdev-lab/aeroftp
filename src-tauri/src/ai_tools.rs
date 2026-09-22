@@ -553,10 +553,16 @@ fn has_matching_session_grant(
     })
 }
 
+/// `scope_key` identifies this exact call; `session_scope_key` is the same
+/// call without its arguments, which is what a chat-wide grant was stored
+/// under (see `grant_ai_tool_approval`). A call that `prepare` let through on
+/// a chat-wide grant arrives here with no grant id, so the check must look
+/// for that grant under the session scope, not the per-call one.
 pub(crate) async fn ensure_ai_tool_approval(
     session_id: Option<&str>,
     tool_name: &str,
     scope_key: &str,
+    session_scope_key: &str,
     approval_grant_id: Option<&str>,
 ) -> Result<(), String> {
     let session_key = cache_session_key(session_id);
@@ -591,7 +597,7 @@ pub(crate) async fn ensure_ai_tool_approval(
         return Ok(());
     }
 
-    if has_matching_session_grant(&grants, &session_key, tool_name, scope_key, now) {
+    if has_matching_session_grant(&grants, &session_key, tool_name, session_scope_key, now) {
         return Ok(());
     }
 
@@ -2073,10 +2079,16 @@ pub async fn execute_ai_tool(
             context_local_path.as_deref(),
             remote_context.as_deref(),
         )?;
+        let session_scope_key = build_session_scope_key(
+            &tool_name,
+            context_local_path.as_deref(),
+            remote_context.as_deref(),
+        )?;
         ensure_ai_tool_approval(
             session_id.as_deref(),
             &tool_name,
             &scope_key,
+            &session_scope_key,
             approval_grant_id.as_deref(),
         )
         .await?;
@@ -2154,6 +2166,35 @@ mod session_grant_tests {
         assert!(
             !next.approval_required,
             "the chat-wide approval did not cover batch-b"
+        );
+    }
+
+    /// The frontend runs a call that `prepare` let through with no grant id,
+    /// so the execution-time check has to find the chat-wide grant too.
+    #[tokio::test]
+    async fn a_call_let_through_by_a_chat_approval_also_passes_execution() {
+        let session = format!("s-{}", Uuid::new_v4());
+        remember(&session, "local_mkdir", "/work/batch-a").await;
+        ensure_ai_tool_approval(
+            Some(&session),
+            "local_mkdir",
+            &key("local_mkdir", "/work/batch-b"),
+            &session_key_for("local_mkdir"),
+            None,
+        )
+        .await
+        .expect("the chat-wide approval was accepted by prepare but refused at execution");
+        let other_tool = ensure_ai_tool_approval(
+            Some(&session),
+            "local_write",
+            &key("local_write", "/work/batch-b"),
+            &session_key_for("local_write"),
+            None,
+        )
+        .await;
+        assert!(
+            other_tool.is_err(),
+            "a grant for local_mkdir let local_write run"
         );
     }
 
