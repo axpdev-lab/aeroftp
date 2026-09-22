@@ -53,6 +53,10 @@ export interface ProviderMode {
      *  static "Requires …" warning (#215 follow-up). The value is the bridge
      *  `kind` understood by `bridge_status`. */
     bridgeKind?: BridgeKind;
+    /** Shown in the strip but not selectable, and never resolved as the
+     *  active mode: a surface that is announced but not available yet (the
+     *  official Proton Drive API). Its `description` says why. */
+    disabled?: boolean;
 }
 
 /** Local bridge helper apps probed by the backend `bridge_status` command. */
@@ -197,6 +201,38 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             'S3':
                 'Requires Filen Desktop running and signed in on this machine. On first connect the bridge auto-creates a top-level folder named "filen" on your account: existing files live one level above the bridge view.',
         },
+    },
+    {
+        // Same form as Filen: the official API first, then the CLI. Proton
+        // Drive has no API open to third-party apps yet, so the API tab is
+        // announced and disabled; when Proton opens one it becomes the native
+        // connector and the CLI stays as the second surface. Both tabs use
+        // the `proton` protocol, which is why disabled modes are skipped when
+        // the active one is resolved.
+        id: 'proton',
+        headerLabel: 'Proton Drive Modes',
+        headerName: 'Proton Drive',
+        modes: [
+            {
+                protocol: 'proton',
+                icon: methodIcon('API', { size: 14 }),
+                activeColor: 'text-purple-500',
+                label: 'API',
+                description:
+                    'Not available yet: Proton Drive has no API open to third-party apps. When Proton opens one, this tab will connect natively, without the CLI.',
+                badge: 'SOON',
+                disabled: true,
+            },
+            {
+                protocol: 'proton',
+                icon: methodIcon('CLI', { size: 14 }),
+                activeColor: 'text-purple-500',
+                label: 'CLI',
+                description:
+                    'Drives the official Proton Drive CLI installed and signed in on this machine. You sign in in the browser; AeroFTP never sees your Proton password.',
+                badge: 'LOCAL',
+            },
+        ],
     },
     {
         id: 'opendrive',
@@ -405,6 +441,9 @@ export function findActiveMode(
     activeProtocol: string | null | undefined,
 ): ProviderMode | null {
     for (const mode of group.modes) {
+        // A disabled mode shares its protocol with a live one (Proton API and
+        // CLI are both `proton`): it must never be the answer.
+        if (mode.disabled) continue;
         if (mode.providerId) {
             if (mode.providerId === activeProviderId) return mode;
         } else {

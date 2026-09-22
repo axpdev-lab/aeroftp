@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     PROVIDER_MODE_GROUPS,
+    findActiveMode,
     findActiveModeGroup,
     resolveModeSwitchCredentials,
     type ProviderModeGroup,
@@ -55,5 +56,28 @@ describe('resolveModeSwitchCredentials (#215 password leak)', () => {
                 password: '',
             });
         }
+    });
+});
+
+// Proton Drive follows the Filen form: a mode strip with the official API
+// first and the CLI second. Until Proton opens an API to third-party apps
+// the API tab is shown disabled, and it must never be taken for the active
+// mode: both tabs use the `proton` protocol.
+describe('Proton Drive mode group', () => {
+    const group = findActiveModeGroup(undefined, 'proton') as ProviderModeGroup;
+
+    it('a Proton connection shows the mode strip', () => {
+        expect(group?.id).toBe('proton');
+    });
+
+    it('lists the API tab first, disabled, and the CLI tab second', () => {
+        expect(group.modes.map(m => m.label)).toEqual(['API', 'CLI']);
+        expect(group.modes[0].disabled).toBe(true);
+        expect(group.modes[1].disabled).not.toBe(true);
+    });
+
+    it('resolves the CLI as the active mode, never the disabled API tab', () => {
+        expect(findActiveMode(group, undefined, 'proton')?.label).toBe('CLI');
+        expect(findActiveMode(group, 'proton', 'proton')?.label).toBe('CLI');
     });
 });
