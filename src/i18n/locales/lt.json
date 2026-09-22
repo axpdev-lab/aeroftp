@@ -1363,6 +1363,7 @@
             "usedScanDone": "Naudojama saugykla apskaičiuota",
             "usedScanDoneDetail": "{used} per {files} failus",
             "usedScanTruncated": "dalinis: pasiekta nuskaitymo riba",
+            "usedScanUnreadable": "dalinis, neperskaitomi aplankai: {count}",
             "usedScanFailed": "Naudojamos saugyklos nuskaitymas nepavyko",
             "usedScanEmpty": "Nuskaitant {path} failų nerasta; talpykloje saugotas skaičius išliko. Patikrinkite kelią arba serverio rekursyvaus sąrašo palaikymą."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Jungiamasi prie {server} ({protocol})...",
             "connect_success": "Prisijungta prie {server} per {protocol}",
+            "resume_transfers": "Tęsiami atkurti perdavimai serveryje {server}: {count}",
+            "resume_transfers_no_profile": "Tęsiami atkurti perdavimai: {count}",
             "connect_error": "Nepavyko prisijungti prie {server}. Patikrinkite kredencialus.",
             "connect_error_path_not_found": "Prisijungta prie {server}, bet nuotolinis kelias '{path}' nerastas. Redaguokite profilio lauką Nuotolinis kelias arba jį išvalykite, kad būtų naudojamas serverio pradinis aplankas.",
             "disconnect_start": "Atsijungiama nuo serverio...",

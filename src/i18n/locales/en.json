@@ -74,6 +74,8 @@
             "delete_scanning": "Deleting items...",
             "connect_start": "Connecting to {server} ({protocol})...",
             "connect_success": "Connected to {server} via {protocol}",
+            "resume_transfers": "Resuming restored transfers on {server}: {count}",
+            "resume_transfers_no_profile": "Resuming restored transfers: {count}",
             "insecure_cert_enabled": "{protocol} connection to {server} with certificate verification disabled",
             "delete_dir_success": "[{location}] Folder removed: {filename}",
             "delete_error": "[{location}] Could not remove {filename}",
@@ -3764,6 +3766,7 @@
             "usedScanDone": "Used storage calculated",
             "usedScanDoneDetail": "{used} across {files} files",
             "usedScanTruncated": "partial: scan limit reached",
+            "usedScanUnreadable": "partial, unreadable folders: {count}",
             "usedScanFailed": "Used-storage scan failed",
             "usedScanEmpty": "Scan of {path} found no files; the cached figure was kept. Check the path or the server's recursive-listing support."
         },

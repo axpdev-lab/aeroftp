@@ -1363,6 +1363,7 @@
             "usedScanDone": "Hifadhi iliyotumika imekokotolewa",
             "usedScanDoneDetail": "{used} katika faili {files}",
             "usedScanTruncated": "kwa sehemu: kikomo cha uchanganuzi kimefikiwa",
+            "usedScanUnreadable": "kwa sehemu, folda zisizosomeka: {count}",
             "usedScanFailed": "Uchanganuzi wa hifadhi iliyotumika umeshindwa",
             "usedScanEmpty": "Uchanganuzi wa njia {path} haukupata faili; thamani iliyohifadhiwa kwenye akiba ilihifadhiwa. Angalia njia au usaidizi wa seva kwa orodha ya kujirudia."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Ninaunganisha kwa {server} ({protocol})...",
             "connect_success": "Nimeunganishwa! Nimeunganishwa kwa {server} kupitia {protocol}",
+            "resume_transfers": "Inaendelea na uhamisho uliorejeshwa kwenye {server}: {count}",
+            "resume_transfers_no_profile": "Inaendelea na uhamisho uliorejeshwa: {count}",
             "connect_error": "Sikuweza kuunganisha kwa {server}. Nitakagua vyeti vyangu.",
             "connect_error_path_not_found": "Umeingia kwenye {server}, lakini njia ya mbali '{path}' haikupatikana. Hariri Njia ya Mbali ya wasifu au uifute ili kutumia folda kuu ya seva.",
             "disconnect_start": "Ninatenganisha kutoka kwenye seva...",

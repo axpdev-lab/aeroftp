@@ -41,6 +41,50 @@ struct ApiResponse<T> {
     error: Option<ApiError>,
 }
 
+/// Turns a failed kDrive API call into an error. A refusal for lack of
+/// permission (403, or an error code such as `permission_denied` or
+/// `upload_destination_not_writable_error`, which kDrive also sends with a 400)
+/// becomes `PermissionDenied` with kDrive's own description, so it reads as a
+/// refusal instead of a server fault and is not retried as one. Everything else
+/// stays a `ServerError` with the sanitized body, as before.
+fn api_failure(context: &str, status: Option<reqwest::StatusCode>, body: &str) -> ProviderError {
+    let error = serde_json::from_str::<ApiResponse<serde_json::Value>>(body)
+        .ok()
+        .and_then(|r| r.error);
+    let code = error
+        .as_ref()
+        .and_then(|e| e.code.as_deref())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let status_part = status.map(|s| format!(" ({s})")).unwrap_or_default();
+    let refused = status.map(|s| s.as_u16() == 403).unwrap_or(false)
+        || code.contains("permission")
+        || code.contains("not_writable")
+        || code == "forbidden";
+    if refused {
+        let why = error
+            .and_then(|e| e.description)
+            .map(|d| sanitize_api_error(&d))
+            .unwrap_or_else(|| sanitize_api_error(body));
+        return ProviderError::PermissionDenied(format!("{context}{status_part}: {why}"));
+    }
+    ProviderError::ServerError(format!(
+        "{context}{status_part}: {}",
+        sanitize_api_error(body)
+    ))
+}
+
+/// The kDrive root is not writable: it only holds the drive's top folders
+/// (Private, Common documents). A refused write there says where to go instead.
+fn explain_root_refusal(err: ProviderError, parent: &str) -> ProviderError {
+    match err {
+        ProviderError::PermissionDenied(_) if parent == "/" => ProviderError::PermissionDenied(
+            "The kDrive root is not writable: it only holds the drive's top folders, such as Private and Common documents. Open one of them to add files or folders.".to_string(),
+        ),
+        other => other,
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct ApiError {
     #[allow(dead_code)]
@@ -556,12 +600,11 @@ impl KDriveProvider {
                 if !resp.status().is_success() {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::ServerError(format!(
-                        "List {} failed ({}): {}",
-                        current_path,
-                        status,
-                        sanitize_api_error(&body)
-                    )));
+                    return Err(api_failure(
+                        &format!("List {} failed", current_path),
+                        Some(status),
+                        &body,
+                    ));
                 }
 
                 let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
@@ -655,10 +698,7 @@ impl KDriveProvider {
                 if status.as_u16() == 404 {
                     return Err(ProviderError::NotFound(sanitize_api_error(&body)));
                 }
-                return Err(ProviderError::ServerError(format!(
-                    "Find file failed: {}",
-                    sanitize_api_error(&body)
-                )));
+                return Err(api_failure("Find file failed", Some(status), &body));
             }
 
             let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
@@ -853,12 +893,11 @@ impl StorageProvider for KDriveProvider {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "List {} failed ({}): {}",
-                    resolved,
-                    status,
-                    sanitize_api_error(&body)
-                )));
+                return Err(api_failure(
+                    &format!("List {} failed", resolved),
+                    Some(status),
+                    &body,
+                ));
             }
 
             let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
@@ -954,11 +993,7 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Download failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Download failed", Some(status), &body));
         }
 
         // KD-002: Streaming download: write chunks progressively instead of buffering in RAM
@@ -1045,11 +1080,9 @@ impl StorageProvider for KDriveProvider {
         let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Download failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Download failed", Some(status), &body));
         }
 
         // H2: Size-limited download to prevent OOM on large files
@@ -1124,11 +1157,10 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body_text = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Upload failed ({}): {}",
-                status,
-                sanitize_api_error(&body_text)
-            )));
+            return Err(explain_root_refusal(
+                api_failure("Upload failed", Some(status), &body_text),
+                parent_path,
+            ));
         }
 
         let _upload_resp: ApiResponse<UploadResponse> = resp.json().await.map_err(|e| {
@@ -1181,11 +1213,10 @@ impl StorageProvider for KDriveProvider {
             if status.as_u16() == 409 || code_says_exists {
                 return Err(ProviderError::AlreadyExists(resolved));
             }
-            return Err(ProviderError::ServerError(format!(
-                "Create directory failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(explain_root_refusal(
+                api_failure("Create directory failed", Some(status), &body),
+                parent_path,
+            ));
         }
 
         // Cache the new dir
@@ -1219,11 +1250,7 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Delete failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Delete failed", Some(status), &body));
         }
 
         // Remove from cache if directory
@@ -1262,11 +1289,7 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Rename failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Rename failed", Some(status), &body));
         }
 
         // Update cache
@@ -1322,11 +1345,9 @@ impl StorageProvider for KDriveProvider {
         let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Stat failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Stat failed", Some(status), &body));
         }
 
         let api_resp: ApiResponse<KDriveFile> = resp.json().await.map_err(|e| {
@@ -1426,11 +1447,7 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Copy failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Copy failed", Some(status), &body));
         }
 
         Ok(())
@@ -1515,11 +1532,7 @@ impl StorageProvider for KDriveProvider {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Search failed ({}): {}",
-                    status,
-                    sanitize_api_error(&body)
-                )));
+                return Err(api_failure("Search failed", Some(status), &body));
             }
 
             let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
@@ -1640,11 +1653,7 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Create share link failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Create share link failed", Some(status), &body));
         }
 
         let api_resp: ApiResponse<ShareLinkData> = resp.json().await.map_err(|e| {
@@ -1687,11 +1696,7 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "List share links failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("List share links failed", Some(status), &body));
         }
 
         let api_resp: ApiResponse<ShareLinkData> = resp.json().await.map_err(|e| {
@@ -1736,11 +1741,7 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Remove share link failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Remove share link failed", Some(status), &body));
         }
 
         Ok(())
@@ -1768,11 +1769,7 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "List versions failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("List versions failed", Some(status), &body));
         }
 
         let api_resp: ApiResponse<Vec<KDriveVersion>> = resp.json().await.map_err(|e| {
@@ -1823,11 +1820,7 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Download version failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Download version failed", Some(status), &body));
         }
 
         // Stream version download to file
@@ -1875,11 +1868,7 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Restore version failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Restore version failed", Some(status), &body));
         }
 
         Ok(())
@@ -1912,11 +1901,7 @@ impl KDriveProvider {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "List trash failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("List trash failed", Some(status), &body));
         }
 
         let api_resp: ApiResponse<TrashPayload> = resp
@@ -1985,11 +1970,11 @@ impl KDriveProvider {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Restore from trash failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure(
+                "Restore from trash failed",
+                Some(status),
+                &body,
+            ));
         }
 
         tracing::info!("kDrive: restored item {} from trash", file_id);
@@ -2011,11 +1996,7 @@ impl KDriveProvider {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Permanent delete failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Permanent delete failed", Some(status), &body));
         }
 
         tracing::info!("kDrive: permanently deleted item {} from trash", file_id);
@@ -2034,15 +2015,87 @@ impl KDriveProvider {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Empty trash failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            return Err(api_failure("Empty trash failed", Some(status), &body));
         }
 
         tracing::info!("kDrive: trash emptied");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod api_failure_tests {
+    use super::*;
+    use reqwest::StatusCode;
+
+    // Bodies measured on 2026-09-22 against a real kDrive, writing in the root.
+    const MKDIR_ROOT: &str = r#"{"result":"error","error":{"code":"permission_denied","description":"You do not have the required permissions"}}"#;
+    const UPLOAD_ROOT: &str = r#"{"result":"error","error":{"code":"upload_destination_not_writable_error","description":"Upload destination not writable, please choose another destination"}}"#;
+
+    #[test]
+    fn a_refused_write_is_a_permission_error_with_kdrives_words() {
+        let mkdir = api_failure(
+            "Create directory failed",
+            Some(StatusCode::BAD_REQUEST),
+            MKDIR_ROOT,
+        );
+        match &mkdir {
+            ProviderError::PermissionDenied(m) => {
+                assert!(
+                    m.contains("You do not have the required permissions"),
+                    "{m}"
+                );
+                assert!(!m.contains("\"result\""), "raw JSON leaked: {m}");
+            }
+            other => panic!("a 400 permission_denied must not read as a server fault: {other:?}"),
+        }
+        let upload = api_failure("Upload failed", Some(StatusCode::FORBIDDEN), UPLOAD_ROOT);
+        assert!(
+            matches!(upload, ProviderError::PermissionDenied(_)),
+            "{upload:?}"
+        );
+    }
+
+    #[test]
+    fn a_bare_403_is_a_refusal_even_without_a_readable_body() {
+        let err = api_failure(
+            "Download failed",
+            Some(StatusCode::FORBIDDEN),
+            "<html>Forbidden</html>",
+        );
+        assert!(matches!(err, ProviderError::PermissionDenied(_)), "{err:?}");
+    }
+
+    #[test]
+    fn other_failures_stay_server_errors() {
+        let busy = api_failure(
+            "Upload failed",
+            Some(StatusCode::INTERNAL_SERVER_ERROR),
+            r#"{"result":"error","error":{"code":"internal_error","description":"boom"}}"#,
+        );
+        assert!(matches!(busy, ProviderError::ServerError(_)), "{busy:?}");
+        let not_json = api_failure("Stat failed", None, "<html>bad gateway</html>");
+        assert!(
+            matches!(not_json, ProviderError::ServerError(_)),
+            "{not_json:?}"
+        );
+    }
+
+    #[test]
+    fn a_refusal_in_the_root_says_where_to_write() {
+        let refused = api_failure("Upload failed", Some(StatusCode::FORBIDDEN), UPLOAD_ROOT);
+        match explain_root_refusal(refused, "/") {
+            ProviderError::PermissionDenied(m) => assert!(m.contains("Private"), "{m}"),
+            other => panic!("{other:?}"),
+        }
+        // Below the root the server's own reason is kept.
+        let refused = api_failure("Upload failed", Some(StatusCode::FORBIDDEN), UPLOAD_ROOT);
+        match explain_root_refusal(refused, "/Private/shared-ro") {
+            ProviderError::PermissionDenied(m) => {
+                assert!(m.contains("not writable, please"), "{m}")
+            }
+            other => panic!("{other:?}"),
+        }
     }
 }
 

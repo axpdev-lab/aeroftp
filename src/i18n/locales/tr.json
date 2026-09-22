@@ -1363,6 +1363,7 @@
             "usedScanDone": "Kullanılan depolama hesaplandı",
             "usedScanDoneDetail": "{files} dosyada {used}",
             "usedScanTruncated": "kısmi: tarama sınırına ulaşıldı",
+            "usedScanUnreadable": "kısmi, okunamayan klasörler: {count}",
             "usedScanFailed": "Kullanılan depolama taraması başarısız oldu",
             "usedScanEmpty": "{path} yolunun taraması hiç dosya bulamadı; önbellekteki değer korundu. Yolu veya sunucunun özyinelemeli listeleme desteğini kontrol edin."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "{server} sunucusuna bağlanıyorum ({protocol})...",
             "connect_success": "Bağlandım! {server} sunucusuna {protocol} üzerinden bağlandım",
+            "resume_transfers": "{server} üzerinde geri yüklenen aktarımlar sürdürülüyor: {count}",
+            "resume_transfers_no_profile": "Geri yüklenen aktarımlar sürdürülüyor: {count}",
             "connect_error": "{server} sunucusuna bağlanamadım. Kimlik bilgilerimi kontrol edeceğim.",
             "connect_error_path_not_found": "{server} sunucusunda oturum açıldı, ancak '{path}' uzak yolu bulunamadı. Profilin Uzak Yol alanını düzenleyin veya sunucunun ana dizinini kullanmak için temizleyin.",
             "disconnect_start": "Sunucudan bağlantıyı kesiyorum...",

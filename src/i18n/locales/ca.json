@@ -1363,6 +1363,7 @@
             "usedScanDone": "Emmagatzematge utilitzat calculat",
             "usedScanDoneDetail": "{used} en {files} fitxers",
             "usedScanTruncated": "parcial: s'ha assolit el límit d'escaneig",
+            "usedScanUnreadable": "parcial, carpetes no llegibles: {count}",
             "usedScanFailed": "L'escaneig de l'emmagatzematge utilitzat ha fallat",
             "usedScanEmpty": "L'escaneig de {path} no ha trobat cap fitxer; s'ha mantingut el valor de la memòria cau. Comproveu el camí o el suport de llistat recursiu del servidor."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Connectant a {server} ({protocol})...",
             "connect_success": "Connectat a {server} via {protocol}",
+            "resume_transfers": "Reprenent les transferències restaurades a {server}: {count}",
+            "resume_transfers_no_profile": "Reprenent les transferències restaurades: {count}",
             "connect_error": "Connexió a {server} fallida. Comprova les credencials.",
             "connect_error_path_not_found": "S'ha iniciat sessió a {server}, però no s'ha trobat la ruta remota '{path}'. Edita la Ruta remota del perfil o buida-la per usar la carpeta inicial del servidor.",
             "disconnect_start": "Desconnectant del servidor...",

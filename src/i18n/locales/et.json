@@ -1363,6 +1363,7 @@
             "usedScanDone": "Kasutatud salvestusruum arvutatud",
             "usedScanDoneDetail": "{used} {files} failis",
             "usedScanTruncated": "osaline: skannimispiir saavutatud",
+            "usedScanUnreadable": "osaline, loetamatud kaustad: {count}",
             "usedScanFailed": "Kasutatud salvestusruumi skannimine ebaõnnestus",
             "usedScanEmpty": "Tee {path} skannimisel ei leitud faile; vahemällu salvestatud väärtus säilitati. Kontrollige teed või serveri rekursiivse loendamise tuge."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Ühendamine {server} ({protocol})...",
             "connect_success": "Ühendatud {server} kaudu {protocol}",
+            "resume_transfers": "Taastatud edastuste jätkamine serveris {server}: {count}",
+            "resume_transfers_no_profile": "Taastatud edastuste jätkamine: {count}",
             "connect_error": "Ühendamine {server} ebaõnnestus. Kontrollige mandaate.",
             "connect_error_path_not_found": "Sisselogimine serverisse {server} õnnestus, kuid kaugteed '{path}' ei leitud. Muutke profiili välja Kaugtee või tühjendage see, et kasutada serveri kodukausta.",
             "disconnect_start": "Ühenduse katkestamine serveriga...",

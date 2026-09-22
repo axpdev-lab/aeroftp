@@ -9979,6 +9979,14 @@ pub struct UsedScanResult {
     /// cancel also sets `truncated`.
     #[serde(default)]
     pub cancelled: bool,
+    /// Folders the walk could not list: the figure lacks their contents.
+    /// Told apart from the caps so the note beside the figure names the
+    /// right cause. Additive, like `cancelled`.
+    #[serde(default)]
+    pub unreadable_dirs: u64,
+    /// True when the depth or entry cap stopped the walk.
+    #[serde(default)]
+    pub hit_cap: bool,
     pub method: String,
 }
 
@@ -9990,6 +9998,8 @@ impl From<&crate::used_scan::UsedScan> for UsedScanResult {
             dir_count: s.dir_count,
             truncated: s.truncated,
             cancelled: s.cancelled,
+            unreadable_dirs: s.unreadable_dirs,
+            hit_cap: s.hit_cap,
             method: s.method.to_string(),
         }
     }
@@ -10077,7 +10087,19 @@ pub async fn provider_scan_used(
     let mut dir_count = 0u64;
     let mut truncated = false;
     let mut cancelled = false;
-    let mut queue: Vec<(String, usize)> = vec![(root.clone(), 0)];
+    let mut unreadable_dirs = 0u64;
+    let mut hit_cap = false;
+    let mut queue: Vec<(String, usize)> = {
+        let guard = state.provider.lock().await;
+        let provider = guard
+            .as_ref()
+            .ok_or_else(|| "Not connected to any provider".to_string())?;
+        provider
+            .used_scan_roots(&root)
+            .into_iter()
+            .map(|r| (r, 0))
+            .collect()
+    };
     let mut last_emit = std::time::Instant::now()
         .checked_sub(std::time::Duration::from_millis(400))
         .unwrap_or_else(std::time::Instant::now);
@@ -10090,6 +10112,7 @@ pub async fn provider_scan_used(
         }
         if depth >= MAX_DEPTH || (file_count + dir_count) >= MAX_ENTRIES {
             truncated = true;
+            hit_cap = true;
             continue;
         }
         let entries = {
@@ -10104,6 +10127,7 @@ pub async fn provider_scan_used(
                     // whole figure: the result is a lower bound.
                     tracing::warn!("[provider_scan_used] failed to list {}: {}", dir, e);
                     truncated = true;
+                    unreadable_dirs += 1;
                     continue;
                 }
             }
@@ -10120,6 +10144,7 @@ pub async fn provider_scan_used(
             // hostile listing cannot grow the queue past MAX_ENTRIES.
             if (file_count + dir_count) >= MAX_ENTRIES {
                 truncated = true;
+                hit_cap = true;
                 break;
             }
             if entry.is_dir {
@@ -10150,6 +10175,8 @@ pub async fn provider_scan_used(
         dir_count,
         truncated,
         cancelled,
+        unreadable_dirs,
+        hit_cap,
         method: "bfs".to_string(),
     })
 }

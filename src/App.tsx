@@ -193,13 +193,14 @@ import {
   buildJournalEntries,
   displayPathForRestore,
   groupIdsByProfileId,
-  isRestorableJournalStatus,
+  isRestorableJournalEntry,
   joinRemotePath,
   parentDir,
   type JournalDescriptorFields,
   type TransferQueueJournalDto,
 } from './utils/transferQueueJournal';
 import { copyText } from './utils/clipboard';
+import { connectionViaLabel } from './utils/connectionViaLabel';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
 import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
@@ -3581,7 +3582,7 @@ const App: React.FC = () => {
     try {
       const res = await invoke<{
         used: number; file_count: number; dir_count: number;
-        truncated: boolean; cancelled?: boolean; method: string;
+        truncated: boolean; cancelled?: boolean; unreadable_dirs?: number; hit_cap?: boolean; method: string;
       }>('provider_scan_used', { path: scanRoot });
       if (res.used === 0 && res.file_count === 0 && res.dir_count > 0) {
         // Directories were listed but zero files were counted. On some old
@@ -3635,7 +3636,7 @@ const App: React.FC = () => {
         const doneDetail = t('statusBar.usedScanDoneDetail', {
           used: formatBytes(res.used),
           files: String(res.file_count),
-        }) + (boundKey ? ` (${t(boundKey)})` : '');
+        }) + (boundKey ? ` (${t(boundKey, { count: String(res.unreadable_dirs ?? 0) })})` : '');
         notify.success(t('statusBar.usedScanDone'), doneDetail);
         activityLog.updateEntry(scanLogId, {
           status: 'success',
@@ -6085,7 +6086,11 @@ const App: React.FC = () => {
   const listingReason = (path?: string | null): string =>
     path ? t('browser.listingPath', { path }) : t('browser.listingDirectory');
 
+  // When the last remote listing started: a finished upload's own refresh
+  // stands down if one started after it (see utils/deferredRefresh).
+  const remoteRefreshStartedAtRef = useRef(0);
   const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, ignoreRcloneCrypt?: boolean, overrideScopePath?: string | null): Promise<FileListResponse | null> => {
+    remoteRefreshStartedAtRef.current = Date.now();
     // Cover every FOREGROUND listing (connect, manual refresh, provider re-list)
     // with the same spinner + freeze the drill-in navigation already uses, so a
     // slow terminal/provider never leaves the panel silent with nothing happening
@@ -6235,6 +6240,7 @@ const App: React.FC = () => {
   const { pendingFileLogIds, pendingDeleteLogIds } = useTransferEvents({
     t, activityLog, humanLog, transferQueue, notify,
     setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
+    remoteRefreshStartedAt: () => remoteRefreshStartedAtRef.current,
     currentRemotePath,
     onTransferStart: () => {
       if (!showActivityLog) setShowActivityLog(true);
@@ -7620,7 +7626,7 @@ const App: React.FC = () => {
                       : protocol === 'immich'
                         ? (effectiveParams.providerId === 'pixelunion' ? 'PixelUnion' : effectiveParams.server.replace(/^https?:\/\//, ''))
                         : effectiveParams.server.split(':')[0]);
-      const protocolLabel = protocol.toUpperCase();
+      const protocolLabel = connectionViaLabel(effectiveParams);
       // SEC: mask credentials in log-only provider name to prevent data leakage
       const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)
         ? providerName.replace(effectiveParams.username, maskCredential(effectiveParams.username))
@@ -7816,7 +7822,7 @@ const App: React.FC = () => {
     // Reset navigation sync for new connection
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
-    const protocolLabel = (effectiveParams.protocol || 'FTP').toUpperCase();
+    const protocolLabel = connectionViaLabel(effectiveParams);
     const logId = humanLog.logStart('CONNECT', { server: effectiveParams.server, protocol: protocolLabel });
     try {
       // First disconnect any active OAuth provider to avoid conflicts
@@ -8126,7 +8132,6 @@ const App: React.FC = () => {
 
     // Reconnect to the new server and refresh data
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connecting' } : s));
-    const protocolLabel = (protocol || 'FTP').toUpperCase();
     const reconnectLogId = humanLog.logRaw('activity.reconnect_start', 'CONNECT', { server: targetSession.serverName }, 'running');
 
     // Switching tab reconnects: on every branch below the remote panel sits on
@@ -8743,7 +8748,7 @@ const App: React.FC = () => {
       const protocol = (cloudConfig.protocol_type || cloudServer.protocol || 'ftp') as ProviderType;
       const isProvider = usesProviderApi(protocol);
       const isFtp = isFtpProtocol(protocol);
-      const protocolLabel = protocol.toUpperCase();
+      const protocolLabel = connectionViaLabel({ protocol, providerId: cloudServer.providerId, options: cloudServer.options });
 
       // Build connection server string
       const defaultPort = protocol === 'sftp' ? 22 : protocol === 'ftps' ? 990 : 21;
@@ -9878,7 +9883,7 @@ const App: React.FC = () => {
         if (cancelled) return;
         const entries = journal?.entries ?? [];
         for (const entry of entries) {
-          if (!isRestorableJournalStatus(entry.status)) continue;
+          if (!isRestorableJournalEntry(entry)) continue;
           const direction = entry.direction === 'upload' ? 'upload' : 'download';
           const displayPath = displayPathForRestore(
             direction,
@@ -10167,6 +10172,16 @@ const App: React.FC = () => {
     }
   };
 
+  // A resume on a session that is already open starts transfers with no line
+  // saying so (the connect path logs "Connecting to X to resume transfers").
+  const logResume = (count: number, serverName?: string) => {
+    if (serverName) {
+      humanLog.logRaw('activity.resume_transfers', 'INFO', { count, server: serverName }, 'success');
+    } else {
+      humanLog.logRaw('activity.resume_transfers_no_profile', 'INFO', { count }, 'success');
+    }
+  };
+
   const resumeRestoredTransfers = async (ids: string[]) => {
     if (ids.length === 0) return;
     const groups = groupIdsByProfileId(ids, journalDescriptorsRef.current);
@@ -10184,12 +10199,15 @@ const App: React.FC = () => {
           continue;
         }
         transferQueue.clearRestoredFlags(groupIds);
+        logResume(groupIds.length);
         fireRetryCallbacks(groupIds);
         continue;
       }
 
       if (isLiveOnProfile(profileId)) {
         transferQueue.clearRestoredFlags(groupIds);
+        const live = sessions.find((s) => s.id === activeSessionId);
+        logResume(groupIds.length, live?.serverName);
         fireRetryCallbacks(groupIds);
         continue;
       }
@@ -10233,6 +10251,7 @@ const App: React.FC = () => {
       const ok = await connectSavedProfileForResume(profile);
       if (!ok) continue;
 
+      // The connect already logged "Connecting to X to resume transfers".
       transferQueue.clearRestoredFlags(groupIds);
       fireRetryCallbacks(groupIds);
     }
@@ -17185,7 +17204,7 @@ const App: React.FC = () => {
                           : normalizedParams.protocol === 'immich'
                             ? (normalizedParams.providerId === 'pixelunion' ? 'PixelUnion' : normalizedParams.server.replace(/^https?:\/\//, ''))
                             : normalizedParams.server.split(':')[0]);
-                  const protocolLabel = (normalizedParams.protocol || 'FTP').toUpperCase();
+                  const protocolLabel = connectionViaLabel(normalizedParams);
                   // SEC: mask credentials in log-only provider name to prevent data leakage
                   const maskedProviderName = normalizedParams.username && providerName.includes(normalizedParams.username)
                     ? providerName.replace(normalizedParams.username, maskCredential(normalizedParams.username))
@@ -17352,7 +17371,7 @@ const App: React.FC = () => {
                 // Reset navigation sync for new connection
                 setIsSyncNavigation(false);
                 setSyncBasePaths(null);
-                const protocolLabel = (params.protocol || 'FTP').toUpperCase();
+                const protocolLabel = connectionViaLabel(params);
                 const logId = humanLog.logStart('CONNECT', { server: params.server, protocol: protocolLabel });
                 try {
                   // Disconnect any existing provider connections first (S3, WebDAV, OAuth)

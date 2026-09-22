@@ -1363,6 +1363,7 @@
             "usedScanDone": "Erabilitako biltegiratzea kalkulatuta",
             "usedScanDoneDetail": "{used} {files} fitxategitan",
             "usedScanTruncated": "partziala: eskaneatze-muga gainditu da",
+            "usedScanUnreadable": "partziala, irakurri ezin diren karpetak: {count}",
             "usedScanFailed": "Erabilitako biltegiratzearen eskaneatzeak huts egin du",
             "usedScanEmpty": "{path} eskaneatzeak ez du fitxategirik aurkitu; cacheko balioa mantendu da. Egiaztatu bidea edo zerbitzariaren zerrendatze errekurtsiboaren euskarria."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Konektatzen: {server} ({protocol})...",
             "connect_success": "Konektatuta: {server} ({protocol})",
+            "resume_transfers": "Leheneratutako transferentziak berrekiten {server} zerbitzarian: {count}",
+            "resume_transfers_no_profile": "Leheneratutako transferentziak berrekiten: {count}",
             "connect_error": "Huts konexioan: {server}. Egiaztatu kredentzialak.",
             "connect_error_path_not_found": "{server}-en saioa hasi da, baina ez da '{path}' urruneko bidea aurkitu. Editatu profilaren Urruneko bidea edo hustu ezazu zerbitzariaren hasierako karpeta erabiltzeko.",
             "disconnect_start": "Zerbitzaritik deskonektatzen...",

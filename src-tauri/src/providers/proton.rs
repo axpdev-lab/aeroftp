@@ -422,6 +422,62 @@ fn join_path(parent: &str, name: &str) -> String {
     }
 }
 
+/// The CLI's `/` is not a folder: it lists the account sections (my-files,
+/// devices, photos, trash, the shared views...). Nothing can be created in it,
+/// and the sections themselves are fixed.
+fn is_root_or_section(abs: &str) -> bool {
+    parent_of(abs) == "/"
+}
+
+/// Refuses a write whose destination folder is the root, before the CLI runs
+/// and answers with a bare `Path "/" is not supported`.
+fn ensure_parent_writable(parent: &str) -> Result<(), ProviderError> {
+    if parent == "/" {
+        return Err(ProviderError::PermissionDenied(
+            "The Proton Drive root only holds the account sections (my-files, devices, photos, trash and the shared views). Open my-files, or another section, to add files or folders.".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Refuses renaming, moving, copying or deleting the root or a section.
+fn ensure_not_section(abs: &str) -> Result<(), ProviderError> {
+    if is_root_or_section(abs) {
+        return Err(ProviderError::PermissionDenied(format!(
+            "\"{}\" is a Proton Drive section: it cannot be renamed, moved, copied or deleted.",
+            basename(abs)
+        )));
+    }
+    Ok(())
+}
+
+/// Sections that hold the account's own storage, the ones a used-storage scan
+/// of the root counts. Left out: `shared-by-me` and `photos-shared-by-me`
+/// repeat items already under my-files and photos, `shared-with-me` and
+/// `photos-shared-with-me` are other people's files, `albums` groups photos
+/// already under photos.
+const OWN_STORAGE_SECTIONS: &[&str] = &[
+    "/my-files",
+    "/devices",
+    "/photos",
+    "/trash",
+    "/photos-trash",
+];
+
+/// A section the CLI lists in the root but cannot open: measured with 0.8.0,
+/// `albums` and `photos` answer `Path type ... is not supported` and
+/// `photos-shared-by-me` fails with `TypeError: Invalid photo node type`.
+fn explain_unlistable(path: &str, err: ProviderError) -> ProviderError {
+    let text = err.to_string().to_lowercase();
+    if text.contains("is not supported") || text.contains("invalid photo node type") {
+        return ProviderError::NotSupported(format!(
+            "The Proton Drive CLI cannot open \"{}\" yet. Use the Proton Drive web or mobile app for photos and albums.",
+            first_segment(path)
+        ));
+    }
+    err
+}
+
 fn first_segment(path: &str) -> &str {
     path.trim_start_matches('/').split('/').next().unwrap_or("")
 }
@@ -647,6 +703,14 @@ impl StorageProvider for ProtonCliProvider {
         self.account_email.clone()
     }
 
+    fn used_scan_roots(&self, root: &str) -> Vec<String> {
+        if normalize_abs(root) == "/" {
+            OWN_STORAGE_SECTIONS.iter().map(|s| s.to_string()).collect()
+        } else {
+            vec![normalize_abs(root)]
+        }
+    }
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         self.binary = resolve_proton_drive(self.config.binary_path.as_deref());
         if !binary_exists(&self.binary) {
@@ -696,7 +760,7 @@ impl StorageProvider for ProtonCliProvider {
             .await
             .map_err(|e| match e {
                 ProviderError::NotFound(_) => ProviderError::NotFound(target.clone()),
-                other => other,
+                other => explain_unlistable(&target, other),
             })?;
         parse_list_json(&stdout, &target)
     }
@@ -713,7 +777,7 @@ impl StorageProvider for ProtonCliProvider {
                 ProviderError::NotFound(_) => {
                     ProviderError::NotFound(format!("Invalid directory: {new_path}"))
                 }
-                other => other,
+                other => explain_unlistable(&new_path, other),
             })?;
         self.current_path = new_path;
         Ok(())
@@ -844,10 +908,11 @@ impl StorageProvider for ProtonCliProvider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let remote = self.resolve_path(remote_path);
+        let parent = parent_of(&remote);
+        ensure_parent_writable(&parent)?;
         if let Some(ref cb) = on_progress {
             cb(0, 0);
         }
-        let parent = parent_of(&remote);
         let local_cli = normalize_local_path_for_cli(local_path);
         let local_name = basename(&local_cli.replace('\\', "/"));
         let dest_name = basename(&remote);
@@ -889,6 +954,7 @@ impl StorageProvider for ProtonCliProvider {
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let abs = self.resolve_path(path);
         let parent = parent_of(&abs);
+        ensure_parent_writable(&parent)?;
         let name = basename(&abs);
         self.run_cli(
             &["filesystem", "create-folder", &parent, "--", &name],
@@ -900,6 +966,7 @@ impl StorageProvider for ProtonCliProvider {
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let abs = self.resolve_path(path);
+        ensure_not_section(&abs)?;
         self.run_cli(&["filesystem", "trash", &abs], META_TIMEOUT_SECS)
             .await?;
         Ok(())
@@ -915,6 +982,7 @@ impl StorageProvider for ProtonCliProvider {
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
         let abs = self.resolve_path(path);
+        ensure_not_section(&abs)?;
         let in_trash = is_in_trash_path(&abs);
         let trash_root = if first_segment(&abs) == "photos-trash" {
             "/photos-trash"
@@ -983,8 +1051,10 @@ impl StorageProvider for ProtonCliProvider {
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from = self.resolve_path(from);
         let to = self.resolve_path(to);
+        ensure_not_section(&from)?;
         let from_parent = parent_of(&from);
         let to_parent = parent_of(&to);
+        ensure_parent_writable(&to_parent)?;
         let to_name = basename(&to);
         if from_parent == to_parent {
             self.run_cli(
@@ -1055,7 +1125,9 @@ impl StorageProvider for ProtonCliProvider {
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from = self.resolve_path(from);
         let to = self.resolve_path(to);
+        ensure_not_section(&from)?;
         let parent = parent_of(&to);
+        ensure_parent_writable(&parent)?;
         let name = basename(&to);
         if name == basename(&from) {
             self.run_cli(&["filesystem", "copy", &from, &parent], META_TIMEOUT_SECS)
@@ -1591,6 +1663,140 @@ mod cli_sequence_tests {
             deletes[0].last().map(|s| s.as_str()),
             Some("/trash/dup.txt")
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `/` lists the account sections and is not a folder: a write there, or a
+    /// rename, move, copy or delete of a section, is refused with a clear
+    /// message before the CLI runs. Reading the root and the sections, and
+    /// writing inside a section, still work.
+    #[tokio::test]
+    async fn the_root_takes_no_writes_and_sections_stay_fixed() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let mut p = provider(&shim);
+        let local = dir.join("IMG_1.jpg");
+        std::fs::write(&local, b"x").unwrap();
+        let local = local.to_string_lossy().into_owned();
+
+        let refused: Vec<(&str, ProviderError)> = vec![
+            (
+                "upload to /",
+                p.upload(&local, "/IMG_1.jpg", None).await.unwrap_err(),
+            ),
+            ("mkdir in /", p.mkdir("/new").await.unwrap_err()),
+            ("delete a section", p.delete("/my-files").await.unwrap_err()),
+            (
+                "purge a section",
+                p.delete_permanent("/photos").await.unwrap_err(),
+            ),
+            (
+                "rename a section",
+                p.rename("/devices", "/devices2").await.unwrap_err(),
+            ),
+            (
+                "move into /",
+                p.rename("/my-files/a.txt", "/a.txt").await.unwrap_err(),
+            ),
+            (
+                "copy a section",
+                p.server_copy("/trash", "/my-files/t").await.unwrap_err(),
+            ),
+            (
+                "copy into /",
+                p.server_copy("/my-files/a.txt", "/a.txt")
+                    .await
+                    .unwrap_err(),
+            ),
+        ];
+        for (what, err) in &refused {
+            assert!(
+                matches!(err, ProviderError::PermissionDenied(_)),
+                "{what}: expected a clear refusal, got {err:?}"
+            );
+        }
+        let argv = read_argv(&dir);
+        assert!(
+            argv.is_empty(),
+            "the CLI must not run for a refused write: {argv:?}"
+        );
+
+        p.list("/").await.unwrap();
+        p.list("/shared-with-me").await.unwrap();
+        p.upload(&local, "/my-files/IMG_1.jpg", None).await.unwrap();
+        assert_eq!(verbs(&read_argv(&dir), "upload").len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A used-storage scan of the root counts the account's own storage only:
+    /// never the shared views (repeats and other people's files) nor albums.
+    /// Photos, which the CLI cannot open yet, are counted as an unreadable
+    /// folder, so the figure is declared a lower bound instead of a total.
+    #[tokio::test]
+    async fn a_root_scan_counts_own_storage_and_names_what_it_could_not_read() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("my-files.json"),
+            r#"[{"name":{"ok":true,"value":"a.bin"},"uid":"U1","type":"file","activeRevision":{"claimedSize":1000}}]"#,
+        )
+        .unwrap();
+        let mut p: Box<dyn super::super::StorageProvider> = Box::new(provider(&shim));
+        let never = std::sync::atomic::AtomicBool::new(false);
+        let scan = crate::used_scan::scan_used_bytes(&mut p, "/", None, 10_000, &never, |_, _| {})
+            .await
+            .unwrap();
+        let listed: Vec<String> = verbs(&read_argv(&dir), "list")
+            .iter()
+            .filter_map(|a| a.iter().skip(2).find(|x| !x.starts_with('-')).cloned())
+            .collect();
+        for walked in [
+            "/my-files",
+            "/devices",
+            "/photos",
+            "/trash",
+            "/photos-trash",
+        ] {
+            assert!(
+                listed.iter().any(|l| l == walked),
+                "{walked} not walked: {listed:?}"
+            );
+        }
+        for skipped in [
+            "/",
+            "/shared-by-me",
+            "/shared-with-me",
+            "/albums",
+            "/photos-shared-by-me",
+            "/photos-shared-with-me",
+        ] {
+            assert!(
+                !listed.iter().any(|l| l == skipped),
+                "{skipped} must not be counted: {listed:?}"
+            );
+        }
+        assert_eq!(scan.file_count, 1, "{scan:?}");
+        assert_eq!(
+            scan.unreadable_dirs, 1,
+            "photos is unreadable with CLI 0.8.0: {scan:?}"
+        );
+        assert!(
+            scan.truncated && !scan.hit_cap,
+            "a lower bound, not a cap: {scan:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn opening_a_photo_section_says_the_cli_cannot_yet() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let mut p = provider(&shim);
+        let err = p.list("/photos").await.unwrap_err();
+        match err {
+            ProviderError::NotSupported(m) => assert!(m.contains("cannot open \"photos\""), "{m}"),
+            other => panic!("expected a clear NotSupported, got {other:?}"),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

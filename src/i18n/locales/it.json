@@ -1795,6 +1795,7 @@
             "usedScanDone": "Spazio usato calcolato",
             "usedScanDoneDetail": "{used} su {files} file",
             "usedScanTruncated": "parziale: limite di scansione raggiunto",
+            "usedScanUnreadable": "parziale, cartelle non leggibili: {count}",
             "usedScanFailed": "Scansione dello spazio usato non riuscita",
             "usedScanEmpty": "La scansione di {path} non ha trovato file; il valore in cache è stato mantenuto. Verifica il percorso o il supporto dell'elenco ricorsivo del server."
         },
@@ -2063,6 +2064,8 @@
         "activity": {
             "connect_start": "Connessione a {server} ({protocol})...",
             "connect_success": "Connesso a {server} via {protocol}",
+            "resume_transfers": "Ripresa dei trasferimenti ripristinati su {server}: {count}",
+            "resume_transfers_no_profile": "Ripresa dei trasferimenti ripristinati: {count}",
             "connect_error": "Connessione a {server} fallita. Verifica le credenziali.",
             "connect_error_path_not_found": "Accesso a {server} riuscito, ma il percorso remoto '{path}' non esiste. Modifica il Remote Path del profilo o lascialo vuoto per usare la home del server.",
             "disconnect_start": "Disconnessione in corso...",

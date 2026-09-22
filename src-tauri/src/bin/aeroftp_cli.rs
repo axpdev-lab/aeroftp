@@ -68502,11 +68502,15 @@ fn is_retryable_exit(code: i32) -> bool {
     //   0  success
     //   2  not found (missing path or missing parent: the provider classifies
     //      a 553 naming a missing path as NotFound, so it maps to 2 here)
+    //   3  permission denied / read-only: a refused destination (the kDrive
+    //      or Proton Drive root, a read-only share) refuses again a second
+    //      later. No provider reports a temporary condition this way: rate
+    //      limits are 429 or detected separately, as on Google Drive.
     //   5  invalid usage / config
     //   6  authentication failed
     //   7  operation not supported
     //   9  already exists (--no-clobber short-circuit)
-    code != 0 && code != 2 && code != 5 && code != 6 && code != 7 && code != 9
+    code != 0 && code != 2 && code != 3 && code != 5 && code != 6 && code != 7 && code != 9
 }
 
 /// Attempt budget for the dispatch-level retry loops (get/put/pget/sync).
@@ -71395,6 +71399,13 @@ mod tests {
             5
         );
         assert!(!is_retryable_exit(5));
+        // A refused destination is refused again: measured on kDrive, whose
+        // root answered the same 403 three times in a row to `put`.
+        assert_eq!(
+            provider_error_to_exit_code(&ProviderError::PermissionDenied("test".into())),
+            3
+        );
+        assert!(!is_retryable_exit(3));
     }
 
     #[test]

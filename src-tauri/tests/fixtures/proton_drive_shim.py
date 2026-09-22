@@ -50,9 +50,18 @@ if verb == "filesystem" and sub == "info":
     sys.exit(0)
 if verb == "filesystem" and sub == "list":
     listed = next((a for a in args[2:] if not a.startswith("-")), "/")
+    # What proton-drive 0.8.0 answers for the photo sections it cannot open
+    # (measured 2026-09-22).
+    if listed.rstrip("/") in ("/photos", "/albums"):
+        print("Error: Path type %s is not supported" % listed.strip("/"), file=sys.stderr)
+        sys.exit(1)
     trash_path = pathlib.Path(TRASH_JSON)
+    # A listing a test provides for one folder: `/my-files` reads my-files.json.
+    section_listing = pathlib.Path(HERE, listed.strip("/").replace("/", "_") + ".json")
     if listed.rstrip("/") in ("/trash", "/photos-trash") and trash_path.exists():
         sys.stdout.write(trash_path.read_text())
+    elif listed.strip("/") and section_listing.exists():
+        sys.stdout.write(section_listing.read_text())
     else:
         print("[]")
     sys.exit(0)

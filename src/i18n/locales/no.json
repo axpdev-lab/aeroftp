@@ -1363,6 +1363,7 @@
             "usedScanDone": "Brukt lagring beregnet",
             "usedScanDoneDetail": "{used} på tvers av {files} filer",
             "usedScanTruncated": "delvis: skannegrense nådd",
+            "usedScanUnreadable": "delvis, uleselige mapper: {count}",
             "usedScanFailed": "Skanning av brukt lagring mislyktes",
             "usedScanEmpty": "Skanning av {path} fant ingen filer; den bufrede verdien ble beholdt. Sjekk banen eller serverens støtte for rekursiv listing."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Kobler til {server} ({protocol})...",
             "connect_success": "Tilkoblet {server} via {protocol}",
+            "resume_transfers": "Gjenopptar gjenopprettede overføringer på {server}: {count}",
+            "resume_transfers_no_profile": "Gjenopptar gjenopprettede overføringer: {count}",
             "connect_error": "Tilkobling til {server} mislyktes. Sjekk legitimasjon.",
             "connect_error_path_not_found": "Logget inn på {server}, men den eksterne stien '{path}' ble ikke funnet. Rediger profilens Eksterne sti, eller tøm den for å bruke serverens hjemmemappe.",
             "disconnect_start": "Kobler fra server...",

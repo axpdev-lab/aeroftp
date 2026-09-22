@@ -364,7 +364,11 @@ async fn bfs_used_bytes(
     let depth_limit = max_depth.unwrap_or(crate::sync_core::scan::DEFAULT_SCAN_DEPTH);
     let depth_requested = max_depth.is_some();
     // (absolute path, depth). LIFO is fine: we only sum, order is irrelevant.
-    let mut queue: Vec<(String, usize)> = vec![(root.to_string(), 0)];
+    let mut queue: Vec<(String, usize)> = provider
+        .used_scan_roots(root)
+        .into_iter()
+        .map(|r| (r, 0))
+        .collect();
 
     while let Some((dir, depth)) = queue.pop() {
         if cancel.load(Ordering::Relaxed) {

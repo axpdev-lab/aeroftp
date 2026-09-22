@@ -1363,6 +1363,7 @@
             "usedScanDone": "Armazenamento usado calculado",
             "usedScanDoneDetail": "{used} em {files} arquivos",
             "usedScanTruncated": "parcial: limite de verificação atingido",
+            "usedScanUnreadable": "parcial, pastas ilegíveis: {count}",
             "usedScanFailed": "Falha na verificação do armazenamento usado",
             "usedScanEmpty": "A verificação de {path} não encontrou arquivos; o valor em cache foi mantido. Verifique o caminho ou o suporte do servidor à listagem recursiva."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Conectando a {server} ({protocol})...",
             "connect_success": "Conectado a {server} via {protocol}",
+            "resume_transfers": "Retomando transferências restauradas em {server}: {count}",
+            "resume_transfers_no_profile": "Retomando transferências restauradas: {count}",
             "connect_error": "Conexão com {server} falhou. Verifique as credenciais.",
             "connect_error_path_not_found": "Sessão iniciada em {server}, mas o caminho remoto '{path}' não foi encontrado. Edite o Caminho remoto do perfil ou limpe-o para usar a pasta inicial do servidor.",
             "disconnect_start": "Desconectando do servidor...",

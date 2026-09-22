@@ -1363,6 +1363,7 @@
             "usedScanDone": "Använd lagring beräknad",
             "usedScanDoneDetail": "{used} i {files} filer",
             "usedScanTruncated": "delvis: skanningsgränsen nådd",
+            "usedScanUnreadable": "delvis, oläsbara mappar: {count}",
             "usedScanFailed": "Skanning av använd lagring misslyckades",
             "usedScanEmpty": "Skanning av {path} hittade inga filer; det cachade värdet behölls. Kontrollera sökvägen eller serverns stöd för rekursiv listning."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Ansluter till {server} ({protocol})...",
             "connect_success": "Ansluten! Jag är kopplad till {server} via {protocol}",
+            "resume_transfers": "Återupptar återställda överföringar på {server}: {count}",
+            "resume_transfers_no_profile": "Återupptar återställda överföringar: {count}",
             "connect_error": "Kunde inte ansluta till {server}. Jag kontrollerar mina inloggningsuppgifter.",
             "connect_error_path_not_found": "Inloggad på {server}, men fjärrsökvägen '{path}' hittades inte. Redigera profilens Fjärrsökväg eller töm den för att använda serverns hemmapp.",
             "disconnect_start": "Kopplar ifrån servern...",

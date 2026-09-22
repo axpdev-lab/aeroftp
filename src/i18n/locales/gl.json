@@ -1363,6 +1363,7 @@
             "usedScanDone": "Almacenamento usado calculado",
             "usedScanDoneDetail": "{used} en {files} ficheiros",
             "usedScanTruncated": "parcial: alcanzouse o límite de escaneo",
+            "usedScanUnreadable": "parcial, cartafoles non lexibles: {count}",
             "usedScanFailed": "O escaneo do almacenamento usado fallou",
             "usedScanEmpty": "O escaneo de {path} non atopou ficheiros; mantívose o valor en caché. Comprobe a ruta ou o soporte de listaxe recursiva do servidor."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Conectando a {server} ({protocol})...",
             "connect_success": "Conectado a {server} vía {protocol}",
+            "resume_transfers": "Retomando as transferencias restauradas en {server}: {count}",
+            "resume_transfers_no_profile": "Retomando as transferencias restauradas: {count}",
             "connect_error": "Fallo ao conectar a {server}. Comproba credenciais.",
             "connect_error_path_not_found": "Sesión iniciada en {server}, pero non se atopou a ruta remota '{path}'. Edita a Ruta remota do perfil ou déixaa baleira para usar o cartafol inicial do servidor.",
             "disconnect_start": "Desconectando do servidor...",

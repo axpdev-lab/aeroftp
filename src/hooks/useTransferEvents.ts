@@ -8,6 +8,7 @@ import { TransferEvent, TransferProgress } from '../types';
 import { dispatchTransferToast } from '../components/Transfer/TransferToastContainer';
 import { localizeRestrictedCharError } from '../utils/restrictedCharError';
 import { READ_ONLY_ERROR_PREFIX } from '../utils/aeroShare';
+import { createDeferredRefresh } from '../utils/deferredRefresh';
 import type { TransferToastLane, TransferToastState } from '../components/Transfer';
 import type { ActivityLogContextValue } from './useActivityLog';
 import type { useHumanizedLog } from './useHumanizedLog';
@@ -63,6 +64,9 @@ interface UseTransferEventsOptions {
   notify: NotifyMethods;
   setActiveTransfer: (transfer: TransferProgress | null) => void;
   loadRemoteFiles: (overrideProtocol?: string) => unknown;
+  /** When the last remote listing started (ms since epoch): a finished upload's
+   *  refresh stands down if a listing started after it, see deferredRefresh. */
+  remoteRefreshStartedAt?: () => number;
   loadLocalFiles: (path: string) => void;
   currentLocalPath: string;
   currentRemotePath: string;
@@ -91,6 +95,11 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   // This eliminates the micro-gap where events could be lost during re-subscription.
   const optRef = useRef(options);
   optRef.current = options;
+  const remoteRefreshAfterUpload = useRef(createDeferredRefresh(
+    () => { optRef.current.loadRemoteFiles(); },
+    () => optRef.current.remoteRefreshStartedAt?.() ?? 0,
+  ));
+  useEffect(() => () => remoteRefreshAfterUpload.current.cancel(), []);
 
   // Correlation maps between backend transfer IDs and frontend UI elements
   const transferIdToQueueId = useRef<Map<string, string>>(new Map());
@@ -756,7 +765,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           (orphanLogId) => activityLog.updateEntry(orphanLogId, { status: 'success', message: formattedMessage })
         );
 
-        if (data.direction === 'upload') optRef.current.loadRemoteFiles();
+        if (data.direction === 'upload') remoteRefreshAfterUpload.current.schedule();
         else if (data.direction === 'download') optRef.current.loadLocalFiles(optRef.current.currentLocalPath);
 
         // Keep the storage "used" figure live after a transfer. `total` is a

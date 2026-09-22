@@ -1363,6 +1363,7 @@
             "usedScanDone": "Notuð geymsla reiknuð",
             "usedScanDoneDetail": "{used} í {files} skrám",
             "usedScanTruncated": "að hluta: skönnunarmörkum náð",
+            "usedScanUnreadable": "að hluta, ólæsilegar möppur: {count}",
             "usedScanFailed": "Skönnun á notaðri geymslu mistókst",
             "usedScanEmpty": "Skönnun á {path} fann engar skrár; gildið í skyndiminni var haldið. Athugaðu slóðina eða stuðning þjónsins við endurkvæma upptalningu."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Tengist {server} ({protocol})...",
             "connect_success": "Tengt við {server} með {protocol}",
+            "resume_transfers": "Held áfram með endurheimta flutninga á {server}: {count}",
+            "resume_transfers_no_profile": "Held áfram með endurheimta flutninga: {count}",
             "connect_error": "Tenging við {server} mistókst. Athugaðu auðkenni.",
             "connect_error_path_not_found": "Skráður inn á {server}, en fjarslóðin '{path}' fannst ekki. Breyttu Fjarslóð sniðsins eða hreinsaðu hana til að nota heimamöppu netþjónsins.",
             "disconnect_start": "Aftengir frá þjóni...",

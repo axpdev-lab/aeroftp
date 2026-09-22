@@ -1363,6 +1363,7 @@
             "usedScanDone": "Használt tárhely kiszámítva",
             "usedScanDoneDetail": "{used} összesen {files} fájlban",
             "usedScanTruncated": "részleges: elérted a vizsgálati korlátot",
+            "usedScanUnreadable": "részleges, nem olvasható mappák: {count}",
             "usedScanFailed": "A használt tárhely vizsgálata sikertelen",
             "usedScanEmpty": "A(z) {path} vizsgálata nem talált fájlt; a gyorsítótárazott érték megmaradt. Ellenőrizd az útvonalat vagy a szerver rekurzív listázási támogatását."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Csatlakozás {server} ({protocol})...",
             "connect_success": "Csatlakozva {server} {protocol} protokollon",
+            "resume_transfers": "Visszaállított átvitelek folytatása ({server}): {count}",
+            "resume_transfers_no_profile": "Visszaállított átvitelek folytatása: {count}",
             "connect_error": "Csatlakozás {server} szerverhez sikertelen. Ellenőrizze a bejelentkezési adatokat.",
             "connect_error_path_not_found": "Bejelentkezés a(z) {server} kiszolgálóra sikeres, de a(z) '{path}' távoli útvonal nem található. Szerkessze a profil Távoli útvonal mezőjét, vagy törölje azt a kiszolgáló kezdőmappájának használatához.",
             "disconnect_start": "Lecsatlakozás a szerverről...",

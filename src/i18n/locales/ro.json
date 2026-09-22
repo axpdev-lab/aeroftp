@@ -1363,6 +1363,7 @@
             "usedScanDone": "Spațiul folosit a fost calculat",
             "usedScanDoneDetail": "{used} în {files} fișiere",
             "usedScanTruncated": "parțial: limita de scanare atinsă",
+            "usedScanUnreadable": "parțial, dosare care nu au putut fi citite: {count}",
             "usedScanFailed": "Scanarea spațiului folosit a eșuat",
             "usedScanEmpty": "Scanarea căii {path} nu a găsit fișiere; valoarea din cache a fost păstrată. Verifică calea sau suportul serverului pentru listarea recursivă."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Deschid conexiunea cu {server} ({protocol})...",
             "connect_success": "Conexiunea e gata: sunt conectat la {server} prin {protocol}",
+            "resume_transfers": "Se reiau transferurile restaurate pe {server}: {count}",
+            "resume_transfers_no_profile": "Se reiau transferurile restaurate: {count}",
             "connect_error": "Nu am putut să mă conectez la {server}. Voi verifica datele de autentificare și setările.",
             "connect_error_path_not_found": "Autentificare reușită la {server}, dar calea la distanță '{path}' nu a fost găsită. Editați câmpul Cale la distanță din profil sau goliți-l pentru a folosi folderul de pornire al serverului.",
             "disconnect_start": "Închid conexiunea cu serverul...",

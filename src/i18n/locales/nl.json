@@ -1363,6 +1363,7 @@
             "usedScanDone": "Gebruikte opslag berekend",
             "usedScanDoneDetail": "{used} over {files} bestanden",
             "usedScanTruncated": "gedeeltelijk: scanlimiet bereikt",
+            "usedScanUnreadable": "gedeeltelijk, onleesbare mappen: {count}",
             "usedScanFailed": "Scan van gebruikte opslag mislukt",
             "usedScanEmpty": "Scan van {path} vond geen bestanden; de gecachte waarde is behouden. Controleer het pad of de ondersteuning van de server voor recursieve weergave."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Verbinden met {server} ({protocol})...",
             "connect_success": "Verbonden met {server} via {protocol}",
+            "resume_transfers": "Herstelde overdrachten op {server} worden hervat: {count}",
+            "resume_transfers_no_profile": "Herstelde overdrachten worden hervat: {count}",
             "connect_error": "Verbinding met {server} mislukt. Controleer inloggegevens.",
             "connect_error_path_not_found": "Aangemeld bij {server}, maar het externe pad '{path}' is niet gevonden. Bewerk het Externe pad van het profiel of maak het leeg om de thuismap van de server te gebruiken.",
             "disconnect_start": "Verbinding met server verbreken...",

@@ -1363,6 +1363,7 @@
             "usedScanDone": "Storan digunakan telah dikira",
             "usedScanDoneDetail": "{used} merentas {files} fail",
             "usedScanTruncated": "separa: had imbasan dicapai",
+            "usedScanUnreadable": "separa, folder tidak boleh dibaca: {count}",
             "usedScanFailed": "Imbasan storan digunakan gagal",
             "usedScanEmpty": "Imbasan {path} tidak menjumpai fail; nilai dalam cache dikekalkan. Semak laluan atau sokongan penyenaraian rekursif pelayan."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Menyambung ke {server} ({protocol})...",
             "connect_success": "Disambung ke {server} melalui {protocol}",
+            "resume_transfers": "Menyambung semula pemindahan yang dipulihkan di {server}: {count}",
+            "resume_transfers_no_profile": "Menyambung semula pemindahan yang dipulihkan: {count}",
             "connect_error": "Sambungan ke {server} gagal. Semak kelayakan.",
             "connect_error_path_not_found": "Log masuk ke {server} berjaya, tetapi laluan jauh '{path}' tidak dijumpai. Edit Laluan Jauh profil atau kosongkan untuk menggunakan laman utama pelayan.",
             "disconnect_start": "Memutuskan sambungan dari pelayan...",

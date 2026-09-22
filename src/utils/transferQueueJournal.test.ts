@@ -4,6 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import type { TransferItem } from '../components/TransferQueue';
 import {
+    isPermanentTransferError,
+    isRestorableJournalEntry,
     buildJournalEntries,
     displayPathForRestore,
     groupIdsByProfileId,
@@ -187,5 +189,50 @@ describe('groupIdsByProfileId', () => {
         expect(groupIdsByProfileId(['x'], new Map())).toEqual([
             { profileId: null, ids: ['x'] },
         ]);
+    });
+});
+
+describe('isRestorableJournalEntry', () => {
+    // The upload of 2026-09-22 into the Proton Drive root, as the queue stored it.
+    const refused = 'Upload failed: Permission denied: The Proton Drive root only holds the account sections';
+
+    it('keeps out a failure the next attempt cannot fix', () => {
+        expect(isRestorableJournalEntry({ status: 'failed', last_error: refused })).toBe(false);
+        for (const e of [
+            'Upload failed: Read-only endpoint: share is view-only',
+            'File too large: 100 MB limit',
+            'Invalid path: name ends with a dot',
+            'Operation not supported: download',
+            'Restricted character : is not allowed by OneDrive',
+        ]) {
+            expect(isRestorableJournalEntry({ status: 'failed', last_error: e })).toBe(false);
+        }
+    });
+
+    it('brings back a failure a later attempt can fix, and every pending transfer', () => {
+        for (const e of [
+            'Transfer failed: Connection lost: broken pipe',
+            'Timeout',
+            'Authentication failed: token expired',
+            'Path not found: /a/b',
+            'Path already exists: /a/b.txt',
+            'IO error: Permission denied (os error 13)',
+        ]) {
+            expect(isRestorableJournalEntry({ status: 'failed', last_error: e })).toBe(true);
+        }
+        expect(isRestorableJournalEntry({ status: 'pending' })).toBe(true);
+        expect(isRestorableJournalEntry({ status: 'in_progress', last_error: refused })).toBe(true);
+    });
+
+    it('never brings back completed or cancelled entries', () => {
+        expect(isRestorableJournalEntry({ status: 'completed' })).toBe(false);
+        expect(isRestorableJournalEntry({ status: 'cancelled' })).toBe(false);
+    });
+
+    it('matches the Display prefix, not a lowercase mention inside a server message', () => {
+        expect(isPermanentTransferError('Server error: upstream said permission denied: retry later')).toBe(false);
+        expect(isPermanentTransferError('Server error: upstream said Permission denied: retry later')).toBe(false);
+        expect(isPermanentTransferError('Transfer failed: Upload failed: Permission denied: x')).toBe(true);
+        expect(isPermanentTransferError(undefined)).toBe(false);
     });
 });

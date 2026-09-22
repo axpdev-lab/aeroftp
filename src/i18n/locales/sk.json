@@ -1363,6 +1363,7 @@
             "usedScanDone": "Využité úložisko vypočítané",
             "usedScanDoneDetail": "{used} v {files} súboroch",
             "usedScanTruncated": "čiastočné: dosiahnutý limit prehľadávania",
+            "usedScanUnreadable": "čiastočné, nečitateľné priečinky: {count}",
             "usedScanFailed": "Prehľadávanie využitého úložiska zlyhalo",
             "usedScanEmpty": "Prehľadávanie cesty {path} nenašlo žiadne súbory; ponechala sa hodnota z vyrovnávacej pamäte. Skontrolujte cestu alebo podporu rekurzívneho výpisu na serveri."
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "Otváram pripojenie k {server} ({protocol})...",
             "connect_success": "Pripojenie pripravené: som pripojený k {server} cez {protocol}",
+            "resume_transfers": "Obnovovanie obnovených prenosov na {server}: {count}",
+            "resume_transfers_no_profile": "Obnovovanie obnovených prenosov: {count}",
             "connect_error": "Nemohol som sa pripojiť k {server}. Skontrolujem moje prihlasovacie údaje a nastavenia.",
             "connect_error_path_not_found": "Prihlásenie na {server} úspešné, ale vzdialená cesta '{path}' sa nenašla. Upravte v profile pole Vzdialená cesta alebo ho vymažte, aby sa použil domovský priečinok servera.",
             "disconnect_start": "Zatváram pripojenie k serveru...",

@@ -1363,6 +1363,7 @@
             "usedScanDone": "បានគណនាទំហំផ្ទុកដែលប្រើ",
             "usedScanDoneDetail": "{used} ក្នុង {files} ឯកសារ",
             "usedScanTruncated": "មិនពេញលេញ៖ បានឈានដល់ដែនកំណត់ស្កេន",
+            "usedScanUnreadable": "មិនពេញលេញ, ថតដែលមិនអាចអាន៖ {count}",
             "usedScanFailed": "ការស្កេនទំហំផ្ទុកដែលប្រើបានបរាជ័យ",
             "usedScanEmpty": "ការស្កេន {path} រកមិនឃើញឯកសារ; តម្លៃក្នុង cache ត្រូវបានរក្សាទុក។ សូមពិនិត្យផ្លូវ ឬការគាំទ្ររាយឈ្មោះ recursive របស់ម៉ាស៊ីនមេ។"
         },
@@ -1549,6 +1550,8 @@
         "activity": {
             "connect_start": "កំពុងតភ្ជាប់ទៅ {server} តាមរយៈ {protocol}...",
             "connect_success": "បានតភ្ជាប់ទៅ {server} ({protocol})",
+            "resume_transfers": "កំពុងបន្តការផ្ទេរដែលបានស្ដារនៅលើ {server}៖ {count}",
+            "resume_transfers_no_profile": "កំពុងបន្តការផ្ទេរដែលបានស្ដារ៖ {count}",
             "connect_error": "ការតភ្ជាប់ទៅ {server} បានបរាជ័យ",
             "connect_error_path_not_found": "បានចូលទៅ {server} ប៉ុន្តែរកមិនឃើញផ្លូវពីចម្ងាយ '{path}' ទេ។ កែសម្រួលផ្លូវពីចម្ងាយរបស់ប្រវត្តិរូប ឬសម្អាតវាដើម្បីប្រើថតដើមរបស់ម៉ាស៊ីនមេ។",
             "disconnect_start": "កំពុងផ្តាច់...",
