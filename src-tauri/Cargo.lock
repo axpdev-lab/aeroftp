@@ -173,6 +173,7 @@ dependencies = [
  "urlencoding",
  "uuid",
  "walkdir",
+ "webkit2gtk",
  "webpki-roots",
  "whisper-rs",
  "windows 0.58.0",
