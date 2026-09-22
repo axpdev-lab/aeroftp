@@ -44,6 +44,7 @@ import {
   extractTicketFromLink, shortAfid, upsertFriendProfile, looksLikeShareLink,
   type PeerFriend, type PeerShareStarted, type PeerDriveAdded,
 } from '../../utils/aeroShare';
+import { copyText } from '../../utils/clipboard';
 
 export type AeroShareMode = 'receive' | 'share' | 'contacts';
 
@@ -99,14 +100,6 @@ interface PeerShareEvent {
 
 type Phase = 'form' | 'working' | 'done' | 'error';
 
-async function copyText(text: string): Promise<void> {
-  try {
-    await invoke('copy_to_clipboard', { text });
-  } catch {
-    try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
-  }
-}
-
 function CopyField({ value, label, page = false }: { value: string; label: string; page?: boolean }) {
   const t = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -122,7 +115,7 @@ function CopyField({ value, label, page = false }: { value: string; label: strin
           onClick={(e) => (e.target as HTMLInputElement).select()}
         />
         <button
-          onClick={() => { void copyText(value); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+          onClick={() => { copyText(value).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }, () => undefined); }}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg transition-all ${
             copied
               ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'

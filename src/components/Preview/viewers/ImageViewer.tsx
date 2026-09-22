@@ -22,6 +22,7 @@ import { useImagePreviewBg, writeImagePreviewBg, IMAGE_PREVIEW_BG_PRESETS } from
 import ImageEditor from './ImageEditor';
 import { CropOverlay } from './CropOverlay';
 import { ImageSaveDialog } from './ImageSaveDialog';
+import { copyText } from '../../../utils/clipboard';
 
 interface ImageViewerProps extends ViewerBaseProps {
     className?: string;
@@ -228,7 +229,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         const hex = `#${pixel[0].toString(16).padStart(2, '0')}${pixel[1].toString(16).padStart(2, '0')}${pixel[2].toString(16).padStart(2, '0')}`;
         setPickedColor(hex);
         setColorPickMode(false);
-        navigator.clipboard.writeText(hex).catch(() => {});
+        void copyText(hex).catch(() => {}).catch(() => undefined);
     }, [colorPickMode]);
 
     // ─── AeroImage Edit Handlers ─────────────────────────────────────

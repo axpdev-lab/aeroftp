@@ -53,6 +53,7 @@ import {
     supportsSpeedTest,
 } from '../utils/speedTest';
 import { ServerProfile } from '../types';
+import { copyText } from '../utils/clipboard';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -432,19 +433,19 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
     const copyResult = useCallback(() => {
         const outcomes = buildOutcomes();
         if (outcomes.length === 0) return;
-        navigator.clipboard.writeText(buildMethodologyReport(outcomes, buildCtx())).then(() => {
+        copyText(buildMethodologyReport(outcomes, buildCtx())).then(() => {
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1800);
-        });
+        }, () => undefined);
     }, [buildCtx, buildOutcomes]);
 
     const copyMarkdown = useCallback(() => {
         const outcomes = buildOutcomes();
         if (outcomes.length === 0) return;
-        navigator.clipboard.writeText(buildMarkdownReport(outcomes, buildCtx())).then(() => {
+        copyText(buildMarkdownReport(outcomes, buildCtx())).then(() => {
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1800);
-        });
+        }, () => undefined);
     }, [buildCtx, buildOutcomes]);
 
     const exportJson = useCallback(() => {

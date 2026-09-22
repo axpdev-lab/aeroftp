@@ -26,6 +26,7 @@ import {
 import { useActivityLog, LogEntry, OperationType, getOperationIcon, formatTimestamp } from '../hooks/useActivityLog';
 import { usePointerDrag } from '../hooks/usePointerDrag';
 import { useTranslation } from '../i18n';
+import { copyText } from '../utils/clipboard';
 
 // ============================================================================
 // Theme Types
@@ -484,7 +485,7 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
 
     const copyEntry = useCallback(() => {
         const text = `[${formatTimestamp(entry.timestamp)}] ${entry.operation} - ${entry.message}${entry.details ? ` (${entry.details})` : ''}`;
-        navigator.clipboard.writeText(text);
+        void copyText(text).catch(() => undefined);
     }, [entry]);
 
     return (
@@ -834,7 +835,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                             const logText = filteredEntries.map(e =>
                                 `[${formatTimestamp(e.timestamp)}] ${e.operation} - ${e.message}${e.details ? ` (${e.details})` : ''}`
                             ).join('\n');
-                            navigator.clipboard.writeText(logText);
+                            void copyText(logText).catch(() => undefined);
                         }}
                         className={`p-1.5 rounded transition-all ${themeConfig.button}`}
                         title={t('activityPanel.copyAllLogs')}

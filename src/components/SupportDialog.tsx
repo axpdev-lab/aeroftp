@@ -13,6 +13,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { copyText } from '../utils/clipboard';
 
 interface SupportDialogProps {
     isOpen: boolean;
@@ -165,9 +166,10 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
     }, [isOpen]);
 
     const copyToClipboard = (key: string, address: string) => {
-        navigator.clipboard.writeText(address);
-        setCopiedAddress(key);
-        setTimeout(() => setCopiedAddress(null), 2000);
+        copyText(address).then(() => {
+            setCopiedAddress(key);
+            setTimeout(() => setCopiedAddress(null), 2000);
+        }, () => undefined);
     };
 
     if (!isOpen) return null;

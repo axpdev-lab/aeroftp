@@ -19,6 +19,7 @@ import { dispatchMasterPasswordChanged } from '../../utils/masterPasswordEvents'
 import { PasswordStrengthBar } from '../vault/PasswordStrengthBar';
 import { PasswordMatchHint } from '../common/PasswordMatchHint';
 import { MODAL_Z } from '../../utils/modalLayers';
+import { copyText } from '../../utils/clipboard';
 
 // ============ Alert Dialog ============
 interface AlertDialogProps {
@@ -626,9 +627,10 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     }, []);
 
     const copyToClipboard = (text: string, field: string) => {
-        navigator.clipboard.writeText(text);
-        setCopiedField(field);
-        setTimeout(() => setCopiedField(null), 2000);
+        copyText(text).then(() => {
+            setCopiedField(field);
+            setTimeout(() => setCopiedField(null), 2000);
+        }, () => undefined);
     };
 
     const formatDate = (dateStr: string | null | undefined): string => {

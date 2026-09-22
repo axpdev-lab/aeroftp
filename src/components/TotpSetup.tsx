@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { Shield, Copy, Check, X, AlertCircle } from 'lucide-react';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { copyText } from '../utils/clipboard';
 
 interface TotpSetupProps {
     isOpen: boolean;
@@ -75,7 +76,7 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
     // Clipboard with error handling (FE-004)
     const handleCopy = useCallback(async () => {
         try {
-            await navigator.clipboard.writeText(secret);
+            await copyText(secret);
             setCopied(true);
             clearTimeout(copyTimerRef.current);
             copyTimerRef.current = setTimeout(() => setCopied(false), 2000);

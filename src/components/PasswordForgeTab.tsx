@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { AlertTriangle, Check, Copy, Eye, EyeOff, Loader2, Shuffle } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { copyText } from '../utils/clipboard';
 import { Checkbox } from './ui/Checkbox';
 import {
     PASSWORD_PRESETS,
@@ -82,12 +83,12 @@ export const PasswordForgeTab: React.FC = () => {
 
     const copyPassword = useCallback(async (password: string, index: number) => {
         try {
-            await invoke('copy_to_clipboard', { text: password });
+            await copyText(password);
             setCopiedIdx(index);
             setTimeout(() => setCopiedIdx(null), 2000);
             if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
             clearTimerRef.current = setTimeout(() => {
-                invoke('copy_to_clipboard', { text: '' }).catch(() => undefined);
+                copyText('').catch(() => undefined);
             }, 30000);
         } catch { /* clipboard access is best-effort */ }
     }, []);
