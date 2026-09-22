@@ -914,6 +914,8 @@ impl ProviderDownloadExecutor {
 
     /// Apply a caller's minimum file size for segmented downloads. The default
     /// leaves existing callers on the shared eligibility/anti-fragmentation gate.
+    /// At execution time the gate is raised to the provider's
+    /// `multi_thread_cutoff_floor`, matching the single-file setter.
     pub fn with_download_cutoff(mut self, cutoff: u64) -> Self {
         self.download_cutoff = cutoff;
         self
@@ -1164,7 +1166,14 @@ impl ProviderDownloadExecutor {
         dl_start: std::time::Instant,
         file_size: u64,
     ) -> Option<Result<(), String>> {
-        if file_size < self.download_cutoff {
+        // R21: raise the caller's gate to the provider's own cutoff floor, so
+        // the batch path applies the same bound as the single-file
+        // `set_multi_thread_download` setter.
+        if file_size
+            < self
+                .download_cutoff
+                .max(primary.multi_thread_cutoff_floor())
+        {
             return None;
         }
 

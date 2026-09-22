@@ -78,7 +78,10 @@ const SFTP_READAHEAD_MAX_WINDOW: usize = 1024;
 /// than paying N SSH handshakes. Matches the S3 default (250 MiB) so the
 /// `--multi-thread-cutoff` CLI flag behaves identically across backends.
 const SFTP_MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
-
+/// Lower bound `set_multi_thread_download` enforces on the cutoff, also
+/// exposed through `multi_thread_cutoff_floor` so the batch executor
+/// applies the same bound as the single-file path.
+const SFTP_MULTI_THREAD_CUTOFF_FLOOR: u64 = 1024 * 1024;
 /// Map a russh / russh-sftp / io error onto a [`ProviderError`].
 ///
 /// The russh family does not type-tag transport-level failures (broken
@@ -3232,7 +3235,11 @@ impl StorageProvider for SftpProvider {
     /// credential-less provider never overclaims.
     fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
         self.multi_thread_streams = streams.clamp(1, SFTP_MULTI_THREAD_MAX_STREAMS);
-        self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
+        self.multi_thread_cutoff = cutoff_bytes.max(SFTP_MULTI_THREAD_CUTOFF_FLOOR);
+    }
+
+    fn multi_thread_cutoff_floor(&self) -> u64 {
+        SFTP_MULTI_THREAD_CUTOFF_FLOOR
     }
 
     fn set_sftp_readahead(&mut self, window: Option<usize>) {
@@ -4776,6 +4783,34 @@ mod tests {
         assert_eq!(
             provider.transfer_executor_max_sessions() as usize,
             SFTP_MULTI_THREAD_MAX_STREAMS
+        );
+    }
+
+    #[test]
+    fn sftp_multi_thread_cutoff_floor_matches_setter() {
+        // R21: the trait floor is the same 1 MiB bound the setter applies,
+        // so the batch executor mirrors the single-file path.
+        let config = SftpConfig {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        };
+        let mut provider = SftpProvider::new(config);
+        assert_eq!(
+            provider.multi_thread_cutoff_floor(),
+            SFTP_MULTI_THREAD_CUTOFF_FLOOR
+        );
+        provider.set_multi_thread_download(4, 0);
+        assert_eq!(provider.multi_thread_cutoff, 1024 * 1024);
+        assert_eq!(
+            provider.multi_thread_cutoff,
+            provider.multi_thread_cutoff_floor()
         );
     }
 

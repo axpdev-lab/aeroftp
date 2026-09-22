@@ -4917,6 +4917,17 @@ mod tests {
     }
 
     #[test]
+    fn multi_thread_cutoff_has_no_provider_floor() {
+        // R21: WebDAV honors the caller's cutoff as-is (no 1 MiB floor), so
+        // `--multi-thread-cutoff 500K` works again like before #905.
+        let mut provider =
+            WebDavProvider::new(test_config("https://example.com/dav")).expect("provider");
+        assert_eq!(provider.multi_thread_cutoff_floor(), 0);
+        provider.set_multi_thread_download(4, 500 * 1024);
+        assert_eq!(provider.multi_thread_cutoff, 500 * 1024);
+    }
+
+    #[test]
     fn upload_404_and_409_map_to_clear_non_retryable_error() {
         // Koofr returns 404 (not RFC 4918's 409) when the PUT parent is missing
         // or the target is a directory. Both must become the same actionable,

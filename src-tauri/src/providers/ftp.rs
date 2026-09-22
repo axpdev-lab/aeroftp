@@ -37,6 +37,10 @@ const FTP_MULTI_THREAD_MAX_STREAMS: usize = 16;
 /// control-connection handshakes. Matches the SFTP/S3 default (250 MiB) so
 /// `--multi-thread-cutoff` behaves identically across backends.
 const FTP_MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
+/// Lower bound `set_multi_thread_download` enforces on the cutoff, also
+/// exposed through `multi_thread_cutoff_floor` so the batch executor
+/// applies the same bound as the single-file path.
+const FTP_MULTI_THREAD_CUTOFF_FLOOR: u64 = 1024 * 1024;
 
 /// Per-range streaming read buffer. The generic `read_range` allocates the
 /// whole window; the intra-file path streams in fixed chunks so a multi-MiB
@@ -2195,7 +2199,11 @@ impl StorageProvider for FtpProvider {
     /// provider never overclaims.
     fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
         self.multi_thread_streams = streams.clamp(1, FTP_MULTI_THREAD_MAX_STREAMS);
-        self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
+        self.multi_thread_cutoff = cutoff_bytes.max(FTP_MULTI_THREAD_CUTOFF_FLOOR);
+    }
+
+    fn multi_thread_cutoff_floor(&self) -> u64 {
+        FTP_MULTI_THREAD_CUTOFF_FLOOR
     }
 
     async fn read_range(
@@ -4511,6 +4519,16 @@ MLSD "no-facts-here" @ "/"
         provider.set_multi_thread_download(999, 0);
         assert_eq!(provider.multi_thread_streams, FTP_MULTI_THREAD_MAX_STREAMS);
         assert_eq!(provider.multi_thread_cutoff, 1024 * 1024);
+        // The trait floor is the same bound the setter applies, so the batch
+        // executor can mirror the single-file path.
+        assert_eq!(
+            provider.multi_thread_cutoff_floor(),
+            FTP_MULTI_THREAD_CUTOFF_FLOOR
+        );
+        assert_eq!(
+            provider.multi_thread_cutoff,
+            provider.multi_thread_cutoff_floor()
+        );
         provider.set_multi_thread_download(0, 50 * 1024 * 1024);
         assert_eq!(provider.multi_thread_streams, 1);
         assert_eq!(provider.multi_thread_cutoff, 50 * 1024 * 1024);

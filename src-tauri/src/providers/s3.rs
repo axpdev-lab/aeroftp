@@ -871,6 +871,10 @@ impl S3Provider {
     /// Default cutoff above which multi-thread download engages (250 MiB).
     /// Mirrors rclone's `--multi-thread-cutoff` default.
     pub const MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
+    /// Lower bound `set_multi_thread_download` enforces on the cutoff, also
+    /// exposed through `multi_thread_cutoff_floor` so the batch executor
+    /// applies the same bound as the single-file path.
+    pub const MULTI_THREAD_CUTOFF_FLOOR: u64 = 1024 * 1024;
 
     /// Returns the current UTC time adjusted for any detected clock skew.
     fn now_adjusted(&self) -> DateTime<Utc> {
@@ -5752,9 +5756,13 @@ impl StorageProvider for S3Provider {
         // cap rarely improve throughput and waste sockets. A cutoff of 0 would
         // engage multi-thread on every file regardless of size, which the
         // handoff explicitly warns against (overhead on small files), so we
-        // floor the cutoff at 1 MiB.
+        // floor the cutoff at MULTI_THREAD_CUTOFF_FLOOR (1 MiB).
         self.multi_thread_streams = streams.clamp(1, Self::MULTI_THREAD_MAX_STREAMS);
-        self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
+        self.multi_thread_cutoff = cutoff_bytes.max(Self::MULTI_THREAD_CUTOFF_FLOOR);
+    }
+
+    fn multi_thread_cutoff_floor(&self) -> u64 {
+        Self::MULTI_THREAD_CUTOFF_FLOOR
     }
 
     fn set_range_validator(&mut self, validator: Option<String>) {
@@ -8491,6 +8499,16 @@ mod tests {
         );
         // Cutoff floored at 1 MiB
         assert_eq!(provider.multi_thread_cutoff, 1024 * 1024);
+        // The trait floor is the same bound the setter applies, so the batch
+        // executor can mirror the single-file path.
+        assert_eq!(
+            provider.multi_thread_cutoff_floor(),
+            S3Provider::MULTI_THREAD_CUTOFF_FLOOR
+        );
+        assert_eq!(
+            provider.multi_thread_cutoff,
+            provider.multi_thread_cutoff_floor()
+        );
 
         // Below floor → clamped up to 1 (disabled)
         provider.set_multi_thread_download(0, 50 * 1024 * 1024);

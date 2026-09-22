@@ -1351,6 +1351,15 @@ pub trait StorageProvider: Send + Sync {
     /// Providers that support concurrent Range downloads should override this.
     fn set_multi_thread_download(&mut self, _streams: usize, _cutoff_bytes: u64) {}
 
+    /// Lower bound this provider enforces on the multi-thread download cutoff.
+    /// `set_multi_thread_download` clamps to this value and the shared batch
+    /// executor raises its segmented-download gate to it, so single-file and
+    /// batch downloads agree. `0` (default) means the provider honors the
+    /// caller's cutoff as-is.
+    fn multi_thread_cutoff_floor(&self) -> u64 {
+        0
+    }
+
     /// Configure the SFTP read-ahead window for this provider instance.
     /// `None` explicitly disables read-ahead; `Some(n)` requests a bounded
     /// window. Providers other than SFTP ignore this setting.

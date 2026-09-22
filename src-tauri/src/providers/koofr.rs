@@ -1952,6 +1952,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn multi_thread_cutoff_has_no_provider_floor() {
+        // R21: Koofr honors the caller's cutoff as-is (no 1 MiB floor), so
+        // `--multi-thread-cutoff 500K` works again like before #905.
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "user@example.com".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+        });
+        assert_eq!(provider.multi_thread_cutoff_floor(), 0);
+        provider.set_multi_thread_download(4, 500 * 1024);
+        assert_eq!(provider.multi_thread_cutoff, 500 * 1024);
+    }
+
+    #[test]
     fn test_normalize_path() {
         assert_eq!(KoofrProvider::normalize_path(""), "/");
         assert_eq!(KoofrProvider::normalize_path("/"), "/");
