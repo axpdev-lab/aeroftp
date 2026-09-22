@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Een naam mag geen / of \\, de reeks .. of een null-teken bevatten."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent-goedkeuring",
+            "whyTitle": "Waarom een apart venster?",
+            "whyBody": "Deze goedkeuring opent buiten de chat, zodat inhoud die de agent daar leest en toont geen actie namens jou kan bevestigen.",
+            "wantsTo": "AeroAgent wil:",
+            "scopeOnce": "Keurt precies deze actie één keer goed.",
+            "scopeSession": "Keurt dit hulpmiddel goed voor de rest van de chatsessie.",
+            "approve": "Goedkeuren"
         }
     }
 }

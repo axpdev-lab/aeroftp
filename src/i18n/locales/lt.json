@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Pavadinime negali būti / ar \\, sekos .. ar nulinio simbolio."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent patvirtinimas",
+            "whyTitle": "Kodėl atskiras langas?",
+            "whyBody": "Šis patvirtinimas atsidaro už pokalbio ribų, kad turinys, kurį agentas ten skaito ir rodo, negalėtų patvirtinti veiksmo jūsų vardu.",
+            "wantsTo": "AeroAgent nori:",
+            "scopeOnce": "Patvirtina būtent šį veiksmą vieną kartą.",
+            "scopeSession": "Patvirtina šį įrankį iki pokalbio seanso pabaigos.",
+            "approve": "Patvirtinti"
         }
     }
 }

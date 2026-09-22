@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Bir ad / veya \\ karakterini, .. dizisini ya da boş karakteri içeremez."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent onayı",
+            "whyTitle": "Neden ayrı bir pencere?",
+            "whyBody": "Bu onay sohbetin dışında açılır; böylece aracının orada okuyup gösterdiği içerik sizin adınıza bir eylemi onaylayamaz.",
+            "wantsTo": "AeroAgent şunu yapmak istiyor:",
+            "scopeOnce": "Tam olarak bu eylemi bir kez onaylar.",
+            "scopeSession": "Bu aracı sohbet oturumunun geri kalanı için onaylar.",
+            "approve": "Onayla"
         }
     }
 }

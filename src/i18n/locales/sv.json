@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Ett namn får inte innehålla / eller \\, sekvensen .. eller ett nolltecken."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent-godkännande",
+            "whyTitle": "Varför ett separat fönster?",
+            "whyBody": "Det här godkännandet öppnas utanför chatten, så att innehåll som agenten läser och visar där inte kan bekräfta en åtgärd åt dig.",
+            "wantsTo": "AeroAgent vill:",
+            "scopeOnce": "Godkänner exakt den här åtgärden en gång.",
+            "scopeSession": "Godkänner det här verktyget under resten av chattsessionen.",
+            "approve": "Godkänn"
         }
     }
 }

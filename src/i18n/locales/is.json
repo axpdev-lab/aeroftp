@@ -5714,6 +5714,15 @@
         },
         "rename": {
             "invalidCharacters": "Nafn má ekki innihalda / eða \\, röðina .. eða núlltákn."
+        },
+        "aiApproval": {
+            "windowTitle": "Samþykki AeroAgent",
+            "whyTitle": "Af hverju sérstakur gluggi?",
+            "whyBody": "Þetta samþykki opnast utan spjallsins svo að efni sem umboðsmaðurinn les og sýnir þar geti ekki staðfest aðgerð fyrir þína hönd.",
+            "wantsTo": "AeroAgent vill:",
+            "scopeOnce": "Samþykkir nákvæmlega þessa aðgerð einu sinni.",
+            "scopeSession": "Samþykkir þetta verkfæri það sem eftir er af spjallinu.",
+            "approve": "Samþykkja"
         }
     }
 }

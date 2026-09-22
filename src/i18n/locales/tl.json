@@ -5714,6 +5714,15 @@
         },
         "rename": {
             "invalidCharacters": "Hindi maaaring maglaman ang pangalan ng / o \\, ng pagkakasunod na .., o ng null na karakter."
+        },
+        "aiApproval": {
+            "windowTitle": "Pag-apruba ng AeroAgent",
+            "whyTitle": "Bakit hiwalay na window?",
+            "whyBody": "Nagbubukas ang pag-aprubang ito sa labas ng chat, para hindi makapagkumpirma ng aksyon para sa iyo ang nilalamang binabasa at ipinapakita roon ng agent.",
+            "wantsTo": "Gusto ng AeroAgent na:",
+            "scopeOnce": "Inaaprubahan ang eksaktong aksyong ito nang isang beses.",
+            "scopeSession": "Inaaprubahan ang tool na ito sa natitirang bahagi ng chat session.",
+            "approve": "Aprubahan"
         }
     }
 }

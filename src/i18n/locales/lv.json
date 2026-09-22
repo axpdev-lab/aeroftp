@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Nosaukumā nedrīkst būt / vai \\, secība .. vai nulles rakstzīme."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent apstiprinājums",
+            "whyTitle": "Kāpēc atsevišķs logs?",
+            "whyBody": "Šis apstiprinājums tiek atvērts ārpus tērzēšanas, lai saturs, ko aģents tur lasa un rāda, nevarētu jūsu vārdā apstiprināt darbību.",
+            "wantsTo": "AeroAgent vēlas:",
+            "scopeOnce": "Apstiprina tieši šo darbību vienu reizi.",
+            "scopeSession": "Apstiprina šo rīku līdz tērzēšanas sesijas beigām.",
+            "approve": "Apstiprināt"
         }
     }
 }

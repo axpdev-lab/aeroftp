@@ -395,21 +395,17 @@ pub async fn prepare_plugin_tool_approval(
     }))
     .map_err(|e| format!("Failed to build plugin approval scope: {}", e))?;
 
-    Ok(
-        ai_tools::prepare_backend_approval_request(
-            session_id.as_deref(),
-            &synthetic_tool_name,
-            scope_key,
-            tool.danger_level != "high",
-            format!(
-                "AeroAgent wants to: Run Plugin Tool\n\n  plugin: {}\n  tool: {}\n  command: {}\n\nThis confirmation runs in the desktop process, not in the webview.",
-                manifest.name,
-                tool_name,
-                tool.command,
-            ),
-        )
-        .await,
+    Ok(ai_tools::prepare_backend_approval_request(
+        session_id.as_deref(),
+        &synthetic_tool_name,
+        scope_key,
+        tool.danger_level != "high",
+        format!(
+            "AeroAgent wants to: Run Plugin Tool\n\n  plugin: {}\n  tool: {}\n  command: {}",
+            manifest.name, tool_name, tool.command,
+        ),
     )
+    .await)
 }
 
 /// Install a plugin from a manifest JSON string.

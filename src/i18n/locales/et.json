@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Nimi ei tohi sisaldada märke / ega \\, jada .. ega nullmärki."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgenti kinnitus",
+            "whyTitle": "Miks eraldi aken?",
+            "whyBody": "See kinnitus avaneb vestlusest väljaspool, et sisu, mida agent seal loeb ja näitab, ei saaks sinu eest toimingut kinnitada.",
+            "wantsTo": "AeroAgent soovib:",
+            "scopeOnce": "Kinnitab täpselt selle toimingu üks kord.",
+            "scopeSession": "Kinnitab selle tööriista vestluse lõpuni.",
+            "approve": "Kinnita"
         }
     }
 }

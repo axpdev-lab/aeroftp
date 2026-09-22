@@ -186,6 +186,7 @@ pub mod aerorsync;
 #[cfg(feature = "aerorsync")]
 pub mod aerorsync_adapter;
 pub mod agent_session;
+mod ai_approval_window;
 pub mod dedupe;
 mod file_associations;
 mod file_tags;
@@ -9789,6 +9790,27 @@ fn detect_desktop_lang() -> String {
     "en".to_string()
 }
 
+/// URL of one of the app's own HTML pages for a secondary window. Release
+/// builds on Linux serve the frontend from the local server on 14321, like the
+/// main window; elsewhere the page comes from the bundled assets.
+pub(crate) fn app_page_url(page: &str) -> WebviewUrl {
+    #[cfg(dev)]
+    {
+        WebviewUrl::App(page.into())
+    }
+    #[cfg(all(not(dev), target_os = "linux"))]
+    {
+        WebviewUrl::External(
+            url::Url::parse(&format!("http://127.0.0.1:14321/{page}"))
+                .expect("valid localhost URL"),
+        )
+    }
+    #[cfg(all(not(dev), not(target_os = "linux")))]
+    {
+        WebviewUrl::App(page.into())
+    }
+}
+
 fn open_extract_window(app: &AppHandle, mode: &str, path: &str) {
     // LT1 / tracker Known #7: WebviewWindowBuilder::build touches GTK on Linux.
     // Callers include the single-instance D-Bus callback (zbus thread, NOT the
@@ -9810,23 +9832,7 @@ fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
         .to_string();
     let init = format!("window.__AEROFTP_EXTRACT__ = {payload};");
 
-    let url: WebviewUrl = {
-        #[cfg(dev)]
-        {
-            WebviewUrl::App("extract.html".into())
-        }
-        #[cfg(all(not(dev), target_os = "linux"))]
-        {
-            WebviewUrl::External(
-                url::Url::parse("http://127.0.0.1:14321/extract.html")
-                    .expect("valid localhost URL"),
-            )
-        }
-        #[cfg(all(not(dev), not(target_os = "linux")))]
-        {
-            WebviewUrl::App("extract.html".into())
-        }
-    };
+    let url = app_page_url("extract.html");
 
     let n = EXTRACT_WINDOW_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let label = if n == 0 {
@@ -19485,6 +19491,8 @@ pub fn run() {
             ai_tools::validate_tool_args,
             ai_tools::prepare_ai_tool_approval,
             ai_tools::grant_ai_tool_approval,
+            ai_approval_window::ai_approval_prompt,
+            ai_approval_window::ai_approval_decide,
             ai_tools::execute_ai_tool,
             ai_tools::clipboard_read_image,
             plugins::prepare_plugin_tool_approval,

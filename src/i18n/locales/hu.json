@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "A név nem tartalmazhat / vagy \\ jelet, .. sorozatot, sem null karaktert."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent jóváhagyás",
+            "whyTitle": "Miért külön ablak?",
+            "whyBody": "Ez a jóváhagyás a csevegésen kívül nyílik meg, így az ügynök által ott olvasott és megjelenített tartalom nem hagyhat jóvá műveletet az Ön nevében.",
+            "wantsTo": "Az AeroAgent ezt szeretné:",
+            "scopeOnce": "Pontosan ezt a műveletet hagyja jóvá egyszer.",
+            "scopeSession": "Ezt az eszközt a csevegés hátralévő részére hagyja jóvá.",
+            "approve": "Jóváhagyás"
         }
     }
 }

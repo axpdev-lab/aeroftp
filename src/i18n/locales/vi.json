@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Tên không được chứa / hoặc \\, chuỗi .. hay ký tự null."
+        },
+        "aiApproval": {
+            "windowTitle": "Phê duyệt AeroAgent",
+            "whyTitle": "Vì sao dùng cửa sổ riêng?",
+            "whyBody": "Phê duyệt này mở bên ngoài cuộc trò chuyện, để nội dung mà tác tử đọc và hiển thị ở đó không thể xác nhận một hành động thay bạn.",
+            "wantsTo": "AeroAgent muốn:",
+            "scopeOnce": "Phê duyệt đúng hành động này một lần.",
+            "scopeSession": "Phê duyệt công cụ này trong phần còn lại của phiên trò chuyện.",
+            "approve": "Phê duyệt"
         }
     }
 }

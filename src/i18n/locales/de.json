@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "Ein Name darf weder / noch \\, die Folge .. oder ein Nullzeichen enthalten."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent-Freigabe",
+            "whyTitle": "Warum ein eigenes Fenster?",
+            "whyBody": "Diese Freigabe öffnet sich außerhalb des Chats, damit Inhalte, die der Agent dort liest und anzeigt, keine Aktion in Ihrem Namen bestätigen können.",
+            "wantsTo": "AeroAgent möchte:",
+            "scopeOnce": "Gibt genau diese Aktion einmal frei.",
+            "scopeSession": "Gibt dieses Werkzeug für den Rest der Chatsitzung frei.",
+            "approve": "Freigeben"
         }
     }
 }

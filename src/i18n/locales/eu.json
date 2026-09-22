@@ -5714,6 +5714,15 @@
         },
         "rename": {
             "invalidCharacters": "Izen batek ezin du / edo \\ eduki, ezta .. sekuentzia edo karaktere nulua ere."
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent onespena",
+            "whyTitle": "Zergatik leiho bereizi bat?",
+            "whyBody": "Onespen hau txatetik kanpo irekitzen da, agenteak bertan irakurri eta erakusten duen edukiak zure izenean ekintzarik berretsi ez dezan.",
+            "wantsTo": "AeroAgent-ek hau egin nahi du:",
+            "scopeOnce": "Ekintza zehatz hau behin bakarrik onesten du.",
+            "scopeSession": "Tresna hau txat-saioaren gainerakoan onesten du.",
+            "approve": "Onetsi"
         }
     }
 }

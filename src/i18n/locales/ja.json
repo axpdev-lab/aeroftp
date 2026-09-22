@@ -5695,6 +5695,15 @@
         },
         "rename": {
             "invalidCharacters": "名前に / や \\、.. の並び、null 文字は使用できません。"
+        },
+        "aiApproval": {
+            "windowTitle": "AeroAgent の承認",
+            "whyTitle": "なぜ別ウィンドウなのですか？",
+            "whyBody": "この承認はチャットの外で開くため、エージェントがチャット内で読み取って表示した内容が、あなたに代わって操作を承認することはできません。",
+            "wantsTo": "AeroAgent が次の操作を求めています:",
+            "scopeOnce": "この操作を 1 回だけ承認します。",
+            "scopeSession": "このチャットセッションの残りの間、このツールを承認します。",
+            "approve": "承認"
         }
     }
 }

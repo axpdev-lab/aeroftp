@@ -5714,6 +5714,15 @@
         },
         "rename": {
             "invalidCharacters": "Ni all enw gynnwys / na \\, y dilyniant .., na nod nwl."
+        },
+        "aiApproval": {
+            "windowTitle": "Cymeradwyaeth AeroAgent",
+            "whyTitle": "Pam ffenestr ar wahân?",
+            "whyBody": "Mae'r gymeradwyaeth hon yn agor y tu allan i'r sgwrs, fel na all y cynnwys y mae'r asiant yn ei ddarllen a'i ddangos yno gadarnhau gweithred ar eich rhan.",
+            "wantsTo": "Mae AeroAgent eisiau:",
+            "scopeOnce": "Yn cymeradwyo'r union weithred hon unwaith.",
+            "scopeSession": "Yn cymeradwyo'r offeryn hwn am weddill y sesiwn sgwrsio.",
+            "approve": "Cymeradwyo"
         }
     }
 }
