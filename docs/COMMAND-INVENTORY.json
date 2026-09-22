@@ -160,7 +160,7 @@
       }
     ]
   },
-  "app_version": "4.1.9",
+  "app_version": "4.2.0",
   "cli": {
     "count": 95,
     "subcommands": [
@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 851
+    "tauri_commands": 853
   },
   "mcp": {
     "count": 77,
@@ -1084,6 +1084,8 @@
       "validate_tool_args",
       "prepare_ai_tool_approval",
       "grant_ai_tool_approval",
+      "ai_approval_prompt",
+      "ai_approval_decide",
       "execute_ai_tool",
       "prepare_plugin_tool_approval",
       "resolve_context_mentions",
@@ -1325,7 +1327,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 371,
+    "name_unmatched_count": 373,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1617,6 +1619,8 @@
       "validate_tool_args",
       "prepare_ai_tool_approval",
       "grant_ai_tool_approval",
+      "ai_approval_prompt",
+      "ai_approval_decide",
       "execute_ai_tool",
       "clipboard_read_image",
       "prepare_plugin_tool_approval",
@@ -2183,6 +2187,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 851
+    "count": 853
   }
 }
