@@ -657,8 +657,14 @@ export const AGENT_TOOLS: AITool[] = [
     // Server management (cross-server operations via saved profiles)
     {
         name: 'server_list_saved',
-        description: 'List the saved server PROFILES themselves (names, protocols, hosts, usernames); passwords are never exposed. Returns the profile list only, NOT their files. To list or read files on a saved server, call remote_list / remote_read / server_exec with that server name instead.',
-        parameters: [],
+        description: 'List the saved server PROFILES themselves (names, protocols, hosts, usernames); passwords are never exposed. Returns the profile list only, NOT their files. To find one profile by name, pass name_contains; on a large vault the list is paged (see offset). To list or read files on a saved server, call remote_list / remote_read / server_exec with that server name instead.',
+        parameters: [
+            { name: 'name_contains', type: 'string', description: 'Case-insensitive substring of the profile name', required: false },
+            { name: 'protocol', type: 'string', description: 'Only profiles of this protocol, e.g. sftp, ftp, s3', required: false },
+            { name: 'limit', type: 'number', description: 'Max profiles to return (default 200)', required: false },
+            { name: 'offset', type: 'number', description: 'Profiles to skip, for the next page', required: false },
+            { name: 'include_capabilities', type: 'boolean', description: 'Also return each profile\'s transfer capabilities (much larger output; only when needed)', required: false },
+        ],
         dangerLevel: 'safe',
     },
     {

@@ -336,9 +336,50 @@ export function parseToolCalls(content: string): Array<{ tool: string; args: Rec
 }
 
 // Format tool result for display
+/** Upper bound on profile lines, so an enormous vault still fits the context. */
+const SERVER_LIST_MAX_LINES = 400;
+
+/** A profile field on one bounded line: names and hosts are user data, and a
+ *  line break in one must not start what reads as another profile. */
+function serverField(value: unknown, max = 120): string {
+    const text = String(value).replace(/\s+/g, ' ').trim();
+    return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function formatServerList(r: Record<string, unknown>): string {
+    const servers = r.servers as Array<Record<string, unknown>>;
+    const offset = typeof r.offset === 'number' ? r.offset : 0;
+    const total = typeof r.count === 'number' ? r.count : servers.length;
+    const shown = servers.slice(0, SERVER_LIST_MAX_LINES);
+    const lines = shown.map(s => {
+        const protocol = serverField(s.protocolClass ?? s.protocol ?? '?', 24);
+        const host = s.host ? serverField(s.host) : '-';
+        return `- ${serverField(s.name ?? '(unnamed)')} | ${protocol} | ${host} | ${serverField(s.id ?? '', 64)}`;
+    });
+    const first = total === 0 ? 0 : offset + 1;
+    const last = offset + shown.length;
+    const header = `**${total} saved servers** (showing ${first}-${last}; name | protocol | host | id)`;
+    const out = [header, ...lines];
+    if (last < total) {
+        out.push(
+            `_${total - last} more not shown: call server_list_saved again with offset=${last}, or narrow it with name_contains / protocol._`,
+        );
+    }
+    return out.join('\n');
+}
+
 export function formatToolResult(_toolName: string, result: unknown): string {
     if (result && typeof result === 'object') {
         const r = result as Record<string, unknown>;
+        // Saved server profiles (server_list_saved / aeroftp_list_servers). One
+        // compact line per profile: the full JSON of a large vault (96 profiles,
+        // about 34 KB) went through the catch-all cap below, and the model only
+        // ever saw the first fifth of the list.
+        // When the capabilities were asked for, the compact lines would drop
+        // them: keep the JSON (the catch-all cap below says if it was cut).
+        if (Array.isArray(r.servers) && r.capabilities_included !== true) {
+            return formatServerList(r);
+        }
         // List results
         if (r.entries && Array.isArray(r.entries)) {
             const entries = r.entries as Array<{ name: string; is_dir: boolean; size: number }>;
@@ -629,7 +670,7 @@ export function formatToolResult(_toolName: string, result: unknown): string {
     const serialized = JSON.stringify(result, null, 2);
     const CATCH_ALL_CAP = 8192;
     if (serialized.length > CATCH_ALL_CAP) {
-        return `\`\`\`json\n${serialized.slice(0, CATCH_ALL_CAP)}\n\`\`\`\n_...truncated (${serialized.length} bytes total)_`;
+        return `\`\`\`json\n${serialized.slice(0, CATCH_ALL_CAP)}\n\`\`\`\n_...truncated: only the first ${CATCH_ALL_CAP} of ${serialized.length} characters are shown here; the rest of this result was NOT shown, so do not treat it as complete._`;
     }
     return `\`\`\`json\n${serialized}\n\`\`\``;
 }

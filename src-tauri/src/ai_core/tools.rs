@@ -154,6 +154,21 @@ pub enum ToolError {
     NotMigrated(String),
 }
 
+/// Arguments of `aeroftp_list_servers` and its aliases.
+fn list_servers_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "name_contains": {"type": "string", "description": "Case-insensitive substring of the profile name"},
+            "protocol": {"type": "string", "description": "Only profiles of this protocol, e.g. sftp, ftp, s3"},
+            "limit": {"type": "integer", "description": "Max profiles to return (default 200)"},
+            "offset": {"type": "integer", "description": "Profiles to skip, for the next page"},
+            "include_capabilities": {"type": "boolean"},
+        },
+        "required": [],
+    })
+}
+
 /// Registry canonico. Popolato in Gate 2 per aree (local_*, clipboard_/
 /// shell_/archive_, remote_, rag_/memory_). I tool non ancora migrati
 /// non compaiono qui e restano gestiti dai dispatcher legacy (arriva
@@ -760,31 +775,24 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             name: "aeroftp_list_servers",
             description:
                 "List saved server profiles from the encrypted vault. Passwords are never exposed. Returns lean identity fields by default; pass include_capabilities:true to embed the per-profile transfer_capabilities block.",
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "name_contains": {"type": "string"},
-                    "protocol": {"type": "string"},
-                    "limit": {"type": "integer"},
-                    "offset": {"type": "integer"},
-                    "include_capabilities": {"type": "boolean"},
-                },
-                "required": [],
-            }),
+            input_schema: list_servers_schema(),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
         },
+        // The aliases take the same arguments: with an empty schema a model
+        // never learns it can filter or page, and on a large vault it only
+        // sees the first page of the list.
         ToolDef {
             name: "remote_list_servers",
             description: "Alias of aeroftp_list_servers.",
-            input_schema: json!({"type": "object", "properties": {}, "required": []}),
+            input_schema: list_servers_schema(),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
         },
         ToolDef {
             name: "server_list_saved",
             description: "Alias of aeroftp_list_servers (legacy GUI/CLI name).",
-            input_schema: json!({"type": "object", "properties": {}, "required": []}),
+            input_schema: list_servers_schema(),
             danger: DangerLevel::ReadOnly,
             surfaces: remote_surfaces,
         },
