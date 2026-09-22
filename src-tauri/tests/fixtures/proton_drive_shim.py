@@ -14,6 +14,9 @@ TRASH_JSON = os.path.join(HERE, "trash.json")
 args = sys.argv[1:]
 with open(LOG, "a") as f:
     f.write(json.dumps(args) + "\n")
+# Which AeroFTP variables reached this child: none should.
+with open(os.path.join(HERE, "env.log"), "a") as f:
+    f.write(json.dumps(sorted(k for k in os.environ if k.startswith("AEROFTP_"))) + "\n")
 verb = args[0] if args else ""
 sub = args[1] if len(args) > 1 else ""
 if verb == "filesystem" and sub == "download":

@@ -51,10 +51,14 @@ impl ProtonConfig {
                 }
             })
             .unwrap_or_else(|| "Proton Drive".to_string());
-        let binary_path = config
-            .extra
-            .get("proton_cli_path")
-            .cloned()
+        // The executable is never taken from the profile. Profile options
+        // travel in exported `.aeroftp` files and in imports, and every option
+        // reaches `extra`, so a path there would make AeroFTP run whatever
+        // file an imported profile names. No part of the GUI sets one. A CLI
+        // kept outside PATH and the usual locations is named with the
+        // AEROFTP_PROTON_CLI environment variable, which a file cannot set.
+        let binary_path = std::env::var("AEROFTP_PROTON_CLI")
+            .ok()
             .filter(|s| !s.trim().is_empty());
         Ok(Self {
             display_name,
@@ -109,6 +113,14 @@ impl ProtonCliProvider {
             let mut cmd = Command::new(&self.binary);
             cmd.args(args);
             cmd.kill_on_drop(true);
+            // The CLI needs the user's environment (HOME, XDG_*, the display
+            // for the browser login), so it is not cleared, but nothing of
+            // AeroFTP's own: AEROFTP_MASTER_PASSWORD and the like stay here.
+            for (key, _) in std::env::vars_os() {
+                if key.to_string_lossy().starts_with("AEROFTP_") {
+                    cmd.env_remove(&key);
+                }
+            }
             #[cfg(windows)]
             {
                 cmd.creation_flags(CREATE_NO_WINDOW);
@@ -1173,6 +1185,28 @@ mod tests {
     }
 
     #[test]
+    fn a_profile_cannot_choose_the_binary_that_runs() {
+        let _env = crate::test_env::lock();
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("proton_cli_path".to_string(), "/tmp/evil".to_string());
+        let config = super::super::ProviderConfig {
+            name: "p".to_string(),
+            provider_type: super::super::ProviderType::Proton,
+            host: "drive.proton.me".to_string(),
+            port: None,
+            username: None,
+            password: None,
+            initial_path: None,
+            extra,
+        };
+        let parsed = ProtonConfig::from_provider_config(&config).unwrap();
+        assert_eq!(
+            parsed.binary_path, None,
+            "a profile option picked the executable"
+        );
+    }
+
+    #[test]
     fn redacts_share_password() {
         let args = ["sharing", "set-url", "--password", "secret", "/my-files/a"];
         let redacted = redact_cli_args(&args);
@@ -1250,6 +1284,22 @@ mod cli_sequence_tests {
             .filter(|l| !l.is_empty())
             .map(|l| serde_json::from_str(l).unwrap())
             .collect()
+    }
+
+    #[tokio::test]
+    async fn the_child_receives_no_aeroftp_variables() {
+        let _env = crate::test_env::lock();
+        std::env::set_var("AEROFTP_TEST_SECRET_FOR_PROTON", "do-not-leak");
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let p = provider(&shim);
+        let _ = p.run_cli(&["account", "info", "-j"], 5).await;
+        std::env::remove_var("AEROFTP_TEST_SECRET_FOR_PROTON");
+        let log = std::fs::read_to_string(dir.path().join("env.log")).unwrap_or_default();
+        assert!(!log.is_empty(), "the shim did not run");
+        for line in log.lines() {
+            assert_eq!(line, "[]", "AeroFTP variables reached proton-drive: {line}");
+        }
     }
 
     fn provider(shim: &Path) -> ProtonCliProvider {
