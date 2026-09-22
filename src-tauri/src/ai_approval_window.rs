@@ -142,6 +142,8 @@ fn build_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
         builder = builder.data_directory(dir);
     }
     let window = builder.build().map_err(|e| e.to_string())?;
+    // GTK hands every window the global app menu: not this one.
+    let _ = window.remove_menu();
 
     let label_owned = label.to_string();
     window.on_window_event(move |event| {
@@ -180,6 +182,16 @@ mod tests {
             message: "path: /tmp/x".to_string(),
             remember_for_session: false,
         }
+    }
+
+    #[test]
+    fn approval_windows_count_as_secondary_and_lose_the_app_menu() {
+        assert!(crate::is_secondary_window_label(&format!(
+            "{LABEL_PREFIX}abc"
+        )));
+        assert!(crate::is_secondary_window_label("extract-2"));
+        assert!(crate::is_secondary_window_label("splashscreen"));
+        assert!(!crate::is_secondary_window_label("main"));
     }
 
     #[test]
