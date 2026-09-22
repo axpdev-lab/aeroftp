@@ -3361,7 +3361,9 @@
             "inactive": "{app} 已安装，但本地桥接在 127.0.0.1:{port} 上无响应。请启动并登录。",
             "notInstalled": "此设备上未找到 {app}。请安装后使用此模式。",
             "saveDisabled": "在安装 {app} 之前，保存已禁用。",
-            "recheck": "重新检查"
+            "recheck": "重新检查",
+            "cliSignedIn": "{app} 已安装并已登录。",
+            "cliNotSignedIn": "{app} 已安装但未登录。请在终端中运行 \"proton-drive auth login\"，然后在浏览器中完成。"
         },
         "trash": {
             "title": "回收站",

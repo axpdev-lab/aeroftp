@@ -3361,7 +3361,9 @@
             "inactive": "{app} on asennettu, mutta paikallinen silta ei vastaa osoitteessa 127.0.0.1:{port}. Käynnistä se ja kirjaudu sisään.",
             "notInstalled": "{app} ei löytynyt tästä koneesta. Asenna se käyttääksesi tätä tilaa.",
             "saveDisabled": "Tallennus on poistettu käytöstä, kunnes {app} on asennettu.",
-            "recheck": "Tarkista uudelleen"
+            "recheck": "Tarkista uudelleen",
+            "cliSignedIn": "{app} on asennettu ja kirjautunut sisään.",
+            "cliNotSignedIn": "{app} on asennettu, mutta ei kirjautunut sisään. Suorita \"proton-drive auth login\" päätteessä ja viimeistele selaimessa."
         },
         "trash": {
             "title": "Roskakori",

@@ -3361,7 +3361,9 @@
             "inactive": "{app} er installert, men den lokale broen svarer ikke på 127.0.0.1:{port}. Start den og logg inn.",
             "notInstalled": "{app} ble ikke funnet på denne maskinen. Installer den for å bruke denne modusen.",
             "saveDisabled": "Lagring er deaktivert til {app} er installert.",
-            "recheck": "Sjekk på nytt"
+            "recheck": "Sjekk på nytt",
+            "cliSignedIn": "{app} er installert og logget inn.",
+            "cliNotSignedIn": "{app} er installert, men ikke logget inn. Kjør \"proton-drive auth login\" i en terminal og fullfør i nettleseren."
         },
         "trash": {
             "title": "Papirkurv",

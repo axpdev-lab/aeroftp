@@ -915,7 +915,9 @@
             "inactive": "{app} is installed but the local bridge is not responding on 127.0.0.1:{port}. Start it and sign in.",
             "notInstalled": "{app} was not found on this machine. Install it to use this mode.",
             "saveDisabled": "Save is disabled until {app} is installed.",
-            "recheck": "Re-check"
+            "recheck": "Re-check",
+            "cliSignedIn": "{app} is installed and signed in.",
+            "cliNotSignedIn": "{app} is installed but not signed in. Run \"proton-drive auth login\" in a terminal and finish in the browser."
         },
         "browser": {
             "ascending": "Ascending",

@@ -3361,7 +3361,9 @@
             "inactive": "{app} está instalado mas a ponte local não responde em 127.0.0.1:{port}. Inicie-o e faça login.",
             "notInstalled": "{app} não foi encontrado nesta máquina. Instale-o para usar este modo.",
             "saveDisabled": "O salvamento está desativado até que {app} seja instalado.",
-            "recheck": "Verificar novamente"
+            "recheck": "Verificar novamente",
+            "cliSignedIn": "{app} está instalado e com sessão iniciada.",
+            "cliNotSignedIn": "{app} está instalado, mas sem sessão iniciada. Execute \"proton-drive auth login\" em um terminal e conclua no navegador."
         },
         "trash": {
             "title": "Lixeira",

@@ -3361,7 +3361,9 @@
             "inactive": "{app} įdiegta, bet vietinis tiltas neatsako adresu 127.0.0.1:{port}. Paleiskite ją ir prisijunkite.",
             "notInstalled": "{app} nerasta šiame kompiuteryje. Įdiekite ją, kad galėtumėte naudoti šį režimą.",
             "saveDisabled": "Įrašymas išjungtas, kol nebus įdiegta {app}.",
-            "recheck": "Tikrinti iš naujo"
+            "recheck": "Tikrinti iš naujo",
+            "cliSignedIn": "{app} įdiegta ir prisijungusi.",
+            "cliNotSignedIn": "{app} įdiegta, bet neprisijungusi. Terminale paleiskite \"proton-drive auth login\" ir užbaikite naršyklėje."
         },
         "trash": {
             "title": "Šiukšlinė",

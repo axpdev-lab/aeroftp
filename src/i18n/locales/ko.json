@@ -3361,7 +3361,9 @@
             "inactive": "{app}이(가) 설치되어 있지만 로컬 브리지가 127.0.0.1:{port}에서 응답하지 않습니다. 실행하고 로그인하세요.",
             "notInstalled": "이 컴퓨터에서 {app}을(를) 찾을 수 없습니다. 이 모드를 사용하려면 설치하세요.",
             "saveDisabled": "{app}이(가) 설치될 때까지 저장이 비활성화됩니다.",
-            "recheck": "다시 확인"
+            "recheck": "다시 확인",
+            "cliSignedIn": "{app}이(가) 설치되어 있고 로그인되어 있습니다.",
+            "cliNotSignedIn": "{app}이(가) 설치되어 있지만 로그인되어 있지 않습니다. 터미널에서 \"proton-drive auth login\"을(를) 실행하고 브라우저에서 완료하세요."
         },
         "trash": {
             "title": "휴지통",

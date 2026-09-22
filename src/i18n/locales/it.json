@@ -3750,7 +3750,9 @@
             "inactive": "{app} è installato ma il bridge locale non risponde su 127.0.0.1:{port}. Avvialo e accedi.",
             "notInstalled": "{app} non è stato trovato su questo computer. Installalo per usare questa modalità.",
             "saveDisabled": "Il salvataggio è disabilitato finché {app} non è installato.",
-            "recheck": "Ricontrolla"
+            "recheck": "Ricontrolla",
+            "cliSignedIn": "{app} è installata e connessa con il login.",
+            "cliNotSignedIn": "{app} è installata ma senza login. Esegui \"proton-drive auth login\" in un terminale e completa nel browser."
         },
         "trash": {
             "title": "Cestino",

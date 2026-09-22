@@ -3361,7 +3361,9 @@
             "inactive": "{app} is geïnstalleerd maar de lokale brug reageert niet op 127.0.0.1:{port}. Start het en meld je aan.",
             "notInstalled": "{app} is niet gevonden op deze machine. Installeer het om deze modus te gebruiken.",
             "saveDisabled": "Opslaan is uitgeschakeld totdat {app} is geïnstalleerd.",
-            "recheck": "Opnieuw controleren"
+            "recheck": "Opnieuw controleren",
+            "cliSignedIn": "{app} is geïnstalleerd en aangemeld.",
+            "cliNotSignedIn": "{app} is geïnstalleerd maar niet aangemeld. Voer \"proton-drive auth login\" uit in een terminal en rond af in de browser."
         },
         "trash": {
             "title": "Prullenbak",

@@ -3361,7 +3361,9 @@
             "inactive": "{app} er uppsett en staðværa brúin svarar ekki á 127.0.0.1:{port}. Ræstu hana og skráðu þig inn.",
             "notInstalled": "{app} fannst ekki á þessari vél. Settu það upp til að nota þennan ham.",
             "saveDisabled": "Vistun er óvirk þar til {app} er uppsett.",
-            "recheck": "Athuga aftur"
+            "recheck": "Athuga aftur",
+            "cliSignedIn": "{app} er uppsett og innskráð.",
+            "cliNotSignedIn": "{app} er uppsett en ekki innskráð. Keyrðu \"proton-drive auth login\" í skipanalínu og ljúktu í vafranum."
         },
         "trash": {
             "title": "Rusl",

@@ -3361,7 +3361,9 @@
             "inactive": "{app} đã được cài đặt nhưng cầu nối cục bộ không phản hồi tại 127.0.0.1:{port}. Hãy khởi động và đăng nhập.",
             "notInstalled": "Không tìm thấy {app} trên máy này. Hãy cài đặt để sử dụng chế độ này.",
             "saveDisabled": "Việc lưu bị tắt cho đến khi {app} được cài đặt.",
-            "recheck": "Kiểm tra lại"
+            "recheck": "Kiểm tra lại",
+            "cliSignedIn": "{app} đã được cài đặt và đã đăng nhập.",
+            "cliNotSignedIn": "{app} đã được cài đặt nhưng chưa đăng nhập. Chạy \"proton-drive auth login\" trong terminal và hoàn tất trong trình duyệt."
         },
         "trash": {
             "title": "Thùng rác",

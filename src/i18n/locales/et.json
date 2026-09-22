@@ -3361,7 +3361,9 @@
             "inactive": "{app} on installitud, kuid kohalik sild ei vasta aadressil 127.0.0.1:{port}. Käivitage see ja logige sisse.",
             "notInstalled": "{app} ei leitud sellest arvutist. Installige see selle režiimi kasutamiseks.",
             "saveDisabled": "Salvestamine on keelatud, kuni {app} on installitud.",
-            "recheck": "Kontrolli uuesti"
+            "recheck": "Kontrolli uuesti",
+            "cliSignedIn": "{app} on paigaldatud ja sisse logitud.",
+            "cliNotSignedIn": "{app} on paigaldatud, kuid pole sisse logitud. Käivita terminalis \"proton-drive auth login\" ja lõpeta brauseris."
         },
         "trash": {
             "title": "Prügikast",

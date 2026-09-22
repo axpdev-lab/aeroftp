@@ -3361,7 +3361,9 @@
             "inactive": "A(z) {app} telepítve van, de a helyi híd nem válaszol a 127.0.0.1:{port} címen. Indítsa el és jelentkezzen be.",
             "notInstalled": "A(z) {app} nem található ezen a gépen. Telepítse a mód használatához.",
             "saveDisabled": "A mentés le van tiltva, amíg a(z) {app} nincs telepítve.",
-            "recheck": "Újraellenőrzés"
+            "recheck": "Újraellenőrzés",
+            "cliSignedIn": "A(z) {app} telepítve van, és be van jelentkezve.",
+            "cliNotSignedIn": "A(z) {app} telepítve van, de nincs bejelentkezve. Futtassa a(z) \"proton-drive auth login\" parancsot egy terminálban, és fejezze be a böngészőben."
         },
         "trash": {
             "title": "Kuka",

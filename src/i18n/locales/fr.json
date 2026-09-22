@@ -3361,7 +3361,9 @@
             "inactive": "{app} est installé mais le pont local ne répond pas sur 127.0.0.1:{port}. Démarrez-le et connectez-vous.",
             "notInstalled": "{app} est introuvable sur cette machine. Installez-le pour utiliser ce mode.",
             "saveDisabled": "L'enregistrement est désactivé tant que {app} n'est pas installé.",
-            "recheck": "Revérifier"
+            "recheck": "Revérifier",
+            "cliSignedIn": "{app} est installé et connecté.",
+            "cliNotSignedIn": "{app} est installé mais pas connecté. Lancez \"proton-drive auth login\" dans un terminal et terminez dans le navigateur."
         },
         "trash": {
             "title": "Corbeille",

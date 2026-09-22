@@ -3361,7 +3361,9 @@
             "inactive": "{app} está instalado pero el puente local no responde en 127.0.0.1:{port}. Inícialo e inicia sesión.",
             "notInstalled": "No se encontró {app} en este equipo. Instálalo para usar este modo.",
             "saveDisabled": "El guardado está deshabilitado hasta que {app} esté instalado.",
-            "recheck": "Volver a comprobar"
+            "recheck": "Volver a comprobar",
+            "cliSignedIn": "{app} está instalado y con la sesión iniciada.",
+            "cliNotSignedIn": "{app} está instalado pero sin sesión iniciada. Ejecuta \"proton-drive auth login\" en una terminal y termina en el navegador."
         },
         "trash": {
             "title": "Papelera",

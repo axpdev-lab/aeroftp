@@ -223,6 +223,37 @@ fn look_in_path(name: &str) -> Option<String> {
     None
 }
 
+/// Budget for the status probe of the connection form. The CLI starts a new
+/// process per command, so this bounds a slow start, not a network transfer.
+const STATUS_PROBE_TIMEOUT_SECS: u64 = 20;
+
+/// Whether the Proton Drive CLI is installed and signed in, for the status
+/// banner of the connection form: `(installed, signed_in)`. Resolves the
+/// binary the same way a connection does, and asks for the root listing, the
+/// same first call `connect` makes, so "signed in" means a connect would pass
+/// that step.
+pub async fn cli_session_status() -> (bool, bool) {
+    let custom = std::env::var("AEROFTP_PROTON_CLI")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let binary = resolve_proton_drive(custom.as_deref());
+    if !binary_exists(&binary) {
+        return (false, false);
+    }
+    let probe = ProtonCliProvider::new(ProtonConfig {
+        display_name: "status".into(),
+        binary_path: Some(binary),
+    });
+    let signed_in = probe
+        .run_cli(
+            &["filesystem", "list", "/", "-j"],
+            STATUS_PROBE_TIMEOUT_SECS,
+        )
+        .await
+        .is_ok();
+    (true, signed_in)
+}
+
 pub(crate) fn resolve_proton_drive(custom: Option<&str>) -> String {
     if let Some(path) = custom {
         if Path::new(path).is_file() {
@@ -1336,6 +1367,50 @@ mod cli_sequence_tests {
             .filter(|l| !l.is_empty())
             .map(|l| serde_json::from_str(l).unwrap())
             .collect()
+    }
+
+    /// Runs the connection-form status probe with the CLI named by
+    /// AEROFTP_PROTON_CLI, inside the environment lock.
+    fn status_with(cli: &Path, signed_out: bool) -> (bool, bool) {
+        let _env = crate::test_env::lock();
+        std::env::set_var("AEROFTP_PROTON_CLI", cli);
+        let marker = cli.parent().unwrap().join("signed_out");
+        if signed_out {
+            std::fs::write(&marker, b"").unwrap();
+        }
+        let status = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(cli_session_status());
+        std::env::remove_var("AEROFTP_PROTON_CLI");
+        let _ = std::fs::remove_file(&marker);
+        status
+    }
+
+    #[test]
+    fn the_status_probe_tells_installed_and_signed_in_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        assert_eq!(status_with(&shim, false), (true, true), "signed in");
+        assert_eq!(
+            status_with(&shim, true),
+            (true, false),
+            "installed, no session"
+        );
+    }
+
+    #[test]
+    fn the_status_probe_reports_a_missing_cli() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("proton-drive");
+        // Only when nothing else is installed on the machine: PATH and the
+        // usual locations are searched after the override.
+        if resolve_proton_drive(None) != "proton-drive" {
+            eprintln!("SKIPPED: a real proton-drive is installed on this machine");
+            return;
+        }
+        assert_eq!(status_with(&missing, false), (false, false));
     }
 
     // Synchronous on purpose: the environment lock is a std mutex, and the

@@ -3361,7 +3361,9 @@
             "inactive": "{app} este instalat, dar puntea locală nu răspunde la 127.0.0.1:{port}. Porniți-l și conectați-vă.",
             "notInstalled": "{app} nu a fost găsit pe acest computer. Instalați-l pentru a utiliza acest mod.",
             "saveDisabled": "Salvarea este dezactivată până când {app} este instalat.",
-            "recheck": "Verifică din nou"
+            "recheck": "Verifică din nou",
+            "cliSignedIn": "{app} este instalat și autentificat.",
+            "cliNotSignedIn": "{app} este instalat, dar nu este autentificat. Rulează \"proton-drive auth login\" într-un terminal și finalizează în browser."
         },
         "trash": {
             "title": "Coș de gunoi",

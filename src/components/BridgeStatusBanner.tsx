@@ -34,6 +34,7 @@ interface BridgeStatusBannerProps {
 
 /** Friendly helper-app name per bridge kind. */
 function appNameFor(kind: BridgeKind): string {
+    if (kind === 'proton-cli') return 'Proton Drive CLI';
     return kind === 'megacmd-webdav' ? 'MEGAcmd' : 'Filen Desktop';
 }
 
@@ -95,9 +96,20 @@ export const BridgeStatusBanner: React.FC<BridgeStatusBannerProps> = ({
         return s;
     };
 
+    // The Proton Drive CLI is not a loopback bridge: its amber and green
+    // states are about the signed-in session, not a port.
+    const isCli = kind === 'proton-cli';
     const message =
         loading
             ? tr('bridge.checking', 'Checking {app}…', { app })
+            : isCli && uiState === 'green'
+              ? tr('bridge.cliSignedIn', '{app} is installed and signed in.', { app })
+            : isCli && uiState === 'amber'
+              ? tr(
+                    'bridge.cliNotSignedIn',
+                    '{app} is installed but not signed in. Run "proton-drive auth login" in a terminal and finish in the browser.',
+                    { app },
+                )
             : uiState === 'green'
               ? tr('bridge.active', '{app} is running, the local bridge is active.', { app })
               : uiState === 'red'

@@ -3361,7 +3361,9 @@
             "inactive": "{app} je nainštalovaný, ale lokálny most neodpovedá na 127.0.0.1:{port}. Spustite ho a prihláste sa.",
             "notInstalled": "{app} sa na tomto počítači nenašiel. Nainštalujte ho na použitie tohto režimu.",
             "saveDisabled": "Ukladanie je zakázané, kým nebude {app} nainštalovaný.",
-            "recheck": "Skontrolovať znova"
+            "recheck": "Skontrolovať znova",
+            "cliSignedIn": "{app} je nainštalované a prihlásené.",
+            "cliNotSignedIn": "{app} je nainštalované, ale nie je prihlásené. Spustite v termináli \"proton-drive auth login\" a dokončite v prehliadači."
         },
         "trash": {
             "title": "Kôš",

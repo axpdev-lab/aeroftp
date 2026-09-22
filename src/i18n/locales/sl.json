@@ -3361,7 +3361,9 @@
             "inactive": "{app} je nameščen, vendar se lokalni most ne odziva na 127.0.0.1:{port}. Zaženite ga in se prijavite.",
             "notInstalled": "{app} ni bil najden v tem računalniku. Namestite ga za uporabo tega načina.",
             "saveDisabled": "Shranjevanje je onemogočeno, dokler ni nameščen {app}.",
-            "recheck": "Znova preveri"
+            "recheck": "Znova preveri",
+            "cliSignedIn": "{app} je nameščen in prijavljen.",
+            "cliNotSignedIn": "{app} je nameščen, vendar ni prijavljen. V terminalu zaženite \"proton-drive auth login\" in dokončajte v brskalniku."
         },
         "trash": {
             "title": "Koš",
