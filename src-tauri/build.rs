@@ -164,6 +164,7 @@ const DEPENDENCY_CATEGORIES: &[(&str, &[&str])] = &[
             "hound",
             "libc",
             "posix-acl",
+            "webkit2gtk",
             "whisper-rs",
             "windows",
             "winreg",

@@ -177,6 +177,8 @@ pub mod windows_update_helper;
 pub mod rsync_over_ssh;
 mod ssh_exec;
 pub mod util;
+#[cfg(target_os = "linux")]
+mod webview_recovery;
 // Strada C: native rsync prototype (dev-only, gitignored, feature-gated).
 // Does not affect production builds. See `src/aerorsync/README.md`.
 #[cfg(feature = "aerorsync")]
@@ -18591,6 +18593,10 @@ pub fn run() {
                 None => main_builder,
             };
             let _main = main_builder.build()?;
+            // A crashed WebKitGTK web process otherwise leaves the window grey
+            // until the app is restarted from the tray.
+            #[cfg(target_os = "linux")]
+            webview_recovery::install(&_main);
 
             let accel = |shortcut: &'static str| -> Option<&'static str> {
                 #[cfg(target_os = "linux")]

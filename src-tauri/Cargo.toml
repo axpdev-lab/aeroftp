@@ -345,6 +345,11 @@ fuser = "0.17"
 # fixing the generic-icon-after-update bug. Already present transitively
 # via tauri/wry, so this adds no real build cost.
 gtk = "0.18"
+# webkit2gtk: reach the WebKitGTK view behind the main window to reload it
+# when its web process dies (`webview_recovery`). Pinned to the version wry
+# pins, so it adds no crate to the build; `v2_20` is where the
+# `web-process-terminated` signal appears.
+webkit2gtk = { version = "=2.0.2", features = ["v2_20"] }
 # AeroRsync ACL B2: POSIX.1e access ACLs, Linux fd-bound only.
 # posix-acl owns the safe model; acl-sys exposes acl_get_fd/acl_set_fd.
 # Optional: owned by feature `aerorsync`, so `--no-default-features` does
