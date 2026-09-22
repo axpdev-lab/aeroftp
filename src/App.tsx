@@ -200,6 +200,7 @@ import {
   type TransferQueueJournalDto,
 } from './utils/transferQueueJournal';
 import { copyText } from './utils/clipboard';
+import { connectionViaLabel } from './utils/connectionViaLabel';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
 import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
@@ -3581,7 +3582,7 @@ const App: React.FC = () => {
     try {
       const res = await invoke<{
         used: number; file_count: number; dir_count: number;
-        truncated: boolean; cancelled?: boolean; method: string;
+        truncated: boolean; cancelled?: boolean; unreadable_dirs?: number; hit_cap?: boolean; method: string;
       }>('provider_scan_used', { path: scanRoot });
       if (res.used === 0 && res.file_count === 0 && res.dir_count > 0) {
         // Directories were listed but zero files were counted. On some old
@@ -3635,7 +3636,7 @@ const App: React.FC = () => {
         const doneDetail = t('statusBar.usedScanDoneDetail', {
           used: formatBytes(res.used),
           files: String(res.file_count),
-        }) + (boundKey ? ` (${t(boundKey)})` : '');
+        }) + (boundKey ? ` (${t(boundKey, { count: String(res.unreadable_dirs ?? 0) })})` : '');
         notify.success(t('statusBar.usedScanDone'), doneDetail);
         activityLog.updateEntry(scanLogId, {
           status: 'success',
@@ -7625,7 +7626,7 @@ const App: React.FC = () => {
                       : protocol === 'immich'
                         ? (effectiveParams.providerId === 'pixelunion' ? 'PixelUnion' : effectiveParams.server.replace(/^https?:\/\//, ''))
                         : effectiveParams.server.split(':')[0]);
-      const protocolLabel = protocol.toUpperCase();
+      const protocolLabel = connectionViaLabel(effectiveParams);
       // SEC: mask credentials in log-only provider name to prevent data leakage
       const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)
         ? providerName.replace(effectiveParams.username, maskCredential(effectiveParams.username))
@@ -7821,7 +7822,7 @@ const App: React.FC = () => {
     // Reset navigation sync for new connection
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
-    const protocolLabel = (effectiveParams.protocol || 'FTP').toUpperCase();
+    const protocolLabel = connectionViaLabel(effectiveParams);
     const logId = humanLog.logStart('CONNECT', { server: effectiveParams.server, protocol: protocolLabel });
     try {
       // First disconnect any active OAuth provider to avoid conflicts
@@ -8131,7 +8132,6 @@ const App: React.FC = () => {
 
     // Reconnect to the new server and refresh data
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connecting' } : s));
-    const protocolLabel = (protocol || 'FTP').toUpperCase();
     const reconnectLogId = humanLog.logRaw('activity.reconnect_start', 'CONNECT', { server: targetSession.serverName }, 'running');
 
     // Switching tab reconnects: on every branch below the remote panel sits on
@@ -8748,7 +8748,7 @@ const App: React.FC = () => {
       const protocol = (cloudConfig.protocol_type || cloudServer.protocol || 'ftp') as ProviderType;
       const isProvider = usesProviderApi(protocol);
       const isFtp = isFtpProtocol(protocol);
-      const protocolLabel = protocol.toUpperCase();
+      const protocolLabel = connectionViaLabel({ protocol, providerId: cloudServer.providerId, options: cloudServer.options });
 
       // Build connection server string
       const defaultPort = protocol === 'sftp' ? 22 : protocol === 'ftps' ? 990 : 21;
@@ -17190,7 +17190,7 @@ const App: React.FC = () => {
                           : normalizedParams.protocol === 'immich'
                             ? (normalizedParams.providerId === 'pixelunion' ? 'PixelUnion' : normalizedParams.server.replace(/^https?:\/\//, ''))
                             : normalizedParams.server.split(':')[0]);
-                  const protocolLabel = (normalizedParams.protocol || 'FTP').toUpperCase();
+                  const protocolLabel = connectionViaLabel(normalizedParams);
                   // SEC: mask credentials in log-only provider name to prevent data leakage
                   const maskedProviderName = normalizedParams.username && providerName.includes(normalizedParams.username)
                     ? providerName.replace(normalizedParams.username, maskCredential(normalizedParams.username))
@@ -17357,7 +17357,7 @@ const App: React.FC = () => {
                 // Reset navigation sync for new connection
                 setIsSyncNavigation(false);
                 setSyncBasePaths(null);
-                const protocolLabel = (params.protocol || 'FTP').toUpperCase();
+                const protocolLabel = connectionViaLabel(params);
                 const logId = humanLog.logStart('CONNECT', { server: params.server, protocol: protocolLabel });
                 try {
                   // Disconnect any existing provider connections first (S3, WebDAV, OAuth)
