@@ -219,59 +219,8 @@ export function useAIChatConversations() {
             setConversations(history);
             conversationsRef.current = history;
 
-            // Only restore last session on initial load, not force-reload
-            if (!historyLoadedRef.current && history.length > 0) {
-                const last = history[0];
-                setActiveConversationId(last.id);
-                activeConversationIdRef.current = last.id;
-
-                const fullSession = await loadSession(last.id);
-                if (fullSession) {
-                    const branchId = fullSession.activeBranchId || null;
-                    setActiveBranchId(branchId);
-
-                    if (branchId) {
-                        // BUG-012: Load branch messages from backend
-                        const branchMsgs = await switchBranchApi(last.id, branchId);
-                        if (branchMsgs.length > 0) {
-                            const mapped = branchMsgs.map(m => ({
-                                id: m.id,
-                                role: m.role as 'user' | 'assistant',
-                                content: m.content,
-                                timestamp: new Date(m.created_at),
-                                modelInfo: m.model ? {
-                                    modelName: m.model,
-                                    providerName: '',
-                                    providerType: '' as AIProviderType,
-                                } : undefined,
-                                tokenInfo: (m.tokens_in > 0 || m.tokens_out > 0) ? {
-                                    inputTokens: m.tokens_in,
-                                    outputTokens: m.tokens_out,
-                                    totalTokens: m.tokens_in + m.tokens_out,
-                                    cost: m.cost,
-                                } : undefined,
-                            }));
-                            setMessages(mapped);
-                            savedMessageContentRef.current = new Map(mapped.map(m => [m.id, m.content]));
-                        } else {
-                            setMessages(fullSession.messages.map(m => ({
-                                ...m,
-                                timestamp: new Date(m.timestamp),
-                                modelInfo: m.modelInfo ? { ...m.modelInfo, providerType: m.modelInfo.providerType as AIProviderType } : undefined,
-                            })));
-                            savedMessageContentRef.current = new Map(fullSession.messages.map(m => [m.id, m.content]));
-                        }
-                    } else {
-                        setMessages(fullSession.messages.map(m => ({
-                            ...m,
-                            timestamp: new Date(m.timestamp),
-                            modelInfo: m.modelInfo ? { ...m.modelInfo, providerType: m.modelInfo.providerType as AIProviderType } : undefined,
-                        })));
-                        savedMessageContentRef.current = new Map(fullSession.messages.map(m => [m.id, m.content]));
-                    }
-                }
-            }
-
+            // No conversation is reopened on its own: AeroAgent starts on a new
+            // chat, and earlier ones stay one click away in the history.
             historyLoadedRef.current = true;
         } catch {
             // Don't set historyLoadedRef on error so retry is possible
