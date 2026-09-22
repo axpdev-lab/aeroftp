@@ -152,15 +152,19 @@ fn build_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Read by the approval window to show its request.
+/// Read by the approval window to show its request. Async so it does not run
+/// on the main thread (see `sync_command_audit`); it only reads a map.
 #[tauri::command]
-pub fn ai_approval_prompt(window: tauri::WebviewWindow) -> Result<ApprovalPrompt, String> {
+pub async fn ai_approval_prompt(window: tauri::WebviewWindow) -> Result<ApprovalPrompt, String> {
     prompt_for(window.label())
 }
 
 /// The approval window's answer. Any other window is refused.
 #[tauri::command]
-pub fn ai_approval_decide(window: tauri::WebviewWindow, approved: bool) -> Result<(), String> {
+pub async fn ai_approval_decide(
+    window: tauri::WebviewWindow,
+    approved: bool,
+) -> Result<(), String> {
     decide(window.label(), approved)?;
     let _ = window.close();
     Ok(())

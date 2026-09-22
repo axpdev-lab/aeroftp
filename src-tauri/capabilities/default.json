@@ -5,8 +5,7 @@
   "windows": [
     "main",
     "extract",
-    "extract-*",
-    "ai-approval-*"
+    "extract-*"
   ],
   "permissions": [
     "core:default",

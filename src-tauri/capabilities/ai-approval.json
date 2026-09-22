@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "ai-approval",
+  "description": "AeroAgent approval window: it only reads its request and answers it through the app's own ai_approval_prompt / ai_approval_decide commands, and drags its custom titlebar. Deliberately none of the default capability (no fs, shell, dialog or event permissions): the window that grants approvals holds the least of any.",
+  "windows": [
+    "ai-approval-*"
+  ],
+  "permissions": [
+    "core:window:allow-start-dragging"
+  ]
+}
