@@ -9811,6 +9811,27 @@ pub(crate) fn app_page_url(page: &str) -> WebviewUrl {
     }
 }
 
+/// Secondary windows (splash, extract, the AeroAgent approval window) never
+/// show the app menu. On Linux GTK applies `app.set_menu` to every window,
+/// including windows created after it, so a dialog came up with a
+/// File / Edit / View / Help bar above its own title bar. The menu is removed
+/// when such a window is built and again whenever the global menu is
+/// (re)installed.
+pub(crate) fn is_secondary_window_label(label: &str) -> bool {
+    label == "splashscreen"
+        || label == "extract"
+        || label.starts_with("extract-")
+        || label.starts_with(ai_approval_window::LABEL_PREFIX)
+}
+
+pub(crate) fn strip_menu_from_secondary_windows(app: &AppHandle) {
+    for (label, window) in app.webview_windows() {
+        if is_secondary_window_label(&label) {
+            let _ = window.remove_menu();
+        }
+    }
+}
+
 fn open_extract_window(app: &AppHandle, mode: &str, path: &str) {
     // LT1 / tracker Known #7: WebviewWindowBuilder::build touches GTK on Linux.
     // Callers include the single-instance D-Bus callback (zbus thread, NOT the
@@ -9854,8 +9875,11 @@ fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
         Some(dir) => builder.data_directory(dir),
         None => builder,
     };
-    if let Err(e) = builder.build() {
-        log::error!("Failed to open extract window ({label}): {e}");
+    match builder.build() {
+        Ok(window) => {
+            let _ = window.remove_menu();
+        }
+        Err(e) => log::error!("Failed to open extract window ({label}): {e}"),
     }
 }
 
@@ -10711,6 +10735,7 @@ async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
                 if let Ok(mut guard) = deferred.lock() {
                     if let Some(menu) = guard.take() {
                         let _ = app_main.set_menu(menu);
+                        strip_menu_from_secondary_windows(&app_main);
                         info!("App menu set (deferred)");
                     }
                 }
@@ -11048,10 +11073,8 @@ fn rebuild_menu_on_main(
         app.set_menu(menu).map_err(|e| e.to_string())?;
     }
 
-    // Defense-in-depth: if splash somehow still exists, strip its menu
-    if let Some(splash) = app.get_webview_window("splashscreen") {
-        let _ = splash.remove_menu();
-    }
+    // Splash, extract and approval windows: GTK just gave them the menu too.
+    strip_menu_from_secondary_windows(&app);
 
     Ok(())
 }
