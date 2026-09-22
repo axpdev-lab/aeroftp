@@ -59,12 +59,13 @@ if [ "$COPIED_SHA256" != "$EXPECTED_SHA256" ]; then
     exit 1
 fi
 
+# No exec: the EXIT trap must outlive the install to remove the copy.
 case "$FILE" in
     *.deb)
-        exec dpkg -i "$TMP_COPY"
+        dpkg -i "$TMP_COPY"
         ;;
     *.rpm)
-        exec rpm -U "$TMP_COPY"
+        rpm -U "$TMP_COPY"
         ;;
     *)
         echo "Error: Unsupported package format (only .deb and .rpm)" >&2
