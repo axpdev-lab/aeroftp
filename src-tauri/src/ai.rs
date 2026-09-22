@@ -140,11 +140,38 @@ pub struct ChatMessage {
     pub tool_call_id: Option<String>,
 }
 
+/// An API key as a provider expects it: no key contains whitespace, and a
+/// pasted one can carry a trailing newline or space that makes the provider
+/// reject it. An empty key is no key.
+pub(crate) fn clean_api_key(key: Option<String>) -> Option<String> {
+    key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty())
+}
+
+fn deserialize_api_key<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(clean_api_key(Option::<String>::deserialize(deserializer)?))
+}
+
+/// The endpoint the settings "Test" button calls for an OpenAI-compatible
+/// provider. OpenRouter serves `/models` to anyone, with or without a valid
+/// key, so a test against it passed for a key the chat then saw rejected with
+/// 401 "User not found"; `/key` describes the key and answers 401 when it is
+/// not valid.
+fn provider_test_path(provider_type: &AIProviderType) -> &'static str {
+    match provider_type {
+        AIProviderType::OpenRouter => "/key",
+        _ => "/models",
+    }
+}
+
 // AI Request from frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIRequest {
     pub provider_type: AIProviderType,
     pub model: String,
+    #[serde(default, deserialize_with = "deserialize_api_key")]
     pub api_key: Option<String>,
     pub base_url: String,
     pub messages: Vec<ChatMessage>,
@@ -1320,6 +1347,7 @@ pub async fn test_provider(
     api_key: Option<String>,
 ) -> Result<bool, AIError> {
     let client = &*AI_HTTP_CLIENT;
+    let api_key = clean_api_key(api_key);
 
     match provider_type {
         AIProviderType::Ollama => {
@@ -1340,9 +1368,9 @@ pub async fn test_provider(
             Ok(response.status().is_success())
         }
         _ => {
-            // For OpenAI-compatible, try to list models
+            // OpenAI-compatible: an authenticated endpoint, so a bad key fails.
             let api_key = api_key.ok_or(AIError::MissingApiKey)?;
-            let url = format!("{}/models", base_url);
+            let url = format!("{}{}", base_url, provider_test_path(&provider_type));
             let response = client
                 .get(&url)
                 .header("Authorization", format!("Bearer {}", api_key))
@@ -1360,6 +1388,7 @@ pub async fn list_models(
     api_key: Option<String>,
 ) -> Result<Vec<String>, AIError> {
     let client = &*AI_HTTP_CLIENT;
+    let api_key = clean_api_key(api_key);
 
     match provider_type {
         AIProviderType::Ollama => {
@@ -1888,4 +1917,34 @@ pub async fn deepseek_fim_complete(
         .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "No completion text in response".to_string())
+}
+
+#[cfg(test)]
+mod api_key_tests {
+    use super::*;
+
+    #[test]
+    fn a_pasted_key_loses_the_whitespace_around_it() {
+        assert_eq!(
+            clean_api_key(Some("  sk-or-v1-abc \n".into())),
+            Some("sk-or-v1-abc".into())
+        );
+        assert_eq!(clean_api_key(Some("   ".into())), None);
+        assert_eq!(clean_api_key(None), None);
+    }
+
+    #[test]
+    fn a_request_from_the_frontend_arrives_with_a_clean_key() {
+        let json = r#"{"provider_type":"openrouter","model":"m","api_key":" sk-or-v1-abc ","base_url":"https://openrouter.ai/api/v1","messages":[],"max_tokens":null,"temperature":null}"#;
+        let req: AIRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.api_key.as_deref(), Some("sk-or-v1-abc"));
+    }
+
+    #[test]
+    fn the_openrouter_test_checks_the_key_not_the_public_model_list() {
+        // OpenRouter serves /models to anyone, key or not: a test against it
+        // reported success for a key the chat then saw rejected with 401.
+        assert_eq!(provider_test_path(&AIProviderType::OpenRouter), "/key");
+        assert_eq!(provider_test_path(&AIProviderType::OpenAI), "/models");
+    }
 }
