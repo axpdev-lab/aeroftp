@@ -51,6 +51,14 @@ for stray in aeroftp-dispatch aerorsync_serve seed_test_profiles seed_axpbuntu_l
     rm -f "$BIN_DIR/$stray"
 done
 
+# Before #915 the update helper left its root-owned copy of the package in
+# /var/tmp after every in-app update, and Ubuntu does not age out /var/tmp.
+# Remove those copies. /var/tmp is world-writable, so match only regular
+# files owned by root (find -delete does not follow symlinks), directly in
+# /var/tmp. A copy the helper is installing right now has already been read
+# by dpkg or rpm, and its own cleanup tolerates the file being gone.
+find "$(root_path /var/tmp)" -maxdepth 1 -name 'aeroftp-update-*.pkg' -type f -user root -delete 2>/dev/null || true
+
 HICOLOR="$(root_path /usr/share/icons/hicolor)"
 ICON_NAMES="application-x-aerovault application-x-aeroftp application-x-aeroftp-keystore application-x-aerozip application-x-aeroftp-script"
 SIZES="16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512"
