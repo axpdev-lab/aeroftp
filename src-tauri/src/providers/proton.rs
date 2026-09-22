@@ -1338,14 +1338,21 @@ mod cli_sequence_tests {
             .collect()
     }
 
-    #[tokio::test]
-    async fn the_child_receives_no_aeroftp_variables() {
+    // Synchronous on purpose: the environment lock is a std mutex, and the
+    // variable must stay set for the whole child spawn, so the runtime runs
+    // inside the lock instead of the lock living across an await.
+    #[test]
+    fn the_child_receives_no_aeroftp_variables() {
         let _env = crate::test_env::lock();
         std::env::set_var("AEROFTP_TEST_SECRET_FOR_PROTON", "do-not-leak");
         let dir = tempfile::tempdir().unwrap();
         let shim = link_shim(dir.path());
         let p = provider(&shim);
-        let _ = p.run_cli(&["account", "info", "-j"], 5).await;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _ = runtime.block_on(p.run_cli(&["account", "info", "-j"], 5));
         std::env::remove_var("AEROFTP_TEST_SECRET_FOR_PROTON");
         let log = std::fs::read_to_string(dir.path().join("env.log")).unwrap_or_default();
         assert!(!log.is_empty(), "the shim did not run");
