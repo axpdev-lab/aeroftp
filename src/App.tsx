@@ -193,7 +193,7 @@ import {
   buildJournalEntries,
   displayPathForRestore,
   groupIdsByProfileId,
-  isRestorableJournalStatus,
+  isRestorableJournalEntry,
   joinRemotePath,
   parentDir,
   type JournalDescriptorFields,
@@ -9883,7 +9883,7 @@ const App: React.FC = () => {
         if (cancelled) return;
         const entries = journal?.entries ?? [];
         for (const entry of entries) {
-          if (!isRestorableJournalStatus(entry.status)) continue;
+          if (!isRestorableJournalEntry(entry)) continue;
           const direction = entry.direction === 'upload' ? 'upload' : 'download';
           const displayPath = displayPathForRestore(
             direction,
@@ -10172,8 +10172,8 @@ const App: React.FC = () => {
     }
   };
 
-  // A resume starts transfers the user is not watching start: say so in the
-  // Activity Log, which otherwise showed a connect and then a result.
+  // A resume on a session that is already open starts transfers with no line
+  // saying so (the connect path logs "Connecting to X to resume transfers").
   const logResume = (count: number, serverName?: string) => {
     if (serverName) {
       humanLog.logRaw('activity.resume_transfers', 'INFO', { count, server: serverName }, 'success');
@@ -10251,8 +10251,8 @@ const App: React.FC = () => {
       const ok = await connectSavedProfileForResume(profile);
       if (!ok) continue;
 
+      // The connect already logged "Connecting to X to resume transfers".
       transferQueue.clearRestoredFlags(groupIds);
-      logResume(groupIds.length, profile.name);
       fireRetryCallbacks(groupIds);
     }
   };

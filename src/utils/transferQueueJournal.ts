@@ -89,6 +89,46 @@ export function isRestorableJournalStatus(status: JournalStatus | string): boole
 }
 
 /**
+ * The `ProviderError` Display prefixes (src-tauri/src/providers/types.rs) of
+ * failures that a new attempt cannot fix: the destination refuses, the file or
+ * name is not acceptable there, or the operation does not exist. Matched with
+ * their exact case and colon anywhere in the message, since the transfer layer
+ * wraps them ("Upload failed: Permission denied: ..."). Left out on purpose,
+ * because a later attempt can succeed: a lost connection or a timeout, an
+ * expired login, a missing path, a name that already exists (overwrite), a
+ * configuration the user can fix. Narrower than `classifyErrorFast`
+ * (transferErrorClassifier.ts) on purpose: that one decides whether to retry
+ * at once inside a batch, where a missing path or a login are not worth a
+ * second try; after a restart they may well be.
+ */
+const PERMANENT_ERROR_MARKERS = [
+    'Permission denied: ',
+    'Read-only endpoint: ',
+    'File too large: ',
+    'Invalid path: ',
+    'Operation not supported: ',
+    'Restricted character ',
+];
+
+export function isPermanentTransferError(error: string | undefined | null): boolean {
+    if (!error) return false;
+    return PERMANENT_ERROR_MARKERS.some((marker) => error.includes(marker));
+}
+
+/**
+ * Whether a journal entry comes back after a restart. A failure the next
+ * attempt cannot fix stays out: measured on 2026-09-22, an upload into the
+ * Proton Drive root, refused with "Permission denied", came back as a
+ * restored transfer and failed again on resume.
+ */
+export function isRestorableJournalEntry(
+    entry: Pick<TransferQueueJournalEntryDto, 'status' | 'last_error'>,
+): boolean {
+    if (!isRestorableJournalStatus(entry.status)) return false;
+    return !(entry.status === 'failed' && isPermanentTransferError(entry.last_error));
+}
+
+/**
  * Build journal entries by joining live queue items with the side descriptor map.
  * Items without a descriptor are skipped (cannot re-execute).
  * Prunes descriptor map keys that no longer exist in the items list when
