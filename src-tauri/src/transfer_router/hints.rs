@@ -62,6 +62,7 @@ pub fn from_provider_type(
         | ProviderType::Dropbox
         | ProviderType::OneDrive
         | ProviderType::Mega
+        | ProviderType::Proton
         | ProviderType::Box
         | ProviderType::PCloud
         | ProviderType::Filen

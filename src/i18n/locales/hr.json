@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "URL za autentifikaciju Keystone",
             "swiftAllowCleartextStorage": "Ova implementacija poslužuje objektnu pohranu preko nešifriranog HTTP-a. Prihvatite to za ovaj profil: pristupni token i svaka datoteka prelaze mrežu nešifrirani.",
-            "kdriveTokenScopes": "Token treba opsege drive i user_info. Samo s drive povezuje se i prikazuje datoteke, ali „Dohvati“ se odbija, jer čita profil vašeg računa da bi pronašao Drive ID."
+            "kdriveTokenScopes": "Token treba opsege drive i user_info. Samo s drive povezuje se i prikazuje datoteke, ali „Dohvati“ se odbija, jer čita profil vašeg računa da bi pronašao Drive ID.",
+            "protonCliTitle": "Koristi službeni Proton Drive CLI",
+            "protonCliBody": "Instalirajte Proton Drive CLI s proton.me/download/drive/cli, zatim u terminalu pokrenite proton-drive auth login i dovršite u pregledniku. AeroFTP nikad ne vidi vašu lozinku; sesija ostaje u spremištu tajni operacijskog sustava.",
+            "protonUnofficial": "Ovo je aplikacija treće strane koju Proton službeno ne podržava.",
+            "protonConnectHint": "\"Poveži se\" koristi CLI koji je na ovom računalu već prijavljen. Jedan Proton račun po korisniku operacijskog sustava."
         },
         "browser": {
             "remote": "Udaljeno",
@@ -1935,7 +1939,9 @@
             "devicesInfoLine2": "MTP je isključiv i na zahtjev: Poveži preuzima uređaj za sesiju; prekid ga vraća. Prijenosi su samo cijele datoteke (bez nastavka, bez slova pogona).",
             "discoverMtpPortable": "Telefon, kamera ili tablet putem USB MTP",
             "s3AllowCleartextEndpoint": "Ova krajnja točka poslužuje S3 preko nešifriranog HTTP-a putem mreže. Prihvatite to za ovaj profil: potpisani pristupni podaci i svaka datoteka prelaze mrežu nešifrirani.",
-            "discoverFilebase": "Filebase: objektna pohrana kompatibilna sa S3 (5 GB besplatno)"
+            "discoverFilebase": "Filebase: objektna pohrana kompatibilna sa S3 (5 GB besplatno)",
+            "protonDesc": "Povezuje se preko Proton Drive CLI-ja",
+            "protonTooltip": "Koristi Proton Drive CLI - instalirajte, prijavite se u pregledniku, AeroFTP je GUI"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

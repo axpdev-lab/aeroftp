@@ -712,6 +712,27 @@
     ]
   },
   {
+    "company": "Proton Drive",
+    "logoId": "proton",
+    "country": "CH",
+    "freeGb": 5,
+    "freeNote": "CLI",
+    "freeRequiresCard": false,
+    "regions": [
+      "CH"
+    ],
+    "protocols": [
+      {
+        "label": "CLI",
+        "protocol": "proton",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "FileLu",
     "logoId": "filelu",
     "country": "US",

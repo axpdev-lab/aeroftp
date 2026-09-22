@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "URL de autentificare Keystone",
             "swiftAllowCleartextStorage": "Această implementare oferă stocarea de obiecte prin HTTP necriptat. Acceptați pentru acest profil: tokenul de acces și fiecare fișier traversează rețeaua necriptate.",
-            "kdriveTokenScopes": "Tokenul are nevoie de permisiunile drive și user_info. Doar cu drive se conectează și listează fișierele, dar „Preia” este respins, pentru că citește profilul contului tău pentru a găsi Drive ID."
+            "kdriveTokenScopes": "Tokenul are nevoie de permisiunile drive și user_info. Doar cu drive se conectează și listează fișierele, dar „Preia” este respins, pentru că citește profilul contului tău pentru a găsi Drive ID.",
+            "protonCliTitle": "Folosește CLI-ul oficial Proton Drive",
+            "protonCliBody": "Instalați CLI-ul Proton Drive de la proton.me/download/drive/cli, rulați apoi proton-drive auth login în terminal și finalizați în browser. AeroFTP nu vă vede niciodată parola; sesiunea rămâne în depozitul de secrete al OS.",
+            "protonUnofficial": "Aceasta este o aplicație terță pe care Proton nu o suportă oficial.",
+            "protonConnectHint": "\"Conectare\" folosește CLI-ul deja autentificat pe această mașină. Un cont Proton per utilizator OS."
         },
         "browser": {
             "remote": "La distanță",
@@ -1935,7 +1939,9 @@
             "devicesInfoLine2": "MTP este exclusiv și la cerere: Conectare revendică dispozitivul pentru sesiune; deconectarea îl returnează. Transferurile sunt doar pe fișier întreg (fără reluare, fără literă de unitate).",
             "discoverMtpPortable": "Telefon, cameră sau tabletă prin USB MTP",
             "s3AllowCleartextEndpoint": "Acest punct final oferă S3 prin HTTP necriptat printr-o rețea. Acceptați pentru acest profil: acreditările semnate și fiecare fișier traversează rețeaua necriptate.",
-            "discoverFilebase": "Filebase: stocare de obiecte compatibilă cu S3 (5 GB gratuit)"
+            "discoverFilebase": "Filebase: stocare de obiecte compatibilă cu S3 (5 GB gratuit)",
+            "protonDesc": "Se conectează prin CLI-ul Proton Drive",
+            "protonTooltip": "Folosește CLI-ul Proton Drive - instalați, autentificați-vă în browser, AeroFTP este GUI-ul"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

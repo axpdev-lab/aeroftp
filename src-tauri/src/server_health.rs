@@ -78,6 +78,10 @@ fn cloud_provider_info(protocol: &str) -> Option<CloudProviderInfo> {
             host: "g.api.mega.co.nz",
             probe_url: "https://g.api.mega.co.nz/cs",
         }),
+        "proton" | "protondrive" => Some(CloudProviderInfo {
+            host: "drive.proton.me",
+            probe_url: "https://drive-api.proton.me/",
+        }),
         "box" => Some(CloudProviderInfo {
             host: "api.box.com",
             probe_url: "https://api.box.com/2.0/",
@@ -768,6 +772,7 @@ mod tests {
         assert!(is_cloud_protocol("dropbox"));
         assert!(is_cloud_protocol("onedrive"));
         assert!(is_cloud_protocol("mega"));
+        assert!(is_cloud_protocol("proton"));
         assert!(!is_cloud_protocol("ftp"));
         assert!(!is_cloud_protocol("sftp"));
         assert!(!is_cloud_protocol(""));
@@ -778,6 +783,7 @@ mod tests {
         assert_eq!(cloud_api_host("googledrive"), Some("www.googleapis.com"));
         assert_eq!(cloud_api_host("dropbox"), Some("api.dropboxapi.com"));
         assert_eq!(cloud_api_host("onedrive"), Some("graph.microsoft.com"));
+        assert_eq!(cloud_api_host("proton"), Some("drive.proton.me"));
         assert_eq!(cloud_api_host("ftp"), None);
     }
 

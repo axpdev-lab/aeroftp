@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "Overovacia URL Keystone",
             "swiftAllowCleartextStorage": "Toto nasadenie poskytuje objektové úložisko cez nešifrované HTTP. Prijmite to pre tento profil: prístupový token aj každý súbor prechádzajú sieťou nezašifrované.",
-            "kdriveTokenScopes": "Token potrebuje rozsahy drive a user_info. Iba s drive sa pripojí a zobrazí súbory, ale „Načítať“ je odmietnuté, pretože číta profil vášho účtu, aby našlo Drive ID."
+            "kdriveTokenScopes": "Token potrebuje rozsahy drive a user_info. Iba s drive sa pripojí a zobrazí súbory, ale „Načítať“ je odmietnuté, pretože číta profil vášho účtu, aby našlo Drive ID.",
+            "protonCliTitle": "Používa oficiálne Proton Drive CLI",
+            "protonCliBody": "Nainštalujte Proton Drive CLI z proton.me/download/drive/cli, potom v termináli spustite proton-drive auth login a dokončite to v prehliadači. AeroFTP nikdy nevidí vaše heslo; relácia ostane v úložisku tajomstiev OS.",
+            "protonUnofficial": "Toto je aplikácia tretej strany, ktorú Proton oficiálne nepodporuje.",
+            "protonConnectHint": "\"Pripojiť\" použije CLI, ktoré je na tomto počítači už prihlásené. Jeden účet Proton na používateľa OS."
         },
         "browser": {
             "remote": "Vzdialený",
@@ -1935,7 +1939,9 @@
             "devicesInfoLine2": "MTP je výhradné a na požiadanie: Pripojiť si vyžiada zariadenie pre reláciu; odpojenie ho vráti. Prenosy sú iba celé súbory (bez obnovenia, bez písmena jednotky).",
             "discoverMtpPortable": "Telefón, fotoaparát alebo tablet cez USB MTP",
             "s3AllowCleartextEndpoint": "Tento koncový bod poskytuje S3 cez nešifrované HTTP po sieti. Prijmite to pre tento profil: podpísané prihlasovacie údaje aj každý súbor prechádzajú sieťou nezašifrované.",
-            "discoverFilebase": "Filebase: objektové úložisko kompatibilné so S3 (5 GB zadarmo)"
+            "discoverFilebase": "Filebase: objektové úložisko kompatibilné so S3 (5 GB zadarmo)",
+            "protonDesc": "Pripája sa cez Proton Drive CLI",
+            "protonTooltip": "Používa Proton Drive CLI - nainštalujte, prihláste sa v prehliadači, AeroFTP je GUI"
         },
         "shortcuts": {
             "title": "Klávesové skratky",

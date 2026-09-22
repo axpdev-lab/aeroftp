@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "Keystone-autentiserings-URL",
             "swiftAllowCleartextStorage": "Den här installationen levererar objektlagring över okrypterad HTTP. Acceptera det för den här profilen: åtkomsttoken och varje fil passerar nätverket okrypterade.",
-            "kdriveTokenScopes": "Token behöver omfattningarna drive och user_info. Med enbart drive ansluter den och listar filer, men \"Hämta\" avvisas, eftersom den läser din kontoprofil för att hitta Drive ID."
+            "kdriveTokenScopes": "Token behöver omfattningarna drive och user_info. Med enbart drive ansluter den och listar filer, men \"Hämta\" avvisas, eftersom den läser din kontoprofil för att hitta Drive ID.",
+            "protonCliTitle": "Använder den officiella Proton Drive CLI",
+            "protonCliBody": "Installera Proton Drive CLI från proton.me/download/drive/cli, kör sedan proton-drive auth login i en terminal och slutför i webbläsaren. AeroFTP ser aldrig ditt lösenord; sessionen stannar i OS:ets hemlighetslager.",
+            "protonUnofficial": "Detta är ett tredjepartsprogram som Proton inte stöder officiellt.",
+            "protonConnectHint": "\"Anslut\" använder den CLI som redan är inloggad på den här maskinen. Ett Proton-konto per OS-användare."
         },
         "browser": {
             "remote": "Fjärr",
@@ -1935,7 +1939,9 @@
             "devicesInfoLine2": "MTP är exklusivt och på begäran: Anslut tar enheten för sessionen; koppla från återlämnar den. Överföringar sker endast som hela filer (ingen återupptagning, ingen enhetsbokstav).",
             "discoverMtpPortable": "Telefon, kamera eller surfplatta via USB MTP",
             "s3AllowCleartextEndpoint": "Den här slutpunkten levererar S3 över okrypterad HTTP via ett nätverk. Acceptera det för den här profilen: de signerade autentiseringsuppgifterna och varje fil passerar nätverket okrypterade.",
-            "discoverFilebase": "Filebase: S3-kompatibel objektlagring (5 GB gratis)"
+            "discoverFilebase": "Filebase: S3-kompatibel objektlagring (5 GB gratis)",
+            "protonDesc": "Ansluter via Proton Drive CLI",
+            "protonTooltip": "Använder Proton Drive CLI - installera, logga in i webbläsaren, AeroFTP är GUI:t"
         },
         "shortcuts": {
             "title": "Kortkommandon",

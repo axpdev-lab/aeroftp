@@ -6402,9 +6402,9 @@ const App: React.FC = () => {
   });
 
   // --- Connection step logging helpers ---
-  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab'];
+  const CLOUD_API_PROTOCOLS = ['mega', 'proton', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab'];
   // Providers that support server-side copy (for context menu)
-  const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'jottacloud', 'drime', 'koofr', 'yandexdisk'];
+  const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'proton', 'kdrive', 'jottacloud', 'drime', 'koofr', 'yandexdisk'];
 
   const getProviderHostFallback = (protocol?: string, username?: string): string => {
     switch (protocol) {
@@ -6420,6 +6420,8 @@ const App: React.FC = () => {
         return 'app.drime.cloud';
       case 'mega':
         return 'mega.nz';
+      case 'proton':
+        return 'drive.proton.me';
       case 'filen':
         return 'filen.io';
       case 'filelu':
@@ -7515,7 +7517,7 @@ const App: React.FC = () => {
       // blank endpoint: buildProviderParams runs `mega-webdav /` to fill it, so
       // neither field is required here (#215).
       const isAnonymousBridge = !!effectiveParams.options?.anonymous;
-      if ((!effectiveParams.server && !infinicloudWithApiKey && !isAnonymousBridge && protocol !== 'ftp' && protocol !== 'ftps' && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github' && !isAnonymousBridge)) {
+      if ((!effectiveParams.server && !infinicloudWithApiKey && !isAnonymousBridge && protocol !== 'ftp' && protocol !== 'ftps' && protocol !== 'mega' && protocol !== 'proton' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github' && protocol !== 'proton' && !isAnonymousBridge)) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
@@ -7604,6 +7606,8 @@ const App: React.FC = () => {
             ? `kDrive ${effectiveParams.options?.bucket || ''}`
             : protocol === 'jottacloud'
               ? `Jottacloud ${effectiveParams.username}`
+              : protocol === 'proton'
+                ? (effectiveParams.username || 'Proton Drive')
               : protocol === 'mega' || protocol === 'internxt' || protocol === 'filen'
                 ? effectiveParams.username
                 : protocol === 'swift'
@@ -17164,6 +17168,8 @@ const App: React.FC = () => {
                           ? t('savedServers.opendriveDisplay', { username: normalizedParams.username })
                         : normalizedParams.protocol === 'yandexdisk'
                           ? `Yandex Disk ${normalizedParams.username}`
+                        : normalizedParams.protocol === 'proton'
+                          ? (normalizedParams.username || 'Proton Drive')
                         : normalizedParams.protocol === 'mega' || normalizedParams.protocol === 'internxt' || normalizedParams.protocol === 'filen'
                           ? normalizedParams.username
                           : normalizedParams.protocol === 'immich'

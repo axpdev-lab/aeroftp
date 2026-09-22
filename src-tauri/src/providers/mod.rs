@@ -58,6 +58,7 @@ pub mod onedrive;
 pub mod opendrive;
 pub mod pcloud;
 pub mod peer;
+pub mod proton;
 pub mod redirect_policy;
 pub mod retry_after;
 pub mod s3;
@@ -122,6 +123,7 @@ pub use onedrive::OneDriveProvider;
 pub use opendrive::OpenDriveProvider;
 pub use pcloud::PCloudProvider;
 pub use peer::PeerProvider;
+pub use proton::{ProtonCliProvider, ProtonConfig};
 pub use s3::S3Provider;
 pub use sftp::SftpProvider;
 pub use swift::SwiftProvider;
@@ -1468,6 +1470,10 @@ impl ProviderFactory {
                     MegaConnectionMode::MegaCmd => Ok(Box::new(MegaCmdProvider::new(mega_config))),
                 }
             }
+            ProviderType::Proton => {
+                let proton_config = ProtonConfig::from_provider_config(config)?;
+                Ok(Box::new(ProtonCliProvider::new(proton_config)))
+            }
             ProviderType::Azure => {
                 let azure_config = AzureConfig::from_provider_config(config)?;
                 Ok(Box::new(AzureProvider::new(azure_config)))
@@ -1584,6 +1590,7 @@ impl ProviderFactory {
             ProviderType::Dropbox,
             ProviderType::OneDrive,
             ProviderType::Mega,
+            ProviderType::Proton,
             ProviderType::Box,
             ProviderType::PCloud,
             ProviderType::Azure,

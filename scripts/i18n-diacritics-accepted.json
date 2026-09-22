@@ -291,6 +291,13 @@
       "folded": "echipa",
       "twin": "echipă",
       "reason": "\"Echipa\" is the definite form (\"the team\") required in a title; \"echipă\" is the indefinite \"a team\"."
+    },
+    "fr\u001fprotocol.protonDesc\u001fSe connecte via le CLI Proton Drive": {
+      "locale": "fr",
+      "key": "protocol.protonDesc",
+      "folded": "connecte",
+      "twin": "connecté",
+      "reason": "Correct as written. 'Se connecte' is the third person singular present of the reflexive verb 'se connecter' (it connects), which takes no accent. The form the detector prefers, the past participle with an acute accent (connected), is the commoner word in this file because status labels use it, but with the reflexive pronoun and no auxiliary it is not a French sentence."
     }
   }
 }

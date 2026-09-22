@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- A generic folder in purple, drawn for AeroFTP. Not Proton's logo. -->
+  <defs>
+    <linearGradient id="aeroftp-proton-folder" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ca5bf6"/>
+      <stop offset="1" stop-color="#ac00ff"/>
+    </linearGradient>
+  </defs>
+  <path fill="#9400e0" d="M4 12.5A3.5 3.5 0 0 1 7.5 9h10.4a3.5 3.5 0 0 1 2.7 1.3L22.8 13H40.5A3.5 3.5 0 0 1 44 16.5V20H4z"/>
+  <rect x="7" y="15" width="34" height="9" rx="1" fill="#ffffff"/>
+  <path fill="url(#aeroftp-proton-folder)" d="M3.1 21.2A3 3 0 0 1 6.1 18h35.8a3 3 0 0 1 3 3.4l-1.8 15A3.5 3.5 0 0 1 39.6 39.5H8.4a3.5 3.5 0 0 1-3.5-3.1z"/>
+</svg>

@@ -46,7 +46,8 @@ export type CatalogProtocol =
     | 'FTP'
     | 'FTPS'
     | 'SFTP'
-    | 'MEGAcmd';
+    | 'MEGAcmd'
+    | 'CLI';
 
 /** One connection method for a company, with its Quick Connect target. */
 export interface CatalogProtocolRef {
@@ -263,6 +264,9 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Internxt', logoId: 'internxt', countryCode: 'ES', freeStorageGb: 1,
       freeNote: 'E2E', healthCheckUrl: 'https://api.internxt.com',
       protocols: [{ label: 'API', protocol: 'internxt', category: 'cloud-storage' }] },
+    { company: 'Proton Drive', logoId: 'proton', countryCode: 'CH', freeStorageGb: 5,
+      freeNote: 'CLI', healthCheckUrl: 'https://drive-api.proton.me',
+      protocols: [{ label: 'CLI', protocol: 'proton', category: 'cloud-storage' }] },
     { company: 'FileLu', logoId: 'filelu', countryCode: 'US', freeStorageGb: 10,
       healthCheckUrl: 'https://filelu.com',
       protocols: [
@@ -396,6 +400,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'pcloud', icon: 'pcloud.png', docsPath: 'providers/pcloud' },
     { logoId: 'filen', icon: 'filen.png', docsPath: 'providers/filen' },
     { logoId: 'internxt', icon: 'internxt.png', docsPath: 'providers/internxt' },
+    { logoId: 'proton', icon: 'protondrive.png', docsPath: 'providers/proton-drive' },
     { logoId: 'zohoworkdrive', icon: 'ZohoWorkDrive.png', docsPath: 'providers/zoho' },
     { logoId: 'koofr', icon: 'Koofr.png', docsPath: 'providers/koofr' },
     { logoId: 'kdrive', icon: 'kdrive.png', docsPath: 'providers/kdrive' },

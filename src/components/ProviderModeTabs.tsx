@@ -140,20 +140,23 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                 </span>
                 {orderedModes.map(mode => {
                     const isActive = active === mode;
+                    // Announced but not available (e.g. the Proton Drive API):
+                    // visible, never selectable, its description as the tooltip.
+                    const unavailable = !!mode.disabled;
                     return (
                         <button
-                            key={mode.providerId || `proto-${mode.protocol}`}
+                            key={mode.providerId || `proto-${mode.protocol}-${mode.label}`}
                             type="button"
                             role="tab"
                             aria-selected={isActive}
-                            aria-disabled={!!readOnly && !isActive}
-                            disabled={!!readOnly && !isActive}
-                            onClick={() => { if (!readOnly) onSwitchMode(mode.protocol, mode.providerId); }}
-                            title={readOnly && !isActive ? lockedHint : mode.description}
+                            aria-disabled={unavailable || (!!readOnly && !isActive)}
+                            disabled={unavailable || (!!readOnly && !isActive)}
+                            onClick={() => { if (!readOnly && !unavailable) onSwitchMode(mode.protocol, mode.providerId); }}
+                            title={unavailable ? mode.description : readOnly && !isActive ? lockedHint : mode.description}
                             className={
                                 isActive
                                     ? `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium border bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 ${mode.activeColor}`
-                                    : readOnly
+                                    : readOnly || unavailable
                                     ? 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium border border-transparent text-gray-600 dark:text-gray-300 opacity-50 cursor-not-allowed'
                                     : 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium border border-transparent text-gray-600 dark:text-gray-300 hover:bg-white hover:dark:bg-gray-900 hover:border-gray-200 hover:dark:border-gray-700 transition-colors'
                             }

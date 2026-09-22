@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "URL autentikasi Keystone",
             "swiftAllowCleartextStorage": "Penerapan ini menyajikan penyimpanan objek melalui HTTP biasa. Terima untuk profil ini: token akses dan setiap berkas melintasi jaringan tanpa enkripsi.",
-            "kdriveTokenScopes": "Token memerlukan cakupan drive dan user_info. Dengan drive saja token dapat terhubung dan menampilkan berkas, tetapi \"Ambil\" ditolak, karena membaca profil akun Anda untuk menemukan Drive ID."
+            "kdriveTokenScopes": "Token memerlukan cakupan drive dan user_info. Dengan drive saja token dapat terhubung dan menampilkan berkas, tetapi \"Ambil\" ditolak, karena membaca profil akun Anda untuk menemukan Drive ID.",
+            "protonCliTitle": "Menggunakan CLI resmi Proton Drive",
+            "protonCliBody": "Pasang Proton Drive CLI dari proton.me/download/drive/cli, lalu jalankan proton-drive auth login di terminal dan selesaikan di peramban. AeroFTP tidak pernah melihat kata sandi Anda; sesi tetap di penyimpanan rahasia OS.",
+            "protonUnofficial": "Ini aplikasi pihak ketiga yang tidak didukung secara resmi oleh Proton.",
+            "protonConnectHint": "\"Hubungkan\" memakai CLI yang sudah masuk di mesin ini. Satu akun Proton per pengguna OS."
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -1935,7 +1939,9 @@
             "devicesInfoLine2": "MTP bersifat eksklusif dan sesuai permintaan: Hubungkan mengklaim perangkat untuk sesi; memutuskan sambungan mengembalikannya. Transfer hanya seluruh file (tanpa lanjut, tanpa huruf drive).",
             "discoverMtpPortable": "Ponsel, kamera, atau tablet melalui USB MTP",
             "s3AllowCleartextEndpoint": "Endpoint ini menyajikan S3 melalui HTTP biasa lewat jaringan. Terima untuk profil ini: kredensial bertanda tangan dan setiap berkas melintasi jaringan tanpa enkripsi.",
-            "discoverFilebase": "Filebase: penyimpanan objek kompatibel S3 (5 GB gratis)"
+            "discoverFilebase": "Filebase: penyimpanan objek kompatibel S3 (5 GB gratis)",
+            "protonDesc": "Terhubung melalui CLI Proton Drive",
+            "protonTooltip": "Menggunakan CLI Proton Drive - pasang, masuk di peramban, AeroFTP adalah GUI"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "Keystone kimlik doğrulama URL'si",
             "swiftAllowCleartextStorage": "Bu dağıtım nesne depolamayı şifrelenmemiş HTTP üzerinden sunuyor. Bu profil için kabul edin: erişim belirteci ve her dosya ağı şifrelenmemiş olarak geçer.",
-            "kdriveTokenScopes": "Belirtecin drive ve user_info kapsamlarına ihtiyacı var. Yalnızca drive ile bağlanır ve dosyaları listeler, ancak \"Getir\" reddedilir, çünkü Drive ID'yi bulmak için hesap profilinizi okur."
+            "kdriveTokenScopes": "Belirtecin drive ve user_info kapsamlarına ihtiyacı var. Yalnızca drive ile bağlanır ve dosyaları listeler, ancak \"Getir\" reddedilir, çünkü Drive ID'yi bulmak için hesap profilinizi okur.",
+            "protonCliTitle": "Resmi Proton Drive CLI kullanır",
+            "protonCliBody": "Proton Drive CLI'yi proton.me/download/drive/cli adresinden kurun, ardından terminalde proton-drive auth login çalıştırıp tarayıcıda tamamlayın. AeroFTP parolanızı asla görmez; oturum işletim sisteminin gizli deposunda kalır.",
+            "protonUnofficial": "Bu, Proton tarafından resmi olarak desteklenmeyen üçüncü taraf bir uygulamadır.",
+            "protonConnectHint": "\"Bağlan\", bu makinede zaten oturum açmış CLI'yi kullanır. İşletim sistemi kullanıcısı başına bir Proton hesabı."
         },
         "browser": {
             "remote": "Uzak",
@@ -1935,7 +1939,9 @@
             "devicesInfoLine2": "MTP özel ve isteğe bağlıdır: Bağlan, cihazı oturum için talep eder; bağlantıyı kesmek onu geri verir. Aktarımlar yalnızca tam dosyadır (sürdürme yok, sürücü harfi yok).",
             "discoverMtpPortable": "USB MTP üzerinden telefon, kamera veya tablet",
             "s3AllowCleartextEndpoint": "Bu uç nokta S3'ü ağ üzerinden şifrelenmemiş HTTP ile sunuyor. Bu profil için kabul edin: imzalı kimlik bilgileri ve her dosya ağı şifrelenmemiş olarak geçer.",
-            "discoverFilebase": "Filebase: S3 uyumlu nesne depolama (5 GB ücretsiz)"
+            "discoverFilebase": "Filebase: S3 uyumlu nesne depolama (5 GB ücretsiz)",
+            "protonDesc": "Proton Drive CLI üzerinden bağlanır",
+            "protonTooltip": "Proton Drive CLI kullanır - kurun, tarayıcıda oturum açın, AeroFTP GUI'dir"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

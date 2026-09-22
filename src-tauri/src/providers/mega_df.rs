@@ -68,6 +68,7 @@ pub(crate) fn is_megacmd_webdav_provider_id(provider_id: Option<&str>) -> bool {
 pub async fn mega_df_query() -> Result<(u64, u64, Option<u64>), ProviderError> {
     let resolved_cmd = resolve_mega_cmd("mega-df");
     let mut cmd = Command::new(&resolved_cmd);
+    cmd.kill_on_drop(true);
     #[cfg(windows)]
     {
         cmd.creation_flags(CREATE_NO_WINDOW);

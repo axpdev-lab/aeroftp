@@ -3795,7 +3795,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 const PROTOCOL_FALLBACK_NAMES: Record<string, string> = {
                                     dropbox: 'Dropbox', onedrive: 'OneDrive', googledrive: 'Google Drive',
                                     googlephotos: 'Google Photos', box: 'Box', pcloud: 'pCloud Drive',
-                                    jottacloud: 'Jottacloud', filen: 'Filen', internxt: 'Internxt',
+                                    jottacloud: 'Jottacloud', filen: 'Filen', internxt: 'Internxt', proton: 'Proton Drive',
                                     kdrive: 'kDrive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk',
                                     drime: 'Drime', mega: 'MEGA', backblaze: 'Backblaze B2', fourshared: '4shared',
                                     imagekit: 'ImageKit', uploadcare: 'Uploadcare', cloudinary: 'Cloudinary',
@@ -5467,6 +5467,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                         </>
                                         )}
+                                    </div>
+                                ) : protocol === 'proton' ? (
+                                    <div className="space-y-4 pt-2">
+                                        <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200">
+                                            <p className="font-medium mb-1">{t('connection.protonCliTitle')}</p>
+                                            <p className="opacity-80">{t('connection.protonCliBody')}</p>
+                                            <p className="mt-2 opacity-80">{t('connection.protonConnectHint')}</p>
+                                            <p className="mt-2 opacity-70">{t('connection.protonUnofficial')}</p>
+                                        </div>
+                                        {renderRightColumn({
+                                            disabled: loading,
+                                            buttonColorClass: 'bg-slate-700 hover:bg-slate-800',
+                                            connectionNameKey: 'Proton Drive',
+                                            showCancelSaveAsNew: true,
+                                        })}
                                     </div>
                                 ) : protocol === 'internxt' ? (
                                     /* Internxt Specific Form */

@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "Keystone-todennuksen URL",
             "swiftAllowCleartextStorage": "Tämä asennus tarjoaa objektitallennuksen salaamattoman HTTP:n kautta. Hyväksy se tälle profiilille: käyttöoikeustunnus ja jokainen tiedosto kulkevat verkon läpi salaamattomina.",
-            "kdriveTokenScopes": "Tunnus tarvitsee oikeudet drive ja user_info. Pelkällä drive-oikeudella se yhdistää ja listaa tiedostot, mutta \"Hae\" hylätään, koska se lukee tilisi profiilin löytääkseen Drive ID:n."
+            "kdriveTokenScopes": "Tunnus tarvitsee oikeudet drive ja user_info. Pelkällä drive-oikeudella se yhdistää ja listaa tiedostot, mutta \"Hae\" hylätään, koska se lukee tilisi profiilin löytääkseen Drive ID:n.",
+            "protonCliTitle": "Käyttää virallista Proton Drive CLI:tä",
+            "protonCliBody": "Asenna Proton Drive CLI osoitteesta proton.me/download/drive/cli, suorita sitten proton-drive auth login päätteessä ja viimeistele selaimessa. AeroFTP ei koskaan näe salasanaasi; istunto jää käyttöjärjestelmän salaisuussäilöön.",
+            "protonUnofficial": "Tämä on kolmannen osapuolen sovellus, jota Proton ei virallisesti tue.",
+            "protonConnectHint": "\"Yhdistä\" käyttää tällä koneella jo sisäänkirjautunutta CLI:tä. Yksi Proton-tili käyttöjärjestelmän käyttäjää kohden."
         },
         "browser": {
             "remote": "Etä",
@@ -1935,7 +1939,9 @@
             "devicesInfoLine2": "MTP on yksinomainen ja tarvittaessa: Yhdistä varaa laitteen istunnolle; yhteyden katkaisu palauttaa sen. Siirrot ovat vain kokonaisia tiedostoja (ei jatkamista, ei asematunnusta).",
             "discoverMtpPortable": "Puhelin, kamera tai tabletti USB MTP:n kautta",
             "s3AllowCleartextEndpoint": "Tämä päätepiste tarjoaa S3:n salaamattoman HTTP:n kautta verkon yli. Hyväksy se tälle profiilille: allekirjoitetut tunnistetiedot ja jokainen tiedosto kulkevat verkon läpi salaamattomina.",
-            "discoverFilebase": "Filebase: S3-yhteensopiva objektitallennus (5 GB ilmaiseksi)"
+            "discoverFilebase": "Filebase: S3-yhteensopiva objektitallennus (5 GB ilmaiseksi)",
+            "protonDesc": "Yhdistää Proton Drive CLI:n kautta",
+            "protonTooltip": "Käyttää Proton Drive CLI:tä - asenna, kirjaudu selaimessa, AeroFTP on GUI"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

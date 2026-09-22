@@ -541,6 +541,7 @@ fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
         "GITHUB" => ProviderType::GitHub,
         "GITLAB" => ProviderType::GitLab,
         "MEGA" => ProviderType::Mega,
+        "PROTON" | "PROTONDRIVE" => ProviderType::Proton,
         "AZURE" => ProviderType::Azure,
         "FILEN" => ProviderType::Filen,
         "INTERNXT" => ProviderType::Internxt,

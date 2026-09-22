@@ -133,6 +133,7 @@ impl MegaCmdProvider {
 
             let mut cmd_builder = Command::new(&resolved_cmd);
             cmd_builder.args(args);
+            cmd_builder.kill_on_drop(true);
             #[cfg(windows)]
             {
                 cmd_builder.creation_flags(CREATE_NO_WINDOW);
@@ -265,6 +266,7 @@ impl MegaCmdProvider {
                 if let Some(ref code) = auth_code {
                     cmd.arg(format!("--auth-code={}", code));
                 }
+                cmd.kill_on_drop(true);
                 cmd.creation_flags(CREATE_NO_WINDOW)
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
@@ -285,6 +287,7 @@ impl MegaCmdProvider {
                 if let Some(ref code) = auth_code {
                     cmd.arg(format!("--auth-code={}", code));
                 }
+                cmd.kill_on_drop(true);
                 cmd.stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .output()
