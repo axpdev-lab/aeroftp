@@ -188,6 +188,16 @@ impl ProtonCliProvider {
     }
 }
 
+/// The day passed to `proton-drive sharing set-url --expiration`, which takes
+/// a date, not a time. A duration that ends later today would name today, a
+/// link dead on arrival or refused, so the earliest day sent is tomorrow; the
+/// same string is reported back as the link's expiry.
+fn share_expiration_day(now: chrono::DateTime<chrono::Utc>, expires_in_secs: u64) -> String {
+    let requested = (now + chrono::Duration::seconds(expires_in_secs as i64)).date_naive();
+    let tomorrow = now.date_naive() + chrono::Duration::days(1);
+    requested.max(tomorrow).format("%Y-%m-%d").to_string()
+}
+
 fn binary_exists(path: &str) -> bool {
     if path.contains('/') || path.contains('\\') {
         return Path::new(path).is_file();
@@ -1032,6 +1042,20 @@ impl StorageProvider for ProtonCliProvider {
         Ok(())
     }
 
+    /// What `create_share_link` sends: `--password`, `--expiration` and
+    /// `--role viewer|editor`. Existing links cannot be listed or revoked by
+    /// id through this provider (removal goes by path).
+    fn share_link_capabilities(&self) -> super::ShareLinkCapabilities {
+        super::ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: true,
+            available_permissions: vec!["view".into(), "edit".into()],
+            supports_list_links: false,
+            supports_revoke: false,
+        }
+    }
+
     fn supports_share_links(&self) -> bool {
         true
     }
@@ -1075,10 +1099,12 @@ impl StorageProvider for ProtonCliProvider {
             args.push("--password".into());
             args.push(pw.clone());
         }
+        let mut expires_at = None;
         if let Some(secs) = options.expires_in_secs {
-            let exp = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+            let day = share_expiration_day(chrono::Utc::now(), secs);
             args.push("--expiration".into());
-            args.push(exp.format("%Y-%m-%d").to_string());
+            args.push(day.clone());
+            expires_at = Some(day);
         }
         if let Some(ref perm) = options.permissions {
             let role = if perm == "edit" { "editor" } else { "viewer" };
@@ -1098,7 +1124,7 @@ impl StorageProvider for ProtonCliProvider {
         Ok(ShareLinkResult {
             url,
             password: options.password,
-            expires_at: None,
+            expires_at,
         })
     }
 
@@ -1203,6 +1229,32 @@ mod tests {
         assert_eq!(
             parsed.binary_path, None,
             "a profile option picked the executable"
+        );
+    }
+
+    #[test]
+    fn a_share_expiring_later_today_is_sent_as_tomorrow() {
+        use chrono::TimeZone;
+        let now = chrono::Utc.with_ymd_and_hms(2026, 9, 22, 20, 0, 0).unwrap();
+        // One hour from now is still 22 September: a link "expiring" on the
+        // day it is made would be dead at once or refused.
+        assert_eq!(share_expiration_day(now, 3600), "2026-09-23");
+        assert_eq!(share_expiration_day(now, 3 * 86_400), "2026-09-25");
+    }
+
+    #[test]
+    fn share_link_capabilities_match_what_create_share_link_sends() {
+        let p = ProtonCliProvider::new(ProtonConfig {
+            display_name: "t".into(),
+            binary_path: None,
+        });
+        let caps = p.share_link_capabilities();
+        assert!(caps.supports_password);
+        assert!(caps.supports_expiration);
+        assert!(caps.supports_permissions);
+        assert_eq!(
+            caps.available_permissions,
+            vec!["view".to_string(), "edit".to_string()]
         );
     }
 
