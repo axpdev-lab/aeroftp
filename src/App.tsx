@@ -6085,7 +6085,11 @@ const App: React.FC = () => {
   const listingReason = (path?: string | null): string =>
     path ? t('browser.listingPath', { path }) : t('browser.listingDirectory');
 
+  // When the last remote listing started: a finished upload's own refresh
+  // stands down if one started after it (see utils/deferredRefresh).
+  const remoteRefreshStartedAtRef = useRef(0);
   const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, ignoreRcloneCrypt?: boolean, overrideScopePath?: string | null): Promise<FileListResponse | null> => {
+    remoteRefreshStartedAtRef.current = Date.now();
     // Cover every FOREGROUND listing (connect, manual refresh, provider re-list)
     // with the same spinner + freeze the drill-in navigation already uses, so a
     // slow terminal/provider never leaves the panel silent with nothing happening
@@ -6235,6 +6239,7 @@ const App: React.FC = () => {
   const { pendingFileLogIds, pendingDeleteLogIds } = useTransferEvents({
     t, activityLog, humanLog, transferQueue, notify,
     setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
+    remoteRefreshStartedAt: () => remoteRefreshStartedAtRef.current,
     currentRemotePath,
     onTransferStart: () => {
       if (!showActivityLog) setShowActivityLog(true);
