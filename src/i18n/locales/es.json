@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Conectando a {server}... ({protocol})",
             "connect_success": "Conectado a {server} correctamente ({protocol})",
+            "resume_transfers": "Reanudando {count} transferencia(s) restaurada(s) en {server}",
+            "resume_transfers_no_profile": "Reanudando {count} transferencia(s) restaurada(s)",
             "connect_error": "Error de conexión a {server}. Verifique credenciales.",
             "connect_error_path_not_found": "Sesión iniciada en {server}, pero no se encontró la ruta remota '{path}'. Edita la Ruta remota del perfil o déjala vacía para usar la carpeta inicial del servidor.",
             "disconnect_start": "Desconectando...",

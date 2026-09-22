@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Yn cysylltu a {server} ({protocol})...",
             "connect_success": "Wedi cysylltu a {server} drwy {protocol}",
+            "resume_transfers": "Yn ailddechrau {count} trosglwyddiad a adferwyd ar {server}",
+            "resume_transfers_no_profile": "Yn ailddechrau {count} trosglwyddiad a adferwyd",
             "connect_error": "Methwyd cysylltu a {server}. Gwiriwch fanylion.",
             "connect_error_path_not_found": "Wedi mewngofnodi i {server}, ond ni chanfuwyd y llwybr pell '{path}'. Golygwch faes Llwybr Pell y proffil neu ei glirio i ddefnyddio cartref y gweinydd.",
             "disconnect_start": "Yn datgysylltu o'r gweinydd...",

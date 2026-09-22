@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Konektatzen: {server} ({protocol})...",
             "connect_success": "Konektatuta: {server} ({protocol})",
+            "resume_transfers": "Leheneratutako {count} transferentzia berrekiten {server} zerbitzarian",
+            "resume_transfers_no_profile": "Leheneratutako {count} transferentzia berrekiten",
             "connect_error": "Huts konexioan: {server}. Egiaztatu kredentzialak.",
             "connect_error_path_not_found": "{server}-en saioa hasi da, baina ez da '{path}' urruneko bidea aurkitu. Editatu profilaren Urruneko bidea edo hustu ezazu zerbitzariaren hasierako karpeta erabiltzeko.",
             "disconnect_start": "Zerbitzaritik deskonektatzen...",

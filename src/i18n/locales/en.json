@@ -74,6 +74,8 @@
             "delete_scanning": "Deleting items...",
             "connect_start": "Connecting to {server} ({protocol})...",
             "connect_success": "Connected to {server} via {protocol}",
+            "resume_transfers": "Resuming {count} restored transfer(s) on {server}",
+            "resume_transfers_no_profile": "Resuming {count} restored transfer(s)",
             "insecure_cert_enabled": "{protocol} connection to {server} with certificate verification disabled",
             "delete_dir_success": "[{location}] Folder removed: {filename}",
             "delete_error": "[{location}] Could not remove {filename}",

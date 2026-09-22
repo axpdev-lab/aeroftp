@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Ninaunganisha kwa {server} ({protocol})...",
             "connect_success": "Nimeunganishwa! Nimeunganishwa kwa {server} kupitia {protocol}",
+            "resume_transfers": "Inaendelea na uhamisho {count} uliorejeshwa kwenye {server}",
+            "resume_transfers_no_profile": "Inaendelea na uhamisho {count} uliorejeshwa",
             "connect_error": "Sikuweza kuunganisha kwa {server}. Nitakagua vyeti vyangu.",
             "connect_error_path_not_found": "Umeingia kwenye {server}, lakini njia ya mbali '{path}' haikupatikana. Hariri Njia ya Mbali ya wasifu au uifute ili kutumia folda kuu ya seva.",
             "disconnect_start": "Ninatenganisha kutoka kwenye seva...",

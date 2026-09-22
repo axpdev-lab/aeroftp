@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Kumokonekta sa {server} ({protocol})...",
             "connect_success": "Nakakonekta na! Nakakonekta ako sa {server} sa pamamagitan ng {protocol}",
+            "resume_transfers": "Itinutuloy ang {count} naibalik na transfer sa {server}",
+            "resume_transfers_no_profile": "Itinutuloy ang {count} naibalik na transfer",
             "connect_error": "Hindi makakonekta sa {server}. Titingnan ko ang aking mga kredensyal.",
             "connect_error_path_not_found": "Naka-log in sa {server}, ngunit hindi natagpuan ang malayong landas na '{path}'. I-edit ang Malayong Landas ng profile o burahin ito upang gamitin ang home ng server.",
             "disconnect_start": "Nadidiskonekta mula sa server...",

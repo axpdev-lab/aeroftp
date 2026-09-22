@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Đang kết nối đến {server} ({protocol})...",
             "connect_success": "Đã kết nối! Tôi đã kết nối với {server} qua {protocol}",
+            "resume_transfers": "Đang tiếp tục {count} lượt truyền đã khôi phục trên {server}",
+            "resume_transfers_no_profile": "Đang tiếp tục {count} lượt truyền đã khôi phục",
             "connect_error": "Không thể kết nối đến {server}. Tôi sẽ kiểm tra thông tin đăng nhập.",
             "connect_error_path_not_found": "Đã đăng nhập vào {server}, nhưng không tìm thấy đường dẫn từ xa '{path}'. Hãy chỉnh sửa Đường dẫn từ xa của hồ sơ hoặc xóa trống để dùng thư mục gốc của máy chủ.",
             "disconnect_start": "Đang ngắt kết nối khỏi máy chủ...",

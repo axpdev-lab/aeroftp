@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Connexion à {server}... ({protocol})",
             "connect_success": "Connecté à {server} avec succès ({protocol})",
+            "resume_transfers": "Reprise de {count} transfert(s) restauré(s) sur {server}",
+            "resume_transfers_no_profile": "Reprise de {count} transfert(s) restauré(s)",
             "connect_error": "Échec de la connexion à {server}. Vérifiez vos identifiants.",
             "connect_error_path_not_found": "Connecté à {server}, mais le chemin distant '{path}' est introuvable. Modifiez le Chemin distant du profil ou videz-le pour utiliser le dossier racine du serveur.",
             "disconnect_start": "Déconnexion en cours...",

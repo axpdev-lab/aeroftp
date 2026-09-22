@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Menghubungkan ke {server} ({protocol})...",
             "connect_success": "Terhubung ke {server} melalui {protocol}",
+            "resume_transfers": "Melanjutkan {count} transfer yang dipulihkan di {server}",
+            "resume_transfers_no_profile": "Melanjutkan {count} transfer yang dipulihkan",
             "connect_error": "Koneksi ke {server} gagal. Periksa kredensial.",
             "connect_error_path_not_found": "Masuk ke {server} berhasil, tetapi jalur jarak jauh '{path}' tidak ditemukan. Edit Jalur Jarak Jauh profil atau kosongkan untuk menggunakan beranda server.",
             "disconnect_start": "Memutuskan dari server...",

@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Łączenie z {server} ({protocol})...",
             "connect_success": "Połączono z {server} przez {protocol}",
+            "resume_transfers": "Wznawianie {count} przywróconych transferów na {server}",
+            "resume_transfers_no_profile": "Wznawianie {count} przywróconych transferów",
             "connect_error": "Połączenie z {server} nieudane. Sprawdź dane logowania.",
             "connect_error_path_not_found": "Zalogowano do {server}, ale nie znaleziono ścieżki zdalnej '{path}'. Edytuj pole Ścieżka zdalna w profilu lub wyczyść je, aby użyć katalogu domowego serwera.",
             "disconnect_start": "Rozłączanie z serwerem...",

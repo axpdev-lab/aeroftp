@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Jungiamasi prie {server} ({protocol})...",
             "connect_success": "Prisijungta prie {server} per {protocol}",
+            "resume_transfers": "Tęsiama {count} atkurtų perdavimų serveryje {server}",
+            "resume_transfers_no_profile": "Tęsiama {count} atkurtų perdavimų",
             "connect_error": "Nepavyko prisijungti prie {server}. Patikrinkite kredencialus.",
             "connect_error_path_not_found": "Prisijungta prie {server}, bet nuotolinis kelias '{path}' nerastas. Redaguokite profilio lauką Nuotolinis kelias arba jį išvalykite, kad būtų naudojamas serverio pradinis aplankas.",
             "disconnect_start": "Atsijungiama nuo serverio...",

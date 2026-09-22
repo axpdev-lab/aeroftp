@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Forbinder til {server} ({protocol})...",
             "connect_success": "Forbundet til {server} via {protocol}",
+            "resume_transfers": "Genoptager {count} gendannet/gendannede overførsel(er) på {server}",
+            "resume_transfers_no_profile": "Genoptager {count} gendannet/gendannede overførsel(er)",
             "connect_error": "Forbindelse til {server} mislykkedes. Tjek legitimationsoplysninger.",
             "connect_error_path_not_found": "Logget ind på {server}, men fjernstien '{path}' blev ikke fundet. Redigér profilens Fjernsti, eller ryd den for at bruge serverens hjemmemappe.",
             "disconnect_start": "Afbryder forbindelse til server...",

@@ -10172,6 +10172,16 @@ const App: React.FC = () => {
     }
   };
 
+  // A resume starts transfers the user is not watching start: say so in the
+  // Activity Log, which otherwise showed a connect and then a result.
+  const logResume = (count: number, serverName?: string) => {
+    if (serverName) {
+      humanLog.logRaw('activity.resume_transfers', 'INFO', { count, server: serverName }, 'success');
+    } else {
+      humanLog.logRaw('activity.resume_transfers_no_profile', 'INFO', { count }, 'success');
+    }
+  };
+
   const resumeRestoredTransfers = async (ids: string[]) => {
     if (ids.length === 0) return;
     const groups = groupIdsByProfileId(ids, journalDescriptorsRef.current);
@@ -10189,12 +10199,15 @@ const App: React.FC = () => {
           continue;
         }
         transferQueue.clearRestoredFlags(groupIds);
+        logResume(groupIds.length);
         fireRetryCallbacks(groupIds);
         continue;
       }
 
       if (isLiveOnProfile(profileId)) {
         transferQueue.clearRestoredFlags(groupIds);
+        const live = sessions.find((s) => s.id === activeSessionId);
+        logResume(groupIds.length, live?.serverName);
         fireRetryCallbacks(groupIds);
         continue;
       }
@@ -10239,6 +10252,7 @@ const App: React.FC = () => {
       if (!ok) continue;
 
       transferQueue.clearRestoredFlags(groupIds);
+      logResume(groupIds.length, profile.name);
       fireRetryCallbacks(groupIds);
     }
   };

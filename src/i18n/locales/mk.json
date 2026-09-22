@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Поврзување на {server} ({protocol})...",
             "connect_success": "Поврзано на {server} преку {protocol}",
+            "resume_transfers": "Продолжување на {count} вратен(и) пренос(и) на {server}",
+            "resume_transfers_no_profile": "Продолжување на {count} вратен(и) пренос(и)",
             "connect_error": "Поврзувањето на {server} не успеа. Проверете ги акредитивите.",
             "connect_error_path_not_found": "Најавата на {server} успеа, но далечинската патека '{path}' не е пронајдена. Уредете го полето Далечинска патека во профилот или исчистете го за да ја користите почетната папка на серверот.",
             "disconnect_start": "Прекинување врска со серверот...",

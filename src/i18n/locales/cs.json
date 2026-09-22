@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Připojování k {server} ({protocol})...",
             "connect_success": "Připojeno k {server} přes {protocol}",
+            "resume_transfers": "Obnovování {count} obnovených přenosů na {server}",
+            "resume_transfers_no_profile": "Obnovování {count} obnovených přenosů",
             "connect_error": "Připojení k {server} selhalo. Zkontrolujte přihlašovací údaje.",
             "connect_error_path_not_found": "Přihlášení k {server} proběhlo úspěšně, ale vzdálená cesta '{path}' nebyla nalezena. Upravte v profilu pole Vzdálená cesta nebo jej vymažte, chcete-li použít domovskou složku serveru.",
             "disconnect_start": "Odpojování od serveru...",

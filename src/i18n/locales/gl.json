@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Conectando a {server} ({protocol})...",
             "connect_success": "Conectado a {server} vía {protocol}",
+            "resume_transfers": "Retomando {count} transferencia(s) restaurada(s) en {server}",
+            "resume_transfers_no_profile": "Retomando {count} transferencia(s) restaurada(s)",
             "connect_error": "Fallo ao conectar a {server}. Comproba credenciais.",
             "connect_error_path_not_found": "Sesión iniciada en {server}, pero non se atopou a ruta remota '{path}'. Edita a Ruta remota do perfil ou déixaa baleira para usar o cartafol inicial do servidor.",
             "disconnect_start": "Desconectando do servidor...",

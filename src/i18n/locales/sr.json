@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "Отварам везу са {server} ({protocol})...",
             "connect_success": "Веза је спремна: повезан сам са {server} путем {protocol}",
+            "resume_transfers": "Настављање {count} враћених преноса на {server}",
+            "resume_transfers_no_profile": "Настављање {count} враћених преноса",
             "connect_error": "Нисам могао да се повежем са {server}. Проверићу моје акредитиве и подешавања.",
             "connect_error_path_not_found": "Пријава на {server} је успела, али удаљена путања '{path}' није пронађена. Уредите поље Удаљена путања у профилу или га обришите да бисте користили почетну фасциклу сервера.",
             "disconnect_start": "Затварам везу са сервером...",

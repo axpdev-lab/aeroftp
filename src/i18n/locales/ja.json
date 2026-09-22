@@ -1550,6 +1550,8 @@
         "activity": {
             "connect_start": "{server} ({protocol})に接続中...",
             "connect_success": "{protocol}経由で{server}に接続しました",
+            "resume_transfers": "{server} で復元された {count} 件の転送を再開しています",
+            "resume_transfers_no_profile": "復元された {count} 件の転送を再開しています",
             "connect_error": "{server}への接続に失敗しました。認証情報を確認してください。",
             "connect_error_path_not_found": "{server} にログインしましたが、リモートパス '{path}' が見つかりませんでした。プロファイルのリモートパスを編集するか、空にしてサーバーのホームを使用してください。",
             "disconnect_start": "サーバーから切断中...",
