@@ -7770,12 +7770,11 @@ async fn extract_archive(
                     .map_err(|e| format!("Failed to create parent directory: {}", e))?;
             }
 
-            let mut outfile =
-                File::create(&outpath).map_err(|e| format!("Failed to create file: {}", e))?;
-
             let declared = file.size();
-            copy_entry_bounded(&mut file, &mut outfile, declared)
-                .map_err(|e| format!("Failed to extract file: {}", e))?;
+            write_entry_atomically(&outpath, |outfile| {
+                copy_entry_bounded(&mut file, outfile, declared)
+            })
+            .map_err(|e| format!("Failed to extract file: {}", e))?;
         }
     }
 
@@ -8059,6 +8058,66 @@ fn copy_entry_bounded<R: std::io::Read + ?Sized, W: std::io::Write>(
     Ok(written)
 }
 
+/// Writes one extracted entry to `out_path` through a sibling temporary file
+/// that is renamed into place only when `fill` succeeds. Extraction can fail
+/// half way through an entry (a wrong 7z password is only detected while
+/// decoding, a corrupt stream, the size cap), and writing straight to the final
+/// path then left a partial file behind or, worse, truncated a file the user
+/// already had at that path. With this, a failed entry leaves the destination
+/// exactly as it was.
+fn write_entry_atomically<F>(out_path: &std::path::Path, fill: F) -> std::io::Result<u64>
+where
+    F: FnOnce(&mut std::fs::File) -> std::io::Result<u64>,
+{
+    let parent = out_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let name = out_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "entry".to_string());
+    let tmp_path = parent.join(format!(
+        ".{name}.aeroftp-part-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    ));
+    // create_new: never reuse or follow something already at the temporary path.
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp_path)?;
+    let outcome = fill(&mut file).and_then(|written| {
+        drop(file);
+        // Replacing an existing regular file keeps its permissions, as the
+        // in-place truncation this replaces did (an executable stays one).
+        if let Ok(existing) = std::fs::symlink_metadata(out_path) {
+            if existing.is_file() {
+                std::fs::set_permissions(&tmp_path, existing.permissions())?;
+            }
+        }
+        std::fs::rename(&tmp_path, out_path).map(|()| written)
+    });
+    if outcome.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    outcome
+}
+
+/// A 7z extraction error in words: the library's Debug form
+/// (`MaybeBadPassword(Custom { kind: InvalidData, .. })`) told neither the user
+/// nor AeroAgent that the password was the problem.
+fn describe_7z_error(err: &sevenz_rust2::Error) -> String {
+    match err {
+        sevenz_rust2::Error::PasswordRequired => {
+            "This 7z archive is encrypted: a password is required to extract it".to_string()
+        }
+        sevenz_rust2::Error::MaybeBadPassword(_) => {
+            "Wrong password for this 7z archive (or the archive is damaged)".to_string()
+        }
+        other => other.to_string(),
+    }
+}
+
 /// Absolute floor for a single-stream (gz/xz/bz2) decompression cap: a raw codec
 /// stream carries no reliable declared size, so we cap the plaintext at
 /// `max(compressed_len * ratio, this)`. A tiny bomb still cannot exceed this;
@@ -8109,8 +8168,8 @@ async fn extract_7z(
         .map(|p| Password::from(p.expose_secret()))
         .unwrap_or_else(Password::empty);
 
-    let mut archive =
-        ArchiveReader::new(reader, pwd).map_err(|e| format!("Failed to read 7z archive: {}", e))?;
+    let mut archive = ArchiveReader::new(reader, pwd)
+        .map_err(|e| format!("Failed to read 7z archive: {}", describe_7z_error(&e)))?;
 
     let dest = Path::new(&final_output_dir);
 
@@ -8134,14 +8193,15 @@ async fn extract_7z(
             if entry.is_directory() {
                 fs::create_dir_all(&out_path)?;
             } else {
-                let mut outfile = File::create(&out_path)?;
                 let declared = entry.size();
-                copy_entry_bounded(reader, &mut outfile, declared)?;
+                write_entry_atomically(&out_path, |outfile| {
+                    copy_entry_bounded(reader, outfile, declared)
+                })?;
             }
 
             Ok(true) // continue
         })
-        .map_err(|e| format!("Failed to extract 7z archive: {}", e))?;
+        .map_err(|e| format!("Failed to extract 7z archive: {}", describe_7z_error(&e)))?;
 
     Ok(final_output_dir)
 }
@@ -9081,17 +9141,17 @@ async fn extract_single_impl(
         "bz2" => Box::new(bzip2::read::BzDecoder::new(infile)),
         other => return Err(format!("Unrecognized single-stream format: {}", other)),
     };
-    let mut outfile =
-        File::create(&out_path).map_err(|e| format!("Failed to create output file: {}", e))?;
-    let written = {
+    let over_cap =
+        std::io::Error::other("Decompressed stream exceeds the size limit (compression bomb?)");
+    write_entry_atomically(&out_path, |outfile| {
         let mut limited = std::io::Read::take(&mut *reader, cap.saturating_add(1));
-        std::io::copy(&mut limited, &mut outfile)
-            .map_err(|e| format!("Failed to decompress: {}", e))?
-    };
-    if written > cap {
-        let _ = std::fs::remove_file(&out_path);
-        return Err("Decompressed stream exceeds the size limit (compression bomb?)".to_string());
-    }
+        let written = std::io::copy(&mut limited, outfile)?;
+        if written > cap {
+            return Err(over_cap);
+        }
+        Ok(written)
+    })
+    .map_err(|e| format!("Failed to decompress: {}", e))?;
 
     Ok(dest_dir.to_string_lossy().to_string())
 }
@@ -9181,7 +9241,6 @@ fn tar_unpack(
     reader: Box<dyn std::io::Read>,
     final_output: &std::path::Path,
 ) -> Result<(String, Vec<String>), String> {
-    use std::fs::File;
     let mut ar = tar::Archive::new(reader);
 
     // Skipped-link notes so an unsafe (or unsupported) link is never dropped silently.
@@ -9291,11 +9350,11 @@ fn tar_unpack(
                 })?;
             }
 
-            let mut outfile = File::create(&out_path)
-                .map_err(|e| format!("Failed to create file '{}': {}", entry_path, e))?;
             let declared = entry.header().size().unwrap_or(0);
-            copy_entry_bounded(&mut entry, &mut outfile, declared)
-                .map_err(|e| format!("Failed to extract '{}': {}", entry_path, e))?;
+            write_entry_atomically(&out_path, |outfile| {
+                copy_entry_bounded(&mut entry, outfile, declared)
+            })
+            .map_err(|e| format!("Failed to extract '{}': {}", entry_path, e))?;
         }
     }
 
@@ -20685,6 +20744,119 @@ mod sevenz_mhe_tests {
         .expect("extract 7z with password");
         let restored = std::fs::read(dest.join(marker)).unwrap();
         assert_eq!(restored, content);
+    }
+
+    // AeroAgent's archive tools use content-only encryption (header in the
+    // clear) with one block per file, the case the -mhe test above does not
+    // cover. A wrong 7z password is only detected while decoding, so this also
+    // pins what a failed extraction leaves behind: nothing, and in particular
+    // not a truncated copy of a file that was already at the destination.
+    #[tokio::test]
+    async fn password_7z_content_only_multi_file_roundtrips_and_fails_cleanly() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("test1.txt");
+        let b = dir.path().join("test2.txt");
+        std::fs::write(&a, b"first file, plain text for the archive test").unwrap();
+        std::fs::write(&b, b"second file with different content, second block").unwrap();
+        let out = dir.path().join("with_pass.7z");
+        compress_7z_core(
+            vec![
+                a.to_string_lossy().to_string(),
+                b.to_string_lossy().to_string(),
+            ],
+            out.to_string_lossy().to_string(),
+            Some("Test123!".to_string()),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("compress");
+
+        let dest = dir.path().join("out");
+        extract_7z_core(
+            out.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+            Some("Test123!".to_string()),
+            false,
+        )
+        .await
+        .expect("extract with the right password");
+        assert_eq!(
+            std::fs::read(dest.join("test1.txt")).unwrap(),
+            std::fs::read(&a).unwrap()
+        );
+        assert_eq!(
+            std::fs::read(dest.join("test2.txt")).unwrap(),
+            std::fs::read(&b).unwrap()
+        );
+
+        // A wrong password over a destination that already holds a file of the
+        // same name: the error says so, and the existing file is untouched.
+        let wrong = dir.path().join("wrong");
+        std::fs::create_dir(&wrong).unwrap();
+        std::fs::write(wrong.join("test1.txt"), b"the user's own file").unwrap();
+        let err = extract_7z_core(
+            out.to_string_lossy().to_string(),
+            wrong.to_string_lossy().to_string(),
+            Some("not-it".to_string()),
+            false,
+        )
+        .await
+        .expect_err("a wrong password must fail");
+        assert!(err.contains("Wrong password"), "unhelpful error: {err}");
+        assert_eq!(
+            std::fs::read(wrong.join("test1.txt")).unwrap(),
+            b"the user's own file"
+        );
+        let names: Vec<String> = std::fs::read_dir(&wrong)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["test1.txt".to_string()],
+            "left behind: {names:?}"
+        );
+
+        // No password at all: said as such, nothing written.
+        let none = dir.path().join("none");
+        let err = extract_7z_core(
+            out.to_string_lossy().to_string(),
+            none.to_string_lossy().to_string(),
+            None,
+            false,
+        )
+        .await
+        .expect_err("no password must fail");
+        assert!(
+            err.contains("password is required"),
+            "unhelpful error: {err}"
+        );
+        assert_eq!(std::fs::read_dir(&none).unwrap().count(), 0);
+    }
+
+    // Overwriting a file that already exists keeps its permissions: before the
+    // atomic writer, extraction truncated the file in place and its mode
+    // survived, so a temporary file created with default permissions must not
+    // turn an executable script into a plain file.
+    #[cfg(unix)]
+    #[test]
+    fn replacing_an_existing_file_keeps_its_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("run.sh");
+        std::fs::write(&target, b"old").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        super::write_entry_atomically(&target, |f| {
+            use std::io::Write;
+            f.write_all(b"new")?;
+            Ok(3)
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755, "mode after replace: {mode:o}");
     }
 
     // The dialog's Fast/Normal/Maximum buttons (and the CLI's --level) must
