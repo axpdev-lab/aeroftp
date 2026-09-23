@@ -54,6 +54,23 @@ fn invalid_multi_thread_cutoff_env_names_the_variable() {
 }
 
 #[test]
+fn non_finite_multi_thread_cutoff_env_is_a_usage_error() {
+    // The parser rejects NaN/negative values instead of saturating to 0
+    // (a 0 cutoff would segment every file).
+    let output = Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
+        .args(["get", DEAD_URL, "./out"])
+        .env("AEROFTP_MULTI_THREAD_CUTOFF", "NaN")
+        .output()
+        .expect("spawn aeroftp-cli");
+    assert_eq!(output.status.code(), Some(5), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--multi-thread-cutoff") && stderr.contains("'NaN'"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
 fn flag_wins_over_env_in_the_error_source() {
     // G5: flag and env both set (to different invalid values): the error
     // reports the flag value and must NOT blame the environment.

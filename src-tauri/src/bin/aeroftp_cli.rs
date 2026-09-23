@@ -8412,11 +8412,21 @@ fn parse_size_filter(s: &str) -> Result<u64, String> {
         Some(b'g' | b'G') => (&s[..s.len() - 1], 1024 * 1024 * 1024),
         _ => (s, 1u64),
     };
-    num_str
+    let value = num_str
         .trim()
         .parse::<f64>()
-        .map(|n| (n * multiplier as f64) as u64)
-        .map_err(|e| format!("Invalid size '{}': {}", s, e))
+        .map_err(|e| format!("Invalid size '{}': {}", s, e))?;
+    let bytes = value * multiplier as f64;
+    // Reject NaN, infinities and negatives: the saturating `as u64` cast
+    // would silently turn them into 0, which for a cutoff means "segment
+    // everything" (CodeRabbit on #920).
+    if !bytes.is_finite() || bytes < 0.0 {
+        return Err(format!(
+            "Invalid size '{}': not a non-negative finite number",
+            s
+        ));
+    }
+    Ok(bytes as u64)
 }
 
 /// Parse a benchmark payload size (issue #277). Unlike the shared
@@ -31944,10 +31954,7 @@ async fn cmd_get(
                 "provider does not support range downloads".to_string()
             } else {
                 // G3: state the threshold that actually applied.
-                format!(
-                    "file too small (< {})",
-                    format_size(pget_cutoff.max(PGET_MIN_FILE_SIZE))
-                )
+                format!("file too small (< {})", format_size(pget_cutoff))
             };
             eprintln!("pget: falling back to single download ({})", reason);
         }
@@ -32185,16 +32192,18 @@ fn pget_effective_cutoff(cli: &Cli) -> Result<u64, String> {
 }
 
 /// Segments pget would use for `file_size` under `cutoff`: the shared
-/// planner with the 4 MiB pget minimum folded in as the floor, so pget
-/// answers the same as single-file and batch downloads for the same
-/// `(size, streams, cutoff)`. 1 = single-stream fallback.
+/// planner, so pget answers the same as single-file and batch downloads for
+/// the same `(size, streams, cutoff)`. No extra floor here: the 4 MiB pget
+/// minimum already arrives through `pget_effective_cutoff` when no cutoff is
+/// given, and an explicit cutoff must be able to go below it (CodeRabbit
+/// review on #920). 1 = single-stream fallback.
 fn pget_planned_segments(file_size: u64, segments: usize, cutoff: u64) -> usize {
     ftp_client_gui_lib::provider_transfer_executor::plan_segment_count(
         file_size,
         segments,
         16,
         ftp_client_gui_lib::provider_transfer_executor::SegmentCutoff::Explicit(cutoff),
-        PGET_MIN_FILE_SIZE,
+        0,
     )
     .max(1)
 }
@@ -72253,6 +72262,13 @@ mod tests {
     fn test_mount_knob_invalid_value_surfaces_message() {
         assert!(parse_duration_strict("five-minutes").is_err());
         assert!(parse_size_filter("").is_err());
+        // NaN, infinities and negatives must not saturate to 0 bytes
+        // (CodeRabbit on #920: a 0 cutoff would segment every file).
+        assert!(parse_size_filter("NaN").is_err());
+        assert!(parse_size_filter("nan").is_err());
+        assert!(parse_size_filter("inf").is_err());
+        assert!(parse_size_filter("-5").is_err());
+        assert!(parse_size_filter("-1M").is_err());
     }
 
     #[test]
@@ -75805,12 +75821,10 @@ mod tests {
                         let batch = batch_probe_segments(size, streams, cutoff, kind, floor);
                         let pget = pget_segments(size, streams, cutoff);
                         let expected = reference_segments(size, streams, cutoff, floor);
-                        let expected_pget = reference_segments(
-                            size,
-                            streams,
-                            cutoff,
-                            floor.max(PGET_MIN_FILE_SIZE),
-                        );
+                        // The pget column carries no extra floor: the 4 MiB
+                        // default lives in `pget_effective_cutoff`, so an
+                        // explicit cutoff applies as-is (CodeRabbit on #920).
+                        let expected_pget = reference_segments(size, streams, cutoff, 0);
                         if single != expected || batch != expected || pget != expected_pget {
                             mismatches.push(format!(
                                 "{provider} {cutoff_name} size={size} streams={streams}: single={single} batch={batch} pget={pget} expected={expected}"
@@ -75853,6 +75867,12 @@ mod tests {
         cli.multi_thread_cutoff = Some("abc".to_string());
         let error = pget_effective_cutoff(&cli).unwrap_err();
         assert!(error.contains("--multi-thread-cutoff"), "{error}");
+
+        // And it can lower the threshold below the 4 MiB pget minimum
+        // (CodeRabbit on #920): 1M on a 3 MiB file plans three 1 MiB windows.
+        cli.multi_thread_cutoff = Some("1M".to_string());
+        let cutoff = pget_effective_cutoff(&cli).unwrap();
+        assert_eq!(pget_planned_segments(3 * 1024 * 1024, 4, cutoff), 3);
     }
 
     #[test]
