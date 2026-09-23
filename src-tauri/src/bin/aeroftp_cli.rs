@@ -31924,7 +31924,7 @@ async fn cmd_get(
         // R21/G4: pget reads the same --multi-thread-cutoff as get; an
         // invalid value is a usage error here, at the consumption point.
         let pget_cutoff =
-            parse_cli_multi_thread_cutoff(cli).unwrap_or_else(|error| invalid_usage_exit(&error));
+            pget_effective_cutoff(cli).unwrap_or_else(|error| invalid_usage_exit(&error));
         let planned = pget_planned_segments(total_size, segments, pget_cutoff);
         if hints.supports_range_download && planned >= 2 {
             let _ = provider.disconnect().await;
@@ -32169,6 +32169,19 @@ fn pget_effective_segments(file_size: u64, segments: usize) -> usize {
         0,
     )
     .max(1)
+}
+
+/// The size threshold `pget` applies. An explicit `--multi-thread-cutoff`
+/// (flag or `AEROFTP_MULTI_THREAD_CUTOFF`) wins, exactly as it does for
+/// `get`; without one, `pget` keeps its own 4 MiB minimum. The flag's 250M
+/// default belongs to `get`: applying it here would make the command whose
+/// only purpose is a parallel download run on a single stream for every file
+/// under 250M.
+fn pget_effective_cutoff(cli: &Cli) -> Result<u64, String> {
+    match cli.multi_thread_cutoff {
+        Some(_) => parse_cli_multi_thread_cutoff(cli),
+        None => Ok(PGET_MIN_FILE_SIZE),
+    }
 }
 
 /// Segments pget would use for `file_size` under `cutoff`: the shared
@@ -75773,7 +75786,10 @@ mod tests {
         let cutoffs = [
             ("500K explicit", 500 * 1024u64),
             ("1M explicit", 1024 * 1024),
-            ("default", 250 * 1024 * 1024),
+            // 250M is `get`'s default and an explicit value for every path:
+            // pget's own default threshold (4 MiB, no flag given) is pinned
+            // separately by `pget_default_cutoff_keeps_the_four_mib_minimum`.
+            ("250M", 250 * 1024 * 1024),
         ];
         let providers = [
             // (label, S3 floor on the single-file path, probe kind, floor)
@@ -75809,6 +75825,34 @@ mod tests {
             "window planner divergence:\n{}",
             mismatches.join("\n")
         );
+    }
+
+    #[test]
+    fn pget_default_cutoff_keeps_the_four_mib_minimum() {
+        // R21 follow-up: the flag's 250M default is `get`'s. Reading it here
+        // would make `pget` single-stream for every file under 250M, which is
+        // the opposite of what the command exists for.
+        let cli = test_cli();
+        let cutoff = pget_effective_cutoff(&cli).unwrap();
+        assert_eq!(cutoff, PGET_MIN_FILE_SIZE);
+        assert_eq!(pget_planned_segments(100 * 1024 * 1024, 4, cutoff), 4);
+        assert_eq!(pget_planned_segments(2 * 1024 * 1024, 4, cutoff), 1);
+    }
+
+    #[test]
+    fn pget_explicit_cutoff_wins_over_the_four_mib_minimum() {
+        // An explicit value is honored like it is on `get`, in both
+        // directions: it can raise the threshold above 4 MiB, and an invalid
+        // one is still a usage error at this consumption point.
+        let mut cli = test_cli();
+        cli.multi_thread_cutoff = Some("250M".to_string());
+        let cutoff = pget_effective_cutoff(&cli).unwrap();
+        assert_eq!(cutoff, 250 * 1024 * 1024);
+        assert_eq!(pget_planned_segments(100 * 1024 * 1024, 4, cutoff), 1);
+
+        cli.multi_thread_cutoff = Some("abc".to_string());
+        let error = pget_effective_cutoff(&cli).unwrap_err();
+        assert!(error.contains("--multi-thread-cutoff"), "{error}");
     }
 
     #[test]
