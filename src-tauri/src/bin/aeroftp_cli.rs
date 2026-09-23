@@ -627,17 +627,22 @@ struct Cli {
     /// Minimum file size for multi-thread download
     /// (rclone `--multi-thread-cutoff`). Default `250M`. Accepts size suffixes
     /// `K`/`M`/`G`. Files smaller than this always use the single-stream path,
-    /// regardless of `--multi-thread-streams`. Reads default from
-    /// `AEROFTP_MULTI_THREAD_CUTOFF` if set.
+    /// regardless of `--multi-thread-streams`. An explicit value (flag or
+    /// `AEROFTP_MULTI_THREAD_CUTOFF`) replaces the measured 8 MiB engine
+    /// floor on batch downloads too; an invalid value aborts download
+    /// commands with a usage error (exit 5), there is no silent fallback.
+    /// Providers may enforce their own floor (1 MiB on S3, SFTP, FTP and B2;
+    /// none on WebDAV and Koofr), applied identically to single-file and
+    /// batch downloads, and no window is ever smaller than 1 MiB. Reads
+    /// default from `AEROFTP_MULTI_THREAD_CUTOFF` if set.
     #[arg(
         long,
         global = true,
         hide_short_help = true,
         help_heading = "Tuning options",
-        default_value = "250M",
         env = "AEROFTP_MULTI_THREAD_CUTOFF"
     )]
-    multi_thread_cutoff: String,
+    multi_thread_cutoff: Option<String>,
 
     /// SFTP single-file download tuning preset. Presets configure independent
     /// SSH connections, read-ahead, and the multi-connection cutoff together.
@@ -7026,9 +7031,74 @@ fn format_cli_sftp_download_tuning(tuning: CliSftpDownloadTuning) -> String {
     )
 }
 
-fn resolve_cli_sftp_download_tuning(cli: &Cli, is_sftp: bool) -> Option<CliSftpDownloadTuning> {
+/// Alias-expanded CLI arguments, stashed once in `main` so the deep cutoff
+/// consumption points can attribute a value to the command line vs the
+/// environment (G5). Read-only after startup; empty in unit tests, where the
+/// pure helpers below take the arguments explicitly.
+static CLI_EXPANDED_ARGS: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
+
+/// The effective `--multi-thread-cutoff` string: the explicit flag/env value,
+/// or the CLI default `250M` (above the 8 MiB engine floor, so a default run
+/// behaves exactly like before on every download path).
+fn effective_multi_thread_cutoff(cli: &Cli) -> &str {
+    cli.multi_thread_cutoff.as_deref().unwrap_or("250M")
+}
+
+/// True when the effective `--multi-thread-cutoff` value came from
+/// `AEROFTP_MULTI_THREAD_CUTOFF` rather than the command line: the flag is
+/// absent from the (alias-expanded) arguments and the variable carries
+/// exactly the effective value.
+fn multi_thread_cutoff_from_env(
+    raw_args: &[String],
+    env_value: Option<&str>,
+    effective: &str,
+) -> bool {
+    // Stop at the option terminator: `jobs add` accepts trailing command
+    // tokens after `--`, where a `--multi-thread-cutoff` token is positional
+    // data, not the flag.
+    let on_command_line = raw_args
+        .iter()
+        .take_while(|arg| arg.as_str() != "--")
+        .any(|arg| arg == "--multi-thread-cutoff" || arg.starts_with("--multi-thread-cutoff="));
+    !on_command_line && env_value == Some(effective)
+}
+
+/// Build the usage-error message for an unparseable cutoff, naming the
+/// flag, the value, and the env variable when that is the source.
+fn invalid_cutoff_message(value: &str, parse_error: &str, from_env: bool) -> String {
+    if from_env {
+        format!("invalid --multi-thread-cutoff '{value}' (from AEROFTP_MULTI_THREAD_CUTOFF): {parse_error}")
+    } else {
+        format!("invalid --multi-thread-cutoff '{value}': {parse_error}")
+    }
+}
+
+/// Parse the effective `--multi-thread-cutoff`. R21: an invalid value is a
+/// hard usage error (exit 5 at the consumption points), never a silent 250M
+/// fallback. The env-vs-flag source is read from the arguments stashed at
+/// startup, so a flag always wins over the variable in the message (G5).
+fn parse_cli_multi_thread_cutoff(cli: &Cli) -> Result<u64, String> {
+    let effective = effective_multi_thread_cutoff(cli);
+    parse_size_filter(effective).map_err(|e| {
+        let args = CLI_EXPANDED_ARGS
+            .read()
+            .map(|stash| stash.clone())
+            .unwrap_or_default();
+        let from_env = multi_thread_cutoff_from_env(
+            &args,
+            std::env::var("AEROFTP_MULTI_THREAD_CUTOFF").ok().as_deref(),
+            effective,
+        );
+        invalid_cutoff_message(effective, &e, from_env)
+    })
+}
+
+fn resolve_cli_sftp_download_tuning(
+    cli: &Cli,
+    is_sftp: bool,
+) -> Result<Option<CliSftpDownloadTuning>, String> {
     if !is_sftp {
-        return None;
+        return Ok(None);
     }
 
     let preset = cli.sftp_download_preset;
@@ -7036,7 +7106,7 @@ fn resolve_cli_sftp_download_tuning(cli: &Cli, is_sftp: bool) -> Option<CliSftpD
     let has_sftp_override =
         preset.is_some() || cli.sftp_readahead.is_some() || cli.sftp_concurrency > 0;
     if !has_sftp_override {
-        return None;
+        return Ok(None);
     }
 
     let connections = if cli.sftp_concurrency > 0 {
@@ -7053,36 +7123,44 @@ fn resolve_cli_sftp_download_tuning(cli: &Cli, is_sftp: bool) -> Option<CliSftpD
     } else {
         (None, false)
     };
-    let cutoff = resolved_preset
-        .map(|resolved| resolved.multi_connection_cutoff)
-        .unwrap_or_else(|| {
-            parse_size_filter(&cli.multi_thread_cutoff).unwrap_or(250 * 1024 * 1024)
-        });
+    let cutoff = match resolved_preset {
+        Some(resolved) => resolved.multi_connection_cutoff,
+        None => parse_cli_multi_thread_cutoff(cli)?,
+    };
 
-    Some(CliSftpDownloadTuning {
+    Ok(Some(CliSftpDownloadTuning {
         preset,
         connections,
         readahead,
         readahead_is_explicit,
         cutoff,
-    })
+    }))
 }
 
 /// Resolve the same stream count and cutoff for direct and shared-batch downloads.
 /// SFTP overrides have already been resolved, including explicit concurrency
-/// taking precedence over a preset's connection count.
+/// taking precedence over a preset's connection count. R21: no global floor
+/// here; each provider applies its own bound through
+/// `set_multi_thread_download` / `multi_thread_cutoff_floor`.
 fn resolve_cli_download_tuning(
     cli: &Cli,
     sftp_tuning: Option<CliSftpDownloadTuning>,
-) -> (usize, u64) {
+) -> Result<(usize, u64), String> {
     let streams = sftp_tuning
         .map(|tuning| tuning.connections)
         .unwrap_or_else(|| cli.multi_thread_streams.clamp(1, 16));
-    let cutoff = sftp_tuning.map(|tuning| tuning.cutoff).unwrap_or_else(|| {
-        parse_size_filter(&cli.multi_thread_cutoff).unwrap_or(250 * 1024 * 1024)
-    });
-    // Provider setters apply this same lower bound.
-    (streams, cutoff.max(1024 * 1024))
+    let cutoff = match sftp_tuning {
+        Some(tuning) => tuning.cutoff,
+        None => parse_cli_multi_thread_cutoff(cli)?,
+    };
+    Ok((streams, cutoff))
+}
+
+/// Report an invalid tuning flag exactly like the other CLI usage errors
+/// (message on stderr, exit code 5).
+fn invalid_usage_exit(message: &str) -> ! {
+    eprintln!("Error: {message}");
+    std::process::exit(5);
 }
 
 fn expand_aliases(args: &[String], config: &CliConfigFile) -> Result<Vec<String>, String> {
@@ -8334,11 +8412,21 @@ fn parse_size_filter(s: &str) -> Result<u64, String> {
         Some(b'g' | b'G') => (&s[..s.len() - 1], 1024 * 1024 * 1024),
         _ => (s, 1u64),
     };
-    num_str
+    let value = num_str
         .trim()
         .parse::<f64>()
-        .map(|n| (n * multiplier as f64) as u64)
-        .map_err(|e| format!("Invalid size '{}': {}", s, e))
+        .map_err(|e| format!("Invalid size '{}': {}", s, e))?;
+    let bytes = value * multiplier as f64;
+    // Reject NaN, infinities and negatives: the saturating `as u64` cast
+    // would silently turn them into 0, which for a cutoff means "segment
+    // everything" (CodeRabbit on #920).
+    if !bytes.is_finite() || bytes < 0.0 {
+        return Err(format!(
+            "Invalid size '{}': not a non-negative finite number",
+            s
+        ));
+    }
+    Ok(bytes as u64)
 }
 
 /// Parse a benchmark payload size (issue #277). Unlike the shared
@@ -10351,6 +10439,7 @@ async fn run_shared_provider_download_batch(
 ) -> Result<SharedDownloadOutcome, Box<dyn StorageProvider>> {
     use ftp_client_gui_lib::provider_transfer_executor::{
         resolve_provider_transfer_runtime, ProviderDownloadExecutor, ProviderExecutorSessionModel,
+        SegmentCutoff,
     };
     use ftp_client_gui_lib::transfer_domain::{
         TransferBatchConfig, TransferDirection, TransferEntry,
@@ -10362,9 +10451,12 @@ async fn run_shared_provider_download_batch(
     use ftp_client_gui_lib::transfer_settings::TransferSettingsInput;
 
     let workers = effective_parallel_workers(cli);
-    let sftp_tuning =
-        resolve_cli_sftp_download_tuning(cli, base.provider_type() == ProviderType::Sftp);
-    let (streams, cutoff) = resolve_cli_download_tuning(cli, sftp_tuning);
+    let provider_kind = base.provider_type();
+    let provider_floor = base.multi_thread_cutoff_floor();
+    let sftp_tuning = resolve_cli_sftp_download_tuning(cli, provider_kind == ProviderType::Sftp)
+        .unwrap_or_else(|error| invalid_usage_exit(&error));
+    let (streams, cutoff) = resolve_cli_download_tuning(cli, sftp_tuning)
+        .unwrap_or_else(|error| invalid_usage_exit(&error));
     let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
 
     // DAG-P1-02: one live snapshot owns capability-aware settings and the
@@ -10414,9 +10506,26 @@ async fn run_shared_provider_download_batch(
         } else {
             1
         };
+        // G3: print the threshold the executor will actually apply (explicit
+        // cutoff folded with the provider floor), with the reason when it
+        // differs from what the user asked for.
+        let effective_cutoff = SegmentCutoff::Explicit(cutoff).threshold(provider_floor);
+        let cutoff_note = if effective_cutoff > cutoff {
+            format!(
+                " (requested {}, {:?} floor {})",
+                format_size(cutoff),
+                provider_kind,
+                format_size(provider_floor)
+            )
+        } else {
+            String::new()
+        };
         eprintln!(
-            "Download policy: up to {} streams per file (requested {}, cutoff {}); smaller files use 1 stream",
-            ceiling, streams, format_size(cutoff)
+            "Download policy: up to {} streams per file (requested {}, cutoff {}{}); files under 2 MiB use 1 stream (1 MiB minimum window)",
+            ceiling,
+            streams,
+            format_size(effective_cutoff),
+            cutoff_note
         );
     }
 
@@ -10505,7 +10614,7 @@ async fn run_shared_provider_download_batch(
             model,
             capabilities,
         )
-        .with_download_cutoff(cutoff),
+        .with_download_cutoff(SegmentCutoff::Explicit(cutoff)),
     );
 
     // `BatchProgressSnapshot.bytes_transferred` is monotonic (sum of
@@ -28527,6 +28636,16 @@ async fn create_and_connect_with(
     // OAuth-early-return caveat as KE-B3.
     apply_google_drive_runtime_knobs(&mut provider, cli);
 
+    // R21/G4: resolve and validate the download tuning before any network
+    // I/O, so an invalid --multi-thread-cutoff fails here as a usage error
+    // (exit 5), not as a connection error. The setter application stays in
+    // the post-connect block below.
+    let is_sftp = provider.provider_type() == ProviderType::Sftp;
+    let sftp_tuning = resolve_cli_sftp_download_tuning(cli, is_sftp)
+        .unwrap_or_else(|error| invalid_usage_exit(&error));
+    let (effective_mt_streams, mt_cutoff) = resolve_cli_download_tuning(cli, sftp_tuning)
+        .unwrap_or_else(|error| invalid_usage_exit(&error));
+
     if let Err(e) = provider.connect().await {
         let code = provider_error_to_exit_code(&e);
         let hint = match &e {
@@ -28584,7 +28703,8 @@ async fn create_and_connect_with(
     // Apply --multi-thread-streams / --multi-thread-cutoff (U-13).
     // Only forward to the provider when the user actually asked for >1 stream,
     // so providers that override `set_multi_thread_download` see the disabled
-    // state as a no-op rather than a parse-error from a malformed cutoff.
+    // state as a no-op. The values were resolved and validated before
+    // connect() above; an invalid cutoff never reaches this point.
     //
     // KE-A1: when the provider is SFTP and `--sftp-concurrency` is set,
     // it OVERRIDES `--multi-thread-streams` for that one transfer.
@@ -28592,18 +28712,7 @@ async fn create_and_connect_with(
     // N reads on one channel) but at the provider trait level both map
     // to `set_multi_thread_download(streams, cutoff)`. Documented in
     // the flag help so rclone users know what they are getting.
-    let is_sftp = provider.provider_type() == ProviderType::Sftp;
-    let sftp_tuning = resolve_cli_sftp_download_tuning(cli, is_sftp);
-    let (effective_mt_streams, mt_cutoff) = resolve_cli_download_tuning(cli, sftp_tuning);
     if effective_mt_streams > 1 || sftp_tuning.is_some_and(|tuning| tuning.preset.is_some()) {
-        if sftp_tuning.is_none() && cli.verbose > 0 {
-            if let Err(e) = parse_size_filter(&cli.multi_thread_cutoff) {
-                eprintln!(
-                    "Warning: invalid --multi-thread-cutoff '{}': {} (using 250M)",
-                    cli.multi_thread_cutoff, e
-                );
-            }
-        }
         provider.set_multi_thread_download(effective_mt_streams, mt_cutoff);
         if cli.verbose > 0 {
             let knob = if is_sftp && cli.sftp_concurrency > 0 {
@@ -28613,11 +28722,26 @@ async fn create_and_connect_with(
             } else {
                 "--multi-thread-streams"
             };
+            // G3: print the threshold the provider will actually apply, with
+            // the reason when its floor raised the requested value.
+            let provider_floor = provider.multi_thread_cutoff_floor();
+            let effective_cutoff = mt_cutoff.max(provider_floor);
+            let note = if effective_cutoff > mt_cutoff {
+                format!(
+                    " (requested {}, {:?} floor {})",
+                    format_size(mt_cutoff),
+                    provider.provider_type(),
+                    format_size(provider_floor)
+                )
+            } else {
+                String::new()
+            };
             eprintln!(
-                "Multi-thread download ({}): {} streams above {}",
+                "Multi-thread download ({}): {} streams above {}{}",
                 knob,
                 effective_mt_streams,
-                format_size(mt_cutoff)
+                format_size(effective_cutoff),
+                note
             );
         }
     }
@@ -31807,7 +31931,12 @@ async fn cmd_get(
     if segments > 1 && total_size > 0 {
         let hints = provider.transfer_optimization_hints();
         let quiet = cli.quiet || matches!(format, OutputFormat::Json);
-        if hints.supports_range_download && total_size >= PGET_MIN_FILE_SIZE {
+        // R21/G4: pget reads the same --multi-thread-cutoff as get; an
+        // invalid value is a usage error here, at the consumption point.
+        let pget_cutoff =
+            pget_effective_cutoff(cli).unwrap_or_else(|error| invalid_usage_exit(&error));
+        let planned = pget_planned_segments(total_size, segments, pget_cutoff);
+        if hints.supports_range_download && planned >= 2 {
             let _ = provider.disconnect().await;
             return pget_segmented_download(
                 url,
@@ -31822,9 +31951,10 @@ async fn cmd_get(
             .await;
         } else if !quiet {
             let reason = if !hints.supports_range_download {
-                "provider does not support range downloads"
+                "provider does not support range downloads".to_string()
             } else {
-                &format!("file too small (< {})", format_size(PGET_MIN_FILE_SIZE))
+                // G3: state the threshold that actually applied.
+                format!("file too small (< {})", format_size(pget_cutoff))
             };
             eprintln!("pget: falling back to single download ({})", reason);
         }
@@ -32024,33 +32154,58 @@ async fn cmd_get(
 // ── Segmented Parallel Download (pget) ────────────────────────────────
 
 const PGET_MIN_FILE_SIZE: u64 = 4 * 1024 * 1024; // 4 MB minimum for segmented download
-const PGET_MIN_CHUNK_SIZE: u64 = 1024 * 1024; // 1 MB minimum per chunk
 const PGET_SUB_READ_SIZE: u64 = 64 * 1024 * 1024; // 64 MB max per read_range call
 
 /// Effective pget segment count.
 ///
-/// The shared concurrent-range engine (`providers::multi_thread`,
-/// `plan_multi_thread_ranges`) plans the actual byte windows; the CLI only
-/// needs the *count* up front for the degenerate-fallback decision, the
-/// progress label, and the user-facing summary. This preserves the
-/// historical anti-fragmentation policy verbatim: never split a chunk below
-/// `PGET_MIN_CHUNK_SIZE`, hard cap at 16. With `streams == max_streams ==`
-/// this count, the engine emits exactly this many gap-free windows whose
-/// offsets are byte-identical to the previous hand-rolled planner.
+/// The shared planner (`plan_segment_count`) owns the window math: hard cap
+/// at 16, never split a chunk below 1 MiB, fewer than 2 windows means a
+/// single stream. The 4 MiB pget threshold lives at the call-site gate
+/// (`pget_planned_segments`), so this count only answers "how many windows
+/// for this size"; `0` stays `0` for the degenerate inputs, otherwise the
+/// answer is at least 1, as the historical callers expect.
 fn pget_effective_segments(file_size: u64, segments: usize) -> usize {
     if file_size == 0 || segments == 0 {
         return 0;
     }
+    ftp_client_gui_lib::provider_transfer_executor::plan_segment_count(
+        file_size,
+        segments,
+        16,
+        ftp_client_gui_lib::provider_transfer_executor::SegmentCutoff::Explicit(0),
+        0,
+    )
+    .max(1)
+}
 
-    let segments = segments.clamp(1, 16);
-
-    // Reduce segment count if chunks would be too small.
-    let chunk = file_size / segments as u64;
-    if chunk < PGET_MIN_CHUNK_SIZE {
-        (file_size / PGET_MIN_CHUNK_SIZE).max(1) as usize
-    } else {
-        segments
+/// The size threshold `pget` applies. An explicit `--multi-thread-cutoff`
+/// (flag or `AEROFTP_MULTI_THREAD_CUTOFF`) wins, exactly as it does for
+/// `get`; without one, `pget` keeps its own 4 MiB minimum. The flag's 250M
+/// default belongs to `get`: applying it here would make the command whose
+/// only purpose is a parallel download run on a single stream for every file
+/// under 250M.
+fn pget_effective_cutoff(cli: &Cli) -> Result<u64, String> {
+    match cli.multi_thread_cutoff {
+        Some(_) => parse_cli_multi_thread_cutoff(cli),
+        None => Ok(PGET_MIN_FILE_SIZE),
     }
+}
+
+/// Segments pget would use for `file_size` under `cutoff`: the shared
+/// planner, so pget answers the same as single-file and batch downloads for
+/// the same `(size, streams, cutoff)`. No extra floor here: the 4 MiB pget
+/// minimum already arrives through `pget_effective_cutoff` when no cutoff is
+/// given, and an explicit cutoff must be able to go below it (CodeRabbit
+/// review on #920). 1 = single-stream fallback.
+fn pget_planned_segments(file_size: u64, segments: usize, cutoff: u64) -> usize {
+    ftp_client_gui_lib::provider_transfer_executor::plan_segment_count(
+        file_size,
+        segments,
+        16,
+        ftp_client_gui_lib::provider_transfer_executor::SegmentCutoff::Explicit(cutoff),
+        0,
+    )
+    .max(1)
 }
 
 /// Segmented parallel download (pget), converged onto the shared
@@ -64402,7 +64557,13 @@ async fn main() {
         }
     };
 
-    let mut cli = Cli::parse_from(args);
+    let mut cli = Cli::parse_from(args.clone());
+
+    // Stash the alias-expanded arguments so the deep cutoff consumption
+    // points can tell a flag value from an environment one (G5).
+    if let Ok(mut stash) = CLI_EXPANDED_ARGS.write() {
+        *stash = args;
+    }
 
     // AEROFTP_MACHINE=1 (or any truthy value: 1/true/yes/on) turns on machine
     // mode without the --machine flag, for agents/CI that set it in the env.
@@ -70834,7 +70995,7 @@ mod tests {
             chunk_size: None,
             buffer_size: None,
             multi_thread_streams: 4,
-            multi_thread_cutoff: "250M".to_string(),
+            multi_thread_cutoff: None,
             sftp_download_preset: None,
             sftp_readahead: None,
             default_time: None,
@@ -70994,7 +71155,9 @@ mod tests {
         for (preset, connections, readahead) in expected {
             let mut cli = test_cli();
             cli.sftp_download_preset = Some(preset);
-            let tuning = resolve_cli_sftp_download_tuning(&cli, true).unwrap();
+            let tuning = resolve_cli_sftp_download_tuning(&cli, true)
+                .unwrap()
+                .unwrap();
             assert_eq!(tuning.connections, connections);
             assert_eq!(tuning.readahead, readahead);
             assert!(tuning.readahead_is_explicit);
@@ -71013,21 +71176,25 @@ mod tests {
         cli.sftp_concurrency = 9;
         cli.sftp_readahead = Some(64);
 
-        let tuning = resolve_cli_sftp_download_tuning(&cli, true).unwrap();
+        let tuning = resolve_cli_sftp_download_tuning(&cli, true)
+            .unwrap()
+            .unwrap();
         assert_eq!(tuning.connections, 9);
         assert_eq!(tuning.readahead, Some(64));
         assert_eq!(tuning.preset, Some(SftpDownloadPreset::Balanced));
-        assert_eq!(resolve_cli_sftp_download_tuning(&cli, false), None);
+        assert_eq!(resolve_cli_sftp_download_tuning(&cli, false).unwrap(), None);
     }
 
     #[test]
     fn absent_sftp_cli_flags_preserve_provider_legacy_environment_fallback() {
         let cli = test_cli();
-        assert_eq!(resolve_cli_sftp_download_tuning(&cli, true), None);
+        assert_eq!(resolve_cli_sftp_download_tuning(&cli, true).unwrap(), None);
 
         let mut concurrency_only = test_cli();
         concurrency_only.sftp_concurrency = 4;
-        let tuning = resolve_cli_sftp_download_tuning(&concurrency_only, true).unwrap();
+        let tuning = resolve_cli_sftp_download_tuning(&concurrency_only, true)
+            .unwrap()
+            .unwrap();
         assert!(!tuning.readahead_is_explicit);
         assert!(format_cli_sftp_download_tuning(tuning).contains("readahead=legacy-env"));
     }
@@ -71038,8 +71205,11 @@ mod tests {
         cli.sftp_download_preset = Some(SftpDownloadPreset::Fast);
         cli.sftp_concurrency = 6;
         cli.sftp_readahead = Some(48);
-        let diagnostic =
-            format_cli_sftp_download_tuning(resolve_cli_sftp_download_tuning(&cli, true).unwrap());
+        let diagnostic = format_cli_sftp_download_tuning(
+            resolve_cli_sftp_download_tuning(&cli, true)
+                .unwrap()
+                .unwrap(),
+        );
         assert_eq!(
             diagnostic,
             "SFTP download tuning: preset=fast, connections=6, readahead=48, cutoff=250.0 MB"
@@ -72103,6 +72273,13 @@ mod tests {
     fn test_mount_knob_invalid_value_surfaces_message() {
         assert!(parse_duration_strict("five-minutes").is_err());
         assert!(parse_size_filter("").is_err());
+        // NaN, infinities and negatives must not saturate to 0 bytes
+        // (CodeRabbit on #920: a 0 cutoff would segment every file).
+        assert!(parse_size_filter("NaN").is_err());
+        assert!(parse_size_filter("nan").is_err());
+        assert!(parse_size_filter("inf").is_err());
+        assert!(parse_size_filter("-5").is_err());
+        assert!(parse_size_filter("-1M").is_err());
     }
 
     #[test]
@@ -72347,19 +72524,19 @@ mod tests {
 
     #[test]
     fn test_pget_effective_segments_basic() {
-        // 100 MB / 4 -> 25 MB chunks, well above PGET_MIN_CHUNK_SIZE.
+        // 100 MB / 4 -> 25 MB chunks, well above the 1 MiB minimum window.
         assert_eq!(pget_effective_segments(100 * 1024 * 1024, 4), 4);
     }
 
     #[test]
     fn test_pget_effective_segments_uneven_division() {
-        // 10_000_003 / 4 ~= 2.5 MB chunks, above PGET_MIN_CHUNK_SIZE.
+        // 10_000_003 / 4 ~= 2.5 MB chunks, above the 1 MiB minimum window.
         assert_eq!(pget_effective_segments(10_000_003, 4), 4);
     }
 
     #[test]
     fn test_pget_effective_segments_reduces_for_small_files() {
-        // 3 MB with 16 segments -> each chunk < PGET_MIN_CHUNK_SIZE (1 MB),
+        // 3 MB with 16 segments -> each chunk < the 1 MiB minimum window (1 MB),
         // so the count collapses to floor(3 MB / 1 MB) = 3.
         assert_eq!(pget_effective_segments(3 * 1024 * 1024, 16), 3);
     }
@@ -72382,7 +72559,7 @@ mod tests {
 
     #[test]
     fn test_pget_effective_segments_tiny_file() {
-        // Below PGET_MIN_CHUNK_SIZE -> never split, exactly 1 segment.
+        // Below the 1 MiB minimum window -> never split, exactly 1 segment.
         assert_eq!(pget_effective_segments(500_000, 8), 1);
     }
 
@@ -75323,6 +75500,8 @@ mod tests {
         kind: ProviderType,
         whole: Arc<AtomicU64>,
         ranges: Arc<AtomicU64>,
+        cutoff_floor: u64,
+        size: u64,
     }
 
     impl BatchDownloadProbe {
@@ -75369,8 +75548,7 @@ mod tests {
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
             self.whole.fetch_add(1, Ordering::SeqCst);
-            std::fs::write(local_path, vec![42; Self::SIZE as usize])
-                .map_err(ProviderError::IoError)
+            std::fs::write(local_path, vec![42; self.size as usize]).map_err(ProviderError::IoError)
         }
         async fn download_to_bytes(
             &mut self,
@@ -75406,12 +75584,12 @@ mod tests {
             Ok(RemoteEntry::file(
                 "object".to_string(),
                 path.to_string(),
-                Self::SIZE,
+                self.size,
             ))
         }
         async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
             let _ = path;
-            Ok(Self::SIZE)
+            Ok(self.size)
         }
         async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
             let _ = path;
@@ -75441,6 +75619,9 @@ mod tests {
         }
         fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
             Ok(Box::new(self.clone()))
+        }
+        fn multi_thread_cutoff_floor(&self) -> u64 {
+            self.cutoff_floor
         }
         fn transfer_capabilities(&self) -> ftp_client_gui_lib::transfer_dag::TransferCapabilities {
             use ftp_client_gui_lib::transfer_dag::{Capability, TransferCapabilities};
@@ -75473,7 +75654,16 @@ mod tests {
         }
     }
 
-    async fn probe_cli_shared_download(mut cli: Cli, kind: ProviderType) -> (u32, u64, u64) {
+    async fn probe_cli_shared_download(cli: Cli, kind: ProviderType) -> (u32, u64, u64) {
+        probe_cli_shared_download_options(cli, kind, 0, BatchDownloadProbe::SIZE).await
+    }
+
+    async fn probe_cli_shared_download_options(
+        mut cli: Cli,
+        kind: ProviderType,
+        cutoff_floor: u64,
+        size: u64,
+    ) -> (u32, u64, u64) {
         let _session = SESSION_TRANSFER_TEST_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let output = dir.path().join("object");
@@ -75483,13 +75673,15 @@ mod tests {
             kind,
             whole: Arc::default(),
             ranges: Arc::default(),
+            cutoff_floor,
+            size,
         };
         let outcome = match run_shared_provider_download_batch(
             Box::new(probe.clone()),
             &[(
                 "/object".to_string(),
                 output.to_string_lossy().into_owned(),
-                BatchDownloadProbe::SIZE,
+                size,
             )],
             &cli,
             None,
@@ -75502,10 +75694,7 @@ mod tests {
         };
         assert_eq!(outcome.downloaded, 1, "{:?}", outcome.errors);
         assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
-        assert_eq!(
-            std::fs::read(output).unwrap(),
-            vec![42; BatchDownloadProbe::SIZE as usize]
-        );
+        assert_eq!(std::fs::read(output).unwrap(), vec![42; size as usize]);
         (
             outcome.download_segments.count(),
             probe.whole.load(Ordering::SeqCst),
@@ -75513,11 +75702,282 @@ mod tests {
         )
     }
 
+    // ── R21 follow-up: one window planner for single file, batch and pget ──
+
+    /// Single-file column, through the real provider gate: a live
+    /// `WebDavProvider` (floorless) or `S3Provider` (1 MiB floor) tuned via
+    /// `set_multi_thread_download`, then `planned_download_segments`.
+    fn single_file_segments(size: u64, streams: usize, cutoff: u64, with_s3_floor: bool) -> usize {
+        use ftp_client_gui_lib::providers::{S3Config, WebDavConfig};
+        if with_s3_floor {
+            let mut provider = ftp_client_gui_lib::providers::s3::S3Provider::new(S3Config {
+                endpoint: Some("http://localhost:9000".to_string()),
+                region: "us-east-1".to_string(),
+                access_key_id: "x".to_string(),
+                secret_access_key: secrecy::SecretString::from("y".to_string()),
+                session_token: None,
+                role_arn: None,
+                role_external_id: None,
+                role_session_name: None,
+                role_duration_seconds: None,
+                role_mfa_serial: None,
+                role_mfa_token_code: None,
+                bucket: "b".to_string(),
+                prefix: None,
+                path_style: true,
+                storage_class: None,
+                sse_mode: None,
+                sse_kms_key_id: None,
+                verify_cert: true,
+                allow_cleartext_endpoint: false,
+            })
+            .expect("s3 provider");
+            provider.set_multi_thread_download(streams, cutoff);
+            provider.planned_download_segments(size).max(1)
+        } else {
+            let mut provider =
+                ftp_client_gui_lib::providers::webdav::WebDavProvider::new(WebDavConfig {
+                    url: "https://example.com/dav".to_string(),
+                    username: "u".to_string(),
+                    password: secrecy::SecretString::from("p".to_string()),
+                    initial_path: None,
+                    provider_id: None,
+                    verify_cert: true,
+                    anonymous: false,
+                })
+                .expect("webdav provider");
+            provider.set_multi_thread_download(streams, cutoff);
+            provider.planned_download_segments(size).max(1)
+        }
+    }
+
+    /// Batch column, through the real eligibility probe the executor gate
+    /// calls, on the clone-backed `BatchDownloadProbe` with the provider floor.
+    fn batch_probe_segments(
+        size: u64,
+        streams: usize,
+        cutoff: u64,
+        kind: ProviderType,
+        floor: u64,
+    ) -> usize {
+        let probe = BatchDownloadProbe {
+            kind,
+            whole: Arc::default(),
+            ranges: Arc::default(),
+            cutoff_floor: floor,
+            size,
+        };
+        ftp_client_gui_lib::provider_transfer_executor::provider_segmented_download_eligible(
+            &probe,
+            size,
+            streams as u32,
+            16,
+            ftp_client_gui_lib::provider_transfer_executor::SegmentCutoff::Explicit(cutoff),
+        )
+        .unwrap_or(0)
+        .max(1)
+    }
+
+    /// pget column: the real gate helper, with the 4 MiB pget minimum folded
+    /// in as the floor.
+    fn pget_segments(size: u64, streams: usize, cutoff: u64) -> usize {
+        pget_planned_segments(size, streams, cutoff)
+    }
+
+    /// Independent reference for the converged rule: threshold
+    /// `max(cutoff, floor)`, clamp 16, every window at least 1 MiB, fewer
+    /// than 2 windows means a single stream.
+    fn reference_segments(size: u64, streams: usize, cutoff: u64, floor: u64) -> usize {
+        if streams < 2 || size < cutoff.max(floor) {
+            return 1;
+        }
+        let requested = streams.clamp(1, 16) as u64;
+        let bounded = if size / requested < 1024 * 1024 {
+            size / (1024 * 1024)
+        } else {
+            requested
+        };
+        bounded.max(1) as usize
+    }
+
+    #[test]
+    fn segment_planners_converge_across_paths() {
+        let sizes = [
+            600 * 1024u64,
+            1536 * 1024,
+            4 * 1024 * 1024,
+            9 * 1024 * 1024,
+            300 * 1024 * 1024,
+        ];
+        let streams_set = [1usize, 4, 16];
+        let cutoffs = [
+            ("500K explicit", 500 * 1024u64),
+            ("1M explicit", 1024 * 1024),
+            // 250M is `get`'s default and an explicit value for every path:
+            // pget's own default threshold (4 MiB, no flag given) is pinned
+            // separately by `pget_default_cutoff_keeps_the_four_mib_minimum`.
+            ("250M", 250 * 1024 * 1024),
+        ];
+        let providers = [
+            // (label, S3 floor on the single-file path, probe kind, floor)
+            ("floorless (WebDAV)", false, ProviderType::WebDav, 0u64),
+            ("1 MiB floor (S3)", true, ProviderType::S3, 1024 * 1024),
+        ];
+        let mut mismatches = Vec::new();
+        for &(provider, with_s3_floor, kind, floor) in &providers {
+            for &(cutoff_name, cutoff) in &cutoffs {
+                for &size in &sizes {
+                    for &streams in &streams_set {
+                        let single = single_file_segments(size, streams, cutoff, with_s3_floor);
+                        let batch = batch_probe_segments(size, streams, cutoff, kind, floor);
+                        let pget = pget_segments(size, streams, cutoff);
+                        let expected = reference_segments(size, streams, cutoff, floor);
+                        // The pget column carries no extra floor: the 4 MiB
+                        // default lives in `pget_effective_cutoff`, so an
+                        // explicit cutoff applies as-is (CodeRabbit on #920).
+                        let expected_pget = reference_segments(size, streams, cutoff, 0);
+                        if single != expected || batch != expected || pget != expected_pget {
+                            mismatches.push(format!(
+                                "{provider} {cutoff_name} size={size} streams={streams}: single={single} batch={batch} pget={pget} expected={expected}"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            mismatches.is_empty(),
+            "window planner divergence:\n{}",
+            mismatches.join("\n")
+        );
+    }
+
+    #[test]
+    fn pget_default_cutoff_keeps_the_four_mib_minimum() {
+        // R21 follow-up: the flag's 250M default is `get`'s. Reading it here
+        // would make `pget` single-stream for every file under 250M, which is
+        // the opposite of what the command exists for.
+        let cli = test_cli();
+        let cutoff = pget_effective_cutoff(&cli).unwrap();
+        assert_eq!(cutoff, PGET_MIN_FILE_SIZE);
+        assert_eq!(pget_planned_segments(100 * 1024 * 1024, 4, cutoff), 4);
+        assert_eq!(pget_planned_segments(2 * 1024 * 1024, 4, cutoff), 1);
+    }
+
+    #[test]
+    fn pget_explicit_cutoff_wins_over_the_four_mib_minimum() {
+        // An explicit value is honored like it is on `get`, in both
+        // directions: it can raise the threshold above 4 MiB, and an invalid
+        // one is still a usage error at this consumption point.
+        let mut cli = test_cli();
+        cli.multi_thread_cutoff = Some("250M".to_string());
+        let cutoff = pget_effective_cutoff(&cli).unwrap();
+        assert_eq!(cutoff, 250 * 1024 * 1024);
+        assert_eq!(pget_planned_segments(100 * 1024 * 1024, 4, cutoff), 1);
+
+        cli.multi_thread_cutoff = Some("abc".to_string());
+        let error = pget_effective_cutoff(&cli).unwrap_err();
+        assert!(error.contains("--multi-thread-cutoff"), "{error}");
+
+        // And it can lower the threshold below the 4 MiB pget minimum
+        // (CodeRabbit on #920): 1M on a 3 MiB file plans three 1 MiB windows.
+        cli.multi_thread_cutoff = Some("1M".to_string());
+        let cutoff = pget_effective_cutoff(&cli).unwrap();
+        assert_eq!(pget_planned_segments(3 * 1024 * 1024, 4, cutoff), 3);
+    }
+
+    #[test]
+    fn cli_download_tuning_keeps_sub_mib_cutoff() {
+        // R21: no global 1 MiB floor in the shared helper; providers without
+        // their own floor (WebDAV, Koofr) honor the user's sub-MiB cutoff.
+        let mut cli = test_cli();
+        cli.multi_thread_cutoff = Some("500K".to_string());
+        let (_streams, cutoff) = resolve_cli_download_tuning(&cli, None).unwrap();
+        assert_eq!(cutoff, 500 * 1024);
+    }
+
+    #[test]
+    fn cli_sftp_download_tuning_keeps_sub_mib_cutoff() {
+        // The SFTP resolver never had the helper floor; pin it so the two
+        // resolvers stay aligned below 1 MiB.
+        let mut cli = test_cli();
+        cli.multi_thread_cutoff = Some("500K".to_string());
+        cli.sftp_concurrency = 4;
+        let tuning = resolve_cli_sftp_download_tuning(&cli, true)
+            .unwrap()
+            .unwrap();
+        assert_eq!(tuning.cutoff, 500 * 1024);
+    }
+
+    #[test]
+    fn cli_download_tuning_rejects_invalid_cutoff() {
+        // R21: no silent 250M fallback, on either resolver.
+        let mut cli = test_cli();
+        cli.multi_thread_cutoff = Some("abc".to_string());
+        let error = resolve_cli_download_tuning(&cli, None).unwrap_err();
+        assert!(error.contains("--multi-thread-cutoff"), "{error}");
+        assert!(error.contains("'abc'"), "{error}");
+
+        cli.sftp_concurrency = 4;
+        let error = resolve_cli_sftp_download_tuning(&cli, true).unwrap_err();
+        assert!(error.contains("--multi-thread-cutoff"), "{error}");
+        assert!(error.contains("'abc'"), "{error}");
+    }
+
+    #[test]
+    fn invalid_cutoff_message_names_the_env_source() {
+        let flag_form = invalid_cutoff_message("abc", "boom", false);
+        assert_eq!(flag_form, "invalid --multi-thread-cutoff 'abc': boom");
+        let env_form = invalid_cutoff_message("xyz", "boom", true);
+        assert_eq!(
+            env_form,
+            "invalid --multi-thread-cutoff 'xyz' (from AEROFTP_MULTI_THREAD_CUTOFF): boom"
+        );
+    }
+
+    #[test]
+    fn multi_thread_cutoff_from_env_detection() {
+        let flag = vec![
+            "aeroftp-cli".to_string(),
+            "--multi-thread-cutoff".to_string(),
+            "abc".to_string(),
+        ];
+        assert!(!multi_thread_cutoff_from_env(&flag, Some("abc"), "abc"));
+        let equals_form = vec![
+            "aeroftp-cli".to_string(),
+            "--multi-thread-cutoff=abc".to_string(),
+        ];
+        assert!(!multi_thread_cutoff_from_env(
+            &equals_form,
+            Some("abc"),
+            "abc"
+        ));
+        let bare = vec!["aeroftp-cli".to_string(), "get".to_string()];
+        assert!(multi_thread_cutoff_from_env(&bare, Some("abc"), "abc"));
+        assert!(!multi_thread_cutoff_from_env(&bare, None, "abc"));
+        assert!(!multi_thread_cutoff_from_env(&bare, Some("250M"), "abc"));
+        // A `--multi-thread-cutoff` token after `--` is positional data
+        // (`jobs add` trailing command), not the flag.
+        let after_terminator = vec![
+            "aeroftp-cli".to_string(),
+            "jobs".to_string(),
+            "add".to_string(),
+            "--".to_string(),
+            "--multi-thread-cutoff".to_string(),
+            "abc".to_string(),
+        ];
+        assert!(multi_thread_cutoff_from_env(
+            &after_terminator,
+            Some("abc"),
+            "abc"
+        ));
+    }
+
     #[tokio::test]
     async fn cli_shared_download_one_stream_uses_canonical_download() {
         let mut cli = test_cli();
         cli.multi_thread_streams = 1;
-        cli.multi_thread_cutoff = "1M".to_string();
+        cli.multi_thread_cutoff = Some("1M".to_string());
         assert_eq!(
             probe_cli_shared_download(cli, ProviderType::WebDav).await,
             (1, 1, 0)
@@ -75528,7 +75988,7 @@ mod tests {
     async fn cli_shared_download_four_streams_use_four_ranges() {
         let mut cli = test_cli();
         cli.multi_thread_streams = 4;
-        cli.multi_thread_cutoff = "1M".to_string();
+        cli.multi_thread_cutoff = Some("1M".to_string());
         assert_eq!(
             probe_cli_shared_download(cli, ProviderType::WebDav).await,
             (4, 0, 4)
@@ -75539,9 +75999,54 @@ mod tests {
     async fn cli_shared_download_below_cutoff_uses_canonical_download() {
         let mut cli = test_cli();
         cli.multi_thread_streams = 4;
-        cli.multi_thread_cutoff = "32M".to_string();
+        cli.multi_thread_cutoff = Some("32M".to_string());
         assert_eq!(
             probe_cli_shared_download(cli, ProviderType::WebDav).await,
+            (4, 1, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_provider_floor_raises_batch_gate() {
+        // R21/G6, real values: S3 floor 1 MiB, explicit cutoff 500K. A 4 MiB
+        // file clears max(500K, 1 MiB) and splits into 1 MiB windows; a 900K
+        // file stays whole. With the explicit cutoff winning over the engine
+        // floor (G2), the 4 MiB case segments even below 8 MiB.
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 4;
+        cli.multi_thread_cutoff = Some("500K".to_string());
+        assert_eq!(
+            probe_cli_shared_download_options(cli, ProviderType::S3, 1024 * 1024, 4 * 1024 * 1024)
+                .await,
+            (4, 0, 4)
+        );
+
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 4;
+        cli.multi_thread_cutoff = Some("500K".to_string());
+        assert_eq!(
+            probe_cli_shared_download_options(cli, ProviderType::S3, 1024 * 1024, 900 * 1024).await,
+            (4, 1, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_shared_download_explicit_cutoff_beats_engine_floor() {
+        // G2: an explicit cutoff below the measured 8 MiB engine floor is
+        // honored on a floorless provider (WebDAV): a 4 MiB file with
+        // cutoff 1M splits into 1 MiB windows. The default (250M) does not.
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 4;
+        cli.multi_thread_cutoff = Some("1M".to_string());
+        assert_eq!(
+            probe_cli_shared_download_options(cli, ProviderType::WebDav, 0, 4 * 1024 * 1024).await,
+            (4, 0, 4)
+        );
+
+        let mut cli = test_cli();
+        cli.multi_thread_streams = 4;
+        assert_eq!(
+            probe_cli_shared_download_options(cli, ProviderType::WebDav, 0, 4 * 1024 * 1024).await,
             (4, 1, 0)
         );
     }
@@ -75551,7 +76056,7 @@ mod tests {
         let mut cli = test_cli();
         cli.multi_thread_streams = 1;
         cli.sftp_concurrency = 4;
-        cli.multi_thread_cutoff = "1M".to_string();
+        cli.multi_thread_cutoff = Some("1M".to_string());
         assert_eq!(
             probe_cli_shared_download(cli, ProviderType::Sftp).await,
             (4, 0, 4)
@@ -75562,7 +76067,7 @@ mod tests {
     async fn cli_shared_download_sftp_preset_and_explicit_concurrency_keep_precedence() {
         let mut cli = test_cli();
         cli.multi_thread_streams = 8;
-        cli.multi_thread_cutoff = "1M".to_string();
+        cli.multi_thread_cutoff = Some("1M".to_string());
         cli.sftp_download_preset = Some(SftpDownloadPreset::Compatibility);
         assert_eq!(
             probe_cli_shared_download(cli, ProviderType::Sftp).await,
@@ -75571,7 +76076,7 @@ mod tests {
 
         let mut cli = test_cli();
         cli.multi_thread_streams = 1;
-        cli.multi_thread_cutoff = "1M".to_string();
+        cli.multi_thread_cutoff = Some("1M".to_string());
         cli.sftp_download_preset = Some(SftpDownloadPreset::Efficient);
         cli.sftp_concurrency = 4;
         // The explicit connection count wins, but the preset's 250 MiB
@@ -75595,7 +76100,7 @@ mod tests {
         ] {
             let mut cli = test_cli();
             cli.multi_thread_streams = 1;
-            cli.multi_thread_cutoff = "1M".to_string();
+            cli.multi_thread_cutoff = Some("1M".to_string());
             assert_eq!(
                 probe_cli_shared_download(cli, kind).await,
                 (1, 1, 0),
@@ -75605,7 +76110,7 @@ mod tests {
             let mut cli = test_cli();
             cli.multi_thread_streams = 3;
             // Equality must admit ranges; below-cutoff is tested separately.
-            cli.multi_thread_cutoff = "16M".to_string();
+            cli.multi_thread_cutoff = Some("16M".to_string());
             assert_eq!(
                 probe_cli_shared_download(cli, kind).await,
                 (3, 0, 3),
@@ -75624,7 +76129,7 @@ mod tests {
         ] {
             let mut cli = test_cli();
             cli.multi_thread_streams = 3;
-            cli.multi_thread_cutoff = "1M".to_string();
+            cli.multi_thread_cutoff = Some("1M".to_string());
             assert_eq!(
                 probe_cli_shared_download(cli, kind).await,
                 (3, 1, 0),

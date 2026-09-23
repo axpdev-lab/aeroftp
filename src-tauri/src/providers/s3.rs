@@ -871,6 +871,10 @@ impl S3Provider {
     /// Default cutoff above which multi-thread download engages (250 MiB).
     /// Mirrors rclone's `--multi-thread-cutoff` default.
     pub const MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
+    /// Lower bound `set_multi_thread_download` enforces on the cutoff, also
+    /// exposed through `multi_thread_cutoff_floor` so the batch executor
+    /// applies the same bound as the single-file path.
+    pub const MULTI_THREAD_CUTOFF_FLOOR: u64 = 1024 * 1024;
 
     /// Returns the current UTC time adjusted for any detected clock skew.
     fn now_adjusted(&self) -> DateTime<Utc> {
@@ -3410,9 +3414,10 @@ impl S3Provider {
         validator: String,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let streams = self
-            .multi_thread_streams
-            .clamp(2, Self::MULTI_THREAD_MAX_STREAMS);
+        // R21: window count from the shared planner via the provider gate
+        // method (the caller's gate already ran it and got >= 2); never below
+        // 2 on this path.
+        let streams = self.planned_download_segments(total_size).max(2);
         let ranges = crate::providers::multi_thread::plan_multi_thread_ranges(
             total_size,
             streams,
@@ -4357,50 +4362,57 @@ impl StorageProvider for S3Provider {
                         .and_then(|v| v.to_str().ok())
                         .map(|s| !s.eq_ignore_ascii_case("none"))
                         .unwrap_or(true);
-                    if size >= self.multi_thread_cutoff && accepts_ranges {
-                        if let Some(etag) = validator {
-                            let (attempt_progress, fallback_progress) =
-                                super::multi_thread::share_progress(on_progress);
-                            match self
-                                .download_multi_thread(
-                                    key,
-                                    local_path,
-                                    size,
-                                    etag,
-                                    attempt_progress,
-                                )
-                                .await
-                            {
-                                Ok(()) => return Ok(()),
-                                Err(e @ ProviderError::ParallelRefused(_)) => {
-                                    // Refused, not failed: the object moved
-                                    // while the windows were reading it, and a
-                                    // single stream reads one consistent view,
-                                    // reporting through the half of the
-                                    // progress callback that stayed here.
-                                    warn!("S3: {}; downloading on a single stream", e);
-                                    // A copy with the parallel path off, rather
-                                    // than a size hint that lies about the
-                                    // object: the clone shares the HTTP client
-                                    // and the credentials.
-                                    let mut single = self.clone();
-                                    single.multi_thread_streams = 1;
-                                    return single
-                                        .download_with_size_hint(
-                                            remote_path,
-                                            local_path,
-                                            size_hint,
-                                            fallback_progress,
-                                        )
-                                        .await;
+                    if accepts_ranges {
+                        // R21: the provider gate method (shared planner:
+                        // explicit cutoff + provider floor, 16 clamp, 1 MiB
+                        // minimum window) decides, so the single-file path
+                        // agrees with batch and pget.
+                        let planned = self.planned_download_segments(size);
+                        if planned >= 2 {
+                            if let Some(etag) = validator {
+                                let (attempt_progress, fallback_progress) =
+                                    super::multi_thread::share_progress(on_progress);
+                                match self
+                                    .download_multi_thread(
+                                        key,
+                                        local_path,
+                                        size,
+                                        etag,
+                                        attempt_progress,
+                                    )
+                                    .await
+                                {
+                                    Ok(()) => return Ok(()),
+                                    Err(e @ ProviderError::ParallelRefused(_)) => {
+                                        // Refused, not failed: the object moved
+                                        // while the windows were reading it, and a
+                                        // single stream reads one consistent view,
+                                        // reporting through the half of the
+                                        // progress callback that stayed here.
+                                        warn!("S3: {}; downloading on a single stream", e);
+                                        // A copy with the parallel path off, rather
+                                        // than a size hint that lies about the
+                                        // object: the clone shares the HTTP client
+                                        // and the credentials.
+                                        let mut single = self.clone();
+                                        single.multi_thread_streams = 1;
+                                        return single
+                                            .download_with_size_hint(
+                                                remote_path,
+                                                local_path,
+                                                size_hint,
+                                                fallback_progress,
+                                            )
+                                            .await;
+                                    }
+                                    Err(e) => return Err(e),
                                 }
-                                Err(e) => return Err(e),
                             }
-                        }
-                        warn!(
+                            warn!(
                             "S3 multi-thread download disabled: no strong ETag on the HEAD of {}, so ranges cannot be pinned to one version",
                             key
                         );
+                        }
                     }
                     if !accepts_ranges {
                         warn!(
@@ -5752,9 +5764,23 @@ impl StorageProvider for S3Provider {
         // cap rarely improve throughput and waste sockets. A cutoff of 0 would
         // engage multi-thread on every file regardless of size, which the
         // handoff explicitly warns against (overhead on small files), so we
-        // floor the cutoff at 1 MiB.
+        // floor the cutoff at MULTI_THREAD_CUTOFF_FLOOR (1 MiB).
         self.multi_thread_streams = streams.clamp(1, Self::MULTI_THREAD_MAX_STREAMS);
-        self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
+        self.multi_thread_cutoff = cutoff_bytes.max(Self::MULTI_THREAD_CUTOFF_FLOOR);
+    }
+
+    fn multi_thread_cutoff_floor(&self) -> u64 {
+        Self::MULTI_THREAD_CUTOFF_FLOOR
+    }
+
+    fn planned_download_segments(&self, file_size: u64) -> usize {
+        crate::provider_transfer_executor::plan_segment_count(
+            file_size,
+            self.multi_thread_streams,
+            Self::MULTI_THREAD_MAX_STREAMS,
+            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
+            Self::MULTI_THREAD_CUTOFF_FLOOR,
+        )
     }
 
     fn set_range_validator(&mut self, validator: Option<String>) {
@@ -8491,6 +8517,16 @@ mod tests {
         );
         // Cutoff floored at 1 MiB
         assert_eq!(provider.multi_thread_cutoff, 1024 * 1024);
+        // The trait floor is the same bound the setter applies, so the batch
+        // executor can mirror the single-file path.
+        assert_eq!(
+            provider.multi_thread_cutoff_floor(),
+            S3Provider::MULTI_THREAD_CUTOFF_FLOOR
+        );
+        assert_eq!(
+            provider.multi_thread_cutoff,
+            provider.multi_thread_cutoff_floor()
+        );
 
         // Below floor → clamped up to 1 (disabled)
         provider.set_multi_thread_download(0, 50 * 1024 * 1024);
@@ -9536,7 +9572,8 @@ mod tests {
         // stream. The header is the size.
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
-        const SIZE: usize = 2 * 1024 * 1024;
+        // 4 MiB: the shared planner's 1 MiB minimum window keeps 4 streams.
+        const SIZE: usize = 4 * 1024 * 1024;
         let body: Arc<Vec<u8>> = Arc::new((0..SIZE).map(|i| (i % 251) as u8).collect());
         let ranged = Arc::new(AtomicUsize::new(0));
         let (served, hits) = (Arc::clone(&body), Arc::clone(&ranged));

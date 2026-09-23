@@ -1303,8 +1303,21 @@ pub(crate) async fn try_http_concurrent_range_download(
     if req.streams < 2 || req.max_streams == 0 {
         return HttpRangeAttempt::Fallback(on_progress);
     }
-    if size_hint_rules_out_ranges(req.known_size, req.cutoff) {
-        return HttpRangeAttempt::Fallback(on_progress);
+    // R21: the shared planner decides; a known size that cannot yield two
+    // honest windows skips the probe entirely (no round trip spent on a
+    // decision already made). Both callers (WebDAV, Koofr) have no provider
+    // cutoff floor.
+    if let Some(size) = req.known_size {
+        if crate::provider_transfer_executor::plan_segment_count(
+            size,
+            req.streams,
+            req.max_streams,
+            crate::provider_transfer_executor::SegmentCutoff::Explicit(req.cutoff),
+            0,
+        ) < 2
+        {
+            return HttpRangeAttempt::Fallback(on_progress);
+        }
     }
 
     let retry_cfg = HttpRetryConfig::default();
@@ -1383,14 +1396,24 @@ pub(crate) async fn try_http_concurrent_range_download(
         .and_then(parse_content_range)
         .and_then(|(_, _, total)| total)
     {
-        Some(t) if t > 0 && t >= req.cutoff => t,
-        // Unknown length or below cutoff: not worth (or not safe to plan)
-        // a concurrent split.
+        Some(t) if t > 0 => t,
+        // Unknown length: not safe to plan a concurrent split.
         _ => return HttpRangeAttempt::Fallback(on_progress),
     };
+    // R21: same planner as the batch and pget paths: explicit cutoff, 16
+    // clamp, every window at least 1 MiB, fewer than 2 windows falls back.
+    let planned = crate::provider_transfer_executor::plan_segment_count(
+        total,
+        req.streams,
+        req.max_streams,
+        crate::provider_transfer_executor::SegmentCutoff::Explicit(req.cutoff),
+        0,
+    );
+    if planned < 2 {
+        return HttpRangeAttempt::Fallback(on_progress);
+    }
 
     // --- Concurrent path (server proved 206 honesty) ---------------------
-    let parallel = req.streams.clamp(1, req.max_streams);
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(&req.local_path),
         provider_type: req.provider_type,
@@ -1409,9 +1432,9 @@ pub(crate) async fn try_http_concurrent_range_download(
                 )
             }),
         total_size: total,
-        streams: req.streams,
+        streams: planned,
         max_streams: req.max_streams,
-        max_parallel: parallel,
+        max_parallel: planned,
     };
 
     let client = req.client.clone();
@@ -3076,7 +3099,8 @@ mod tests {
 
     async fn http_range_without_validators(replace: bool) {
         use std::sync::atomic::AtomicUsize;
-        const SIZE: u64 = 2 * 1024 * 1024;
+        // 4 MiB: the shared planner's 1 MiB minimum window keeps 4 streams.
+        const SIZE: u64 = 4 * 1024 * 1024;
         let windows = Arc::new(AtomicUsize::new(0));
         let count = Arc::clone(&windows);
         let app =

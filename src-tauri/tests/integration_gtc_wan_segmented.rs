@@ -38,7 +38,7 @@ use ftp_client_gui_lib::cross_profile_transfer::{
     copy_one_file, copy_one_file_with_options, CrossProfileCopyOptions,
 };
 use ftp_client_gui_lib::provider_transfer_executor::{
-    provider_segmented_download_eligible, run_provider_segmented_download,
+    provider_segmented_download_eligible, run_provider_segmented_download, SegmentCutoff,
 };
 use ftp_client_gui_lib::providers::ftp::FtpProvider;
 use ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for;
@@ -325,8 +325,14 @@ async fn gtc_gui_sftp_segmented_byte_identical_vs_single_stream() {
     );
 
     // ---- segmented (GUI helper) - the new GTC-1/2 path --------------
-    let segments = provider_segmented_download_eligible(&base, FILE_BYTES as u64, 4, 8)
-        .expect("eligibility probe must return Some(N) for SFTP@axpbuntu w/ N=4 req");
+    let segments = provider_segmented_download_eligible(
+        &base,
+        FILE_BYTES as u64,
+        4,
+        8,
+        SegmentCutoff::Default,
+    )
+    .expect("eligibility probe must return Some(N) for SFTP@axpbuntu w/ N=4 req");
     assert_eq!(
         segments, 4,
         "64 MiB / 4 segments = 16 MiB chunks (> 8 MiB anti-frag floor)",
@@ -491,8 +497,14 @@ async fn gtc_gui_sftp_segmented_cancel_leaves_no_aerotmp() {
     let dst = dst_root.join("cancelled.bin");
     let tmp = aerotmp_path_for(&dst);
 
-    let segments = provider_segmented_download_eligible(&base, FILE_BYTES as u64, 4, 8)
-        .expect("eligibility for cancel test");
+    let segments = provider_segmented_download_eligible(
+        &base,
+        FILE_BYTES as u64,
+        4,
+        8,
+        SegmentCutoff::Default,
+    )
+    .expect("eligibility for cancel test");
 
     // Pre-cancelled token: the engine checks `cancel.is_cancelled()` at
     // the top of every per-window inner-read loop, so a pre-cancelled
@@ -570,7 +582,8 @@ async fn gtc_eligibility_gate_blocks_below_floor_locally() {
         "unconnected SFTP must NOT advertise pool kind",
     );
     assert!(
-        provider_segmented_download_eligible(&base, 4 * 1024 * 1024, 4, 8).is_none(),
+        provider_segmented_download_eligible(&base, 4 * 1024 * 1024, 4, 8, SegmentCutoff::Default)
+            .is_none(),
         "unconnected SFTP must NOT be eligible",
     );
 
@@ -677,8 +690,14 @@ async fn gtc_gui_ftp_segmented_byte_identical_vs_single_stream() {
         "FTP single-stream sha mismatch"
     );
 
-    let segments = provider_segmented_download_eligible(&base, FILE_BYTES as u64, 4, 8)
-        .expect("eligibility probe must succeed for FTP@axpbuntu");
+    let segments = provider_segmented_download_eligible(
+        &base,
+        FILE_BYTES as u64,
+        4,
+        8,
+        SegmentCutoff::Default,
+    )
+    .expect("eligibility probe must succeed for FTP@axpbuntu");
     assert_eq!(segments, 4, "FTP 64MiB / 4 = 16MiB > 8MiB floor");
 
     let dst4 = dst_root.join("seg4.bin");
@@ -982,8 +1001,14 @@ async fn gtc_gui_s3_segmented_byte_identical_vs_single_stream() {
     let e1 = t1.elapsed();
     assert_eq!(sha256_file(&dst1), src_sha, "S3 single-stream sha mismatch");
 
-    let segments = provider_segmented_download_eligible(&base, FILE_BYTES as u64, 4, 8)
-        .expect("eligibility probe must succeed for S3@axpbuntu");
+    let segments = provider_segmented_download_eligible(
+        &base,
+        FILE_BYTES as u64,
+        4,
+        8,
+        SegmentCutoff::Default,
+    )
+    .expect("eligibility probe must succeed for S3@axpbuntu");
     assert_eq!(segments, 4, "S3 64MiB / 4 = 16MiB > 8MiB floor");
 
     let dst4 = dst_root.join("seg4.bin");

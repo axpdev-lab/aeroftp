@@ -78,6 +78,10 @@ const MULTI_THREAD_MAX_STREAMS: usize = 8;
 /// Mirrors rclone's 250 MiB practical default: the per-range round-trip and
 /// pre-allocation overhead only pays off on large objects.
 const MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
+/// Lower bound `set_multi_thread_download` enforces on the cutoff, also
+/// exposed through `multi_thread_cutoff_floor` so the batch executor
+/// applies the same bound as the single-file path.
+const MULTI_THREAD_CUTOFF_FLOOR: u64 = 1024 * 1024;
 /// Per-call window read inside one range worker. Bounds transient RAM and
 /// keeps progress aggregation smooth without thrashing the allocator.
 const MULTI_THREAD_SUB_READ_SIZE: u64 = 8 * 1024 * 1024;
@@ -2518,24 +2522,31 @@ impl StorageProvider for B2Provider {
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
             match self.size(remote_path).await {
-                Ok(size) if size >= self.multi_thread_cutoff => {
-                    let (attempt_progress, fallback_progress) =
-                        super::multi_thread::share_progress(progress);
-                    match self
-                        .parallel_download_if_unchanged(
-                            remote_path,
-                            local_path,
-                            size,
-                            self.multi_thread_streams,
-                            attempt_progress,
-                        )
-                        .await
-                    {
-                        Ok(true) => return Ok(()),
-                        // Refused, not failed: the single-stream path below
-                        // keeps reporting through the half that stayed here.
-                        Ok(false) => fallback_progress,
-                        Err(e) => return Err(e),
+                Ok(size) => {
+                    // R21: the provider gate method (shared planner) decides,
+                    // so the single-file path agrees with batch/pget.
+                    let planned = self.planned_download_segments(size);
+                    if planned < 2 {
+                        progress
+                    } else {
+                        let (attempt_progress, fallback_progress) =
+                            super::multi_thread::share_progress(progress);
+                        match self
+                            .parallel_download_if_unchanged(
+                                remote_path,
+                                local_path,
+                                size,
+                                planned,
+                                attempt_progress,
+                            )
+                            .await
+                        {
+                            Ok(true) => return Ok(()),
+                            // Refused, not failed: the single-stream path below
+                            // keeps reporting through the half that stayed here.
+                            Ok(false) => fallback_progress,
+                            Err(e) => return Err(e),
+                        }
                     }
                 }
                 _ => progress,
@@ -3499,7 +3510,21 @@ impl StorageProvider for B2Provider {
         // sockets without improving throughput. Floor the cutoff at 1 MiB so a
         // `0` never engages multi-thread on every file (overhead on small ones).
         self.multi_thread_streams = streams.clamp(1, MULTI_THREAD_MAX_STREAMS);
-        self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
+        self.multi_thread_cutoff = cutoff_bytes.max(MULTI_THREAD_CUTOFF_FLOOR);
+    }
+
+    fn multi_thread_cutoff_floor(&self) -> u64 {
+        MULTI_THREAD_CUTOFF_FLOOR
+    }
+
+    fn planned_download_segments(&self, file_size: u64) -> usize {
+        crate::provider_transfer_executor::plan_segment_count(
+            file_size,
+            self.multi_thread_streams,
+            MULTI_THREAD_MAX_STREAMS,
+            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
+            MULTI_THREAD_CUTOFF_FLOOR,
+        )
     }
 
     async fn read_range(
@@ -4632,6 +4657,10 @@ mod tests {
         assert_eq!(p.multi_thread_streams, MULTI_THREAD_MAX_STREAMS);
         // A zero cutoff is floored to 1 MiB (never engage on tiny files).
         assert_eq!(p.multi_thread_cutoff, 1024 * 1024);
+        // The trait floor is the same bound the setter applies, so the batch
+        // executor can mirror the single-file path.
+        assert_eq!(p.multi_thread_cutoff_floor(), MULTI_THREAD_CUTOFF_FLOOR);
+        assert_eq!(p.multi_thread_cutoff, p.multi_thread_cutoff_floor());
 
         // Zero streams collapse to the disabled state; cutoff is honoured.
         p.set_multi_thread_download(0, 50 * 1024 * 1024);

@@ -87,12 +87,16 @@ use crate::transfer_settings::{
 /// Minimum file size before intra-file range parallelism kicks in
 /// (GTC-1). Below this, the per-stream overhead dominates the WAN gain
 /// — see `2026-05-19_baseline-run-report.md` honest read.
+///
+/// This is the DEFAULT threshold only: a measured default, not a safety
+/// invariant. An explicit user cutoff (`SegmentCutoff::Explicit`) replaces
+/// it; the per-window minimum below stays in force either way.
 const SEGMENTED_DOWNLOAD_FILE_FLOOR: u64 = 8 * 1024 * 1024;
 
-/// Minimum chunk size per segment. Mirrors `PGET_MIN_CHUNK_SIZE` in
-/// `bin/aeroftp_cli.rs`: never split below 1 MiB to avoid pathological
-/// fragmentation. Final segment count is reduced until each window
-/// meets this floor.
+/// Minimum chunk size per segment. Shared by every segmented-download path
+/// through `plan_segment_count` (pget included): never split below 1 MiB to
+/// avoid pathological fragmentation. Final segment count is reduced until
+/// each window meets this floor.
 const SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE: u64 = 1024 * 1024;
 
 /// Maximum bytes per `read_range` sub-call inside a window worker.
@@ -129,7 +133,7 @@ const SEGMENTED_DOWNLOAD_SUB_READ_SIZE: u64 = 64 * 1024 * 1024;
 /// when the division falls under it, so the aggregate stays inside the budget
 /// only while `segments * MIN_CHUNK_SIZE` still fits, that is up to 128
 /// segments. Past that the floor wins and the peak grows with the count again.
-/// The count is clamped to 16 in `provider_segmented_effective_count`, eight
+/// The count is clamped to 16 in `plan_segment_count`, eight
 /// times clear of that edge, so today the ceiling is real. It stops being real
 /// if that clamp is raised or if `max_workers` is allowed to exceed it, and
 /// that constant lives in another function, which is why the dependency is
@@ -153,7 +157,13 @@ pub fn segmented_sub_read_size(segments: usize, window_len: u64) -> u64 {
 ///
 /// Zero when the file is not segmented at all.
 pub fn segmented_planned_peak_bytes(file_size: u64, requested: u32, max_workers: usize) -> u64 {
-    let segments = provider_segmented_effective_count(file_size, requested).min(max_workers.max(1));
+    let segments = plan_segment_count(
+        file_size,
+        requested as usize,
+        max_workers,
+        SegmentCutoff::Default,
+        0,
+    );
     if segments < 2 {
         return 0;
     }
@@ -172,25 +182,59 @@ pub fn segmented_planned_peak_bytes(file_size: u64, requested: u32, max_workers:
     peak
 }
 
-/// Effective segment count after the anti-fragmentation rule
-/// (`SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE`). Mirrors `pget_effective_segments`
-/// in `bin/aeroftp_cli.rs`. Returns 0 to signal "do not segment".
+/// Where the segmented-download size threshold comes from.
 ///
-/// This is the single source of truth shared by the GUI executor
-/// (`ProviderDownloadExecutor`) and the GUI single-file path
-/// (`provider_download_file`) so the same anti-fragmentation policy
-/// holds across both surfaces.
-pub fn provider_segmented_effective_count(file_size: u64, requested: u32) -> usize {
-    if file_size < SEGMENTED_DOWNLOAD_FILE_FLOOR || requested <= 1 {
+/// The same question ("segment this file, and into how many windows?") gets
+/// one answer everywhere through [`plan_segment_count`]; this type is how the
+/// caller states the threshold half of that answer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SegmentCutoff {
+    /// No user-provided cutoff (GUI, sync, cross-profile, an executor built
+    /// without `with_download_cutoff`): the measured 8 MiB engine floor
+    /// (GTC-1) decides, exactly as before.
+    Default,
+    /// A cutoff the user explicitly asked for (CLI flag or environment
+    /// variable). It wins over the 8 MiB engine floor; the provider's own
+    /// floor still applies, and the 1 MiB minimum window keeps files under
+    /// 2 MiB on a single stream regardless.
+    Explicit(u64),
+}
+
+impl SegmentCutoff {
+    /// Effective size threshold after folding in the provider floor.
+    pub fn threshold(self, provider_floor: u64) -> u64 {
+        match self {
+            SegmentCutoff::Default => SEGMENTED_DOWNLOAD_FILE_FLOOR.max(provider_floor),
+            SegmentCutoff::Explicit(cutoff) => cutoff.max(provider_floor),
+        }
+    }
+}
+
+/// The single window planner for every segmented-download path (single
+/// file, batch, `pget`, memory budget): clamp to 16, every window at least
+/// 1 MiB (`SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE`), `0` = do not segment.
+///
+/// `max_streams` is the per-path hard cap (provider maximum, pool leases,
+/// pget's 16). The aggregate memory budget documented on
+/// `SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET` depends on the 16 clamp living
+/// here and nowhere else.
+pub fn plan_segment_count(
+    file_size: u64,
+    requested_streams: usize,
+    max_streams: usize,
+    cutoff: SegmentCutoff,
+    provider_floor: u64,
+) -> usize {
+    if requested_streams <= 1 || max_streams == 0 || file_size < cutoff.threshold(provider_floor) {
         return 0;
     }
-    let segments = (requested as u64).clamp(1, 16);
-    let chunk = file_size / segments;
-    let bounded = if chunk < SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE {
-        (file_size / SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE).max(1)
+    let segments = (requested_streams as u64).clamp(1, 16);
+    let bounded = if file_size / segments < SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE {
+        file_size / SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE
     } else {
         segments
     };
+    let bounded = bounded.min(max_streams as u64);
     if bounded <= 1 {
         0
     } else {
@@ -228,11 +272,14 @@ fn segmented_runtime_request(
 /// when the caller must use a single-stream download. The capability
 /// flags this gates on are the same PD-CLI-CONV-E / PD-SFTP-1 /
 /// PD-FTP-1 flips: real session pool kind + strict concurrent range.
+/// The size threshold and the window count both come from
+/// [`plan_segment_count`] applied to `cutoff` and the provider floor.
 pub fn provider_segmented_download_eligible(
     primary: &dyn StorageProvider,
     file_size: u64,
     requested_segments: u32,
     max_workers: usize,
+    cutoff: SegmentCutoff,
 ) -> Option<usize> {
     // Capability gate 1: must be a real clone-backed session pool.
     if !matches!(
@@ -264,11 +311,13 @@ pub fn provider_segmented_download_eligible(
         return None;
     }
 
-    let segments = provider_segmented_effective_count(file_size, requested_segments);
-    if segments < 2 {
-        return None;
-    }
-    let segments = segments.min(max_workers.max(1));
+    let segments = plan_segment_count(
+        file_size,
+        requested_segments as usize,
+        max_workers,
+        cutoff,
+        primary.multi_thread_cutoff_floor(),
+    );
     if segments < 2 {
         None
     } else {
@@ -282,8 +331,9 @@ pub fn provider_segmented_download_eligible(
 /// for any retry/fallback envelope: this function returns `Ok(())` on
 /// success and `Err(_)` on hard failure (no implicit fallback).
 ///
-/// On entry: `segments >= 2`, `file_size >= SEGMENTED_DOWNLOAD_FILE_FLOOR`,
-/// and `primary.clone_for_transfer()` is honestly supported.
+/// On entry: `segments >= 2`, `file_size` at/above the threshold the caller's
+/// `SegmentCutoff` produced in [`provider_segmented_download_eligible`], and
+/// `primary.clone_for_transfer()` is honestly supported.
 ///
 /// On exit: `local_path` is renamed atomically from its `.aerotmp`
 /// sibling on success; on any error the engine's `TempFileGuard`
@@ -877,7 +927,7 @@ pub struct ProviderDownloadExecutor {
     /// Runtime capability snapshot used by the batch DAG builder (DAG-P1-01).
     capabilities: TransferCapabilities,
     /// Caller-specific fan-out threshold, in addition to the shared size floor.
-    download_cutoff: u64,
+    download_cutoff: SegmentCutoff,
     /// Whole-file attempts per entry id (DAG-P2-07 retry telemetry).
     attempt_counts: AttemptCounts,
     /// Warm-connection reuse pool (PD-FTP-2). Clone-pool workers that finished
@@ -906,15 +956,19 @@ impl ProviderDownloadExecutor {
             cancel_token,
             capabilities: finalize_capabilities_for_session_model(&capabilities, &session_model),
             session_model,
-            download_cutoff: 0,
+            download_cutoff: SegmentCutoff::Default,
             attempt_counts: AttemptCounts::default(),
             warm_workers: WarmWorkerPool::default(),
         }
     }
 
-    /// Apply a caller's minimum file size for segmented downloads. The default
-    /// leaves existing callers on the shared eligibility/anti-fragmentation gate.
-    pub fn with_download_cutoff(mut self, cutoff: u64) -> Self {
+    /// Apply a caller's segmented-download cutoff. The default
+    /// (`SegmentCutoff::Default`) leaves existing callers on the measured
+    /// 8 MiB engine floor; `SegmentCutoff::Explicit` lets a user's cutoff
+    /// replace it. At execution time the threshold is raised to the
+    /// provider's `multi_thread_cutoff_floor`, matching the single-file
+    /// setter, and the window count comes from `plan_segment_count`.
+    pub fn with_download_cutoff(mut self, cutoff: SegmentCutoff) -> Self {
         self.download_cutoff = cutoff;
         self
     }
@@ -1164,7 +1218,15 @@ impl ProviderDownloadExecutor {
         dl_start: std::time::Instant,
         file_size: u64,
     ) -> Option<Result<(), String>> {
-        if file_size < self.download_cutoff {
+        // R21: the threshold folds the caller's cutoff (explicit, or the
+        // measured 8 MiB default) with the provider's own floor, so the batch
+        // path applies the same bound as the single-file
+        // `set_multi_thread_download` setter.
+        if file_size
+            < self
+                .download_cutoff
+                .threshold(primary.multi_thread_cutoff_floor())
+        {
             return None;
         }
 
@@ -1180,6 +1242,7 @@ impl ProviderDownloadExecutor {
             file_size,
             requested_segments,
             max_segments,
+            self.download_cutoff,
         )?;
 
         // Progress bridge to the executor's TransferEventSink, same
@@ -2107,7 +2170,8 @@ mod tests {
         const EDGE_SEGMENTS: u64 =
             SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET / SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE;
         const DECLARED_MARGIN: u64 = 8;
-        let clamped = provider_segmented_effective_count(4 * 1024 * 1024 * 1024, 64) as u64;
+        let clamped =
+            plan_segment_count(4 * 1024 * 1024 * 1024, 64, 16, SegmentCutoff::Default, 0) as u64;
         assert!(
             clamped * DECLARED_MARGIN <= EDGE_SEGMENTS,
             "the segment count is no longer {DECLARED_MARGIN} times clear of the edge: \
@@ -2127,14 +2191,14 @@ mod tests {
     fn effective_segments_below_file_floor_returns_zero() {
         // 4 MiB file with 4 segments requested: below the 8 MiB floor,
         // segmented path must be skipped.
-        let n = provider_segmented_effective_count(4 * 1024 * 1024, 4);
+        let n = plan_segment_count(4 * 1024 * 1024, 4, 16, SegmentCutoff::Default, 0);
         assert_eq!(n, 0);
     }
 
     #[test]
     fn effective_segments_single_request_returns_zero() {
         // Even a large file with `segments == 1` is just single-stream.
-        let n = provider_segmented_effective_count(64 * 1024 * 1024, 1);
+        let n = plan_segment_count(64 * 1024 * 1024, 1, 16, SegmentCutoff::Default, 0);
         assert_eq!(n, 0);
     }
 
@@ -2142,7 +2206,7 @@ mod tests {
     fn effective_segments_full_file_above_floor_returns_request() {
         // 64 MiB / 4 = 16 MiB per chunk, well above the 1 MiB
         // anti-fragmentation floor.
-        let n = provider_segmented_effective_count(64 * 1024 * 1024, 4);
+        let n = plan_segment_count(64 * 1024 * 1024, 4, 16, SegmentCutoff::Default, 0);
         assert_eq!(n, 4);
     }
 
@@ -2151,7 +2215,7 @@ mod tests {
         // The executor itself clamps to 16 inside `effective_segments`
         // (`download_segments` is also clamped at resolve time, but the
         // helper must stay defensive).
-        let n = provider_segmented_effective_count(1024 * 1024 * 1024, 64);
+        let n = plan_segment_count(1024 * 1024 * 1024, 64, 16, SegmentCutoff::Default, 0);
         assert_eq!(n, 16);
     }
 
@@ -2160,7 +2224,7 @@ mod tests {
         // 9 MiB / 16 segments would mean ~576 KiB per chunk, below the
         // 1 MiB minimum. The helper must reduce the count so each chunk
         // is at least 1 MiB.
-        let n = provider_segmented_effective_count(9 * 1024 * 1024, 16);
+        let n = plan_segment_count(9 * 1024 * 1024, 16, 16, SegmentCutoff::Default, 0);
         // 9 MiB / 1 MiB = 9 → cap at 9.
         assert_eq!(n, 9);
     }

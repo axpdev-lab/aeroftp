@@ -1802,6 +1802,19 @@ impl StorageProvider for KoofrProvider {
         self.multi_thread_streams = streams.clamp(1, KOOFR_MULTI_THREAD_MAX_STREAMS);
         self.multi_thread_cutoff = cutoff_bytes;
     }
+
+    fn planned_download_segments(&self, file_size: u64) -> usize {
+        // No provider floor: the explicit cutoff applies as-is. The live
+        // single-file gate runs inside the shared HTTP helper with the same
+        // planner inputs.
+        crate::provider_transfer_executor::plan_segment_count(
+            file_size,
+            self.multi_thread_streams,
+            KOOFR_MULTI_THREAD_MAX_STREAMS,
+            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
+            0,
+        )
+    }
 }
 
 // ─── Koofr-specific operations (exposed via Tauri commands) ───
@@ -1950,6 +1963,20 @@ pub async fn koofr_empty_trash(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn multi_thread_cutoff_has_no_provider_floor() {
+        // R21: Koofr honors the caller's cutoff as-is (no 1 MiB floor), so
+        // `--multi-thread-cutoff 500K` works again like before #905.
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "user@example.com".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+        });
+        assert_eq!(provider.multi_thread_cutoff_floor(), 0);
+        provider.set_multi_thread_download(4, 500 * 1024);
+        assert_eq!(provider.multi_thread_cutoff, 500 * 1024);
+    }
 
     #[test]
     fn test_normalize_path() {

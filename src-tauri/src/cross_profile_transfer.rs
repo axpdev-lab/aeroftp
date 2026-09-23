@@ -203,6 +203,7 @@ async fn download_source_to_temp(
                     source_size,
                     resolved.count(),
                     resolved.count() as usize,
+                    crate::provider_transfer_executor::SegmentCutoff::Default,
                 )
             {
                 tracing::info!(
