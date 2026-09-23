@@ -75664,31 +75664,77 @@ mod tests {
 
     // ── R21 follow-up: one window planner for single file, batch and pget ──
 
-    /// Single-file column: what the provider gates now compute
-    /// (`plan_segment_count` with the explicit cutoff and the provider floor,
-    /// the setter having already folded that floor into the stored cutoff).
-    fn single_file_segments(size: u64, streams: usize, cutoff: u64, floor: u64) -> usize {
-        ftp_client_gui_lib::provider_transfer_executor::plan_segment_count(
-            size,
-            streams,
-            16,
-            ftp_client_gui_lib::provider_transfer_executor::SegmentCutoff::Explicit(cutoff),
-            floor,
-        )
-        .max(1)
+    /// Single-file column, through the real provider gate: a live
+    /// `WebDavProvider` (floorless) or `S3Provider` (1 MiB floor) tuned via
+    /// `set_multi_thread_download`, then `planned_download_segments`.
+    fn single_file_segments(size: u64, streams: usize, cutoff: u64, with_s3_floor: bool) -> usize {
+        use ftp_client_gui_lib::providers::{S3Config, WebDavConfig};
+        if with_s3_floor {
+            let mut provider = ftp_client_gui_lib::providers::s3::S3Provider::new(S3Config {
+                endpoint: Some("http://localhost:9000".to_string()),
+                region: "us-east-1".to_string(),
+                access_key_id: "x".to_string(),
+                secret_access_key: secrecy::SecretString::from("y".to_string()),
+                session_token: None,
+                role_arn: None,
+                role_external_id: None,
+                role_session_name: None,
+                role_duration_seconds: None,
+                role_mfa_serial: None,
+                role_mfa_token_code: None,
+                bucket: "b".to_string(),
+                prefix: None,
+                path_style: true,
+                storage_class: None,
+                sse_mode: None,
+                sse_kms_key_id: None,
+                verify_cert: true,
+                allow_cleartext_endpoint: false,
+            })
+            .expect("s3 provider");
+            provider.set_multi_thread_download(streams, cutoff);
+            provider.planned_download_segments(size).max(1)
+        } else {
+            let mut provider =
+                ftp_client_gui_lib::providers::webdav::WebDavProvider::new(WebDavConfig {
+                    url: "https://example.com/dav".to_string(),
+                    username: "u".to_string(),
+                    password: secrecy::SecretString::from("p".to_string()),
+                    initial_path: None,
+                    provider_id: None,
+                    verify_cert: true,
+                    anonymous: false,
+                })
+                .expect("webdav provider");
+            provider.set_multi_thread_download(streams, cutoff);
+            provider.planned_download_segments(size).max(1)
+        }
     }
 
-    /// Batch column: the executor gate's rule (same planner, explicit cutoff,
-    /// provider floor folded by `provider_segmented_download_eligible`). The
-    /// end-to-end wiring is pinned by the `BatchDownloadProbe` tests.
-    fn batch_segments(size: u64, streams: usize, cutoff: u64, floor: u64) -> usize {
-        ftp_client_gui_lib::provider_transfer_executor::plan_segment_count(
+    /// Batch column, through the real eligibility probe the executor gate
+    /// calls, on the clone-backed `BatchDownloadProbe` with the provider floor.
+    fn batch_probe_segments(
+        size: u64,
+        streams: usize,
+        cutoff: u64,
+        kind: ProviderType,
+        floor: u64,
+    ) -> usize {
+        let probe = BatchDownloadProbe {
+            kind,
+            whole: Arc::default(),
+            ranges: Arc::default(),
+            cutoff_floor: floor,
             size,
-            streams,
+        };
+        ftp_client_gui_lib::provider_transfer_executor::provider_segmented_download_eligible(
+            &probe,
+            size,
+            streams as u32,
             16,
             ftp_client_gui_lib::provider_transfer_executor::SegmentCutoff::Explicit(cutoff),
-            floor,
         )
+        .unwrap_or(0)
         .max(1)
     }
 
@@ -75730,16 +75776,17 @@ mod tests {
             ("default", 250 * 1024 * 1024),
         ];
         let providers = [
-            ("floorless (WebDAV)", 0u64),
-            ("1 MiB floor (S3)", 1024 * 1024),
+            // (label, S3 floor on the single-file path, probe kind, floor)
+            ("floorless (WebDAV)", false, ProviderType::WebDav, 0u64),
+            ("1 MiB floor (S3)", true, ProviderType::S3, 1024 * 1024),
         ];
         let mut mismatches = Vec::new();
-        for &(provider, floor) in &providers {
+        for &(provider, with_s3_floor, kind, floor) in &providers {
             for &(cutoff_name, cutoff) in &cutoffs {
                 for &size in &sizes {
                     for &streams in &streams_set {
-                        let single = single_file_segments(size, streams, cutoff, floor);
-                        let batch = batch_segments(size, streams, cutoff, floor);
+                        let single = single_file_segments(size, streams, cutoff, with_s3_floor);
+                        let batch = batch_probe_segments(size, streams, cutoff, kind, floor);
                         let pget = pget_segments(size, streams, cutoff);
                         let expected = reference_segments(size, streams, cutoff, floor);
                         let expected_pget = reference_segments(

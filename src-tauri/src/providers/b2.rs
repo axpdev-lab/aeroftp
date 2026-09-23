@@ -2523,18 +2523,9 @@ impl StorageProvider for B2Provider {
         {
             match self.size(remote_path).await {
                 Ok(size) => {
-                    // R21: the shared planner decides (explicit cutoff +
-                    // provider floor via the setter, 16 clamp, 1 MiB minimum
-                    // window), so the single-file path agrees with batch/pget.
-                    let planned = crate::provider_transfer_executor::plan_segment_count(
-                        size,
-                        self.multi_thread_streams,
-                        MULTI_THREAD_MAX_STREAMS,
-                        crate::provider_transfer_executor::SegmentCutoff::Explicit(
-                            self.multi_thread_cutoff,
-                        ),
-                        MULTI_THREAD_CUTOFF_FLOOR,
-                    );
+                    // R21: the provider gate method (shared planner) decides,
+                    // so the single-file path agrees with batch/pget.
+                    let planned = self.planned_download_segments(size);
                     if planned < 2 {
                         progress
                     } else {
@@ -3524,6 +3515,16 @@ impl StorageProvider for B2Provider {
 
     fn multi_thread_cutoff_floor(&self) -> u64 {
         MULTI_THREAD_CUTOFF_FLOOR
+    }
+
+    fn planned_download_segments(&self, file_size: u64) -> usize {
+        crate::provider_transfer_executor::plan_segment_count(
+            file_size,
+            self.multi_thread_streams,
+            MULTI_THREAD_MAX_STREAMS,
+            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
+            MULTI_THREAD_CUTOFF_FLOOR,
+        )
     }
 
     async fn read_range(

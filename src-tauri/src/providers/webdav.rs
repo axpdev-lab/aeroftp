@@ -4676,6 +4676,19 @@ impl StorageProvider for WebDavProvider {
         self.multi_thread_cutoff = cutoff_bytes;
     }
 
+    fn planned_download_segments(&self, file_size: u64) -> usize {
+        // No provider floor: the explicit cutoff applies as-is. The live
+        // single-file gate runs inside the shared HTTP helper with the same
+        // planner inputs.
+        crate::provider_transfer_executor::plan_segment_count(
+            file_size,
+            self.multi_thread_streams,
+            WEBDAV_MULTI_THREAD_MAX_STREAMS,
+            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
+            0,
+        )
+    }
+
     async fn read_range(
         &mut self,
         path: &str,

@@ -3414,16 +3414,10 @@ impl S3Provider {
         validator: String,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        // R21: window count from the shared planner (the caller's gate already
-        // ran it and got >= 2); never below 2 on this path.
-        let streams = crate::provider_transfer_executor::plan_segment_count(
-            total_size,
-            self.multi_thread_streams,
-            Self::MULTI_THREAD_MAX_STREAMS,
-            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
-            Self::MULTI_THREAD_CUTOFF_FLOOR,
-        )
-        .max(2);
+        // R21: window count from the shared planner via the provider gate
+        // method (the caller's gate already ran it and got >= 2); never below
+        // 2 on this path.
+        let streams = self.planned_download_segments(total_size).max(2);
         let ranges = crate::providers::multi_thread::plan_multi_thread_ranges(
             total_size,
             streams,
@@ -4369,19 +4363,11 @@ impl StorageProvider for S3Provider {
                         .map(|s| !s.eq_ignore_ascii_case("none"))
                         .unwrap_or(true);
                     if accepts_ranges {
-                        // R21: the shared planner decides whether the split is
-                        // worth it (explicit cutoff + provider floor via the
-                        // setter, 16 clamp, 1 MiB minimum window), so the
-                        // single-file path agrees with batch and pget.
-                        let planned = crate::provider_transfer_executor::plan_segment_count(
-                            size,
-                            self.multi_thread_streams,
-                            Self::MULTI_THREAD_MAX_STREAMS,
-                            crate::provider_transfer_executor::SegmentCutoff::Explicit(
-                                self.multi_thread_cutoff,
-                            ),
-                            Self::MULTI_THREAD_CUTOFF_FLOOR,
-                        );
+                        // R21: the provider gate method (shared planner:
+                        // explicit cutoff + provider floor, 16 clamp, 1 MiB
+                        // minimum window) decides, so the single-file path
+                        // agrees with batch and pget.
+                        let planned = self.planned_download_segments(size);
                         if planned >= 2 {
                             if let Some(etag) = validator {
                                 let (attempt_progress, fallback_progress) =
@@ -5785,6 +5771,16 @@ impl StorageProvider for S3Provider {
 
     fn multi_thread_cutoff_floor(&self) -> u64 {
         Self::MULTI_THREAD_CUTOFF_FLOOR
+    }
+
+    fn planned_download_segments(&self, file_size: u64) -> usize {
+        crate::provider_transfer_executor::plan_segment_count(
+            file_size,
+            self.multi_thread_streams,
+            Self::MULTI_THREAD_MAX_STREAMS,
+            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
+            Self::MULTI_THREAD_CUTOFF_FLOOR,
+        )
     }
 
     fn set_range_validator(&mut self, validator: Option<String>) {

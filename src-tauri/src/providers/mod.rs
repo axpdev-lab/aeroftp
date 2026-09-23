@@ -1360,6 +1360,17 @@ pub trait StorageProvider: Send + Sync {
         0
     }
 
+    /// Windows the single-file download path plans for `file_size` under the
+    /// tuning set via `set_multi_thread_download`: the shared
+    /// `plan_segment_count` rule with this provider's stored cutoff, stream
+    /// cap and floor. `0`/`1` = single stream. Default: no multi-thread
+    /// support. Providers overriding `set_multi_thread_download` should
+    /// override this too and use it in their download gate, so the gate is
+    /// the testable unit of the convergence table.
+    fn planned_download_segments(&self, _file_size: u64) -> usize {
+        0
+    }
+
     /// Configure the SFTP read-ahead window for this provider instance.
     /// `None` explicitly disables read-ahead; `Some(n)` requests a bounded
     /// window. Providers other than SFTP ignore this setting.

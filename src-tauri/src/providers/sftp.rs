@@ -761,16 +761,10 @@ impl SftpProvider {
             .connection_spec
             .clone()
             .ok_or(ProviderError::NotConnected)?;
-        // R21: window count from the shared planner (the caller's gate already
-        // ran it and got >= 2); never below 2 on this path.
-        let streams = crate::provider_transfer_executor::plan_segment_count(
-            total_size,
-            self.multi_thread_streams,
-            SFTP_MULTI_THREAD_MAX_STREAMS,
-            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
-            SFTP_MULTI_THREAD_CUTOFF_FLOOR,
-        )
-        .max(2);
+        // R21: window count from the shared planner via the provider gate
+        // method (the caller's gate already ran it and got >= 2); never below
+        // 2 on this path.
+        let streams = self.planned_download_segments(total_size).max(2);
         let buffer_size = self.buffer_size.max(4096);
         // Split any bandwidth cap across the N connections so the aggregate
         // stays near the user's limit (same intent as the single-stream
@@ -1910,16 +1904,10 @@ impl StorageProvider for SftpProvider {
         // milliseconds apart, and a replacement inside that burst would put
         // the fallback back in the hole the refusal just avoided.
         let mut source_is_moving = false;
-        // R21: the shared planner decides (explicit cutoff + provider floor
-        // via the setter, 16 clamp, 1 MiB minimum window), so the single-file
-        // path agrees with batch and pget.
-        let planned_mt = crate::provider_transfer_executor::plan_segment_count(
-            total_size,
-            self.multi_thread_streams,
-            SFTP_MULTI_THREAD_MAX_STREAMS,
-            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
-            SFTP_MULTI_THREAD_CUTOFF_FLOOR,
-        );
+        // R21: the provider gate method (shared planner: explicit cutoff +
+        // provider floor via the setter, 16 clamp, 1 MiB minimum window), so
+        // the single-file path agrees with batch and pget.
+        let planned_mt = self.planned_download_segments(total_size);
         if planned_mt >= 2 && self.connection_spec.is_some() {
             close_preopened!();
             // Half of the callback goes with the attempt and half stays, so
@@ -3254,6 +3242,16 @@ impl StorageProvider for SftpProvider {
 
     fn multi_thread_cutoff_floor(&self) -> u64 {
         SFTP_MULTI_THREAD_CUTOFF_FLOOR
+    }
+
+    fn planned_download_segments(&self, file_size: u64) -> usize {
+        crate::provider_transfer_executor::plan_segment_count(
+            file_size,
+            self.multi_thread_streams,
+            SFTP_MULTI_THREAD_MAX_STREAMS,
+            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
+            SFTP_MULTI_THREAD_CUTOFF_FLOOR,
+        )
     }
 
     fn set_sftp_readahead(&mut self, window: Option<usize>) {

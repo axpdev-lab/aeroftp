@@ -245,16 +245,10 @@ impl FtpProvider {
             .connection_spec
             .clone()
             .ok_or(ProviderError::NotConnected)?;
-        // R21: window count from the shared planner (the caller's gate already
-        // ran it and got >= 2); never below 2 on this path.
-        let streams = crate::provider_transfer_executor::plan_segment_count(
-            total_size,
-            self.multi_thread_streams,
-            FTP_MULTI_THREAD_MAX_STREAMS,
-            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
-            FTP_MULTI_THREAD_CUTOFF_FLOOR,
-        )
-        .max(2);
+        // R21: window count from the shared planner via the provider gate
+        // method (the caller's gate already ran it and got >= 2); never below
+        // 2 on this path.
+        let streams = self.planned_download_segments(total_size).max(2);
         let remote_path_owned = remote_path.to_string();
 
         let cfg = ConcurrentRangeConfig {
@@ -1437,16 +1431,10 @@ impl StorageProvider for FtpProvider {
         // this is a no-op and the single-stream path below is unchanged:
         // honest non-regression, no protocol overclaim.
         let mut on_progress = on_progress;
-        // R21: the shared planner decides (explicit cutoff + provider floor
-        // via the setter, 16 clamp, 1 MiB minimum window), so the single-file
-        // path agrees with batch and pget.
-        let planned_mt = crate::provider_transfer_executor::plan_segment_count(
-            total_size,
-            self.multi_thread_streams,
-            FTP_MULTI_THREAD_MAX_STREAMS,
-            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
-            FTP_MULTI_THREAD_CUTOFF_FLOOR,
-        );
+        // R21: the provider gate method (shared planner: explicit cutoff +
+        // provider floor via the setter, 16 clamp, 1 MiB minimum window), so
+        // the single-file path agrees with batch and pget.
+        let planned_mt = self.planned_download_segments(total_size);
         if planned_mt >= 2 && self.connection_spec.is_some() {
             let (attempt_progress, fallback_progress) =
                 super::multi_thread::share_progress(on_progress.take());
@@ -2218,6 +2206,16 @@ impl StorageProvider for FtpProvider {
 
     fn multi_thread_cutoff_floor(&self) -> u64 {
         FTP_MULTI_THREAD_CUTOFF_FLOOR
+    }
+
+    fn planned_download_segments(&self, file_size: u64) -> usize {
+        crate::provider_transfer_executor::plan_segment_count(
+            file_size,
+            self.multi_thread_streams,
+            FTP_MULTI_THREAD_MAX_STREAMS,
+            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
+            FTP_MULTI_THREAD_CUTOFF_FLOOR,
+        )
     }
 
     async fn read_range(
