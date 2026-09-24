@@ -10237,6 +10237,7 @@ async fn download_transfer_task(
     url: &str,
     remote_path: String,
     local_path: String,
+    remote_modified: Option<String>,
     cli: &Cli,
     format: OutputFormat,
     aggregate: Option<Arc<AtomicU64>>,
@@ -10271,8 +10272,10 @@ async fn download_transfer_task(
         let _ = std::fs::remove_file(&local_path);
     }
 
-    // Account transferred bytes
+    // Account transferred bytes, and keep the remote mtime on the local copy
+    // (same as the shared executor and the GUI).
     if result.is_ok() {
+        ftp_client_gui_lib::preserve_remote_mtime(&local_path, remote_modified.as_deref());
         let bytes = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
         session_transfer_add(bytes);
     }
@@ -10433,6 +10436,7 @@ impl ftp_client_gui_lib::transfer_event_sink::TransferEventSink for CliBatchSink
 async fn run_shared_provider_download_batch(
     base: Box<dyn StorageProvider>,
     files: &[(String, String, u64)],
+    remote_mtimes: &HashMap<String, String>,
     cli: &Cli,
     overall_pb: Option<ProgressBar>,
     cancelled: Arc<AtomicBool>,
@@ -10565,7 +10569,11 @@ async fn run_shared_provider_download_batch(
                 remote_path: remote_path.clone(),
                 local_path: local_path.clone(),
                 size: *size,
-                modified: None,
+                // The executor stamps this on the local copy after the
+                // download (`preserve_remote_mtime`), as the GUI does. Left
+                // `None`, every CLI download carried the time of download and
+                // a later `sync --direction both` took it for a local edit.
+                modified: remote_mtimes.get(remote_path).cloned(),
             }
         })
         .collect();
@@ -31923,8 +31931,13 @@ async fn cmd_get(
 
     let start = Instant::now();
 
-    // Get file size for progress bar
-    let total_size = provider.size(remote).await.unwrap_or(0);
+    // Size for the progress bar, and the remote mtime to keep on the local
+    // copy (the GUI does the same through `preserve_remote_mtime`). `size`
+    // stays the fallback for a backend whose stat fails where size works.
+    let (total_size, remote_modified) = match provider.stat(remote).await {
+        Ok(entry) => (entry.size, entry.modified),
+        Err(_) => (provider.size(remote).await.unwrap_or(0), None),
+    };
 
     // ── Segmented parallel download (pget) ──
     let segments = segments.clamp(1, 16);
@@ -31938,7 +31951,7 @@ async fn cmd_get(
         let planned = pget_planned_segments(total_size, segments, pget_cutoff);
         if hints.supports_range_download && planned >= 2 {
             let _ = provider.disconnect().await;
-            return pget_segmented_download(
+            let code = pget_segmented_download(
                 url,
                 remote,
                 local_path,
@@ -31949,6 +31962,10 @@ async fn cmd_get(
                 cancelled.clone(),
             )
             .await;
+            if code == 0 {
+                ftp_client_gui_lib::preserve_remote_mtime(local_path, remote_modified.as_deref());
+            }
+            return code;
         } else if !quiet {
             let reason = if !hints.supports_range_download {
                 "provider does not support range downloads".to_string()
@@ -32086,6 +32103,7 @@ async fn cmd_get(
 
     match dl_result {
         Ok(()) => {
+            ftp_client_gui_lib::preserve_remote_mtime(local_path, remote_modified.as_deref());
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
             session_transfer_add(file_size);
@@ -32712,6 +32730,7 @@ async fn cmd_get_recursive(
     let scan_max_depth = cli.max_depth.unwrap_or(MAX_SCAN_DEPTH as u32) as usize;
     let mut queue: Vec<(String, usize)> = vec![(remote_dir.to_string(), 0)];
     let mut files: Vec<(String, String, u64)> = Vec::new();
+    let mut remote_mtimes: HashMap<String, String> = HashMap::new();
     let mut dirs: Vec<String> = Vec::new();
     // G108: directories the scan could not read. Collected here because the
     // run's error list is built further down, and folded into it below.
@@ -32769,6 +32788,9 @@ async fn cmd_get_recursive(
                                     eprintln!("Skipping (immutable): {}", relative);
                                 }
                                 continue;
+                            }
+                            if let Some(modified) = e.modified {
+                                remote_mtimes.insert(e.path.clone(), modified);
                             }
                             files.push((
                                 e.path,
@@ -32855,6 +32877,7 @@ async fn cmd_get_recursive(
     match run_shared_provider_download_batch(
         provider,
         &files,
+        &remote_mtimes,
         cli,
         overall_pb.clone(),
         cancelled.clone(),
@@ -32881,6 +32904,7 @@ async fn cmd_get_recursive(
                     let cancelled = cancelled.clone();
                     let aggregate = aggregate.clone();
                     let overall_pb = overall_pb.clone();
+                    let remote_modified = remote_mtimes.get(&remote_path).cloned();
                     async move {
                         if cancelled.load(Ordering::Relaxed) {
                             return Err("Cancelled by user".to_string());
@@ -32892,6 +32916,7 @@ async fn cmd_get_recursive(
                             url,
                             remote_path.clone(),
                             local_path,
+                            remote_modified,
                             cli,
                             format,
                             Some(aggregate),
@@ -33066,12 +33091,16 @@ async fn cmd_get_glob(
     // semantics: an unsafe name becomes a reported error, never a
     // download.
     let mut files: Vec<(String, String, u64)> = Vec::new();
+    let mut remote_mtimes: HashMap<String, String> = HashMap::new();
     for entry in &matched {
         if validate_relative_path(&entry.name).is_none() {
             errors.push(format!("{}: unsafe path (traversal rejected)", entry.name));
             continue;
         }
         let local_path = format!("{}/{}", local_base, entry.name);
+        if let Some(modified) = &entry.modified {
+            remote_mtimes.insert(entry.path.clone(), modified.clone());
+        }
         files.push((entry.path.clone(), local_path, entry.size));
     }
 
@@ -33112,6 +33141,7 @@ async fn cmd_get_glob(
     match run_shared_provider_download_batch(
         provider,
         &files,
+        &remote_mtimes,
         cli,
         overall_pb.clone(),
         cancelled.clone(),
@@ -33132,6 +33162,7 @@ async fn cmd_get_glob(
                     let cancelled = cancelled.clone();
                     let aggregate = aggregate.clone();
                     let overall_pb = overall_pb.clone();
+                    let remote_modified = remote_mtimes.get(&remote_path).cloned();
                     async move {
                         if cancelled.load(Ordering::Relaxed) {
                             return Err("Cancelled by user".to_string());
@@ -33143,6 +33174,7 @@ async fn cmd_get_glob(
                             url,
                             remote_path.clone(),
                             local_path,
+                            remote_modified,
                             cli,
                             format,
                             Some(aggregate),
@@ -45760,7 +45792,10 @@ async fn cmd_cleanup(
     let mut skipped_recent = 0u32;
     let mut skipped_no_mtime = 0u32;
     for (p, s, mtime) in &orphans {
-        match mtime.as_deref().and_then(parse_mtime_secs) {
+        match mtime
+            .as_deref()
+            .and_then(ftp_client_gui_lib::parse_remote_mtime)
+        {
             Some(ts) if ts <= threshold => eligible.push((p, *s)),
             Some(_) => skipped_recent += 1,
             None => skipped_no_mtime += 1,
@@ -46684,32 +46719,6 @@ fn save_bisync_snapshot(
     }
 }
 
-/// Parse an mtime string to a comparable timestamp (seconds since epoch).
-fn parse_mtime_secs(s: &str) -> Option<i64> {
-    // Try ISO 8601 with timezone
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-        return Some(dt.timestamp());
-    }
-    // Try ISO 8601 without timezone (assume UTC)
-    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
-        return Some(dt.and_utc().timestamp());
-    }
-    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-        return Some(dt.and_utc().timestamp());
-    }
-    // FTP MLSD timestamps: "2024-01-15 10:30:00Z": strip trailing Z and parse
-    let stripped = s.strip_suffix('Z').or_else(|| s.strip_suffix("UTC"));
-    if let Some(bare) = stripped {
-        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(bare, "%Y-%m-%d %H:%M:%S") {
-            return Some(dt.and_utc().timestamp());
-        }
-        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(bare, "%Y-%m-%dT%H:%M:%S") {
-            return Some(dt.and_utc().timestamp());
-        }
-    }
-    None
-}
-
 /// Compare two mtime strings (ISO 8601). Returns Ordering.
 /// Parses timestamps to handle timezone differences (e.g., "T10:30:00" vs "T10:30:00Z").
 /// Resolve a default mtime value from the --default-time flag.
@@ -46758,8 +46767,8 @@ const SYNC_MTIME_TOLERANCE_SECS: i64 = 2;
 /// the exact comparison the planner always used.
 fn destination_is_current(src_mtime: Option<&str>, dst_mtime: Option<&str>) -> bool {
     match (
-        src_mtime.and_then(parse_mtime_secs),
-        dst_mtime.and_then(parse_mtime_secs),
+        src_mtime.and_then(ftp_client_gui_lib::parse_remote_mtime),
+        dst_mtime.and_then(ftp_client_gui_lib::parse_remote_mtime),
     ) {
         (Some(src), Some(dst)) => dst + SYNC_MTIME_TOLERANCE_SECS >= src,
         _ => compare_mtime(src_mtime, dst_mtime) == std::cmp::Ordering::Equal,
@@ -46769,7 +46778,10 @@ fn destination_is_current(src_mtime: Option<&str>, dst_mtime: Option<&str>) -> b
 fn compare_mtime(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
     match (a, b) {
         (Some(a), Some(b)) => {
-            match (parse_mtime_secs(a), parse_mtime_secs(b)) {
+            match (
+                ftp_client_gui_lib::parse_remote_mtime(a),
+                ftp_client_gui_lib::parse_remote_mtime(b),
+            ) {
                 (Some(ta), Some(tb)) => ta.cmp(&tb),
                 _ => a.cmp(b), // fallback to lexicographic
             }
@@ -49122,6 +49134,15 @@ async fn cmd_sync(
         .iter()
         .map(|(_, local_path, remote_path, size)| (remote_path.clone(), local_path.clone(), *size))
         .collect();
+    let remote_mtimes: HashMap<String, String> = download_jobs
+        .iter()
+        .filter_map(|(relative, _, remote_path, _)| {
+            remote_map
+                .get(relative.as_str())
+                .and_then(|(_, modified)| *modified)
+                .map(|m| (remote_path.clone(), m.to_string()))
+        })
+        .collect();
 
     let use_legacy_download = if download_files.is_empty() {
         false
@@ -49130,6 +49151,7 @@ async fn cmd_sync(
             Ok((base, _)) => match run_shared_provider_download_batch(
                 base,
                 &download_files,
+                &remote_mtimes,
                 cli,
                 overall_pb.clone(),
                 cancelled.clone(),
@@ -49161,6 +49183,7 @@ async fn cmd_sync(
                 let cancelled = cancelled.clone();
                 let aggregate = aggregate.clone();
                 let overall_pb = overall_pb.clone();
+                let remote_modified = remote_mtimes.get(&remote_path).cloned();
                 async move {
                     if cancelled.load(Ordering::Relaxed) {
                         return Err(format!("download {}: cancelled", path));
@@ -49172,6 +49195,7 @@ async fn cmd_sync(
                         url,
                         remote_path,
                         local_path,
+                        remote_modified,
                         cli,
                         format,
                         Some(aggregate),
@@ -50528,17 +50552,12 @@ mod fuse_mount {
     }
 
     fn parse_mtime_to_system(mtime: &Option<String>) -> SystemTime {
+        // The shared parser: the local copy of it read only two naive shapes,
+        // so a WebDAV (RFC 2822) or RFC 3339 mtime showed as "now" in the mount.
         mtime
             .as_deref()
-            .and_then(|s| {
-                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                    .ok()
-                    .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok())
-            })
-            .map(|dt| {
-                let ts = dt.and_utc().timestamp();
-                UNIX_EPOCH + Duration::from_secs(ts.max(0) as u64)
-            })
+            .and_then(ftp_client_gui_lib::parse_remote_mtime)
+            .map(|ts| UNIX_EPOCH + Duration::from_secs(ts.max(0) as u64))
             .unwrap_or(SystemTime::now())
     }
 
@@ -73088,37 +73107,52 @@ mod tests {
         assert!(!e);
     }
 
-    // ── BUG-4: parse_mtime_secs with FTP Z suffix ──────────────────────
+    // ── BUG-4: sync mtime parsing (shared parse_remote_mtime) with FTP Z suffix ──────────────────────
 
     #[test]
-    fn test_parse_mtime_secs_ftp_z_suffix() {
+    fn test_sync_mtime_ftp_z_suffix() {
         // FTP MLSD format: "2024-01-15 10:30:00Z"
-        let ftp_ts = parse_mtime_secs("2024-01-15 10:30:00Z");
-        let local_ts = parse_mtime_secs("2024-01-15T10:30:00");
+        let ftp_ts = ftp_client_gui_lib::parse_remote_mtime("2024-01-15 10:30:00Z");
+        let local_ts = ftp_client_gui_lib::parse_remote_mtime("2024-01-15T10:30:00");
         assert!(ftp_ts.is_some(), "FTP timestamp with Z suffix should parse");
         assert!(local_ts.is_some(), "Local ISO timestamp should parse");
         assert_eq!(ftp_ts, local_ts, "Same moment should produce same epoch");
     }
 
     #[test]
-    fn test_parse_mtime_secs_utc_suffix() {
-        let ts = parse_mtime_secs("2024-06-01 08:00:00UTC");
+    fn test_sync_mtime_utc_suffix() {
+        let ts = ftp_client_gui_lib::parse_remote_mtime("2024-06-01 08:00:00UTC");
         assert!(ts.is_some(), "UTC suffix should parse");
-        assert_eq!(ts, parse_mtime_secs("2024-06-01T08:00:00"));
+        assert_eq!(
+            ts,
+            ftp_client_gui_lib::parse_remote_mtime("2024-06-01T08:00:00")
+        );
     }
 
     #[test]
-    fn test_parse_mtime_secs_plain_formats() {
-        assert!(parse_mtime_secs("2024-01-15T10:30:00").is_some());
-        assert!(parse_mtime_secs("2024-01-15 10:30:00").is_some());
-        assert!(parse_mtime_secs("2024-01-15T10:30:00+00:00").is_some());
+    fn test_sync_mtime_plain_formats() {
+        assert!(ftp_client_gui_lib::parse_remote_mtime("2024-01-15T10:30:00").is_some());
+        assert!(ftp_client_gui_lib::parse_remote_mtime("2024-01-15 10:30:00").is_some());
+        assert!(ftp_client_gui_lib::parse_remote_mtime("2024-01-15T10:30:00+00:00").is_some());
     }
 
     #[test]
-    fn test_parse_mtime_secs_invalid() {
-        assert!(parse_mtime_secs("not-a-date").is_none());
-        assert!(parse_mtime_secs("?").is_none());
-        assert!(parse_mtime_secs("").is_none());
+    fn test_sync_mtime_webdav_rfc2822_matches_its_iso_twin() {
+        // WebDAV getlastmodified is RFC 2822. The sync's own parser did not
+        // read it, so after a download with a preserved mtime a bidirectional
+        // sync still planned the file as changed on every run.
+        assert_eq!(
+            ftp_client_gui_lib::parse_remote_mtime("Thu, 24 Sep 2026 19:51:29 GMT"),
+            ftp_client_gui_lib::parse_remote_mtime("2026-09-24T19:51:29Z"),
+        );
+        assert!(ftp_client_gui_lib::parse_remote_mtime("Thu, 24 Sep 2026 19:51:29 GMT").is_some());
+    }
+
+    #[test]
+    fn test_sync_mtime_invalid() {
+        assert!(ftp_client_gui_lib::parse_remote_mtime("not-a-date").is_none());
+        assert!(ftp_client_gui_lib::parse_remote_mtime("?").is_none());
+        assert!(ftp_client_gui_lib::parse_remote_mtime("").is_none());
     }
 
     #[test]
@@ -75683,6 +75717,7 @@ mod tests {
                 output.to_string_lossy().into_owned(),
                 size,
             )],
+            &HashMap::new(),
             &cli,
             None,
             Arc::new(AtomicBool::new(false)),
@@ -75971,6 +76006,58 @@ mod tests {
             Some("abc"),
             "abc"
         ));
+    }
+
+    /// The CLI used to hand the shared executor `modified: None`, so every
+    /// download carried the time of download and a later bidirectional sync
+    /// took it for a local edit. The remote mtime must land on the copy.
+    #[tokio::test]
+    async fn cli_shared_download_keeps_the_remote_mtime() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("object");
+        let mut cli = test_cli();
+        cli.quiet = true;
+        cli.multi_thread_streams = 1;
+        let probe = BatchDownloadProbe {
+            kind: ProviderType::WebDav,
+            whole: Arc::default(),
+            ranges: Arc::default(),
+            cutoff_floor: 0,
+            size: BatchDownloadProbe::SIZE,
+        };
+        let mut remote_mtimes = HashMap::new();
+        remote_mtimes.insert(
+            "/object".to_string(),
+            "Fri, 15 Jan 2021 10:00:00 GMT".to_string(),
+        );
+        let outcome = match run_shared_provider_download_batch(
+            Box::new(probe),
+            &[(
+                "/object".to_string(),
+                output.to_string_lossy().into_owned(),
+                BatchDownloadProbe::SIZE,
+            )],
+            &remote_mtimes,
+            &cli,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(_) => panic!("the clone-backed fixture must use the shared batch"),
+        };
+        assert_eq!(outcome.downloaded, 1, "{:?}", outcome.errors);
+        let mtime = std::fs::metadata(&output)
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        // 2021-01-15T10:00:00Z
+        assert_eq!(mtime, 1_610_704_800);
     }
 
     #[tokio::test]

@@ -4286,26 +4286,63 @@ async fn upload_files_batch(
 }
 
 /// Preserve remote file modification time on a downloaded local file.
-/// Parses common ISO 8601 / timestamp formats and sets the file's mtime via `filetime`.
+/// Parses the timestamp shapes providers report (see [`parse_remote_mtime`])
+/// and sets the file's mtime via `filetime`.
 /// Best-effort: silently ignores failures (e.g. permission denied, unparseable timestamp).
 pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
-    let Some(modified_str) = remote_modified else {
+    let Some(secs) = remote_modified.and_then(parse_remote_mtime) else {
         return;
     };
-    // Strip trailing 'Z' suffix (UTC marker added in v2.9.6) before NaiveDateTime parsing
-    let clean_str = modified_str.strip_suffix('Z').unwrap_or(modified_str);
-    let ts = chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
+    let ft = filetime::FileTime::from_unix_time(secs, 0);
+    let _ = filetime::set_file_mtime(local_path, ft);
+}
+
+/// Unix seconds of a provider-reported modification time: naive
+/// `YYYY-MM-DD HH:MM:SS` / ISO 8601 (read as UTC, optional trailing `Z` added
+/// in v2.9.6), RFC 3339 with an offset, and RFC 2822 (`Thu, 24 Sep 2026
+/// 19:41:46 GMT`), which is what WebDAV `getlastmodified` carries. Without the
+/// RFC 2822 arm no WebDAV download ever kept its remote mtime, and a later
+/// sync saw every downloaded file as changed.
+pub fn parse_remote_mtime(modified_str: &str) -> Option<i64> {
+    let trimmed = modified_str.trim();
+    // FTP MLSD-derived listings end in `Z` or `UTC` with no offset.
+    let clean_str = trimmed
+        .strip_suffix('Z')
+        .or_else(|| trimmed.strip_suffix("UTC"))
+        .unwrap_or(trimmed);
+    chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
-        .or_else(|_| {
-            // Try parsing full RFC 3339 (with timezone) → strip tz suffix
-            chrono::DateTime::parse_from_rfc3339(modified_str).map(|dt| dt.naive_utc())
-        })
-        .ok();
-    if let Some(ndt) = ts {
-        let secs = ndt.and_utc().timestamp();
-        let ft = filetime::FileTime::from_unix_time(secs, 0);
-        let _ = filetime::set_file_mtime(local_path, ft);
+        .map(|ndt| ndt.and_utc().timestamp())
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(trimmed).map(|dt| dt.timestamp()))
+        .or_else(|_| chrono::DateTime::parse_from_rfc2822(trimmed).map(|dt| dt.timestamp()))
+        .ok()
+}
+
+#[cfg(test)]
+mod parse_remote_mtime_tests {
+    use super::parse_remote_mtime;
+
+    // 2026-09-24T19:41:46Z
+    const EXPECTED: i64 = 1_790_278_906;
+
+    #[test]
+    fn reads_every_shape_providers_report() {
+        for s in [
+            "2026-09-24 19:41:46",
+            "2026-09-24T19:41:46",
+            "2026-09-24T19:41:46Z",
+            "2026-09-24T19:41:46.123456Z",
+            "2026-09-24T21:41:46+02:00",
+            "Thu, 24 Sep 2026 19:41:46 GMT",
+            "Thu, 24 Sep 2026 21:41:46 +0200",
+            "2026-09-24 19:41:46UTC",
+        ] {
+            assert_eq!(parse_remote_mtime(s), Some(EXPECTED), "{s}");
+        }
+        assert_eq!(parse_remote_mtime("yesterday"), None);
+        assert_eq!(parse_remote_mtime("?"), None);
+        assert_eq!(parse_remote_mtime(""), None);
     }
 }
 
