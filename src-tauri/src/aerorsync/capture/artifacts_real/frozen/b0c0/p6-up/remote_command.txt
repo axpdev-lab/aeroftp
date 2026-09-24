@@ -1,0 +1,1 @@
+rsync --server -lHogDtpre.iLsfxCIvu . /workspace/b0c0/up/p6-up/

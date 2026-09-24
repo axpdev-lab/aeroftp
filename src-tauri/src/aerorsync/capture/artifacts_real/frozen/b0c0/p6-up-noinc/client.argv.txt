@@ -1,0 +1,1 @@
+rsync -e ssh -i <capture>/keys/id_ed25519 -p 2234 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=5 -o LogLevel=ERROR -aH --no-inc-recursive <capture>/workspace/b0c0/src/p6/h testuser@127.0.0.1:/workspace/b0c0/up/p6-up-noinc/

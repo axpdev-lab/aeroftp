@@ -60,20 +60,45 @@ def main() -> int:
     proc_out_fd = proc.stdout.fileno()
     proc_err_fd = proc.stderr.fileno()
 
-    # Readable sources: client stdin (to feed into proc), proc stdout, proc
-    # stderr. Remove a source on EOF; close the corresponding downstream to
-    # propagate EOF faithfully.
+    # Each source feeds exactly one sink through a pending buffer, and the
+    # loop only writes to a sink that select() reports writable. A blocking
+    # os.write here deadlocks as soon as both directions carry more than a
+    # pipe buffer at once: measured 2026-09-24 on a 50,000-entry download
+    # (2.5 MB file list one way, the generator stream the other), where the
+    # proxy sat in write() to the client while the client sat in write() to
+    # the proxy. Single-file transfers never filled both pipes together.
+    route = {client_in_fd: proc_in_fd, proc_out_fd: client_out_fd, proc_err_fd: client_err_fd}
+    tee = {client_in_fd: capture_in, proc_out_fd: capture_out, proc_err_fd: capture_err}
+    pending = {sink: bytearray() for sink in route.values()}
+    # A sink closes once its source hit EOF and its buffer drained; for the
+    # server's stdin that close is how EOF propagates to rsync.
+    closing = set()
+    for fd in route.values():
+        os.set_blocking(fd, False)
+
     sources = {client_in_fd, proc_out_fd, proc_err_fd}
+    dead_sinks = set()
 
     # If the SIGPIPE default were inherited, a Python write() to a closed
     # client would raise BrokenPipeError mid-shuttle and kill us. Catch
     # BrokenPipeError explicitly instead and unwind cleanly.
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
+    def finish_sink(sink):
+        if sink == proc_in_fd:
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
+        dead_sinks.add(sink)
+
     try:
-        while sources:
-            readable, _, _ = select.select(list(sources), [], [], 1.0)
-            if not readable:
+        while sources or any(pending[k] for k in pending if k not in dead_sinks):
+            # Back-pressure: stop reading a source while its sink is backed up.
+            readable_set = [fd for fd in sources if len(pending[route[fd]]) < 4 * CHUNK]
+            writable_set = [k for k, buf in pending.items() if buf and k not in dead_sinks]
+            readable, writable, _ = select.select(readable_set, writable_set, [], 1.0)
+            if not readable and not writable:
                 # Poll proc liveness: if it's gone and no output is left,
                 # drain and exit. Without this we could block in select()
                 # indefinitely when all three sources are gone but the
@@ -84,40 +109,40 @@ def main() -> int:
                     break
                 continue
 
+            for sink in writable:
+                try:
+                    n = os.write(sink, pending[sink])
+                    del pending[sink][:n]
+                except BlockingIOError:
+                    pass
+                except BrokenPipeError:
+                    pending[sink].clear()
+                    finish_sink(sink)
+                    for src, dst in route.items():
+                        if dst == sink:
+                            sources.discard(src)
+                if sink in closing and not pending[sink]:
+                    finish_sink(sink)
+
             for fd in readable:
                 try:
                     data = os.read(fd, CHUNK)
                 except OSError:
                     data = b""
-
+                sink = route[fd]
                 if not data:
-                    # EOF on this source. Remove it and propagate downstream.
+                    # EOF on this source. Remove it and propagate downstream
+                    # once everything already read has been delivered.
                     sources.discard(fd)
                     if fd == client_in_fd:
-                        try:
-                            proc.stdin.close()
-                        except Exception:
-                            pass
+                        if pending[sink]:
+                            closing.add(sink)
+                        else:
+                            finish_sink(sink)
                     continue
-
-                if fd == client_in_fd:
-                    capture_in.write(data)
-                    try:
-                        os.write(proc_in_fd, data)
-                    except BrokenPipeError:
-                        sources.discard(fd)
-                elif fd == proc_out_fd:
-                    capture_out.write(data)
-                    try:
-                        os.write(client_out_fd, data)
-                    except BrokenPipeError:
-                        sources.discard(fd)
-                elif fd == proc_err_fd:
-                    capture_err.write(data)
-                    try:
-                        os.write(client_err_fd, data)
-                    except BrokenPipeError:
-                        sources.discard(fd)
+                tee[fd].write(data)
+                if sink not in dead_sinks:
+                    pending[sink] += data
 
         proc.wait()
         rc = proc.returncode
