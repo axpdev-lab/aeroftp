@@ -69,9 +69,9 @@ use crate::aerorsync::real_wire::{
     encode_file_list_terminator, encode_item_flags, encode_ndx, encode_protocol_version,
     encode_sum_block, encode_sum_head, encode_summary_frame, encode_xattr_datum_section,
     is_symlink_mode, resolve_xattr_datum_section, ClientPreamble, DeflateLiteralStreamEncoder,
-    DeltaOp, DeltaStreamReport, DeltaStreamState, FileListDecodeOptions, FileListDecodeOutcome,
-    FileListEntry, MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState, PreambleCompression,
-    RealWireError, SumBlock, SumHead, SummaryFrame, ZstdLiteralStreamEncoder,
+    DeltaOp, DeltaStreamReport, DeltaStreamState, FileListCodecState, FileListDecodeOptions,
+    FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState,
+    PreambleCompression, RealWireError, SumBlock, SumHead, SummaryFrame, ZstdLiteralStreamEncoder,
     CF_VARINT_FLIST_FLAGS, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF, TOKEN_END_FLAG,
 };
 use crate::aerorsync::remote_command::{
@@ -2143,7 +2143,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// width because download receives must use the negotiated width while
     /// upload sends use the width of the checksum already computed in the
     /// source entry.
-    fn build_flist_options(&self, csum_len: usize) -> FileListDecodeOptions<'static> {
+    fn build_flist_options(&self, csum_len: usize) -> FileListDecodeOptions {
         FileListDecodeOptions {
             protocol: self.protocol_version,
             // Varint flags only when the peer set CF_VARINT_FLIST_FLAGS.
@@ -2160,7 +2160,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             preserve_gid: self.effective_metadata.preserve_group,
             preserve_acls: self.effective_metadata.preserve_acls,
             preserve_xattrs: self.effective_metadata.preserve_xattrs,
-            previous_name: None,
+            // `-D` is `--devices --specials`; the bundle carries no other
+            // spelling of either.
+            preserve_links: self.effective_metadata.preserve_links,
+            preserve_devices: self.effective_metadata.preserve_devices,
+            preserve_specials: self.effective_metadata.preserve_devices,
         }
     }
 
@@ -2176,8 +2180,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // 16 B + terminator 2 B + NDX_FLIST_EOF marker 2 B). Split
         // frames break stock rsync's expectation that the whole flist
         // arrives before the sender starts waiting on the receiver.
-        let mut payload = encode_file_list_entry(entry, &opts);
-        payload.extend_from_slice(&encode_file_list_terminator(&opts));
+        let mut payload = encode_file_list_entry(entry, &opts, &mut FileListCodecState::new());
+        payload.extend_from_slice(&encode_file_list_terminator(&opts, 0));
         payload.extend_from_slice(&encode_ndx(NDX_FLIST_EOF, &mut self.outbound_ndx_state));
         self.write_data_frame(&payload).await?;
         // S8j: remember the entry on the sender side so
@@ -2199,6 +2203,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // MSG_DATA frame.
         let opts = self.build_flist_options(self.negotiated_file_checksum_len()?);
         let mut flist_buf: Vec<u8> = Vec::new();
+        let mut flist_state = FileListCodecState::new();
         let mut entry_seen = false;
         let mut waiting_for_more = false;
         loop {
@@ -2207,9 +2212,25 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             // currently buffered bytes. Only fall through to another
             // Data frame when we run out of material.
             if !flist_buf.is_empty() {
-                match decode_file_list_entry(&flist_buf, &opts) {
+                match decode_file_list_entry(&flist_buf, &opts, &mut flist_state) {
                     Ok((FileListDecodeOutcome::Entry(entry), consumed)) => {
                         flist_buf.drain(..consumed);
+                        // The codec carries names as the bytes rsync sent;
+                        // the product writes UTF-8 names only, the policy
+                        // the upload side pins too. Refuse here, before any
+                        // commit, with the error the codec itself used to
+                        // raise, so the verdict (hard error, no fallback) is
+                        // unchanged.
+                        for bytes in std::iter::once(&entry.path).chain(&entry.symlink_target) {
+                            if let Err(e) = std::str::from_utf8(bytes) {
+                                return Err(map_realwire_error(
+                                    RealWireError::NonUtf8Name {
+                                        offset: e.valid_up_to(),
+                                    },
+                                    "file list entry",
+                                ));
+                            }
+                        }
                         self.file_list.push(entry);
                         entry_seen = true;
                         continue;
@@ -2257,8 +2278,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     // swallow those would turn a hostile blob into an
                     // unbounded frame-pull loop.
                     // Retrying is safe because decoding restarts from the
-                    // front of `flist_buf` and the codec keeps no state
-                    // across calls.
+                    // front of `flist_buf` and a failed decode leaves
+                    // `flist_state` untouched.
                     Err(RealWireError::TruncatedBuffer { .. })
                     | Err(RealWireError::InvalidNameLen { .. })
                     | Err(RealWireError::InvalidAlgoListLen { .. }) => {
@@ -5339,17 +5360,22 @@ mod tests {
             csum_len: checksum_len,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
         let (entry, mut cursor) =
-            match decode_file_list_entry(&app, &opts).expect("decode outbound file-list entry") {
+            match decode_file_list_entry(&app, &opts, &mut FileListCodecState::new())
+                .expect("decode outbound file-list entry")
+            {
                 (FileListDecodeOutcome::Entry(entry), consumed) => (entry, consumed),
                 other => panic!("expected outbound file-list entry, got {other:?}"),
             };
         let (_, consumed) =
-            decode_file_list_entry(&app[cursor..], &opts).expect("decode file-list terminator");
+            decode_file_list_entry(&app[cursor..], &opts, &mut FileListCodecState::new())
+                .expect("decode file-list terminator");
         cursor += consumed;
 
         let mut ndx_state = NdxState::default();
@@ -5374,26 +5400,27 @@ mod tests {
     /// The flags include `XMIT_LONG_NAME` so the suffix length is encoded
     /// as a varint: which the path length (9 chars) still fits in.
     fn sample_file_list_entry(path: &str) -> FileListEntry {
-        // Flags: XMIT_LONG_NAME (0x0040) | XMIT_SAME_MODE (0x0002) |
-        //        XMIT_SAME_TIME (0x0080) | XMIT_SAME_UID (0x0008) |
-        //        XMIT_SAME_GID (0x0010)
-        //: the "all same" upload case where only the name and size are
-        // transmitted. Matches a minimum-viable shape; the 16-byte
+        // Flags: XMIT_LONG_NAME (0x0040) | XMIT_SAME_TIME (0x0080) |
+        //        XMIT_SAME_UID (0x0008) | XMIT_SAME_GID (0x0010)
+        //: the upload case where only the name, size and mode are
+        // transmitted. SAME_TIME, SAME_UID and SAME_GID are what rsync
+        // sends for a first entry whose mtime and ids equal its zero start
+        // state; SAME_MODE is not, because a mode of zero is not a regular
+        // file and a regular file is what carries the checksum. The 16-byte
         // checksum is required because capture constructors keep `-c` for
         // byte-identical frozen oracles. Product dispatch uses `-I` and clears
         // this placeholder before encoding the file list.
-        const XMIT_SAME_MODE: u32 = 0x0002;
         const XMIT_SAME_UID: u32 = 0x0008;
         const XMIT_SAME_GID: u32 = 0x0010;
         const XMIT_LONG_NAME: u32 = 0x0040;
         const XMIT_SAME_TIME: u32 = 0x0080;
         FileListEntry {
-            flags: XMIT_LONG_NAME | XMIT_SAME_MODE | XMIT_SAME_UID | XMIT_SAME_GID | XMIT_SAME_TIME,
-            path: path.to_string(),
+            flags: XMIT_LONG_NAME | XMIT_SAME_UID | XMIT_SAME_GID | XMIT_SAME_TIME,
+            path: path.as_bytes().to_vec(),
             size: 4096,
             mtime: 0,
             mtime_nsec: None,
-            mode: 0,
+            mode: 0o100_644,
             uid: None,
             uid_name: None,
             gid: None,
@@ -5402,6 +5429,7 @@ mod tests {
             // validated against file content in unit tests.
             checksum: vec![0xAA; 16],
             symlink_target: None,
+            rdev: None,
             xattrs: None,
             acls: None,
         }
@@ -5613,7 +5641,7 @@ mod tests {
             .as_secs() as i64;
         FileListEntry {
             flags: XMIT_MOD_NSEC,
-            path: path.to_string(),
+            path: path.as_bytes().to_vec(),
             size: 4096,
             mtime,
             mtime_nsec: Some(0),
@@ -5624,6 +5652,7 @@ mod tests {
             gid_name: None,
             checksum: vec![0xAA; 16],
             symlink_target: None,
+            rdev: None,
             xattrs: None,
             acls: None,
         }
@@ -5643,7 +5672,7 @@ mod tests {
             .as_secs() as i64;
         FileListEntry {
             flags: XMIT_MOD_NSEC,
-            path: path.to_string(),
+            path: path.as_bytes().to_vec(),
             size: target.len() as i64,
             mtime,
             mtime_nsec: Some(0),
@@ -5653,7 +5682,8 @@ mod tests {
             gid: Some(1000),
             gid_name: None,
             checksum: vec![],
-            symlink_target: Some(target.to_string()),
+            symlink_target: Some(target.as_bytes().to_vec()),
+            rdev: None,
             xattrs: None,
             acls: None,
         }
@@ -7113,14 +7143,17 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
         let mut expected_entry = sample_file_list_entry("target.bin");
         expected_entry.checksum = FileChecksumKind::Md5.digest(&[]);
-        let entry_bytes = encode_file_list_entry(&expected_entry, &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes =
+            encode_file_list_entry(&expected_entry, &opts, &mut FileListCodecState::new());
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let mut ndx_state = NdxState::default();
         let ndx_bytes = encode_ndx(NDX_FLIST_EOF, &mut ndx_state);
         let mut single_payload = Vec::new();
@@ -7316,13 +7349,15 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
         let entry = sample_file_list_entry("target.bin");
-        let entry_bytes = encode_file_list_entry(&entry, &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         // A2.3: drive_download now proceeds into the delta phase. Append
         // an empty delta stream (END_FLAG + 16-byte zero checksum) so the
@@ -7353,7 +7388,7 @@ mod tests {
         assert_eq!(err.kind, AerorsyncErrorKind::UnsupportedVersion);
         assert_eq!(d.phase(), AerorsyncSessionPhase::Stub);
         assert_eq!(d.file_list().len(), 1);
-        assert_eq!(d.file_list()[0].path, "target.bin");
+        assert_eq!(d.file_list()[0].path, b"target.bin");
         assert_eq!(d.file_list()[0].size, 4096);
         assert!(!d.committed());
     }
@@ -7375,9 +7410,11 @@ mod tests {
                 csum_len: 16,
                 preserve_uid: true,
                 preserve_gid: true,
-                previous_name: None,
                 preserve_acls: false,
                 preserve_xattrs: false,
+                preserve_links: true,
+                preserve_devices: false,
+                preserve_specials: false,
             };
             let mut inbound = if legacy {
                 encode_server_preamble(&ServerPreamble {
@@ -7395,7 +7432,7 @@ mod tests {
                 let entry = sample_file_list_entry("target.bin");
                 inbound.extend_from_slice(&mux_frame(
                     MuxTag::Data,
-                    &encode_file_list_entry(&entry, &opts),
+                    &encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new()),
                 ));
             }
             let terminator: &[u8] = if legacy {
@@ -7428,6 +7465,70 @@ mod tests {
         }
     }
 
+    /// Download twin of `do_upload_rejects_non_utf8_symlink_target_hard`.
+    /// The codec now carries names as bytes, as rsync sends them; the
+    /// product still writes UTF-8 names only. A non-UTF-8 path or symlink
+    /// target from the server is refused before commit with the same typed
+    /// error the codec used to raise (InvalidFrame, a hard error), and is
+    /// never kept in the file list.
+    #[tokio::test]
+    async fn driver_download_refuses_a_non_utf8_name_before_commit() {
+        use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            preserve_acls: false,
+            preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
+        };
+        let regular = FileListEntry {
+            path: b"caf\xe9.bin".to_vec(),
+            ..sample_file_list_entry("unused")
+        };
+        let symlink = FileListEntry {
+            path: b"link".to_vec(),
+            mode: 0o120_777,
+            checksum: Vec::new(),
+            symlink_target: Some(b"t\xff".to_vec()),
+            ..sample_file_list_entry("unused")
+        };
+        for entry in [regular, symlink] {
+            let entry_bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+            let mut inbound = canonical_server_preamble_bytes();
+            inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+            inbound.extend_from_slice(&mux_frame(
+                MuxTag::Data,
+                &encode_file_list_terminator(&opts, 0),
+            ));
+            let transport = mock_transport_with_raw_inbound(inbound);
+            let mut d = make_driver(transport);
+            let mut sink = CollectingSink::default();
+            let err = d
+                .drive_download(
+                    RemoteCommandSpec::capture_download("/remote/target.bin"),
+                    &[],
+                    &MockSigAdapter::default(),
+                    &mut sink,
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame, "{err:?}");
+            assert!(err.detail.contains("non-UTF8"), "{err:?}");
+            assert!(d.file_list().is_empty());
+            assert!(!d.committed());
+            assert_eq!(
+                classify_fallback(&err, d.committed()),
+                FallbackVerdict::HardError
+            );
+        }
+    }
+
     /// CLAUDE-AV-B3-18: exact regression for the live xxh64 hang. The
     /// server sends one complete file-list frame with an 8-byte checksum
     /// and a terminator. Reading 16 consumes the terminator as checksum,
@@ -7441,14 +7542,17 @@ mod tests {
             csum_len: 8,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
         let mut entry = sample_file_list_entry("target.bin");
         entry.checksum = vec![0xA5; 8];
-        let mut file_list_payload = encode_file_list_entry(&entry, &opts);
-        file_list_payload.extend_from_slice(&encode_file_list_terminator(&opts));
+        let mut file_list_payload =
+            encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        file_list_payload.extend_from_slice(&encode_file_list_terminator(&opts, 0));
 
         let mut inbound = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
@@ -7493,13 +7597,15 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
         let entry = sample_file_list_entry("target.bin");
-        let entry_bytes = encode_file_list_entry(&entry, &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         let mut inbound = canonical_server_preamble_bytes();
         // Warning *before* the data frames.
@@ -7609,13 +7715,15 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
         let entry = sample_file_list_entry("target.bin");
-        let entry_bytes = encode_file_list_entry(&entry, &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         let mut inbound = canonical_server_preamble_bytes();
         let half = entry_bytes.len() / 2;
@@ -7639,7 +7747,7 @@ mod tests {
             .await;
 
         assert_eq!(d.file_list().len(), 1, "split-frame entry must reassemble");
-        assert_eq!(d.file_list()[0].path, "target.bin");
+        assert_eq!(d.file_list()[0].path, b"target.bin");
         assert_eq!(d.file_list()[0].size, 4096);
     }
 
@@ -8111,12 +8219,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         // A2.3: append an empty delta stream to let the driver reach
         // the stub frontier.
@@ -8460,12 +8574,15 @@ mod tests {
             csum_len: 0,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let mut flist_payload = encode_file_list_entry(&entry, &opts);
-        flist_payload.extend_from_slice(&encode_file_list_terminator(&opts));
+        let mut flist_payload =
+            encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        flist_payload.extend_from_slice(&encode_file_list_terminator(&opts, 0));
         let mut ndx_state = NdxState::default();
         flist_payload.extend_from_slice(&encode_ndx(NDX_FLIST_EOF, &mut ndx_state));
         let expected_flist_frame = mux_frame(MuxTag::Data, &flist_payload);
@@ -8585,14 +8702,16 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
         let target = "../rel/target.bin";
         let entry = symlink_file_list_entry("link.lnk", target);
-        let entry_bytes = encode_file_list_entry(&entry, &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let mut finish_tail = vec![0x00; PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD];
         finish_tail.extend_from_slice(&build_summary_frame_bytes(31));
 
@@ -8621,7 +8740,10 @@ mod tests {
 
         let downloaded = d.downloaded_entry().expect("flist entry retained");
         assert!(is_symlink_mode(downloaded.mode));
-        assert_eq!(downloaded.symlink_target.as_deref(), Some(target));
+        assert_eq!(
+            downloaded.symlink_target.as_deref(),
+            Some(target.as_bytes())
+        );
         assert!(
             downloaded.checksum.is_empty(),
             "symlink entries carry no flist checksum on the wire"
@@ -8690,13 +8812,15 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
         let entry = symlink_file_list_entry("link.lnk", "t/rel.bin");
-        let entry_bytes = encode_file_list_entry(&entry, &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
@@ -8718,7 +8842,7 @@ mod tests {
         assert_eq!(
             d.downloaded_entry()
                 .and_then(|e| e.symlink_target.as_deref()),
-            Some("t/rel.bin")
+            Some(&b"t/rel.bin"[..])
         );
         assert_eq!(d.phase(), AerorsyncSessionPhase::DeltaReceived);
     }
@@ -8781,12 +8905,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
@@ -9181,12 +9311,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -9308,12 +9444,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -9378,12 +9520,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let summary_bytes = build_summary_frame_bytes(31);
 
         let mut noop_and_tail = Vec::new();
@@ -9440,12 +9588,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -9501,12 +9655,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -9599,12 +9759,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
@@ -9640,12 +9806,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
@@ -9729,12 +9901,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
@@ -10069,12 +10247,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let summary_bytes = build_summary_frame_bytes(31);
         // S8j: real rsync 3.2.7 emits exactly 3 leading NDX_DONE
         // markers between the delta stream's file-csum trailer and the
@@ -10237,12 +10421,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let summary_bytes = build_summary_frame_bytes(31);
 
         // Combine 3 NDX_DONE + summary into a single MSG_DATA frame.
@@ -10298,12 +10488,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         // First byte is NDX_DONE (drain enters the strict path), second
         // byte is garbage: the drain must refuse.
@@ -10400,12 +10596,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
@@ -11424,12 +11626,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -11506,12 +11714,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
         let summary_bytes = build_summary_frame_bytes(31);
 
         let mut noop_and_tail = Vec::new();
@@ -11570,12 +11784,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -11632,12 +11852,18 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
-        let term_bytes = encode_file_list_terminator(&opts);
+        let entry_bytes = encode_file_list_entry(
+            &sample_file_list_entry("target.bin"),
+            &opts,
+            &mut FileListCodecState::new(),
+        );
+        let term_bytes = encode_file_list_terminator(&opts, 0);
 
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));

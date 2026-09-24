@@ -34,8 +34,8 @@ use crate::aerorsync::real_wire::{
     decode_sum_block, decode_sum_head, decode_summary_frame, decompress_zstd_literal_stream,
     encode_client_preamble, encode_delta_stream, encode_file_list_entry, encode_server_preamble,
     encode_sum_block, reassemble_msg_data, reassemble_until_terminal, reassemble_with_events,
-    DeltaOp, FileListDecodeOptions, FileListDecodeOutcome, MuxDemuxer, MuxHeader, MuxTag, NdxState,
-    NDX_DONE, NDX_FLIST_EOF,
+    DeltaOp, FileListCodecState, FileListDecodeOptions, FileListDecodeOutcome, MuxDemuxer,
+    MuxHeader, MuxTag, NdxState, NDX_DONE, NDX_FLIST_EOF,
 };
 use crate::aerorsync::remote_command::RemoteCommandSpec;
 use crate::aerorsync::transport::CancelHandle;
@@ -78,14 +78,17 @@ fn rsync_3_1_3_deflate_byte_oracle_matches_real_wire_decoder() {
         preserve_gid: true,
         preserve_acls: false,
         preserve_xattrs: false,
-        previous_name: None,
+        preserve_links: true,
+        preserve_devices: false,
+        preserve_specials: false,
     };
-    let (entry, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let (entry, entry_bytes) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let entry = match entry {
         FileListDecodeOutcome::Entry(entry) => entry,
         other => panic!("expected captured file-list entry, got {other:?}"),
     };
-    assert_eq!(entry.path, "upload.bin");
+    assert_eq!(entry.path, b"upload.bin");
     assert_eq!(entry.size, 256 * 1024);
     assert_eq!(app[entry_bytes], 0);
 
@@ -913,8 +916,9 @@ fn real_wire_decodes_first_file_list_entry_from_frozen_upload_client_stream() {
     let report = reassemble_msg_data(mux_tail).unwrap();
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (outcome, consumed) = decode_file_list_entry(&report.app_stream, &opts)
-        .expect("first file-list entry must decode");
+    let (outcome, consumed) =
+        decode_file_list_entry(&report.app_stream, &opts, &mut FileListCodecState::new())
+            .expect("first file-list entry must decode");
 
     let entry = match outcome {
         FileListDecodeOutcome::Entry(e) => e,
@@ -922,7 +926,7 @@ fn real_wire_decodes_first_file_list_entry_from_frozen_upload_client_stream() {
     };
 
     assert_eq!(
-        entry.path, "upload.bin",
+        entry.path, b"upload.bin",
         "frozen upload transcript uploads upload.bin -> target.bin"
     );
     assert_eq!(entry.size, 262_144, "frozen upload uses a 256 KiB payload");
@@ -973,8 +977,9 @@ fn real_wire_file_list_terminator_follows_first_entry_in_frozen_upload() {
             .unwrap();
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, consumed_first) =
-        decode_file_list_entry(&report.app_stream, &opts).expect("first entry must decode");
+    let mut state = FileListCodecState::new();
+    let (_, consumed_first) = decode_file_list_entry(&report.app_stream, &opts, &mut state)
+        .expect("first entry must decode");
 
     assert!(
         consumed_first < report.app_stream.len(),
@@ -991,14 +996,8 @@ fn real_wire_file_list_terminator_follows_first_entry_in_frozen_upload() {
     // again must round-trip to EndOfList, consuming exactly two bytes
     // (varint(0) terminator + varint(0) io_error count, per the
     // CF_VARINT_FLIST_FLAGS write_end_of_flist semantics).
-    let (outcome, consumed_end) = decode_file_list_entry(
-        &report.app_stream[consumed_first..],
-        &FileListDecodeOptions {
-            previous_name: Some("upload.bin"),
-            ..opts
-        },
-    )
-    .unwrap();
+    let (outcome, consumed_end) =
+        decode_file_list_entry(&report.app_stream[consumed_first..], &opts, &mut state).unwrap();
     assert_eq!(consumed_end, 2);
     assert!(matches!(
         outcome,
@@ -1025,8 +1024,9 @@ fn real_wire_decodes_first_file_list_entry_from_frozen_download_server_stream() 
             .unwrap();
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (outcome, consumed) = decode_file_list_entry(&report.app_stream, &opts)
-        .expect("first file-list entry must decode on download direction too");
+    let (outcome, consumed) =
+        decode_file_list_entry(&report.app_stream, &opts, &mut FileListCodecState::new())
+            .expect("first file-list entry must decode on download direction too");
 
     let entry = match outcome {
         FileListDecodeOutcome::Entry(e) => e,
@@ -1034,7 +1034,7 @@ fn real_wire_decodes_first_file_list_entry_from_frozen_download_server_stream() 
     };
 
     assert_eq!(
-        entry.path, "target.bin",
+        entry.path, b"target.bin",
         "download transcript pulls target.bin from the server"
     );
     assert_eq!(entry.size, 262_144);
@@ -1218,7 +1218,8 @@ fn real_wire_decodes_ndx_flist_eof_after_flist_terminator_on_client_upload_strea
 
     // Advance past the file-list entry + its two-byte terminator.
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let (_, entry_bytes) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let post_flist = &app[entry_bytes..];
     // First two bytes are the terminator pair: varint(0) + varint(io_error=0).
     assert_eq!(post_flist[0], 0x00);
@@ -1270,7 +1271,8 @@ fn s8e_scout_hex_dump_post_flist_regions() {
         .unwrap()
         .app_stream;
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, flist_end) = decode_file_list_entry(&up_client_app, &opts).unwrap();
+    let (_, flist_end) =
+        decode_file_list_entry(&up_client_app, &opts, &mut FileListCodecState::new()).unwrap();
     eprintln!(
         "UPLOAD client->server app_stream={} bytes, flist entry ends at {}",
         up_client_app.len(),
@@ -1305,7 +1307,8 @@ fn s8e_scout_hex_dump_post_flist_regions() {
         reassemble_msg_data(&transcript.download_server_to_client[spre_d.consumed..])
             .unwrap()
             .app_stream;
-    let (_, flist_end_d) = decode_file_list_entry(&dn_server_app, &opts).unwrap();
+    let (_, flist_end_d) =
+        decode_file_list_entry(&dn_server_app, &opts, &mut FileListCodecState::new()).unwrap();
     eprintln!(
         "DOWNLOAD server->client app_stream={} bytes, flist entry ends at {}",
         dn_server_app.len(),
@@ -1413,8 +1416,8 @@ fn real_wire_decodes_full_delta_stream_from_frozen_upload_client_stream() {
         .app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, entry_bytes) =
-        decode_file_list_entry(&app, &opts).expect("first file-list entry must decode");
+    let (_, entry_bytes) = decode_file_list_entry(&app, &opts, &mut FileListCodecState::new())
+        .expect("first file-list entry must decode");
 
     let (header_end, head) = advance_past_sum_head(&app, entry_bytes);
     assert_eq!(head.count, 375);
@@ -1503,7 +1506,8 @@ fn real_wire_first_delta_literal_starts_with_zstd_frame_magic() {
         .app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let (_, entry_bytes) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let (header_end, head) = advance_past_sum_head(&app, entry_bytes);
 
     let (report, _) = decode_delta_stream(
@@ -1552,7 +1556,8 @@ fn real_wire_delta_literal_carries_real_live_upload_marker_bytes() {
         .app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let (_, entry_bytes) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let (header_end, head) = advance_past_sum_head(&app, entry_bytes);
 
     let (report, _) = decode_delta_stream(
@@ -1591,7 +1596,8 @@ fn real_wire_delta_stream_byte_accounting_closes_on_upload_client_stream() {
         .app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let (_, entry_bytes) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let (header_end, head) = advance_past_sum_head(&app, entry_bytes);
 
     let (_, delta_consumed) = decode_delta_stream(
@@ -1835,9 +1841,10 @@ fn consume_exact_ndx_done(app: &[u8], start: usize, count: usize) -> usize {
 /// then step over the session-level trailer.
 fn decode_download_s2c_up_to_file_csum(
     app: &[u8],
-    opts: &FileListDecodeOptions<'_>,
+    opts: &FileListDecodeOptions,
 ) -> (usize, Vec<u8>) {
-    let (_entry, flist_end) = decode_file_list_entry(app, opts).unwrap();
+    let (_entry, flist_end) =
+        decode_file_list_entry(app, opts, &mut FileListCodecState::new()).unwrap();
     let mut cursor = flist_end;
 
     // end_of_flist terminator + io_error.
@@ -2146,7 +2153,8 @@ fn real_wire_decompresses_upload_c2s_literals_to_700_bytes_total() {
         .app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let (_, entry_bytes) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let (header_end, head) = advance_past_sum_head(&app, entry_bytes);
 
     let (report, _) = decode_delta_stream(
@@ -2194,7 +2202,8 @@ fn real_wire_decompressed_upload_literal_contains_real_live_upload_marker() {
         .app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let (_, entry_bytes) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let (header_end, head) = advance_past_sum_head(&app, entry_bytes);
 
     let (report, _) = decode_delta_stream(
@@ -2244,7 +2253,8 @@ fn real_wire_decompressed_literals_cover_full_700_bytes_and_carry_zstd_magic() {
         .app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let (_, entry_bytes) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let (header_end, head) = advance_past_sum_head(&app, entry_bytes);
 
     let (report, _) = decode_delta_stream(
@@ -2608,13 +2618,14 @@ fn encode_file_list_entry_matches_frozen_oracle_byte_for_byte() {
         .app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (outcome, consumed) = decode_file_list_entry(&app, &opts).unwrap();
+    let (outcome, consumed) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let entry = match outcome {
         FileListDecodeOutcome::Entry(e) => e,
         other => panic!("expected Entry, got {other:?}"),
     };
 
-    let re_encoded = encode_file_list_entry(&entry, &opts);
+    let re_encoded = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
     let frozen_slice = &app[..consumed];
     assert_eq!(
         re_encoded.len(),
@@ -2660,7 +2671,8 @@ fn encode_delta_stream_matches_frozen_oracle_byte_for_byte() {
     // consumes flist terminator + io_error + NDX_FLIST_EOF + ndx + iflags
     // + sum_head and lands at delta_start.
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let (_, entry_bytes) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let (delta_start, head) = advance_past_sum_head(&app, entry_bytes);
 
     let (report, consumed) =
@@ -2746,7 +2758,8 @@ fn compress_zstd_literal_stream_round_trips_through_frozen_oracle_payloads() {
         .unwrap()
         .app_stream;
     let opts = FileListDecodeOptions::frozen_oracle_default();
-    let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
+    let (_, entry_bytes) =
+        decode_file_list_entry(&app, &opts, &mut FileListCodecState::new()).unwrap();
     let (delta_start, head) = crate::aerorsync::tests::advance_past_sum_head(&app, entry_bytes);
     let (report, _) = decode_delta_stream(&app[delta_start..], 16, Some(head.count)).unwrap();
 

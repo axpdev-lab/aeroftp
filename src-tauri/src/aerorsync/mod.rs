@@ -37,6 +37,7 @@ pub mod frame_io;
 pub mod live_tests;
 pub mod local_transport;
 pub mod mock;
+pub mod multi_entry_tests;
 pub mod native_driver;
 pub mod progress;
 pub mod real_wire;

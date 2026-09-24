@@ -213,6 +213,27 @@ class DecoderTests(unittest.TestCase):
                 self.assertEqual(r.returncode, 0, r.stdout[-300:])
 
 
+    def test_every_frozen_b1_capture_decodes(self):
+        # The B1 addendum (b1_wire_campaign.py): devices, specials, a symlink
+        # without -l, LONG_NAME, non-UTF-8 names, io_error, and the classic
+        # flags and unnegotiated preamble of a 3.1.3 server.
+        runs = sorted(p for p in (FROZEN / "b1").iterdir() if p.is_dir())
+        self.assertEqual(len(runs), 18)
+        for run in runs:
+            with self.subTest(run=run.name):
+                r = self.decode(run)
+                self.assertEqual(r.returncode, 0, r.stdout[-300:])
+
+    def test_symlink_length_counts_in_the_stats_total(self):
+        # flist.c adds F_LENGTH to total_size for S_ISREG || S_ISLNK. The
+        # decoder once summed regular files only, so the stats tail of any
+        # session with a symlink was refused and the NDX_DONE count ran on.
+        # b1-dev-dl-full: target.txt (7 bytes) + ln -> "target.txt" (10).
+        r = self.decode(FROZEN / "b1" / "b1-dev-dl-full")
+        self.assertEqual(r.returncode, 0, r.stdout[-300:])
+        self.assertIn("total_size=17", r.stdout)
+
+
 class CampaignTests(unittest.TestCase):
     def test_argv_is_sanitized_on_decoded_strings(self):
         sys.path.insert(0, str(HERE))
@@ -230,14 +251,16 @@ class CampaignTests(unittest.TestCase):
         needles = [b"/home/", b"aeroftp-worktrees", b"/var/www/", str(HERE).encode()]
         files = [f for f in (FROZEN / "b0c0").rglob("*") if f.is_file()]
         self.assertGreater(len(files), 200)
+        files += [f for f in (FROZEN / "b1").rglob("*") if f.is_file()]
         for f in files:
             data = f.read_bytes()
             if f.suffix == ".gz":
                 data = gzip.decompress(data)
             with self.subTest(file=str(f.relative_to(FROZEN))):
                 self.assertFalse([n for n in needles if n in data])
-        for f in (FROZEN / "b0c0").glob("*/client.argv.json"):
-            self.assertIn("<capture>", f.read_text())
+        for campaign in ("b0c0", "b1"):
+            for f in (FROZEN / campaign).glob("*/client.argv.json"):
+                self.assertIn("<capture>", f.read_text())
 
 
 if __name__ == "__main__":

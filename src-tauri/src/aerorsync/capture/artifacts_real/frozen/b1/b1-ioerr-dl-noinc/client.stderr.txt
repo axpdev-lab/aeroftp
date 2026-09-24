@@ -1,0 +1,2 @@
+rsync: [sender] opendir "/workspace/b0c0/src/ioe/ioe/locked" failed: Permission denied (13)
+rsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1887) [generator=3.2.7]
