@@ -938,8 +938,6 @@ impl ProviderConnectionParams {
             }
             if let Some(ref region) = self.region {
                 extra.insert("region".to_string(), region.clone());
-            } else {
-                extra.insert("region".to_string(), "us-east-1".to_string());
             }
             if let Some(ref endpoint) = self.endpoint {
                 extra.insert("endpoint".to_string(), endpoint.clone());
@@ -953,7 +951,9 @@ impl ProviderConnectionParams {
             // without this the provider falls back to `s3.{region}.amazonaws.com`
             // (seen live on the IBM COS Fetch button). Every caller gets the
             // same address the save path computes. Explicit values win; a
-            // generic S3 without a template is untouched.
+            // generic S3 without a template is untouched. The generic
+            // `us-east-1` fallback runs AFTER preset resolution so a preset
+            // default (e.g. IBM `eu-de`) is not shadowed by it.
             crate::profile_loader::apply_s3_profile_defaults(
                 &mut extra,
                 self.provider_id
@@ -961,6 +961,9 @@ impl ProviderConnectionParams {
                     .map(str::trim)
                     .filter(|s| !s.is_empty()),
             );
+            if !extra.contains_key("region") {
+                extra.insert("region".to_string(), "us-east-1".to_string());
+            }
             // S3 enterprise: storage class, SSE mode, KMS key
             if let Some(ref sc) = self.storage_class {
                 if !sc.is_empty() {
@@ -14875,6 +14878,23 @@ mod tests {
         assert_eq!(
             config.extra.get("endpoint").map(String::as_str),
             Some("https://s3.us-south.cloud-object-storage.appdomain.cloud")
+        );
+        // Omitted region resolves the preset default, not the generic
+        // `us-east-1` fallback (CodeRabbit on PR #923: the fallback used to
+        // run first and shadowed the preset, building an invalid
+        // `s3.us-east-1...` endpoint for IBM).
+        let mut params = s3_params(None);
+        params.provider_id = Some("ibm-cos".to_string());
+        params.region = None;
+        params.endpoint = None;
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("eu-de")
+        );
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://s3.eu-de.cloud-object-storage.appdomain.cloud")
         );
     }
 
