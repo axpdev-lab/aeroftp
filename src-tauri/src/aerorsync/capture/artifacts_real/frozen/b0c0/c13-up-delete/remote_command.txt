@@ -1,0 +1,1 @@
+rsync --server -logDtpre.iLsfxCIvu --delete . /workspace/b0c0/up/c13-up-delete/
