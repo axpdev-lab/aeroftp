@@ -132,9 +132,12 @@ function deriveProviderId(server: ServerProfile): string | undefined {
     }
     if (proto === 'webdav') {
         if (host.includes('koofr')) return 'koofr-webdav';
-        // mail.ru before the generic 'cloud.' rule: webdav.cloud.mail.ru
-        // contains 'cloud.' and is not Nextcloud.
-        if (host.includes('mail.ru') || host.includes('cloud.mail.ru')) return 'mailru-cloud';
+        // Domain-boundary match (same pattern as the filebase S3 rule above):
+        // exact mail.ru or *.mail.ru subdomains, so webdav.cloud.mail.ru is not
+        // swallowed by the generic 'cloud.' Nextcloud rule below, and lookalikes
+        // like gmail.ru are rejected.
+        const davHost = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
+        if (davHost === 'mail.ru' || davHost.endsWith('.mail.ru')) return 'mailru-cloud';
         if (host.includes('nextcloud') || host.includes('cloud.')) return 'nextcloud';
         if (host.includes('seafile')) return 'seafile';
         if (host.includes('jianguoyun')) return 'jianguoyun';

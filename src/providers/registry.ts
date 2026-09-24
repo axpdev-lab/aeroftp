@@ -1484,7 +1484,7 @@ export const PROVIDERS: ProviderConfig[] = [
         helpUrl: 'https://help.mail.ru/cloud/desktop/webdav/',
         signupUrl: 'https://cloud.mail.ru',
         setupInstructions: [
-            'Use your full mailbox address as the username (name@mail.ru, also inbox.ru, list.ru, bk.ru)',
+            'Use your full mailbox address as the username (name@mail.ru, also inbox.ru, list.ru, bk.ru, internet.ru)',
             'Generate an app password at account.mail.ru, Security, Passwords for external applications (mailbox password rejected since 2022)',
             'If the app password does not work, recreate it with Full access to Mail, Cloud and Calendar (Cloud-only scope is known to fail with third-party clients)',
         ],

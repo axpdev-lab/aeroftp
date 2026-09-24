@@ -145,6 +145,7 @@ describe('storageDedup', () => {
         expect(summary.uniqueCount).toBe(1);
         expect(summary.totalUsed).toBe(1_000_000_000);
         expect(summary.totalTotal).toBe(5_000_000_000);
+        expect(summary.dedupedQuotaCount).toBe(1);
     });
 
     it('case 4c: Mail.ru Cloud keys by preset id, matching the Rust dedup_key', () => {
