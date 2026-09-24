@@ -1124,6 +1124,8 @@ export interface TransferOptimizationHints {
   max_file_size?: number | null;
   max_name_bytes?: number | null;
   max_name_chars?: number | null;
+  max_path_bytes?: number | null;
+  max_path_chars?: number | null;
 }
 
 // Transfer capability descriptor (mirrors Rust transfer_dag::TransferCapabilities)

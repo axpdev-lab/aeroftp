@@ -1117,7 +1117,12 @@ impl S3Provider {
         url::Url::parse(endpoint)
             .ok()
             .and_then(|u| u.host_str().map(str::to_ascii_lowercase))
-            .map(|host| host == "amazonaws.com" || host.ends_with(".amazonaws.com"))
+            // `amazonaws.com.cn` is AWS China (Beijing, Ningxia): same service.
+            .map(|host| {
+                host == "amazonaws.com"
+                    || host.ends_with(".amazonaws.com")
+                    || host.ends_with(".amazonaws.com.cn")
+            })
             .unwrap_or(false)
     }
 
@@ -12000,14 +12005,17 @@ mod documented_limits_tests {
     /// rather than limits it never documented (#347).
     #[test]
     fn only_an_aws_endpoint_carries_the_aws_limits() {
-        for aws in [None, Some("https://s3.eu-west-1.amazonaws.com")] {
+        for aws in [
+            None,
+            Some("https://s3.eu-west-1.amazonaws.com"),
+            Some("https://s3.cn-north-1.amazonaws.com.cn"),
+        ] {
             let hints = provider(aws).transfer_optimization_hints();
-            assert_eq!(
-                hints.max_file_size,
-                super::super::AWS_S3_FILE_LIMITS.max_file_size,
-                "{aws:?}"
-            );
-            assert_eq!(hints.max_name_bytes, Some(1024), "{aws:?}");
+            // 10,000 parts of 5 GiB, not 50 TiB.
+            assert_eq!(hints.max_file_size, Some(50_000 * (1 << 30)), "{aws:?}");
+            // The key limit includes the prefix: a path limit, not a name one.
+            assert_eq!(hints.max_path_bytes, Some(1024), "{aws:?}");
+            assert_eq!(hints.max_name_bytes, None, "{aws:?}");
         }
         for other in [
             "https://minio.example.com:9000",
@@ -12016,7 +12024,7 @@ mod documented_limits_tests {
         ] {
             let hints = provider(Some(other)).transfer_optimization_hints();
             assert_eq!(hints.max_file_size, None, "{other}");
-            assert_eq!(hints.max_name_bytes, None, "{other}");
+            assert_eq!(hints.max_path_bytes, None, "{other}");
         }
     }
 }

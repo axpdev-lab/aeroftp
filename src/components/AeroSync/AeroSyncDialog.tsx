@@ -289,6 +289,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             onApplyMirrorLeftToRight={onApplyMirrorLeftToRight}
                             onApplyMirrorRightToLeft={onApplyMirrorRightToLeft}
                             remoteLimits={remoteLimits}
+                            remoteBasePath={context.initialDestination || ''}
                         />
                     )}
                     {activeTab === 'plan' && (

@@ -325,6 +325,12 @@ pub struct TransferOptimizationHints {
     pub max_name_bytes: Option<u32>,
     /// Longest file name the provider accepts, in characters, when documented.
     pub max_name_chars: Option<u32>,
+    /// Longest whole path (or object key) the provider accepts, in UTF-8
+    /// bytes, when the documentation states the limit for the path rather
+    /// than for one name.
+    pub max_path_bytes: Option<u32>,
+    /// The same, in characters.
+    pub max_path_chars: Option<u32>,
 }
 
 impl Default for TransferOptimizationHints {
@@ -347,6 +353,8 @@ impl Default for TransferOptimizationHints {
             max_file_size: None,
             max_name_bytes: None,
             max_name_chars: None,
+            max_path_bytes: None,
+            max_path_chars: None,
         }
     }
 }
@@ -363,7 +371,8 @@ impl Default for TransferOptimizationHints {
 ///   on any plan, whatever the user pays for.
 /// - When two official pages disagree, the larger value wins.
 /// - "GB" and "TB" are read as GiB and TiB, the larger reading.
-/// - A limit on the whole path or key is still a true limit for one name.
+/// - A limit stated for the whole path or object key goes in the path fields,
+///   checked against the destination path, not against the file name.
 /// - Limits an operator can change (OpenStack Swift, self-hosted GitLab) and
 ///   plans with a "custom" ceiling are left out.
 ///
@@ -374,6 +383,8 @@ pub struct DocumentedFileLimits {
     pub max_file_size: Option<u64>,
     pub max_name_bytes: Option<u32>,
     pub max_name_chars: Option<u32>,
+    pub max_path_bytes: Option<u32>,
+    pub max_path_chars: Option<u32>,
 }
 
 const GIB: u64 = 1 << 30;
@@ -407,7 +418,7 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
         // https://support.microsoft.com/en-us/onedrive/what-are-file-path-length-limits
         ProviderType::OneDrive => DocumentedFileLimits {
             max_file_size: Some(250 * GIB),
-            max_name_chars: Some(400),
+            max_path_chars: Some(400),
             ..Default::default()
         },
         // Highest plan "Enterprise Advanced: 500 GB"; "Box only supports file
@@ -437,10 +448,12 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
         // "1000 GB per file sent via the desktop app, the web app, and the API"
         // https://www.infomaniak.com/en/support/faq/2387/manage-kdrive-storage
         ProviderType::KDrive => size(1000 * GIB),
-        // No size limit; "The maximum file name length is 255 characters".
+        // No size limit; "The maximum file name length is 255 characters,
+        // and the total path length cannot exceed 1023 characters."
         // https://koofr.eu/help/koofr_files/what-is-the-max-file-name-length-on-koofr/
         ProviderType::Koofr => DocumentedFileLimits {
             max_name_chars: Some(255),
+            max_path_chars: Some(1023),
             ..Default::default()
         },
         // "With any Yandex 360 plan: 50 GB."
@@ -452,7 +465,7 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
         // https://learn.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-containers--blobs--and-metadata
         ProviderType::Azure => DocumentedFileLimits {
             max_file_size: Some(50_000 * 4_000 * (1 << 20)),
-            max_name_chars: Some(1024),
+            max_path_chars: Some(1024),
             ..Default::default()
         },
         // "Large files can range in size from 5 MB to 10 TB."; "Names should be
@@ -461,7 +474,7 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
         // https://www.backblaze.com/docs/cloud-storage-files
         ProviderType::Backblaze => DocumentedFileLimits {
             max_file_size: Some(10 * TIB),
-            max_name_bytes: Some(1024),
+            max_path_bytes: Some(1024),
             ..Default::default()
         },
         // Size is plan-dependent up to "Custom"; public_id "Can be up to 255
@@ -474,14 +487,17 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
     }
 }
 
-/// AWS S3: "you can upload a single large object, up to 50 TB in size"; keys
-/// have "a maximum length of 1,024 bytes".
-/// https://docs.aws.amazon.com/AmazonS3/latest/userguide/upload-objects.html
+/// AWS S3: "Maximum object size | 48.8 TiB", which is 10,000 parts of 5 GiB,
+/// 50,000 GiB exactly (the upload page rounds it to "50 TB"); an object key
+/// has "a maximum length of 1,024 bytes", prefix included.
+/// https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
 /// https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html
 pub const AWS_S3_FILE_LIMITS: DocumentedFileLimits = DocumentedFileLimits {
-    max_file_size: Some(50 * TIB),
-    max_name_bytes: Some(1024),
+    max_file_size: Some(50_000 * GIB),
+    max_name_bytes: None,
     max_name_chars: None,
+    max_path_bytes: Some(1024),
+    max_path_chars: None,
 };
 
 impl TransferOptimizationHints {
@@ -490,6 +506,8 @@ impl TransferOptimizationHints {
         self.max_file_size = self.max_file_size.or(limits.max_file_size);
         self.max_name_bytes = self.max_name_bytes.or(limits.max_name_bytes);
         self.max_name_chars = self.max_name_chars.or(limits.max_name_chars);
+        self.max_path_bytes = self.max_path_bytes.or(limits.max_path_bytes);
+        self.max_path_chars = self.max_path_chars.or(limits.max_path_chars);
         self
     }
 }

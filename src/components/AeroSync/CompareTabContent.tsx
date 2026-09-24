@@ -51,6 +51,8 @@ interface CompareTabContentProps {
      * before the sync instead of failing during it.
      */
     remoteLimits?: ProviderFileLimits | null;
+    /** The remote folder being compared, for the whole-path limits. */
+    remoteBasePath?: string;
 }
 
 const BUCKET_ORDER: CompareBucket[] = [
@@ -252,11 +254,12 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     onApplyMirrorLeftToRight,
     onApplyMirrorRightToLeft,
     remoteLimits = null,
+    remoteBasePath = '',
 }) => {
     const t = useTranslation();
     const wontFit = React.useMemo(
-        () => entriesThatWillNotFit(result, pairKind, remoteLimits),
-        [result, pairKind, remoteLimits],
+        () => entriesThatWillNotFit(result, pairKind, remoteLimits, remoteBasePath),
+        [result, pairKind, remoteLimits, remoteBasePath],
     );
     // Live counters for the scan the spinner below used to hide entirely.
     const { totals: scanTotals, elapsedMs: scanElapsedMs } = useScanProgress(!!loading && !result, scanProgressId);
@@ -421,6 +424,13 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
                                     {reasons.includes('too-large') && remoteLimits.maxFileSize !== null && (
                                         <span className="text-red-600 dark:text-red-400">
                                             {t('aerosync.compareWontFitTooLarge', { size: formatSize(size), limit: formatBytes(remoteLimits.maxFileSize) })}
+                                        </span>
+                                    )}
+                                    {reasons.includes('path-too-long') && (
+                                        <span className="text-red-600 dark:text-red-400">
+                                            {remoteLimits.maxPathBytes !== null
+                                                ? t('aerosync.compareWontFitPathBytes', { count: remoteLimits.maxPathBytes })
+                                                : t('aerosync.compareWontFitPathChars', { count: remoteLimits.maxPathChars ?? 0 })}
                                         </span>
                                     )}
                                     {reasons.includes('name-too-long') && (

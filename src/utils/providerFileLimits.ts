@@ -16,9 +16,12 @@ export interface ProviderFileLimits {
     maxFileSize: number | null;
     maxNameBytes: number | null;
     maxNameChars: number | null;
+    /** Limits the provider states for the whole path or object key. */
+    maxPathBytes: number | null;
+    maxPathChars: number | null;
 }
 
-export type WontFitReason = 'too-large' | 'name-too-long';
+export type WontFitReason = 'too-large' | 'name-too-long' | 'path-too-long';
 
 export interface WontFitEntry {
     entry: CompareResultEntry;
@@ -33,10 +36,10 @@ export function limitsFromHints(hints: TransferOptimizationHints | null | undefi
         maxFileSize: hints.max_file_size ?? null,
         maxNameBytes: hints.max_name_bytes ?? null,
         maxNameChars: hints.max_name_chars ?? null,
+        maxPathBytes: hints.max_path_bytes ?? null,
+        maxPathChars: hints.max_path_chars ?? null,
     };
-    return limits.maxFileSize === null && limits.maxNameBytes === null && limits.maxNameChars === null
-        ? null
-        : limits;
+    return Object.values(limits).every(v => v === null) ? null : limits;
 }
 
 const utf8 = new TextEncoder();
@@ -44,10 +47,24 @@ const utf8 = new TextEncoder();
 /** Characters as a person counts them (code points, not UTF-16 units). */
 const charCount = (name: string): number => Array.from(name).length;
 
+const overLimit = (text: string, bytes: number | null, chars: number | null): boolean =>
+    (bytes !== null && utf8.encode(text).length > bytes)
+    || (chars !== null && charCount(text) > chars);
+
 export function nameTooLong(name: string, limits: ProviderFileLimits): boolean {
-    if (limits.maxNameBytes !== null && utf8.encode(name).length > limits.maxNameBytes) return true;
-    if (limits.maxNameChars !== null && charCount(name) > limits.maxNameChars) return true;
-    return false;
+    return overLimit(name, limits.maxNameBytes, limits.maxNameChars);
+}
+
+/**
+ * The path the entry would have on the remote, without the leading slash:
+ * the remote folder being compared plus the entry's relative path. Leaving
+ * the slash out can only make the path shorter than the provider counts it,
+ * so a warning based on it is never false.
+ */
+export function remoteDestinationPath(remoteBase: string, entry: CompareResultEntry): string {
+    const base = remoteBase.replace(/^\/+|\/+$/g, '');
+    const rel = (entry.relativePath || entry.name || '').replace(/^\/+/, '');
+    return base ? `${base}/${rel}` : rel;
 }
 
 const baseName = (entry: CompareResultEntry): string => {
@@ -57,7 +74,9 @@ const baseName = (entry: CompareResultEntry): string => {
 };
 
 /**
- * Entries a mirror toward the remote would send and the remote cannot store.
+ * Entries whose local copy a sync toward the remote may send and the remote
+ * cannot store. Every bucket with a local copy counts except `same`: Mirror
+ * also sends the local copy of `conflict` and of entries newer on the remote.
  * Only the direction that ends on the remote is checked: a download to the
  * local disk has no provider limit. `local-local` pairs have no remote.
  */
@@ -65,14 +84,15 @@ export function entriesThatWillNotFit(
     result: CompareResult | null,
     pairKind: string | null | undefined,
     limits: ProviderFileLimits | null,
+    remoteBase = '',
 ): WontFitEntry[] {
     if (!result || !limits) return [];
     const remoteOnRight = pairKind === 'local-remote';
     const remoteOnLeft = pairKind === 'remote-local';
     if (!remoteOnRight && !remoteOnLeft) return [];
     const outgoing = remoteOnRight
-        ? [...result.buckets['only-left'], ...result.buckets['newer-left']]
-        : [...result.buckets['only-right'], ...result.buckets['newer-right']];
+        ? [...result.buckets['only-left'], ...result.buckets['newer-left'], ...result.buckets['newer-right'], ...result.buckets.conflict]
+        : [...result.buckets['only-right'], ...result.buckets['newer-right'], ...result.buckets['newer-left'], ...result.buckets.conflict];
 
     const out: WontFitEntry[] = [];
     for (const entry of outgoing) {
@@ -83,6 +103,9 @@ export function entriesThatWillNotFit(
             reasons.push('too-large');
         }
         if (nameTooLong(baseName(entry), limits)) reasons.push('name-too-long');
+        if (overLimit(remoteDestinationPath(remoteBase, entry), limits.maxPathBytes, limits.maxPathChars)) {
+            reasons.push('path-too-long');
+        }
         if (reasons.length > 0) out.push({ entry, reasons, size });
     }
     return out;

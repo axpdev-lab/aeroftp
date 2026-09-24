@@ -3,11 +3,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { compareEntries } from './compareEndpoints';
-import { entriesThatWillNotFit, limitsFromHints, nameTooLong, type ProviderFileLimits } from './providerFileLimits';
+import { entriesThatWillNotFit, limitsFromHints, nameTooLong, remoteDestinationPath, type ProviderFileLimits } from './providerFileLimits';
 import type { TransferOptimizationHints } from '../types';
 
 const MB = 1024 * 1024;
-const limits: ProviderFileLimits = { maxFileSize: 100 * MB, maxNameBytes: 16, maxNameChars: null };
+const NO_PATH = { maxPathBytes: null, maxPathChars: null };
+const limits: ProviderFileLimits = { maxFileSize: 100 * MB, maxNameBytes: 16, maxNameChars: null, ...NO_PATH };
 
 const result = compareEntries(
     [
@@ -48,8 +49,38 @@ describe('entriesThatWillNotFit', () => {
 describe('nameTooLong', () => {
     it('counts UTF-8 bytes and characters separately', () => {
         const name = 'è'.repeat(10); // 10 characters, 20 bytes
-        expect(nameTooLong(name, { maxFileSize: null, maxNameBytes: 16, maxNameChars: null })).toBe(true);
-        expect(nameTooLong(name, { maxFileSize: null, maxNameBytes: null, maxNameChars: 16 })).toBe(false);
-        expect(nameTooLong('😀'.repeat(3), { maxFileSize: null, maxNameBytes: null, maxNameChars: 3 })).toBe(false);
+        expect(nameTooLong(name, { maxFileSize: null, maxNameBytes: 16, maxNameChars: null, ...NO_PATH })).toBe(true);
+        expect(nameTooLong(name, { maxFileSize: null, maxNameBytes: null, maxNameChars: 16, ...NO_PATH })).toBe(false);
+        expect(nameTooLong('😀'.repeat(3), { maxFileSize: null, maxNameBytes: null, maxNameChars: 3, ...NO_PATH })).toBe(false);
+    });
+});
+
+describe('whole-path limits and the buckets a sync can send', () => {
+    // OneDrive counts the whole decoded path (400 characters), S3 the whole
+    // key: a short name under a deep remote folder can still be too long.
+    it('checks the destination path, remote folder included', () => {
+        const deep = compareEntries([{ name: 'a.txt', isDir: false, size: 1, mtimeMs: 2000 }], []);
+        const pathLimits: ProviderFileLimits = { maxFileSize: null, maxNameBytes: null, maxNameChars: null, maxPathBytes: null, maxPathChars: 20 };
+        expect(entriesThatWillNotFit(deep, 'local-remote', pathLimits, '/short')).toEqual([]);
+        const found = entriesThatWillNotFit(deep, 'local-remote', pathLimits, '/a/much/deeper/remote/folder');
+        expect(found.map(f => f.reasons)).toEqual([['path-too-long']]);
+    });
+
+    it('builds the remote path without a leading slash', () => {
+        const entry = { name: 'x.bin', relativePath: 'sub/x.bin', bucket: 'only-left' as const };
+        expect(remoteDestinationPath('/Docs/', entry)).toBe('Docs/sub/x.bin');
+        expect(remoteDestinationPath('', entry)).toBe('sub/x.bin');
+    });
+
+    // Mirror also sends the local copy of entries that are newer on the remote
+    // and of conflicts; those uploads can hit the limit too.
+    it('includes entries newer on the remote and conflicts', () => {
+        const both = compareEntries(
+            [{ name: 'old-local.iso', isDir: false, size: 287 * MB, mtimeMs: 1000 }],
+            [{ name: 'old-local.iso', isDir: false, size: 10, mtimeMs: 900000 }],
+        );
+        expect(both.buckets['newer-right'].length + both.buckets.conflict.length).toBe(1);
+        const found = entriesThatWillNotFit(both, 'local-remote', limits);
+        expect(found.map(f => [f.entry.name, f.reasons])).toEqual([['old-local.iso', ['too-large']]]);
     });
 });
