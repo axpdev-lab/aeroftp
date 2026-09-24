@@ -1954,8 +1954,8 @@
             "protonDesc": "Yn cysylltu trwy CLI Proton Drive",
             "protonTooltip": "Yn defnyddio CLI Proton Drive - gosodwch ef, mewngofnodwch yn y porwr, AeroFTP yw'r GUI",
             "twakeDesc": "Twake Drive (5 GB am ddim)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (Cozy Cloud gynt), cwmwl ffynhonnell agored o Ffrainc gyda 5 GB am ddim",
-            "discoverTwake": "Cwmwl Ewropeaidd ffynhonnell agored gan Linagora, Cozy Cloud gynt (5 GB am ddim)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cwmwl ffynhonnell agored o Ffrainc (mae Cozy Cloud bellach yn rhan ohono) gyda 5 GB am ddim",
+            "discoverTwake": "Cwmwl Ewropeaidd ffynhonnell agored gan Linagora, sydd bellach yn gartref i Cozy Cloud (5 GB am ddim)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

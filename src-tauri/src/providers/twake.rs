@@ -1,6 +1,6 @@
 //! Twake Drive Storage Provider: native cozy-stack files API
 //!
-//! Twake Workplace (Linagora, formerly Cozy Cloud) runs cozy-stack on a
+//! Twake Workplace (Linagora; Cozy Cloud is now part of it) runs cozy-stack on a
 //! per-user instance such as `https://alice.twake.app`. The same code serves
 //! self-hosted cozy-stack and legacy `*.mycozy.cloud` instances.
 //!
@@ -354,7 +354,7 @@ pub async fn begin_sign_in(
 /// Exchange the authorization code for tokens and return the credentials to
 /// store on the profile.
 pub async fn finish_sign_in(
-    pending: TwakePendingSignIn,
+    pending: &TwakePendingSignIn,
     code: &str,
 ) -> Result<TwakeCredentials, ProviderError> {
     let client = auth_http_client();
@@ -394,8 +394,8 @@ pub async fn finish_sign_in(
             ProviderError::AuthenticationFailed("Twake returned no refresh token".into())
         })?;
     Ok(TwakeCredentials {
-        instance: pending.instance,
-        client_id: pending.client_id,
+        instance: pending.instance.clone(),
+        client_id: pending.client_id.clone(),
         client_secret: pending.client_secret.expose_secret().to_string(),
         registration_access_token: pending
             .registration_access_token
@@ -411,13 +411,43 @@ pub async fn finish_sign_in(
 /// duplicated profile shares the client, and revoking it would silently sign
 /// the copy out.
 pub async fn revoke_client(creds: &TwakeCredentials) -> Result<(), ProviderError> {
+    delete_registration(
+        &creds.instance,
+        &creds.client_id,
+        &creds.registration_access_token,
+    )
+    .await
+}
+
+impl TwakePendingSignIn {
+    /// Delete the client registered for this attempt. Called when the sign-in
+    /// fails or is cancelled after the registration, so an abandoned attempt
+    /// does not leave a client in the user's Connected devices.
+    pub async fn abandon(&self) {
+        if let Err(e) = delete_registration(
+            &self.instance,
+            &self.client_id,
+            self.registration_access_token.expose_secret(),
+        )
+        .await
+        {
+            twake_log(&format!("could not delete the abandoned client: {e}"));
+        }
+    }
+}
+
+async fn delete_registration(
+    instance: &str,
+    client_id: &str,
+    registration_access_token: &str,
+) -> Result<(), ProviderError> {
     let resp = auth_http_client()
         .delete(format!(
             "{}/auth/register/{}",
-            creds.instance,
-            urlencoding::encode(&creds.client_id)
+            instance,
+            urlencoding::encode(client_id)
         ))
-        .bearer_auth(&creds.registration_access_token)
+        .bearer_auth(registration_access_token)
         .send()
         .await
         .map_err(|e| ProviderError::ConnectionFailed(format!("Client revocation failed: {e}")))?;
@@ -452,7 +482,19 @@ impl TwakeConfig {
         // The host field is the source of truth for WHICH instance the profile
         // points at; the blob must have been issued by that instance.
         if !config.host.trim().is_empty() {
-            let host_instance = normalize_instance_url(&config.host)?;
+            let mut host_instance = normalize_instance_url(&config.host)?;
+            // A loader that splits `host:port` keeps a non-default port in
+            // `config.port`; put it back before comparing origins.
+            if let Some(port) = config.port.filter(|p| *p != 443) {
+                let mut url = url::Url::parse(&host_instance)
+                    .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+                if url.port().is_none() {
+                    url.set_port(Some(port)).map_err(|_| {
+                        ProviderError::InvalidConfig("Invalid Twake instance port".into())
+                    })?;
+                    host_instance = normalize_instance_url(url.as_str())?;
+                }
+            }
             if host_instance != credentials.instance {
                 return Err(ProviderError::AuthenticationFailed(format!(
                     "The stored Twake sign-in belongs to {} but the profile points at {}: sign in again",
@@ -1314,6 +1356,18 @@ impl StorageProvider for TwakeProvider {
         Ok(true)
     }
 
+    /// cozy-stack has no single-request overwrite-by-rename (a PATCH onto an
+    /// occupied name conflicts), so staged-temp callers must not rely on it.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
+    async fn replace(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported(
+            "Twake Drive has no atomic replace".into(),
+        ))
+    }
+
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1680,6 +1734,14 @@ mod tests {
             Some(creds.to_stored()),
         ));
         assert!(matches!(other, Err(ProviderError::AuthenticationFailed(_))));
+        // A loader that stored the port apart from the host still matches.
+        let self_hosted = TwakeCredentials {
+            instance: "https://files.example.org:8443".into(),
+            ..creds.clone()
+        };
+        let mut split = config_with("files.example.org", Some(self_hosted.to_stored()));
+        split.port = Some(8443);
+        assert!(TwakeConfig::from_provider_config(&split).is_ok());
         let missing = TwakeConfig::from_provider_config(&config_with("axp.twake.app", None));
         assert!(matches!(
             missing,

@@ -1954,8 +1954,8 @@
             "protonDesc": "Подключается через Proton Drive CLI",
             "protonTooltip": "Использует Proton Drive CLI - установите, войдите в браузере, AeroFTP - это GUI",
             "twakeDesc": "Twake Drive (5 ГБ бесплатно)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (ранее Cozy Cloud), французское open-source облако с 5 ГБ бесплатно",
-            "discoverTwake": "Европейское open-source облако от Linagora, ранее Cozy Cloud (5 ГБ бесплатно)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, французское облако с открытым исходным кодом (Cozy Cloud теперь является его частью), 5 ГБ бесплатно",
+            "discoverTwake": "Европейское облако с открытым исходным кодом от Linagora, теперь новый дом Cozy Cloud (5 ГБ бесплатно)"
         },
         "shortcuts": {
             "title": "Горячие клавиши",

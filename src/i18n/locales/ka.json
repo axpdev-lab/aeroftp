@@ -1954,8 +1954,8 @@
             "protonDesc": "უკავშირდება Proton Drive CLI-ით",
             "protonTooltip": "იყენებს Proton Drive CLI-ს - დააყენეთ, შედით ბრაუზერში, AeroFTP არის GUI",
             "twakeDesc": "Twake Drive (5 GB უფასოდ)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (ყოფილი Cozy Cloud), ფრანგული ღია კოდის ღრუბელი 5 GB უფასო სივრცით",
-            "discoverTwake": "Linagora-ს ღია კოდის ევროპული ღრუბელი, ყოფილი Cozy Cloud (5 GB უფასოდ)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, ფრანგული ღია კოდის ღრუბელი (Cozy Cloud ახლა მისი ნაწილია) 5 GB უფასოდ",
+            "discoverTwake": "Linagora-ს ღია კოდის ევროპული ღრუბელი, ახლა Cozy Cloud-ის ახალი სახლი (5 GB უფასოდ)"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

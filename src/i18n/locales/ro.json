@@ -1954,8 +1954,8 @@
             "protonDesc": "Se conectează prin CLI-ul Proton Drive",
             "protonTooltip": "Folosește CLI-ul Proton Drive - instalați, autentificați-vă în browser, AeroFTP este GUI-ul",
             "twakeDesc": "Twake Drive (5 GB gratuit)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (fost Cozy Cloud), cloud francez open-source cu 5 GB gratuit",
-            "discoverTwake": "Cloud european open-source de la Linagora, fost Cozy Cloud (5 GB gratuit)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cloud francez open source (Cozy Cloud face acum parte din el) cu 5 GB gratuit",
+            "discoverTwake": "Cloud european open source de la Linagora, acum noua casă a Cozy Cloud (5 GB gratuit)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

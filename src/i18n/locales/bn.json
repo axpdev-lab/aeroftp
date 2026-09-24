@@ -1954,8 +1954,8 @@
             "protonDesc": "Proton Drive CLI-এর মাধ্যমে সংযোগ করে",
             "protonTooltip": "Proton Drive CLI ব্যবহার করে - ইনস্টল করুন, ব্রাউজারে সাইন ইন করুন, AeroFTP হলো GUI",
             "twakeDesc": "Twake Drive (৫ GB বিনামূল্যে)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (পূর্বে Cozy Cloud), ফরাসি ওপেন-সোর্স ক্লাউড, ৫ GB বিনামূল্যে",
-            "discoverTwake": "Linagora-এর ওপেন-সোর্স ইউরোপীয় ক্লাউড, পূর্বে Cozy Cloud (৫ GB বিনামূল্যে)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, একটি ফরাসি ওপেন-সোর্স ক্লাউড (Cozy Cloud এখন এর অংশ) 5 GB ফ্রি সহ",
+            "discoverTwake": "Linagora-এর ওপেন-সোর্স ইউরোপীয় ক্লাউড, এখন Cozy Cloud-এর নতুন ঠিকানা (5 GB ফ্রি)"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",

@@ -5897,38 +5897,48 @@ pub async fn twake_sign_in(
     let mut callback_task =
         AbortOnDrop::spawn(async move { wait_for_callback(listener, &callback_state).await });
 
-    // System browser only: Twake refuses embedded webviews.
-    if let Err(e) = open::that(&pending.auth_url) {
-        return Err(format!(
-            "Could not open browser: {}. Please open this URL manually: {}",
-            e, pending.auth_url
-        ));
-    }
-    info!("Twake sign-in: browser opened, waiting for callback");
+    // Every failure after the registration deletes the client it created, so
+    // an abandoned attempt leaves nothing in the user's Connected devices.
+    let outcome: Result<twake::TwakeCredentials, String> = async {
+        // System browser only: Twake refuses embedded webviews. Returning drops
+        // the listener and the PKCE verifier, so the URL is not worth offering
+        // for manual use.
+        open::that(&pending.auth_url).map_err(|e| {
+            format!("Could not open the system browser for the Twake sign-in: {}", e)
+        })?;
+        info!("Twake sign-in: browser opened, waiting for callback");
 
-    let (code, state) = tokio::select! {
-        res = callback_task.wait() => res
-            .map_err(|e| format!("Callback server error: {}", e))?
-            .map_err(|e| format!("Callback error: {}", e))?,
-        _ = tokio::time::sleep(tokio::time::Duration::from_secs(300)) => {
-            return Err("Twake sign-in timeout: no response within 5 minutes. If Twake showed \"The state parameter is mandatory\", log in to Twake in your browser first, then sign in again.".to_string());
-        }
-        _ = async {
-            match cancel_token.as_ref() {
-                Some(token) => token.cancelled().await,
-                None => std::future::pending::<()>().await,
+        let (code, state) = tokio::select! {
+            res = callback_task.wait() => res
+                .map_err(|e| format!("Callback server error: {}", e))?
+                .map_err(|e| format!("Callback error: {}", e))?,
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(300)) => {
+                return Err("Twake sign-in timeout: no response within 5 minutes. If Twake showed \"The state parameter is mandatory\", log in to Twake in your browser first, then sign in again.".to_string());
             }
-        } => {
-            return Err(CONNECT_CANCELLED.to_string());
+            _ = async {
+                match cancel_token.as_ref() {
+                    Some(token) => token.cancelled().await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                return Err(CONNECT_CANCELLED.to_string());
+            }
+        };
+        if state != expected_state {
+            return Err("OAuth state mismatch - possible CSRF attack".to_string());
+        }
+        twake::finish_sign_in(&pending, &code)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    let creds = match outcome {
+        Ok(creds) => creds,
+        Err(e) => {
+            pending.abandon().await;
+            return Err(e);
         }
     };
-    if state != expected_state {
-        return Err("OAuth state mismatch - possible CSRF attack".to_string());
-    }
-
-    let creds = twake::finish_sign_in(pending, &code)
-        .await
-        .map_err(|e| e.to_string())?;
 
     if let Some(previous) = params
         .previous_credentials

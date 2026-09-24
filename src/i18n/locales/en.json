@@ -3018,8 +3018,8 @@
             "s3RoleMfaTokenCodeHint": "One-time code from your MFA device, required only if the role enforces MFA. Used once at connect time and never saved.",
             "peerDesc": "Share folders directly with friends over an encrypted peer-to-peer channel, with no server in the middle.",
             "twakeDesc": "Twake Drive (5 GB free)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (formerly Cozy Cloud), French open-source cloud with 5 GB free",
-            "discoverTwake": "Open-source European cloud by Linagora, formerly Cozy Cloud (5 GB free)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, French open-source cloud (Cozy Cloud is now part of it) with 5 GB free",
+            "discoverTwake": "Open-source European cloud by Linagora, now home of Cozy Cloud (5 GB free)"
         },
         "quickLook": {
             "noPreview": "No preview available",

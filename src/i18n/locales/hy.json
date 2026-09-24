@@ -1947,8 +1947,8 @@
             "protonDesc": "Միանում է Proton Drive CLI-ով",
             "protonTooltip": "Օգտագործում է Proton Drive CLI - տեղադրեք, մուտք գործեք դիտարկիչում, AeroFTP-ը GUI-ն է",
             "twakeDesc": "Twake Drive (5 ԳԲ անվճար)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (նախկինում Cozy Cloud), ֆրանսիական բաց կոդով ամպ՝ 5 ԳԲ անվճար տարածքով",
-            "discoverTwake": "Linagora-ի բաց կոդով եվրոպական ամպ, նախկինում Cozy Cloud (5 ԳԲ անվճար)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, ֆրանսիական բաց կոդով ամպ (Cozy Cloud-ն այժմ դրա մասն է) 5 ԳԲ անվճար",
+            "discoverTwake": "Linagora-ի բաց կոդով եվրոպական ամպը, այժմ Cozy Cloud-ի նոր տունը (5 ԳԲ անվճար)"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",

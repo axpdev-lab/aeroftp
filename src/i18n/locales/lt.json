@@ -1954,8 +1954,8 @@
             "protonDesc": "Jungiasi per Proton Drive CLI",
             "protonTooltip": "Naudoja Proton Drive CLI - įdiekite, prisijunkite naršyklėje, AeroFTP yra GUI",
             "twakeDesc": "Twake Drive (5 GB nemokamai)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (anksčiau Cozy Cloud), Prancūzijos atvirojo kodo debesis su 5 GB nemokamai",
-            "discoverTwake": "„Linagora“ atvirojo kodo Europos debesis, anksčiau Cozy Cloud (5 GB nemokamai)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, prancūziškas atvirojo kodo debesis (Cozy Cloud dabar yra jo dalis) su 5 GB nemokamai",
+            "discoverTwake": "Linagora atvirojo kodo Europos debesis, dabar naujieji Cozy Cloud namai (5 GB nemokamai)"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

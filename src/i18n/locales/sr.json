@@ -1954,8 +1954,8 @@
             "protonDesc": "Повезује се преко Proton Drive CLI",
             "protonTooltip": "Користи Proton Drive CLI - инсталирајте, пријавите се у прегледачу, AeroFTP је GUI",
             "twakeDesc": "Twake Drive (5 GB besplatno)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (ranije Cozy Cloud), francuski open-source oblak sa 5 GB besplatno",
-            "discoverTwake": "Evropski open-source oblak kompanije Linagora, ranije Cozy Cloud (5 GB besplatno)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, француски облак отвореног кода (Cozy Cloud је сада део њега) са 5 GB бесплатно",
+            "discoverTwake": "Европски облак отвореног кода компаније Linagora, сада дом Cozy Cloud-а (5 GB бесплатно)"
         },
         "shortcuts": {
             "title": "Пречице на тастатури",

@@ -327,7 +327,7 @@
             "protonCliTitle": "Proton Drive CLI ofiziala erabiltzen du",
             "protonCliBody": "Instalatu Proton Drive CLI proton.me/download/drive/cli helbidetik, exekutatu proton-drive auth login terminalean eta amaitu nabigatzailean. AeroFTP-k ez du inoiz zure pasahitza ikusten; saioa sistema eragilearen sekretu-biltegian geratzen da.",
             "protonUnofficial": "Hirugarrenen aplikazioa da hau, Proton-ek ofizialki onartzen ez duena.",
-            "protonConnectHint": "\"Konektatu\" botoiak makina honetan dagoeneko hasitako CLI erabiltzen du. Proton kontu bat sistema eragileko erabiltzaile bakoitzeko.",
+            "protonConnectHint": "\"Konektatu\" botoiak makina honetan saioa hasita duen CLI erabiltzen du. Proton kontu bat sistema eragileko erabiltzaile bakoitzeko.",
             "twakeInstance": "Twake helbidea",
             "twakeInstanceHelp": "Zure helbidea, adibidez yourname.twake.app. Zure nabigatzailetik edozein Twake orriren helbidea itsatsi dezakezu.",
             "twakeSignIn": "Hasi saioa Twakerekin",
@@ -1954,8 +1954,8 @@
             "protonDesc": "Proton Drive CLI bidez konektatzen da",
             "protonTooltip": "Proton Drive CLI erabiltzen du - instalatu, hasi saioa nabigatzailean, AeroFTP da GUI",
             "twakeDesc": "Twake Drive (5 GB doan)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (lehen Cozy Cloud), Frantziako kode irekiko hodeia, 5 GB doan",
-            "discoverTwake": "Linagorak sortutako Europako kode irekiko hodeia, lehen Cozy Cloud (5 GB doan)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, iturburu irekiko hodei frantsesa (Cozy Cloud orain horren zati da) 5 GB doan",
+            "discoverTwake": "Linagoraren iturburu irekiko hodei europarra, orain Cozy Cloud-en etxe berria (5 GB doan)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

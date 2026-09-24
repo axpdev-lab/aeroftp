@@ -1954,8 +1954,8 @@
             "protonDesc": "Łączy się przez Proton Drive CLI",
             "protonTooltip": "Używa Proton Drive CLI - zainstaluj, zaloguj się w przeglądarce, AeroFTP jest GUI",
             "twakeDesc": "Twake Drive (5 GB za darmo)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (dawniej Cozy Cloud), francuska chmura open source z 5 GB za darmo",
-            "discoverTwake": "Europejska chmura open source od Linagory, dawniej Cozy Cloud (5 GB za darmo)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francuska chmura open source (Cozy Cloud jest teraz jej częścią) z 5 GB za darmo",
+            "discoverTwake": "Europejska chmura open source od Linagora, teraz nowy dom Cozy Cloud (5 GB za darmo)"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

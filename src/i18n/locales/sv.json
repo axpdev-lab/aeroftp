@@ -1954,8 +1954,8 @@
             "protonDesc": "Ansluter via Proton Drive CLI",
             "protonTooltip": "Använder Proton Drive CLI - installera, logga in i webbläsaren, AeroFTP är GUI:t",
             "twakeDesc": "Twake Drive (5 GB gratis)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (tidigare Cozy Cloud), fransk öppen källkod-moln med 5 GB gratis",
-            "discoverTwake": "Europeiskt öppen källkod-moln från Linagora, tidigare Cozy Cloud (5 GB gratis)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, fransk open source-molntjänst (Cozy Cloud är nu en del av den) med 5 GB gratis",
+            "discoverTwake": "Europeisk molntjänst med öppen källkod från Linagora, nu hem för Cozy Cloud (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Kortkommandon",

@@ -134,7 +134,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: ['filePassword'] },
   { name: 'Twake Drive', logoId: 'twake',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'trash'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir'],
     advanced: ['checksum'] },
   { name: 'Koofr', logoId: 'koofr',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],

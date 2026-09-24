@@ -1954,8 +1954,8 @@
             "protonDesc": "តភ្ជាប់តាម Proton Drive CLI",
             "protonTooltip": "ប្រើ Proton Drive CLI - ដំឡើង, ចូលក្នុងកម្មវិធីរុករក, AeroFTP គឺ GUI",
             "twakeDesc": "Twake Drive (5 GB ឥតគិតថ្លៃ)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (ពីមុនហៅថា Cozy Cloud) គឺជាកម្មេឃស៍ស្តេនប្រភពបើកចំហរបស់បារាំង ដែលមាន 5 GB ឥតគិតថ្លៃ",
-            "discoverTwake": "កម្មេឃស៍អឺរ៉ុបប្រភពបើកចំហរដោយ Linagora ពីមុនហៅថា Cozy Cloud (5 GB ឥតគិតថ្លៃ)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace ជាការផ្ទុកពពកប្រភពបើកចំហរបស់បារាំង (Cozy Cloud ឥឡូវនេះជាផ្នែកមួយរបស់វា) ជាមួយ 5 GB ឥតគិតថ្លៃ",
+            "discoverTwake": "ការផ្ទុកពពកអឺរ៉ុបប្រភពបើកចំហរដោយ Linagora ឥឡូវនេះជាទីតាំងថ្មីរបស់ Cozy Cloud (5 GB ឥតគិតថ្លៃ)"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",

@@ -1954,8 +1954,8 @@
             "protonDesc": "通过 Proton Drive CLI 连接",
             "protonTooltip": "使用 Proton Drive CLI - 安装，在浏览器中登录，AeroFTP 即为 GUI",
             "twakeDesc": "Twake Drive(免费 5 GB)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace(前身为 Cozy Cloud),法国开源云盘,免费提供 5 GB",
-            "discoverTwake": "Linagora 出品的欧洲开源云盘,前身为 Cozy Cloud(免费 5 GB)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace,法国开源云盘(Cozy Cloud 现已成为其一部分),免费 5 GB",
+            "discoverTwake": "Linagora 打造的欧洲开源云盘,现为 Cozy Cloud 的新家(免费 5 GB)"
         },
         "shortcuts": {
             "title": "键盘快捷键",

@@ -1954,8 +1954,8 @@
             "protonDesc": "Підключається через Proton Drive CLI",
             "protonTooltip": "Використовує Proton Drive CLI - встановіть, увійдіть у браузері, AeroFTP - це GUI",
             "twakeDesc": "Twake Drive (5 ГБ безкоштовно)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (раніше Cozy Cloud), французька хмара з відкритим кодом, 5 ГБ безкоштовно",
-            "discoverTwake": "Європейська хмара з відкритим кодом від Linagora, раніше Cozy Cloud (5 ГБ безкоштовно)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, французька хмара з відкритим кодом (Cozy Cloud тепер є її частиною) з 5 ГБ безкоштовно",
+            "discoverTwake": "Європейська хмара з відкритим кодом від Linagora, тепер новий дім Cozy Cloud (5 ГБ безкоштовно)"
         },
         "shortcuts": {
             "title": "Грячі клавіші",

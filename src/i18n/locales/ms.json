@@ -1954,8 +1954,8 @@
             "protonDesc": "Menyambung melalui CLI Proton Drive",
             "protonTooltip": "Menggunakan CLI Proton Drive - pasang, log masuk dalam pelayar, AeroFTP ialah GUI",
             "twakeDesc": "Twake Drive (5 GB percuma)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (dahulunya Cozy Cloud), awan sumber terbuka Perancis dengan 5 GB percuma",
-            "discoverTwake": "Awan Eropah sumber terbuka oleh Linagora, dahulunya Cozy Cloud (5 GB percuma)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, awan sumber terbuka dari Perancis (Cozy Cloud kini menjadi sebahagian daripadanya) dengan 5 GB percuma",
+            "discoverTwake": "Awan Eropah sumber terbuka oleh Linagora, kini rumah baharu Cozy Cloud (5 GB percuma)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

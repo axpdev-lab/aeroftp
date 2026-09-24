@@ -1954,8 +1954,8 @@
             "protonDesc": "Συνδέεται μέσω του Proton Drive CLI",
             "protonTooltip": "Χρησιμοποιεί το Proton Drive CLI - εγκαταστήστε το, συνδεθείτε στον φυλλομετρητή, το AeroFTP είναι το GUI",
             "twakeDesc": "Twake Drive (5 GB δωρεάν)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (πρώην Cozy Cloud), γαλλικό cloud ανοιχτού κώδικα με 5 GB δωρεάν",
-            "discoverTwake": "Ευρωπαϊκό cloud ανοιχτού κώδικα από τη Linagora, πρώην Cozy Cloud (5 GB δωρεάν)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, γαλλικό cloud ανοιχτού κώδικα (το Cozy Cloud είναι πλέον μέρος του) με 5 GB δωρεάν",
+            "discoverTwake": "Ευρωπαϊκό cloud ανοιχτού κώδικα από τη Linagora, πλέον σπίτι του Cozy Cloud (5 GB δωρεάν)"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",

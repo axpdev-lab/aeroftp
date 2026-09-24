@@ -1954,8 +1954,8 @@
             "protonDesc": "Kết nối qua CLI Proton Drive",
             "protonTooltip": "Sử dụng CLI Proton Drive - cài đặt, đăng nhập trên trình duyệt, AeroFTP là GUI",
             "twakeDesc": "Twake Drive (5 GB miễn phí)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (trước đây là Cozy Cloud), đám mây mã nguồn mở của Pháp với 5 GB miễn phí",
-            "discoverTwake": "Đám mây châu Âu mã nguồn mở của Linagora, trước đây là Cozy Cloud (5 GB miễn phí)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, đám mây mã nguồn mở của Pháp (Cozy Cloud giờ đây là một phần của nó) với 5 GB miễn phí",
+            "discoverTwake": "Đám mây mã nguồn mở châu Âu của Linagora, giờ đây là ngôi nhà mới của Cozy Cloud (5 GB miễn phí)"
         },
         "shortcuts": {
             "title": "Phím tắt",

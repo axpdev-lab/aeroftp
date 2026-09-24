@@ -1954,8 +1954,8 @@
             "protonDesc": "A Proton Drive CLI-n keresztül csatlakozik",
             "protonTooltip": "A Proton Drive CLI-t használja - telepítse, jelentkezzen be a böngészőben, az AeroFTP a GUI",
             "twakeDesc": "Twake Drive (5 GB ingyen)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (korábban Cozy Cloud), francia nyílt forráskódú felhő 5 GB ingyenes tárhellyel",
-            "discoverTwake": "A Linagora nyílt forráskódú európai felhője, korábban Cozy Cloud (5 GB ingyen)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francia nyílt forráskódú felhő (a Cozy Cloud mostantól ennek része) 5 GB ingyen",
+            "discoverTwake": "Linagora nyílt forráskódú európai felhője, mostantól a Cozy Cloud új otthona (5 GB ingyen)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

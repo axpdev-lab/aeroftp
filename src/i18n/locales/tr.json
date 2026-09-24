@@ -1954,8 +1954,8 @@
             "protonDesc": "Proton Drive CLI üzerinden bağlanır",
             "protonTooltip": "Proton Drive CLI kullanır - kurun, tarayıcıda oturum açın, AeroFTP GUI'dir",
             "twakeDesc": "Twake Drive (5 GB ücretsiz)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (eski adıyla Cozy Cloud), 5 GB ücretsiz alan sunan Fransız açık kaynak bulut",
-            "discoverTwake": "Linagora'nın açık kaynak Avrupa bulutu, eski adıyla Cozy Cloud (5 GB ücretsiz)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Fransız açık kaynaklı bulut (Cozy Cloud artık onun bir parçası) 5 GB ücretsiz ile",
+            "discoverTwake": "Linagora'nın açık kaynaklı Avrupa bulutu, artık Cozy Cloud'un yeni yuvası (5 GB ücretsiz)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

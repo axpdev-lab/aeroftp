@@ -727,8 +727,8 @@
             "protonDesc": "Si connette tramite il CLI Proton Drive",
             "protonTooltip": "Utilizza il CLI Proton Drive - installalo, accedi nel browser, AeroFTP è la GUI",
             "twakeDesc": "Twake Drive (5 GB gratis)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (ex Cozy Cloud), cloud open source francese con 5 GB gratuiti",
-            "discoverTwake": "Cloud europeo open source di Linagora, ex Cozy Cloud (5 GB gratuiti)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cloud open source francese (Cozy Cloud ora ne fa parte) con 5 GB gratuiti",
+            "discoverTwake": "Cloud europeo open source di Linagora, ora nuova casa di Cozy Cloud (5 GB gratuiti)"
         },
         "browser": {
             "remote": "Remoto",

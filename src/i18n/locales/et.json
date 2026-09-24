@@ -1954,8 +1954,8 @@
             "protonDesc": "Ühendub Proton Drive CLI kaudu",
             "protonTooltip": "Kasutab Proton Drive CLI - installige, logige brauseris sisse, AeroFTP on GUI",
             "twakeDesc": "Twake Drive (5 GB tasuta)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (varem Cozy Cloud), Prantsuse avatud lähtekoodiga pilv 5 GB tasuta ruumiga",
-            "discoverTwake": "Linagora avatud lähtekoodiga Euroopa pilv, varem Cozy Cloud (5 GB tasuta)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Prantsuse avatud lähtekoodiga pilv (Cozy Cloud on nüüd selle osa) 5 GB tasuta",
+            "discoverTwake": "Linagora avatud lähtekoodiga Euroopa pilv, nüüd Cozy Cloud'i uus kodu (5 GB tasuta)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

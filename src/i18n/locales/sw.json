@@ -1954,8 +1954,8 @@
             "protonDesc": "Inaunganisha kupitia CLI ya Proton Drive",
             "protonTooltip": "Inatumia CLI ya Proton Drive - sakinisha, ingia kwenye kivinjari, AeroFTP ndiyo GUI",
             "twakeDesc": "Twake Drive (5 GB bila malipo)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (zamani Cozy Cloud), wingu la chanzo huria la Ufaransa lenye 5 GB bila malipo",
-            "discoverTwake": "Wingu la Ulaya la chanzo huria kutoka Linagora, zamani Cozy Cloud (5 GB bila malipo)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, wingu la Ufaransa la chanzo huria (Cozy Cloud sasa ni sehemu yake) likiwa na 5 GB bure",
+            "discoverTwake": "Wingu la Ulaya la chanzo huria kutoka Linagora, sasa nyumbani kwa Cozy Cloud (5 GB bure)"
         },
         "shortcuts": {
             "title": "Njia za Mkato",

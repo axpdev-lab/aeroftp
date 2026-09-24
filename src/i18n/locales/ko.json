@@ -1954,8 +1954,8 @@
             "protonDesc": "Proton Drive CLI를 통해 연결합니다",
             "protonTooltip": "Proton Drive CLI를 사용합니다 - 설치하고 브라우저에서 로그인한 뒤, AeroFTP가 GUI입니다",
             "twakeDesc": "Twake Drive(무료 5GB)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace(구 Cozy Cloud), 프랑스 오픈소스 클라우드, 무료 5GB 제공",
-            "discoverTwake": "Linagora의 오픈소스 유럽 클라우드, 구 Cozy Cloud(무료 5GB)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, 프랑스의 오픈소스 클라우드(Cozy Cloud가 이제 그 일부입니다), 5 GB 무료 제공",
+            "discoverTwake": "Linagora의 오픈소스 유럽 클라우드, 이제 Cozy Cloud의 새로운 보금자리 (5 GB 무료)"
         },
         "shortcuts": {
             "title": "단축키",

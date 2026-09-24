@@ -5963,6 +5963,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...connectionParams,
                                                     server: e.target.value,
                                                     port: 443,
+                                                    // A sign-in belongs to one instance: a new address needs a new one.
+                                                    password: '',
                                                 })}
                                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                                                 placeholder="https://yourname.twake.app"

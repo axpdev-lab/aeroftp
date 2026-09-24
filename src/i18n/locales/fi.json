@@ -1954,8 +1954,8 @@
             "protonDesc": "Yhdistää Proton Drive CLI:n kautta",
             "protonTooltip": "Käyttää Proton Drive CLI:tä - asenna, kirjaudu selaimessa, AeroFTP on GUI",
             "twakeDesc": "Twake Drive (5 Gt ilmaiseksi)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (aiemmin Cozy Cloud), ranskalainen avoimen lähdekoodin pilvi, 5 Gt ilmaiseksi",
-            "discoverTwake": "Linagoran avoimen lähdekoodin eurooppalainen pilvi, aiemmin Cozy Cloud (5 Gt ilmaiseksi)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, ranskalainen avoimen lähdekoodin pilvi (Cozy Cloud on nyt osa sitä) 5 Gt ilmaiseksi",
+            "discoverTwake": "Linagoran avoimen lähdekoodin eurooppalainen pilvi, nyt Cozy Cloudin uusi koti (5 Gt ilmaiseksi)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

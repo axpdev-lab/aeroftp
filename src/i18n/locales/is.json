@@ -1954,8 +1954,8 @@
             "protonDesc": "Tengist í gegnum Proton Drive CLI",
             "protonTooltip": "Notar Proton Drive CLI - settu upp, skráðu þig inn í vafranum, AeroFTP er GUI",
             "twakeDesc": "Twake Drive (5 GB frítt)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (áður Cozy Cloud), franskt opinn hugbúnaðar ský með 5 GB frítt",
-            "discoverTwake": "Evrópskt opinn hugbúnaðar ský frá Linagora, áður Cozy Cloud (5 GB frítt)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, franskt opinn-uppspretta ský (Cozy Cloud er nú hluti af því) með 5 GB frítt",
+            "discoverTwake": "Evrópskt opinn-uppspretta ský frá Linagora, nú heimili Cozy Cloud (5 GB frítt)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

@@ -1954,8 +1954,8 @@
             "protonDesc": "Savienojas, izmantojot Proton Drive CLI",
             "protonTooltip": "Izmanto Proton Drive CLI - instalējiet, pierakstieties pārlūkā, AeroFTP ir GUI",
             "twakeDesc": "Twake Drive (5 GB bez maksas)",
-            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (agrāk Cozy Cloud), Francijas atvērtā koda mākonis ar 5 GB bez maksas",
-            "discoverTwake": "Linagora atvērtā koda Eiropas mākonis, agrāk Cozy Cloud (5 GB bez maksas)"
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, franču atvērtā koda mākonis (Cozy Cloud tagad ir tā daļa) ar 5 GB bez maksas",
+            "discoverTwake": "Linagora atvērtā koda Eiropas mākonis, tagad Cozy Cloud jaunās mājas (5 GB bez maksas)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
