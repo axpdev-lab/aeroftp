@@ -973,6 +973,7 @@ export type SyncErrorKind =
   | "path_not_found"
   | "permission_denied"
   | "quota_exceeded"
+  | "file_too_large"
   | "rate_limit"
   | "timeout"
   | "file_locked"

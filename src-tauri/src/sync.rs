@@ -3374,6 +3374,11 @@ pub enum SyncErrorKind {
     PermissionDenied,
     /// Storage quota exceeded
     QuotaExceeded,
+    /// This one file is larger than the destination accepts for a single
+    /// file (a plan's per-file limit, or an upload endpoint's request size,
+    /// HTTP 413). The account may have room: other files keep going, and
+    /// retrying the same file never succeeds.
+    FileTooLarge,
     /// Rate limit hit (too many requests)
     RateLimit,
     /// Operation timed out
@@ -3711,13 +3716,22 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
     } else if lower.contains("file too large")
         || lower.contains("file size limit")
         || lower.contains("maximum allowed file size")
+        // HTTP 413 as `reqwest::StatusCode` renders it, and its RFC 7231 name.
+        // Matched by reason phrase, not by the bare number, for the reason the
+        // comment on the not-found branch gives about bare status needles.
+        || lower.contains("payload too large")
+        || lower.contains("request entity too large")
     {
         // A single file exceeds a hard per-file size limit (e.g. OpenDrive
-        // free/Basic = 100 MB). Deterministic: retrying the same oversized
-        // file never succeeds. Matched BEFORE permission-denied because the
-        // underlying 403 body would otherwise fall through to Unknown once
-        // the message no longer says "permission denied".
-        (SyncErrorKind::QuotaExceeded, false)
+        // free/Basic = 100 MB, or an upload endpoint that answers 413).
+        // Deterministic: retrying the same oversized file never succeeds, and
+        // it says nothing about the other files, so it is its own kind rather
+        // than QuotaExceeded, which the transfer circuit breaker treats as
+        // fatal to the whole batch. Matched BEFORE
+        // permission-denied because the underlying 403 body would otherwise
+        // fall through to Unknown once the message no longer says "permission
+        // denied".
+        (SyncErrorKind::FileTooLarge, false)
     } else if lower.contains("permission denied")
         || lower.contains("access denied")
         || mentions_status(&lower, "403 ")
@@ -5943,8 +5957,28 @@ mod tests {
             "File too large: File size limit exceeded. Maximum allowed file size: 100 MB",
             Some("/big.bin"),
         );
-        assert_eq!(err.kind, SyncErrorKind::QuotaExceeded);
+        assert_eq!(err.kind, SyncErrorKind::FileTooLarge);
         assert!(!err.retryable);
+    }
+
+    /// Zoho WorkDrive refused a 287 MB upload with 413 and an HTML body, and
+    /// the error reached AeroSync as Unknown: retryable, so the same file was
+    /// sent three times, and grouped under "unknown" in the result. The string
+    /// is built the way `zoho_workdrive.rs` builds it (`Upload failed ({}):
+    /// {}` over a `reqwest::StatusCode` and the sanitized first body line).
+    #[test]
+    fn a_413_from_an_upload_endpoint_is_a_file_too_large_not_a_retry() {
+        let status = reqwest::StatusCode::PAYLOAD_TOO_LARGE;
+        let raw =
+            crate::providers::ProviderError::Other(format!("Upload failed ({}): <html>", status))
+                .to_string();
+        let err = classify_sync_error(&raw, Some("/Videos/holiday.mp4"));
+        assert_eq!(err.kind, SyncErrorKind::FileTooLarge, "{raw}");
+        assert!(!err.retryable, "{raw}");
+
+        // The RFC 7231 name some servers and proxies still send.
+        let old_name = classify_sync_error("HTTP 413 Request Entity Too Large", None);
+        assert_eq!(old_name.kind, SyncErrorKind::FileTooLarge);
     }
 
     #[test]

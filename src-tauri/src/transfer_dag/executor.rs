@@ -3082,6 +3082,7 @@ mod tests {
             TransferErrorKind::NotFound,
             TransferErrorKind::PermissionDenied,
             TransferErrorKind::QuotaExceeded,
+            TransferErrorKind::FileTooLarge,
             TransferErrorKind::LocalIo,
             TransferErrorKind::RemoteIo,
             TransferErrorKind::Unknown,
