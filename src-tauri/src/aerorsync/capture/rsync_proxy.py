@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import os
 import select
-import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -88,10 +87,10 @@ def main() -> int:
     sources = {client_in_fd, proc_out_fd, proc_err_fd}
     dead_sinks = set()
 
-    # If the SIGPIPE default were inherited, a Python write() to a closed
-    # client would raise BrokenPipeError mid-shuttle and kill us. Catch
-    # BrokenPipeError explicitly instead and unwind cleanly.
-    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    # SIGPIPE stays as Python leaves it (ignored), so a write to a closed
+    # peer raises BrokenPipeError and is handled below. An earlier version
+    # restored SIG_DFL here, which made the kernel kill the proxy on that
+    # write: the handler never ran and end.txt was never written.
 
     def finish_sink(sink):
         if sink == proc_in_fd:
@@ -130,11 +129,13 @@ def main() -> int:
                 except BlockingIOError:
                     pass
                 except BrokenPipeError:
+                    # The peer behind this sink is gone. Its source keeps
+                    # being read (and tee'd), only no longer forwarded: if
+                    # the source were dropped instead, a server still writing
+                    # would block on a full pipe and never exit, and neither
+                    # would the proxy.
                     pending[sink].clear()
                     finish_sink(sink)
-                    for src, dst in route.items():
-                        if dst == sink:
-                            sources.discard(src)
                 if sink in closing and not pending[sink]:
                     finish_sink(sink)
 

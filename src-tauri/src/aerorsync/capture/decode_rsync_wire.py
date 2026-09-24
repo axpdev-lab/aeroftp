@@ -181,6 +181,8 @@ class Opts:
     compat: int = 0
     protocol: int = 0
     csum_len: int = 16
+    raw_in: int = 0
+    raw_out: int = 0
 
     def has(self, c: str) -> bool:
         return c in self.short
@@ -210,6 +212,7 @@ class FlistState:
     # segment announcement NDX_FLIST_OFFSET - n indexes THIS list, not ndx.
     dirs: list = field(default_factory=list)
     dirs_sorted: list = field(default_factory=list)
+    stats_seen: bool = False
     # Transfer-phase ndx index the list AFTER flist_sort_and_clean.
     sorted_entries: dict = field(default_factory=dict)
 
@@ -558,11 +561,18 @@ def read_files_from(out: Out, r: Reader):
     field_line(out, r, s, f"names NUL-separated, double NUL ends: {bytes(buf)!r}")
 
 
-def try_stats_tail(out: Out, r: Reader) -> bool:
+def try_stats_tail(out: Out, r: Reader, o: Opts, st: FlistState) -> bool:
     """A server sender ends with handle_stats(): five varlong30(x, 3) values
     (total_read, total_written, total_size, flist_buildtime, flist_xfertime,
-    protocol >= 29) and then one final NDX_DONE. Accept it only if it
-    consumes the stream exactly, otherwise leave the reader untouched."""
+    protocol >= 29) and then one final NDX_DONE.
+
+    Consuming the stream exactly is not enough: `00 00 00` is a valid varlong
+    worth 0, so a run of NDX_DONE bytes followed by the real stats also
+    parses. Measured on the frozen captures, that ambiguity made the first
+    version stop counting NDX_DONE early. A candidate is accepted only if it
+    is physically possible: total_size equals the sum of the regular-file
+    sizes in the decoded lists, and neither byte counter exceeds what the
+    capture shows that side sent."""
     probe = Reader(r.buf[r.pos:], r.base + r.pos)
     try:
         vals = [probe.varlong(3) for _ in range(5)]
@@ -571,13 +581,20 @@ def try_stats_tail(out: Out, r: Reader) -> bool:
         return False
     if last != 0 or probe.left():
         return False
+    total_read, total_written, total_size = vals[:3]
+    files_size = sum(e["size"] for e in st.all_entries.values()
+                     if "mode" in e and stat.S_ISREG(e["mode"]))
+    if total_size != files_size or total_written > o.raw_out or total_read > o.raw_in:
+        return False
     s = r.pos
     r.take(probe.pos - 1)
     field_line(out, r, s, "stats: total_read={} total_written={} total_size={} "
-               "flist_buildtime={} flist_xfertime={} (varlong min 3 each)".format(*vals))
+               "flist_buildtime={} flist_xfertime={} (varlong min 3 each; total_size "
+               "= sum of regular-file sizes)".format(*vals))
     s = r.pos
     r.take(1)
     field_line(out, r, s, "final NDX_DONE")
+    st.stats_seen = True
     return True
 
 
@@ -595,7 +612,7 @@ def transfer_phase(out: Out, r: Reader, o: Opts, st: FlistState, role: str, max_
         if ndx == NDX_DONE:
             counts["done"] += 1
             field_line(out, r, s, f"NDX_DONE (#{counts['done']})")
-            if role == "sender" and o.sender_is_server and try_stats_tail(out, r):
+            if role == "sender" and o.sender_is_server and try_stats_tail(out, r, o, st):
                 break
             continue
         if ndx == NDX_FLIST_EOF:
@@ -697,6 +714,35 @@ def transfer_phase(out: Out, r: Reader, o: Opts, st: FlistState, role: str, max_
         out(f"  ... {printed - max_items} further file items not printed ...")
     out(f"-- {role} summary: {counts['file']} file items, {counts['segments']} extra segments, "
         f"{counts['done']} NDX_DONE")
+    return counts
+
+
+# Closing sequence, measured on all 35 captures of the B0/C0 campaign (rsync
+# 3.2.7, protocol 31, every mode it exercises: upload and download, with and
+# without incremental recursion, dry-run, delete, filters, files-from). With
+# S extra file-list segments (0 without incremental recursion):
+#   generator stream           S + 5 NDX_DONE
+#   sender stream, upload      S + 4 NDX_DONE
+#   sender stream, download    S + 3 NDX_DONE, then stats, then a final NDX_DONE
+# A capture whose streams were cut at a frame boundary decodes cleanly up to
+# the cut; only these counts reveal it, so they are required, and a peer that
+# closes differently is a stop to investigate, not a pass.
+TERMINAL_GENERATOR = 5
+TERMINAL_SENDER_UPLOAD = 4
+TERMINAL_SENDER_DOWNLOAD = 3
+
+
+def check_terminal(out: Out, o: Opts, st: FlistState, snd: dict, gen: dict):
+    seg = snd["segments"]
+    want_gen = seg + TERMINAL_GENERATOR
+    want_snd = seg + (TERMINAL_SENDER_DOWNLOAD if o.sender_is_server else TERMINAL_SENDER_UPLOAD)
+    if gen["done"] != want_gen or snd["done"] != want_snd:
+        raise Stop(f"closing sequence incomplete: generator {gen['done']} NDX_DONE (want {want_gen}), "
+                   f"sender {snd['done']} (want {want_snd}), with {seg} extra segments")
+    if o.sender_is_server and not st.stats_seen:
+        raise Stop("server sender ended without its stats and final NDX_DONE")
+    out(f"-- closing sequence complete: generator {want_gen}, sender {want_snd} NDX_DONE"
+        f"{', stats and final NDX_DONE' if o.sender_is_server else ''}")
 
 
 def read_capture(p: Path) -> bytes:
@@ -726,7 +772,8 @@ def main() -> int:
     cin = read_capture(d / "capture_in.bin")
     cout = read_capture(d / "capture_out.bin")
     short, longs, caps = parse_remote_command(cmd)
-    o = Opts(sender_is_server="--sender" in longs, short=short, long_opts=longs, caps=caps)
+    o = Opts(sender_is_server="--sender" in longs, short=short, long_opts=longs, caps=caps,
+             raw_in=len(cin), raw_out=len(cout))
     out = Out()
     out(f"# {d.name}")
     out(f"remote command: {cmd}")
@@ -777,9 +824,10 @@ def main() -> int:
             decode_flist(out, ra, o, st, "initial", a.max_entries)
             if not o.inc_recurse:
                 read_id_lists(out, ra, o)
-            transfer_phase(out, ra, o, st, "sender", a.max_items)
+            snd = transfer_phase(out, ra, o, st, "sender", a.max_items)
             out("")
-            transfer_phase(out, rg, o, st, "generator", a.max_items)
+            gen = transfer_phase(out, rg, o, st, "generator", a.max_items)
+            check_terminal(out, o, st, snd, gen)
         else:
             out(f"   client raw handshake ends at 0x{rc.pos:x}")
             out("")
@@ -795,9 +843,10 @@ def main() -> int:
             decode_flist(out, ra, o, st, "initial", a.max_entries)
             if not o.inc_recurse:
                 read_id_lists(out, ra, o)
-            transfer_phase(out, ra, o, st, "sender", a.max_items)
+            snd = transfer_phase(out, ra, o, st, "sender", a.max_items)
             out("")
-            transfer_phase(out, Reader(app_s), o, st, "generator", a.max_items)
+            gen = transfer_phase(out, Reader(app_s), o, st, "generator", a.max_items)
+            check_terminal(out, o, st, snd, gen)
     except Stop as e:
         out(f"!! STOP: {e}")
         print("\n".join(out.lines))

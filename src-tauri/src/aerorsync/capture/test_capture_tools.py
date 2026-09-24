@@ -10,7 +10,10 @@ both are tested here, each case against the defect it guards:
   stopped reading both directions at once);
 - the proxy must deliver output that is still queued when the server exits
   (the idle-exit branch once dropped it);
-- the decoder must refuse, not label, anything it cannot account for.
+- the proxy must survive a client that leaves mid-stream (it was killed by
+  SIGPIPE, and would then have hung waiting on a server it stopped draining);
+- the decoder must refuse, not label, anything it cannot account for,
+  including a capture cut cleanly at a frame boundary.
 
 Run: python3 src-tauri/src/aerorsync/capture/test_capture_tools.py -v
 PROXY_UNDER_TEST=<path> runs the proxy cases against another proxy file, which
@@ -19,6 +22,7 @@ DECODER_UNDER_TEST=<path> does the same for the decoder cases.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import shutil
@@ -41,6 +45,21 @@ def start_proxy(server_cmd: str, capture_dir: str) -> subprocess.Popen:
                AEROFTP_SSH_ORIGINAL_COMMAND=server_cmd)
     return subprocess.Popen([sys.executable, str(PROXY)], stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+
+
+def collect(p: subprocess.Popen, timeout: float = 30) -> bytes:
+    """Read the proxy's stdout with a deadline. A plain read() on a proxy
+    that never closes its stdout would hang the CI job until its own
+    timeout; here the proxy is killed and the test fails instead."""
+    buf = []
+    t = threading.Thread(target=lambda: buf.append(p.stdout.read()), daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        p.kill()
+        raise AssertionError(f"proxy did not close its stdout within {timeout} s")
+    p.wait(timeout=timeout)
+    return buf[0]
 
 
 class ProxyTests(unittest.TestCase):
@@ -69,8 +88,7 @@ class ProxyTests(unittest.TestCase):
         if not done.wait(30):
             p.kill()
             self.fail("proxy deadlocked: the client's write never completed")
-        out = p.stdout.read()
-        p.wait(timeout=30)
+        out = collect(p)
         self.assertEqual(len(out), n)
         self.assertEqual(os.path.getsize(Path(self.cap) / "capture_in.bin"), n)
         self.assertEqual(os.path.getsize(Path(self.cap) / "capture_out.bin"), n)
@@ -82,10 +100,28 @@ class ProxyTests(unittest.TestCase):
         n = 200 * 1024
         p = start_proxy(f"head -c {n} /dev/zero", self.cap)
         time.sleep(2.5)
-        out = p.stdout.read()
         p.stdin.close()
-        p.wait(timeout=30)
+        out = collect(p)
         self.assertEqual(len(out), n, "bytes queued for the client were dropped at server exit")
+        self.assertEqual(os.path.getsize(Path(self.cap) / "capture_out.bin"), n)
+
+
+    def test_client_gone_mid_stream_is_handled(self):
+        # The client stops reading and closes both pipes while the server
+        # still has 8 MiB to write. The proxy must survive the broken pipe,
+        # keep draining the server so it can exit, keep the capture complete
+        # and write its end marker.
+        n = 8 * 1024 * 1024
+        p = start_proxy(f"head -c {n} /dev/zero", self.cap)
+        p.stdout.close()
+        p.stdin.close()
+        try:
+            rc = p.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            self.fail("proxy hung after the client went away")
+        self.assertEqual(rc, 0, "proxy did not exit cleanly (killed by SIGPIPE?)")
+        self.assertTrue((Path(self.cap) / "end.txt").exists(), "end marker missing")
         self.assertEqual(os.path.getsize(Path(self.cap) / "capture_out.bin"), n)
 
 
@@ -131,6 +167,35 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(r.returncode, 3)
         self.assertIn("unsupported mux tag 50", r.stdout)
 
+    def drop_last_frame(self, name: str):
+        """Remove the last complete mux frame: every remaining byte still
+        sits on a frame boundary, so only the closing sequence can tell."""
+        f = self.cap / name
+        raw = f.read_bytes()
+        pos, last = self.first_frame(name, raw), None
+        while pos + 4 <= len(raw):
+            last = pos
+            pos += 4 + (int.from_bytes(raw[pos:pos + 4], "little") & 0xFFFFFF)
+        self.assertEqual(pos, len(raw))
+        f.write_bytes(raw[:last])
+
+    @staticmethod
+    def first_frame(name: str, raw: bytes) -> int:
+        if name == "capture_out.bin":
+            return 4 + 2 + 1 + raw[6] + 4        # version, compat, vstring, seed
+        return 4 + 1 + raw[4]                    # version, checksum vstring
+
+    def test_capture_cut_at_a_frame_boundary_is_refused(self):
+        for direction in ("up", "dl"):
+            for name in ("capture_out.bin", "capture_in.bin"):
+                with self.subTest(direction=direction, stream=name):
+                    shutil.rmtree(self.cap)
+                    shutil.copytree(FROZEN / "b0c0" / f"p1-{direction}", self.cap)
+                    self.drop_last_frame(name)
+                    r = self.decode(self.cap)
+                    self.assertEqual(r.returncode, 3, r.stdout[-300:])
+                    self.assertIn("!! STOP", r.stdout)
+
     def test_compressed_stream_is_refused_by_name(self):
         r = self.decode(FROZEN / "upload")
         self.assertEqual(r.returncode, 3)
@@ -158,6 +223,21 @@ class CampaignTests(unittest.TestCase):
         self.assertEqual(out[3], "--filter=- tmp/")
         self.assertFalse(any(str(c.CAPTURE) in a for a in out), out)
         self.assertEqual(out[4], '<capture>/src/"quoted"\\path')
+
+    def test_no_frozen_file_carries_a_station_path(self):
+        # The repository is public: a published capture must not name the
+        # station it was recorded on (home, checkout, worktree root).
+        needles = [b"/home/", b"aeroftp-worktrees", b"/var/www/", str(HERE).encode()]
+        files = [f for f in (FROZEN / "b0c0").rglob("*") if f.is_file()]
+        self.assertGreater(len(files), 200)
+        for f in files:
+            data = f.read_bytes()
+            if f.suffix == ".gz":
+                data = gzip.decompress(data)
+            with self.subTest(file=str(f.relative_to(FROZEN))):
+                self.assertFalse([n for n in needles if n in data])
+        for f in (FROZEN / "b0c0").glob("*/client.argv.json"):
+            self.assertIn("<capture>", f.read_text())
 
 
 if __name__ == "__main__":
