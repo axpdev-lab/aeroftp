@@ -346,6 +346,18 @@ def decode(run, dest: Path):
     print(f"[b0c0] {run[0]:<16} point {run[1]:>2}  {dest.name}: decode {status} {last[0] if last else ''}")
 
 
+def sanitize_argv_json(data: bytes) -> bytes:
+    """The station's absolute paths (home, key) do not belong in the
+    repository; the argv shape is what the evidence needs. Replace on the
+    decoded strings, not on the serialized bytes: json.dumps escapes
+    non-ASCII, backslashes and quotes, so a byte-level match could miss the
+    path and publish it."""
+    argv = [a.replace(str(CAPTURE), "<capture>") for a in json.loads(data)]
+    if any(str(CAPTURE) in a for a in argv):
+        raise SystemExit("[b0c0] argv still carries the checkout path after sanitizing")
+    return (json.dumps(argv, indent=1) + "\n").encode()
+
+
 def freeze(only):
     """Copy the captures into the versioned frozen tree. Big ones are gzipped."""
     FROZEN.mkdir(parents=True, exist_ok=True)
@@ -366,9 +378,7 @@ def freeze(only):
                 continue
             data = f.read_bytes()
             if f.name == "client.argv.json":
-                # The station's absolute paths (home, key) do not belong in
-                # the repository; the argv shape is what the evidence needs.
-                data = data.replace(str(CAPTURE).encode(), b"<capture>")
+                data = sanitize_argv_json(data)
             if f.suffix == ".bin" and len(data) > GZIP_OVER:
                 (dst / (f.name + ".gz")).write_bytes(gzip.compress(data, mtime=0))
             else:
