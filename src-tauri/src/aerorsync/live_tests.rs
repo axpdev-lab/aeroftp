@@ -120,6 +120,16 @@ fn base_config_with_prefix(prefix: &str) -> SshTransportConfig {
             config.host_key_policy = SshHostKeyPolicy::pinned_hex(fingerprint);
         }
     }
+    // `<PREFIX>_AUTH_AGENT=1` authenticates through the running ssh-agent,
+    // which routes the session over the russh leg (`prefers_russh_leg`)
+    // instead of libssh2, so the same live tests cover both SSH stacks.
+    if env::var(var("AUTH_AGENT")).is_ok_and(|v| v == "1") {
+        config.auth_agent = true;
+        assert!(
+            config.prefers_russh_leg(),
+            "{prefix}_AUTH_AGENT=1 must select the russh leg"
+        );
+    }
     config
 }
 /// S8a byte-oracle lane. The real rsync server is invoked via sshd's

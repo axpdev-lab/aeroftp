@@ -189,7 +189,7 @@ jobs:
           basis[100000:100064] = bytes(64)
           (w / "src.bin").write_bytes(src)
           (w / "expected.bin").write_bytes(src)
-          (w / "local_dl.bin").write_bytes(bytes(basis))
+          (w / "local_dl.basis").write_bytes(bytes(basis))
           PY
           export RSNP_TEST_REAL_HOST=127.0.0.1 RSNP_TEST_REAL_PORT=2225
           export RSNP_TEST_REAL_USER=testuser RSNP_TEST_REAL_REQUIRED=1
@@ -199,12 +199,22 @@ jobs:
           export RSNP_TEST_REAL_EXPECT_DOWNLOAD_FILE="$WS/expected.bin"
           export RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE="$WS/local_dl.bin"
           export RSNP_TEST_REAL_REMOTE_UPLOAD_TARGET=/workspace/legacy-peer/upload/target.bin
-          for t in live_real_rsync_native_delta_download_verifies_whole_file \
-                   live_real_rsync_native_upload_completes_for_xxh64_and_xxh3_peers; do
-            cargo test --features aerorsync --lib "aerorsync::live_tests::$t" \
-              -- --ignored --exact --nocapture --test-threads=1 | tee "/tmp/legacy-$t.log"
-            ../scripts/assert-tests-ran.sh "/tmp/legacy-$t.log" =1 "native vs rsync 3.1.3: $t"
+          # Once over libssh2 (key auth), once over russh (ssh-agent), the two
+          # SSH stacks a product profile can select.
+          eval "$(ssh-agent -s)"
+          ssh-add "$RSNP_TEST_REAL_SSH_KEY"
+          for leg in libssh2 russh; do
+            if [ "$leg" = russh ]; then export RSNP_TEST_REAL_AUTH_AGENT=1; fi
+            for t in live_real_rsync_native_delta_download_verifies_whole_file \
+                     live_real_rsync_native_upload_completes_for_xxh64_and_xxh3_peers; do
+              cp "$WS/local_dl.basis" "$WS/local_dl.bin"
+              cargo test --features aerorsync --lib "aerorsync::live_tests::$t" \
+                -- --ignored --exact --nocapture --test-threads=1 | tee "/tmp/legacy-$leg-$t.log"
+              ../scripts/assert-tests-ran.sh "/tmp/legacy-$leg-$t.log" =1 \
+                "native vs rsync 3.1.3 over $leg: $t"
+            done
           done
+          ssh-agent -k
       - name: Tear down the rsync 3.1.3 server
         if: always()
         run: docker rm -f aeroftp-rsync-313-deflate >/dev/null 2>&1 || true
