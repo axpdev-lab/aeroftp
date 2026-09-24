@@ -820,6 +820,27 @@
     ]
   },
   {
+    "company": "Mail.ru Cloud",
+    "logoId": "mailru-cloud",
+    "country": "RU",
+    "freeGb": 8,
+    "freeNote": "app password required",
+    "freeRequiresCard": false,
+    "regions": [
+      "RU"
+    ],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "mailru-cloud",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "Jianguoyun",
     "logoId": "jianguoyun",
     "country": "CN",

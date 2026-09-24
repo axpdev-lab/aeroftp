@@ -285,6 +285,10 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       ] },
     { company: 'DriveHQ', logoId: 'drivehq', countryCode: 'US', freeStorageGb: 5,
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'drivehq', category: 'webdav' }] },
+    { company: 'Mail.ru Cloud', logoId: 'mailru-cloud', countryCode: 'RU', freeStorageGb: 8,
+      freeNote: 'app password required', healthCheckUrl: 'https://webdav.cloud.mail.ru',
+      searchAliases: ['mailru', 'mail.ru', 'mailru cloud', 'webdav.cloud.mail.ru'],
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'mailru-cloud', category: 'webdav' }] },
     { company: 'Jianguoyun', logoId: 'jianguoyun', countryCode: 'CN', freeStorageGb: 3,
       freeNote: 'monthly traffic cap',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'jianguoyun', category: 'webdav' }] },
@@ -444,6 +448,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'jianguoyun', icon: 'jianguoyun.png', docsPath: 'providers/jianguoyun' },
     { logoId: 'seafile', icon: 'seafile.png', docsPath: 'providers/seafile' },
     { logoId: 'drivehq', icon: 'drivehq.png', docsPath: 'providers/drivehq' },
+    { logoId: 'mailru-cloud', icon: 'mailru-cloud.svg', docsPath: 'providers/mailru-cloud', label: 'Mail.ru Cloud' },
     // SFTP
     { logoId: 'hetzner-storage-box', icon: 'hetzner.png', docsPath: 'providers/hetzner-storage-box' },
     // Developer

@@ -562,6 +562,12 @@ export const IbmCosLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img src="/icons/providers/ibm-cloud.svg" alt="IBM Cloud" width={size} height={size} style={{ objectFit: 'contain' }} />
 );
 
+// Mail.ru Cloud: placeholder blue-cloud mark (owner replaces with the
+// official SVG when procured; PNG/SVG fallback pattern like Hetzner/IBM).
+export const MailruCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img src="/icons/providers/mailru-cloud.svg" alt="Mail.ru Cloud" width={size} height={size} style={{ objectFit: 'contain' }} />
+);
+
 /** Map of provider ID → logo component */
 export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'amazon-s3': AwsLogo,
@@ -638,4 +644,5 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'uploadcare': UploadcareLogo,
     'cloudinary': CloudinaryLogo,
     'ibm-cos': IbmCosLogo,
+    'mailru-cloud': MailruCloudLogo,
 };

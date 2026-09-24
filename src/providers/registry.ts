@@ -1454,6 +1454,42 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://www.drivehq.com/secure/SignUp.aspx',
     },
     {
+        id: 'mailru-cloud',
+        name: 'Mail.ru Cloud',
+        description: 'Russian cloud storage with WebDAV (8 GB free)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#005FF9',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'name@mail.ru' },
+            {
+                ...COMMON_FIELDS.password,
+                label: 'App Password',
+                helpText: 'Account Settings, Security, Passwords for external applications (not your mailbox password)',
+            },
+        ],
+        defaults: {
+            server: 'https://webdav.cloud.mail.ru',
+            port: 443,
+            basePath: '/',
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'https://webdav.cloud.mail.ru',
+        passwordGenUrl: 'https://account.mail.ru/user/2-step-auth/passwords/',
+        helpUrl: 'https://help.mail.ru/cloud/desktop/webdav/',
+        signupUrl: 'https://cloud.mail.ru',
+        setupInstructions: [
+            'Use your full mailbox address as the username (name@mail.ru, also inbox.ru, list.ru, bk.ru)',
+            'Generate an app password at account.mail.ru, Security, Passwords for external applications (mailbox password rejected since 2022)',
+            'If the app password does not work, recreate it with Full access to Mail, Cloud and Calendar (Cloud-only scope is known to fail with third-party clients)',
+        ],
+    },
+    {
         id: 'koofr',
         name: 'Koofr',
         description: 'EU-based privacy-friendly cloud (10 GB free)',

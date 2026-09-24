@@ -132,6 +132,9 @@ function deriveProviderId(server: ServerProfile): string | undefined {
     }
     if (proto === 'webdav') {
         if (host.includes('koofr')) return 'koofr-webdav';
+        // mail.ru before the generic 'cloud.' rule: webdav.cloud.mail.ru
+        // contains 'cloud.' and is not Nextcloud.
+        if (host.includes('mail.ru') || host.includes('cloud.mail.ru')) return 'mailru-cloud';
         if (host.includes('nextcloud') || host.includes('cloud.')) return 'nextcloud';
         if (host.includes('seafile')) return 'seafile';
         if (host.includes('jianguoyun')) return 'jianguoyun';

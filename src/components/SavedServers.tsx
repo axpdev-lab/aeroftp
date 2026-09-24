@@ -94,6 +94,7 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
     }
     if (proto === 'webdav') {
         if (host.includes('drivehq')) return 'drivehq';
+        if (host.includes('mail.ru') || host.includes('cloud.mail.ru')) return 'mailru-cloud';
         if (host.includes('nextcloud')) return 'nextcloud';
         if (host.includes('koofr')) return 'koofr';
         if (host.includes('jianguoyun')) return 'jianguoyun';
