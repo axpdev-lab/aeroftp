@@ -24,6 +24,9 @@ use tauri::AppHandle;
 const DB_FILENAME: &str = "user_partitions.db";
 const SCHEMA_VERSION: &str = "5";
 const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
+/// Vault account of the single-user profile list that predates partitions.
+/// Still read by several subsystems, so it mirrors the active user.
+const LEGACY_PROFILES_BLOB: &str = "config_server_profiles";
 const LEGACY_SETTINGS_KEY: &str = "__legacy_settings";
 const ACTIVE_USER_KEY: &str = "active_user_id";
 const SCHEMA_VERSION_KEY: &str = "schema_version";
@@ -3863,6 +3866,63 @@ pub fn cli_replace_active_server_profiles(
     result
 }
 
+/// Keep the legacy `config_server_profiles` vault blob equal to the active
+/// user's partition list.
+///
+/// The partition is the source of truth, but the blob is still read by
+/// AeroAgent, MCP profile lookup, the partition rebuild, and the keystore
+/// export and import. The CLI mirrored every active-user save into it; the GUI
+/// never did, so for a GUI user the blob stayed frozen at the moment of the
+/// partition migration, and every reader above saw deleted profiles, old names
+/// and old quotas (#736). Only the active user is ever mirrored, the same rule
+/// as the CLI, so no other partition's profile names reach the shared blob.
+///
+/// Writes only when the list differs (compared as JSON values, so key order in
+/// the serialized form does not cause a rewrite). Returns whether it wrote.
+pub fn mirror_active_profiles_to_legacy_blob(
+    store: &CredentialStore,
+    profiles: &[Value],
+) -> Result<bool, String> {
+    let current = get_optional_store_entry(store, LEGACY_PROFILES_BLOB)?
+        .and_then(|raw| serde_json::from_str::<Vec<Value>>(&raw).ok());
+    if current.as_deref() == Some(profiles) {
+        return Ok(false);
+    }
+    let serialized =
+        serde_json::to_string(profiles).map_err(|e| format!("Serialize profiles: {e}"))?;
+    store
+        .store(LEGACY_PROFILES_BLOB, &serialized)
+        .map_err(|e| format!("Write {LEGACY_PROFILES_BLOB}: {e}"))?;
+    Ok(true)
+}
+
+/// Read the active user's profiles from the partition database at `db_path`
+/// and mirror them into the legacy blob (see
+/// [`mirror_active_profiles_to_legacy_blob`]).
+///
+/// Opens the database read-only and never migrates or creates it: the keystore
+/// export must not mutate the file it is snapshotting, and an import may have
+/// just written a database from an older schema. `Ok(false)` when there is no
+/// database; an `Err` (locked partition, unreadable DEK, older schema) leaves
+/// the blob untouched, and the caller decides whether that is worth a warning.
+pub fn refresh_legacy_profiles_blob_from_db(
+    store: &CredentialStore,
+    db_path: &std::path::Path,
+) -> Result<bool, String> {
+    if !db_path.is_file() {
+        return Ok(false);
+    }
+    let conn = Connection::open_with_flags(
+        db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = list_active_server_profiles(&conn, &root_key);
+    root_key.zeroize();
+    mirror_active_profiles_to_legacy_blob(store, &result?)
+}
+
 /// Read server profiles for a specific user id without touching
 /// `active_user_id`. Used by the CLI when `--user <name>` scopes a single
 /// invocation to a partition without persisting the switch.
@@ -4780,6 +4840,12 @@ pub async fn user_partitions_load_active_server_profiles(
     let result = list_active_server_profiles(&conn, &root_key);
     root_key.zeroize();
     let mut profiles = result?;
+    // #736: heal a legacy blob that an older build left frozen, so AeroAgent
+    // and MCP see the same list as My Servers without waiting for a save.
+    // Best-effort: the list is what the caller asked for.
+    if let Err(e) = mirror_active_profiles_to_legacy_blob(&store, &profiles) {
+        tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
+    }
     // BUG-LT2a backward-compat: recompute the redacted overlay-secret flags from
     // the vault so legacy crypt profiles auto-unlock without a manual re-save.
     reconcile_overlay_secret_flags(
@@ -4800,7 +4866,14 @@ pub async fn user_partitions_save_active_server_profiles(
     let mut conn = open_or_init(&app)?;
     let result = replace_active_server_profiles(&mut conn, &root_key, &profiles);
     root_key.zeroize();
-    result
+    result?;
+    // #736: the same mirror the CLI's `save_active_user_profiles` does, so a
+    // profile deleted or renamed here is deleted or renamed in the blob too.
+    // The partition write already succeeded, so a mirror failure is a warning.
+    if let Err(e) = mirror_active_profiles_to_legacy_blob(&store, &profiles) {
+        tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
+    }
+    Ok(())
 }
 
 /// N4: copy or move a saved server profile from the ACTIVE (source) user into
@@ -5400,6 +5473,60 @@ mod tests {
 
     fn test_root() -> [u8; 32] {
         [7u8; 32]
+    }
+
+    fn throwaway_vault(dir: &std::path::Path) -> CredentialStore {
+        let path = dir.join("vault.db");
+        std::fs::write(
+            &path,
+            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
+        )
+        .unwrap();
+        CredentialStore::from_verified_key(&path, &[0x24; 32])
+    }
+
+    /// #736: the legacy blob follows the active list, and a list that is
+    /// already there (same values, different key order) is not rewritten.
+    #[test]
+    fn legacy_blob_mirror_writes_only_a_different_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        store
+            .store(
+                LEGACY_PROFILES_BLOB,
+                r#"[{"name":"try","id":"srv_try"},{"name":"Drive","id":"srv_drive"}]"#,
+            )
+            .unwrap();
+
+        let current = vec![json!({ "id": "srv_drive", "name": "Drive 2TB" })];
+        assert!(mirror_active_profiles_to_legacy_blob(&store, &current).unwrap());
+        let stored: Vec<Value> =
+            serde_json::from_str(&store.get(LEGACY_PROFILES_BLOB).unwrap()).unwrap();
+        assert_eq!(stored, current);
+
+        store
+            .store(
+                LEGACY_PROFILES_BLOB,
+                r#"[{"name":"Drive 2TB","id":"srv_drive"}]"#,
+            )
+            .unwrap();
+        assert!(!mirror_active_profiles_to_legacy_blob(&store, &current).unwrap());
+    }
+
+    /// No partition database means nothing to mirror, and the blob is left as
+    /// it is (a VaultOnly machine that never ran the partition migration).
+    #[test]
+    fn legacy_blob_refresh_without_a_partition_db_is_a_no_op() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        store.store(LEGACY_PROFILES_BLOB, "[]").unwrap();
+        let missing = dir.path().join("user_partitions.db");
+        assert!(!refresh_legacy_profiles_blob_from_db(&store, &missing).unwrap());
+        assert!(
+            !missing.exists(),
+            "a read-only refresh must not create the DB"
+        );
+        assert_eq!(store.get(LEGACY_PROFILES_BLOB).unwrap(), "[]");
     }
 
     #[test]

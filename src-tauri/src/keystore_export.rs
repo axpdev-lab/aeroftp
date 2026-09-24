@@ -923,14 +923,43 @@ pub fn export_keystore(
     config_dir: Option<&Path>,
     local_storage_in: Option<HashMap<String, String>>,
 ) -> Result<KeystoreMetadata, KeystoreExportError> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or(KeystoreExportError::VaultNotReady)?;
+    export_keystore_with_store(
+        &store,
+        password,
+        file_path,
+        mode,
+        scope,
+        config_dir,
+        local_storage_in,
+    )
+}
+
+/// [`export_keystore`] on an explicit store, so a test can drive a whole
+/// export against a throwaway vault without the process-wide vault cache.
+fn export_keystore_with_store(
+    store: &crate::credential_store::CredentialStore,
+    password: &str,
+    file_path: &Path,
+    mode: ExportMode,
+    scope: KeystoreScope,
+    config_dir: Option<&Path>,
+    local_storage_in: Option<HashMap<String, String>>,
+) -> Result<KeystoreMetadata, KeystoreExportError> {
     // A2-05: Backend password minimum length check
     if password.len() < 8 {
         return Err(KeystoreExportError::Encryption(
             "Password must be at least 8 characters".into(),
         ));
     }
-    let store = crate::credential_store::CredentialStore::from_cache()
-        .ok_or(KeystoreExportError::VaultNotReady)?;
+
+    // #736: the vault's profile list must be the one My Servers shows before
+    // it is written into the backup, in both modes (a VaultOnly export is how
+    // saved servers move to another machine).
+    if let Some(cfg) = config_dir {
+        refresh_legacy_profiles_blob(store, cfg, "export");
+    }
 
     // List all accounts and read their values
     let accounts = store.list_accounts().map_err(from_store_error)?;
@@ -1004,7 +1033,7 @@ pub fn export_keystore(
     // F-012: make passphrase-less partitions portable. Only meaningful for a
     // Full export (which bundles user_partitions.db); best-effort, never fatal.
     let user_partition_transport = if mode == ExportMode::Full {
-        config_dir.and_then(|cfg| build_user_partition_transport(&store, cfg, password))
+        config_dir.and_then(|cfg| build_user_partition_transport(store, cfg, password))
     } else {
         None
     };
@@ -1170,7 +1199,30 @@ pub fn import_keystore(
 ) -> Result<KeystoreImportResult, KeystoreExportError> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or(KeystoreExportError::VaultNotReady)?;
+    import_keystore_with_store(
+        &store,
+        password,
+        file_path,
+        merge_strategy,
+        sections,
+        config_dir,
+        on_progress,
+    )
+}
 
+/// Phase, current and total, as reported to the import progress callback.
+type ImportProgress<'a> = &'a dyn Fn(&str, u32, u32);
+
+/// [`import_keystore`] on an explicit store (see [`export_keystore_with_store`]).
+fn import_keystore_with_store(
+    store: &crate::credential_store::CredentialStore,
+    password: &str,
+    file_path: &Path,
+    merge_strategy: &str,
+    sections: ImportSections,
+    config_dir: Option<&Path>,
+    on_progress: Option<ImportProgress<'_>>,
+) -> Result<KeystoreImportResult, KeystoreExportError> {
     // AUDIT 2026-05-11 M2: cap the on-disk file size before allocating
     // anything to RAM. A multi-GB malicious file would otherwise OOM
     // the backend in the very first read.
@@ -1245,6 +1297,13 @@ pub fn import_keystore(
         HashMap::new()
     };
     let merge_strategy = normalize_merge_strategy(merge_strategy)?;
+
+    // #736: "Skip existing" unions the backup's profile list with the local
+    // one, so the local one has to be current first, or profiles deleted
+    // here come back from a blob an older build left frozen.
+    if let Some(cfg) = config_dir {
+        refresh_legacy_profiles_blob(store, cfg, "import (before merge)");
+    }
 
     // Get existing accounts for merge strategy
     let existing = if merge_strategy == "skip_existing" {
@@ -1451,7 +1510,7 @@ pub fn import_keystore(
             let db_path = cfg.join("user_partitions.db");
             if db_path.is_file() {
                 match rekey_imported_user_partitions(
-                    &store,
+                    store,
                     &db_path,
                     payload.user_partition_transport.as_ref(),
                     password,
@@ -1470,6 +1529,20 @@ pub fn import_keystore(
                     Err(e) => tracing::warn!("F-012 re-key step failed: {e}"),
                 }
             }
+        }
+    }
+
+    // #736: a restored and readable user_partitions.db is the authoritative
+    // profile list, and it wins over the vault blob the same backup carries.
+    // Both GUI import flows copy the blob into the active partition after the
+    // import returns; before this, a backup made by a build that never
+    // mirrored the blob overwrote the restored list with a months-old one.
+    // When the partition cannot be read here (another machine without a
+    // transport key, a locked passphrase partition) the blob is left as the
+    // backup carried it, which is the only list available.
+    if sections.sqlite_dbs && payload.sqlite_dumps.contains_key("user_partitions.db") {
+        if let Some(cfg) = config_dir {
+            refresh_legacy_profiles_blob(store, cfg, "import (after restore)");
         }
     }
 
@@ -1570,6 +1643,26 @@ pub fn import_keystore(
         user_partitions_unreadable,
         user_partitions_backup_path,
     })
+}
+
+/// Mirror the active partition's profile list into the vault blob
+/// `config_server_profiles` (#736). Best-effort: a partition that cannot be
+/// read leaves the blob as it is, and the reason is logged with `stage`.
+fn refresh_legacy_profiles_blob(
+    store: &crate::credential_store::CredentialStore,
+    config_dir: &Path,
+    stage: &str,
+) {
+    let db_path = config_dir.join("user_partitions.db");
+    match crate::user_partitions::refresh_legacy_profiles_blob_from_db(store, &db_path) {
+        Ok(true) => tracing::info!(
+            "Keystore {stage}: server profile list refreshed from the active partition"
+        ),
+        Ok(false) => {}
+        Err(e) => tracing::warn!(
+            "Keystore {stage}: server profile list kept as stored, partition not readable: {e}"
+        ),
+    }
 }
 
 /// Merge two server profile JSON arrays by "id" field.
@@ -2090,6 +2183,218 @@ mod tests {
             last, expected,
             "cli_app_config_dir last segment {:?} does not match canonical AeroFTP data leaf {:?}",
             last, expected
+        );
+    }
+
+    // ============ #736: the profile list a backup carries ============
+
+    const VAULT_KEY_736: [u8; 32] = [0x42; 32];
+
+    /// A vault file on disk holding no entries. `store`/`get` never check the
+    /// verification token, so the minimal shape is enough for these tests.
+    fn throwaway_store(dir: &Path, name: &str) -> crate::credential_store::CredentialStore {
+        let path = dir.join(name);
+        std::fs::write(
+            &path,
+            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
+        )
+        .unwrap();
+        crate::credential_store::CredentialStore::from_verified_key(&path, &VAULT_KEY_736)
+    }
+
+    fn profile(id: &str, name: &str) -> serde_json::Value {
+        serde_json::json!({ "id": id, "name": name, "protocol": "sftp", "host": "example.invalid" })
+    }
+
+    fn blob_of(store: &crate::credential_store::CredentialStore) -> Vec<serde_json::Value> {
+        serde_json::from_str(&store.get("config_server_profiles").unwrap()).unwrap()
+    }
+
+    /// The state #736 was reported from. The partition migration copied the
+    /// vault blob `[try, Drive]` into `user_partitions.db`; afterwards the user
+    /// deleted `try` and renamed `Drive` through the GUI, which wrote only the
+    /// partition, so the blob is still the copy taken at migration time.
+    fn machine_with_a_frozen_blob(
+        dir: &Path,
+    ) -> (crate::credential_store::CredentialStore, PathBuf) {
+        let store = throwaway_store(dir, "vault.db");
+        let cfg = dir.join("config");
+        std::fs::create_dir_all(&cfg).unwrap();
+        let frozen = serde_json::to_string(&vec![
+            profile("srv_try", "try"),
+            profile("srv_drive", "Drive"),
+        ])
+        .unwrap();
+        store.store("config_server_profiles", &frozen).unwrap();
+        let mut root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        crate::user_partitions::migrate_legacy_payloads(&mut conn, Some(&frozen), None, &root)
+            .unwrap();
+        crate::user_partitions::replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[profile("srv_drive", "Drive 2TB")],
+        )
+        .unwrap();
+        root.zeroize();
+        (store, cfg)
+    }
+
+    fn my_servers(
+        store: &crate::credential_store::CredentialStore,
+        cfg: &Path,
+    ) -> Vec<serde_json::Value> {
+        let conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        crate::user_partitions::list_active_server_profiles(&conn, &root).unwrap()
+    }
+
+    /// Encrypt `payload` the way `export_keystore_with_store` does, so a test
+    /// can produce a backup exactly as a build without the #736 fix wrote it.
+    fn seal_backup(path: &Path, password: &str, payload: &ExportPayload) {
+        let json = serde_json::to_vec(payload).unwrap();
+        let compressed = zstd::stream::encode_all(&json[..], ZSTD_COMPRESSION_LEVEL).unwrap();
+        let salt = crate::crypto::random_bytes(32);
+        let key = crate::crypto::derive_key_strong(password, &salt).unwrap();
+        let nonce = crate::crypto::random_bytes(12);
+        let encrypted = crate::crypto::encrypt_aes_gcm(&key, &nonce, &compressed).unwrap();
+        let file = KeystoreExportFile {
+            version: FILE_VERSION,
+            salt,
+            nonce,
+            encrypted_payload: EncryptedBlob(encrypted),
+            metadata: KeystoreMetadata {
+                manifest_version: KEYSTORE_MANIFEST_VERSION,
+                scope: KeystoreScope::AllUsers,
+                export_date: "2026-09-23T00:00:00Z".to_string(),
+                aeroftp_version: "4.2.0".to_string(),
+                entries_count: payload.vault_entries.len() as u32,
+                categories: count_categories(&[]),
+            },
+            compression: Some("zstd".to_string()),
+        };
+        std::fs::write(path, serde_json::to_vec(&file).unwrap()).unwrap();
+    }
+
+    const PASSWORD_736: &str = "correct horse battery";
+
+    /// Export side: the backup must carry the list My Servers shows. Before the
+    /// fix the export copied the vault verbatim, so the profile deleted in the
+    /// GUI travelled inside every backup and came back on import.
+    #[test]
+    fn an_export_carries_my_servers_not_the_frozen_blob() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let backup = dir.path().join("backup.aeroftp-keystore");
+        export_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            ExportMode::VaultOnly,
+            KeystoreScope::AllUsers,
+            Some(&cfg),
+            None,
+        )
+        .unwrap();
+
+        let other_machine = throwaway_store(dir.path(), "other-vault.db");
+        import_keystore_with_store(
+            &other_machine,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let expected = vec![profile("srv_drive", "Drive 2TB")];
+        assert_eq!(
+            blob_of(&other_machine),
+            expected,
+            "the backup carried a stale list"
+        );
+        assert_eq!(
+            blob_of(&store),
+            expected,
+            "the exporting vault was not healed"
+        );
+    }
+
+    /// Import side, for backups that already exist: they carry the frozen blob
+    /// AND a current `user_partitions.db`. Both GUI import flows copy the blob
+    /// into the active partition once the import returns, so the blob must
+    /// leave the import equal to the restored partition, not to itself.
+    #[test]
+    fn importing_an_old_backup_keeps_the_restored_partition_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            store.get("config_server_profiles").unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&cfg.join("user_partitions.db"))
+                .unwrap()
+                .unwrap(),
+        );
+        let backup = dir.path().join("old.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        // Same machine, as in the report: same vault key, fresh config folder.
+        let restored_cfg = dir.path().join("restored");
+        let same_machine = throwaway_store(dir.path(), "same-vault.db");
+        import_keystore_with_store(
+            &same_machine,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&restored_cfg),
+            None,
+        )
+        .unwrap();
+
+        let expected = vec![profile("srv_drive", "Drive 2TB")];
+        assert_eq!(my_servers(&same_machine, &restored_cfg), expected);
+        assert_eq!(
+            blob_of(&same_machine),
+            expected,
+            "the GUI would copy this blob over the restored partition"
+        );
+    }
+
+    /// "Skip existing" unions the backup's list with the local blob. A frozen
+    /// local blob put the locally deleted profile back into the union.
+    #[test]
+    fn skip_existing_merges_into_the_current_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&vec![profile("srv_new", "New")]).unwrap(),
+        );
+        let backup = dir.path().join("servers.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            blob_of(&store),
+            vec![profile("srv_drive", "Drive 2TB"), profile("srv_new", "New")]
         );
     }
 }
