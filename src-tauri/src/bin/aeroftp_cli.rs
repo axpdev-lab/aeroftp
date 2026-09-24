@@ -38058,6 +38058,7 @@ async fn cmd_keystore_import(
             sections,
             cfg_clone.as_deref(),
             Some(&progress_cb),
+            None,
         )
     })
     .await;

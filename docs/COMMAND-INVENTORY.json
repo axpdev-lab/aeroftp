@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 853
+    "tauri_commands": 854
   },
   "mcp": {
     "count": 77,
@@ -951,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 480,
+    "name_matched_count": 481,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1590,6 +1590,7 @@
       "export_keystore",
       "import_keystore",
       "read_keystore_metadata",
+      "preview_keystore_import",
       "get_dependencies",
       "check_dependency_updates",
       "get_system_info",
@@ -2187,6 +2188,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 853
+    "count": 854
   }
 }

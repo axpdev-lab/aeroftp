@@ -202,6 +202,7 @@ mod health_check;
 mod host_key_check;
 mod infinicloud;
 pub mod keystore_export;
+pub mod keystore_profile_plan;
 mod local_panel_watcher;
 mod master_password;
 pub mod mc_import;
@@ -17527,6 +17528,9 @@ async fn import_keystore(
     import_sqlite: Option<bool>,
     import_files: Option<bool>,
     import_local_storage: Option<bool>,
+    // #347: per-profile decisions from the import preview. Absent keeps the
+    // import as it was (the first-run wizard and older callers).
+    profile_decisions: Option<Vec<keystore_profile_plan::ProfileDecisionInput>>,
 ) -> Result<keystore_export::KeystoreImportResult, String> {
     let progress_app = app.clone();
     let progress_cb = move |phase: &str, current: u32, total: u32| {
@@ -17562,6 +17566,7 @@ async fn import_keystore(
             sections,
             config_dir.as_deref(),
             Some(&progress_cb),
+            profile_decisions.as_deref(),
         )
         .map_err(|e| e.to_string())
     })
@@ -17583,6 +17588,30 @@ async fn import_keystore(
         );
     }
     Ok(result)
+}
+
+/// Decrypt a backup and list what importing it would change in the server
+/// profile list, per profile, without writing anything (#347).
+#[tauri::command]
+async fn preview_keystore_import(
+    app: tauri::AppHandle,
+    password: String,
+    file_path: String,
+    merge_strategy: String,
+) -> Result<keystore_profile_plan::ProfilePreview, String> {
+    let config_dir = portable::app_config_dir(&app).ok();
+    tokio::task::spawn_blocking(move || {
+        keystore_export::preview_keystore_import(
+            &password,
+            std::path::Path::new(&file_path),
+            &merge_strategy,
+            keystore_export::ImportSections::default(),
+            config_dir.as_deref(),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("preview_keystore_import join error: {e}"))?
 }
 
 #[tauri::command]
@@ -19488,6 +19517,7 @@ pub fn run() {
             export_keystore,
             import_keystore,
             read_keystore_metadata,
+            preview_keystore_import,
             // Debug & dependencies commands
             dependency_index::get_dependencies,
             dependency_index::check_dependency_updates,

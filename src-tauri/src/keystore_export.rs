@@ -12,6 +12,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use zeroize::{Zeroize, Zeroizing};
 
+use crate::keystore_profile_plan::{
+    self, PlanInputs, ProfileDecisionInput, ProfileListSource, ProfilePreview,
+};
+
 // File format version:
 //   v1 -- legacy, vault entries only, payload uncompressed
 //   v2 -- v3.7.8+, adds sqlite_dumps, files, local_storage so a single
@@ -563,6 +567,11 @@ pub struct KeystoreImportResult {
     /// restoring this file un-does a destructive cross-machine import.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_partitions_backup_path: Option<String>,
+    /// #347: set when per-profile decisions were applied, to the number of
+    /// profiles in the final list (which may be zero). The GUI stores that
+    /// list into the active partition even when it is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profiles_after_decisions: Option<u32>,
 }
 
 /// User-facing selectivity for import. All flags default to `true` so
@@ -1196,9 +1205,14 @@ pub fn import_keystore(
     sections: ImportSections,
     config_dir: Option<&Path>,
     on_progress: Option<&dyn Fn(&str, u32, u32)>,
+    profile_decisions: Option<&[ProfileDecisionInput]>,
 ) -> Result<KeystoreImportResult, KeystoreExportError> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or(KeystoreExportError::VaultNotReady)?;
+    let profiles = profile_decisions.map(|decisions| ProfileDecisions {
+        decisions,
+        write_secret: &write_active_secret,
+    });
     import_keystore_with_store(
         &store,
         password,
@@ -1207,22 +1221,241 @@ pub fn import_keystore(
         sections,
         config_dir,
         on_progress,
+        profiles,
     )
 }
 
-/// Phase, current and total, as reported to the import progress callback.
-type ImportProgress<'a> = &'a dyn Fn(&str, u32, u32);
+/// Decrypt a backup and report, per server profile, what importing it with
+/// these options would change. Writes nothing: the backup's partition list is
+/// read from a private temporary copy.
+pub fn preview_keystore_import(
+    password: &str,
+    file_path: &Path,
+    merge_strategy: &str,
+    sections: ImportSections,
+    config_dir: Option<&Path>,
+) -> Result<ProfilePreview, KeystoreExportError> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or(KeystoreExportError::VaultNotReady)?;
+    preview_keystore_import_with_store(
+        &store,
+        password,
+        file_path,
+        merge_strategy,
+        sections,
+        config_dir,
+    )
+}
 
-/// [`import_keystore`] on an explicit store (see [`export_keystore_with_store`]).
-fn import_keystore_with_store(
+fn preview_keystore_import_with_store(
     store: &crate::credential_store::CredentialStore,
     password: &str,
     file_path: &Path,
     merge_strategy: &str,
     sections: ImportSections,
     config_dir: Option<&Path>,
+) -> Result<ProfilePreview, KeystoreExportError> {
+    let merge_strategy = normalize_merge_strategy(merge_strategy)?;
+    let payload = open_backup(password, file_path, None)?;
+    let inputs = profile_plan_inputs(
+        store,
+        &payload,
+        password,
+        merge_strategy,
+        sections,
+        config_dir,
+    );
+    Ok(keystore_profile_plan::preview(&inputs))
+}
+
+/// Per-profile decisions for an import, and how to write a profile secret.
+/// The GUI writes through the dual writer (vault and active partition); the
+/// tests write the vault only, so they never reach this machine's real
+/// partition database.
+pub struct ProfileDecisions<'a> {
+    pub decisions: &'a [ProfileDecisionInput],
+    pub write_secret: SecretWriter<'a>,
+}
+
+/// Store (`Some`) or delete (`None`) one vault account.
+pub type SecretWriter<'a> =
+    &'a dyn Fn(&crate::credential_store::CredentialStore, &str, Option<&str>) -> Result<(), String>;
+
+fn write_active_secret(
+    store: &crate::credential_store::CredentialStore,
+    key: &str,
+    value: Option<&str>,
+) -> Result<(), String> {
+    match value {
+        Some(v) => crate::user_partitions::store_active_credential_dual(store, key, v),
+        None => match store.get(key) {
+            Ok(_) => crate::user_partitions::delete_active_credential_dual(store, key),
+            Err(_) => Ok(()),
+        },
+    }
+}
+
+/// This machine's active profile list: the partition when it is readable,
+/// otherwise the legacy vault blob.
+fn read_local_profiles(
+    store: &crate::credential_store::CredentialStore,
+    config_dir: Option<&Path>,
+) -> Vec<serde_json::Value> {
+    if let Some(cfg) = config_dir {
+        let db = cfg.join("user_partitions.db");
+        if db.is_file() {
+            match crate::user_partitions::read_active_profiles_from_db(store, &db) {
+                Ok(list) => return list,
+                Err(e) => tracing::warn!("Import preview: local partition not readable: {e}"),
+            }
+        }
+    }
+    store
+        .get("config_server_profiles")
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+/// The active list of the backup's partition database, read the way the
+/// import will read it: written to a private temporary directory, re-keyed to
+/// this machine with the transport sidecar, then listed.
+fn read_backup_partition_profiles(
+    store: &crate::credential_store::CredentialStore,
+    db_b64: &str,
+    transport: Option<&UserPartitionTransport>,
+    password: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let bytes = B64
+        .decode(db_b64)
+        .map_err(|e| format!("decode backup partition DB: {e}"))?;
+    // tempfile creates the directory 0700 and removes it on drop.
+    let dir = tempfile::tempdir().map_err(|e| format!("temporary directory: {e}"))?;
+    let path = dir.path().join("user_partitions.db");
+    std::fs::write(&path, &bytes).map_err(|e| format!("write temporary copy: {e}"))?;
+    rekey_imported_user_partitions(store, &path, transport, password)?;
+    crate::user_partitions::read_active_profiles_from_db(store, &path)
+}
+
+/// The backup's profile list as the import will leave it, and where it comes
+/// from: the restored partition when the import restores one and it can be
+/// read here, otherwise the vault blob (which the import writes or merges).
+fn read_backup_profiles(
+    store: &crate::credential_store::CredentialStore,
+    payload: &ExportPayload,
+    password: &str,
+    sections: ImportSections,
+) -> (Option<Vec<serde_json::Value>>, ProfileListSource) {
+    if sections.sqlite_dbs {
+        if let Some(db) = payload.sqlite_dumps.get("user_partitions.db") {
+            match read_backup_partition_profiles(
+                store,
+                db,
+                payload.user_partition_transport.as_ref(),
+                password,
+            ) {
+                Ok(list) => return (Some(list), ProfileListSource::Partition),
+                Err(e) => tracing::warn!(
+                    "Import preview: backup partition not readable here, using its vault list: {e}"
+                ),
+            }
+        }
+    }
+    if sections.vault {
+        if let Some(list) = payload
+            .vault_entries
+            .get("config_server_profiles")
+            .and_then(|raw| serde_json::from_str(raw).ok())
+        {
+            return (Some(list), ProfileListSource::Vault);
+        }
+    }
+    (None, ProfileListSource::None)
+}
+
+/// Everything the per-profile plan needs, read before the import writes.
+fn profile_plan_inputs(
+    store: &crate::credential_store::CredentialStore,
+    payload: &ExportPayload,
+    password: &str,
+    merge_strategy: &str,
+    sections: ImportSections,
+    config_dir: Option<&Path>,
+) -> PlanInputs {
+    let local = read_local_profiles(store, config_dir);
+    let (backup, source) = read_backup_profiles(store, payload, password, sections);
+    let replaces_list = match source {
+        ProfileListSource::Partition => true,
+        ProfileListSource::Vault => merge_strategy == "overwrite",
+        ProfileListSource::None => false,
+    };
+    let mut local_secrets = HashMap::new();
+    let mut backup_secrets = HashMap::new();
+    for profile in local.iter().chain(backup.iter().flatten()) {
+        for key in keystore_profile_plan::secret_keys(profile) {
+            if local_secrets.contains_key(&key) {
+                continue;
+            }
+            local_secrets.insert(key.clone(), store.get(&key).ok().map(Zeroizing::new));
+            if sections.vault {
+                if let Some(v) = payload.vault_entries.get(&key) {
+                    backup_secrets.insert(key, Zeroizing::new(v.clone()));
+                }
+            }
+        }
+    }
+    PlanInputs {
+        local,
+        backup,
+        source,
+        replaces_list,
+        local_secrets,
+        backup_secrets,
+    }
+}
+
+/// A new profile id for a "keep both" copy, in the shape the GUI uses.
+fn new_profile_id() -> String {
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    format!(
+        "srv_{}_{}",
+        chrono::Utc::now().timestamp_millis(),
+        &suffix[..9]
+    )
+}
+
+/// Apply the user's per-profile decisions once the import has written
+/// everything else: the secret of each profile is made to match the version
+/// kept, and the legacy blob gets the final list, which the GUI then stores
+/// into the active partition. Returns the number of profiles in that list.
+fn apply_profile_decisions(
+    store: &crate::credential_store::CredentialStore,
+    inputs: &PlanInputs,
+    profiles: &ProfileDecisions<'_>,
+) -> Result<u32, KeystoreExportError> {
+    let outcome = keystore_profile_plan::apply(inputs, profiles.decisions, &mut new_profile_id);
+    for (key, value) in &outcome.secret_ops {
+        (profiles.write_secret)(store, key, value.as_ref().map(|v| v.as_str())).map_err(|e| {
+            KeystoreExportError::Encryption(format!("Apply profile decision for {key}: {e}"))
+        })?;
+    }
+    crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, &outcome.profiles)
+        .map_err(KeystoreExportError::Encryption)?;
+    Ok(outcome.profiles.len() as u32)
+}
+
+/// Phase, current and total, as reported to the import progress callback.
+type ImportProgress<'a> = &'a dyn Fn(&str, u32, u32);
+
+/// [`import_keystore`] on an explicit store (see [`export_keystore_with_store`]).
+/// Read, decrypt, decompress and authenticate a backup file. Shared by the
+/// import and by its preview, so the preview can never read a file the import
+/// would refuse (or the other way round).
+fn open_backup(
+    password: &str,
+    file_path: &Path,
     on_progress: Option<ImportProgress<'_>>,
-) -> Result<KeystoreImportResult, KeystoreExportError> {
+) -> Result<ExportPayload, KeystoreExportError> {
     // AUDIT 2026-05-11 M2: cap the on-disk file size before allocating
     // anything to RAM. A multi-GB malicious file would otherwise OOM
     // the backend in the very first read.
@@ -1288,15 +1521,42 @@ fn import_keystore_with_store(
     });
     drop(raw_payload);
 
-    let mut payload = parse_export_payload(export_file.version, &payload_json)?;
+    let payload = parse_export_payload(export_file.version, &payload_json)?;
     drop(payload_json);
     validate_authenticated_metadata(&export_file.metadata, &payload)?;
+    Ok(payload)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn import_keystore_with_store(
+    store: &crate::credential_store::CredentialStore,
+    password: &str,
+    file_path: &Path,
+    merge_strategy: &str,
+    sections: ImportSections,
+    config_dir: Option<&Path>,
+    on_progress: Option<ImportProgress<'_>>,
+    profiles: Option<ProfileDecisions<'_>>,
+) -> Result<KeystoreImportResult, KeystoreExportError> {
+    let merge_strategy = normalize_merge_strategy(merge_strategy)?;
+    let mut payload = open_backup(password, file_path, on_progress)?;
+    // #347: read both profile lists and their secrets before anything is
+    // written, so a "keep this machine's version" can put back what was here.
+    let profile_plan = profiles.as_ref().map(|_| {
+        profile_plan_inputs(
+            store,
+            &payload,
+            password,
+            merge_strategy,
+            sections,
+            config_dir,
+        )
+    });
     let mut entries = if sections.vault {
         std::mem::take(&mut payload.vault_entries)
     } else {
         HashMap::new()
     };
-    let merge_strategy = normalize_merge_strategy(merge_strategy)?;
 
     // #736: "Skip existing" unions the backup's profile list with the local
     // one, so the local one has to be current first, or profiles deleted
@@ -1606,6 +1866,13 @@ fn import_keystore_with_store(
         }
     }
 
+    // #347: last, so the decisions see the list the restore and the re-key
+    // produced and have the final word on it.
+    let profiles_after_decisions = match (&profiles, &profile_plan) {
+        (Some(profiles), Some(inputs)) => Some(apply_profile_decisions(store, inputs, profiles)?),
+        _ => None,
+    };
+
     let local_storage = if sections.local_storage {
         payload.local_storage
     } else {
@@ -1642,6 +1909,7 @@ fn import_keystore_with_store(
         user_partitions_rekeyed,
         user_partitions_unreadable,
         user_partitions_backup_path,
+        profiles_after_decisions,
     })
 }
 
@@ -2306,6 +2574,7 @@ mod tests {
             ImportSections::default(),
             None,
             None,
+            None,
         )
         .unwrap();
 
@@ -2355,6 +2624,7 @@ mod tests {
             ImportSections::default(),
             Some(&restored_cfg),
             None,
+            None,
         )
         .unwrap();
 
@@ -2389,6 +2659,7 @@ mod tests {
             ImportSections::default(),
             Some(&cfg),
             None,
+            None,
         )
         .unwrap();
 
@@ -2396,5 +2667,201 @@ mod tests {
             blob_of(&store),
             vec![profile("srv_drive", "Drive 2TB"), profile("srv_new", "New")]
         );
+    }
+
+    // ============ #347: import preview and per-profile decisions ============
+
+    /// This machine: My Servers holds `Drive 2TB` with a local password. The
+    /// backup (same vault key, another config folder) holds `Drive` with a
+    /// different password, plus `Photos`, which is not here.
+    fn machine_and_backup_347(
+        dir: &Path,
+    ) -> (crate::credential_store::CredentialStore, PathBuf, PathBuf) {
+        let (store, cfg) = machine_with_a_frozen_blob(dir);
+        store.store("server_srv_drive", "local-password").unwrap();
+
+        let source_cfg = dir.join("source");
+        std::fs::create_dir_all(&source_cfg).unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(source_cfg.join("user_partitions.db")).unwrap();
+        let backup_list = vec![
+            profile("srv_drive", "Drive"),
+            profile("srv_photos", "Photos"),
+        ];
+        let backup_json = serde_json::to_string(&backup_list).unwrap();
+        crate::user_partitions::migrate_legacy_payloads(&mut conn, Some(&backup_json), None, &root)
+            .unwrap();
+        drop(conn);
+
+        let mut payload = ExportPayload::default();
+        payload
+            .vault_entries
+            .insert("config_server_profiles".to_string(), backup_json);
+        payload.vault_entries.insert(
+            "server_srv_drive".to_string(),
+            "backup-password".to_string(),
+        );
+        payload.vault_entries.insert(
+            "server_srv_photos".to_string(),
+            "photos-password".to_string(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_cfg.join("user_partitions.db"))
+                .unwrap()
+                .unwrap(),
+        );
+        let backup = dir.join("347.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        (store, cfg, backup)
+    }
+
+    /// Writes the vault only: the dual writer would reach this machine's real
+    /// partition database through the CLI config path.
+    fn vault_only_writer(
+        store: &crate::credential_store::CredentialStore,
+        key: &str,
+        value: Option<&str>,
+    ) -> Result<(), String> {
+        match value {
+            Some(v) => store.store(key, v).map_err(|e| e.to_string()),
+            None => match store.delete(key) {
+                Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(()),
+                Err(e) => Err(e.to_string()),
+            },
+        }
+    }
+
+    #[test]
+    fn the_preview_reads_the_backup_partition_and_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg, backup) = machine_and_backup_347(dir.path());
+        let db = cfg.join("user_partitions.db");
+        let db_before = std::fs::read(&db).unwrap();
+        let vault_file = dir.path().join("vault.db");
+        let vault_before = std::fs::read(&vault_file).unwrap();
+
+        let preview = preview_keystore_import_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+        )
+        .unwrap();
+
+        // The partition is restored whole, whatever the merge strategy says.
+        assert_eq!(preview.source, ProfileListSource::Partition);
+        assert!(preview.replaces_list);
+        let summary: Vec<(&str, keystore_profile_plan::ProfileChangeKind)> = preview
+            .changes
+            .iter()
+            .map(|c| (c.id.as_str(), c.kind))
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                (
+                    "srv_drive",
+                    keystore_profile_plan::ProfileChangeKind::Changed
+                ),
+                (
+                    "srv_photos",
+                    keystore_profile_plan::ProfileChangeKind::Added
+                ),
+            ]
+        );
+        let drive = &preview.changes[0];
+        assert!(drive.credentials_differ);
+        assert_eq!(drive.local_name.as_deref(), Some("Drive 2TB"));
+        assert_eq!(drive.backup_name.as_deref(), Some("Drive"));
+
+        assert_eq!(
+            std::fs::read(&db).unwrap(),
+            db_before,
+            "the preview wrote the partition"
+        );
+        assert_eq!(
+            std::fs::read(&vault_file).unwrap(),
+            vault_before,
+            "the preview wrote the vault"
+        );
+        assert_eq!(store.get("server_srv_drive").unwrap(), "local-password");
+    }
+
+    #[test]
+    fn decisions_keep_this_machine_add_a_copy_and_drop_a_rejected_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg, backup) = machine_and_backup_347(dir.path());
+        let decisions = [
+            ProfileDecisionInput {
+                id: "srv_drive".into(),
+                decision: keystore_profile_plan::ProfileDecision::Both,
+                copy_name: Some("Drive (backup)".into()),
+            },
+            ProfileDecisionInput {
+                id: "srv_photos".into(),
+                decision: keystore_profile_plan::ProfileDecision::Reject,
+                copy_name: None,
+            },
+        ];
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            Some(ProfileDecisions {
+                decisions: &decisions,
+                write_secret: &vault_only_writer,
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(result.profiles_after_decisions, Some(2));
+        let list = blob_of(&store);
+        assert_eq!(list[0], profile("srv_drive", "Drive 2TB"));
+        assert_eq!(list[1]["name"], "Drive (backup)");
+        let copy_id = list[1]["id"].as_str().unwrap();
+        assert_ne!(copy_id, "srv_drive");
+        assert_eq!(store.get("server_srv_drive").unwrap(), "local-password");
+        assert_eq!(
+            store.get(&format!("server_{copy_id}")).unwrap(),
+            "backup-password"
+        );
+        assert!(
+            store.get("server_srv_photos").is_err(),
+            "a rejected profile left its password behind"
+        );
+    }
+
+    /// No decisions: the import behaves as before this change.
+    #[test]
+    fn without_decisions_the_import_is_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg, backup) = machine_and_backup_347(dir.path());
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(result.profiles_after_decisions, None);
+        assert_eq!(
+            blob_of(&store),
+            vec![
+                profile("srv_drive", "Drive"),
+                profile("srv_photos", "Photos")
+            ]
+        );
+        assert_eq!(store.get("server_srv_drive").unwrap(), "backup-password");
     }
 }
