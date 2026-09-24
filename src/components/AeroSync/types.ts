@@ -21,6 +21,21 @@ export const aeroSyncTabsFor = (pairKind: AeroSyncPairKind | null | undefined): 
         ? ['compare', 'plan']
         : ['compare', 'plan', 'sync'];
 
+/**
+ * The tab the dialog shows. A tab the pair does not offer (the command palette
+ * opens on Sync, or the context switched to a remote pair while open) shows
+ * Compare instead, except a Sync tab with a run in flight: unmounting it would
+ * orphan the run (issue #332), so it stays until the run ends.
+ */
+export const effectiveAeroSyncTab = (
+    selected: AeroSyncTab,
+    pairKind: AeroSyncPairKind | null | undefined,
+    syncRunning: boolean,
+): AeroSyncTab =>
+    aeroSyncTabsFor(pairKind).includes(selected) || (syncRunning && selected === 'sync')
+        ? selected
+        : 'compare';
+
 // CO-1: runtime hints attached to onExecute. Carry the Plan tab knobs
 // (speed mode + verify policy) into App.tsx so the unified executor can
 // forward them to the Rust planner. Kept separate from PresetPlan to
