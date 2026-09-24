@@ -234,6 +234,7 @@ fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
         "oracle-cloud" => Some("us-east-1"),
         "minio" => Some("us-east-1"),
         "quotaless-s3" => Some("us-east-1"),
+        "ibm-cos" => Some("eu-de"),
         _ => None,
     }
 }
@@ -257,6 +258,7 @@ fn s3_profile_default_path_style(provider_id: &str) -> Option<bool> {
         "oracle-cloud" => Some(true),
         "minio" => Some(true),
         "quotaless-s3" => Some(true),
+        "ibm-cos" => Some(false),
         _ => None,
     }
 }
@@ -296,6 +298,7 @@ fn s3_profile_endpoint_template(provider_id: &str) -> Option<&'static str> {
         "alibaba-oss" => Some("https://oss-{region}.aliyuncs.com"),
         "tencent-cos" => Some("https://cos.{region}.myqcloud.com"),
         "digitalocean-spaces" => Some("https://{region}.digitaloceanspaces.com"),
+        "ibm-cos" => Some("https://s3.{region}.cloud-object-storage.appdomain.cloud"),
         _ => None,
     }
 }
@@ -519,6 +522,32 @@ mod tests {
         assert!(!extra.contains_key("webdav_scheme"));
         assert!(!extra.contains_key("allowCleartextStorage"));
         assert!(!extra.contains_key("allow_cleartext_storage"));
+    }
+
+    #[test]
+    fn ibm_cos_preset_resolves_region_path_style_and_endpoint() {
+        // IBM Cloud Object Storage (free tier): regional public endpoint
+        // `s3.{region}.cloud-object-storage.appdomain.cloud`, virtual-hosted
+        // addressing, EU default. Explicit profile values must win over the
+        // preset (same precedence contract as the wasabi preset).
+        let mut extra = HashMap::new();
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("ibm-cos"));
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://s3.eu-de.cloud-object-storage.appdomain.cloud")
+        );
+        assert_eq!(extra.get("region").map(String::as_str), Some("eu-de"));
+        assert_eq!(extra.get("path_style").map(String::as_str), Some("false"));
+
+        let mut explicit = HashMap::new();
+        explicit.insert("region".to_string(), "us-south".to_string());
+        explicit.insert("path_style".to_string(), "true".to_string());
+        let endpoint = apply_s3_profile_defaults(&mut explicit, Some("ibm-cos"));
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://s3.us-south.cloud-object-storage.appdomain.cloud")
+        );
+        assert_eq!(explicit.get("path_style").map(String::as_str), Some("true"));
     }
 
     #[test]

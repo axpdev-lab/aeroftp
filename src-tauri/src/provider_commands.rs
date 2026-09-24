@@ -947,6 +947,20 @@ impl ProviderConnectionParams {
             if let Some(path_style) = self.path_style {
                 extra.insert("path_style".to_string(), path_style.to_string());
             }
+            // Preset endpoint templates (Wasabi, IBM COS, R2, ...): callers
+            // that build a config from raw form fields (bucket Fetch
+            // discovery, CLI, MCP) send region but no explicit endpoint, and
+            // without this the provider falls back to `s3.{region}.amazonaws.com`
+            // (seen live on the IBM COS Fetch button). Every caller gets the
+            // same address the save path computes. Explicit values win; a
+            // generic S3 without a template is untouched.
+            crate::profile_loader::apply_s3_profile_defaults(
+                &mut extra,
+                self.provider_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty()),
+            );
             // S3 enterprise: storage class, SSE mode, KMS key
             if let Some(ref sc) = self.storage_class {
                 if !sc.is_empty() {
@@ -14833,6 +14847,34 @@ mod tests {
         assert_eq!(
             config.extra.get("path_style").map(String::as_str),
             Some("false")
+        );
+    }
+
+    #[test]
+    fn test_s3_provider_params_preset_template_without_explicit_endpoint() {
+        // Bucket Fetch discovery sends region but no endpoint for template
+        // presets. Without preset resolution the provider fell back to
+        // `s3.{region}.amazonaws.com` (seen live on IBM COS Fetch with
+        // region eu-de). The template must resolve here, for every caller.
+        let mut params = s3_params(None);
+        params.provider_id = Some("ibm-cos".to_string());
+        params.region = Some("eu-de".to_string());
+        params.endpoint = None;
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://s3.eu-de.cloud-object-storage.appdomain.cloud")
+        );
+        // Explicit endpoint still wins over the template.
+        let mut params = s3_params(None);
+        params.provider_id = Some("ibm-cos".to_string());
+        params.region = Some("eu-de".to_string());
+        params.endpoint =
+            Some("https://s3.us-south.cloud-object-storage.appdomain.cloud".to_string());
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://s3.us-south.cloud-object-storage.appdomain.cloud")
         );
     }
 

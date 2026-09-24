@@ -1884,6 +1884,7 @@ pub fn export_rclone(
                     "backblaze" | "backblaze-b2" => "Other",
                     "linode-object-storage" => "Linode",
                     "scaleway" => "Scaleway",
+                    "ibm-cos" => "IBMCOS",
                     "storj" => "Storj",
                     "idrive-e2" => "IDrive",
                     "minio" => "Minio",

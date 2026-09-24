@@ -76,7 +76,7 @@ pub(crate) fn map_s3_provider(provider: &str) -> &'static str {
         "huaweiobs" | "obs" => "custom-s3",
         "tencentcos" | "cos" => "custom-s3",
         "alicloud" | "oss" => "custom-s3",
-        "ibmcos" => "custom-s3",
+        "ibmcos" | "ibm-cos" | "ibm" => "ibm-cos",
         "ionos" => "ionos-s3",
         "petabox" => "custom-s3",
         "seaweedfs" => "custom-s3",
@@ -118,6 +118,9 @@ pub(crate) fn map_s3_provider_from_endpoint(endpoint: &str) -> &'static str {
     }
     if h.contains("scw.cloud") {
         return "scaleway";
+    }
+    if h.contains("cloud-object-storage.appdomain.cloud") {
+        return "ibm-cos";
     }
     if h.contains("storjshare.io") || h.contains("gateway.storj") {
         return "storj";
@@ -979,6 +982,18 @@ mod tests {
         assert_eq!(
             map_s3_provider_from_endpoint("http://192.168.1.10:9000"),
             "custom-s3"
+        );
+        assert_eq!(map_s3_provider("ibmcos"), "ibm-cos");
+        assert_eq!(map_s3_provider("IBM-COS"), "ibm-cos");
+        assert_eq!(
+            map_s3_provider_from_endpoint(
+                "https://s3.eu-de.cloud-object-storage.appdomain.cloud/my-bucket"
+            ),
+            "ibm-cos"
+        );
+        assert_eq!(
+            map_s3_provider_from_endpoint("s3.us-south.cloud-object-storage.appdomain.cloud"),
+            "ibm-cos"
         );
         assert_eq!(
             map_s3_provider_from_endpoint("https://play.min.io"),

@@ -557,6 +557,11 @@ export const CloudinaryLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img src="/icons/providers/cloudinary.png" alt="Cloudinary" width={size} height={size} style={{ objectFit: 'contain' }} />
 );
 
+// IBM Cloud Object Storage: SVG logo (owner-optimized, Inkscape)
+export const IbmCosLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img src="/icons/providers/ibm-cloud.svg" alt="IBM Cloud" width={size} height={size} style={{ objectFit: 'contain' }} />
+);
+
 /** Map of provider ID → logo component */
 export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'amazon-s3': AwsLogo,
@@ -632,4 +637,5 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'imagekit': ImageKitLogo,
     'uploadcare': UploadcareLogo,
     'cloudinary': CloudinaryLogo,
+    'ibm-cos': IbmCosLogo,
 };
