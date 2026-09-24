@@ -5062,7 +5062,7 @@
             "tabCompare": "Bera saman",
             "tabPlan": "Áætlun",
             "tabSync": "Samstilla",
-            "compareWontFitTitle": "{count} komast ekki fyrir á {name}",
+            "compareWontFitTitle": "Kemst ekki fyrir á {name}: {count}",
             "compareWontFitHint": "Stærri en skjalfest mörk þjónustunnar, eða með lengra nafn en hún leyfir. Samstilling myndi mistakast á þessum: endurnefndu eða skiptu þeim fyrst.",
             "compareWontFitTooLarge": "{size}, mörk {limit}",
             "compareWontFitNameBytes": "nafn yfir {count} bæti",

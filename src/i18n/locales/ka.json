@@ -5043,7 +5043,7 @@
             "tabCompare": "შედარება",
             "tabPlan": "გეგმა",
             "tabSync": "სინქრონიზაცია",
-            "compareWontFitTitle": "{count} ვერ დაეტევა {name}-ში",
+            "compareWontFitTitle": "ვერ დაეტევა {name}-ში: {count}",
             "compareWontFitHint": "უფრო დიდია პროვაიდერის დოკუმენტირებულ ლიმიტზე ან აქვს დასაშვებზე გრძელი სახელი. სინქრონიზაცია მათზე ჩავარდება: ჯერ გადაარქვით სახელი ან დაყავით.",
             "compareWontFitTooLarge": "{size}, ლიმიტი {limit}",
             "compareWontFitNameBytes": "სახელი {count} ბაიტზე მეტია",

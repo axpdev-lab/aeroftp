@@ -5043,7 +5043,7 @@
             "tabCompare": "Sammenlign",
             "tabPlan": "Plan",
             "tabSync": "Synkronisér",
-            "compareWontFitTitle": "{count} kan ikke være på {name}",
+            "compareWontFitTitle": "Kan ikke være på {name}: {count}",
             "compareWontFitHint": "Større end udbyderens dokumenterede grænse eller med et længere navn end tilladt. En synkronisering ville fejle på disse: omdøb eller opdel dem først.",
             "compareWontFitTooLarge": "{size}, grænse {limit}",
             "compareWontFitNameBytes": "navn over {count} bytes",

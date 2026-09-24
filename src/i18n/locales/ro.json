@@ -5043,7 +5043,7 @@
             "tabCompare": "Compară",
             "tabPlan": "Plan",
             "tabSync": "Sincronizează",
-            "compareWontFitTitle": "{count} nu încap pe {name}",
+            "compareWontFitTitle": "Nu încape pe {name}: {count}",
             "compareWontFitHint": "Mai mari decât limita documentată a furnizorului sau cu un nume mai lung decât acceptă. O sincronizare ar eșua pentru acestea: redenumiți-le sau împărțiți-le înainte.",
             "compareWontFitTooLarge": "{size}, limită {limit}",
             "compareWontFitNameBytes": "nume de peste {count} octeți",

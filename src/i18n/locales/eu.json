@@ -5062,7 +5062,7 @@
             "tabCompare": "Konparatu",
             "tabPlan": "Plana",
             "tabSync": "Sinkronizatu",
-            "compareWontFitTitle": "{count} ez dira sartzen {name} zerbitzuan",
+            "compareWontFitTitle": "Ez da sartzen {name} zerbitzuan: {count}",
             "compareWontFitHint": "Hornitzaileak dokumentatutako muga baino handiagoak, edo onartzen duena baino izen luzeagoa dutenak. Sinkronizazioak huts egingo luke hauekin: aldatu izena edo zatitu lehenago.",
             "compareWontFitTooLarge": "{size}, muga {limit}",
             "compareWontFitNameBytes": "{count} byte baino gehiagoko izena",

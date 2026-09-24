@@ -5268,7 +5268,7 @@
             "tabCompare": "Compare",
             "tabPlan": "Plan",
             "tabSync": "Sync",
-            "compareWontFitTitle": "{count} will not fit on {name}",
+            "compareWontFitTitle": "Will not fit on {name}: {count}",
             "compareWontFitHint": "Larger than the provider's documented limit, or with a name longer than it accepts. A sync would fail on these: rename or split them first.",
             "compareWontFitTooLarge": "{size}, limit {limit}",
             "compareWontFitNameBytes": "name over {count} bytes",

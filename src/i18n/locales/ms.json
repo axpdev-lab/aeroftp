@@ -5043,7 +5043,7 @@
             "tabCompare": "Bandingkan",
             "tabPlan": "Rancang",
             "tabSync": "Segerak",
-            "compareWontFitTitle": "{count} tidak muat di {name}",
+            "compareWontFitTitle": "Tidak muat di {name}: {count}",
             "compareWontFitHint": "Lebih besar daripada had yang didokumenkan pembekal, atau dengan nama lebih panjang daripada yang diterima. Penyegerakan akan gagal untuk ini: namakan semula atau pecahkan dahulu.",
             "compareWontFitTooLarge": "{size}, had {limit}",
             "compareWontFitNameBytes": "nama melebihi {count} bait",

@@ -5043,7 +5043,7 @@
             "tabCompare": "Usporedi",
             "tabPlan": "Plan",
             "tabSync": "Sinkroniziraj",
-            "compareWontFitTitle": "{count} ne stane na {name}",
+            "compareWontFitTitle": "Ne stane na {name}: {count}",
             "compareWontFitHint": "Veće od dokumentiranog ograničenja pružatelja ili s duljim nazivom nego što prihvaća. Sinkronizacija bi za njih zakazala: prvo ih preimenujte ili podijelite.",
             "compareWontFitTooLarge": "{size}, ograničenje {limit}",
             "compareWontFitNameBytes": "naziv preko {count} bajtova",

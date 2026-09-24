@@ -5043,7 +5043,7 @@
             "tabCompare": "Porovnat",
             "tabPlan": "Plán",
             "tabSync": "Synchronizovat",
-            "compareWontFitTitle": "{count} se nevejde na {name}",
+            "compareWontFitTitle": "Nevejde se na {name}: {count}",
             "compareWontFitHint": "Větší než zdokumentovaný limit poskytovatele nebo s delším názvem, než přijímá. Synchronizace by u nich selhala: nejprve je přejmenujte nebo rozdělte.",
             "compareWontFitTooLarge": "{size}, limit {limit}",
             "compareWontFitNameBytes": "název nad {count} bajtů",

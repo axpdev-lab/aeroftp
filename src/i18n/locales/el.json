@@ -5043,7 +5043,7 @@
             "tabCompare": "Σύγκριση",
             "tabPlan": "Σχέδιο",
             "tabSync": "Συγχρονισμός",
-            "compareWontFitTitle": "{count} δεν χωρούν στο {name}",
+            "compareWontFitTitle": "Δεν χωράει στο {name}: {count}",
             "compareWontFitHint": "Μεγαλύτερα από το τεκμηριωμένο όριο του παρόχου ή με όνομα μεγαλύτερο από όσο δέχεται. Ο συγχρονισμός θα αποτύχει σε αυτά: μετονομάστε ή χωρίστε τα πρώτα.",
             "compareWontFitTooLarge": "{size}, όριο {limit}",
             "compareWontFitNameBytes": "όνομα πάνω από {count} byte",

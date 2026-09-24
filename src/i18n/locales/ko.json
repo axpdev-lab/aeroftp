@@ -5043,7 +5043,7 @@
             "tabCompare": "비교",
             "tabPlan": "계획",
             "tabSync": "동기화",
-            "compareWontFitTitle": "{count}개는 {name}에 넣을 수 없습니다",
+            "compareWontFitTitle": "{name}에 넣을 수 없음: {count}",
             "compareWontFitHint": "제공업체가 문서화한 한도보다 크거나 허용 길이보다 긴 이름입니다. 동기화하면 실패합니다. 먼저 이름을 바꾸거나 나누세요.",
             "compareWontFitTooLarge": "{size}, 한도 {limit}",
             "compareWontFitNameBytes": "이름이 {count}바이트 초과",

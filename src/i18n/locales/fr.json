@@ -5043,7 +5043,7 @@
             "tabCompare": "Comparer",
             "tabPlan": "Plan",
             "tabSync": "Synchroniser",
-            "compareWontFitTitle": "{count} ne tiennent pas sur {name}",
+            "compareWontFitTitle": "Ne tient pas sur {name} : {count}",
             "compareWontFitHint": "Plus grands que la limite documentée du fournisseur, ou avec un nom plus long que ce qu'il accepte. Une synchronisation échouerait sur ceux-ci : renommez-les ou découpez-les d'abord.",
             "compareWontFitTooLarge": "{size}, limite {limit}",
             "compareWontFitNameBytes": "nom de plus de {count} octets",

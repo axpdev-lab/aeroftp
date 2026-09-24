@@ -5043,7 +5043,7 @@
             "tabCompare": "Összehasonlítás",
             "tabPlan": "Terv",
             "tabSync": "Szinkronizálás",
-            "compareWontFitTitle": "{count} nem fér el itt: {name}",
+            "compareWontFitTitle": "Nem fér el itt: {name}: {count}",
             "compareWontFitHint": "Nagyobbak a szolgáltató dokumentált korlátjánál, vagy hosszabb a nevük, mint amit elfogad. A szinkronizálás ezeknél hibára futna: előbb nevezze át vagy ossza fel őket.",
             "compareWontFitTooLarge": "{size}, korlát {limit}",
             "compareWontFitNameBytes": "{count} bájtnál hosszabb név",

@@ -5043,7 +5043,7 @@
             "tabCompare": "Võrdle",
             "tabPlan": "Plaan",
             "tabSync": "Sünkrooni",
-            "compareWontFitTitle": "{count} ei mahu teenusesse {name}",
+            "compareWontFitTitle": "Ei mahu teenusesse {name}: {count}",
             "compareWontFitHint": "Suuremad kui teenusepakkuja dokumenteeritud piirang või lubatust pikema nimega. Sünkroonimine nurjuks nende puhul: nimeta need ümber või jaga osadeks enne.",
             "compareWontFitTooLarge": "{size}, piirang {limit}",
             "compareWontFitNameBytes": "nimi üle {count} baidi",

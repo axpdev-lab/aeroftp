@@ -5043,7 +5043,7 @@
             "tabCompare": "Palyginti",
             "tabPlan": "Planas",
             "tabSync": "Sinchronizuoti",
-            "compareWontFitTitle": "{count} netelpa į {name}",
+            "compareWontFitTitle": "Netelpa į {name}: {count}",
             "compareWontFitHint": "Didesni nei dokumentuota teikėjo riba arba su ilgesniu pavadinimu, nei leidžiama. Sinchronizavimas su jais nepavyktų: pirmiausia pervadinkite arba padalykite juos.",
             "compareWontFitTooLarge": "{size}, riba {limit}",
             "compareWontFitNameBytes": "pavadinimas ilgesnis nei {count} baitų",

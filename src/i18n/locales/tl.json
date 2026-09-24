@@ -5062,7 +5062,7 @@
             "tabCompare": "Ihambing",
             "tabPlan": "Plano",
             "tabSync": "I-sync",
-            "compareWontFitTitle": "{count} ang hindi kasya sa {name}",
+            "compareWontFitTitle": "Hindi kasya sa {name}: {count}",
             "compareWontFitHint": "Mas malaki kaysa sa dokumentadong limitasyon ng provider, o may pangalang mas mahaba sa tinatanggap nito. Mabibigo ang sync sa mga ito: palitan ang pangalan o hatiin muna.",
             "compareWontFitTooLarge": "{size}, limitasyon {limit}",
             "compareWontFitNameBytes": "pangalang lampas {count} byte",

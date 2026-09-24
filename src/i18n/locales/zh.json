@@ -5043,7 +5043,7 @@
             "tabCompare": "比较",
             "tabPlan": "计划",
             "tabSync": "同步",
-            "compareWontFitTitle": "{count} 个无法放入 {name}",
+            "compareWontFitTitle": "无法放入 {name}：{count}",
             "compareWontFitHint": "大于提供商文档中的限制，或名称超过其允许的长度。同步这些文件会失败：请先重命名或拆分。",
             "compareWontFitTooLarge": "{size}，上限 {limit}",
             "compareWontFitNameBytes": "名称超过 {count} 字节",

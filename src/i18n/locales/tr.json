@@ -5043,7 +5043,7 @@
             "tabCompare": "Karşılaştır",
             "tabPlan": "Plan",
             "tabSync": "Senkronize Et",
-            "compareWontFitTitle": "{count} öğe {name} üzerine sığmaz",
+            "compareWontFitTitle": "{name} üzerine sığmayan: {count}",
             "compareWontFitHint": "Sağlayıcının belgelenmiş sınırından büyük veya kabul ettiğinden uzun adlı. Eşitleme bunlarda başarısız olur: önce yeniden adlandırın veya bölün.",
             "compareWontFitTooLarge": "{size}, sınır {limit}",
             "compareWontFitNameBytes": "ad {count} baytı aşıyor",

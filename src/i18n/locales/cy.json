@@ -5062,7 +5062,7 @@
             "tabCompare": "Cymharu",
             "tabPlan": "Cynllun",
             "tabSync": "Cysoni",
-            "compareWontFitTitle": "Ni fydd {count} yn ffitio ar {name}",
+            "compareWontFitTitle": "Ddim yn ffitio ar {name}: {count}",
             "compareWontFitHint": "Yn fwy na therfyn dogfennedig y darparwr, neu ag enw hirach nag y mae'n ei dderbyn. Byddai cysoni'n methu ar y rhain: ailenwch neu rhannwch nhw yn gyntaf.",
             "compareWontFitTooLarge": "{size}, terfyn {limit}",
             "compareWontFitNameBytes": "enw dros {count} beit",

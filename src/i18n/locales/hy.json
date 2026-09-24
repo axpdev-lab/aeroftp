@@ -5043,7 +5043,7 @@
             "tabCompare": "Համեմատել",
             "tabPlan": "Պլան",
             "tabSync": "Համաժամեցնել",
-            "compareWontFitTitle": "{count}-ը չի տեղավորվի {name}-ում",
+            "compareWontFitTitle": "Չի տեղավորվի {name}-ում՝ {count}",
             "compareWontFitHint": "Մեծ են մատակարարի փաստաթղթավորված սահմանից կամ ունեն թույլատրվածից երկար անուն։ Համաժամեցումը դրանց համար կձախողվի․ նախ վերանվանեք կամ բաժանեք դրանք։",
             "compareWontFitTooLarge": "{size}, սահման {limit}",
             "compareWontFitNameBytes": "անունը {count} բայթից ավելի է",

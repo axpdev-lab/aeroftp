@@ -5062,7 +5062,7 @@
             "tabCompare": "ប្រៀបធៀប",
             "tabPlan": "ផែនការ",
             "tabSync": "ធ្វើសមកាលកម្ម",
-            "compareWontFitTitle": "{count} មិនអាចដាក់លើ {name} បានទេ",
+            "compareWontFitTitle": "មិនអាចដាក់លើ {name}៖ {count}",
             "compareWontFitHint": "ធំជាងដែនកំណត់ដែលអ្នកផ្ដល់សេវាបានកត់ត្រា ឬមានឈ្មោះវែងជាងអ្វីដែលវាទទួលយក។ ការធ្វើសមកាលកម្មនឹងបរាជ័យលើវា៖ ប្ដូរឈ្មោះ ឬបំបែកវាជាមុនសិន។",
             "compareWontFitTooLarge": "{size}, ដែនកំណត់ {limit}",
             "compareWontFitNameBytes": "ឈ្មោះលើស {count} បៃ",

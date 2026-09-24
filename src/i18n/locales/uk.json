@@ -5043,7 +5043,7 @@
             "tabCompare": "Порівняти",
             "tabPlan": "План",
             "tabSync": "Синхронізувати",
-            "compareWontFitTitle": "{count} не вміститься в {name}",
+            "compareWontFitTitle": "Не вміститься в {name}: {count}",
             "compareWontFitHint": "Більші за задокументований ліміт провайдера або з назвою, довшою за допустиму. Синхронізація для них завершиться помилкою: спершу перейменуйте або розділіть їх.",
             "compareWontFitTooLarge": "{size}, ліміт {limit}",
             "compareWontFitNameBytes": "назва довша за {count} байтів",

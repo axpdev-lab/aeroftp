@@ -5043,7 +5043,7 @@
             "tabCompare": "Linganisha",
             "tabPlan": "Mpango",
             "tabSync": "Sawazisha",
-            "compareWontFitTitle": "{count} hazitatosha kwenye {name}",
+            "compareWontFitTitle": "Hazitatosha kwenye {name}: {count}",
             "compareWontFitHint": "Kubwa kuliko kikomo kilichoandikwa na mtoa huduma, au zenye jina refu kuliko inavyokubali. Usawazishaji ungeshindwa kwa hizi: badilisha majina au zigawe kwanza.",
             "compareWontFitTooLarge": "{size}, kikomo {limit}",
             "compareWontFitNameBytes": "jina linazidi baiti {count}",

@@ -5043,7 +5043,7 @@
             "tabCompare": "Vergelijken",
             "tabPlan": "Plan",
             "tabSync": "Synchroniseren",
-            "compareWontFitTitle": "{count} passen niet op {name}",
+            "compareWontFitTitle": "Past niet op {name}: {count}",
             "compareWontFitHint": "Groter dan de gedocumenteerde limiet van de provider, of met een langere naam dan toegestaan. Een synchronisatie zou hierop mislukken: hernoem of splits ze eerst.",
             "compareWontFitTooLarge": "{size}, limiet {limit}",
             "compareWontFitNameBytes": "naam boven {count} bytes",

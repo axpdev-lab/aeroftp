@@ -5043,7 +5043,7 @@
             "tabCompare": "Salīdzināt",
             "tabPlan": "Plāns",
             "tabSync": "Sinhronizēt",
-            "compareWontFitTitle": "{count} neietilpst {name}",
+            "compareWontFitTitle": "Neietilpst {name}: {count}",
             "compareWontFitHint": "Lielāki par pakalpojuma dokumentēto ierobežojumu vai ar garāku nosaukumu, nekā tas pieļauj. Sinhronizācija ar tiem neizdotos: vispirms pārdēvējiet vai sadaliet tos.",
             "compareWontFitTooLarge": "{size}, ierobežojums {limit}",
             "compareWontFitNameBytes": "nosaukums virs {count} baitiem",

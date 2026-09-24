@@ -5043,7 +5043,7 @@
             "tabCompare": "比較",
             "tabPlan": "プラン",
             "tabSync": "同期",
-            "compareWontFitTitle": "{count} 件は {name} に保存できません",
+            "compareWontFitTitle": "{name} に保存できないもの: {count}",
             "compareWontFitHint": "プロバイダーが文書化している上限より大きいか、許容より長い名前です。このまま同期すると失敗します。先に名前を変えるか分割してください。",
             "compareWontFitTooLarge": "{size}、上限 {limit}",
             "compareWontFitNameBytes": "名前が {count} バイトを超えています",

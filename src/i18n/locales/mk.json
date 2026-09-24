@@ -5062,7 +5062,7 @@
             "tabCompare": "Спореди",
             "tabPlan": "План",
             "tabSync": "Синхронизирај",
-            "compareWontFitTitle": "{count} не собира на {name}",
+            "compareWontFitTitle": "Не собира на {name}: {count}",
             "compareWontFitHint": "Поголеми од документираното ограничување на давателот или со подолго име отколку што прифаќа. Синхронизацијата би пропаднала за нив: прво преименувајте ги или поделете ги.",
             "compareWontFitTooLarge": "{size}, ограничување {limit}",
             "compareWontFitNameBytes": "име над {count} бајти",

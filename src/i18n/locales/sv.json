@@ -5043,7 +5043,7 @@
             "tabCompare": "Jämför",
             "tabPlan": "Plan",
             "tabSync": "Synkronisera",
-            "compareWontFitTitle": "{count} ryms inte på {name}",
+            "compareWontFitTitle": "Ryms inte på {name}: {count}",
             "compareWontFitHint": "Större än leverantörens dokumenterade gräns eller med ett längre namn än tillåtet. En synkronisering skulle misslyckas för dessa: byt namn eller dela upp dem först.",
             "compareWontFitTooLarge": "{size}, gräns {limit}",
             "compareWontFitNameBytes": "namn över {count} byte",

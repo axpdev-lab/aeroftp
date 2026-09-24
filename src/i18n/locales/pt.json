@@ -5043,7 +5043,7 @@
             "tabCompare": "Comparar",
             "tabPlan": "Plano",
             "tabSync": "Sincronizar",
-            "compareWontFitTitle": "{count} não cabem em {name}",
+            "compareWontFitTitle": "Não cabe em {name}: {count}",
             "compareWontFitHint": "Maiores que o limite documentado do provedor, ou com um nome mais longo do que ele aceita. Uma sincronização falharia nestes: renomeie ou divida-os antes.",
             "compareWontFitTooLarge": "{size}, limite {limit}",
             "compareWontFitNameBytes": "nome acima de {count} bytes",

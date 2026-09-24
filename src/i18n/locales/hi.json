@@ -5043,7 +5043,7 @@
             "tabCompare": "तुलना करें",
             "tabPlan": "योजना",
             "tabSync": "सिंक",
-            "compareWontFitTitle": "{count} {name} पर नहीं समाएँगे",
+            "compareWontFitTitle": "{name} पर नहीं समाएँगे: {count}",
             "compareWontFitHint": "प्रदाता की दस्तावेज़ित सीमा से बड़े, या स्वीकार्य लंबाई से लंबे नाम वाले। इन पर सिंक विफल होगा: पहले नाम बदलें या इन्हें विभाजित करें।",
             "compareWontFitTooLarge": "{size}, सीमा {limit}",
             "compareWontFitNameBytes": "नाम {count} बाइट से अधिक",
