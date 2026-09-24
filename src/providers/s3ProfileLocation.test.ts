@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
-import { presetDefaultS3Region, resolveProfileS3Location } from './registry';
+import { getProviderById, presetDefaultS3Region, resolveProfileS3Location } from './registry';
 
 // One rule for every GUI path that turns a saved S3 profile into an address
 // (connect, speed test, edit): stored endpoint, then an explicit host, then
@@ -78,10 +78,22 @@ describe('signing region read back from an explicit endpoint', () => {
         ['cloudflare-r2', 'https://abc.r2.cloudflarestorage.com', undefined],
         ['backblaze', 's3.eu-central-003.backblazeb2.com', undefined],
     ];
-    it.each(cases)('%s %s -> %s', (preset, endpoint, region) => {
-        // Through both explicit forms: stored endpoint option and host.
-        expect(resolveProfileS3Location(preset, { endpoint }, '').region).toBe(region);
-        expect(resolveProfileS3Location(preset, {}, endpoint).region).toBe(region);
+    it.each(cases)('%s %s -> %s', (preset, endpoint, readBack) => {
+        // Through both explicit forms: stored endpoint option and host. A host
+        // the template cannot read falls back to the preset's declared default,
+        // as apply_s3_profile_defaults does in Rust.
+        const expected = readBack ?? getProviderById(preset)?.defaults?.region;
+        expect(resolveProfileS3Location(preset, { endpoint }, '').region).toBe(expected);
+        expect(resolveProfileS3Location(preset, {}, endpoint).region).toBe(expected);
+    });
+
+    it('signs an unreadable host with the preset default, like the Rust loader', () => {
+        // Mirrors the last case of s3_signing_region_follows_an_explicit_endpoint_without_a_stored_region.
+        const location = resolveProfileS3Location('ibm-cos', {}, 'cos.example.internal');
+        expect(location.region).toBe('eu-de');
+        expect(location.signingRegion).toBe('eu-de');
+        // No preset default at all: the generic fallback.
+        expect(resolveProfileS3Location('custom-s3', {}, 'minio.lab:9000').signingRegion).toBe('us-east-1');
     });
 
     it('signs an IBM regional endpoint with its own region, not us-east-1', () => {

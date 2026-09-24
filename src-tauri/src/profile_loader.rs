@@ -221,6 +221,9 @@ pub fn apply_local_bridge_credential_defaults(
     }
 }
 
+/// Region a preset signs with when the profile stores none. Mirrors every
+/// `defaults.region` of an S3 preset in `src/providers/registry.ts`; the
+/// vitest `s3PresetRegionParity.test.ts` fails when the two drift.
 fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
     match provider_id {
         "backblaze" => Some("auto"),
@@ -235,6 +238,8 @@ fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
         "minio" => Some("us-east-1"),
         "quotaless-s3" => Some("us-east-1"),
         "ibm-cos" => Some("eu-de"),
+        "filen-desktop-s3" => Some("filen"),
+        "s3drive" => Some("us-east-1"),
         _ => None,
     }
 }

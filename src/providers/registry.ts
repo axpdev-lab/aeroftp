@@ -2443,13 +2443,12 @@ const regionFromS3Endpoint = (providerId: string | undefined, endpoint: string):
 /**
  * Endpoint and region a saved S3 profile connects with: the stored endpoint
  * option, then an explicit host, then the preset (static endpoint, or template
- * expanded with the stored or default region). `region` carries the preset
- * default only when the template actually used it, so it always matches the
- * host built from it (the edit path stores it). `signingRegion` is what a
- * connection sends: that region, else the legacy fallback for a profile with
- * its own endpoint and no stored region (`global` for FileLu S5, `us-east-1`
- * otherwise). The single rule the connect, AeroCloud, speed-test and edit
- * paths share, so no caller re-derives the fallback.
+ * expanded with the stored or default region). With an explicit endpoint and no
+ * stored region, `region` is the one the endpoint names, else the preset's
+ * `defaults.region`, the same order as `apply_s3_profile_defaults` in Rust.
+ * `signingRegion` is what a connection sends: that region, else `us-east-1`.
+ * The single rule the connect, AeroCloud, speed-test and edit paths share, so
+ * no caller re-derives the fallback.
  */
 export const resolveProfileS3Location = (
     providerId: string | undefined,
@@ -2458,11 +2457,14 @@ export const resolveProfileS3Location = (
 ): { endpoint: string | null; region?: string; signingRegion: string } => {
     const storedRegion = typeof options?.region === 'string' && options.region.trim() ? options.region.trim() : undefined;
     const storedEndpoint = typeof options?.endpoint === 'string' ? options.endpoint.trim() : '';
-    const signing = (region?: string) => region || (providerId === 'filelu-s3' ? 'global' : 'us-east-1');
+    const signing = (region?: string) => region || 'us-east-1';
     // An explicit endpoint without a stored region signs with the region the
-    // endpoint names (SigV4 credential scope), not a default.
+    // endpoint names (SigV4 credential scope), else the preset's declared
+    // default, as the Rust loader does (s3_profile_default_region).
     const explicit = (endpoint: string) => {
-        const region = storedRegion || regionFromS3Endpoint(providerId, endpoint);
+        const region = storedRegion
+            || regionFromS3Endpoint(providerId, endpoint)
+            || (providerId ? getProviderById(providerId)?.defaults?.region : undefined);
         return { endpoint, region, signingRegion: signing(region) };
     };
     if (storedEndpoint) return explicit(storedEndpoint);
