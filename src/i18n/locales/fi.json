@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Peilaa oikealta vasemmalle",
             "directionLeftRight": "Vasemmalta Oikealle",
             "directionRightLeft": "Oikealta Vasemmalle",
+            "directionLocalToRemote": "Paikallinen → Etä",
+            "directionRemoteToLocal": "Etä → Paikallinen",
+            "directionBothWays": "Molempiin suuntiin",
+            "modeHeader": "Tila",
+            "preset": {
+                "mirror": {
+                    "name": "Peilaus",
+                    "tagline": "Tekee kohteesta identtisen lähteen kanssa. Poistaa ylimääräiset tiedostot ja korvaa uudemmat kopiot."
+                },
+                "backup": {
+                    "name": "Varmuuskopio",
+                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ei koskaan poista eikä koskaan korvaa kohteen uudempaa kopiota."
+                },
+                "update": {
+                    "name": "Päivitä",
+                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ohittaa ristiriidat, jotta voit ratkaista ne itse."
+                },
+                "bisync": {
+                    "name": "Kaksisuuntainen synkronointi",
+                    "tagline": "Siirtää puuttuvat ja uudemmat tiedostot molempiin suuntiin. Ohittaa ristiriidat."
+                }
+            },
             "conflictPolicy": "Ristiriitakäytäntö",
             "ignoredForMirror": "OHITETTU PEILAUKSELLE",
             "versionedBackup": "Versioitu varmuuskopio",

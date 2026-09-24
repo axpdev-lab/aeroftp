@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Von rechts nach links spiegeln",
             "directionLeftRight": "Links nach Rechts",
             "directionRightLeft": "Rechts nach Links",
+            "directionLocalToRemote": "Lokal → Remote",
+            "directionRemoteToLocal": "Remote → Lokal",
+            "directionBothWays": "In beide Richtungen",
+            "modeHeader": "Modus",
+            "preset": {
+                "mirror": {
+                    "name": "Spiegeln",
+                    "tagline": "Macht das Ziel identisch mit der Quelle. Löscht überzählige Dateien und überschreibt neuere Kopien."
+                },
+                "backup": {
+                    "name": "Sicherung",
+                    "tagline": "Kopiert fehlende und neuere Dateien. Löscht nie und überschreibt nie eine neuere Kopie im Ziel."
+                },
+                "update": {
+                    "name": "Aktualisieren",
+                    "tagline": "Kopiert fehlende und neuere Dateien. Überspringt Konflikte, damit Sie sie manuell lösen können."
+                },
+                "bisync": {
+                    "name": "Zwei-Wege-Sync",
+                    "tagline": "Überträgt fehlende und neuere Dateien in beide Richtungen. Überspringt Konflikte."
+                }
+            },
             "conflictPolicy": "Konfliktrichtlinie",
             "ignoredForMirror": "FÜR MIRROR IGNORIERT",
             "versionedBackup": "Versioniertes Backup",

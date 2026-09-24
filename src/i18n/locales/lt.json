@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Veidrodžiuoti iš dešinės į kairę",
             "directionLeftRight": "Iš kairės į dešinę",
             "directionRightLeft": "Iš dešinės į kairę",
+            "directionLocalToRemote": "Vietinis → Nuotolinis",
+            "directionRemoteToLocal": "Nuotolinis → Vietinis",
+            "directionBothWays": "Abiem kryptimis",
+            "modeHeader": "Režimas",
+            "preset": {
+                "mirror": {
+                    "name": "Veidrodis",
+                    "tagline": "Padaro paskirties vietą identišką šaltiniui. Ištrina perteklinius failus ir perrašo naujesnes kopijas."
+                },
+                "backup": {
+                    "name": "Atsarginė kopija",
+                    "tagline": "Nukopijuoja trūkstamus ir naujesnius failus. Niekada netrina ir niekada neperrašo naujesnės kopijos paskirties vietoje."
+                },
+                "update": {
+                    "name": "Atnaujinti",
+                    "tagline": "Nukopijuoja trūkstamus ir naujesnius failus. Praleidžia konfliktus, kad galėtumėte juos išspręsti rankiniu būdu."
+                },
+                "bisync": {
+                    "name": "Dvipusė sinchronizacija",
+                    "tagline": "Perkelia trūkstamus ir naujesnius failus abiem kryptimis. Praleidžia konfliktus."
+                }
+            },
             "conflictPolicy": "Konfliktų politika",
             "ignoredForMirror": "IGNORUOJAMA VEIDRODZIUI",
             "versionedBackup": "Versijuota atsarginė kopija",

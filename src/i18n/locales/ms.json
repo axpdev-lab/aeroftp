@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Cermin kanan ke kiri",
             "directionLeftRight": "Kiri ke Kanan",
             "directionRightLeft": "Kanan ke Kiri",
+            "directionLocalToRemote": "Tempatan → Jauh",
+            "directionRemoteToLocal": "Jauh → Tempatan",
+            "directionBothWays": "Dua hala",
+            "modeHeader": "Mod",
+            "preset": {
+                "mirror": {
+                    "name": "Cermin",
+                    "tagline": "Menjadikan destinasi sama dengan sumber. Memadam fail berlebihan dan menulis ganti salinan yang lebih baharu."
+                },
+                "backup": {
+                    "name": "Sandaran",
+                    "tagline": "Menyalin fail yang tiada dan lebih baharu. Tidak pernah memadam dan tidak pernah menulis ganti salinan lebih baharu di destinasi."
+                },
+                "update": {
+                    "name": "Kemas kini",
+                    "tagline": "Menyalin fail yang tiada dan lebih baharu. Melangkau konflik supaya anda boleh menyelesaikannya secara manual."
+                },
+                "bisync": {
+                    "name": "Penyegerakan dua hala",
+                    "tagline": "Menyebarkan fail yang tiada dan lebih baharu ke dua hala. Melangkau konflik."
+                }
+            },
             "conflictPolicy": "Dasar konflik",
             "ignoredForMirror": "DIABAIKAN UNTUK CERMIN",
             "versionedBackup": "Sandaran berversi",

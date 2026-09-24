@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Zrcadlit zprava doleva",
             "directionLeftRight": "Zleva doprava",
             "directionRightLeft": "Zprava doleva",
+            "directionLocalToRemote": "Místní → Vzdálené",
+            "directionRemoteToLocal": "Vzdálené → Místní",
+            "directionBothWays": "Oběma směry",
+            "modeHeader": "Režim",
+            "preset": {
+                "mirror": {
+                    "name": "Zrcadlo",
+                    "tagline": "Učiní cíl totožným se zdrojem. Smaže nadbytečné soubory a přepíše novější kopie."
+                },
+                "backup": {
+                    "name": "Záloha",
+                    "tagline": "Zkopíruje chybějící a novější soubory. Nikdy nemaže a nikdy nepřepíše novější kopii v cíli."
+                },
+                "update": {
+                    "name": "Aktualizace",
+                    "tagline": "Zkopíruje chybějící a novější soubory. Konflikty přeskočí, abyste je mohli vyřešit ručně."
+                },
+                "bisync": {
+                    "name": "Obousměrná synchronizace",
+                    "tagline": "Přenese chybějící a novější soubory oběma směry. Konflikty přeskočí."
+                }
+            },
             "conflictPolicy": "Zásady konfliktů",
             "ignoredForMirror": "IGNOROVÁNO PRO ZRCADLENÍ",
             "versionedBackup": "Verzovaná záloha",

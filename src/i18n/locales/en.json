@@ -5278,6 +5278,28 @@
             "mirrorRightToLeft": "Mirror right to left",
             "directionLeftRight": "Left to Right",
             "directionRightLeft": "Right to Left",
+            "directionLocalToRemote": "Local → Remote",
+            "directionRemoteToLocal": "Remote → Local",
+            "directionBothWays": "Both ways",
+            "modeHeader": "Mode",
+            "preset": {
+                "mirror": {
+                    "name": "Mirror",
+                    "tagline": "Make the destination identical to the source. Deletes extras and overwrites newer copies."
+                },
+                "backup": {
+                    "name": "Backup",
+                    "tagline": "Copy missing and newer files. Never delete, never overwrite a newer destination copy."
+                },
+                "update": {
+                    "name": "Update",
+                    "tagline": "Copy missing and newer files. Skip conflicts so you can resolve them manually."
+                },
+                "bisync": {
+                    "name": "Two-way sync",
+                    "tagline": "Propagate missing and newer files in both directions. Skip conflicts."
+                }
+            },
             "conflictPolicy": "Conflict policy",
             "ignoredForMirror": "IGNORED FOR MIRROR",
             "versionedBackup": "Versioned backup",

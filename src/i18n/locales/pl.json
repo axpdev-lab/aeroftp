@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Mirror z prawej do lewej",
             "directionLeftRight": "Z lewej do prawej",
             "directionRightLeft": "Z prawej do lewej",
+            "directionLocalToRemote": "Lokalny → Zdalny",
+            "directionRemoteToLocal": "Zdalny → Lokalny",
+            "directionBothWays": "W obie strony",
+            "modeHeader": "Tryb",
+            "preset": {
+                "mirror": {
+                    "name": "Lustro",
+                    "tagline": "Sprawia, że miejsce docelowe jest identyczne ze źródłem. Usuwa nadmiarowe pliki i nadpisuje nowsze kopie."
+                },
+                "backup": {
+                    "name": "Kopia zapasowa",
+                    "tagline": "Kopiuje brakujące i nowsze pliki. Nigdy nie usuwa i nigdy nie nadpisuje nowszej kopii w miejscu docelowym."
+                },
+                "update": {
+                    "name": "Aktualizacja",
+                    "tagline": "Kopiuje brakujące i nowsze pliki. Pomija konflikty, aby można je było rozwiązać ręcznie."
+                },
+                "bisync": {
+                    "name": "Synchronizacja dwukierunkowa",
+                    "tagline": "Przenosi brakujące i nowsze pliki w obie strony. Pomija konflikty."
+                }
+            },
             "conflictPolicy": "Polityka konfliktów",
             "ignoredForMirror": "IGNOROWANE DLA MIRRORA",
             "versionedBackup": "Kopia zapasowa z wersjami",

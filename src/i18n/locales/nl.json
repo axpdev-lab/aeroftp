@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Spiegelen van rechts naar links",
             "directionLeftRight": "Links naar Rechts",
             "directionRightLeft": "Rechts naar Links",
+            "directionLocalToRemote": "Lokaal → Extern",
+            "directionRemoteToLocal": "Extern → Lokaal",
+            "directionBothWays": "In beide richtingen",
+            "modeHeader": "Modus",
+            "preset": {
+                "mirror": {
+                    "name": "Spiegelen",
+                    "tagline": "Maakt de bestemming identiek aan de bron. Verwijdert overtollige bestanden en overschrijft nieuwere kopieën."
+                },
+                "backup": {
+                    "name": "Back-up",
+                    "tagline": "Kopieert ontbrekende en nieuwere bestanden. Verwijdert nooit en overschrijft nooit een nieuwere kopie op de bestemming."
+                },
+                "update": {
+                    "name": "Bijwerken",
+                    "tagline": "Kopieert ontbrekende en nieuwere bestanden. Slaat conflicten over zodat u ze handmatig kunt oplossen."
+                },
+                "bisync": {
+                    "name": "Tweerichtingssynchronisatie",
+                    "tagline": "Brengt ontbrekende en nieuwere bestanden in beide richtingen over. Slaat conflicten over."
+                }
+            },
             "conflictPolicy": "Conflictbeleid",
             "ignoredForMirror": "GENEGEERD VOOR MIRROR",
             "versionedBackup": "Versiebeheer back-up",

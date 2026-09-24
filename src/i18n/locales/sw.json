@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Mirror kulia kwenda kushoto",
             "directionLeftRight": "Kushoto kwenda Kulia",
             "directionRightLeft": "Kulia kwenda Kushoto",
+            "directionLocalToRemote": "Ndani → Mbali",
+            "directionRemoteToLocal": "Mbali → Ndani",
+            "directionBothWays": "Pande zote mbili",
+            "modeHeader": "Hali",
+            "preset": {
+                "mirror": {
+                    "name": "Kioo",
+                    "tagline": "Hufanya lengwa lifanane kabisa na chanzo. Hufuta faili za ziada na kuandika juu ya nakala mpya zaidi."
+                },
+                "backup": {
+                    "name": "Hifadhi rudufu",
+                    "tagline": "Hunakili faili zinazokosekana na mpya zaidi. Kamwe haifuti na kamwe haiandiki juu ya nakala mpya zaidi kwenye lengwa."
+                },
+                "update": {
+                    "name": "Sasisha",
+                    "tagline": "Hunakili faili zinazokosekana na mpya zaidi. Huruka migongano ili uitatue mwenyewe."
+                },
+                "bisync": {
+                    "name": "Usawazishaji wa pande mbili",
+                    "tagline": "Husambaza faili zinazokosekana na mpya zaidi pande zote mbili. Huruka migongano."
+                }
+            },
             "conflictPolicy": "Sera ya migogoro",
             "ignoredForMirror": "IMEPUUZWA KWA MIRROR",
             "versionedBackup": "Hifadhi rudufu yenye matoleo",

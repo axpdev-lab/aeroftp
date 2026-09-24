@@ -5070,6 +5070,28 @@
             "mirrorRightToLeft": "Speil fra hoyre til venstre",
             "directionLeftRight": "Venstre til Hoyre",
             "directionRightLeft": "Hoyre til Venstre",
+            "directionLocalToRemote": "Lokal → Ekstern",
+            "directionRemoteToLocal": "Ekstern → Lokal",
+            "directionBothWays": "Begge veier",
+            "modeHeader": "Modus",
+            "preset": {
+                "mirror": {
+                    "name": "Speil",
+                    "tagline": "Gjør målet identisk med kilden. Sletter overflødige filer og overskriver nyere kopier."
+                },
+                "backup": {
+                    "name": "Sikkerhetskopi",
+                    "tagline": "Kopierer manglende og nyere filer. Sletter aldri og overskriver aldri en nyere kopi i målet."
+                },
+                "update": {
+                    "name": "Oppdater",
+                    "tagline": "Kopierer manglende og nyere filer. Hopper over konflikter så du kan løse dem manuelt."
+                },
+                "bisync": {
+                    "name": "Toveis synkronisering",
+                    "tagline": "Overfører manglende og nyere filer i begge retninger. Hopper over konflikter."
+                }
+            },
             "conflictPolicy": "Konfliktpolicy",
             "ignoredForMirror": "IGNORERT FOR MIRROR",
             "versionedBackup": "Versjonsbasert sikkerhetskopi",

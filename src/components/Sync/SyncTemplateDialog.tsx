@@ -36,6 +36,7 @@ import {
 import { TabStateStoreContext } from '../AeroSync/tabStateStore';
 import type { AeroSyncCanarySelection, AeroSyncVerifyPolicy } from '../AeroSync/types';
 import type { CompressionMode } from '../../types';
+import { presetForTemplate, presetNameLabel, resolveLabel, templateDirectionLabel } from '../../utils/syncDirectionLabels';
 
 interface SyncTemplateDialogProps {
     isOpen: boolean;
@@ -74,6 +75,10 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     onApplyImport,
 }) => {
     const t = useTranslation();
+    // "Local → Remote · Mirror": the words the Plan tab uses, not the raw
+    // `local_to_remote` the file stores.
+    const templateSummary = (direction: string, deleteOrphans: boolean | undefined): string =>
+        `${resolveLabel(t, templateDirectionLabel(direction))} · ${resolveLabel(t, presetNameLabel(presetForTemplate(direction, deleteOrphans)))}`;
     const modalDrag = useDraggableModal();
     const tabState = React.useContext(TabStateStoreContext);
     const liveExcludes = () => readSyncExcludePatterns(tabState, excludePatterns);
@@ -658,7 +663,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                     {importPreview && (
                         <div className="p-3 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-xs space-y-1">
                             <div><strong>{t('syncPanel.templateName')}:</strong> {importPreview.name?.slice(0, 100)}</div>
-                            <div><strong>{t('syncPanel.direction')}:</strong> {importPreview.profile.direction}</div>
+                            <div><strong>{t('syncPanel.direction')}:</strong> {templateSummary(importPreview.profile.direction, importPreview.profile.delete_orphans)}</div>
                             <div><strong>{t('syncPanel.parallelStreams')}:</strong> {importPreview.profile.parallel_streams}</div>
                             {importPreview.exclude_patterns.length > 0 && (
                                 <div><strong>Excludes:</strong> {importPreview.exclude_patterns.join(', ')}</div>
@@ -708,7 +713,10 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                             </div>
                             <div>
                                 <strong>{t('syncPanel.direction')}:</strong>{' '}
-                                {importedAerosyncScript.profile.profile.direction}
+                                {templateSummary(
+                                    importedAerosyncScript.profile.profile.direction,
+                                    importedAerosyncScript.profile.profile.delete_orphans,
+                                )}
                             </div>
                             <div>
                                 <strong>Local:</strong>{' '}
@@ -776,7 +784,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                                 <Terminal size={12} className="text-purple-400" />
                                 <strong>{importedScript.profile_name}</strong>
                             </div>
-                            <div><strong>{t('syncPanel.direction')}:</strong> {importedScript.direction}</div>
+                            <div><strong>{t('syncPanel.direction')}:</strong> {templateSummary(importedScript.direction, importedScript.delete_orphans)}</div>
                             <div><strong>Local:</strong> {importedScript.local_path}</div>
                             <div><strong>Remote:</strong> {importedScript.remote_path}</div>
                             {importedScript.delete_orphans && (

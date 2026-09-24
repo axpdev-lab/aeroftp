@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Sağdan sola yansıt",
             "directionLeftRight": "Soldan Sağa",
             "directionRightLeft": "Sağdan Sola",
+            "directionLocalToRemote": "Yerel → Uzak",
+            "directionRemoteToLocal": "Uzak → Yerel",
+            "directionBothWays": "İki yönlü",
+            "modeHeader": "Mod",
+            "preset": {
+                "mirror": {
+                    "name": "Ayna",
+                    "tagline": "Hedefi kaynakla aynı yapar. Fazla dosyaları siler ve daha yeni kopyaların üzerine yazar."
+                },
+                "backup": {
+                    "name": "Yedekleme",
+                    "tagline": "Eksik ve daha yeni dosyaları kopyalar. Asla silmez ve hedefteki daha yeni bir kopyanın asla üzerine yazmaz."
+                },
+                "update": {
+                    "name": "Güncelle",
+                    "tagline": "Eksik ve daha yeni dosyaları kopyalar. Çakışmaları elle çözebilmeniz için atlar."
+                },
+                "bisync": {
+                    "name": "İki yönlü eşitleme",
+                    "tagline": "Eksik ve daha yeni dosyaları iki yönde aktarır. Çakışmaları atlar."
+                }
+            },
             "conflictPolicy": "Çakışma politikası",
             "ignoredForMirror": "YANSITMA İÇİN YOK SAYILDI",
             "versionedBackup": "Sürümlü yedekleme",

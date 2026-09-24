@@ -11,6 +11,7 @@ import type {
 import type { AeroSyncPairKind, AeroSyncVerifyPolicy } from '../components/AeroSync/types';
 import type { ConflictPolicy, PresetDirection, SyncPreset } from './syncPresets';
 import type { TabStateStore } from '../components/AeroSync/tabStateStore';
+import { presetForTemplate } from './syncDirectionLabels';
 
 export const parseSyncExcludePatterns = (text: string): string[] =>
     text.split(/[\n,]/).map(pattern => pattern.trim()).filter(Boolean);
@@ -175,8 +176,7 @@ function planDirection(direction: SyncDirection, pairKind: AeroSyncPairKind | nu
 }
 
 function planPreset(settings: ImportedSyncSettings): SyncPreset {
-    if (settings.direction === 'bidirectional') return 'bisync';
-    return settings.deleteOrphans ? 'mirror' : 'backup';
+    return presetForTemplate(settings.direction, settings.deleteOrphans);
 }
 
 function planVerify(value: VerifyPolicy | undefined): AeroSyncVerifyPolicy | undefined {

@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Mirror dari kanan ke kiri",
             "directionLeftRight": "Kiri ke Kanan",
             "directionRightLeft": "Kanan ke Kiri",
+            "directionLocalToRemote": "Lokal → Remote",
+            "directionRemoteToLocal": "Remote → Lokal",
+            "directionBothWays": "Dua arah",
+            "modeHeader": "Mode",
+            "preset": {
+                "mirror": {
+                    "name": "Cermin",
+                    "tagline": "Membuat tujuan identik dengan sumber. Menghapus file berlebih dan menimpa salinan yang lebih baru."
+                },
+                "backup": {
+                    "name": "Cadangan",
+                    "tagline": "Menyalin file yang hilang dan lebih baru. Tidak pernah menghapus, tidak pernah menimpa salinan yang lebih baru di tujuan."
+                },
+                "update": {
+                    "name": "Perbarui",
+                    "tagline": "Menyalin file yang hilang dan lebih baru. Melewati konflik agar Anda dapat menyelesaikannya secara manual."
+                },
+                "bisync": {
+                    "name": "Sinkronisasi dua arah",
+                    "tagline": "Menyebarkan file yang hilang dan lebih baru ke dua arah. Melewati konflik."
+                }
+            },
             "conflictPolicy": "Kebijakan konflik",
             "ignoredForMirror": "DIABAIKAN UNTUK MIRROR",
             "versionedBackup": "Cadangan berversi",

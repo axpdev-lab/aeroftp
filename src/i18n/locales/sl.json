@@ -5051,6 +5051,28 @@
             "mirrorRightToLeft": "Zrcali z desne na levo",
             "directionLeftRight": "Z leve na desno",
             "directionRightLeft": "Z desne na levo",
+            "directionLocalToRemote": "Lokalno → Oddaljeno",
+            "directionRemoteToLocal": "Oddaljeno → Lokalno",
+            "directionBothWays": "V obe smeri",
+            "modeHeader": "Način",
+            "preset": {
+                "mirror": {
+                    "name": "Zrcaljenje",
+                    "tagline": "Naredi cilj enak izvoru. Izbriše odvečne datoteke in prepiše novejše kopije."
+                },
+                "backup": {
+                    "name": "Varnostna kopija",
+                    "tagline": "Kopira manjkajoče in novejše datoteke. Nikoli ne briše in nikoli ne prepiše novejše kopije na cilju."
+                },
+                "update": {
+                    "name": "Posodobitev",
+                    "tagline": "Kopira manjkajoče in novejše datoteke. Preskoči spore, da jih rešite ročno."
+                },
+                "bisync": {
+                    "name": "Dvosmerna sinhronizacija",
+                    "tagline": "Prenese manjkajoče in novejše datoteke v obe smeri. Preskoči spore."
+                }
+            },
             "conflictPolicy": "Pravilnik o konfliktih",
             "ignoredForMirror": "PREZRTO ZA ZRCALJENJE",
             "versionedBackup": "Različična varnostna kopija",
