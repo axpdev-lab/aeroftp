@@ -121,7 +121,7 @@ const PresetChip: React.FC<{
                     </span>
                 )}
             </div>
-            <p className="text-[11px] leading-snug text-gray-500 dark:text-gray-400">{info.tagline}</p>
+            <p className="text-[11px] leading-snug text-gray-500 dark:text-gray-400">{resolveLabel(t, presetTaglineLabel(preset))}</p>
         </button>
     );
 };
