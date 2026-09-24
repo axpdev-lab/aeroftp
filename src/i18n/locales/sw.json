@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Tokeza ufunguo",
             "hashBlake3Key": "Ufunguo (baiti 32 kwa hex)",
             "hashBlake3Context": "Mfuatano wa muktadha",
-            "hashBlake3ContextHint": "Thabiti na wa kipekee kwa programu moja. Maandishi yaliyo juu ni nyenzo ya ufunguo.",
+            "hashBlake3ContextHint": "Thabiti na wa kipekee kwa programu moja. Maandishi au faili inayotiwa hash ndiyo nyenzo ya ufunguo.",
             "hashRandom": "Nasibu",
             "argon2PasswordPlaceholder": "Nenosiri au kaulisiri...",
             "argon2Salt": "Chumvi",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Marudio",
             "argon2Parallelism": "Usambamba",
             "argon2OutputLength": "Urefu (baiti)",
-            "argon2DefaultsHint": "Chaguo-msingi kwa mujibu wa RFC 9106: 64 MiB, marudio 3, njia 4, chumvi ya baiti 16. Kumbukumbu hadi 2 GiB.",
+            "argon2DefaultsHint": "Chaguo-msingi: chaguo la pili linalopendekezwa na RFC 9106 kwa kumbukumbu ndogo (64 MiB, marudio 3, njia 4, chumvi ya baiti 16). Kumbukumbu hadi 2 GiB.",
             "argon2Derive": "Tokeza",
             "argon2Phc": "Mfuatano wa PHC"
         },

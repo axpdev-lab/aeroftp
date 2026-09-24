@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Johda avain",
             "hashBlake3Key": "Avain (32 tavua heksana)",
             "hashBlake3Context": "Kontekstimerkkijono",
-            "hashBlake3ContextHint": "Kiinteä ja yksilöllinen yhdelle sovellukselle. Yllä oleva teksti on avainmateriaali.",
+            "hashBlake3ContextHint": "Kiinteä ja yksilöllinen yhdelle sovellukselle. Tiivistettävä teksti tai tiedosto on avainmateriaali.",
             "hashRandom": "Satunnainen",
             "argon2PasswordPlaceholder": "Salasana tai tunnuslause...",
             "argon2Salt": "Suola",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Iteraatiot",
             "argon2Parallelism": "Rinnakkaisuus",
             "argon2OutputLength": "Pituus (tavua)",
-            "argon2DefaultsHint": "Oletukset RFC 9106:n mukaan: 64 MiB, 3 iteraatiota, 4 kaistaa, 16 tavun suola. Muistia enintään 2 GiB.",
+            "argon2DefaultsHint": "Oletukset: RFC 9106:n toinen suositeltu vaihtoehto rajalliselle muistille (64 MiB, 3 iteraatiota, 4 kaistaa, 16 tavun suola). Muistia enintään 2 GiB.",
             "argon2Derive": "Johda",
             "argon2Phc": "PHC-merkkijono"
         },

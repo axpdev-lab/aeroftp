@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Sleutel afleiden",
             "hashBlake3Key": "Sleutel (32 bytes als hex)",
             "hashBlake3Context": "Contexttekenreeks",
-            "hashBlake3ContextHint": "Vast en uniek voor één toepassing. De tekst hierboven is het sleutelmateriaal.",
+            "hashBlake3ContextHint": "Vast en uniek voor één toepassing. De tekst of het bestand dat gehasht wordt is het sleutelmateriaal.",
             "hashRandom": "Willekeurig",
             "argon2PasswordPlaceholder": "Wachtwoord of wachtzin...",
             "argon2Salt": "Salt",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Iteraties",
             "argon2Parallelism": "Parallelisme",
             "argon2OutputLength": "Lengte (bytes)",
-            "argon2DefaultsHint": "Standaardwaarden volgens RFC 9106: 64 MiB, 3 iteraties, 4 lanes, salt van 16 bytes. Geheugen tot 2 GiB.",
+            "argon2DefaultsHint": "Standaardwaarden: de tweede aanbevolen optie van RFC 9106, voor beperkt geheugen (64 MiB, 3 iteraties, 4 lanes, salt van 16 bytes). Geheugen tot 2 GiB.",
             "argon2Derive": "Afleiden",
             "argon2Phc": "PHC-tekenreeks"
         },

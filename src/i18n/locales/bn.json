@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "কী ডিরাইভ করুন",
             "hashBlake3Key": "কী (হেক্সে 32 বাইট)",
             "hashBlake3Context": "কনটেক্সট স্ট্রিং",
-            "hashBlake3ContextHint": "একটি অ্যাপ্লিকেশনের জন্য স্থির ও অনন্য। উপরের লেখাটি কী-এর উপাদান।",
+            "hashBlake3ContextHint": "একটি অ্যাপ্লিকেশনের জন্য স্থির ও অনন্য। যে লেখা বা ফাইলের হ্যাশ হচ্ছে সেটিই কী-এর উপাদান।",
             "hashRandom": "এলোমেলো",
             "argon2PasswordPlaceholder": "পাসওয়ার্ড বা পাসফ্রেজ...",
             "argon2Salt": "সল্ট",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "পুনরাবৃত্তি",
             "argon2Parallelism": "সমান্তরালতা",
             "argon2OutputLength": "দৈর্ঘ্য (বাইট)",
-            "argon2DefaultsHint": "ডিফল্ট RFC 9106 অনুযায়ী: 64 MiB, 3 পুনরাবৃত্তি, 4 লেন, 16 বাইট সল্ট। মেমরি 2 GiB পর্যন্ত।",
+            "argon2DefaultsHint": "ডিফল্ট: সীমিত মেমরির জন্য RFC 9106-এর দ্বিতীয় প্রস্তাবিত বিকল্প (64 MiB, 3 পুনরাবৃত্তি, 4 লেন, 16 বাইট সল্ট)। মেমরি 2 GiB পর্যন্ত।",
             "argon2Derive": "ডিরাইভ করুন",
             "argon2Phc": "PHC স্ট্রিং"
         },

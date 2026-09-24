@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Leiða út lykil",
             "hashBlake3Key": "Lykill (32 bæti sem sextánundarkerfi)",
             "hashBlake3Context": "Samhengisstrengur",
-            "hashBlake3ContextHint": "Fastur og einstakur fyrir eitt forrit. Textinn að ofan er lykilefnið.",
+            "hashBlake3ContextHint": "Fastur og einstakur fyrir eitt forrit. Textinn eða skráin sem er tætt er lykilefnið.",
             "hashRandom": "Handahófskennt",
             "argon2PasswordPlaceholder": "Lykilorð eða lykilsetning...",
             "argon2Salt": "Salt",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Ítranir",
             "argon2Parallelism": "Samsíða vinnsla",
             "argon2OutputLength": "Lengd (bæti)",
-            "argon2DefaultsHint": "Sjálfgefin gildi samkvæmt RFC 9106: 64 MiB, 3 ítranir, 4 brautir, 16 bæta salt. Minni allt að 2 GiB.",
+            "argon2DefaultsHint": "Sjálfgefin gildi: annar ráðlagði valkostur RFC 9106 fyrir takmarkað minni (64 MiB, 3 ítranir, 4 brautir, 16 bæta salt). Minni allt að 2 GiB.",
             "argon2Derive": "Leiða út",
             "argon2Phc": "PHC-strengur"
         },

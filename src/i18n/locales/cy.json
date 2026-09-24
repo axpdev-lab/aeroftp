@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Deillio allwedd",
             "hashBlake3Key": "Allwedd (32 beit mewn hecs)",
             "hashBlake3Context": "Llinyn cyd-destun",
-            "hashBlake3ContextHint": "Sefydlog ac unigryw i un rhaglen. Y testun uchod yw deunydd yr allwedd.",
+            "hashBlake3ContextHint": "Sefydlog ac unigryw i un rhaglen. Y testun neu'r ffeil sy'n cael ei stwnsio yw deunydd yr allwedd.",
             "hashRandom": "Ar hap",
             "argon2PasswordPlaceholder": "Cyfrinair neu gyfrinymadrodd...",
             "argon2Salt": "Halen",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Iteriadau",
             "argon2Parallelism": "Paraleledd",
             "argon2OutputLength": "Hyd (beitiau)",
-            "argon2DefaultsHint": "Rhagosodiadau yn ôl RFC 9106: 64 MiB, 3 iteriad, 4 lôn, halen 16 beit. Cof hyd at 2 GiB.",
+            "argon2DefaultsHint": "Rhagosodiadau: ail opsiwn a argymhellir yn RFC 9106, ar gyfer cof cyfyngedig (64 MiB, 3 iteriad, 4 lôn, halen 16 beit). Cof hyd at 2 GiB.",
             "argon2Derive": "Deillio",
             "argon2Phc": "Llinyn PHC"
         },

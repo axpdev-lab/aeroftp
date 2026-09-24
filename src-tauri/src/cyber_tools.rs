@@ -600,6 +600,10 @@ fn argon2id_blocking(
         .map_err(|e| format!("Argon2id parameters: {e}"))?;
     let argon2 = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
 
+    // Memory the machine cannot give comes back as `Error::OutOfMemory`, not
+    // as an abort: argon2 0.6 allocates the blocks with `alloc_zeroed` and
+    // checks the pointer (`block::Blocks::new`). The 0.5 line in the lock file
+    // (pulled by aerovault) used an infallible `vec!`; this module links 0.6.
     let _running = ARGON2_RUNNING
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());

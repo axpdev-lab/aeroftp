@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Wyprowadź klucz",
             "hashBlake3Key": "Klucz (32 bajty szesnastkowo)",
             "hashBlake3Context": "Ciąg kontekstu",
-            "hashBlake3ContextHint": "Stały i unikalny dla jednej aplikacji. Tekst powyżej to materiał klucza.",
+            "hashBlake3ContextHint": "Stały i unikalny dla jednej aplikacji. Haszowany tekst lub plik jest materiałem klucza.",
             "hashRandom": "Losowy",
             "argon2PasswordPlaceholder": "Hasło lub fraza hasła...",
             "argon2Salt": "Sól",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Iteracje",
             "argon2Parallelism": "Równoległość",
             "argon2OutputLength": "Długość (bajty)",
-            "argon2DefaultsHint": "Domyślne wartości według RFC 9106: 64 MiB, 3 iteracje, 4 tory, sól 16-bajtowa. Pamięć do 2 GiB.",
+            "argon2DefaultsHint": "Domyślne: druga zalecana opcja RFC 9106 dla ograniczonej pamięci (64 MiB, 3 iteracje, 4 tory, sól 16-bajtowa). Pamięć do 2 GiB.",
             "argon2Derive": "Wyprowadź",
             "argon2Phc": "Ciąg PHC"
         },

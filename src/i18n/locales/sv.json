@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Härled nyckel",
             "hashBlake3Key": "Nyckel (32 byte som hex)",
             "hashBlake3Context": "Kontextsträng",
-            "hashBlake3ContextHint": "Fast och unik för ett program. Texten ovan är nyckelmaterialet.",
+            "hashBlake3ContextHint": "Fast och unik för ett program. Texten eller filen som hashas är nyckelmaterialet.",
             "hashRandom": "Slumpmässig",
             "argon2PasswordPlaceholder": "Lösenord eller lösenfras...",
             "argon2Salt": "Salt",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Iterationer",
             "argon2Parallelism": "Parallellism",
             "argon2OutputLength": "Längd (byte)",
-            "argon2DefaultsHint": "Standardvärden enligt RFC 9106: 64 MiB, 3 iterationer, 4 banor, 16-byte salt. Minne upp till 2 GiB.",
+            "argon2DefaultsHint": "Standardvärden: det andra rekommenderade alternativet i RFC 9106, för begränsat minne (64 MiB, 3 iterationer, 4 banor, 16-byte salt). Minne upp till 2 GiB.",
             "argon2Derive": "Härled",
             "argon2Phc": "PHC-sträng"
         },

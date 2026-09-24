@@ -3238,7 +3238,7 @@
             "hashBlake3ModeDerive": "Deriva chiave",
             "hashBlake3Key": "Chiave (32 byte in esadecimale)",
             "hashBlake3Context": "Stringa di contesto",
-            "hashBlake3ContextHint": "Fissa e unica per un'applicazione. Il testo sopra è il materiale della chiave.",
+            "hashBlake3ContextHint": "Fissa e unica per un'applicazione. Il testo o il file di cui si calcola l'hash è il materiale della chiave.",
             "hashRandom": "Casuale",
             "argon2PasswordPlaceholder": "Password o passphrase...",
             "argon2Salt": "Salt",
@@ -3247,7 +3247,7 @@
             "argon2Iterations": "Iterazioni",
             "argon2Parallelism": "Parallelismo",
             "argon2OutputLength": "Lunghezza (byte)",
-            "argon2DefaultsHint": "Valori predefiniti secondo RFC 9106: 64 MiB, 3 iterazioni, 4 corsie, salt da 16 byte. Memoria fino a 2 GiB.",
+            "argon2DefaultsHint": "Valori predefiniti: la seconda opzione raccomandata da RFC 9106, per memoria limitata (64 MiB, 3 iterazioni, 4 corsie, salt da 16 byte). Memoria fino a 2 GiB.",
             "argon2Derive": "Deriva",
             "argon2Phc": "Stringa PHC"
         },

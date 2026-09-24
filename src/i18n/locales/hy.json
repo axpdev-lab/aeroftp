@@ -4060,10 +4060,10 @@
             "hashBlake3Mode": "BLAKE3 ռեժիմ",
             "hashBlake3ModeHash": "Հեշ",
             "hashBlake3ModeKeyed": "Բանալիով",
-            "hashBlake3ModeDerive": "Ստանալ բանալի",
+            "hashBlake3ModeDerive": "Ածանցել բանալի",
             "hashBlake3Key": "Բանալի (32 բայթ տասնվեցական)",
             "hashBlake3Context": "Համատեքստի տող",
-            "hashBlake3ContextHint": "Ֆիքսված և եզակի մեկ հավելվածի համար։ Վերևի տեքստը բանալու նյութն է։",
+            "hashBlake3ContextHint": "Ֆիքսված և եզակի մեկ հավելվածի համար։ Հեշավորվող տեքստը կամ ֆայլը բանալու նյութն է։",
             "hashRandom": "Պատահական",
             "argon2PasswordPlaceholder": "Գաղտնաբառ կամ գաղտնի արտահայտություն...",
             "argon2Salt": "Աղ",
@@ -4072,8 +4072,8 @@
             "argon2Iterations": "Կրկնություններ",
             "argon2Parallelism": "Զուգահեռություն",
             "argon2OutputLength": "Երկարություն (բայթ)",
-            "argon2DefaultsHint": "Լռելյայն արժեքներ ըստ RFC 9106-ի՝ 64 MiB, 3 կրկնություն, 4 ուղի, 16 բայթ աղ։ Հիշողություն մինչև 2 GiB։",
-            "argon2Derive": "Ստանալ",
+            "argon2DefaultsHint": "Լռելյայն՝ RFC 9106-ի երկրորդ առաջարկվող տարբերակը սահմանափակ հիշողության համար (64 MiB, 3 կրկնություն, 4 ուղի, 16 բայթ աղ)։ Հիշողություն մինչև 2 GiB։",
+            "argon2Derive": "Ածանցել",
             "argon2Phc": "PHC տող"
         },
         "dialog": {

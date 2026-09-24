@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Dẫn xuất khóa",
             "hashBlake3Key": "Khóa (32 byte dạng hex)",
             "hashBlake3Context": "Chuỗi ngữ cảnh",
-            "hashBlake3ContextHint": "Cố định và duy nhất cho một ứng dụng. Văn bản ở trên là vật liệu khóa.",
+            "hashBlake3ContextHint": "Cố định và duy nhất cho một ứng dụng. Văn bản hoặc tệp được băm là vật liệu khóa.",
             "hashRandom": "Ngẫu nhiên",
             "argon2PasswordPlaceholder": "Mật khẩu hoặc cụm mật khẩu...",
             "argon2Salt": "Muối",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Số vòng lặp",
             "argon2Parallelism": "Mức song song",
             "argon2OutputLength": "Độ dài (byte)",
-            "argon2DefaultsHint": "Mặc định theo RFC 9106: 64 MiB, 3 vòng lặp, 4 làn, muối 16 byte. Bộ nhớ tối đa 2 GiB.",
+            "argon2DefaultsHint": "Mặc định: tùy chọn khuyến nghị thứ hai của RFC 9106 cho bộ nhớ hạn chế (64 MiB, 3 vòng lặp, 4 làn, muối 16 byte). Bộ nhớ tối đa 2 GiB.",
             "argon2Derive": "Dẫn xuất",
             "argon2Phc": "Chuỗi PHC"
         },

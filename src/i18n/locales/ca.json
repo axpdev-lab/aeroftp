@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Derivar clau",
             "hashBlake3Key": "Clau (32 bytes en hexadecimal)",
             "hashBlake3Context": "Cadena de context",
-            "hashBlake3ContextHint": "Fixa i única per a una aplicació. El text de dalt és el material de la clau.",
+            "hashBlake3ContextHint": "Fixa i única per a una aplicació. El text o fitxer del qual es calcula el hash és el material de la clau.",
             "hashRandom": "Aleatòria",
             "argon2PasswordPlaceholder": "Contrasenya o frase de pas...",
             "argon2Salt": "Sal",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Iteracions",
             "argon2Parallelism": "Paral·lelisme",
             "argon2OutputLength": "Longitud (bytes)",
-            "argon2DefaultsHint": "Valors per defecte segons la RFC 9106: 64 MiB, 3 iteracions, 4 carrils, sal de 16 bytes. Memòria fins a 2 GiB.",
+            "argon2DefaultsHint": "Valors per defecte: la segona opció recomanada per la RFC 9106, per a memòria limitada (64 MiB, 3 iteracions, 4 carrils, sal de 16 bytes). Memòria fins a 2 GiB.",
             "argon2Derive": "Derivar",
             "argon2Phc": "Cadena PHC"
         },

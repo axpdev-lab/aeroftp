@@ -4067,10 +4067,10 @@
             "hashBlake3Mode": "Mode ng BLAKE3",
             "hashBlake3ModeHash": "Hash",
             "hashBlake3ModeKeyed": "May susi",
-            "hashBlake3ModeDerive": "Kunin ang susi",
+            "hashBlake3ModeDerive": "I-derive ang susi",
             "hashBlake3Key": "Susi (32 byte bilang hex)",
             "hashBlake3Context": "String ng konteksto",
-            "hashBlake3ContextHint": "Nakapirmi at natatangi sa isang application. Ang teksto sa itaas ang materyal ng susi.",
+            "hashBlake3ContextHint": "Nakapirmi at natatangi sa isang application. Ang teksto o file na hina-hash ang materyal ng susi.",
             "hashRandom": "Random",
             "argon2PasswordPlaceholder": "Password o passphrase...",
             "argon2Salt": "Asin",
@@ -4079,8 +4079,8 @@
             "argon2Iterations": "Mga pag-ulit",
             "argon2Parallelism": "Paralelismo",
             "argon2OutputLength": "Haba (byte)",
-            "argon2DefaultsHint": "Mga default ayon sa RFC 9106: 64 MiB, 3 pag-ulit, 4 na lane, asin na 16 byte. Memorya hanggang 2 GiB.",
-            "argon2Derive": "Kunin",
+            "argon2DefaultsHint": "Mga default: ang pangalawang inirerekomendang opsyon ng RFC 9106 para sa limitadong memorya (64 MiB, 3 pag-ulit, 4 na lane, asin na 16 byte). Memorya hanggang 2 GiB.",
+            "argon2Derive": "I-derive",
             "argon2Phc": "String ng PHC"
         },
         "dialog": {

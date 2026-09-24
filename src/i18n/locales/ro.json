@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Derivare cheie",
             "hashBlake3Key": "Cheie (32 de octeți în hexazecimal)",
             "hashBlake3Context": "Șir de context",
-            "hashBlake3ContextHint": "Fix și unic pentru o aplicație. Textul de mai sus este materialul cheii.",
+            "hashBlake3ContextHint": "Fix și unic pentru o aplicație. Textul sau fișierul pentru care se calculează hash-ul este materialul cheii.",
             "hashRandom": "Aleatoriu",
             "argon2PasswordPlaceholder": "Parolă sau frază de acces...",
             "argon2Salt": "Salt",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Iterații",
             "argon2Parallelism": "Paralelism",
             "argon2OutputLength": "Lungime (octeți)",
-            "argon2DefaultsHint": "Valori implicite conform RFC 9106: 64 MiB, 3 iterații, 4 benzi, salt de 16 octeți. Memorie până la 2 GiB.",
+            "argon2DefaultsHint": "Valori implicite: a doua opțiune recomandată de RFC 9106, pentru memorie limitată (64 MiB, 3 iterații, 4 benzi, salt de 16 octeți). Memorie până la 2 GiB.",
             "argon2Derive": "Derivă",
             "argon2Phc": "Șir PHC"
         },

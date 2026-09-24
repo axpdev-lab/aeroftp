@@ -4067,10 +4067,10 @@
             "hashBlake3Mode": "របៀប BLAKE3",
             "hashBlake3ModeHash": "ហាស",
             "hashBlake3ModeKeyed": "មានសោ",
-            "hashBlake3ModeDerive": "ទាញយកសោ",
+            "hashBlake3ModeDerive": "បង្កើតសោ",
             "hashBlake3Key": "សោ (32 បៃ ជាគោលដប់ប្រាំមួយ)",
             "hashBlake3Context": "ខ្សែអក្សរបរិបទ",
-            "hashBlake3ContextHint": "ថេរ និងមានតែមួយគត់សម្រាប់កម្មវិធីមួយ។ អត្ថបទខាងលើគឺជាសម្ភារៈសោ។",
+            "hashBlake3ContextHint": "ថេរ និងមានតែមួយគត់សម្រាប់កម្មវិធីមួយ។ អត្ថបទ ឬឯកសារដែលកំពុងធ្វើហាស គឺជាសម្ភារៈសោ។",
             "hashRandom": "ចៃដន្យ",
             "argon2PasswordPlaceholder": "ពាក្យសម្ងាត់ ឬឃ្លាសម្ងាត់...",
             "argon2Salt": "អំបិល",
@@ -4079,8 +4079,8 @@
             "argon2Iterations": "ចំនួនដង",
             "argon2Parallelism": "ភាពស្របគ្នា",
             "argon2OutputLength": "ប្រវែង (បៃ)",
-            "argon2DefaultsHint": "តម្លៃលំនាំដើមតាម RFC 9106៖ 64 MiB, 3 ដង, 4 ផ្លូវ, អំបិល 16 បៃ។ អង្គចងចាំរហូតដល់ 2 GiB។",
-            "argon2Derive": "ទាញយក",
+            "argon2DefaultsHint": "លំនាំដើម៖ ជម្រើសណែនាំទីពីររបស់ RFC 9106 សម្រាប់អង្គចងចាំមានកំណត់ (64 MiB, 3 ដង, 4 ផ្លូវ, អំបិល 16 បៃ)។ អង្គចងចាំរហូតដល់ 2 GiB។",
+            "argon2Derive": "បង្កើត",
             "argon2Phc": "ខ្សែអក្សរ PHC"
         },
         "dialog": {

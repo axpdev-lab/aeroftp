@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "키 파생",
             "hashBlake3Key": "키 (32바이트 16진수)",
             "hashBlake3Context": "컨텍스트 문자열",
-            "hashBlake3ContextHint": "애플리케이션마다 고정되고 고유한 값입니다. 위의 텍스트가 키 재료입니다.",
+            "hashBlake3ContextHint": "애플리케이션마다 고정되고 고유한 값입니다. 해시하는 텍스트나 파일이 키 재료입니다.",
             "hashRandom": "무작위",
             "argon2PasswordPlaceholder": "비밀번호 또는 암호 문구...",
             "argon2Salt": "솔트",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "반복 횟수",
             "argon2Parallelism": "병렬 처리",
             "argon2OutputLength": "길이 (바이트)",
-            "argon2DefaultsHint": "기본값은 RFC 9106 기준: 64 MiB, 반복 3회, 레인 4개, 16바이트 솔트. 메모리 최대 2 GiB.",
+            "argon2DefaultsHint": "기본값: 메모리가 제한된 환경을 위한 RFC 9106의 두 번째 권장 옵션 (64 MiB, 반복 3회, 레인 4개, 16바이트 솔트). 메모리 최대 2 GiB.",
             "argon2Derive": "파생",
             "argon2Phc": "PHC 문자열"
         },

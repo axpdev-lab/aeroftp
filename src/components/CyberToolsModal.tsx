@@ -227,6 +227,12 @@ const HashForgeTab: React.FC = () => {
     // Argon2idPanel instead of the debounced auto-calculation below.
     const isArgon2 = algorithm === 'argon2id';
     const effectiveMode = isArgon2 ? 'text' : mode;
+    // A BLAKE3 key is a secret: it is not kept once keyed mode is left, so
+    // it does not linger in the open window while another algorithm is used.
+    useEffect(() => {
+        if (algorithm !== 'blake3' || blake3Mode !== 'keyed') setBlake3Key('');
+    }, [algorithm, blake3Mode]);
+
     const b3Args = blake3Args(algorithm, blake3Mode, blake3Key, blake3Context);
     const blake3KeyArg = b3Args?.blake3Key ?? null;
     const blake3ContextArg = b3Args?.blake3Context ?? null;

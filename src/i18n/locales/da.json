@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Udled nøgle",
             "hashBlake3Key": "Nøgle (32 bytes som hex)",
             "hashBlake3Context": "Kontekststreng",
-            "hashBlake3ContextHint": "Fast og unik for ét program. Teksten ovenfor er nøglematerialet.",
+            "hashBlake3ContextHint": "Fast og unik for ét program. Teksten eller filen, der hashes, er nøglematerialet.",
             "hashRandom": "Tilfældig",
             "argon2PasswordPlaceholder": "Adgangskode eller adgangssætning...",
             "argon2Salt": "Salt",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Iterationer",
             "argon2Parallelism": "Parallelitet",
             "argon2OutputLength": "Længde (bytes)",
-            "argon2DefaultsHint": "Standardværdier efter RFC 9106: 64 MiB, 3 iterationer, 4 baner, 16-byte salt. Hukommelse op til 2 GiB.",
+            "argon2DefaultsHint": "Standardværdier: den anden anbefalede mulighed i RFC 9106 til begrænset hukommelse (64 MiB, 3 iterationer, 4 baner, 16-byte salt). Hukommelse op til 2 GiB.",
             "argon2Derive": "Udled",
             "argon2Phc": "PHC-streng"
         },

@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "Izpelji ključ",
             "hashBlake3Key": "Ključ (32 bajtov šestnajstiško)",
             "hashBlake3Context": "Kontekstni niz",
-            "hashBlake3ContextHint": "Fiksen in edinstven za eno aplikacijo. Zgornje besedilo je material ključa.",
+            "hashBlake3ContextHint": "Fiksen in edinstven za eno aplikacijo. Besedilo ali datoteka, ki se zgoščuje, je material ključa.",
             "hashRandom": "Naključno",
             "argon2PasswordPlaceholder": "Geslo ali geslo-fraza...",
             "argon2Salt": "Sol",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "Ponovitve",
             "argon2Parallelism": "Vzporednost",
             "argon2OutputLength": "Dolžina (bajti)",
-            "argon2DefaultsHint": "Privzete vrednosti po RFC 9106: 64 MiB, 3 ponovitve, 4 steze, 16-bajtna sol. Pomnilnik do 2 GiB.",
+            "argon2DefaultsHint": "Privzeto: druga priporočena možnost RFC 9106 za omejen pomnilnik (64 MiB, 3 ponovitve, 4 steze, 16-bajtna sol). Pomnilnik do 2 GiB.",
             "argon2Derive": "Izpelji",
             "argon2Phc": "Niz PHC"
         },

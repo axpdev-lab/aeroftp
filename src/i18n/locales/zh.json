@@ -4070,7 +4070,7 @@
             "hashBlake3ModeDerive": "派生密钥",
             "hashBlake3Key": "密钥（32 字节十六进制）",
             "hashBlake3Context": "上下文字符串",
-            "hashBlake3ContextHint": "固定且对单个应用唯一。上方文本即为密钥材料。",
+            "hashBlake3ContextHint": "固定且对单个应用唯一。被哈希的文本或文件即为密钥材料。",
             "hashRandom": "随机",
             "argon2PasswordPlaceholder": "密码或口令短语...",
             "argon2Salt": "盐值",
@@ -4079,7 +4079,7 @@
             "argon2Iterations": "迭代次数",
             "argon2Parallelism": "并行度",
             "argon2OutputLength": "长度（字节）",
-            "argon2DefaultsHint": "默认值遵循 RFC 9106：64 MiB、3 次迭代、4 条通道、16 字节盐值。内存最高 2 GiB。",
+            "argon2DefaultsHint": "默认值：RFC 9106 针对内存受限情况的第二推荐选项（64 MiB、3 次迭代、4 条通道、16 字节盐值）。内存最高 2 GiB。",
             "argon2Derive": "派生",
             "argon2Phc": "PHC 字符串"
         },
