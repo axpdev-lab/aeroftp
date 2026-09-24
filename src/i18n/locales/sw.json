@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Bakiza ya kifaa",
             "keystoreDecisionKeepBoth": "Bakiza zote mbili",
             "keystoreCopyName": "{name} (kutoka nakala)",
+            "keystorePreviewLocalFromVault": "Orodha ya akaunti za kifaa hiki haikuweza kusomwa, kwa hivyo ulinganisho unatumia orodha ya seva iliyohifadhiwa kwenye hifadhi salama.",
+            "keystoreDecisionsFailed": "Uletaji umekamilika, lakini chaguo zako za wasifu wa seva hazikuweza kutumika: {error}",
             "exportKeystoreDesc": "Hamisha vitambulisho vyote vilivyosimbwa kwenye faili ya hifadhi rudufu",
             "importKeystoreDesc": "Ingiza vitambulisho kutoka faili ya hifadhi rudufu",
             "keystoreExported": "Hazina imehamishwa kwa mafanikio (vipengele {count})",

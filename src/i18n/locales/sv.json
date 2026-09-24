@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Behåll enhetens",
             "keystoreDecisionKeepBoth": "Behåll båda",
             "keystoreCopyName": "{name} (från säkerhetskopia)",
+            "keystorePreviewLocalFromVault": "Enhetens kontolista kunde inte läsas, så jämförelsen använder serverlistan som finns i valvet.",
+            "keystoreDecisionsFailed": "Importen är klar, men dina val för serverprofilerna kunde inte tillämpas: {error}",
             "exportKeystoreDesc": "Exportera alla krypterade uppgifter till en säkerhetskopia",
             "importKeystoreDesc": "Importera uppgifter från en säkerhetskopia",
             "keystoreExported": "Nyckelarkiv exporterat ({count} poster)",

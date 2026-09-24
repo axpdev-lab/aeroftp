@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Simpan milik perangkat",
             "keystoreDecisionKeepBoth": "Simpan keduanya",
             "keystoreCopyName": "{name} (dari cadangan)",
+            "keystorePreviewLocalFromVault": "Daftar akun perangkat ini tidak dapat dibaca, jadi perbandingan memakai daftar server yang tersimpan di brankas.",
+            "keystoreDecisionsFailed": "Impor selesai, tetapi pilihan Anda untuk profil server tidak dapat diterapkan: {error}",
             "exportKeystoreDesc": "Ekspor semua kredensial terenkripsi ke file cadangan",
             "importKeystoreDesc": "Impor kredensial dari file cadangan",
             "keystoreExported": "Keystore berhasil diekspor ({count} entri)",

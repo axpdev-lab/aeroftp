@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Palikti įrenginio versiją",
             "keystoreDecisionKeepBoth": "Palikti abu",
             "keystoreCopyName": "{name} (iš atsarginės kopijos)",
+            "keystorePreviewLocalFromVault": "Nepavyko nuskaityti šio įrenginio paskyrų sąrašo, todėl palyginimui naudojamas saugykloje išsaugotas serverių sąrašas.",
+            "keystoreDecisionsFailed": "Importavimas baigtas, bet jūsų pasirinkimų serverių profiliams pritaikyti nepavyko: {error}",
             "exportKeystoreDesc": "Eksportuoti visus užšifruotus prisijungimo duomenis į atsarginės kopijos failą",
             "importKeystoreDesc": "Importuoti prisijungimo duomenis iš atsarginės kopijos failo",
             "keystoreExported": "Raktų saugykla sėkmingai eksportuota ({count} įrašų)",

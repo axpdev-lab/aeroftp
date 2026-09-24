@@ -1233,6 +1233,8 @@
             "keystoreDecisionKeepLocal": "Tieni quello del dispositivo",
             "keystoreDecisionKeepBoth": "Tieni entrambi",
             "keystoreCopyName": "{name} (dal backup)",
+            "keystorePreviewLocalFromVault": "Non è stato possibile leggere l'elenco account di questo dispositivo, quindi il confronto usa l'elenco server salvato nel vault.",
+            "keystoreDecisionsFailed": "L'importazione è terminata, ma le tue scelte sui profili server non sono state applicate: {error}",
             "exportKeystoreDesc": "Esporta tutte le credenziali crittografate in un file di backup",
             "importKeystoreDesc": "Importa credenziali da un file di backup",
             "importKeystorePrompt": "Inserisci la password usata per cifrare questo backup del keystore.",

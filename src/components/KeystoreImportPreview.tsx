@@ -56,6 +56,12 @@ export const KeystoreImportPreview: React.FC<KeystoreImportPreviewProps> = ({ pr
                     <span className="font-normal">{t('settings.keystorePreviewUnchanged', { count: preview.unchanged })}</span>
                 )}
             </div>
+            {preview.localSource === 'vault' && (
+                <div className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                    <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                    <span>{t('settings.keystorePreviewLocalFromVault')}</span>
+                </div>
+            )}
             {preview.replacesList && preview.changes.some(c => c.kind === 'removed') && (
                 <div className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
                     <AlertTriangle size={12} className="mt-0.5 shrink-0" />

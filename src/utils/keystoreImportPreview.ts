@@ -32,6 +32,8 @@ export interface ProfileChange {
 
 export interface ProfilePreview {
     source: 'partition' | 'vault' | 'none';
+    /** 'vault' when this device's partition could not be read. */
+    localSource: 'partition' | 'vault' | 'none';
     replacesList: boolean;
     unchanged: number;
     changes: ProfileChange[];

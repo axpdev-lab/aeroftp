@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Ponechat verzi zařízení",
             "keystoreDecisionKeepBoth": "Ponechat obě",
             "keystoreCopyName": "{name} (ze zálohy)",
+            "keystorePreviewLocalFromVault": "Seznam účtů tohoto zařízení nešlo přečíst, porovnání proto používá seznam serverů uložený v trezoru.",
+            "keystoreDecisionsFailed": "Import skončil, ale vaše volby pro profily serverů se nepodařilo použít: {error}",
             "exportKeystoreDesc": "Exportovat všechny šifrované přihlašovací údaje do souboru zálohy",
             "importKeystoreDesc": "Importovat přihlašovací údaje ze souboru zálohy",
             "keystoreExported": "Trezor úspěšně exportován ({count} záznamů)",

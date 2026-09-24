@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Cadw fersiwn y ddyfais",
             "keystoreDecisionKeepBoth": "Cadw'r ddau",
             "keystoreCopyName": "{name} (o'r copi)",
+            "keystorePreviewLocalFromVault": "Nid oedd modd darllen rhestr cyfrifon y ddyfais hon, felly mae'r gymhariaeth yn defnyddio'r rhestr gweinyddion yn y gladdgell.",
+            "keystoreDecisionsFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd rhoi eich dewisiadau ar gyfer proffiliau gweinydd ar waith: {error}",
             "exportKeystoreDesc": "Allforio'r holl fanylion adnabod amgryptiedig i ffeil wrth gefn",
             "importKeystoreDesc": "Mewnforio manylion adnabod o ffeil wrth gefn",
             "keystoreExported": "Coffor allweddi wedi'i allforio'n llwyddiannus ({count} cofnod)",

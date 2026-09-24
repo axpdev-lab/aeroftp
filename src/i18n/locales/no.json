@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Behold enhetens",
             "keystoreDecisionKeepBoth": "Behold begge",
             "keystoreCopyName": "{name} (fra sikkerhetskopi)",
+            "keystorePreviewLocalFromVault": "Kontolisten på denne enheten kunne ikke leses, så sammenligningen bruker serverlisten som er lagret i hvelvet.",
+            "keystoreDecisionsFailed": "Importen er ferdig, men valgene dine for serverprofilene kunne ikke brukes: {error}",
             "exportKeystoreDesc": "Eksporter alle krypterte legitimasjoner til en sikkerhetskopi",
             "importKeystoreDesc": "Importer legitimasjoner fra en sikkerhetskopi",
             "keystoreExported": "Nøkkellager eksportert ({count} oppføringer)",

@@ -474,7 +474,7 @@ fn current_schema_version(conn: &Connection) -> Result<Option<String>, String> {
     .map_err(|e| format!("Read schema version: {e}"))
 }
 
-fn active_user_id(conn: &Connection) -> Result<Option<i64>, String> {
+pub(crate) fn active_user_id(conn: &Connection) -> Result<Option<i64>, String> {
     let value = conn
         .query_row(
             "SELECT value FROM global_state WHERE key = ?1",
@@ -1760,7 +1760,7 @@ pub fn relocate_server_profile(
 /// Partition credential_type for a relocate key (migrate precedent at
 /// `copy_user_secrets_with_dek`: `server` / `oauth` / `jottacloud_refresh`,
 /// plus the crypt/Filen/OneDrive prefixes from [`relocate_all_secret_key_candidates`]).
-fn relocate_secret_kind(credential_key: &str) -> &'static str {
+pub(crate) fn relocate_secret_kind(credential_key: &str) -> &'static str {
     if credential_key.starts_with("server_modes_") {
         "server_modes"
     } else if credential_key.starts_with("server_") {

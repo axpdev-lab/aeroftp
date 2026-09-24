@@ -13,6 +13,7 @@ const change = (id: string, kind: ProfileChange['kind'], defaultDecision: Profil
 
 const preview: ProfilePreview = {
     source: 'partition',
+    localSource: 'partition',
     replacesList: true,
     unchanged: 2,
     changes: [change('srv_a', 'added', 'accept'), change('srv_b', 'changed', 'accept'), change('srv_c', 'removed', 'accept')],

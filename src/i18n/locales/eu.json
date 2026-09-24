@@ -810,6 +810,8 @@
             "keystoreDecisionKeepLocal": "Gorde gailukoa",
             "keystoreDecisionKeepBoth": "Gorde biak",
             "keystoreCopyName": "{name} (babeskopiatik)",
+            "keystorePreviewLocalFromVault": "Ezin izan da gailu honetako kontu-zerrenda irakurri, beraz konparazioak gordailuan gordetako zerbitzari-zerrenda erabiltzen du.",
+            "keystoreDecisionsFailed": "Inportazioa amaitu da, baina ezin izan dira zerbitzari-profilen aukerak aplikatu: {error}",
             "exportKeystoreDesc": "Esportatu enkriptatutako kredentzial guztiak babeskopia fitxategi batera",
             "importKeystoreDesc": "Inportatu kredentzialak babeskopia fitxategi batetik",
             "keystoreExported": "Ganga ondo esportatu da ({count} sarrera)",

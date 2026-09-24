@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Säilita seadme oma",
             "keystoreDecisionKeepBoth": "Säilita mõlemad",
             "keystoreCopyName": "{name} (varukoopiast)",
+            "keystorePreviewLocalFromVault": "Selle seadme kontode loendit ei õnnestunud lugeda, seega kasutab võrdlus hoidlasse salvestatud serverite loendit.",
+            "keystoreDecisionsFailed": "Import lõppes, kuid sinu valikuid serveriprofiilide kohta ei õnnestunud rakendada: {error}",
             "exportKeystoreDesc": "Eksportida kõik krüpteeritud mandaadid varukoopiafaili",
             "importKeystoreDesc": "Importida mandaadid varukoopiafailist",
             "keystoreExported": "Võtmehoidla edukalt eksporditud ({count} kirjet)",

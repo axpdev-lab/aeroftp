@@ -810,6 +810,8 @@
             "keystoreDecisionKeepLocal": "Zadrži verziju uređaja",
             "keystoreDecisionKeepBoth": "Zadrži oboje",
             "keystoreCopyName": "{name} (iz kopije)",
+            "keystorePreviewLocalFromVault": "Popis računa ovog uređaja nije moguće pročitati, pa usporedba koristi popis poslužitelja spremljen u trezoru.",
+            "keystoreDecisionsFailed": "Uvoz je završen, ali vaši odabiri za profile poslužitelja nisu primijenjeni: {error}",
             "exportKeystoreDesc": "Izvezi sve kriptirane vjerodajnice u datoteku sigurnosne kopije",
             "importKeystoreDesc": "Uvezi vjerodajnice iz datoteke sigurnosne kopije",
             "keystoreExported": "Trezor uspješno izvezen ({count} stavki)",

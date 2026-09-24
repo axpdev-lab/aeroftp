@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "保留此设备的",
             "keystoreDecisionKeepBoth": "两者都保留",
             "keystoreCopyName": "{name}（来自备份）",
+            "keystorePreviewLocalFromVault": "无法读取此设备的账户列表，因此比较使用保管库中保存的服务器列表。",
+            "keystoreDecisionsFailed": "导入已完成，但未能应用您对服务器配置的选择：{error}",
             "exportKeystoreDesc": "将所有加密凭据导出到备份文件",
             "importKeystoreDesc": "从备份文件导入凭据",
             "keystoreExported": "密钥库导出成功（{count} 条记录）",

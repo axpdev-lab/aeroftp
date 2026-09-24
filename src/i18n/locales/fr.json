@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Garder celui de l'appareil",
             "keystoreDecisionKeepBoth": "Garder les deux",
             "keystoreCopyName": "{name} (de la sauvegarde)",
+            "keystorePreviewLocalFromVault": "La liste des comptes de cet appareil n'a pas pu être lue : la comparaison utilise la liste de serveurs enregistrée dans le coffre.",
+            "keystoreDecisionsFailed": "L'importation est terminée, mais vos choix pour les profils de serveur n'ont pas pu être appliqués : {error}",
             "exportKeystoreDesc": "Exporter tous les identifiants chiffrés dans un fichier de sauvegarde",
             "importKeystoreDesc": "Importer des identifiants depuis un fichier de sauvegarde",
             "keystoreExported": "Trousseau exporté avec succès ({count} entrées)",

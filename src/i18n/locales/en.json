@@ -3295,6 +3295,8 @@
             "keystoreDecisionKeepLocal": "Keep this device's",
             "keystoreDecisionKeepBoth": "Keep both",
             "keystoreCopyName": "{name} (from backup)",
+            "keystorePreviewLocalFromVault": "This device's account list could not be read, so the comparison uses the server list stored in the vault.",
+            "keystoreDecisionsFailed": "The import finished, but your choices for server profiles could not be applied: {error}",
             "importKeystoreDesc": "Import credentials from a backup file",
             "importKeystorePrompt": "Enter the password used to encrypt this keystore backup.",
             "importServers": "Import Servers",

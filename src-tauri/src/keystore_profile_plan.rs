@@ -101,6 +101,11 @@ pub struct ProfileChange {
 #[serde(rename_all = "camelCase")]
 pub struct ProfilePreview {
     pub source: ProfileListSource,
+    /// Where this device's list was read: its partition, or the vault blob
+    /// when the partition could not be read. The dialog says so in the second
+    /// case, because the comparison is then against a list My Servers may not
+    /// show.
+    pub local_source: ProfileListSource,
     /// The import replaces the list (a restored partition, or "overwrite"),
     /// so a profile only on this machine is removed unless kept.
     pub replaces_list: bool,
@@ -122,10 +127,15 @@ pub struct ProfileDecisionInput {
 /// The two lists and the secrets the plan works on.
 pub struct PlanInputs {
     pub local: Vec<Value>,
+    pub local_source: ProfileListSource,
     /// `None` when the import leaves the profile list alone.
     pub backup: Option<Vec<Value>>,
     pub source: ProfileListSource,
     pub replaces_list: bool,
+    /// "Skip existing": a change starts at this device's version. The name of
+    /// the strategy is the user's intent, even where the restored partition
+    /// would replace the list without a decision.
+    pub keep_local_by_default: bool,
     /// This machine's value for every per-profile key of every id on either
     /// side, read before the import writes anything. `None` = absent.
     pub local_secrets: HashMap<String, Option<Zeroizing<String>>>,
@@ -218,6 +228,7 @@ pub fn preview(inputs: &PlanInputs) -> ProfilePreview {
     let Some(backup) = inputs.backup.as_deref() else {
         return ProfilePreview {
             source: ProfileListSource::None,
+            local_source: inputs.local_source,
             replaces_list: false,
             unchanged: inputs.local.len() as u32,
             changes: Vec::new(),
@@ -259,12 +270,10 @@ pub fn preview(inputs: &PlanInputs) -> ProfilePreview {
                     host: string_field(b, "host"),
                     fields,
                     credentials_differ: creds,
-                    // "Skip existing" over a vault blob keeps the local copy;
-                    // a restored partition or "overwrite" takes the backup's.
-                    default_decision: if inputs.replaces_list {
-                        ProfileDecision::Accept
-                    } else {
+                    default_decision: if inputs.keep_local_by_default {
                         ProfileDecision::Reject
+                    } else {
+                        ProfileDecision::Accept
                     },
                 });
             }
@@ -290,12 +299,17 @@ pub fn preview(inputs: &PlanInputs) -> ProfilePreview {
             host: string_field(l, "host"),
             fields: Vec::new(),
             credentials_differ: false,
-            default_decision: ProfileDecision::Accept,
+            default_decision: if inputs.keep_local_by_default {
+                ProfileDecision::Reject
+            } else {
+                ProfileDecision::Accept
+            },
         });
     }
 
     ProfilePreview {
         source: inputs.source,
+        local_source: inputs.local_source,
         replaces_list: inputs.replaces_list,
         unchanged,
         changes,
@@ -363,16 +377,49 @@ fn copy_of(
 /// order follows the list the import would have produced: the backup's when
 /// it replaces the list, this machine's (with additions at the end) when it
 /// merges.
+/// Refuse decisions that do not belong to this plan, before anything is
+/// written: an id the plan does not list means the backup or this device
+/// changed since the preview the user answered, and "keep both" exists only
+/// for a changed profile. Either way the dialog is out of date, and applying
+/// the rest would quietly do something the user did not choose.
+pub fn validate(inputs: &PlanInputs, decisions: &[ProfileDecisionInput]) -> Result<(), String> {
+    let plan = preview(inputs);
+    let kinds: HashMap<&str, ProfileChangeKind> = plan
+        .changes
+        .iter()
+        .map(|c| (c.id.as_str(), c.kind))
+        .collect();
+    for d in decisions {
+        match kinds.get(d.id.as_str()) {
+            None => {
+                return Err(format!(
+                    "Server profile {} is not among the changes this import makes; review the changes again",
+                    d.id
+                ))
+            }
+            Some(kind) if d.decision == ProfileDecision::Both && *kind != ProfileChangeKind::Changed => {
+                return Err(format!(
+                    "\"Keep both\" applies only to a changed profile, not to {}",
+                    d.id
+                ))
+            }
+            Some(_) => {}
+        }
+    }
+    Ok(())
+}
+
 pub fn apply(
     inputs: &PlanInputs,
     decisions: &[ProfileDecisionInput],
     new_id: &mut dyn FnMut() -> String,
-) -> PlanOutcome {
+) -> Result<PlanOutcome, String> {
+    validate(inputs, decisions)?;
     let Some(backup) = inputs.backup.as_deref() else {
-        return PlanOutcome {
+        return Ok(PlanOutcome {
             profiles: inputs.local.clone(),
             secret_ops: Vec::new(),
-        };
+        });
     };
     let plan = preview(inputs);
     let chosen: HashMap<&str, &ProfileDecisionInput> =
@@ -393,10 +440,7 @@ pub fn apply(
             return local.or(bak).cloned().into_iter().collect();
         };
         let input = chosen.get(id);
-        let mut decision = input.map_or(change.default_decision, |d| d.decision);
-        if decision == ProfileDecision::Both && change.kind != ProfileChangeKind::Changed {
-            decision = change.default_decision;
-        }
+        let decision = input.map_or(change.default_decision, |d| d.decision);
         match (change.kind, decision) {
             (ProfileChangeKind::Added, ProfileDecision::Accept) => {
                 take_backup(inputs, &keys, ops);
@@ -450,10 +494,10 @@ pub fn apply(
         }
     }
 
-    PlanOutcome {
+    Ok(PlanOutcome {
         profiles,
         secret_ops: ops,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -489,12 +533,16 @@ mod tests {
                 json!({"id": "srv_b", "name": "Beta NAS", "host": "b.example", "protocol": "sftp", "options": {"x": 1}}),
                 json!({"id": "srv_d", "name": "Delta", "host": "d.example", "protocol": "sftp"}),
             ]),
+            local_source: ProfileListSource::Partition,
             source: if replaces_list {
                 ProfileListSource::Partition
             } else {
                 ProfileListSource::Vault
             },
             replaces_list,
+            // Overwrite over a partition, "skip existing" over a vault blob:
+            // the two combinations the import had before the preview.
+            keep_local_by_default: !replaces_list,
             local_secrets: local_secrets(&[
                 ("server_srv_a", "pw-a"),
                 ("server_srv_b", "pw-b-local"),
@@ -563,7 +611,7 @@ mod tests {
     #[test]
     fn defaults_reproduce_the_import_without_decisions() {
         let mut next = || "srv_new".to_string();
-        let replaced = apply(&inputs(true), &[], &mut next);
+        let replaced = apply(&inputs(true), &[], &mut next).unwrap();
         assert_eq!(ids(&replaced.profiles), vec!["srv_a", "srv_b", "srv_d"]);
         assert_eq!(replaced.profiles[1]["name"], "Beta NAS");
         assert_eq!(
@@ -571,7 +619,7 @@ mod tests {
             Some(Some("pw-b-backup"))
         );
 
-        let merged = apply(&inputs(false), &[], &mut next);
+        let merged = apply(&inputs(false), &[], &mut next).unwrap();
         assert_eq!(
             ids(&merged.profiles),
             vec!["srv_a", "srv_b", "srv_c", "srv_d"]
@@ -602,7 +650,7 @@ mod tests {
                 copy_name: None,
             },
         ];
-        let out = apply(&inputs(true), &decisions, &mut || "srv_new".to_string());
+        let out = apply(&inputs(true), &decisions, &mut || "srv_new".to_string()).unwrap();
         assert_eq!(ids(&out.profiles), vec!["srv_a", "srv_b", "srv_c"]);
         assert_eq!(out.profiles[1]["name"], "Beta");
         assert_eq!(out.profiles[1]["color"], "#f00");
@@ -622,7 +670,7 @@ mod tests {
             decision: ProfileDecision::Both,
             copy_name: Some("Beta NAS (backup)".into()),
         }];
-        let out = apply(&inputs(true), &decisions, &mut || "srv_copy".to_string());
+        let out = apply(&inputs(true), &decisions, &mut || "srv_copy".to_string()).unwrap();
         assert_eq!(
             ids(&out.profiles),
             vec!["srv_a", "srv_b", "srv_copy", "srv_d"]
@@ -640,15 +688,54 @@ mod tests {
         );
     }
 
+    /// A decision the plan cannot honour is refused, never downgraded.
     #[test]
-    fn both_is_only_honoured_for_a_changed_profile() {
-        let decisions = [ProfileDecisionInput {
+    fn decisions_outside_the_plan_are_refused() {
+        let both_on_added = [ProfileDecisionInput {
             id: "srv_d".into(),
             decision: ProfileDecision::Both,
             copy_name: None,
         }];
-        let out = apply(&inputs(true), &decisions, &mut || "srv_copy".to_string());
-        assert_eq!(ids(&out.profiles), vec!["srv_a", "srv_b", "srv_d"]);
+        let err = apply(&inputs(true), &both_on_added, &mut || {
+            "srv_copy".to_string()
+        })
+        .err()
+        .expect("keep both on an added profile");
+        assert!(err.contains("Keep both"), "{err}");
+
+        let unknown = [ProfileDecisionInput {
+            id: "srv_gone".into(),
+            decision: ProfileDecision::Accept,
+            copy_name: None,
+        }];
+        let err = validate(&inputs(true), &unknown).unwrap_err();
+        assert!(err.contains("srv_gone"), "{err}");
+        // An unchanged profile is not a change either.
+        let unchanged = [ProfileDecisionInput {
+            id: "srv_a".into(),
+            decision: ProfileDecision::Accept,
+            copy_name: None,
+        }];
+        assert!(validate(&inputs(true), &unchanged).is_err());
+    }
+
+    /// "Skip existing" keeps this device's side by default even where the
+    /// restored partition replaces the list.
+    #[test]
+    fn skip_existing_defaults_to_this_device_over_a_partition() {
+        let mut i = inputs(true);
+        i.keep_local_by_default = true;
+        let plan = preview(&i);
+        for c in &plan.changes {
+            let expected = match c.kind {
+                ProfileChangeKind::Added => ProfileDecision::Accept,
+                _ => ProfileDecision::Reject,
+            };
+            assert_eq!(c.default_decision, expected, "{}", c.id);
+        }
+        let out = apply(&i, &[], &mut || unreachable!()).unwrap();
+        assert_eq!(ids(&out.profiles), vec!["srv_a", "srv_b", "srv_d", "srv_c"]);
+        assert_eq!(out.profiles[1]["name"], "Beta");
     }
 
     #[test]
@@ -656,7 +743,7 @@ mod tests {
         let mut i = inputs(true);
         i.backup = None;
         assert_eq!(preview(&i).source, ProfileListSource::None);
-        let out = apply(&i, &[], &mut || unreachable!());
+        let out = apply(&i, &[], &mut || unreachable!()).unwrap();
         assert_eq!(ids(&out.profiles), vec!["srv_a", "srv_b", "srv_c"]);
         assert!(out.secret_ops.is_empty());
     }

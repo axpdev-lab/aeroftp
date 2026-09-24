@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Cihazdakini sakla",
             "keystoreDecisionKeepBoth": "İkisini de sakla",
             "keystoreCopyName": "{name} (yedekten)",
+            "keystorePreviewLocalFromVault": "Bu cihazın hesap listesi okunamadı, bu yüzden karşılaştırma kasada saklanan sunucu listesini kullanıyor.",
+            "keystoreDecisionsFailed": "İçe aktarma tamamlandı ancak sunucu profilleri için seçimleriniz uygulanamadı: {error}",
             "exportKeystoreDesc": "Tüm şifreli kimlik bilgilerini bir yedekleme dosyasına dışa aktarın",
             "importKeystoreDesc": "Bir yedekleme dosyasından kimlik bilgilerini içe aktarın",
             "keystoreExported": "Anahtar deposu başarıyla dışa aktarıldı ({count} kayıt)",

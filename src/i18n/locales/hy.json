@@ -810,6 +810,8 @@
             "keystoreDecisionKeepLocal": "Պահել սարքինը",
             "keystoreDecisionKeepBoth": "Պահել երկուսն էլ",
             "keystoreCopyName": "{name} (պատճենից)",
+            "keystorePreviewLocalFromVault": "Այս սարքի հաշիվների ցուցակը հնարավոր չէր կարդալ, ուստի համեմատությունն օգտագործում է պահոցում պահված սերվերների ցուցակը։",
+            "keystoreDecisionsFailed": "Ներմուծումն ավարտվեց, բայց սերվերի պրոֆիլների ձեր ընտրությունները չկիրառվեցին՝ {error}",
             "exportKeystoreDesc": "Արտահանել բոլոր կոդավորված հավատարմագրերը պահուստային ֆայլի մեջ",
             "importKeystoreDesc": "Ներմուծել հավատարմագրեր պահուստային ֆայլից",
             "keystoreExported": "Պահոցը հաջողությամբ արտահանվեց ({count} գրառում)",

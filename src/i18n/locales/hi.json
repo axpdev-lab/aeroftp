@@ -810,6 +810,8 @@
             "keystoreDecisionKeepLocal": "इस डिवाइस वाला रखें",
             "keystoreDecisionKeepBoth": "दोनों रखें",
             "keystoreCopyName": "{name} (बैकअप से)",
+            "keystorePreviewLocalFromVault": "इस डिवाइस की खाता सूची पढ़ी नहीं जा सकी, इसलिए तुलना वॉल्ट में सहेजी गई सर्वर सूची से की जा रही है।",
+            "keystoreDecisionsFailed": "आयात पूरा हुआ, लेकिन सर्वर प्रोफ़ाइल के लिए आपके चुनाव लागू नहीं हो सके: {error}",
             "exportKeystoreDesc": "सभी एन्क्रिप्टेड क्रेडेंशियल को बैकअप फ़ाइल में निर्यात करें",
             "importKeystoreDesc": "बैकअप फ़ाइल से क्रेडेंशियल आयात करें",
             "keystoreExported": "कीस्टोर सफलतापूर्वक निर्यात किया गया ({count} प्रविष्टियाँ)",

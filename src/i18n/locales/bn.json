@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "এই ডিভাইসেরটি রাখুন",
             "keystoreDecisionKeepBoth": "দুটোই রাখুন",
             "keystoreCopyName": "{name} (ব্যাকআপ থেকে)",
+            "keystorePreviewLocalFromVault": "এই ডিভাইসের অ্যাকাউন্ট তালিকা পড়া যায়নি, তাই তুলনায় ভল্টে সংরক্ষিত সার্ভার তালিকা ব্যবহার হচ্ছে।",
+            "keystoreDecisionsFailed": "আমদানি শেষ হয়েছে, কিন্তু সার্ভার প্রোফাইলের জন্য আপনার পছন্দগুলো প্রয়োগ করা যায়নি: {error}",
             "exportKeystoreDesc": "সব এনক্রিপ্ট করা ক্রেডেনশিয়াল একটি ব্যাকআপ ফাইলে রপ্তানি করুন",
             "importKeystoreDesc": "একটি ব্যাকআপ ফাইল থেকে ক্রেডেনশিয়াল আমদানি করুন",
             "keystoreExported": "ভল্ট সফলভাবে রপ্তানি করা হয়েছে ({count} টি আইটেম)",

@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Säilytä laitteen versio",
             "keystoreDecisionKeepBoth": "Säilytä molemmat",
             "keystoreCopyName": "{name} (varmuuskopiosta)",
+            "keystorePreviewLocalFromVault": "Tämän laitteen tililuetteloa ei voitu lukea, joten vertailu käyttää holviin tallennettua palvelinluetteloa.",
+            "keystoreDecisionsFailed": "Tuonti valmistui, mutta palvelinprofiileja koskevia valintojasi ei voitu toteuttaa: {error}",
             "exportKeystoreDesc": "Vie kaikki salatut tunnistetiedot varmuuskopiotiedostoon",
             "importKeystoreDesc": "Tuo tunnistetiedot varmuuskopiotiedostosta",
             "keystoreExported": "Avainholvi viety onnistuneesti ({count} merkintää)",

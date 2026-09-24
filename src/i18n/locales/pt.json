@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Manter o do dispositivo",
             "keystoreDecisionKeepBoth": "Manter ambos",
             "keystoreCopyName": "{name} (do backup)",
+            "keystorePreviewLocalFromVault": "Não foi possível ler a lista de contas deste dispositivo, então a comparação usa a lista de servidores guardada no cofre.",
+            "keystoreDecisionsFailed": "A importação terminou, mas suas escolhas para os perfis de servidor não puderam ser aplicadas: {error}",
             "exportKeystoreDesc": "Exportar todas as credenciais criptografadas para um arquivo de backup",
             "importKeystoreDesc": "Importar credenciais de um arquivo de backup",
             "keystoreExported": "Cofre exportado com sucesso ({count} entradas)",

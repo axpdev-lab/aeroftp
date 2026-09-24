@@ -3648,6 +3648,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             userPartitionsBackupPath?: string;
                                                                             // #347: set when per-profile decisions were applied.
                                                                             profilesAfterDecisions?: number;
+                                                                            // #347: the import succeeded, the decisions did not.
+                                                                            profileDecisionsError?: string;
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,
@@ -3708,10 +3710,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         if ((result.userPartitionsUnreadable ?? 0) > 0) {
                                                                             extraNotes.push(t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0, defaultValue: '{count} account(s) could not be unlocked on this device. The backup was made on another computer: re-export it there with a password set on those accounts, then import it here.' }));
                                                                         }
+                                                                        if (result.profileDecisionsError) {
+                                                                            extraNotes.push(t('settings.keystoreDecisionsFailed', { error: result.profileDecisionsError }));
+                                                                        }
                                                                         if (result.requiresRestart) {
                                                                             extraNotes.push(t('settings.keystoreRestartRequired', { defaultValue: 'Restart AeroFTP to apply restored databases and plugins.' }));
                                                                         }
-                                                                        const importHadWarning = (result.userPartitionsUnreadable ?? 0) > 0 || !!result.requiresRestart;
+                                                                        const importHadWarning = (result.userPartitionsUnreadable ?? 0) > 0 || !!result.requiresRestart || !!result.profileDecisionsError;
                                                                         setKeystoreMessage({
                                                                             type: importHadWarning ? 'info' : 'success',
                                                                             text: extraNotes.length > 0 ? `${successText}. ${extraNotes.join(' ')}` : successText,

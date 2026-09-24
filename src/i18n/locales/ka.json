@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "მოწყობილობისას შენახვა",
             "keystoreDecisionKeepBoth": "ორივეს შენახვა",
             "keystoreCopyName": "{name} (ასლიდან)",
+            "keystorePreviewLocalFromVault": "ამ მოწყობილობის ანგარიშების სიის წაკითხვა ვერ მოხერხდა, ამიტომ შედარება იყენებს სეიფში შენახულ სერვერების სიას.",
+            "keystoreDecisionsFailed": "იმპორტი დასრულდა, მაგრამ სერვერის პროფილებისთვის თქვენი არჩევანი ვერ გამოიყენა: {error}",
             "exportKeystoreDesc": "ყველა დაშიფრული ავტორიზაციის მონაცემის ბექაპ-ფაილში ექსპორტი",
             "importKeystoreDesc": "ბექაპ-ფაილიდან ავტორიზაციის მონაცემების იმპორტი",
             "keystoreExported": "Keystore წარმატებით ექსპორტირდა ({count} ჩანაწერი)",

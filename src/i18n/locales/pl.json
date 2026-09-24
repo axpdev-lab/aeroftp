@@ -795,6 +795,8 @@
             "keystoreDecisionKeepLocal": "Zachowaj wersję urządzenia",
             "keystoreDecisionKeepBoth": "Zachowaj oba",
             "keystoreCopyName": "{name} (z kopii)",
+            "keystorePreviewLocalFromVault": "Nie udało się odczytać listy kont tego urządzenia, więc porównanie używa listy serwerów zapisanej w sejfie.",
+            "keystoreDecisionsFailed": "Import zakończył się, ale nie udało się zastosować Twoich wyborów dla profili serwerów: {error}",
             "exportKeystoreDesc": "Eksportuj wszystkie zaszyfrowane dane logowania do pliku kopii zapasowej",
             "importKeystoreDesc": "Importuj dane logowania z pliku kopii zapasowej",
             "keystoreExported": "Magazyn wyeksportowany pomyślnie ({count} wpisów)",
