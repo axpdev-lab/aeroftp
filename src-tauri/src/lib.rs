@@ -20049,6 +20049,7 @@ pub fn run() {
             cyber_tools::stage_hash_drop,
             cyber_tools::discard_hash_drop,
             cyber_tools::compare_hashes,
+            cyber_tools::argon2id_hash,
             cyber_tools::crypto_encrypt_text,
             cyber_tools::crypto_decrypt_text,
             cyber_tools::generate_password,

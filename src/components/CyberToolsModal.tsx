@@ -4,16 +4,18 @@
 import { useState, useCallback, useEffect, useRef, type DragEvent as ReactDragEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { pickFile } from '../utils/pickPath';
-import { copyText } from '../utils/clipboard';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import {
-    X, Hash, Lock, KeyRound, Copy, Check, FileSearch, Type,
-    RefreshCw, Eye, EyeOff, Loader2, AlertTriangle, CheckCircle2
+    X, Hash, Lock, KeyRound, FileSearch, Type,
+    RefreshCw, Eye, EyeOff, Loader2, AlertTriangle, CheckCircle2, Shuffle
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { PasswordForgeTab } from './PasswordForgeTab';
+import { Argon2idPanel } from './Argon2idPanel';
+import { CopyButton, PillButton, randomHex } from './CyberToolsShared';
+import { BLAKE3_MODES, blake3Args, type Blake3Mode } from '../utils/hashForgeArgs';
 
 interface CyberToolsModalProps {
     onClose: () => void;
@@ -93,46 +95,10 @@ export const CyberToolsModal: React.FC<CyberToolsModalProps> = ({ onClose }) => 
     );
 };
 
-// ─── Shared Components ──────────────────────────────────────────────────────
-
-const CopyButton: React.FC<{ text: string; label?: string }> = ({ text, label }) => {
-    const [copied, setCopied] = useState(false);
-    const handleCopy = useCallback(async () => {
-        try {
-            await copyText(text);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        } catch { /* clipboard may fail in some environments */ }
-    }, [text]);
-
-    return (
-        <button
-            onClick={handleCopy}
-            className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer"
-            title={label}
-        >
-            {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-            {copied ? 'Copied!' : (label || 'Copy')}
-        </button>
-    );
-};
-
-const PillButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
-    <button
-        onClick={onClick}
-        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
-            active
-                ? 'bg-cyan-500 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-        }`}
-    >
-        {children}
-    </button>
-);
-
 // ─── Hash Forge Tab ─────────────────────────────────────────────────────────
 
-const HASH_ALGOS = ['MD5', 'SHA-1', 'SHA-256', 'SHA-512', 'BLAKE3'] as const;
+const HASH_ALGOS = ['MD5', 'SHA-1', 'SHA-256', 'SHA-512', 'BLAKE3', 'Argon2id'] as const;
+
 const HASH_ENCODINGS = ['utf-8', 'base64', 'hex', 'binary'] as const;
 
 // Absolute path from HTML5 DataTransfer (Windows primary path; Linux fallback).
@@ -244,6 +210,9 @@ const HashForgeTab: React.FC = () => {
     const [algorithm, setAlgorithm] = useState('sha256');
     const [encoding, setEncoding] = useState<HashEncoding>('utf-8');
     const [outputLen, setOutputLen] = useState(32);
+    const [blake3Mode, setBlake3Mode] = useState<Blake3Mode>('hash');
+    const [blake3Key, setBlake3Key] = useState('');
+    const [blake3Context, setBlake3Context] = useState('');
     const [result, setResult] = useState('');
     const [expected, setExpected] = useState('');
     const [match, setMatch] = useState<boolean | null>(null);
@@ -252,8 +221,23 @@ const HashForgeTab: React.FC = () => {
     const dragDepthRef = useRef(0);
     const calcGenRef = useRef(0);
 
-    const algoMap: Record<string, string> = { 'MD5': 'md5', 'SHA-1': 'sha1', 'SHA-256': 'sha256', 'SHA-512': 'sha512', 'BLAKE3': 'blake3' };
+    const algoMap: Record<string, string> = { 'MD5': 'md5', 'SHA-1': 'sha1', 'SHA-256': 'sha256', 'SHA-512': 'sha512', 'BLAKE3': 'blake3', 'Argon2id': 'argon2id' };
     const isBlake3 = algorithm === 'blake3';
+    // Argon2id is a password hash: text input only, derived on request by
+    // Argon2idPanel instead of the debounced auto-calculation below.
+    const isArgon2 = algorithm === 'argon2id';
+    const effectiveMode = isArgon2 ? 'text' : mode;
+    const b3Args = blake3Args(algorithm, blake3Mode, blake3Key, blake3Context);
+    const blake3KeyArg = b3Args?.blake3Key ?? null;
+    const blake3ContextArg = b3Args?.blake3Context ?? null;
+    const blake3Incomplete = b3Args === null;
+    const blake3Label = (m: Blake3Mode): string => {
+        switch (m) {
+            case 'hash': return t('cyberTools.hashBlake3ModeHash');
+            case 'keyed': return t('cyberTools.hashBlake3ModeKeyed');
+            case 'derive': return t('cyberTools.hashBlake3ModeDerive');
+        }
+    };
 
     const encodingLabel = (enc: HashEncoding): string => {
         switch (enc) {
@@ -268,7 +252,8 @@ const HashForgeTab: React.FC = () => {
     // Empty text input is hashed (BLAKE3 empty vector is intentional). File mode
     // waits for a path. Calculate button removed (BLAKE3-demo parity).
     useEffect(() => {
-        if (mode === 'file' && !filePath) {
+        if (isArgon2 || blake3Incomplete || (mode === 'file' && !filePath)) {
+            ++calcGenRef.current;
             setResult('');
             setMatch(null);
             setLoading(false);
@@ -287,6 +272,8 @@ const HashForgeTab: React.FC = () => {
                         algorithm,
                         encoding,
                         outputLen: isBlake3 ? clampedLen : null,
+                        blake3Key: blake3KeyArg,
+                        blake3Context: blake3ContextArg,
                     });
                 } else {
                     const clampedLen = Math.min(1024, Math.max(1, Math.floor(outputLen) || 32));
@@ -294,6 +281,8 @@ const HashForgeTab: React.FC = () => {
                         path: filePath,
                         algorithm,
                         outputLen: isBlake3 ? clampedLen : null,
+                        blake3Key: blake3KeyArg,
+                        blake3Context: blake3ContextArg,
                     });
                 }
                 if (gen !== calcGenRef.current) return;
@@ -312,7 +301,7 @@ const HashForgeTab: React.FC = () => {
         return () => {
             window.clearTimeout(timer);
         };
-    }, [mode, input, filePath, algorithm, encoding, outputLen, isBlake3]);
+    }, [mode, input, filePath, algorithm, encoding, outputLen, isBlake3, isArgon2, blake3Incomplete, blake3KeyArg, blake3ContextArg]);
 
     // A staged drop is a plaintext copy of the dropped file in the temp dir.
     // Track it so it is removed as soon as it is replaced or the panel goes
@@ -497,22 +486,22 @@ const HashForgeTab: React.FC = () => {
             <p className="text-[10px] text-gray-400 dark:text-gray-500">{t('cyberTools.hashDropHint')}</p>
 
             {/* Mode toggle */}
-            <div className="flex gap-2">
+            {!isArgon2 && <div className="flex gap-2">
                 <PillButton active={mode === 'text'} onClick={() => setMode('text')}>
                     <span className="flex items-center gap-1"><Type size={12} /> {t('cyberTools.hashModeText')}</span>
                 </PillButton>
                 <PillButton active={mode === 'file'} onClick={() => setMode('file')}>
                     <span className="flex items-center gap-1"><FileSearch size={12} /> {t('cyberTools.hashModeFile')}</span>
                 </PillButton>
-            </div>
+            </div>}
 
             {/* Input */}
-            {mode === 'text' ? (
+            {effectiveMode === 'text' ? (
                 <div className="space-y-2">
                     <textarea
                         value={input}
                         onChange={e => setInput(e.target.value)}
-                        placeholder={t('cyberTools.hashInputPlaceholder')}
+                        placeholder={isArgon2 ? t('cyberTools.argon2PasswordPlaceholder') : t('cyberTools.hashInputPlaceholder')}
                         className="w-full h-24 px-3 py-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 resize-none focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
                     />
                     <div>
@@ -563,6 +552,56 @@ const HashForgeTab: React.FC = () => {
                     ))}
                 </div>
             </div>
+
+            {/* BLAKE3 mode: plain, keyed (b3sum --keyed), derive-key (b3sum --derive-key) */}
+            {isBlake3 && (
+                <div className="space-y-2">
+                    <div>
+                        <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{t('cyberTools.hashBlake3Mode')}</label>
+                        <div className="flex flex-wrap gap-1.5">
+                            {BLAKE3_MODES.map(m => (
+                                <PillButton key={m} active={blake3Mode === m} onClick={() => setBlake3Mode(m)}>
+                                    {blake3Label(m)}
+                                </PillButton>
+                            ))}
+                        </div>
+                    </div>
+                    {blake3Mode === 'keyed' && (
+                        <div>
+                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{t('cyberTools.hashBlake3Key')}</label>
+                            <div className="flex gap-2">
+                                <input
+                                    value={blake3Key}
+                                    onChange={e => setBlake3Key(e.target.value)}
+                                    spellCheck={false}
+                                    placeholder="0123...cdef"
+                                    className="flex-1 min-w-0 px-3 py-1.5 text-xs font-mono rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                                />
+                                <button
+                                    onClick={() => setBlake3Key(randomHex(32))}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer"
+                                >
+                                    <Shuffle size={12} /> {t('cyberTools.hashRandom')}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    {blake3Mode === 'derive' && (
+                        <div>
+                            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{t('cyberTools.hashBlake3Context')}</label>
+                            <input
+                                value={blake3Context}
+                                onChange={e => setBlake3Context(e.target.value)}
+                                spellCheck={false}
+                                className="w-full px-3 py-1.5 text-xs font-mono rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                            />
+                            <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{t('cyberTools.hashBlake3ContextHint')}</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {isArgon2 && <Argon2idPanel password={input} passwordEncoding={encoding} />}
 
             {/* BLAKE3 XOF output length (bytes) */}
             {isBlake3 && (
