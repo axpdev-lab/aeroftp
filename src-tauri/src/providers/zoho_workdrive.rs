@@ -243,6 +243,14 @@ fn stream_upload_stored(response: &str, file_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// The first `max` bytes of a response for a log line, cut on a character
+/// boundary: slicing at a raw byte index panics when a multibyte character
+/// (a file name in a Zoho response, for one) straddles it, and that panic
+/// would fail an upload that had already been stored.
+fn log_preview(text: &str, max: usize) -> &str {
+    &text[..text.floor_char_boundary(max)]
+}
+
 const ZOHO_WORKDRIVE_FALLBACK_QUOTA_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 
 /// Error reported when neither a team nor a personal privatespace can be found.
@@ -763,7 +771,7 @@ impl ZohoWorkdriveProvider {
         debug!(
             "Zoho WorkDrive stream upload response ({}): {}",
             status,
-            &text[..text.len().min(300)]
+            log_preview(&text, 300)
         );
         if !stream_upload_stored(&text, file_name) {
             return Err(ProviderError::Other(format!(
@@ -1032,7 +1040,7 @@ impl ZohoWorkdriveProvider {
 
         debug!(
             "Zoho WorkDrive team labels response: {}",
-            &body[..body.len().min(500)]
+            log_preview(&body, 500)
         );
         let parsed: JsonApiListResponse<ZohoLabel> = serde_json::from_str(&body)
             .map_err(|e| ProviderError::ParseError(format!("Parse labels: {}", e)))?;
@@ -1071,7 +1079,7 @@ impl ZohoWorkdriveProvider {
 
         debug!(
             "Zoho WorkDrive file metadata response: {}",
-            &body[..body.len().min(500)]
+            log_preview(&body, 500)
         );
 
         // Parse the labels array from file attributes
@@ -1211,7 +1219,7 @@ impl ZohoWorkdriveProvider {
 
         debug!(
             "Zoho WorkDrive create label response: {}",
-            &resp_body[..resp_body.len().min(500)]
+            log_preview(&resp_body, 500)
         );
         let parsed: JsonApiResponse<ZohoLabel> = serde_json::from_str(&resp_body)
             .map_err(|e| ProviderError::ParseError(format!("Parse create label: {}", e)))?;
@@ -1570,7 +1578,7 @@ impl ZohoWorkdriveProvider {
             let body = resp.text().await.unwrap_or_default();
             debug!(
                 "Zoho WorkDrive /teams response: {}",
-                &body[..body.len().min(500)]
+                log_preview(&body, 500)
             );
             match serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body) {
                 Ok(teams) if !teams.data.is_empty() => teams.data.into_iter().next(),
@@ -1591,7 +1599,7 @@ impl ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive /teams failed ({}): {}",
                 status,
-                &text[..text.len().min(500)]
+                log_preview(&text, 500)
             );
             None
         };
@@ -1615,7 +1623,7 @@ impl ZohoWorkdriveProvider {
                 debug!(
                     "Zoho WorkDrive /users/{}/teams response: {}",
                     uid,
-                    &body[..body.len().min(500)]
+                    log_preview(&body, 500)
                 );
                 match serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body) {
                     Ok(teams) => teams.data.into_iter().next(),
@@ -1631,7 +1639,7 @@ impl ZohoWorkdriveProvider {
                     "Zoho WorkDrive /users/{}/teams failed ({}): {}",
                     uid,
                     status,
-                    &text[..text.len().min(500)]
+                    log_preview(&text, 500)
                 );
                 None
             }
@@ -1688,7 +1696,7 @@ impl ZohoWorkdriveProvider {
             let body_text = resp.text().await.unwrap_or_default();
             debug!(
                 "Zoho WorkDrive /currentuser response: {}",
-                &body_text[..body_text.len().min(500)]
+                log_preview(&body_text, 500)
             );
             match serde_json::from_str::<JsonApiResponse<TeamCurrentUserResource>>(&body_text) {
                 Ok(cu) => {
@@ -1706,7 +1714,7 @@ impl ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive /currentuser failed ({}): {}",
                 status,
-                &text[..text.len().min(300)]
+                log_preview(&text, 300)
             );
             None
         };
@@ -1755,7 +1763,7 @@ impl ZohoWorkdriveProvider {
                 "Zoho WorkDrive /users/{}/privatespace failed ({}): {}",
                 user_id,
                 status,
-                &text[..text.len().min(300)]
+                log_preview(&text, 300)
             );
             return Ok(false);
         }
@@ -1763,7 +1771,7 @@ impl ZohoWorkdriveProvider {
         let body_text = resp.text().await.unwrap_or_default();
         debug!(
             "Zoho WorkDrive privatespace response: {}",
-            &body_text[..body_text.len().min(500)]
+            log_preview(&body_text, 500)
         );
 
         match parse_privatespace_id(&body_text) {
@@ -1864,7 +1872,7 @@ impl ZohoWorkdriveProvider {
             let body = resp.text().await.unwrap_or_default();
             debug!(
                 "Zoho WorkDrive teamfolders response: {}",
-                &body[..body.len().min(500)]
+                log_preview(&body, 500)
             );
 
             if let Ok(tfs) = serde_json::from_str::<JsonApiListResponse<TeamFolderResource>>(&body)
@@ -1892,7 +1900,7 @@ impl ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive teamfolders failed ({}): {}",
                 status,
-                &text[..text.len().min(300)]
+                log_preview(&text, 300)
             );
         }
 
@@ -1928,7 +1936,7 @@ impl ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive workspaces failed ({}): {}",
                 status,
-                &text[..text.len().min(300)]
+                log_preview(&text, 300)
             );
             return;
         }
@@ -1936,7 +1944,7 @@ impl ZohoWorkdriveProvider {
         let body = resp.text().await.unwrap_or_default();
         debug!(
             "Zoho WorkDrive workspaces response: {}",
-            &body[..body.len().min(500)]
+            log_preview(&body, 500)
         );
 
         if let Ok(ws_list) =
@@ -2011,7 +2019,7 @@ impl ZohoWorkdriveProvider {
                 debug!(
                     "Zoho WorkDrive list error ({}): {}",
                     status,
-                    &body_text[..body_text.len().min(300)]
+                    log_preview(&body_text, 300)
                 );
                 return Err(ProviderError::Other(format!(
                     "List files error {} (folder_id={}): {}",
@@ -2024,7 +2032,7 @@ impl ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive list response ({} bytes): {}",
                 body_text.len(),
-                &body_text[..body_text.len().min(500)]
+                log_preview(&body_text, 500)
             );
 
             let list: JsonApiListResponse<FileResource> = serde_json::from_str(&body_text)
@@ -2477,7 +2485,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             let text = resp.text().await.unwrap_or_default();
             debug!(
                 "Zoho WorkDrive download error body: {}",
-                &text[..text.len().min(1000)]
+                log_preview(&text, 1000)
             );
             return Err(ProviderError::Other(format!(
                 "Download failed ({}): {}",
@@ -2626,7 +2634,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive download_to_bytes error: {}: {}",
                 status,
-                &text[..text.len().min(500)]
+                log_preview(&text, 500)
             );
             return Err(ProviderError::Other(format!(
                 "Download failed ({}): {}",
@@ -2732,7 +2740,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         debug!(
             "Zoho WorkDrive upload response ({}): {}",
             status,
-            &resp_text[..resp_text.len().min(300)]
+            log_preview(&resp_text, 300)
         );
 
         if let Some(cb) = on_progress {
@@ -3471,7 +3479,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         debug!(
             "Zoho WorkDrive find response ({} bytes): {}",
             body.len(),
-            &body[..body.len().min(500)]
+            log_preview(&body, 500)
         );
 
         let list: JsonApiListResponse<FileResource> = serde_json::from_str(&body).map_err(|e| {
@@ -3527,7 +3535,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         debug!(
             "Zoho WorkDrive versions response ({} bytes): {}",
             body.len(),
-            &body[..body.len().min(500)]
+            log_preview(&body, 500)
         );
 
         let parsed: JsonApiListResponse<VersionResource> =
@@ -3719,6 +3727,14 @@ mod tests {
             Some("upload.zoho.com")
         );
         assert_eq!(large_upload_host(&us, 1024), None);
+    }
+
+    #[test]
+    fn a_log_preview_never_splits_a_character() {
+        // "è" is two bytes; put its first byte at index 299 of a 300-byte cut.
+        let text = format!("{}è rest", "a".repeat(299));
+        assert_eq!(log_preview(&text, 300), "a".repeat(299));
+        assert_eq!(log_preview("short", 300), "short");
     }
 
     /// A 200 that does not list the file is not an upload: the API leaves
