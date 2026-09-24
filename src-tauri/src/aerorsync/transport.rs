@@ -170,4 +170,12 @@ pub trait RawRemoteShellTransport: RemoteShellTransport {
         &self,
         request: RemoteExecRequest,
     ) -> Result<Self::RawStream, AerorsyncError>;
+
+    /// `(host, port)` of the peer, the key under which the driver
+    /// remembers which rsync dialect an endpoint speaks. `None` for a
+    /// transport without a network peer (mocks, the local transport),
+    /// which then opens every session with the default argv.
+    fn endpoint(&self) -> Option<(String, u16)> {
+        None
+    }
 }

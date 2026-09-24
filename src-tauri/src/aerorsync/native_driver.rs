@@ -62,19 +62,21 @@ use crate::aerorsync::engine_adapter::{
 use crate::aerorsync::events::EventSink;
 use crate::aerorsync::real_wire::{
     compress_zstd_literal_stream, decode_delta_stream, decode_file_list_entry, decode_item_flags,
-    decode_ndx, decode_server_preamble, decode_sum_block, decode_sum_head, decode_summary_frame,
-    decode_varint, decompress_zstd_literal_stream_boundaries, encode_client_preamble,
-    encode_delta_op, encode_delta_stream, encode_file_list_entry, encode_file_list_terminator,
-    encode_item_flags, encode_ndx, encode_sum_block, encode_sum_head, encode_summary_frame,
-    encode_xattr_datum_section, is_symlink_mode, resolve_xattr_datum_section, ClientPreamble,
-    DeflateLiteralStreamEncoder, DeltaOp, DeltaStreamReport, DeltaStreamState,
-    FileListDecodeOptions, FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll,
-    MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
-    ZstdLiteralStreamEncoder, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF, TOKEN_END_FLAG,
+    decode_ndx, decode_server_hello, decode_server_preamble, decode_server_preamble_with,
+    decode_sum_block, decode_sum_head, decode_summary_frame, decode_varint,
+    decompress_zstd_literal_stream_boundaries, encode_client_negotiated_strings,
+    encode_client_preamble, encode_delta_op, encode_delta_stream, encode_file_list_entry,
+    encode_file_list_terminator, encode_item_flags, encode_ndx, encode_protocol_version,
+    encode_sum_block, encode_sum_head, encode_summary_frame, encode_xattr_datum_section,
+    is_symlink_mode, resolve_xattr_datum_section, ClientPreamble, DeflateLiteralStreamEncoder,
+    DeltaOp, DeltaStreamReport, DeltaStreamState, FileListDecodeOptions, FileListDecodeOutcome,
+    FileListEntry, MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState, PreambleCompression,
+    RealWireError, SumBlock, SumHead, SummaryFrame, ZstdLiteralStreamEncoder,
+    CF_VARINT_FLIST_FLAGS, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF, TOKEN_END_FLAG,
 };
 use crate::aerorsync::remote_command::{
-    always_checksum_from_args, metadata_flags_from_args, EffectiveMetadataFlags,
-    RemoteCommandFlavor, RemoteCommandSpec,
+    always_checksum_from_args, metadata_flags_from_args, preamble_compression_from_args,
+    ArgvCompression, EffectiveMetadataFlags, RemoteCommandFlavor, RemoteCommandSpec,
 };
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionRole, SessionStats};
@@ -278,6 +280,54 @@ const CF_CHKSUM_SEED_FIX: i32 = 1 << 5;
 /// preamble + file list in one go for small transfers, small enough not
 /// to bloat the scratch buffer for idle-ish channels.
 const RAW_READ_CHUNK: usize = 8192;
+
+/// Endpoints known to run an rsync that negotiates nothing (3.0.x and
+/// 3.1.x), learned from the preamble of each finished session.
+///
+/// It only spares such a peer the reopen `open_and_negotiate` performs, and
+/// correctness never depends on it in either direction: a stale "legacy"
+/// entry sends `--new-compress` to a 3.2+ server, which accepts it and
+/// agrees on zlibx (measured 2026-09-24 against rsync 3.2.7), and the
+/// session that sees it negotiate clears the entry; a stale or missing
+/// entry costs one reopen. Hence no expiry, only a size bound.
+mod peer_dialect {
+    use std::collections::HashSet;
+    use std::sync::{Mutex, OnceLock};
+
+    const MAX_ENDPOINTS: usize = 256;
+
+    fn legacy() -> &'static Mutex<HashSet<(String, u16)>> {
+        static LEGACY: OnceLock<Mutex<HashSet<(String, u16)>>> = OnceLock::new();
+        LEGACY.get_or_init(|| Mutex::new(HashSet::new()))
+    }
+
+    pub(super) fn is_known_legacy(endpoint: &(String, u16)) -> bool {
+        legacy()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .contains(endpoint)
+    }
+
+    pub(super) fn record(endpoint: (String, u16), negotiates_strings: bool) {
+        let mut set = legacy()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if negotiates_strings {
+            set.remove(&endpoint);
+        } else {
+            if set.len() >= MAX_ENDPOINTS && !set.contains(&endpoint) {
+                set.clear();
+            }
+            set.insert(endpoint);
+        }
+    }
+}
+
+/// Oldest peer protocol the native path speaks. rsync 3.0.x speaks 30,
+/// whose wire this module has never been measured against; it is refused
+/// before any data moves, as `UnsupportedVersion`, so the classic wrapper
+/// takes the file.
+pub(crate) const MIN_PEER_PROTOCOL: u32 = 31;
 
 /// P3-T01 W1.2: read-side chunking for the streaming source reader of
 /// `send_delta_phase_streaming`. 4 MiB matches the SFTP/HTTP range
@@ -701,6 +751,21 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     // Populated by `perform_preamble_exchange`.
     protocol_version: u32,
     compat_flags: i32,
+    /// Whether the peer ran the negotiated strings (its compat flags carry
+    /// `CF_VARINT_FLIST_FLAGS`). `None` until a server preamble was read.
+    /// `Some(false)` is rsync 3.0.x / 3.1.x: MD5 checksums, classic
+    /// file-list flags, no algorithm lists in either direction.
+    peer_negotiates_strings: Option<bool>,
+    /// Set by `perform_preamble_exchange` when the peer negotiates nothing
+    /// and the argv carried `-z`, which such a peer reads as legacy zlib.
+    /// `open_and_negotiate` reopens with `--new-compress` on this signal.
+    legacy_peer_rejected_z: bool,
+    /// Whether the argv of the open session carries a compression list in
+    /// the negotiated strings (from `preamble_compression_from_args`).
+    preamble_compression: PreambleCompression,
+    /// Whether the argv of the open session fixed compression to zlibx
+    /// with `--new-compress`.
+    argv_new_compress: bool,
     checksum_seed: u32,
     negotiated_checksum_algos: String,
     negotiated_compression_algos: String,
@@ -878,6 +943,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             preamble_profile: PreambleProfile::default(),
             protocol_version: 0,
             compat_flags: 0,
+            peer_negotiates_strings: None,
+            legacy_peer_rejected_z: false,
+            preamble_compression: PreambleCompression::Negotiated,
+            argv_new_compress: false,
             checksum_seed: 0,
             negotiated_checksum_algos: String::new(),
             negotiated_compression_algos: String::new(),
@@ -995,7 +1064,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// recomputed in-tree. Named unsupported winners are rejected at
     /// preamble time; `Unknown` remains only as a defensive arm.
     pub(crate) fn block_strong_algo(&self) -> BlockStrongAlgo {
-        match self.negotiated_checksum_algo() {
+        match self.effective_checksum_algo() {
             Some(XXH128_ALGO_NAME) => BlockStrongAlgo::Xxh128 {
                 seed: self.checksum_seed as u64,
             },
@@ -1035,7 +1104,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// Only a genuinely empty peer string keeps the historical xxh128
     /// compatibility used when the peer omitted the negotiated field.
     fn resolved_file_checksum_kind(&self) -> Result<FileChecksumKind, AerorsyncError> {
-        match self.negotiated_checksum_algo() {
+        match self.effective_checksum_algo() {
             Some(name) => FileChecksumKind::try_from_negotiated_name(name),
             None if self
                 .negotiated_checksum_algos
@@ -1057,6 +1126,21 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     }
     pub fn negotiated_checksum_algos(&self) -> &str {
         &self.negotiated_checksum_algos
+    }
+    /// The checksum algorithm in force for this session, whether it was
+    /// negotiated or not. A peer that negotiates nothing (rsync 3.0.x /
+    /// 3.1.x) uses the protocol default, MD5 for protocol 30 and later
+    /// (`checksum.c`), for the block sums, the whole-file trailer and the
+    /// `--checksum` file list alike. Every consumer of "which checksum"
+    /// reads this, never [`Self::negotiated_checksum_algo`] directly:
+    /// before 2026-09-24 they did, and against such a peer the answer
+    /// was `None`, which the download guard took as "no trailer to
+    /// verify" and the block matcher as an unknown algorithm.
+    pub fn effective_checksum_algo(&self) -> Option<&str> {
+        if self.peer_negotiates_strings == Some(false) {
+            return Some(MD5_ALGO_NAME);
+        }
+        self.negotiated_checksum_algo()
     }
     /// CLAUDE-AV-B3-12: the single checksum algorithm the two peers
     /// actually agreed on, or `None` when the lists intersect nowhere
@@ -1359,11 +1443,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
-        self.open_raw_stream_internal(&command_spec).await?;
-        let csum_algos = self.preamble_profile.checksum_algos.clone();
-        let comp_algos = self.preamble_profile.compression_algos.clone();
-        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
-            .await?;
+        self.open_and_negotiate(&command_spec).await?;
         // No flist checksum for symlinks (proto >= 28, `flist.c` sends it
         // only for S_ISREG entries); the codec skips the field for
         // S_IFLNK modes, this just keeps the entry state truthful.
@@ -1459,16 +1539,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             })?;
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
-        self.open_raw_stream_internal(&command_spec).await?;
-        // B.2: rsync wire protocol uses SPACE-separated algo lists in
-        // priority-descending order. Using commas causes stock rsync
-        // 3.4.1 to parse the whole list as a single unknown algorithm
-        // and close the stream. Values cribbed from the frozen capture
-        // `capture/artifacts_real/frozen/upload/capture_in.bin` shape.
-        let csum_algos = self.preamble_profile.checksum_algos.clone();
-        let comp_algos = self.preamble_profile.compression_algos.clone();
-        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
-            .await?;
+        self.open_and_negotiate(&command_spec).await?;
         source_entry.checksum = if self.file_list_checksum_enabled {
             self.file_checksum_kind()?.digest(source_data)
         } else {
@@ -1510,11 +1581,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             })?;
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
-        self.open_raw_stream_internal(&command_spec).await?;
-        let csum_algos = self.preamble_profile.checksum_algos.clone();
-        let comp_algos = self.preamble_profile.compression_algos.clone();
-        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
-            .await?;
+        self.open_and_negotiate(&command_spec).await?;
         if self.file_list_checksum_enabled {
             let checksum_kind = self.file_checksum_kind()?;
             let mut checksum_hasher = checksum_kind.streaming_hasher();
@@ -1578,16 +1645,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ) -> Result<(), AerorsyncError> {
         self.session_role = Some(SessionRole::Receiver);
         self.remote_command_flavor = command_spec.flavor;
-        self.open_raw_stream_internal(&command_spec).await?;
-        // B.2: rsync wire protocol uses SPACE-separated algo lists in
-        // priority-descending order. Using commas causes stock rsync
-        // 3.4.1 to parse the whole list as a single unknown algorithm
-        // and close the stream. Values cribbed from the frozen capture
-        // `capture/artifacts_real/frozen/upload/capture_in.bin` shape.
-        let csum_algos = self.preamble_profile.checksum_algos.clone();
-        let comp_algos = self.preamble_profile.compression_algos.clone();
-        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
-            .await?;
+        self.open_and_negotiate(&command_spec).await?;
         self.send_download_receiver_phase_prefix().await?;
         self.receive_file_list_single_file(bridge).await?;
         if self.received_entry_is_symlink() {
@@ -1613,11 +1671,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ) -> Result<(), AerorsyncError> {
         self.session_role = Some(SessionRole::Receiver);
         self.remote_command_flavor = command_spec.flavor;
-        self.open_raw_stream_internal(&command_spec).await?;
-        let csum_algos = self.preamble_profile.checksum_algos.clone();
-        let comp_algos = self.preamble_profile.compression_algos.clone();
-        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
-            .await?;
+        self.open_and_negotiate(&command_spec).await?;
         self.send_download_receiver_phase_prefix().await?;
         self.receive_file_list_single_file(bridge).await?;
         if self.received_entry_is_symlink() {
@@ -1664,64 +1718,182 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 // checksum-bearing file-list contract.
                 true
             };
+        if command_spec.flavor == RemoteCommandFlavor::WrapperParity {
+            self.preamble_compression = preamble_compression_from_args(&request.args);
+            self.argv_new_compress = request.args.iter().any(|arg| arg == "--new-compress");
+        } else {
+            self.preamble_compression = PreambleCompression::Negotiated;
+            self.argv_new_compress = false;
+        }
         let stream = self.transport.open_raw_stream(request).await?;
         self.stream = Some(stream);
         self.phase = AerorsyncSessionPhase::RawStreamOpen;
         Ok(())
     }
 
-    /// B.2 fix: rsync wire protocol places the CLIENT first: the client
-    /// writes its preamble onto the raw stream and only afterwards reads
-    /// the server's response. The captured frozen transcripts confirm it:
-    /// `capture/artifacts_real/frozen/upload/capture_in.bin` (bytes the
-    /// client sends) starts with `1f 00 00 00` (protocol 31 LE u32) + the
-    /// checksum algo list; only after that the server replies with
-    /// `20 00 00 00 81 ff 23 ...` in `capture_out.bin`.
+    /// Open the server exec and run the preamble, reopening once with
+    /// `--new-compress` when the peer turns out to predate rsync 3.2.
     ///
-    /// The previous implementation read first and wrote after, which
-    /// deadlocked against stock `rsync --server` because both peers were
-    /// stuck in read. It happened to work against the dev helper
-    /// `aerorsync_serve` only because that path is never exercised via
-    /// the `NativeRsyncDriver` (which speaks the real wire); live lanes
-    /// against the dev helper go through the `SessionDriver` RSNP
-    /// framing instead.
+    /// A server that negotiates nothing (no `CF_VARINT_FLIST_FLAGS`, rsync
+    /// 3.0.x and 3.1.x) reads `-z` as the legacy `zlib` codec, which this
+    /// module cannot drive. When its compat flags arrive the client has
+    /// sent four bytes, its protocol version, and nothing else: the session
+    /// is closed and reopened with the `z` replaced by `--new-compress`
+    /// (zlibx), exactly what a stock client sends when asked for it
+    /// (`remote_command::ArgvCompression`). Nothing reached the destination,
+    /// so the retry is pre-commit; a peer that refuses the second argv
+    /// fails the session like any other negotiation failure.
+    async fn open_and_negotiate(
+        &mut self,
+        command_spec: &RemoteCommandSpec,
+    ) -> Result<(), AerorsyncError> {
+        // B.2: rsync wire protocol uses SPACE-separated algo lists in
+        // priority-descending order. Using commas causes stock rsync
+        // 3.4.1 to parse the whole list as a single unknown algorithm
+        // and close the stream. Values cribbed from the frozen capture
+        // `capture/artifacts_real/frozen/upload/capture_in.bin` shape.
+        let csum_algos = self.preamble_profile.checksum_algos.clone();
+        let comp_algos = self.preamble_profile.compression_algos.clone();
+        let endpoint = self.transport.endpoint();
+        let known_legacy = endpoint.as_ref().is_some_and(peer_dialect::is_known_legacy);
+        let first = if known_legacy && command_spec.compression == ArgvCompression::Negotiated {
+            command_spec
+                .clone()
+                .with_compression(ArgvCompression::NewCompress)
+        } else {
+            command_spec.clone()
+        };
+        self.open_raw_stream_internal(&first).await?;
+        let outcome = match self
+            .perform_preamble_exchange(31, &csum_algos, &comp_algos)
+            .await
+        {
+            Err(_) if self.legacy_peer_rejected_z => {
+                self.legacy_peer_rejected_z = false;
+                if let Some(mut stream) = self.stream.take() {
+                    // The legacy server is waiting for data it will never
+                    // get; closing the channel is what ends it. A failing
+                    // teardown changes nothing about the retry.
+                    let _ = stream.shutdown().await;
+                }
+                tracing::debug!(
+                    "aerorsync: peer negotiates no algorithms (pre-3.2 rsync); \
+                     reopening with --new-compress"
+                );
+                let retry = command_spec
+                    .clone()
+                    .with_compression(ArgvCompression::NewCompress);
+                self.open_raw_stream_internal(&retry).await?;
+                self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
+                    .await
+            }
+            other => other,
+        };
+        if let (Some(endpoint), Some(negotiates)) = (endpoint, self.peer_negotiates_strings) {
+            if outcome.is_ok() {
+                peer_dialect::record(endpoint, negotiates);
+            }
+        }
+        outcome
+    }
+
+    /// Whether the peer of the last session ran the negotiated strings:
+    /// `Some(false)` for rsync 3.0.x / 3.1.x, `None` before any preamble.
+    /// The transport keeps this per endpoint so the next session opens
+    /// with the right argv instead of paying the reopen.
+    pub fn peer_negotiates_strings(&self) -> Option<bool> {
+        self.peer_negotiates_strings
+    }
+
+    /// The preamble, in the order rsync `compat.c::setup_protocol` imposes.
+    ///
+    /// 1. The client's protocol version, alone.
+    /// 2. The server's protocol version and compat flags.
+    /// 3. Only if those carry `CF_VARINT_FLIST_FLAGS`: the client's
+    ///    algorithm lists (the compression list only when the argv left the
+    ///    choice open), then the server's.
+    /// 4. The checksum seed.
+    ///
+    /// The server writes its lists before reading the client's, and the
+    /// seed only after reading them, so step 3 cannot move after step 4.
+    /// It cannot move before step 2 either: until 2026-09-24 the client
+    /// wrote its lists together with its version, and rsync 3.1.3, which
+    /// negotiates nothing, read them as multiplexed data and exited with
+    /// code 12 before a single file byte moved. Against a negotiating peer
+    /// the bytes on the wire are the same as before, only split in two
+    /// writes around a read.
     async fn perform_preamble_exchange(
         &mut self,
         protocol_version: u32,
         checksum_algos: &str,
         compression_algos: &str,
     ) -> Result<(), AerorsyncError> {
-        // 1. Write our client preamble first.
-        let outbound = encode_client_preamble(&ClientPreamble {
-            protocol_version,
-            checksum_algos: checksum_algos.to_string(),
-            compression_algos: compression_algos.to_string(),
-            consumed: 0,
-        });
-        // Diagnostic wire dump (env-gated, zero cost when unset): records
-        // the exact client preamble we put on the wire so it can be
-        // diffed against what a remote `rsync --server` expects when
-        // isolating wire-protocol drift against a live endpoint.
-        wire_dump_client_preamble(
-            protocol_version,
-            checksum_algos,
-            compression_algos,
-            &outbound,
-        );
-        {
-            self.check_cancel("perform_preamble_exchange send")?;
-            let stream = self.stream.as_mut().ok_or_else(|| {
-                AerorsyncError::transport("perform_preamble_exchange: stream not open (pre-write)")
-            })?;
-            stream.write_bytes(&outbound).await?;
-        }
-        // 2. Drain the server preamble from the stream. Any bytes read
-        //    past the server preamble's `consumed` cursor are fed into
-        //    `mux_reader` so the subsequent file list decode sees them.
+        self.legacy_peer_rejected_z = false;
+        self.write_preamble_bytes(&encode_protocol_version(protocol_version))
+            .await?;
+
         let mut scratch = Vec::with_capacity(128);
+        let hello = loop {
+            self.check_cancel("perform_preamble_exchange recv")?;
+            match decode_server_hello(&scratch) {
+                Ok(hello) => break hello,
+                Err(RealWireError::TruncatedBuffer { .. }) => {
+                    self.read_preamble_chunk(&mut scratch).await?;
+                }
+                Err(other) => {
+                    wire_dump_server_response(&scratch, "preamble-hard-fail");
+                    return Err(map_realwire_error(other, "server preamble"));
+                }
+            }
+        };
+        self.peer_negotiates_strings = Some(hello.negotiates_strings());
+        if hello.protocol_version < MIN_PEER_PROTOCOL {
+            wire_dump_server_response(&scratch, "unsupported-protocol");
+            return Err(AerorsyncError::unsupported_version(format!(
+                "rsync peer speaks protocol {}; the native path needs protocol {} \
+                 (rsync 3.1.0 or later)",
+                hello.protocol_version, MIN_PEER_PROTOCOL
+            )));
+        }
+
+        if hello.negotiates_strings() {
+            let compression = (self.preamble_compression == PreambleCompression::Negotiated)
+                .then_some(compression_algos);
+            let strings = encode_client_negotiated_strings(checksum_algos, compression);
+            let mut dumped = encode_protocol_version(protocol_version).to_vec();
+            dumped.extend_from_slice(&strings);
+            wire_dump_client_preamble(
+                protocol_version,
+                checksum_algos,
+                compression.unwrap_or(""),
+                &dumped,
+            );
+            self.write_preamble_bytes(&strings).await?;
+        } else {
+            wire_dump_client_preamble(
+                protocol_version,
+                "",
+                "",
+                &encode_protocol_version(protocol_version),
+            );
+            if self.preamble_compression == PreambleCompression::Negotiated {
+                // `-z` to a peer that negotiates nothing means legacy
+                // zlib. Signal `open_and_negotiate`, which reopens with
+                // `--new-compress`; the detail is for a direct caller.
+                self.legacy_peer_rejected_z = true;
+                return Err(AerorsyncError::new(
+                    AerorsyncErrorKind::NegotiationFailed,
+                    "rsync peer negotiates no algorithms, so -z would select legacy zlib, \
+                     which the native path does not implement; reopen with --new-compress",
+                ));
+            }
+        }
+
+        // Any bytes read past the server preamble's `consumed` cursor are
+        // fed into `mux_reader` so the file-list decode sees them.
         loop {
             self.check_cancel("perform_preamble_exchange recv")?;
-            match decode_server_preamble(&scratch) {
+            match decode_server_preamble_with(&scratch, self.preamble_compression) {
                 Ok(preamble) => {
                     wire_dump_server_response(&scratch, "decoded-ok");
                     // Mirror `compat.c::setup_protocol` line 605:
@@ -1742,39 +1914,55 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     // Reject unsupported / disjoint checksum winners before
                     // any leftover bytes are treated as file-list material.
                     self.resolved_file_checksum_kind()?;
+                    if let LiteralCompression::Unsupported(name) = self.literal_compression() {
+                        return Err(AerorsyncError::new(
+                            AerorsyncErrorKind::NegotiationFailed,
+                            format!("negotiated compression {name:?} has no codec here"),
+                        ));
+                    }
                     if preamble.consumed < scratch.len() {
                         self.mux_reader.feed(&scratch[preamble.consumed..]);
                     }
                     break;
                 }
                 Err(RealWireError::TruncatedBuffer { .. }) => {
-                    let stream = self.stream.as_mut().ok_or_else(|| {
-                        AerorsyncError::transport("perform_preamble_exchange: stream not open")
-                    })?;
-                    let chunk = stream.read_bytes(RAW_READ_CHUNK).await?;
-                    if chunk.is_empty() {
-                        wire_dump_server_response(&scratch, "remote-closed-before-server-preamble");
-                        return Err(AerorsyncError::transport(
-                            "perform_preamble_exchange: remote closed before server preamble",
-                        ));
-                    }
-                    scratch.extend_from_slice(&chunk);
+                    self.read_preamble_chunk(&mut scratch).await?;
                 }
                 Err(other) => {
                     // Diagnostics for the intermittent CI-only preamble
                     // desync (scratch observed starting past the 4-byte
                     // protocol-version prefix, decoding it as garbage e.g.
-                    // 2015297409). The truncated/clean-EOF arms already
-                    // dump; this terminal arm did not, so a flaky CI
-                    // failure carried no bytes to root-cause from. Env-
-                    // gated (AEROFTP_WIRE_DUMP_DIR), zero cost when unset,
-                    // no behaviour change.
+                    // 2015297409). Env-gated (AEROFTP_WIRE_DUMP_DIR), zero
+                    // cost when unset, no behaviour change.
                     wire_dump_server_response(&scratch, "preamble-hard-fail");
                     return Err(map_realwire_error(other, "server preamble"));
                 }
             }
         }
         self.phase = AerorsyncSessionPhase::ClientPreambleRecvd;
+        Ok(())
+    }
+
+    async fn write_preamble_bytes(&mut self, bytes: &[u8]) -> Result<(), AerorsyncError> {
+        self.check_cancel("perform_preamble_exchange send")?;
+        let stream = self.stream.as_mut().ok_or_else(|| {
+            AerorsyncError::transport("perform_preamble_exchange: stream not open (pre-write)")
+        })?;
+        stream.write_bytes(bytes).await
+    }
+
+    async fn read_preamble_chunk(&mut self, scratch: &mut Vec<u8>) -> Result<(), AerorsyncError> {
+        let stream = self.stream.as_mut().ok_or_else(|| {
+            AerorsyncError::transport("perform_preamble_exchange: stream not open")
+        })?;
+        let chunk = stream.read_bytes(RAW_READ_CHUNK).await?;
+        if chunk.is_empty() {
+            wire_dump_server_response(scratch, "remote-closed-before-server-preamble");
+            return Err(AerorsyncError::transport(
+                "perform_preamble_exchange: remote closed before server preamble",
+            ));
+        }
+        scratch.extend_from_slice(&chunk);
         Ok(())
     }
 
@@ -1786,11 +1974,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     fn build_flist_options(&self, csum_len: usize) -> FileListDecodeOptions<'static> {
         FileListDecodeOptions {
             protocol: self.protocol_version,
-            // CF_VARINT_FLIST_FLAGS is active from protocol 30+. The
-            // frozen oracle has it on; assert that implicitly by using
-            // the varint path. If a legacy peer disagrees, decode will
-            // surface a `RealWireError` which we translate.
-            xfer_flags_as_varint: true,
+            // Varint flags only when the peer set CF_VARINT_FLIST_FLAGS.
+            // rsync 3.1.3 answers compat 0x3e without it and speaks the
+            // classic one or two flag bytes; this used to be a fixed
+            // `true`, which was the second half of the pre-3.2 failure.
+            xfer_flags_as_varint: self.compat_flags & CF_VARINT_FLIST_FLAGS != 0,
             // Must follow the effective argv. Reading `-c` from the command
             // once at stream-open keeps the file-list codec aligned with
             // environment overrides as well as product/capture profiles.
@@ -3674,6 +3862,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
     /// How the negotiated winner maps onto the codecs this client has.
     fn literal_compression(&self) -> LiteralCompression {
+        // `--new-compress` fixes zlibx on the command line; no list is
+        // negotiated for compression then, whatever the peer's version.
+        if self.argv_new_compress {
+            return LiteralCompression::Deflate;
+        }
         match self.negotiated_compression_algo() {
             Some("zstd") => LiteralCompression::Zstd,
             // Measured in both directions against upstream rsync 3.1.3:
@@ -4188,6 +4381,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         })?;
         self.protocol_version = preamble.protocol_version;
         self.compat_flags = preamble.compat_flags;
+        self.peer_negotiates_strings = Some(preamble.compat_flags & CF_VARINT_FLIST_FLAGS != 0);
         self.checksum_seed = preamble.checksum_seed;
         self.negotiated_checksum_algos = preamble.checksum_algos;
         self.negotiated_compression_algos = preamble.compression_algos;
@@ -4435,6 +4629,48 @@ mod tests {
     fn mock_transport_with_raw_inbound(inbound: Vec<u8>) -> MockRemoteShellTransport {
         let cfg = MockTransportConfig::healthy_upload().with_raw_inbound(inbound);
         MockRemoteShellTransport::new(cfg)
+    }
+
+    /// A frozen legacy-peer capture (`capture/artifacts_real/frozen/legacy-peer`).
+    fn legacy_peer_capture(rel: &str) -> Vec<u8> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(crate::aerorsync::fixtures::REAL_RSYNC_FROZEN_TRANSCRIPT_REL)
+            .join("legacy-peer")
+            .join(rel);
+        std::fs::read(&path).unwrap_or_else(|e| {
+            panic!("frozen legacy-peer capture {} missing: {e}", path.display())
+        })
+    }
+
+    /// Run `open_and_negotiate` against `inbound`; return the driver, the
+    /// bytes the client wrote on the last stream and the last argv.
+    async fn negotiate_against(
+        inbound: Vec<u8>,
+        spec: RemoteCommandSpec,
+    ) -> (
+        AerorsyncDriver<MockRemoteShellTransport>,
+        Result<(), AerorsyncError>,
+        Vec<u8>,
+        Vec<String>,
+    ) {
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let last_exec = transport.last_exec.clone();
+        let mut d = make_driver(transport);
+        let res = d.open_and_negotiate(&spec).await;
+        let outbound = last_raw_outbound
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|buf| buf.lock().unwrap().clone())
+            .unwrap_or_default();
+        let argv = last_exec
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|req| req.args.clone())
+            .unwrap_or_default();
+        (d, res, outbound, argv)
     }
 
     fn make_driver(
@@ -4838,13 +5074,17 @@ mod tests {
     }
 
     fn canonical_server_preamble_bytes() -> Vec<u8> {
+        // compat 0x87: CF_VARINT_FLIST_FLAGS (0x80) is what makes a real
+        // server send algorithm lists at all. Until 2026-09-24 these
+        // fixtures said 0x07 and still carried lists, a combination no
+        // rsync emits, which is how the client could ignore the flag.
         // Rsync serialises both lists as SPACE-separated (see
         // `perform_preamble_exchange` and the frozen oracle capture).
         // Using commas here hid the `zstd_negotiated` parsing bug that
         // made live uploads skip zstd compression against stock rsync.
         encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07,
+            compat_flags: 0x87,
             // CLAUDE-AV-B3-18: this shared fixture carries 16-byte file-list
             // checksums and delta trailers, so its winner must be a 16-byte
             // algorithm. Dedicated xxh64 fixtures below carry 8 bytes.
@@ -5373,13 +5613,125 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legacy_peer_gets_the_protocol_version_and_nothing_else() {
+        // rsync 3.1.3 (capture: compat 0x3e, no CF_VARINT_FLIST_FLAGS).
+        // The client must write its four version bytes and no list, then
+        // speak MD5, classic flag bytes and zlibx.
+        let inbound =
+            legacy_peer_capture("313-stock-download-new-compress/capture_out.first64.bin");
+        let spec = RemoteCommandSpec::download("/r").with_compression(ArgvCompression::NewCompress);
+        let (d, res, outbound, argv) = negotiate_against(inbound, spec).await;
+        res.expect("a 3.1.3 peer negotiates under --new-compress");
+        assert_eq!(outbound, encode_protocol_version(31));
+        assert_eq!(d.peer_negotiates_strings(), Some(false));
+        assert_eq!(d.effective_checksum_algo(), Some(MD5_ALGO_NAME));
+        assert_eq!(d.negotiated_file_checksum_len().unwrap(), 16);
+        assert!(!d.build_flist_options(16).xfer_flags_as_varint);
+        assert_eq!(d.literal_compression(), LiteralCompression::Deflate);
+        assert!(matches!(
+            d.block_strong_algo(),
+            BlockStrongAlgo::Md5 {
+                proper_seed_order: true,
+                ..
+            }
+        ));
+        assert_eq!(argv[2..4], ["-ltprIe.iLsfxCIvu", "--new-compress"]);
+    }
+
+    #[tokio::test]
+    async fn legacy_peer_behind_z_is_reopened_with_new_compress() {
+        // The product argv carries `-z`, which a pre-3.2 peer reads as
+        // legacy zlib. The driver sees compat without the flag after its
+        // four version bytes and reopens, pre-commit, with `--new-compress`.
+        let inbound = legacy_peer_capture("313-stock-download-z/capture_out.first64.bin");
+        let (d, res, outbound, argv) =
+            negotiate_against(inbound, RemoteCommandSpec::download("/r")).await;
+        res.expect("the reopen with --new-compress succeeds");
+        assert!(argv.iter().any(|a| a == "--new-compress"), "argv {argv:?}");
+        assert!(!argv[2].split('.').next().unwrap().contains('z'));
+        assert_eq!(outbound, encode_protocol_version(31));
+        assert_eq!(d.literal_compression(), LiteralCompression::Deflate);
+    }
+
+    #[tokio::test]
+    async fn negotiating_peer_still_gets_version_and_both_lists() {
+        // Against a negotiating server the bytes on the wire are what they
+        // were before the preamble was split in two writes.
+        let profile = PreambleProfile::default();
+        let (d, res, outbound, argv) = negotiate_against(
+            canonical_server_preamble_bytes(),
+            RemoteCommandSpec::upload("/r"),
+        )
+        .await;
+        res.unwrap();
+        assert_eq!(
+            outbound,
+            encode_client_preamble(&ClientPreamble {
+                protocol_version: 31,
+                checksum_algos: profile.checksum_algos.clone(),
+                compression_algos: profile.compression_algos.clone(),
+                consumed: 0,
+            })
+        );
+        assert_eq!(d.peer_negotiates_strings(), Some(true));
+        assert!(d.build_flist_options(16).xfer_flags_as_varint);
+        assert!(!argv.iter().any(|a| a == "--new-compress"));
+    }
+
+    #[tokio::test]
+    async fn negotiating_peer_under_new_compress_gets_the_checksum_list_alone() {
+        // A peer remembered as legacy that has since moved to 3.2+: the
+        // argv says `--new-compress`, the server negotiates the checksum
+        // only (capture against rsync 3.2.7), and zlibx carries literals.
+        let inbound =
+            legacy_peer_capture("327-stock-download-new-compress/capture_out.first64.bin");
+        let profile = PreambleProfile::default();
+        let spec = RemoteCommandSpec::download("/r").with_compression(ArgvCompression::NewCompress);
+        let (d, res, outbound, _) = negotiate_against(inbound, spec).await;
+        res.unwrap();
+        let mut expected = encode_protocol_version(31).to_vec();
+        expected.extend_from_slice(&encode_client_negotiated_strings(
+            &profile.checksum_algos,
+            None,
+        ));
+        assert_eq!(outbound, expected);
+        assert_eq!(d.peer_negotiates_strings(), Some(true));
+        assert_eq!(d.effective_checksum_algo(), Some(XXH128_ALGO_NAME));
+        assert_eq!(d.literal_compression(), LiteralCompression::Deflate);
+    }
+
+    #[tokio::test]
+    async fn protocol_30_peer_is_refused_before_any_data() {
+        let mut inbound = encode_protocol_version(30).to_vec();
+        inbound.push(0x00);
+        inbound.extend_from_slice(&7u32.to_le_bytes());
+        let (_, res, outbound, _) =
+            negotiate_against(inbound, RemoteCommandSpec::download("/r")).await;
+        let err = res.unwrap_err();
+        assert_eq!(err.kind, AerorsyncErrorKind::UnsupportedVersion);
+        assert_eq!(outbound, encode_protocol_version(31));
+    }
+
+    #[test]
+    fn peer_dialect_remembers_legacy_until_a_session_negotiates() {
+        let endpoint = ("dialect-test.invalid".to_string(), 2222);
+        assert!(!peer_dialect::is_known_legacy(&endpoint));
+        peer_dialect::record(endpoint.clone(), false);
+        assert!(peer_dialect::is_known_legacy(&endpoint));
+        let other_port = ("dialect-test.invalid".to_string(), 2223);
+        assert!(!peer_dialect::is_known_legacy(&other_port));
+        peer_dialect::record(endpoint.clone(), true);
+        assert!(!peer_dialect::is_known_legacy(&endpoint));
+    }
+
+    #[tokio::test]
     async fn receive_server_preamble_populates_driver_state() {
         let encoded = canonical_server_preamble_bytes();
         let mut d = make_driver(mock_transport());
         let consumed = d.receive_server_preamble(&encoded).await.unwrap();
         assert_eq!(consumed, encoded.len());
         assert_eq!(d.protocol_version(), 31);
-        assert_eq!(d.compat_flags(), 0x07);
+        assert_eq!(d.compat_flags(), 0x87);
         assert_eq!(d.checksum_seed(), 0xDEAD_BEEF);
         assert_eq!(d.negotiated_checksum_algos(), "md5");
         assert_eq!(d.negotiated_compression_algos(), "none zstd");
@@ -5392,7 +5744,7 @@ mod tests {
     async fn block_strong_algo_maps_md5_with_seed_fix_flag() {
         let encoded = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07 | CF_CHKSUM_SEED_FIX,
+            compat_flags: 0x87 | CF_CHKSUM_SEED_FIX,
             checksum_algos: "md5".to_string(),
             compression_algos: "none".to_string(),
             checksum_seed: 0xDEAD_BEEF,
@@ -5419,7 +5771,7 @@ mod tests {
     async fn block_strong_algo_maps_md5_legacy_seed_order_without_flag() {
         let encoded = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07, // no CF_CHKSUM_SEED_FIX
+            compat_flags: 0x87, // no CF_CHKSUM_SEED_FIX
             checksum_algos: "md5".to_string(),
             compression_algos: "none".to_string(),
             checksum_seed: 0xCAFE_BABE,
@@ -5446,7 +5798,7 @@ mod tests {
         async fn algo(theirs: &str) -> BlockStrongAlgo {
             let encoded = encode_server_preamble(&ServerPreamble {
                 protocol_version: 31,
-                compat_flags: 0x07 | CF_CHKSUM_SEED_FIX,
+                compat_flags: 0x87 | CF_CHKSUM_SEED_FIX,
                 checksum_algos: theirs.to_string(),
                 compression_algos: "none".to_string(),
                 checksum_seed: 0x1111_2222,
@@ -5497,7 +5849,7 @@ mod tests {
             d.block_strong_algo()
         }
         // md4 through the default advertisement (its last entry).
-        for flags in [0x07, 0x07 | CF_CHKSUM_SEED_FIX] {
+        for flags in [0x87, 0x87 | CF_CHKSUM_SEED_FIX] {
             assert_eq!(
                 algo("xxh128 xxh3 xxh64 md5 md4", "md4", flags).await,
                 BlockStrongAlgo::Md4 { seed: 0x1111_2222 },
@@ -5507,7 +5859,7 @@ mod tests {
         // sha1 is not in the default advertisement; it becomes the
         // winner only under an `AEROFTP_RSYNC_CSUM_ALGOS`-shaped
         // override profile, mirrored here without touching process env.
-        for flags in [0x07, 0x07 | CF_CHKSUM_SEED_FIX] {
+        for flags in [0x87, 0x87 | CF_CHKSUM_SEED_FIX] {
             assert_eq!(
                 algo("sha1", "xxh128 xxh3 xxh64 md5 md4 sha1 none", flags).await,
                 BlockStrongAlgo::Sha1 { seed: 0x1111_2222 },
@@ -5532,7 +5884,7 @@ mod tests {
         for (algorithm, full_digest) in cases {
             let inbound = encode_server_preamble(&ServerPreamble {
                 protocol_version: 31,
-                compat_flags: 0x07 | CF_CHKSUM_SEED_FIX,
+                compat_flags: 0x87 | CF_CHKSUM_SEED_FIX,
                 checksum_algos: algorithm.to_string(),
                 compression_algos: "none".to_string(),
                 checksum_seed: 0x1234_5678,
@@ -5597,7 +5949,7 @@ mod tests {
         for (algorithm, full_digest) in cases {
             let inbound = encode_server_preamble(&ServerPreamble {
                 protocol_version: 31,
-                compat_flags: 0x07 | CF_CHKSUM_SEED_FIX,
+                compat_flags: 0x87 | CF_CHKSUM_SEED_FIX,
                 checksum_algos: algorithm.to_string(),
                 compression_algos: "none".to_string(),
                 checksum_seed: 0x1234_5678,
@@ -5646,7 +5998,7 @@ mod tests {
         async fn negotiate(ours: &str, theirs: &str) -> Option<String> {
             let encoded = encode_server_preamble(&ServerPreamble {
                 protocol_version: 31,
-                compat_flags: 0x07,
+                compat_flags: 0x87,
                 checksum_algos: theirs.to_string(),
                 compression_algos: "none zstd".to_string(),
                 checksum_seed: 0xDEAD_BEEF,
@@ -5858,7 +6210,7 @@ mod tests {
     ) -> Result<FileChecksumKind, AerorsyncError> {
         let encoded = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07,
+            compat_flags: 0x87,
             checksum_algos: theirs.to_string(),
             compression_algos: "none".to_string(),
             checksum_seed: 0,
@@ -5991,7 +6343,7 @@ mod tests {
         let ours = "none";
         let inbound = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07,
+            compat_flags: 0x87,
             checksum_algos: ours.to_string(),
             compression_algos: "none".to_string(),
             checksum_seed: 0,
@@ -6034,7 +6386,7 @@ mod tests {
         let ours = "none";
         let inbound = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07,
+            compat_flags: 0x87,
             checksum_algos: ours.to_string(),
             compression_algos: "none".to_string(),
             checksum_seed: 0,
@@ -6455,7 +6807,7 @@ mod tests {
 
         let mut inbound = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07,
+            compat_flags: 0x87,
             checksum_algos: XXH64_ALGO_NAME.to_string(),
             compression_algos: "none".to_string(),
             checksum_seed: 0x1234_5678,
@@ -7127,7 +7479,7 @@ mod tests {
         // explicit xxh128 winner instead of the shared 16-byte md5 fixture.
         let mut inbound = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07,
+            compat_flags: 0x87,
             checksum_algos: XXH128_ALGO_NAME.to_string(),
             compression_algos: "none zstd".to_string(),
             checksum_seed: 0xDEAD_BEEF,
@@ -7974,7 +8326,7 @@ mod tests {
             let sig_payload = build_sig_phase_payload(1, 0x8002, &head, &[]);
             let server_preamble = encode_server_preamble(&ServerPreamble {
                 protocol_version: 31,
-                compat_flags: 0x07 | CF_CHKSUM_SEED_FIX,
+                compat_flags: 0x87 | CF_CHKSUM_SEED_FIX,
                 checksum_algos: algorithm.to_string(),
                 compression_algos: "none".to_string(),
                 checksum_seed: 0x1234_5678,

@@ -772,6 +772,10 @@ impl RawByteStream for SshRawStream {
 impl RawRemoteShellTransport for SshRemoteShellTransport {
     type RawStream = SshRawStream;
 
+    fn endpoint(&self) -> Option<(String, u16)> {
+        Some((self.config.host.clone(), self.config.port))
+    }
+
     async fn open_raw_stream(
         &self,
         request: RemoteExecRequest,

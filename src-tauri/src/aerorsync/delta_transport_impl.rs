@@ -77,7 +77,7 @@ use crate::aerorsync::engine_adapter::{
 use crate::aerorsync::events::WarningCollector;
 use crate::aerorsync::native_driver::{
     xxh128_wire_bytes, AerorsyncDriver, PreambleProfile, MD4_ALGO_NAME, MD5_ALGO_NAME,
-    SHA1_ALGO_NAME, XXH128_ALGO_NAME, XXH3_ALGO_NAME, XXH64_ALGO_NAME,
+    MIN_PEER_PROTOCOL, SHA1_ALGO_NAME, XXH128_ALGO_NAME, XXH3_ALGO_NAME, XXH64_ALGO_NAME,
 };
 use crate::aerorsync::real_wire::{is_symlink_mode, FileListEntry};
 use crate::aerorsync::remote_command::{EffectiveMetadataFlags, RemoteCommandSpec};
@@ -232,15 +232,34 @@ impl AerorsyncDeltaTransport {
     /// and caching that verdict, is the application's rule and lives in
     /// the adapter.
     pub(crate) async fn probe(&self) -> Result<TransportProbe, ProbeFailure> {
-        if self.ssh_config.prefers_russh_leg() {
+        let probe = if self.ssh_config.prefers_russh_leg() {
             let transport = RusshSessionTransport::connect(self.ssh_config.clone())
                 .await
                 .map_err(ProbeFailure::during_connect)?;
-            transport.probe().await.map_err(ProbeFailure::during_probe)
+            transport
+                .probe()
+                .await
+                .map_err(ProbeFailure::during_probe)?
         } else {
             let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
-            transport.probe().await.map_err(ProbeFailure::during_probe)
+            transport
+                .probe()
+                .await
+                .map_err(ProbeFailure::during_probe)?
+        };
+        // A protocol-30 peer (rsync 3.0.x) is refused by the driver before
+        // any data moves; saying so here lets the application cache the
+        // verdict instead of paying one refused session per file.
+        if probe.protocol.0 < MIN_PEER_PROTOCOL {
+            return Err(ProbeFailure::during_probe(
+                AerorsyncError::unsupported_version(format!(
+                    "rsync peer speaks protocol {} ({}); the native path needs protocol {} \
+                     (rsync 3.1.0 or later)",
+                    probe.protocol.0, probe.remote_banner, MIN_PEER_PROTOCOL
+                )),
+            ));
         }
+        Ok(probe)
     }
 
     /// P3-T01 W3.2(b2): open a session-reuse batch backed by russh.
@@ -1265,9 +1284,10 @@ where
     // via the streaming `HashingWriter`; xxh3/xxh64/md5/md4/sha1 via a
     // page-cache re-read of the temp). Named unsupported winners
     // (sha256, sha512, none, ...) are rejected at preamble time, so this
-    // match never has to invent a digest. The `_` arm remains for an
-    // empty legacy advertisement, where `negotiated_checksum_algo()` is
-    // None and the historical no-op verify is preserved.
+    // match never has to invent a digest. A peer that negotiates nothing
+    // (rsync 3.1.x) reads as md5 through `effective_checksum_algo`: before
+    // 2026-09-24 it read as `None` here and its trailer went unverified.
+    // The `_` arm is left for a driver whose preamble never ran.
     //
     // HASHER DESIGN (CLAUDE-AV-B3-14): `HashingWriter` is constructed
     // BEFORE the drive, but the negotiated algo is only known AFTER it
@@ -1289,7 +1309,7 @@ where
     // mirrors that asymmetry already, so `checksum_seed` must NOT enter
     // here: feeding it in would break against real rsync AND against our
     // own server.
-    match driver.negotiated_checksum_algo() {
+    match driver.effective_checksum_algo() {
         Some(XXH128_ALGO_NAME) => {
             if let Some(expected) = driver.received_file_checksum() {
                 let actual = xxh128_wire_bytes(reconstructed_digest);
@@ -1359,9 +1379,8 @@ where
             }
         }
         _ => {
-            // Absent negotiation (empty legacy advertisement): leave the
-            // delta path alone. Named unsupported winners never reach
-            // this arm; they fail at preamble as NegotiationFailed.
+            // No preamble ran. Named unsupported winners never reach this
+            // arm; they fail at preamble as NegotiationFailed.
         }
     }
 
@@ -2186,12 +2205,24 @@ mod tests {
     /// the reconstruction is exactly `content`. That isolates the
     /// trailer check, which is what these tests are about.
     fn download_session_inbound(content: &[u8], peer_algos: &str, trailer: Vec<u8>) -> Vec<u8> {
+        download_session_inbound_shaped(content, Some(peer_algos), trailer)
+    }
+
+    /// `peer_algos: None` scripts a server that negotiates nothing (rsync
+    /// 3.1.x): compat 0x3f without CF_VARINT_FLIST_FLAGS, no lists,
+    /// classic file-list flags, and zlibx literals, because the driver
+    /// reopens such a session with `--new-compress`.
+    fn download_session_inbound_shaped(
+        content: &[u8],
+        peer_algos: Option<&str>,
+        trailer: Vec<u8>,
+    ) -> Vec<u8> {
         use crate::aerorsync::real_wire::{
-            compress_zstd_literal_stream, encode_delta_stream, encode_file_list_entry,
-            encode_file_list_terminator, encode_item_flags, encode_ndx, encode_server_preamble,
-            encode_sum_head, encode_summary_frame, DeltaOp, DeltaStreamReport,
-            FileListDecodeOptions, FileListEntry, MuxHeader, MuxTag, NdxState, ServerPreamble,
-            SumHead, SummaryFrame,
+            compress_deflate_literal_stream, compress_zstd_literal_stream, encode_delta_stream,
+            encode_file_list_entry, encode_file_list_terminator, encode_item_flags, encode_ndx,
+            encode_server_preamble, encode_sum_head, encode_summary_frame, DeltaOp,
+            DeltaStreamReport, FileListDecodeOptions, FileListEntry, MuxHeader, MuxTag, NdxState,
+            ServerPreamble, SumHead, SummaryFrame,
         };
 
         fn mux(payload: &[u8]) -> Vec<u8> {
@@ -2235,9 +2266,10 @@ mod tests {
             xattrs: None,
             acls: None,
         };
+        let legacy = peer_algos.is_none();
         let opts = FileListDecodeOptions {
             protocol: 31,
-            xfer_flags_as_varint: true,
+            xfer_flags_as_varint: !legacy,
             always_checksum: false,
             csum_len: checksum_len,
             preserve_uid: false,
@@ -2259,8 +2291,11 @@ mod tests {
             remainder_length: 0,
         }));
 
-        let compressed =
-            compress_zstd_literal_stream(&[content]).expect("zstd compress fixture literal");
+        let compressed = if legacy {
+            compress_deflate_literal_stream(&[content]).expect("zlibx compress fixture literal")
+        } else {
+            compress_zstd_literal_stream(&[content]).expect("zstd compress fixture literal")
+        };
         let delta_bytes = encode_delta_stream(&DeltaStreamReport {
             ops: vec![DeltaOp::Literal {
                 compressed_payload: compressed[0].clone(),
@@ -2285,9 +2320,9 @@ mod tests {
 
         let mut inbound = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07,
-            checksum_algos: peer_algos.to_string(),
-            compression_algos: "none zstd".to_string(),
+            compat_flags: if legacy { 0x3f } else { 0x87 },
+            checksum_algos: peer_algos.unwrap_or("").to_string(),
+            compression_algos: if legacy { "" } else { "none zstd" }.to_string(),
             checksum_seed: 0xDEAD_BEEF,
             consumed: 0,
         });
@@ -2462,6 +2497,55 @@ mod tests {
             tokio::fs::read(&local_path).await.expect("target written"),
             content
         );
+    }
+
+    /// A peer that negotiates nothing (rsync 3.1.x) uses MD5 for the
+    /// whole-file trailer. Until 2026-09-24 the guard asked for the
+    /// negotiated winner, got `None` for such a peer, and committed the
+    /// reconstruction without verifying it. Both halves are pinned: a
+    /// wrong MD5 trailer is refused, a right one commits.
+    #[tokio::test]
+    async fn legacy_peer_download_verifies_the_md5_trailer() {
+        use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
+        use md5::{Digest, Md5};
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        let right = Md5::digest(&content).to_vec();
+        for (trailer, must_commit) in [(vec![0xCC; 16], false), (right, true)] {
+            let dir = fresh_tempdir();
+            let local_path = dir.path().join("target.bin");
+            let transport = MockRemoteShellTransport::new(
+                MockTransportConfig::healthy_upload()
+                    .with_raw_inbound(download_session_inbound_shaped(&content, None, trailer)),
+            );
+            let result = do_download(
+                transport,
+                CancelHandle::inert(),
+                "/remote/target.bin",
+                &local_path,
+                PreambleProfile::default(),
+                None,
+                false,
+                false,
+                false,
+            )
+            .await;
+            if must_commit {
+                assert!(
+                    result.is_ok(),
+                    "a matching MD5 trailer must commit: {result:?}"
+                );
+                assert_eq!(tokio::fs::read(&local_path).await.unwrap(), content);
+            } else {
+                match result {
+                    Err(TransferError::Soft { detail }) => assert!(
+                        detail.contains("checksum mismatch") && detail.contains("md5"),
+                        "{detail}"
+                    ),
+                    other => panic!("a wrong MD5 trailer must be refused, got {other:?}"),
+                }
+                assert!(!local_path.exists());
+            }
+        }
     }
 
     /// CLAUDE-AV-B3-14: md5 peer + wrong trailer must fail the same way
@@ -3213,7 +3297,7 @@ mod tests {
         };
         let mut inbound = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07,
+            compat_flags: 0x87,
             checksum_algos: "md5".to_string(),
             compression_algos: "none zstd".to_string(),
             checksum_seed: 0xDEAD_BEEF,
@@ -3360,7 +3444,7 @@ mod tests {
 
         let mut inbound = encode_server_preamble(&ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07,
+            compat_flags: 0x87,
             checksum_algos: "md5".to_string(),
             compression_algos: "none zstd".to_string(),
             checksum_seed: 0xDEAD_BEEF,
