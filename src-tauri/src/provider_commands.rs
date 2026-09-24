@@ -14868,6 +14868,53 @@ mod tests {
     }
 
     #[test]
+    fn test_s3_provider_params_template_preset_without_region_or_endpoint() {
+        // Presets whose template needs {region} but that ship no default
+        // region (Wasabi, MEGA S4, ...) used to fall through to
+        // `s3.us-east-1.amazonaws.com` when a caller omitted both. They must
+        // expand the template with the region the GUI form preselects.
+        for (preset, region, endpoint) in [
+            ("wasabi", "us-east-1", "https://s3.us-east-1.wasabisys.com"),
+            ("mega-s4", "eu-central-1", "s3.eu-central-1.s4.mega.io"),
+            (
+                "digitalocean-spaces",
+                "nyc3",
+                "https://nyc3.digitaloceanspaces.com",
+            ),
+        ] {
+            let mut params = s3_params(None);
+            params.provider_id = Some(preset.to_string());
+            params.region = None;
+            params.endpoint = None;
+            let config = params.to_provider_config().unwrap();
+            assert_eq!(
+                config.extra.get("region").map(String::as_str),
+                Some(region),
+                "{preset}"
+            );
+            assert_eq!(
+                config.extra.get("endpoint").map(String::as_str),
+                Some(endpoint),
+                "{preset}"
+            );
+        }
+        // An explicit endpoint keeps the profile's own signing region.
+        let mut params = s3_params(None);
+        params.provider_id = Some("wasabi".to_string());
+        params.region = None;
+        params.endpoint = Some("https://s3.eu-central-1.wasabisys.com".to_string());
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("us-east-1")
+        );
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://s3.eu-central-1.wasabisys.com")
+        );
+    }
+
+    #[test]
     fn test_s3_provider_params_preset_template_without_explicit_endpoint() {
         // Bucket Fetch discovery sends region but no endpoint for template
         // presets. Without preset resolution the provider fell back to

@@ -239,6 +239,20 @@ fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
     }
 }
 
+/// Region used to expand a `{region}` endpoint template when the profile has
+/// neither a region nor an endpoint. Mirrors the first option of each preset's
+/// region select in `src/providers/registry.ts`, which the GUI form preselects.
+fn s3_profile_template_default_region(provider_id: &str) -> Option<&'static str> {
+    match provider_id {
+        "wasabi" => Some("us-east-1"),
+        "mega-s4" => Some("eu-central-1"),
+        "alibaba-oss" => Some("cn-hangzhou"),
+        "tencent-cos" => Some("ap-guangzhou"),
+        "digitalocean-spaces" => Some("nyc3"),
+        _ => s3_profile_default_region(provider_id),
+    }
+}
+
 /// Addressing style a preset is known to need. `custom-s3` is deliberately
 /// absent: it is not a preset, and `S3Config` already defaults a custom
 /// endpoint to path-style, which is what self-hosted MinIO/Garage/Ceph need.
@@ -373,8 +387,25 @@ pub fn apply_s3_profile_defaults(
         let mut endpoint = template.to_string();
 
         if endpoint.contains("{region}") {
-            let region = extra.get("region").map(String::as_str)?;
-            endpoint = endpoint.replace("{region}", region);
+            // No region and no explicit endpoint: take the region the GUI form
+            // preselects (first select option), so every caller builds the same
+            // host instead of falling through to `s3.{region}.amazonaws.com`.
+            // Reached only without an explicit endpoint, so a profile that
+            // already signs against its own endpoint keeps its region.
+            let region = match extra
+                .get("region")
+                .map(|r| r.trim())
+                .filter(|r| !r.is_empty())
+            {
+                Some(region) => region.to_string(),
+                None => {
+                    let region = s3_profile_template_default_region(provider_id)?;
+                    extra.insert("region".to_string(), region.to_string());
+                    extra.insert(S3_REGION_SOURCE_META_KEY.to_string(), "preset".to_string());
+                    region.to_string()
+                }
+            };
+            endpoint = endpoint.replace("{region}", &region);
         }
 
         // Jurisdiction: a bucket created in one answers ONLY on its own host

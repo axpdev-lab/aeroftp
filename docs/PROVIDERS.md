@@ -39,7 +39,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Google Cloud Storage | US | 5 GB (always-free, card req.) | S3* |
 | Google Drive | US | 15 GB | OAuth |
 | Hetzner Storage Box | DE | paid plan | SFTP* |
-| IBM Cloud Object Storage | US | 5 GB (free tier, card req.) | S3* |
+| IBM Cloud Object Storage | US | 12-month trial | S3* |
 | IDrive e2 | US | 7-day trial | S3* |
 | ImageKit | IN | 20 GB (media CDN) | API |
 | Immich | - | self-hosted | API |
