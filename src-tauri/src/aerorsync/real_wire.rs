@@ -2911,7 +2911,12 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
         if xflags == 0 && !is_directory_mode(entry.mode) {
             xflags |= XMIT_TOP_DIR;
         }
-        if xflags & 0xFF00 != 0 || xflags == 0 {
+        // XMIT_EXTENDED_FLAGS already set also means two bytes: an entry
+        // decoded from `04 00` (a directory with no other flag) carries
+        // 0x0004, and as the single byte `04` the peer would read the next
+        // byte as the high half. rsync's sender never has the bit set at
+        // this point, so its bytes are unchanged (found by the B1 lane).
+        if xflags & 0xFF00 != 0 || xflags == 0 || xflags & XMIT_EXTENDED_FLAGS != 0 {
             xflags |= XMIT_EXTENDED_FLAGS;
             out.extend_from_slice(&(xflags as u16).to_le_bytes());
         } else {
@@ -5059,6 +5064,15 @@ mod tests {
             encode_file_list_entry(&entry(0, 0o040755), &opts)[..2],
             [0x04, 0x00]
         );
+        // That directory decodes to flags 0x0004 and must go back out as
+        // the same two bytes, not as the lone `04`.
+        let dir = encode_file_list_entry(&entry(0, 0o040755), &opts);
+        let (decoded, _) = decode_file_list_entry(&dir, &opts).unwrap();
+        let FileListDecodeOutcome::Entry(dir_entry) = decoded else {
+            panic!("expected the directory entry back, got {decoded:?}");
+        };
+        assert_eq!(dir_entry.flags, XMIT_EXTENDED_FLAGS);
+        assert_eq!(encode_file_list_entry(&dir_entry, &opts), dir);
     }
 
     #[test]
