@@ -6820,7 +6820,7 @@ const App: React.FC = () => {
     // host, preset); non-S3 protocols only forward a stored endpoint option.
     const s3Location = protocol === 's3'
       ? resolveProfileS3Location(effectiveParams.providerId, effectiveParams.options, effectiveParams.server)
-      : { endpoint: (effectiveParams.options?.endpoint as string | undefined) || null, region: effectiveParams.options?.region as string | undefined };
+      : { endpoint: (effectiveParams.options?.endpoint as string | undefined) || null, signingRegion: (effectiveParams.options?.region as string | undefined) || 'us-east-1' };
 
     const providerParams = {
       protocol,
@@ -6832,7 +6832,7 @@ const App: React.FC = () => {
       password: effectiveParams.password,
       initial_path: initialPath,
       bucket: effectiveParams.options?.bucket,
-      region: s3Location.region || (effectiveParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
+      region: s3Location.signingRegion,
       endpoint: s3Location.endpoint,
       path_style: effectiveParams.options?.pathStyle,
       anonymous: effectiveParams.options?.anonymous || false,
@@ -8787,7 +8787,7 @@ const App: React.FC = () => {
           // S3 endpoint + region from the rule the main connect path uses.
           const cloudS3Location = protocol === 's3'
             ? resolveProfileS3Location(cloudServer.providerId, cloudServer.options, cloudServer.host)
-            : { endpoint: (cloudServer.options?.endpoint as string | undefined) || null, region: cloudServer.options?.region as string | undefined };
+            : { endpoint: (cloudServer.options?.endpoint as string | undefined) || null, signingRegion: cloudServer.options?.region as string | undefined };
           const providerParams = {
             protocol,
             profile_id: cloudServer.id || null,
@@ -8797,7 +8797,7 @@ const App: React.FC = () => {
             password: cloudPassword,
             initial_path: cloudConfig.remote_folder || null,
             bucket: cloudServer.options?.bucket,
-            region: cloudS3Location.region || (protocol === 's3' ? 'us-east-1' : undefined),
+            region: cloudS3Location.signingRegion,
             endpoint: cloudS3Location.endpoint,
             path_style: cloudServer.options?.pathStyle,
             private_key_path: cloudServer.options?.private_key_path || null,

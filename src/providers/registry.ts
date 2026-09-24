@@ -2413,21 +2413,24 @@ export const presetDefaultS3Region = (providerId?: string): string | undefined =
 /**
  * Endpoint and region a saved S3 profile connects with: the stored endpoint
  * option, then an explicit host, then the preset (static endpoint, or template
- * expanded with the stored or default region). The preset default region is
- * returned only when the template actually used it, so the region sent always
- * matches the host built from it, and a profile with its own endpoint keeps
- * signing with whatever region it stored. The single rule the connect,
- * speed-test and edit paths share.
+ * expanded with the stored or default region). `region` carries the preset
+ * default only when the template actually used it, so it always matches the
+ * host built from it (the edit path stores it). `signingRegion` is what a
+ * connection sends: that region, else the legacy fallback for a profile with
+ * its own endpoint and no stored region (`global` for FileLu S5, `us-east-1`
+ * otherwise). The single rule the connect, AeroCloud, speed-test and edit
+ * paths share, so no caller re-derives the fallback.
  */
 export const resolveProfileS3Location = (
     providerId: string | undefined,
     options: { endpoint?: unknown; region?: unknown; accountId?: unknown; jurisdiction?: unknown } | null | undefined,
     host?: string | null,
-): { endpoint: string | null; region?: string } => {
+): { endpoint: string | null; region?: string; signingRegion: string } => {
     const storedRegion = typeof options?.region === 'string' && options.region.trim() ? options.region.trim() : undefined;
     const storedEndpoint = typeof options?.endpoint === 'string' ? options.endpoint.trim() : '';
-    if (storedEndpoint) return { endpoint: storedEndpoint, region: storedRegion };
-    if (isExplicitS3Host(host)) return { endpoint: host!.trim(), region: storedRegion };
+    const signing = (region?: string) => region || (providerId === 'filelu-s3' ? 'global' : 'us-east-1');
+    if (storedEndpoint) return { endpoint: storedEndpoint, region: storedRegion, signingRegion: signing(storedRegion) };
+    if (isExplicitS3Host(host)) return { endpoint: host!.trim(), region: storedRegion, signingRegion: signing(storedRegion) };
     const region = storedRegion || presetDefaultS3Region(providerId);
-    return { endpoint: resolveS3Endpoint(providerId, region, s3TemplateParams(options)), region };
+    return { endpoint: resolveS3Endpoint(providerId, region, s3TemplateParams(options)), region, signingRegion: signing(region) };
 };
