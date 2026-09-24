@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -261,6 +262,32 @@ def build_trees(only):
         fix_times(root)
 
 
+# The p8 scenarios take a few minutes each; anything far past that is a stall
+# (the proxy deadlock p8 once exposed), and must fail with diagnostics instead
+# of blocking the campaign forever.
+CLIENT_TIMEOUT_S = 1200
+
+
+def build_argv(run, key: Path, dest: Path) -> list:
+    """The client argv of one run. Pure: freezing re-derives it without
+    re-running the scenario."""
+    rid, _, tree, direction, rel, opts, _ = run
+    opts = [o.replace("@LIST@", str(dest / "files-from.txt")) for o in opts]
+    remote = "testuser@127.0.0.1:/workspace/b0c0"
+    if direction == "up":
+        if rid == "c12-up-mkpath":
+            return ["rsync", "-e", ssh_e(key), *opts, str(SRC / tree / rel),
+                    f"{remote}/up/{rid}/new/deep/"]
+        return ["rsync", "-e", ssh_e(key), *opts, str(SRC / tree / rel), f"{remote}/up/{rid}/"]
+    return ["rsync", "-e", ssh_e(key), *opts, f"{remote}/src/{tree}/{rel}",
+            str(B0 / "dl" / rid) + "/"]
+
+
+def write_argv(dest: Path, argv: list):
+    # JSON, not " ".join: `--filter=- tmp/` must stay one argument.
+    (dest / "client.argv.json").write_text(json.dumps(argv, indent=1) + "\n")
+
+
 def run_one(run, key: Path) -> Path:
     rid, point, tree, direction, rel, opts, _ = run
     dest = OUT / rid
@@ -268,34 +295,27 @@ def run_one(run, key: Path) -> Path:
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
     clear_sessions()
-    opts = list(opts)
     if any("@LIST@" in o for o in opts):
-        lst = dest / "files-from.txt"
-        lst.write_text("keep/a.txt\ny.txt\n")
-        opts = [o.replace("@LIST@", str(lst)) for o in opts]
-    remote = f"testuser@127.0.0.1:/workspace/b0c0"
-    if direction == "up":
-        target = B0 / "up" / rid
-        if target.exists():
-            shutil.rmtree(target)
-        target.mkdir(parents=True)
-        if rid == "c13-up-delete":
-            wfile(target / "fl" / "stale.txt", b"to be deleted\n")
-            fix_times(target)
-        if rid == "c12-up-mkpath":
-            shutil.rmtree(target)  # --mkpath must create up/<rid>/new/deep/
-            argv = ["rsync", "-e", ssh_e(key), *opts, str(SRC / tree / rel),
-                    f"{remote}/up/{rid}/new/deep/"]
-        else:
-            argv = ["rsync", "-e", ssh_e(key), *opts, str(SRC / tree / rel), f"{remote}/up/{rid}/"]
-    else:
-        target = B0 / "dl" / rid
-        if target.exists():
-            shutil.rmtree(target)
-        target.mkdir(parents=True)
-        argv = ["rsync", "-e", ssh_e(key), *opts, f"{remote}/src/{tree}/{rel}", str(target) + "/"]
-    r = subprocess.run(argv, capture_output=True)
-    (dest / "client.argv.txt").write_text(" ".join(argv) + "\n")
+        (dest / "files-from.txt").write_text("keep/a.txt\ny.txt\n")
+    target = B0 / ("up" if direction == "up" else "dl") / rid
+    if target.exists():
+        shutil.rmtree(target)
+    target.mkdir(parents=True)
+    if rid == "c13-up-delete":
+        wfile(target / "fl" / "stale.txt", b"to be deleted\n")
+        fix_times(target)
+    if rid == "c12-up-mkpath":
+        shutil.rmtree(target)  # --mkpath must create up/<rid>/new/deep/
+    argv = build_argv(run, key, dest)
+    write_argv(dest, argv)
+    try:
+        r = subprocess.run(argv, capture_output=True, timeout=CLIENT_TIMEOUT_S)
+    except subprocess.TimeoutExpired as e:
+        (dest / "client.stdout.txt").write_bytes(e.stdout or b"")
+        (dest / "client.stderr.txt").write_bytes(e.stderr or b"")
+        (dest / "client.rc.txt").write_text("timeout\n")
+        raise SystemExit(f"[b0c0] {rid}: rsync did not finish in {CLIENT_TIMEOUT_S} s "
+                         f"(stalled proxy or server?); partial output in {dest}")
     (dest / "client.stdout.txt").write_bytes(r.stdout)
     (dest / "client.stderr.txt").write_bytes(r.stderr)
     (dest / "client.rc.txt").write_text(f"{r.returncode}\n")
@@ -340,12 +360,12 @@ def freeze(only):
             shutil.rmtree(dst)
         dst.mkdir()
         for f in sorted(src.iterdir()):
-            if f.name in ("start.txt", "end.txt", "decoded.txt"):
+            if f.name in ("start.txt", "end.txt", "decoded.txt", "client.argv.txt"):
                 # Timestamps carry no protocol content; decoded.txt is
                 # regenerated from the capture by decode_rsync_wire.py.
                 continue
             data = f.read_bytes()
-            if f.name == "client.argv.txt":
+            if f.name == "client.argv.json":
                 # The station's absolute paths (home, key) do not belong in
                 # the repository; the argv shape is what the evidence needs.
                 data = data.replace(str(CAPTURE).encode(), b"<capture>")

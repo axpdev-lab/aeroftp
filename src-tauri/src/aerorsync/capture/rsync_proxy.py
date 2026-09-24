@@ -103,9 +103,14 @@ def main() -> int:
                 # drain and exit. Without this we could block in select()
                 # indefinitely when all three sources are gone but the
                 # OS hasn't yet delivered EOF.
+                # Leave only once nothing queued is still owed to a live
+                # sink: bytes read from the server but not yet accepted by
+                # a busy client would otherwise be dropped here, and the
+                # client would see a truncated stream (the capture files
+                # would still be complete, since the tee runs at read time).
                 if proc.poll() is not None and not any(
                     fd in sources for fd in (proc_out_fd, proc_err_fd)
-                ):
+                ) and not any(buf for k, buf in pending.items() if k not in dead_sinks):
                     break
                 continue
 
