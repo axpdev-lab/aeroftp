@@ -22,6 +22,7 @@ import type {
     CompareResultEntry,
 } from '../../utils/compareEndpoints';
 import { unlistedEntryCount } from '../../utils/compareEndpoints';
+import { entriesThatWillNotFit, type ProviderFileLimits } from '../../utils/providerFileLimits';
 import {
     buildCompareExportRows,
     compareExportFilename,
@@ -44,6 +45,12 @@ interface CompareTabContentProps {
     canMirrorRightToLeft: boolean;
     onApplyMirrorLeftToRight: (entries: CompareResultEntry[]) => void;
     onApplyMirrorRightToLeft: (entries: CompareResultEntry[]) => void;
+    /**
+     * #347: the remote's documented single-file and name limits, or null when
+     * it documents none. Entries a mirror would send past them are listed
+     * before the sync instead of failing during it.
+     */
+    remoteLimits?: ProviderFileLimits | null;
 }
 
 const BUCKET_ORDER: CompareBucket[] = [
@@ -244,8 +251,13 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     canMirrorRightToLeft,
     onApplyMirrorLeftToRight,
     onApplyMirrorRightToLeft,
+    remoteLimits = null,
 }) => {
     const t = useTranslation();
+    const wontFit = React.useMemo(
+        () => entriesThatWillNotFit(result, pairKind, remoteLimits),
+        [result, pairKind, remoteLimits],
+    );
     // Live counters for the scan the spinner below used to hide entirely.
     const { totals: scanTotals, elapsedMs: scanElapsedMs } = useScanProgress(!!loading && !result, scanProgressId);
 
@@ -392,6 +404,37 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
             </div>
 
             <div className="max-h-[50vh] space-y-2 overflow-y-auto px-4 pb-3">
+                {wontFit.length > 0 && remoteLimits && (
+                    <div className="rounded-md border border-l-4 border-gray-200 border-l-red-500 bg-red-50/60 p-2 text-xs dark:border-gray-700 dark:border-l-red-500 dark:bg-red-900/20">
+                        <div className="flex items-center gap-1.5 font-medium text-red-700 dark:text-red-300">
+                            <FileWarning size={13} />
+                            {t('aerosync.compareWontFitTitle', {
+                                count: wontFit.length,
+                                name: pairKind === 'remote-local' ? leftLabel : rightLabel,
+                            })}
+                        </div>
+                        <p className="mt-0.5 text-gray-600 dark:text-gray-400">{t('aerosync.compareWontFitHint')}</p>
+                        <ul className="mt-1.5 space-y-0.5">
+                            {wontFit.slice(0, MAX_PREVIEW_ROWS).map(({ entry, reasons, size }) => (
+                                <li key={entry.relativePath ?? entry.name} className="flex flex-wrap items-baseline gap-x-2 font-mono text-[11px]">
+                                    <span className="break-all text-gray-800 dark:text-gray-200">{entry.relativePath ?? entry.name}</span>
+                                    {reasons.includes('too-large') && remoteLimits.maxFileSize !== null && (
+                                        <span className="text-red-600 dark:text-red-400">
+                                            {t('aerosync.compareWontFitTooLarge', { size: formatSize(size), limit: formatBytes(remoteLimits.maxFileSize) })}
+                                        </span>
+                                    )}
+                                    {reasons.includes('name-too-long') && (
+                                        <span className="text-red-600 dark:text-red-400">
+                                            {remoteLimits.maxNameBytes !== null
+                                                ? t('aerosync.compareWontFitNameBytes', { count: remoteLimits.maxNameBytes })
+                                                : t('aerosync.compareWontFitNameChars', { count: remoteLimits.maxNameChars ?? 0 })}
+                                        </span>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
                 {BUCKET_ORDER.map((bucket) => (
                     <BucketSection
                         key={bucket}
