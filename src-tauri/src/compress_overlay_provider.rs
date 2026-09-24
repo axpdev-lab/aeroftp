@@ -129,6 +129,85 @@ impl CompressOverlayProvider {
     }
 }
 
+/// Write the object to upload for `local_path`: the header followed by either
+/// the zstd frame or the raw bytes, whichever is smaller. Streams through temp
+/// files, so memory stays bounded regardless of file size.
+///
+/// `remote_path` is the logical name (this overlay sits outside crypt, so the
+/// name is plaintext). A name whose extension is already a compressed format
+/// (media, archives, office documents, AeroFTP's own encrypted containers) goes
+/// straight to stored mode without running zstd over it: the result would be
+/// discarded anyway, and on a large video that pass is most of the upload's CPU
+/// time. Everything else is still decided on the real outcome, so a file with
+/// an unlisted compressed format is stored raw after one pass, never enlarged.
+fn build_upload_wire(
+    local_path: &str,
+    remote_path: &str,
+    level: i32,
+) -> Result<tempfile::NamedTempFile, ProviderError> {
+    // Streaming: compress local -> temp, keep whichever is smaller (zstd vs
+    // stored), prepend the header, upload. Bounded memory throughout.
+    let plain_len = std::fs::metadata(local_path)
+        .map_err(|e| ProviderError::TransferFailed(format!("stat local: {e}")))?
+        .len();
+
+    // Pass 1: stream-compress to a temp, unless the format is known not to shrink.
+    let comp_tmp = tempfile::NamedTempFile::new()
+        .map_err(|e| ProviderError::TransferFailed(format!("tmp comp: {e}")))?;
+    let try_zstd = crate::transfer_pool::should_compress(remote_path);
+    if try_zstd {
+        let mut reader = std::fs::File::open(local_path)
+            .map_err(|e| ProviderError::TransferFailed(format!("open local: {e}")))?;
+        let mut writer = comp_tmp
+            .reopen()
+            .map_err(|e| ProviderError::TransferFailed(format!("reopen comp: {e}")))?;
+        zstd::stream::copy_encode(&mut reader, &mut writer, level)
+            .map_err(|e| ProviderError::TransferFailed(format!("compress: {e}")))?;
+        writer
+            .flush()
+            .map_err(|e| ProviderError::TransferFailed(format!("flush comp: {e}")))?;
+    }
+    let comp_len = if try_zstd {
+        comp_tmp
+            .path()
+            .metadata()
+            .map_err(|e| ProviderError::TransferFailed(format!("stat comp: {e}")))?
+            .len()
+    } else {
+        u64::MAX
+    };
+
+    // Build the final wire = header + smaller payload.
+    let wire_tmp = tempfile::NamedTempFile::new()
+        .map_err(|e| ProviderError::TransferFailed(format!("tmp wire: {e}")))?;
+    {
+        let mut w = std::io::BufWriter::new(
+            wire_tmp
+                .reopen()
+                .map_err(|e| ProviderError::TransferFailed(format!("reopen wire: {e}")))?,
+        );
+        if comp_len < plain_len {
+            w.write_all(&make_header(MODE_ZSTD, plain_len))
+                .map_err(|e| ProviderError::TransferFailed(format!("write header: {e}")))?;
+            let mut r = std::fs::File::open(comp_tmp.path())
+                .map_err(|e| ProviderError::TransferFailed(format!("open comp: {e}")))?;
+            std::io::copy(&mut r, &mut w)
+                .map_err(|e| ProviderError::TransferFailed(format!("copy comp: {e}")))?;
+        } else {
+            // zstd did not help: store raw so the object never grows beyond the header.
+            w.write_all(&make_header(MODE_STORED, plain_len))
+                .map_err(|e| ProviderError::TransferFailed(format!("write header: {e}")))?;
+            let mut r = std::fs::File::open(local_path)
+                .map_err(|e| ProviderError::TransferFailed(format!("reopen local: {e}")))?;
+            std::io::copy(&mut r, &mut w)
+                .map_err(|e| ProviderError::TransferFailed(format!("copy raw: {e}")))?;
+        }
+        w.flush()
+            .map_err(|e| ProviderError::TransferFailed(format!("flush wire: {e}")))?;
+    }
+    Ok(wire_tmp)
+}
+
 #[async_trait]
 impl StorageProvider for CompressOverlayProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -252,62 +331,7 @@ impl StorageProvider for CompressOverlayProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        // Streaming: compress local -> temp, keep whichever is smaller (zstd vs
-        // stored), prepend the header, upload. Bounded memory throughout.
-        let plain_len = std::fs::metadata(local_path)
-            .map_err(|e| ProviderError::TransferFailed(format!("stat local: {e}")))?
-            .len();
-
-        // Pass 1: stream-compress to a temp.
-        let comp_tmp = tempfile::NamedTempFile::new()
-            .map_err(|e| ProviderError::TransferFailed(format!("tmp comp: {e}")))?;
-        {
-            let mut reader = std::fs::File::open(local_path)
-                .map_err(|e| ProviderError::TransferFailed(format!("open local: {e}")))?;
-            let mut writer = comp_tmp
-                .reopen()
-                .map_err(|e| ProviderError::TransferFailed(format!("reopen comp: {e}")))?;
-            zstd::stream::copy_encode(&mut reader, &mut writer, self.level)
-                .map_err(|e| ProviderError::TransferFailed(format!("compress: {e}")))?;
-            writer
-                .flush()
-                .map_err(|e| ProviderError::TransferFailed(format!("flush comp: {e}")))?;
-        }
-        let comp_len = comp_tmp
-            .path()
-            .metadata()
-            .map_err(|e| ProviderError::TransferFailed(format!("stat comp: {e}")))?
-            .len();
-
-        // Build the final wire = header + smaller payload.
-        let wire_tmp = tempfile::NamedTempFile::new()
-            .map_err(|e| ProviderError::TransferFailed(format!("tmp wire: {e}")))?;
-        {
-            let mut w = std::io::BufWriter::new(
-                wire_tmp
-                    .reopen()
-                    .map_err(|e| ProviderError::TransferFailed(format!("reopen wire: {e}")))?,
-            );
-            if comp_len < plain_len {
-                w.write_all(&make_header(MODE_ZSTD, plain_len))
-                    .map_err(|e| ProviderError::TransferFailed(format!("write header: {e}")))?;
-                let mut r = std::fs::File::open(comp_tmp.path())
-                    .map_err(|e| ProviderError::TransferFailed(format!("open comp: {e}")))?;
-                std::io::copy(&mut r, &mut w)
-                    .map_err(|e| ProviderError::TransferFailed(format!("copy comp: {e}")))?;
-            } else {
-                // zstd did not help: store raw so the object never grows beyond the header.
-                w.write_all(&make_header(MODE_STORED, plain_len))
-                    .map_err(|e| ProviderError::TransferFailed(format!("write header: {e}")))?;
-                let mut r = std::fs::File::open(local_path)
-                    .map_err(|e| ProviderError::TransferFailed(format!("reopen local: {e}")))?;
-                std::io::copy(&mut r, &mut w)
-                    .map_err(|e| ProviderError::TransferFailed(format!("copy raw: {e}")))?;
-            }
-            w.flush()
-                .map_err(|e| ProviderError::TransferFailed(format!("flush wire: {e}")))?;
-        }
-
+        let wire_tmp = build_upload_wire(local_path, remote_path, self.level)?;
         self.inner
             .upload(wire_tmp.path().to_str().unwrap(), remote_path, on_progress)
             .await
@@ -397,6 +421,63 @@ impl StorageProvider for CompressOverlayProvider {
 mod tests {
     use super::*;
     use aerovault::v3::chunking::zstd_compress;
+
+    fn wire_for(name: &str, content: &[u8]) -> Vec<u8> {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("payload");
+        std::fs::write(&local, content).unwrap();
+        let wire = build_upload_wire(local.to_str().unwrap(), name, 3).unwrap();
+        std::fs::read(wire.path()).unwrap()
+    }
+
+    /// A known compressed format is stored without a zstd pass, even when the
+    /// bytes themselves would shrink: the extension decides, before any CPU is
+    /// spent. The content here is all zeros, which zstd would crush.
+    #[test]
+    fn a_precompressed_name_is_stored_without_trying_zstd() {
+        let plain = vec![0u8; 64 * 1024];
+        for name in [
+            "/videos/holiday.mp4",
+            "/backups/servers.aeroftp-keystore",
+            "/a/b.ZIP",
+        ] {
+            let wire = wire_for(name, &plain);
+            assert_eq!(
+                parse_header_prefix(&wire, wire.len() as u64),
+                WirePlan::Stored(plain.len() as u64),
+                "{name}"
+            );
+            assert_eq!(&wire[COMPRESS_HEADER_LEN..], &plain[..], "{name}");
+        }
+    }
+
+    /// Everything else is still decided on the real outcome.
+    #[test]
+    fn other_names_are_compressed_when_it_helps_and_stored_when_it_does_not() {
+        let zeros = vec![0u8; 64 * 1024];
+        let wire = wire_for("/docs/notes.txt", &zeros);
+        assert_eq!(
+            parse_header_prefix(&wire, wire.len() as u64),
+            WirePlan::Zstd(zeros.len() as u64)
+        );
+        assert!(wire.len() < zeros.len() / 10);
+
+        // Deterministic noise: zstd cannot shrink it, so it is stored raw.
+        let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+        let noise: Vec<u8> = (0..64 * 1024)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                x as u8
+            })
+            .collect();
+        let wire = wire_for("/data/blob.bin", &noise);
+        assert_eq!(
+            parse_header_prefix(&wire, wire.len() as u64),
+            WirePlan::Stored(noise.len() as u64)
+        );
+    }
 
     #[test]
     fn header_zstd_roundtrip_and_bounded() {

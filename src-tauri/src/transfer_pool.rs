@@ -152,6 +152,10 @@ const PRECOMPRESSED_EXTENSIONS: &[&str] = &[
     "woff",
     "woff2",
     "aerovault",
+    // AeroFTP's own containers: encrypted, so nothing left to compress.
+    "aeroftp",
+    "aeroftp-keystore",
+    "aeroftp-crypt",
 ];
 
 /// Validate parallel transfer config, clamping values to safe ranges
