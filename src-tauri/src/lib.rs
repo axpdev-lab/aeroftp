@@ -19313,7 +19313,6 @@ pub fn run() {
             ai_tools::prepare_ai_tool_approval,
             ai_tools::grant_ai_tool_approval,
             ai_tools::execute_ai_tool,
-            ai_tools::shell_execute,
             ai_tools::clipboard_read_image,
             plugins::prepare_plugin_tool_approval,
             // Context Intelligence commands

@@ -5024,4 +5024,51 @@ mod tests {
         assert_eq!(calls[0].0, "");
         assert!(!calls[0].2);
     }
+
+    /// SECVAL-A (v4.2.0 pre-release validation, lead 7): the real MCP
+    /// `aeroftp_download_file` handler validates `local_path`, then runs
+    /// `create_dir_all(parent)` BEFORE the backend download. With a missing
+    /// intermediate directory under a denied HOME prefix the validator must
+    /// refuse, and nothing may be created inside `~/.ssh`. The fake backend's
+    /// `download` always errors, so the only side effect a pass-through can
+    /// leave is the directory tree.
+    #[tokio::test]
+    async fn secval_a_download_file_refuses_missing_dir_under_home_ssh() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(dir.path())
+            .expect("canonical tempdir")
+            .join("home");
+        std::fs::create_dir_all(home.join(".ssh")).expect("create ~/.ssh");
+        let prev = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let target = home.join(".ssh").join("nested").join("authorized_keys");
+        let ctx = test_ctx(Arc::new(FakeBackend::sample()));
+        let out = download_file(
+            &ctx,
+            &json!({
+                "server": "s",
+                "remote_path": "/pub/key",
+                "local_path": target.to_str().expect("utf8"),
+            }),
+        )
+        .await;
+        match prev {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        let created = home.join(".ssh").join("nested").exists();
+        let msg = match &out {
+            Ok(v) => format!("Ok({v})"),
+            Err(e) => format!("Err({e})"),
+        };
+        assert!(
+            !created,
+            "download_file created {} inside the denied ~/.ssh; result: {msg}",
+            home.join(".ssh").join("nested").display()
+        );
+        assert!(
+            msg.contains("denied"),
+            "expected a denylist refusal, got: {msg}"
+        );
+    }
 }
