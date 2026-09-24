@@ -5072,6 +5072,28 @@
             "mirrorRightToLeft": "Drych o'r dde i'r chwith",
             "directionLeftRight": "Chwith i'r Dde",
             "directionRightLeft": "Dde i'r Chwith",
+            "directionLocalToRemote": "Lleol → Pell",
+            "directionRemoteToLocal": "Pell → Lleol",
+            "directionBothWays": "Y ddwy ffordd",
+            "modeHeader": "Modd",
+            "preset": {
+                "mirror": {
+                    "name": "Drych",
+                    "tagline": "Gwneud y gyrchfan yn union yr un fath â'r ffynhonnell. Yn dileu ffeiliau ychwanegol ac yn trosysgrifo copïau mwy newydd."
+                },
+                "backup": {
+                    "name": "Copi wrth gefn",
+                    "tagline": "Copïo ffeiliau coll a mwy newydd. Byth yn dileu, byth yn trosysgrifo copi mwy newydd yn y gyrchfan."
+                },
+                "update": {
+                    "name": "Diweddaru",
+                    "tagline": "Copïo ffeiliau coll a mwy newydd. Hepgor gwrthdaro fel y gallwch eu datrys â llaw."
+                },
+                "bisync": {
+                    "name": "Cysoni dwyffordd",
+                    "tagline": "Lledaenu ffeiliau coll a mwy newydd i'r ddau gyfeiriad. Hepgor gwrthdaro."
+                }
+            },
             "conflictPolicy": "Polisi gwrthdaro",
             "ignoredForMirror": "ANWYBYDDIR AR GYFER DRYCH",
             "versionedBackup": "Wrth gefn fersiynol",

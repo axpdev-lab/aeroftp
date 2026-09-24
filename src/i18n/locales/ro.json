@@ -5053,6 +5053,28 @@
             "mirrorRightToLeft": "Oglindește de la dreapta la stânga",
             "directionLeftRight": "De la stânga la dreapta",
             "directionRightLeft": "De la dreapta la stânga",
+            "directionLocalToRemote": "Local → La distanță",
+            "directionRemoteToLocal": "La distanță → Local",
+            "directionBothWays": "În ambele sensuri",
+            "modeHeader": "Mod",
+            "preset": {
+                "mirror": {
+                    "name": "Oglindă",
+                    "tagline": "Face destinația identică cu sursa. Șterge fișierele în plus și suprascrie copiile mai noi."
+                },
+                "backup": {
+                    "name": "Copie de rezervă",
+                    "tagline": "Copiază fișierele lipsă și pe cele mai noi. Nu șterge niciodată și nu suprascrie niciodată o copie mai nouă din destinație."
+                },
+                "update": {
+                    "name": "Actualizare",
+                    "tagline": "Copiază fișierele lipsă și pe cele mai noi. Omite conflictele pentru a le rezolva manual."
+                },
+                "bisync": {
+                    "name": "Sincronizare bidirecțională",
+                    "tagline": "Propagă fișierele lipsă și pe cele mai noi în ambele sensuri. Omite conflictele."
+                }
+            },
             "conflictPolicy": "Politica conflictelor",
             "ignoredForMirror": "IGNORAT PENTRU OGLINDIRE",
             "versionedBackup": "Backup cu versiuni",

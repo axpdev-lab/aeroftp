@@ -1409,7 +1409,7 @@
             "connectionLostManual": "Nepodarilo sa opäť pripojiť. Pripojte sa ručne.",
             "connected": "Pripojené",
             "connectedTo": "Pripojené k {server}",
-            "missingFields": "Chybajuce polia",
+            "missingFields": "Chýbajúce polia",
             "fillEndpointCreds": "Vyplňte koncový bod a prihlasovacie údaje",
             "fillBucket": "Vyplňte názov bucketu",
             "fillServerUser": "Vyplňte server a meno používateľa",
@@ -5053,6 +5053,28 @@
             "mirrorRightToLeft": "Zrkadliť sprava doľava",
             "directionLeftRight": "Zľava doprava",
             "directionRightLeft": "Sprava doľava",
+            "directionLocalToRemote": "Miestne → Vzdialené",
+            "directionRemoteToLocal": "Vzdialené → Miestne",
+            "directionBothWays": "Oboma smermi",
+            "modeHeader": "Režim",
+            "preset": {
+                "mirror": {
+                    "name": "Zrkadlo",
+                    "tagline": "Urobí cieľ totožným so zdrojom. Odstráni nadbytočné súbory a prepíše novšie kópie."
+                },
+                "backup": {
+                    "name": "Záloha",
+                    "tagline": "Skopíruje chýbajúce a novšie súbory. Nikdy neodstraňuje a nikdy neprepíše novšiu kópiu v cieli."
+                },
+                "update": {
+                    "name": "Aktualizácia",
+                    "tagline": "Skopíruje chýbajúce a novšie súbory. Konflikty preskočí, aby ste ich mohli vyriešiť ručne."
+                },
+                "bisync": {
+                    "name": "Obojsmerná synchronizácia",
+                    "tagline": "Prenesie chýbajúce a novšie súbory oboma smermi. Konflikty preskočí."
+                }
+            },
             "conflictPolicy": "Politika konfliktov",
             "ignoredForMirror": "IGNOROVANÉ PRE ZRKADLENIE",
             "versionedBackup": "Verziovaná záloha",

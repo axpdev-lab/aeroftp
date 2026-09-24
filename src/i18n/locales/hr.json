@@ -5053,6 +5053,28 @@
             "mirrorRightToLeft": "Mirror s desna na lijevo",
             "directionLeftRight": "S lijeva na desno",
             "directionRightLeft": "S desna na lijevo",
+            "directionLocalToRemote": "Lokalno → Udaljeno",
+            "directionRemoteToLocal": "Udaljeno → Lokalno",
+            "directionBothWays": "U oba smjera",
+            "modeHeader": "Način",
+            "preset": {
+                "mirror": {
+                    "name": "Zrcaljenje",
+                    "tagline": "Čini odredište istovjetnim izvoru. Briše suvišne datoteke i prepisuje novije kopije."
+                },
+                "backup": {
+                    "name": "Sigurnosna kopija",
+                    "tagline": "Kopira datoteke koje nedostaju i novije. Nikad ne briše i nikad ne prepisuje noviju kopiju na odredištu."
+                },
+                "update": {
+                    "name": "Ažuriranje",
+                    "tagline": "Kopira datoteke koje nedostaju i novije. Preskače sukobe kako biste ih riješili ručno."
+                },
+                "bisync": {
+                    "name": "Dvosmjerna sinkronizacija",
+                    "tagline": "Prenosi datoteke koje nedostaju i novije u oba smjera. Preskače sukobe."
+                }
+            },
             "conflictPolicy": "Pravila sukoba",
             "ignoredForMirror": "IGNORIRANO ZA MIRROR",
             "versionedBackup": "Sigurnosna kopija s verzijama",

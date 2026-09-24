@@ -5053,6 +5053,28 @@
             "mirrorRightToLeft": "从右到左镜像",
             "directionLeftRight": "从左到右",
             "directionRightLeft": "从右到左",
+            "directionLocalToRemote": "本地 → 远程",
+            "directionRemoteToLocal": "远程 → 本地",
+            "directionBothWays": "双向",
+            "modeHeader": "模式",
+            "preset": {
+                "mirror": {
+                    "name": "镜像",
+                    "tagline": "使目标与源完全一致。删除多余文件并覆盖较新的副本。"
+                },
+                "backup": {
+                    "name": "备份",
+                    "tagline": "复制缺失和较新的文件。从不删除，也从不覆盖目标中较新的副本。"
+                },
+                "update": {
+                    "name": "更新",
+                    "tagline": "复制缺失和较新的文件。跳过冲突，以便您手动解决。"
+                },
+                "bisync": {
+                    "name": "双向同步",
+                    "tagline": "在两个方向上传播缺失和较新的文件。跳过冲突。"
+                }
+            },
             "conflictPolicy": "冲突策略",
             "ignoredForMirror": "镜像时忽略",
             "versionedBackup": "版本化备份",

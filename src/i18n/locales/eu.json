@@ -5072,6 +5072,28 @@
             "mirrorRightToLeft": "Ispilatu eskuinetik ezkerrera",
             "directionLeftRight": "Ezkerretik Eskuinera",
             "directionRightLeft": "Eskuinetik Ezkerrera",
+            "directionLocalToRemote": "Lokala → Urrunekoa",
+            "directionRemoteToLocal": "Urrunekoa → Lokala",
+            "directionBothWays": "Bi norabideetan",
+            "modeHeader": "Modua",
+            "preset": {
+                "mirror": {
+                    "name": "Ispilua",
+                    "tagline": "Helburua jatorriaren berdina bihurtzen du. Soberako fitxategiak ezabatzen ditu eta kopia berriagoak gainidazten ditu."
+                },
+                "backup": {
+                    "name": "Babeskopia",
+                    "tagline": "Falta diren fitxategiak eta berriagoak kopiatzen ditu. Ez du inoiz ezabatzen eta ez du inoiz helburuko kopia berriagorik gainidazten."
+                },
+                "update": {
+                    "name": "Eguneratu",
+                    "tagline": "Falta diren fitxategiak eta berriagoak kopiatzen ditu. Gatazkak saltatzen ditu eskuz konpon ditzazun."
+                },
+                "bisync": {
+                    "name": "Bi norabideko sinkronizazioa",
+                    "tagline": "Falta diren fitxategiak eta berriagoak bi norabideetan zabaltzen ditu. Gatazkak saltatzen ditu."
+                }
+            },
             "conflictPolicy": "Gatazka politika",
             "ignoredForMirror": "ISPILUARENTZAT BAZTERTUA",
             "versionedBackup": "Bertsiodun babeskopia",

@@ -5053,6 +5053,28 @@
             "mirrorRightToLeft": "Reflejar de derecha a izquierda",
             "directionLeftRight": "Izquierda a Derecha",
             "directionRightLeft": "Derecha a Izquierda",
+            "directionLocalToRemote": "Local → Remoto",
+            "directionRemoteToLocal": "Remoto → Local",
+            "directionBothWays": "En ambos sentidos",
+            "modeHeader": "Modo",
+            "preset": {
+                "mirror": {
+                    "name": "Espejo",
+                    "tagline": "Hace que el destino sea idéntico al origen. Elimina los archivos sobrantes y sobrescribe las copias más recientes."
+                },
+                "backup": {
+                    "name": "Copia de seguridad",
+                    "tagline": "Copia los archivos que faltan y los más recientes. Nunca elimina ni sobrescribe una copia más reciente en el destino."
+                },
+                "update": {
+                    "name": "Actualizar",
+                    "tagline": "Copia los archivos que faltan y los más recientes. Omite los conflictos para que los resuelvas manualmente."
+                },
+                "bisync": {
+                    "name": "Sincronización bidireccional",
+                    "tagline": "Propaga los archivos que faltan y los más recientes en ambos sentidos. Omite los conflictos."
+                }
+            },
             "conflictPolicy": "Política de conflictos",
             "ignoredForMirror": "IGNORADO PARA MIRROR",
             "versionedBackup": "Copia de seguridad versionada",

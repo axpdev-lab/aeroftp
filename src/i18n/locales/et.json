@@ -5053,6 +5053,28 @@
             "mirrorRightToLeft": "Peegelda paremalt vasakule",
             "directionLeftRight": "Vasakult Paremale",
             "directionRightLeft": "Paremalt Vasakule",
+            "directionLocalToRemote": "Kohalik → Kaug",
+            "directionRemoteToLocal": "Kaug → Kohalik",
+            "directionBothWays": "Mõlemas suunas",
+            "modeHeader": "Režiim",
+            "preset": {
+                "mirror": {
+                    "name": "Peegeldus",
+                    "tagline": "Muudab sihtkoha allikaga identseks. Kustutab üleliigsed failid ja kirjutab uuemad koopiad üle."
+                },
+                "backup": {
+                    "name": "Varukoopia",
+                    "tagline": "Kopeerib puuduvad ja uuemad failid. Ei kustuta kunagi ega kirjuta kunagi üle sihtkoha uuemat koopiat."
+                },
+                "update": {
+                    "name": "Uuenda",
+                    "tagline": "Kopeerib puuduvad ja uuemad failid. Jätab konfliktid vahele, et saaksite need käsitsi lahendada."
+                },
+                "bisync": {
+                    "name": "Kahesuunaline sünkroonimine",
+                    "tagline": "Kannab puuduvad ja uuemad failid üle mõlemas suunas. Jätab konfliktid vahele."
+                }
+            },
             "conflictPolicy": "Konfliktipoliitika",
             "ignoredForMirror": "PEEGLI JAOKS IGNOREERITUD",
             "versionedBackup": "Versioonidega varundus",
