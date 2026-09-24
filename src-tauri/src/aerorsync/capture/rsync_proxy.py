@@ -32,6 +32,15 @@ from pathlib import Path
 
 
 CHUNK = 64 * 1024
+# A sink's queue may grow to this before its source stops being read. It is a
+# hard bound, not a soft one: gating a source as soon as its sink backs up
+# (the first version used 4 * CHUNK) can stop BOTH directions at once when
+# both peers are busy writing, which is the same deadlock the non-blocking
+# writes were meant to remove. rsync's own buffers are a few hundred KiB, so
+# this bound is never reached by a live session; if it is, the proxy stops
+# reading and a stall surfaces as the campaign's client timeout, loudly,
+# instead of as unbounded memory.
+MAX_PENDING = 64 * 1024 * 1024
 
 
 def main() -> int:
@@ -95,7 +104,7 @@ def main() -> int:
     try:
         while sources or any(pending[k] for k in pending if k not in dead_sinks):
             # Back-pressure: stop reading a source while its sink is backed up.
-            readable_set = [fd for fd in sources if len(pending[route[fd]]) < 4 * CHUNK]
+            readable_set = [fd for fd in sources if len(pending[route[fd]]) < MAX_PENDING]
             writable_set = [k for k, buf in pending.items() if buf and k not in dead_sinks]
             readable, writable, _ = select.select(readable_set, writable_set, [], 1.0)
             if not readable and not writable:

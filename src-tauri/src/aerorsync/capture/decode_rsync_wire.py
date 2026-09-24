@@ -479,6 +479,11 @@ def demux(raw: bytes, start: int, out: Out, label: str, max_frames: int = 40):
         tag = (hdr >> 24) - MPLEX_BASE
         ln = hdr & 0xFFFFFF
         body = raw[pos + 4:pos + 4 + ln]
+        if tag not in MSG_NAMES:
+            raise Stop(f"{label}: unsupported mux tag {tag} at raw offset 0x{pos:x}")
+        if pos + 4 + ln > len(raw):
+            raise Stop(f"{label}: frame at raw offset 0x{pos:x} declares {ln} bytes, "
+                       f"only {len(raw) - pos - 4} left")
         frames.append((pos, tag, ln, len(app)))
         if tag == 0:
             app += body
@@ -496,7 +501,7 @@ def demux(raw: bytes, start: int, out: Out, label: str, max_frames: int = 40):
                 extra = f" body={body[:60]!r}"
             out(f"   raw 0x{p:07x}  hdr {raw[p:p+4].hex(' ')}  {nm:<14} len {ln:<6} app@0x{appoff:x}{extra}")
     if pos != len(raw):
-        out(f"   !! {len(raw) - pos} trailing raw bytes do not form a frame")
+        raise Stop(f"{label}: {len(raw) - pos} trailing raw bytes do not form a frame")
     return bytes(app), frames
 
 
@@ -672,6 +677,9 @@ def transfer_phase(out: Out, r: Reader, o: Opts, st: FlistState, role: str, max_
                 r.take(count * (4 + s2len))
                 field_line(tgt, r, s, f"{count} block signatures")
         else:
+            if o.has("z"):
+                raise Stop("compressed token stream (-z) is not modelled by this decoder; "
+                           "07-deflate-token-wire-evidence.md covers it")
             while True:
                 s = r.pos
                 tok = r.int32()

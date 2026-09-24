@@ -344,6 +344,8 @@ def decode(run, dest: Path):
     status = "ok" if r.returncode == 0 else f"STOP rc={r.returncode}"
     last = [l for l in r.stdout.splitlines() if l.startswith("!! STOP")]
     print(f"[b0c0] {run[0]:<16} point {run[1]:>2}  {dest.name}: decode {status} {last[0] if last else ''}")
+    if r.returncode != 0:
+        raise SystemExit(f"[b0c0] {run[0]}: decoder exited {r.returncode}, capture rejected")
 
 
 def sanitize_argv_json(data: bytes) -> bytes:
@@ -367,6 +369,13 @@ def freeze(only):
         src = OUT / run[0]
         if not src.exists():
             continue
+        # An out/ tree can outlive the run that checked it: decode again
+        # here and refuse to publish anything the decoder does not finish.
+        check = subprocess.run(
+            [sys.executable, str(CAPTURE / "decode_rsync_wire.py"), str(src), *run[6]],
+            capture_output=True, text=True)
+        if check.returncode != 0:
+            raise SystemExit(f"[b0c0] {run[0]}: refusing to freeze, decoder exited {check.returncode}")
         dst = FROZEN / run[0]
         if dst.exists():
             shutil.rmtree(dst)
