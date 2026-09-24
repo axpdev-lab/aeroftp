@@ -20,8 +20,6 @@ import type { CompareResult } from '../../utils/compareEndpoints';
 import {
     CONFLICT_POLICIES,
     derivePresetPlan,
-    describeAction,
-    describeConflictPolicy,
     describePreset,
     type BucketAction,
     type ConflictPolicy,
@@ -31,7 +29,16 @@ import {
     type VersionedBackupConfig,
 } from '../../utils/syncPresets';
 import { formatBytes } from '../../utils/formatters';
-import { planDirectionLabel, presetNameLabel, presetTaglineLabel, resolveLabel } from '../../utils/syncDirectionLabels';
+import {
+    actionLabel,
+    bucketNameLabel,
+    conflictPolicyLabel,
+    conflictPolicyTagline,
+    planDirectionLabel,
+    presetNameLabel,
+    presetTaglineLabel,
+    resolveLabel,
+} from '../../utils/syncDirectionLabels';
 import { retryPolicyForSpeed } from '../../utils/remoteSyncRunner';
 import { isCyberTheme, SPEED_PRESETS } from '../Sync/syncConstants';
 import { useTranslation } from '../../i18n';
@@ -116,8 +123,8 @@ const PresetChip: React.FC<{
                     <span className="text-sm font-semibold">{resolveLabel(t, presetNameLabel(preset))}</span>
                 </div>
                 {isDefault && (
-                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                        DEFAULT
+                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                        {t('aerosync.presetDefault') || 'Default'}
                     </span>
                 )}
             </div>
@@ -351,16 +358,15 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
                         >
                             {CONFLICT_POLICIES.map((policy) => {
-                                const info = describeConflictPolicy(policy);
                                 return (
                                     <option key={policy} value={policy}>
-                                        {info.label}
+                                        {resolveLabel(t, conflictPolicyLabel(policy))}
                                     </option>
                                 );
                             })}
                         </select>
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
-                            {describeConflictPolicy(conflictPolicy).tagline}
+                            {resolveLabel(t, conflictPolicyTagline(conflictPolicy))}
                         </p>
                     </div>
                     <div>
@@ -762,12 +768,12 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                         : ''
                                 }`}
                             >
-                                <td className="px-2 py-1 font-medium text-gray-800 dark:text-gray-200">{bp.bucket}</td>
+                                <td className="px-2 py-1 font-medium text-gray-800 dark:text-gray-200">{resolveLabel(t, bucketNameLabel(bp.bucket))}</td>
                                 <td className="px-2 py-1 text-right text-gray-700 dark:text-gray-200">{bp.entries.length}</td>
                                 <td className={`px-2 py-1 ${ACTION_COLOR[bp.action]}`}>
                                     <span className="inline-flex items-center gap-1">
                                         {ACTION_ICON[bp.action]}
-                                        {describeAction(bp.action)}
+                                        {resolveLabel(t, actionLabel(bp.action))}
                                         {bp.destructive && <ShieldAlert size={11} className="text-amber-500" />}
                                     </span>
                                 </td>

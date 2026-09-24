@@ -5043,6 +5043,78 @@
             "tabCompare": "Vergelijken",
             "tabPlan": "Plan",
             "tabSync": "Synchroniseren",
+            "presetDefault": "Standaard",
+            "actionLabel": {
+                "skip": "Overslaan",
+                "copy-to-right": "Kopiëren → rechts",
+                "copy-to-left": "Kopiëren ← links",
+                "overwrite-right": "Rechts overschrijven",
+                "overwrite-left": "Links overschrijven",
+                "delete-right": "Rechts verwijderen",
+                "delete-left": "Links verwijderen",
+                "rename-to-right": "Beide behouden → rechts",
+                "rename-to-left": "Beide behouden ← links",
+                "conflict-skip": "Conflict (overslaan)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Overslaan",
+                    "tagline": "Laat conflicten aan beide kanten ongewijzigd."
+                },
+                "rename": {
+                    "label": "Beide behouden",
+                    "tagline": "Kopieert de bronversie met een achtervoegsel met datum en tijd."
+                },
+                "newer-wins": {
+                    "label": "Nieuwste wint",
+                    "tagline": "De kant met de recentste wijzigingstijd overschrijft de andere."
+                },
+                "older-wins": {
+                    "label": "Oudste wint",
+                    "tagline": "De oudere kant overschrijft de nieuwere (voor archivering)."
+                },
+                "larger-wins": {
+                    "label": "Grootste wint",
+                    "tagline": "De kant met de grootste bestandsgrootte overschrijft de kleinere."
+                },
+                "smaller-wins": {
+                    "label": "Kleinste wint",
+                    "tagline": "De kleinere kant overschrijft de grotere."
+                }
+            },
+            "bucketName": {
+                "only-left": "Alleen links",
+                "newer-left": "Nieuwer links",
+                "only-right": "Alleen rechts",
+                "newer-right": "Nieuwer rechts",
+                "conflict": "Conflict",
+                "same": "Gelijk"
+            },
+            "bucketDescription": {
+                "only-left": "Aanwezig in het bronpaneel, ontbreekt in de bestemming.",
+                "newer-left": "Aanwezig aan beide kanten, de bronkopie heeft de recentere tijdstempel.",
+                "only-right": "Aanwezig in de bestemming, ontbreekt in het bronpaneel.",
+                "newer-right": "Aanwezig aan beide kanten, de kopie in de bestemming heeft de recentere tijdstempel.",
+                "conflict": "Beide kanten hebben het item, maar de grootte verschilt bij vergelijkbare tijdstempels.",
+                "same": "De items komen overeen volgens het actieve vergelijkingsbeleid."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Alleen grootte",
+                "mtimeOnly": "Alleen tijdstempel",
+                "sizeAndMtime": "Grootte + tijdstempel"
+            },
+            "compareTable": {
+                "name": "Naam",
+                "leftSize": "Grootte links",
+                "rightSize": "Grootte rechts",
+                "leftModified": "Gewijzigd links",
+                "rightModified": "Gewijzigd rechts",
+                "folder": "map",
+                "noEntries": "Geen items.",
+                "countedNotListed": "Geteld maar niet vermeld: de scan rapporteert identieke bestanden als totaal in plaats van één rij per bestand, zodat grote mappenstructuren snel blijven.",
+                "shown": "Weergegeven: {shown} van {total}",
+                "moreNotListed": "Geteld maar niet vermeld: {count}"
+            },
             "compareUnavailable": "Open een tweede paneel of een externe verbinding om te vergelijken.",
             "planUnavailable": "Een vergelijkingsresultaat is vereist voordat u een preset kiest. Open eerst het tabblad Vergelijken.",
             "totalEntries": "Totaal items",

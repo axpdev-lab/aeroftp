@@ -5062,6 +5062,78 @@
             "tabCompare": "Konparatu",
             "tabPlan": "Plana",
             "tabSync": "Sinkronizatu",
+            "presetDefault": "Lehenetsia",
+            "actionLabel": {
+                "skip": "Saltatu",
+                "copy-to-right": "Kopiatu → eskuinera",
+                "copy-to-left": "Kopiatu ← ezkerrera",
+                "overwrite-right": "Gainidatzi eskuinean",
+                "overwrite-left": "Gainidatzi ezkerrean",
+                "delete-right": "Ezabatu eskuinean",
+                "delete-left": "Ezabatu ezkerrean",
+                "rename-to-right": "Mantendu biak → eskuinera",
+                "rename-to-left": "Mantendu biak ← ezkerrera",
+                "conflict-skip": "Gatazka (saltatu)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Saltatu",
+                    "tagline": "Gatazkak ukitu gabe uzten ditu bi aldeetan."
+                },
+                "rename": {
+                    "label": "Mantendu biak",
+                    "tagline": "Iturburuko bertsioa kopiatzen du data eta orduko atzizki batekin."
+                },
+                "newer-wins": {
+                    "label": "Berriagoak irabazten du",
+                    "tagline": "Aldaketa-data berriagoa duen aldeak bestea gainidazten du."
+                },
+                "older-wins": {
+                    "label": "Zaharragoak irabazten du",
+                    "tagline": "Alde zaharragoak berriagoa gainidazten du (artxibatzeko)."
+                },
+                "larger-wins": {
+                    "label": "Handiagoak irabazten du",
+                    "tagline": "Tamaina handiagoa duen aldeak txikiagoa gainidazten du."
+                },
+                "smaller-wins": {
+                    "label": "Txikiagoak irabazten du",
+                    "tagline": "Alde txikiagoak handiagoa gainidazten du."
+                }
+            },
+            "bucketName": {
+                "only-left": "Ezkerrean soilik",
+                "newer-left": "Berriagoa ezkerrean",
+                "only-right": "Eskuinean soilik",
+                "newer-right": "Berriagoa eskuinean",
+                "conflict": "Gatazka",
+                "same": "Berdinak"
+            },
+            "bucketDescription": {
+                "only-left": "Iturburuko panelean dago, helmugan falta da.",
+                "newer-left": "Bi aldeetan dago, iturburuko kopiak denbora-marka berriagoa du.",
+                "only-right": "Helmugan dago, iturburuko panelean falta da.",
+                "newer-right": "Bi aldeetan dago, helmugako kopiak denbora-marka berriagoa du.",
+                "conflict": "Bi aldeek dute sarrera, baina tamaina desberdina da denbora-marka konparagarriekin.",
+                "same": "Sarrerak bat datoz konparazio-irizpide aktiboaren arabera."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Tamaina soilik",
+                "mtimeOnly": "Denbora-marka soilik",
+                "sizeAndMtime": "Tamaina + denbora-marka"
+            },
+            "compareTable": {
+                "name": "Izena",
+                "leftSize": "Tamaina ezkerrean",
+                "rightSize": "Tamaina eskuinean",
+                "leftModified": "Aldatua ezkerrean",
+                "rightModified": "Aldatua eskuinean",
+                "folder": "karpeta",
+                "noEntries": "Ez dago sarrerarik.",
+                "countedNotListed": "Zenbatuta baina zerrendatu gabe: eskaneatzeak fitxategi berdinak guztizko gisa ematen ditu, bakoitza errenkada batean eman beharrean, zuhaitz handiak azkar ibil daitezen.",
+                "shown": "Erakutsita: {shown}, guztira {total}",
+                "moreNotListed": "Zenbatuta baina zerrendatu gabe: {count}"
+            },
             "compareUnavailable": "Ireki bigarren panela edo urruneko konexioa konparatzeko.",
             "planUnavailable": "Konparaketa emaitza behar da aurrezarpena hautatu aurretik. Ireki lehenik Konparatu fitxa.",
             "totalEntries": "Sarrera guztiak",

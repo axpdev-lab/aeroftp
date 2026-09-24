@@ -5043,6 +5043,78 @@
             "tabCompare": "Võrdle",
             "tabPlan": "Plaan",
             "tabSync": "Sünkrooni",
+            "presetDefault": "Vaikimisi",
+            "actionLabel": {
+                "skip": "Jäta vahele",
+                "copy-to-right": "Kopeeri → paremale",
+                "copy-to-left": "Kopeeri ← vasakule",
+                "overwrite-right": "Kirjuta üle paremal",
+                "overwrite-left": "Kirjuta üle vasakul",
+                "delete-right": "Kustuta paremal",
+                "delete-left": "Kustuta vasakul",
+                "rename-to-right": "Säilita mõlemad → paremale",
+                "rename-to-left": "Säilita mõlemad ← vasakule",
+                "conflict-skip": "Konflikt (jäta vahele)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Jäta vahele",
+                    "tagline": "Jätab konfliktid mõlemal poolel puutumata."
+                },
+                "rename": {
+                    "label": "Säilita mõlemad",
+                    "tagline": "Kopeerib lähteversiooni kuupäeva ja kellaajaga järelliitega."
+                },
+                "newer-wins": {
+                    "label": "Uuem võidab",
+                    "tagline": "Hilisema muutmisajaga pool kirjutab teise üle."
+                },
+                "older-wins": {
+                    "label": "Vanem võidab",
+                    "tagline": "Vanem pool kirjutab uuema üle (arhiveerimiseks)."
+                },
+                "larger-wins": {
+                    "label": "Suurem võidab",
+                    "tagline": "Suurema failisuurusega pool kirjutab väiksema üle."
+                },
+                "smaller-wins": {
+                    "label": "Väiksem võidab",
+                    "tagline": "Väiksem pool kirjutab suurema üle."
+                }
+            },
+            "bucketName": {
+                "only-left": "Ainult vasakul",
+                "newer-left": "Uuem vasakul",
+                "only-right": "Ainult paremal",
+                "newer-right": "Uuem paremal",
+                "conflict": "Konflikt",
+                "same": "Samad"
+            },
+            "bucketDescription": {
+                "only-left": "Olemas lähtepaneelil, sihtkohas puudub.",
+                "newer-left": "Olemas mõlemal poolel, lähtekoopial on hilisem ajatempel.",
+                "only-right": "Olemas sihtkohas, lähtepaneelil puudub.",
+                "newer-right": "Olemas mõlemal poolel, sihtkoha koopial on hilisem ajatempel.",
+                "conflict": "Kirje on mõlemal poolel, kuid võrreldavate ajatemplite juures erineb suurus.",
+                "same": "Kirjed ühtivad aktiivse võrdluspõhimõtte järgi."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Ainult suurus",
+                "mtimeOnly": "Ainult ajatempel",
+                "sizeAndMtime": "Suurus + ajatempel"
+            },
+            "compareTable": {
+                "name": "Nimi",
+                "leftSize": "Suurus vasakul",
+                "rightSize": "Suurus paremal",
+                "leftModified": "Muudetud vasakul",
+                "rightModified": "Muudetud paremal",
+                "folder": "kaust",
+                "noEntries": "Kirjeid pole.",
+                "countedNotListed": "Loendatud, kuid loetlemata: skannimine esitab identsed failid koguarvuna, mitte igaüht eraldi reana, et suured puud jääksid kiireks.",
+                "shown": "Kuvatud: {shown}, kokku {total}",
+                "moreNotListed": "Loendatud, kuid loetlemata: {count}"
+            },
             "compareUnavailable": "Võrdlemiseks avage teine paneel või kaugühendus.",
             "planUnavailable": "Enne eelseade valimist on vaja võrdlustulemust. Avage esmalt vahekaart Võrdle.",
             "totalEntries": "Kirjeid kokku",

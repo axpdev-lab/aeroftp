@@ -5043,6 +5043,78 @@
             "tabCompare": "So sánh",
             "tabPlan": "Kế hoạch",
             "tabSync": "Đồng bộ",
+            "presetDefault": "Mặc định",
+            "actionLabel": {
+                "skip": "Bỏ qua",
+                "copy-to-right": "Sao chép → phải",
+                "copy-to-left": "Sao chép ← trái",
+                "overwrite-right": "Ghi đè bên phải",
+                "overwrite-left": "Ghi đè bên trái",
+                "delete-right": "Xóa bên phải",
+                "delete-left": "Xóa bên trái",
+                "rename-to-right": "Giữ cả hai → phải",
+                "rename-to-left": "Giữ cả hai ← trái",
+                "conflict-skip": "Xung đột (bỏ qua)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Bỏ qua",
+                    "tagline": "Giữ nguyên các xung đột ở cả hai bên."
+                },
+                "rename": {
+                    "label": "Giữ cả hai",
+                    "tagline": "Sao chép phiên bản ở nguồn với hậu tố ngày giờ."
+                },
+                "newer-wins": {
+                    "label": "Mới hơn thắng",
+                    "tagline": "Bên có thời gian sửa đổi gần đây hơn sẽ ghi đè bên còn lại."
+                },
+                "older-wins": {
+                    "label": "Cũ hơn thắng",
+                    "tagline": "Bên cũ hơn ghi đè bên mới hơn (dùng để lưu trữ)."
+                },
+                "larger-wins": {
+                    "label": "Lớn hơn thắng",
+                    "tagline": "Bên có kích thước lớn hơn ghi đè bên nhỏ hơn."
+                },
+                "smaller-wins": {
+                    "label": "Nhỏ hơn thắng",
+                    "tagline": "Bên nhỏ hơn ghi đè bên lớn hơn."
+                }
+            },
+            "bucketName": {
+                "only-left": "Chỉ có bên trái",
+                "newer-left": "Mới hơn bên trái",
+                "only-right": "Chỉ có bên phải",
+                "newer-right": "Mới hơn bên phải",
+                "conflict": "Xung đột",
+                "same": "Giống nhau"
+            },
+            "bucketDescription": {
+                "only-left": "Có trong bảng nguồn, không có ở đích.",
+                "newer-left": "Có ở cả hai bên, bản sao ở nguồn có dấu thời gian mới hơn.",
+                "only-right": "Có ở đích, không có trong bảng nguồn.",
+                "newer-right": "Có ở cả hai bên, bản sao ở đích có dấu thời gian mới hơn.",
+                "conflict": "Cả hai bên đều có mục này nhưng kích thước khác nhau dù dấu thời gian tương đương.",
+                "same": "Các mục khớp nhau theo chính sách so sánh đang dùng."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Chỉ kích thước",
+                "mtimeOnly": "Chỉ dấu thời gian",
+                "sizeAndMtime": "Kích thước + dấu thời gian"
+            },
+            "compareTable": {
+                "name": "Tên",
+                "leftSize": "Kích thước bên trái",
+                "rightSize": "Kích thước bên phải",
+                "leftModified": "Sửa đổi bên trái",
+                "rightModified": "Sửa đổi bên phải",
+                "folder": "thư mục",
+                "noEntries": "Không có mục nào.",
+                "countedNotListed": "Đã đếm nhưng không liệt kê: quá trình quét báo cáo các tệp giống hệt nhau dưới dạng tổng số thay vì mỗi tệp một dòng, để các cây thư mục lớn vẫn nhanh.",
+                "shown": "Đang hiển thị: {shown} trên {total}",
+                "moreNotListed": "Đã đếm nhưng không liệt kê: {count}"
+            },
             "compareUnavailable": "Mở bảng thứ hai hoặc kết nối từ xa để so sánh.",
             "planUnavailable": "Cần có kết quả so sánh trước khi chọn cài đặt sẵn. Mở tab So sánh trước.",
             "totalEntries": "Tổng số mục",

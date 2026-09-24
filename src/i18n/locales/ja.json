@@ -1599,7 +1599,7 @@
             "update_checking": "アップデートを確認中...",
             "update_available": "Update available: v{version} (.{format})",
             "update_uptodate": "最新です (v{version})",
-            "update_error": "Update check failed: {error}",
+            "update_error": "更新の確認に失敗しました: {error}",
             "file_skipped": "スキップ（変更なし）: {filename}",
             "navigate_opened": "[{location}] フォルダを開きました: {path}",
             "navigate_entered": "[{location}] フォルダに入りました: {path}",
@@ -5043,6 +5043,78 @@
             "tabCompare": "比較",
             "tabPlan": "プラン",
             "tabSync": "同期",
+            "presetDefault": "既定",
+            "actionLabel": {
+                "skip": "スキップ",
+                "copy-to-right": "コピー → 右",
+                "copy-to-left": "コピー ← 左",
+                "overwrite-right": "右側を上書き",
+                "overwrite-left": "左側を上書き",
+                "delete-right": "右側で削除",
+                "delete-left": "左側で削除",
+                "rename-to-right": "両方を保持 → 右",
+                "rename-to-left": "両方を保持 ← 左",
+                "conflict-skip": "競合（スキップ）"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "スキップ",
+                    "tagline": "両側の競合をそのままにします。"
+                },
+                "rename": {
+                    "label": "両方を保持",
+                    "tagline": "転送元のバージョンに日時のサフィックスを付けてコピーします。"
+                },
+                "newer-wins": {
+                    "label": "新しい方を優先",
+                    "tagline": "更新日時が新しい側がもう一方を上書きします。"
+                },
+                "older-wins": {
+                    "label": "古い方を優先",
+                    "tagline": "古い側が新しい側を上書きします（アーカイブ用途）。"
+                },
+                "larger-wins": {
+                    "label": "大きい方を優先",
+                    "tagline": "サイズが大きい側が小さい側を上書きします。"
+                },
+                "smaller-wins": {
+                    "label": "小さい方を優先",
+                    "tagline": "小さい側が大きい側を上書きします。"
+                }
+            },
+            "bucketName": {
+                "only-left": "左のみ",
+                "newer-left": "左が新しい",
+                "only-right": "右のみ",
+                "newer-right": "右が新しい",
+                "conflict": "競合",
+                "same": "同一"
+            },
+            "bucketDescription": {
+                "only-left": "転送元パネルにのみ存在し、転送先にはありません。",
+                "newer-left": "両側に存在し、転送元のコピーの方がタイムスタンプが新しいです。",
+                "only-right": "転送先にのみ存在し、転送元パネルにはありません。",
+                "newer-right": "両側に存在し、転送先のコピーの方がタイムスタンプが新しいです。",
+                "conflict": "両側にエントリがありますが、タイムスタンプが近いにもかかわらずサイズが異なります。",
+                "same": "現在の比較ポリシーに従ってエントリが一致しています。"
+            },
+            "comparePolicy": {
+                "sizeOnly": "サイズのみ",
+                "mtimeOnly": "タイムスタンプのみ",
+                "sizeAndMtime": "サイズ + タイムスタンプ"
+            },
+            "compareTable": {
+                "name": "名前",
+                "leftSize": "左のサイズ",
+                "rightSize": "右のサイズ",
+                "leftModified": "左の更新日時",
+                "rightModified": "右の更新日時",
+                "folder": "フォルダ",
+                "noEntries": "エントリがありません。",
+                "countedNotListed": "集計のみで一覧には表示されません: 大きなツリーでも高速に動作するよう、スキャンは同一のファイルを1件ずつの行ではなく合計数として報告します。",
+                "shown": "表示中: {total} 件中 {shown} 件",
+                "moreNotListed": "集計のみで一覧には表示されません: {count}"
+            },
             "compareUnavailable": "比較するには、もう一つのパネルまたはリモート接続を開いてください。",
             "planUnavailable": "プリセットを選択する前に比較結果が必要です。まず比較タブを開いてください。",
             "totalEntries": "総エントリ数",

@@ -5043,6 +5043,78 @@
             "tabCompare": "Comparar",
             "tabPlan": "Plano",
             "tabSync": "Sincronizar",
+            "presetDefault": "Padrão",
+            "actionLabel": {
+                "skip": "Ignorar",
+                "copy-to-right": "Copiar → direita",
+                "copy-to-left": "Copiar ← esquerda",
+                "overwrite-right": "Substituir à direita",
+                "overwrite-left": "Substituir à esquerda",
+                "delete-right": "Excluir à direita",
+                "delete-left": "Excluir à esquerda",
+                "rename-to-right": "Manter ambos → direita",
+                "rename-to-left": "Manter ambos ← esquerda",
+                "conflict-skip": "Conflito (ignorar)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Ignorar",
+                    "tagline": "Deixa os conflitos intactos nos dois lados."
+                },
+                "rename": {
+                    "label": "Manter ambos",
+                    "tagline": "Copia a versão de origem com um sufixo de data e hora."
+                },
+                "newer-wins": {
+                    "label": "O mais recente vence",
+                    "tagline": "O lado com a data de modificação mais recente substitui o outro."
+                },
+                "older-wins": {
+                    "label": "O mais antigo vence",
+                    "tagline": "O lado mais antigo substitui o mais recente (para arquivamento)."
+                },
+                "larger-wins": {
+                    "label": "O maior vence",
+                    "tagline": "O lado com o maior tamanho substitui o menor."
+                },
+                "smaller-wins": {
+                    "label": "O menor vence",
+                    "tagline": "O lado menor substitui o maior."
+                }
+            },
+            "bucketName": {
+                "only-left": "Apenas à esquerda",
+                "newer-left": "Mais recente à esquerda",
+                "only-right": "Apenas à direita",
+                "newer-right": "Mais recente à direita",
+                "conflict": "Conflito",
+                "same": "Iguais"
+            },
+            "bucketDescription": {
+                "only-left": "Presente no painel de origem, ausente no destino.",
+                "newer-left": "Presente nos dois lados, a cópia de origem tem o carimbo de hora mais recente.",
+                "only-right": "Presente no destino, ausente no painel de origem.",
+                "newer-right": "Presente nos dois lados, a cópia de destino tem o carimbo de hora mais recente.",
+                "conflict": "Os dois lados têm a entrada, mas o tamanho difere com carimbos de hora comparáveis.",
+                "same": "As entradas coincidem de acordo com o critério de comparação ativo."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Apenas tamanho",
+                "mtimeOnly": "Apenas carimbo de hora",
+                "sizeAndMtime": "Tamanho + carimbo de hora"
+            },
+            "compareTable": {
+                "name": "Nome",
+                "leftSize": "Tamanho à esquerda",
+                "rightSize": "Tamanho à direita",
+                "leftModified": "Modificado à esquerda",
+                "rightModified": "Modificado à direita",
+                "folder": "pasta",
+                "noEntries": "Nenhuma entrada.",
+                "countedNotListed": "Contados, mas não listados: a verificação informa os arquivos idênticos como um total em vez de uma linha para cada um, para que árvores grandes continuem rápidas.",
+                "shown": "Exibidos: {shown} de {total}",
+                "moreNotListed": "Contados, mas não listados: {count}"
+            },
             "compareUnavailable": "Abra um segundo painel ou uma conexão remota para comparar.",
             "planUnavailable": "É necessário um resultado de comparação antes de escolher um preset. Abra primeiro a aba Comparar.",
             "totalEntries": "Total de entradas",

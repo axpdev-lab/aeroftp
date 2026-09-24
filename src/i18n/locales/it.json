@@ -5258,6 +5258,78 @@
             "tabCompare": "Confronta",
             "tabPlan": "Pianifica",
             "tabSync": "Sincronizza",
+            "presetDefault": "Predefinito",
+            "actionLabel": {
+                "skip": "Salta",
+                "copy-to-right": "Copia → destra",
+                "copy-to-left": "Copia ← sinistra",
+                "overwrite-right": "Sovrascrivi a destra",
+                "overwrite-left": "Sovrascrivi a sinistra",
+                "delete-right": "Elimina a destra",
+                "delete-left": "Elimina a sinistra",
+                "rename-to-right": "Tieni entrambi → destra",
+                "rename-to-left": "Tieni entrambi ← sinistra",
+                "conflict-skip": "Conflitto (salta)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Salta",
+                    "tagline": "Lascia i conflitti intatti su entrambi i lati."
+                },
+                "rename": {
+                    "label": "Tieni entrambi",
+                    "tagline": "Copia la versione di origine con un suffisso con data e ora."
+                },
+                "newer-wins": {
+                    "label": "Vince il più recente",
+                    "tagline": "Il lato con la data di modifica più recente sovrascrive l'altro."
+                },
+                "older-wins": {
+                    "label": "Vince il più vecchio",
+                    "tagline": "Il lato più vecchio sovrascrive il più recente (uso da archivio)."
+                },
+                "larger-wins": {
+                    "label": "Vince il più grande",
+                    "tagline": "Il lato con la dimensione maggiore sovrascrive il più piccolo."
+                },
+                "smaller-wins": {
+                    "label": "Vince il più piccolo",
+                    "tagline": "Il lato più piccolo sovrascrive il più grande."
+                }
+            },
+            "bucketName": {
+                "only-left": "Solo a sinistra",
+                "newer-left": "Più recente a sinistra",
+                "only-right": "Solo a destra",
+                "newer-right": "Più recente a destra",
+                "conflict": "Conflitto",
+                "same": "Uguali"
+            },
+            "bucketDescription": {
+                "only-left": "Presente nel pannello di origine, assente nella destinazione.",
+                "newer-left": "Presente su entrambi i lati, la copia di origine ha la data più recente.",
+                "only-right": "Presente nella destinazione, assente nel pannello di origine.",
+                "newer-right": "Presente su entrambi i lati, la copia di destinazione ha la data più recente.",
+                "conflict": "Entrambi i lati hanno la voce, ma la dimensione è diversa con date comparabili.",
+                "same": "Le voci coincidono secondo il criterio di confronto attivo."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Solo dimensione",
+                "mtimeOnly": "Solo data",
+                "sizeAndMtime": "Dimensione + data"
+            },
+            "compareTable": {
+                "name": "Nome",
+                "leftSize": "Dimensione a sinistra",
+                "rightSize": "Dimensione a destra",
+                "leftModified": "Modificato a sinistra",
+                "rightModified": "Modificato a destra",
+                "folder": "cartella",
+                "noEntries": "Nessuna voce.",
+                "countedNotListed": "Contati ma non elencati: la scansione riporta i file identici come totale invece che una riga ciascuno, così gli alberi grandi restano veloci.",
+                "shown": "Mostrati: {shown} di {total}",
+                "moreNotListed": "Contati ma non elencati: {count}"
+            },
             "compareUnavailable": "Apri un secondo pannello o una connessione remota per confrontare.",
             "planUnavailable": "Serve prima un confronto. Apri la scheda Confronta.",
             "totalEntries": "Voci totali",

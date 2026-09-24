@@ -5043,6 +5043,78 @@
             "tabCompare": "Sammenlign",
             "tabPlan": "Plan",
             "tabSync": "Synkronisér",
+            "presetDefault": "Standard",
+            "actionLabel": {
+                "skip": "Spring over",
+                "copy-to-right": "Kopiér → højre",
+                "copy-to-left": "Kopiér ← venstre",
+                "overwrite-right": "Overskriv på højre side",
+                "overwrite-left": "Overskriv på venstre side",
+                "delete-right": "Slet på højre side",
+                "delete-left": "Slet på venstre side",
+                "rename-to-right": "Behold begge → højre",
+                "rename-to-left": "Behold begge ← venstre",
+                "conflict-skip": "Konflikt (spring over)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Spring over",
+                    "tagline": "Lader konflikter være urørte på begge sider."
+                },
+                "rename": {
+                    "label": "Behold begge",
+                    "tagline": "Kopierer kildens version med et suffiks med dato og klokkeslæt."
+                },
+                "newer-wins": {
+                    "label": "Nyeste vinder",
+                    "tagline": "Siden med det seneste ændringstidspunkt overskriver den anden."
+                },
+                "older-wins": {
+                    "label": "Ældste vinder",
+                    "tagline": "Den ældste side overskriver den nyeste (til arkivering)."
+                },
+                "larger-wins": {
+                    "label": "Største vinder",
+                    "tagline": "Siden med den største filstørrelse overskriver den mindste."
+                },
+                "smaller-wins": {
+                    "label": "Mindste vinder",
+                    "tagline": "Den mindste side overskriver den største."
+                }
+            },
+            "bucketName": {
+                "only-left": "Kun til venstre",
+                "newer-left": "Nyere til venstre",
+                "only-right": "Kun til højre",
+                "newer-right": "Nyere til højre",
+                "conflict": "Konflikt",
+                "same": "Ens"
+            },
+            "bucketDescription": {
+                "only-left": "Findes i kildepanelet, mangler i destinationen.",
+                "newer-left": "Findes på begge sider, kildens kopi har det nyeste tidsstempel.",
+                "only-right": "Findes i destinationen, mangler i kildepanelet.",
+                "newer-right": "Findes på begge sider, destinationens kopi har det nyeste tidsstempel.",
+                "conflict": "Begge sider har posten, men størrelsen er forskellig ved sammenlignelige tidsstempler.",
+                "same": "Posterne stemmer overens efter den aktive sammenligningspolitik."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Kun størrelse",
+                "mtimeOnly": "Kun tidsstempel",
+                "sizeAndMtime": "Størrelse + tidsstempel"
+            },
+            "compareTable": {
+                "name": "Navn",
+                "leftSize": "Størrelse venstre",
+                "rightSize": "Størrelse højre",
+                "leftModified": "Ændret venstre",
+                "rightModified": "Ændret højre",
+                "folder": "mappe",
+                "noEntries": "Ingen poster.",
+                "countedNotListed": "Talt, men ikke vist: scanningen rapporterer identiske filer som et samlet antal i stedet for en række for hver, så store træer forbliver hurtige.",
+                "shown": "Vist: {shown} af {total}",
+                "moreNotListed": "Talt, men ikke vist: {count}"
+            },
             "compareUnavailable": "Åbn et andet panel eller en fjernforbindelse for at sammenligne.",
             "planUnavailable": "Et sammenligningsresultat kræves, før du vælger en forudindstilling. Åbn først fanen Sammenlign.",
             "totalEntries": "Samlede poster",

@@ -5043,6 +5043,78 @@
             "tabCompare": "Bandingkan",
             "tabPlan": "Rencana",
             "tabSync": "Sinkronkan",
+            "presetDefault": "Bawaan",
+            "actionLabel": {
+                "skip": "Lewati",
+                "copy-to-right": "Salin → kanan",
+                "copy-to-left": "Salin ← kiri",
+                "overwrite-right": "Timpa di kanan",
+                "overwrite-left": "Timpa di kiri",
+                "delete-right": "Hapus di kanan",
+                "delete-left": "Hapus di kiri",
+                "rename-to-right": "Simpan keduanya → kanan",
+                "rename-to-left": "Simpan keduanya ← kiri",
+                "conflict-skip": "Konflik (lewati)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Lewati",
+                    "tagline": "Membiarkan konflik tetap utuh di kedua sisi."
+                },
+                "rename": {
+                    "label": "Simpan keduanya",
+                    "tagline": "Menyalin versi sumber dengan akhiran tanggal dan waktu."
+                },
+                "newer-wins": {
+                    "label": "Yang lebih baru menang",
+                    "tagline": "Sisi dengan waktu modifikasi yang lebih baru menimpa sisi lainnya."
+                },
+                "older-wins": {
+                    "label": "Yang lebih lama menang",
+                    "tagline": "Sisi yang lebih lama menimpa yang lebih baru (untuk pengarsipan)."
+                },
+                "larger-wins": {
+                    "label": "Yang lebih besar menang",
+                    "tagline": "Sisi dengan ukuran lebih besar menimpa yang lebih kecil."
+                },
+                "smaller-wins": {
+                    "label": "Yang lebih kecil menang",
+                    "tagline": "Sisi yang lebih kecil menimpa yang lebih besar."
+                }
+            },
+            "bucketName": {
+                "only-left": "Hanya di kiri",
+                "newer-left": "Lebih baru di kiri",
+                "only-right": "Hanya di kanan",
+                "newer-right": "Lebih baru di kanan",
+                "conflict": "Konflik",
+                "same": "Sama"
+            },
+            "bucketDescription": {
+                "only-left": "Ada di panel sumber, tidak ada di tujuan.",
+                "newer-left": "Ada di kedua sisi, salinan sumber memiliki stempel waktu yang lebih baru.",
+                "only-right": "Ada di tujuan, tidak ada di panel sumber.",
+                "newer-right": "Ada di kedua sisi, salinan tujuan memiliki stempel waktu yang lebih baru.",
+                "conflict": "Kedua sisi memiliki entri tersebut, tetapi ukurannya berbeda dengan stempel waktu yang sebanding.",
+                "same": "Entri cocok menurut kebijakan perbandingan yang aktif."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Hanya ukuran",
+                "mtimeOnly": "Hanya stempel waktu",
+                "sizeAndMtime": "Ukuran + stempel waktu"
+            },
+            "compareTable": {
+                "name": "Nama",
+                "leftSize": "Ukuran kiri",
+                "rightSize": "Ukuran kanan",
+                "leftModified": "Diubah di kiri",
+                "rightModified": "Diubah di kanan",
+                "folder": "folder",
+                "noEntries": "Tidak ada entri.",
+                "countedNotListed": "Dihitung tetapi tidak dicantumkan: pemindaian melaporkan file identik sebagai total, bukan satu baris per file, sehingga pohon besar tetap cepat.",
+                "shown": "Ditampilkan: {shown} dari {total}",
+                "moreNotListed": "Dihitung tetapi tidak dicantumkan: {count}"
+            },
             "compareUnavailable": "Buka panel kedua atau koneksi jarak jauh untuk membandingkan.",
             "planUnavailable": "Hasil perbandingan diperlukan sebelum memilih preset. Buka tab Bandingkan terlebih dahulu.",
             "totalEntries": "Total entri",

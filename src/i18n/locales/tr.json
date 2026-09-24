@@ -5043,6 +5043,78 @@
             "tabCompare": "Karşılaştır",
             "tabPlan": "Plan",
             "tabSync": "Senkronize Et",
+            "presetDefault": "Varsayılan",
+            "actionLabel": {
+                "skip": "Atla",
+                "copy-to-right": "Kopyala → sağa",
+                "copy-to-left": "Kopyala ← sola",
+                "overwrite-right": "Sağdakinin üzerine yaz",
+                "overwrite-left": "Soldakinin üzerine yaz",
+                "delete-right": "Sağdakini sil",
+                "delete-left": "Soldakini sil",
+                "rename-to-right": "İkisini de koru → sağa",
+                "rename-to-left": "İkisini de koru ← sola",
+                "conflict-skip": "Çakışma (atla)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Atla",
+                    "tagline": "Çakışmaları her iki tarafta da olduğu gibi bırakır."
+                },
+                "rename": {
+                    "label": "İkisini de koru",
+                    "tagline": "Kaynak taraftaki sürümü tarih ve saat içeren bir sonekle kopyalar."
+                },
+                "newer-wins": {
+                    "label": "Yeni olan kazanır",
+                    "tagline": "Değiştirilme zamanı daha yeni olan taraf diğerinin üzerine yazar."
+                },
+                "older-wins": {
+                    "label": "Eski olan kazanır",
+                    "tagline": "Daha eski taraf yeni olanın üzerine yazar (arşivleme amaçlı)."
+                },
+                "larger-wins": {
+                    "label": "Büyük olan kazanır",
+                    "tagline": "Boyutu daha büyük olan taraf küçük olanın üzerine yazar."
+                },
+                "smaller-wins": {
+                    "label": "Küçük olan kazanır",
+                    "tagline": "Daha küçük taraf büyük olanın üzerine yazar."
+                }
+            },
+            "bucketName": {
+                "only-left": "Yalnızca solda",
+                "newer-left": "Solda daha yeni",
+                "only-right": "Yalnızca sağda",
+                "newer-right": "Sağda daha yeni",
+                "conflict": "Çakışma",
+                "same": "Aynı"
+            },
+            "bucketDescription": {
+                "only-left": "Kaynak panelde var, hedefte yok.",
+                "newer-left": "Her iki tarafta da var, kaynaktaki kopyanın zaman damgası daha yeni.",
+                "only-right": "Hedefte var, kaynak panelde yok.",
+                "newer-right": "Her iki tarafta da var, hedefteki kopyanın zaman damgası daha yeni.",
+                "conflict": "Giriş her iki tarafta da var, ancak zaman damgaları benzer olduğu hâlde boyutlar farklı.",
+                "same": "Girişler etkin karşılaştırma politikasına göre eşleşiyor."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Yalnızca boyut",
+                "mtimeOnly": "Yalnızca zaman damgası",
+                "sizeAndMtime": "Boyut + zaman damgası"
+            },
+            "compareTable": {
+                "name": "Ad",
+                "leftSize": "Sol boyut",
+                "rightSize": "Sağ boyut",
+                "leftModified": "Sol değiştirilme tarihi",
+                "rightModified": "Sağ değiştirilme tarihi",
+                "folder": "klasör",
+                "noEntries": "Giriş yok.",
+                "countedNotListed": "Sayıldı ancak listelenmedi: büyük ağaçların hızlı kalması için tarama, aynı dosyaları her biri için ayrı bir satır yerine toplam olarak bildirir.",
+                "shown": "Gösterilen: {total} içinden {shown}",
+                "moreNotListed": "Sayıldı ancak listelenmedi: {count}"
+            },
             "compareUnavailable": "Karşılaştırmak için ikinci bir panel veya uzak bağlantı açın.",
             "planUnavailable": "Bir önayar seçmeden önce karşılaştırma sonucu gerekir. Önce Karşılaştır sekmesini açın.",
             "totalEntries": "Toplam giriş",

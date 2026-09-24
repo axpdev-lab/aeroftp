@@ -5043,6 +5043,78 @@
             "tabCompare": "Bandingkan",
             "tabPlan": "Rancang",
             "tabSync": "Segerak",
+            "presetDefault": "Lalai",
+            "actionLabel": {
+                "skip": "Langkau",
+                "copy-to-right": "Salin → kanan",
+                "copy-to-left": "Salin ← kiri",
+                "overwrite-right": "Tulis ganti di kanan",
+                "overwrite-left": "Tulis ganti di kiri",
+                "delete-right": "Padam di kanan",
+                "delete-left": "Padam di kiri",
+                "rename-to-right": "Simpan kedua-dua → kanan",
+                "rename-to-left": "Simpan kedua-dua ← kiri",
+                "conflict-skip": "Konflik (langkau)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Langkau",
+                    "tagline": "Membiarkan konflik tidak disentuh di kedua-dua belah."
+                },
+                "rename": {
+                    "label": "Simpan kedua-dua",
+                    "tagline": "Menyalin versi sumber dengan akhiran tarikh dan masa."
+                },
+                "newer-wins": {
+                    "label": "Yang lebih baharu menang",
+                    "tagline": "Belah dengan masa ubah suai yang lebih baharu menulis ganti belah yang satu lagi."
+                },
+                "older-wins": {
+                    "label": "Yang lebih lama menang",
+                    "tagline": "Belah yang lebih lama menulis ganti yang lebih baharu (untuk pengarkiban)."
+                },
+                "larger-wins": {
+                    "label": "Yang lebih besar menang",
+                    "tagline": "Belah dengan saiz lebih besar menulis ganti yang lebih kecil."
+                },
+                "smaller-wins": {
+                    "label": "Yang lebih kecil menang",
+                    "tagline": "Belah yang lebih kecil menulis ganti yang lebih besar."
+                }
+            },
+            "bucketName": {
+                "only-left": "Hanya di kiri",
+                "newer-left": "Lebih baharu di kiri",
+                "only-right": "Hanya di kanan",
+                "newer-right": "Lebih baharu di kanan",
+                "conflict": "Konflik",
+                "same": "Sama"
+            },
+            "bucketDescription": {
+                "only-left": "Wujud dalam panel sumber, tiada di destinasi.",
+                "newer-left": "Wujud di kedua-dua belah, salinan sumber mempunyai cap masa yang lebih baharu.",
+                "only-right": "Wujud di destinasi, tiada dalam panel sumber.",
+                "newer-right": "Wujud di kedua-dua belah, salinan destinasi mempunyai cap masa yang lebih baharu.",
+                "conflict": "Kedua-dua belah mempunyai entri itu tetapi saiznya berbeza walaupun cap masa setanding.",
+                "same": "Entri sepadan mengikut dasar perbandingan yang aktif."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Saiz sahaja",
+                "mtimeOnly": "Cap masa sahaja",
+                "sizeAndMtime": "Saiz + cap masa"
+            },
+            "compareTable": {
+                "name": "Nama",
+                "leftSize": "Saiz kiri",
+                "rightSize": "Saiz kanan",
+                "leftModified": "Diubah suai di kiri",
+                "rightModified": "Diubah suai di kanan",
+                "folder": "folder",
+                "noEntries": "Tiada entri.",
+                "countedNotListed": "Dikira tetapi tidak disenaraikan: imbasan melaporkan fail yang sama sebagai jumlah dan bukan satu baris bagi setiap fail, supaya pepohon besar kekal pantas.",
+                "shown": "Dipaparkan: {shown} daripada {total}",
+                "moreNotListed": "Dikira tetapi tidak disenaraikan: {count}"
+            },
             "compareUnavailable": "Buka panel kedua atau sambungan jauh untuk membandingkan.",
             "planUnavailable": "Keputusan perbandingan diperlukan sebelum memilih pratetap. Buka tab Bandingkan dahulu.",
             "totalEntries": "Jumlah entri",

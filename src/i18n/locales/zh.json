@@ -5043,6 +5043,78 @@
             "tabCompare": "比较",
             "tabPlan": "计划",
             "tabSync": "同步",
+            "presetDefault": "默认",
+            "actionLabel": {
+                "skip": "跳过",
+                "copy-to-right": "复制 → 右侧",
+                "copy-to-left": "复制 ← 左侧",
+                "overwrite-right": "覆盖右侧",
+                "overwrite-left": "覆盖左侧",
+                "delete-right": "删除右侧",
+                "delete-left": "删除左侧",
+                "rename-to-right": "保留两者 → 右侧",
+                "rename-to-left": "保留两者 ← 左侧",
+                "conflict-skip": "冲突（跳过）"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "跳过",
+                    "tagline": "两侧的冲突均保持不变。"
+                },
+                "rename": {
+                    "label": "保留两者",
+                    "tagline": "复制源端版本，并添加包含日期和时间的后缀。"
+                },
+                "newer-wins": {
+                    "label": "较新者优先",
+                    "tagline": "修改时间较新的一侧覆盖另一侧。"
+                },
+                "older-wins": {
+                    "label": "较旧者优先",
+                    "tagline": "较旧的一侧覆盖较新的一侧（适用于归档）。"
+                },
+                "larger-wins": {
+                    "label": "较大者优先",
+                    "tagline": "文件大小较大的一侧覆盖较小的一侧。"
+                },
+                "smaller-wins": {
+                    "label": "较小者优先",
+                    "tagline": "较小的一侧覆盖较大的一侧。"
+                }
+            },
+            "bucketName": {
+                "only-left": "仅左侧",
+                "newer-left": "左侧较新",
+                "only-right": "仅右侧",
+                "newer-right": "右侧较新",
+                "conflict": "冲突",
+                "same": "相同"
+            },
+            "bucketDescription": {
+                "only-left": "存在于源面板，目标中缺失。",
+                "newer-left": "两侧均存在，源端副本的时间戳较新。",
+                "only-right": "存在于目标中，源面板中缺失。",
+                "newer-right": "两侧均存在，目标端副本的时间戳较新。",
+                "conflict": "两侧都有该条目，但在时间戳相近的情况下大小不一致。",
+                "same": "按当前的比较策略，条目一致。"
+            },
+            "comparePolicy": {
+                "sizeOnly": "仅大小",
+                "mtimeOnly": "仅时间戳",
+                "sizeAndMtime": "大小 + 时间戳"
+            },
+            "compareTable": {
+                "name": "名称",
+                "leftSize": "左侧大小",
+                "rightSize": "右侧大小",
+                "leftModified": "左侧修改时间",
+                "rightModified": "右侧修改时间",
+                "folder": "文件夹",
+                "noEntries": "没有条目。",
+                "countedNotListed": "已计数但未列出：扫描将相同的文件汇总为一个总数，而不是每个文件占一行，从而让大型目录树保持快速。",
+                "shown": "已显示：{shown} / {total}",
+                "moreNotListed": "已计数但未列出：{count}"
+            },
             "compareUnavailable": "打开第二个面板或远程连接以进行比较。",
             "planUnavailable": "选择预设之前需要比较结果。请先打开比较选项卡。",
             "totalEntries": "条目总数",

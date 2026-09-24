@@ -5062,6 +5062,78 @@
             "tabCompare": "Comparar",
             "tabPlan": "Pla",
             "tabSync": "Sincronitzar",
+            "presetDefault": "Per defecte",
+            "actionLabel": {
+                "skip": "Omet",
+                "copy-to-right": "Copia → dreta",
+                "copy-to-left": "Copia ← esquerra",
+                "overwrite-right": "Sobreescriu a la dreta",
+                "overwrite-left": "Sobreescriu a l'esquerra",
+                "delete-right": "Elimina a la dreta",
+                "delete-left": "Elimina a l'esquerra",
+                "rename-to-right": "Conserva tots dos → dreta",
+                "rename-to-left": "Conserva tots dos ← esquerra",
+                "conflict-skip": "Conflicte (omet)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Omet",
+                    "tagline": "Deixa els conflictes intactes als dos costats."
+                },
+                "rename": {
+                    "label": "Conserva tots dos",
+                    "tagline": "Copia la versió d'origen amb un sufix de data i hora."
+                },
+                "newer-wins": {
+                    "label": "Guanya el més recent",
+                    "tagline": "El costat amb la data de modificació més recent sobreescriu l'altre."
+                },
+                "older-wins": {
+                    "label": "Guanya el més antic",
+                    "tagline": "El costat més antic sobreescriu el més recent (per a arxivament)."
+                },
+                "larger-wins": {
+                    "label": "Guanya el més gran",
+                    "tagline": "El costat amb la mida més gran sobreescriu el més petit."
+                },
+                "smaller-wins": {
+                    "label": "Guanya el més petit",
+                    "tagline": "El costat més petit sobreescriu el més gran."
+                }
+            },
+            "bucketName": {
+                "only-left": "Només a l'esquerra",
+                "newer-left": "Més recent a l'esquerra",
+                "only-right": "Només a la dreta",
+                "newer-right": "Més recent a la dreta",
+                "conflict": "Conflicte",
+                "same": "Iguals"
+            },
+            "bucketDescription": {
+                "only-left": "Present al tauler d'origen, absent a la destinació.",
+                "newer-left": "Present als dos costats, la còpia d'origen té la marca de temps més recent.",
+                "only-right": "Present a la destinació, absent al tauler d'origen.",
+                "newer-right": "Present als dos costats, la còpia de destinació té la marca de temps més recent.",
+                "conflict": "Els dos costats tenen l'entrada, però la mida no coincideix amb marques de temps comparables.",
+                "same": "Les entrades coincideixen segons el criteri de comparació actiu."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Només mida",
+                "mtimeOnly": "Només marca de temps",
+                "sizeAndMtime": "Mida + marca de temps"
+            },
+            "compareTable": {
+                "name": "Nom",
+                "leftSize": "Mida a l'esquerra",
+                "rightSize": "Mida a la dreta",
+                "leftModified": "Modificat a l'esquerra",
+                "rightModified": "Modificat a la dreta",
+                "folder": "carpeta",
+                "noEntries": "Cap entrada.",
+                "countedNotListed": "Comptats però no llistats: l'escaneig informa dels fitxers idèntics com un total en lloc d'una fila per a cadascun, de manera que els arbres grans continuen sent ràpids.",
+                "shown": "Mostrats: {shown} de {total}",
+                "moreNotListed": "Comptats però no llistats: {count}"
+            },
             "compareUnavailable": "Obre un segon tauler o una connexió remota per comparar.",
             "planUnavailable": "Cal un resultat de comparació abans d'escollir un preset. Obre primer la pestanya Comparar.",
             "totalEntries": "Entrades totals",

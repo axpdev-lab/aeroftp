@@ -5062,6 +5062,78 @@
             "tabCompare": "Cymharu",
             "tabPlan": "Cynllun",
             "tabSync": "Cysoni",
+            "presetDefault": "Diofyn",
+            "actionLabel": {
+                "skip": "Hepgor",
+                "copy-to-right": "Copïo → i'r dde",
+                "copy-to-left": "Copïo ← i'r chwith",
+                "overwrite-right": "Trosysgrifo ar y dde",
+                "overwrite-left": "Trosysgrifo ar y chwith",
+                "delete-right": "Dileu ar y dde",
+                "delete-left": "Dileu ar y chwith",
+                "rename-to-right": "Cadw'r ddau → i'r dde",
+                "rename-to-left": "Cadw'r ddau ← i'r chwith",
+                "conflict-skip": "Gwrthdaro (hepgor)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Hepgor",
+                    "tagline": "Gadael pob gwrthdaro heb ei newid ar y ddwy ochr."
+                },
+                "rename": {
+                    "label": "Cadw'r ddau",
+                    "tagline": "Copïo fersiwn y ffynhonnell gydag ôl-ddodiad dyddiad ac amser."
+                },
+                "newer-wins": {
+                    "label": "Y mwyaf newydd sy'n ennill",
+                    "tagline": "Mae'r ochr â'r amser addasu mwyaf diweddar yn trosysgrifo'r llall."
+                },
+                "older-wins": {
+                    "label": "Yr hynaf sy'n ennill",
+                    "tagline": "Mae'r ochr hynaf yn trosysgrifo'r un fwyaf newydd (ar gyfer archifo)."
+                },
+                "larger-wins": {
+                    "label": "Y mwyaf sy'n ennill",
+                    "tagline": "Mae'r ochr â'r maint mwyaf yn trosysgrifo'r un leiaf."
+                },
+                "smaller-wins": {
+                    "label": "Y lleiaf sy'n ennill",
+                    "tagline": "Mae'r ochr leiaf yn trosysgrifo'r un fwyaf."
+                }
+            },
+            "bucketName": {
+                "only-left": "Ar y chwith yn unig",
+                "newer-left": "Mwy newydd ar y chwith",
+                "only-right": "Ar y dde yn unig",
+                "newer-right": "Mwy newydd ar y dde",
+                "conflict": "Gwrthdaro",
+                "same": "Yr un fath"
+            },
+            "bucketDescription": {
+                "only-left": "Yn bresennol ar banel y ffynhonnell, ar goll o'r gyrchfan.",
+                "newer-left": "Yn bresennol ar y ddwy ochr, mae gan gopi'r ffynhonnell y stamp amser mwyaf diweddar.",
+                "only-right": "Yn bresennol yn y gyrchfan, ar goll o banel y ffynhonnell.",
+                "newer-right": "Yn bresennol ar y ddwy ochr, mae gan gopi'r gyrchfan y stamp amser mwyaf diweddar.",
+                "conflict": "Mae'r cofnod ar y ddwy ochr ond mae'r maint yn wahanol er bod y stampiau amser yn debyg.",
+                "same": "Mae'r cofnodion yn cyfateb yn ôl y polisi cymharu gweithredol."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Maint yn unig",
+                "mtimeOnly": "Stamp amser yn unig",
+                "sizeAndMtime": "Maint + stamp amser"
+            },
+            "compareTable": {
+                "name": "Enw",
+                "leftSize": "Maint ar y chwith",
+                "rightSize": "Maint ar y dde",
+                "leftModified": "Addaswyd ar y chwith",
+                "rightModified": "Addaswyd ar y dde",
+                "folder": "ffolder",
+                "noEntries": "Dim cofnodion.",
+                "countedNotListed": "Wedi'u cyfrif ond heb eu rhestru: mae'r sgan yn adrodd ffeiliau union yr un fath fel cyfanswm yn lle un rhes yr un, felly mae coed mawr yn aros yn gyflym.",
+                "shown": "Dangosir: {shown} o {total}",
+                "moreNotListed": "Wedi'u cyfrif ond heb eu rhestru: {count}"
+            },
             "compareUnavailable": "Agor ail banel neu gysylltiad pell i gymharu.",
             "planUnavailable": "Mae angen canlyniad cymharu cyn dewis rhagosod. Agor y tab Cymharu yn gyntaf.",
             "totalEntries": "Cyfanswm cofnodion",

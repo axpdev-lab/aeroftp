@@ -5043,6 +5043,78 @@
             "tabCompare": "Salīdzināt",
             "tabPlan": "Plāns",
             "tabSync": "Sinhronizēt",
+            "presetDefault": "Noklusējums",
+            "actionLabel": {
+                "skip": "Izlaist",
+                "copy-to-right": "Kopēt → pa labi",
+                "copy-to-left": "Kopēt ← pa kreisi",
+                "overwrite-right": "Pārrakstīt labajā pusē",
+                "overwrite-left": "Pārrakstīt kreisajā pusē",
+                "delete-right": "Dzēst labajā pusē",
+                "delete-left": "Dzēst kreisajā pusē",
+                "rename-to-right": "Paturēt abus → pa labi",
+                "rename-to-left": "Paturēt abus ← pa kreisi",
+                "conflict-skip": "Konflikts (izlaist)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Izlaist",
+                    "tagline": "Atstāj konfliktus neskartus abās pusēs."
+                },
+                "rename": {
+                    "label": "Paturēt abus",
+                    "tagline": "Kopē avota versiju ar datuma un laika sufiksu."
+                },
+                "newer-wins": {
+                    "label": "Uzvar jaunākais",
+                    "tagline": "Puse ar vēlāku modificēšanas laiku pārraksta otru."
+                },
+                "older-wins": {
+                    "label": "Uzvar vecākais",
+                    "tagline": "Vecākā puse pārraksta jaunāko (arhivēšanai)."
+                },
+                "larger-wins": {
+                    "label": "Uzvar lielākais",
+                    "tagline": "Puse ar lielāku izmēru pārraksta mazāko."
+                },
+                "smaller-wins": {
+                    "label": "Uzvar mazākais",
+                    "tagline": "Mazākā puse pārraksta lielāko."
+                }
+            },
+            "bucketName": {
+                "only-left": "Tikai kreisajā pusē",
+                "newer-left": "Jaunāks kreisajā pusē",
+                "only-right": "Tikai labajā pusē",
+                "newer-right": "Jaunāks labajā pusē",
+                "conflict": "Konflikts",
+                "same": "Vienādi"
+            },
+            "bucketDescription": {
+                "only-left": "Ir avota panelī, trūkst galamērķī.",
+                "newer-left": "Ir abās pusēs, avota kopijai ir jaunāks laikspiedols.",
+                "only-right": "Ir galamērķī, trūkst avota panelī.",
+                "newer-right": "Ir abās pusēs, galamērķa kopijai ir jaunāks laikspiedols.",
+                "conflict": "Ieraksts ir abās pusēs, bet ar līdzīgiem laikspiedoliem atšķiras izmērs.",
+                "same": "Ieraksti sakrīt saskaņā ar aktīvo salīdzināšanas politiku."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Tikai izmērs",
+                "mtimeOnly": "Tikai laikspiedols",
+                "sizeAndMtime": "Izmērs + laikspiedols"
+            },
+            "compareTable": {
+                "name": "Nosaukums",
+                "leftSize": "Izmērs kreisajā pusē",
+                "rightSize": "Izmērs labajā pusē",
+                "leftModified": "Modificēts kreisajā pusē",
+                "rightModified": "Modificēts labajā pusē",
+                "folder": "mape",
+                "noEntries": "Nav ierakstu.",
+                "countedNotListed": "Saskaitīti, bet nav uzskaitīti: skenēšana identiskus failus norāda kā kopskaitu, nevis katru atsevišķā rindā, lai lieli koki paliktu ātri.",
+                "shown": "Parādīti: {shown} no {total}",
+                "moreNotListed": "Saskaitīti, bet nav uzskaitīti: {count}"
+            },
             "compareUnavailable": "Atveriet otru paneli vai attālu savienojumu, lai salīdzinātu.",
             "planUnavailable": "Pirms iepriekšējā iestatījuma izvēles ir nepieciešams salīdzināšanas rezultāts. Vispirms atveriet cilni Salīdzināt.",
             "totalEntries": "Kopā ierakstu",

@@ -5043,6 +5043,78 @@
             "tabCompare": "Jämför",
             "tabPlan": "Plan",
             "tabSync": "Synkronisera",
+            "presetDefault": "Standard",
+            "actionLabel": {
+                "skip": "Hoppa över",
+                "copy-to-right": "Kopiera → höger",
+                "copy-to-left": "Kopiera ← vänster",
+                "overwrite-right": "Skriv över på höger sida",
+                "overwrite-left": "Skriv över på vänster sida",
+                "delete-right": "Ta bort på höger sida",
+                "delete-left": "Ta bort på vänster sida",
+                "rename-to-right": "Behåll båda → höger",
+                "rename-to-left": "Behåll båda ← vänster",
+                "conflict-skip": "Konflikt (hoppa över)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Hoppa över",
+                    "tagline": "Lämnar konflikter orörda på båda sidor."
+                },
+                "rename": {
+                    "label": "Behåll båda",
+                    "tagline": "Kopierar källans version med ett suffix med datum och tid."
+                },
+                "newer-wins": {
+                    "label": "Nyaste vinner",
+                    "tagline": "Sidan med den senaste ändringstiden skriver över den andra."
+                },
+                "older-wins": {
+                    "label": "Äldsta vinner",
+                    "tagline": "Den äldre sidan skriver över den nyare (för arkivering)."
+                },
+                "larger-wins": {
+                    "label": "Största vinner",
+                    "tagline": "Sidan med störst filstorlek skriver över den mindre."
+                },
+                "smaller-wins": {
+                    "label": "Minsta vinner",
+                    "tagline": "Den mindre sidan skriver över den större."
+                }
+            },
+            "bucketName": {
+                "only-left": "Endast till vänster",
+                "newer-left": "Nyare till vänster",
+                "only-right": "Endast till höger",
+                "newer-right": "Nyare till höger",
+                "conflict": "Konflikt",
+                "same": "Lika"
+            },
+            "bucketDescription": {
+                "only-left": "Finns i källpanelen, saknas i destinationen.",
+                "newer-left": "Finns på båda sidor, källans kopia har den senaste tidsstämpeln.",
+                "only-right": "Finns i destinationen, saknas i källpanelen.",
+                "newer-right": "Finns på båda sidor, destinationens kopia har den senaste tidsstämpeln.",
+                "conflict": "Båda sidor har posten men storleken skiljer sig trots jämförbara tidsstämplar.",
+                "same": "Posterna stämmer överens enligt den aktiva jämförelsepolicyn."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Endast storlek",
+                "mtimeOnly": "Endast tidsstämpel",
+                "sizeAndMtime": "Storlek + tidsstämpel"
+            },
+            "compareTable": {
+                "name": "Namn",
+                "leftSize": "Storlek vänster",
+                "rightSize": "Storlek höger",
+                "leftModified": "Ändrad vänster",
+                "rightModified": "Ändrad höger",
+                "folder": "mapp",
+                "noEntries": "Inga poster.",
+                "countedNotListed": "Räknade men inte listade: genomsökningen rapporterar identiska filer som ett totalt antal i stället för en rad per fil, så att stora träd förblir snabba.",
+                "shown": "Visas: {shown} av {total}",
+                "moreNotListed": "Räknade men inte listade: {count}"
+            },
             "compareUnavailable": "Öppna en andra panel eller en fjärranslutning för att jämföra.",
             "planUnavailable": "Ett jämförelseresultat krävs innan du väljer en förinställning. Öppna fliken Jämför först.",
             "totalEntries": "Totalt antal poster",

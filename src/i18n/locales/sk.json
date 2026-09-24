@@ -5043,6 +5043,78 @@
             "tabCompare": "Porovnať",
             "tabPlan": "Plán",
             "tabSync": "Synchronizovať",
+            "presetDefault": "Predvolené",
+            "actionLabel": {
+                "skip": "Preskočiť",
+                "copy-to-right": "Kopírovať → doprava",
+                "copy-to-left": "Kopírovať ← doľava",
+                "overwrite-right": "Prepísať vpravo",
+                "overwrite-left": "Prepísať vľavo",
+                "delete-right": "Odstrániť vpravo",
+                "delete-left": "Odstrániť vľavo",
+                "rename-to-right": "Ponechať obe → doprava",
+                "rename-to-left": "Ponechať obe ← doľava",
+                "conflict-skip": "Konflikt (preskočiť)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Preskočiť",
+                    "tagline": "Ponechá konflikty na oboch stranách bez zmeny."
+                },
+                "rename": {
+                    "label": "Ponechať obe",
+                    "tagline": "Skopíruje verziu zo zdroja s príponou obsahujúcou dátum a čas."
+                },
+                "newer-wins": {
+                    "label": "Vyhráva novšia",
+                    "tagline": "Strana s novším časom zmeny prepíše druhú."
+                },
+                "older-wins": {
+                    "label": "Vyhráva staršia",
+                    "tagline": "Staršia strana prepíše novšiu (na archiváciu)."
+                },
+                "larger-wins": {
+                    "label": "Vyhráva väčšia",
+                    "tagline": "Strana s väčšou veľkosťou prepíše menšiu."
+                },
+                "smaller-wins": {
+                    "label": "Vyhráva menšia",
+                    "tagline": "Menšia strana prepíše väčšiu."
+                }
+            },
+            "bucketName": {
+                "only-left": "Iba vľavo",
+                "newer-left": "Novšie vľavo",
+                "only-right": "Iba vpravo",
+                "newer-right": "Novšie vpravo",
+                "conflict": "Konflikt",
+                "same": "Rovnaké"
+            },
+            "bucketDescription": {
+                "only-left": "Nachádza sa na zdrojovom paneli, v cieli chýba.",
+                "newer-left": "Nachádza sa na oboch stranách, kópia v zdroji má novšiu časovú značku.",
+                "only-right": "Nachádza sa v cieli, na zdrojovom paneli chýba.",
+                "newer-right": "Nachádza sa na oboch stranách, kópia v cieli má novšiu časovú značku.",
+                "conflict": "Položka je na oboch stranách, ale pri porovnateľných časových značkách sa líši veľkosťou.",
+                "same": "Položky sa zhodujú podľa aktívneho pravidla porovnania."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Iba veľkosť",
+                "mtimeOnly": "Iba časová značka",
+                "sizeAndMtime": "Veľkosť + časová značka"
+            },
+            "compareTable": {
+                "name": "Názov",
+                "leftSize": "Veľkosť vľavo",
+                "rightSize": "Veľkosť vpravo",
+                "leftModified": "Zmenené vľavo",
+                "rightModified": "Zmenené vpravo",
+                "folder": "priečinok",
+                "noEntries": "Žiadne položky.",
+                "countedNotListed": "Započítané, ale nevypísané: skenovanie uvádza zhodné súbory ako súhrnný počet namiesto samostatného riadka pre každý, aby veľké stromy zostali rýchle.",
+                "shown": "Zobrazené: {shown} z {total}",
+                "moreNotListed": "Započítané, ale nevypísané: {count}"
+            },
             "compareUnavailable": "Otvorte druhý panel alebo vzdialené pripojenie na porovnanie.",
             "planUnavailable": "Pred výberom predvoľby je potrebný výsledok porovnania. Najprv otvorte kartu Porovnať.",
             "totalEntries": "Celkový počet záznamov",

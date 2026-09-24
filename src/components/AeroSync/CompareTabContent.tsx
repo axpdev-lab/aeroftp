@@ -31,6 +31,12 @@ import {
 import { formatBytes } from '../../utils/formatters';
 import { useScanProgress, formatElapsed } from '../../hooks/useScanProgress';
 import { useTranslation } from '../../i18n';
+import {
+    bucketDescriptionLabel,
+    bucketNameLabel,
+    comparePolicyLabel,
+    resolveLabel,
+} from '../../utils/syncDirectionLabels';
 
 interface CompareTabContentProps {
     result: CompareResult | null;
@@ -55,45 +61,33 @@ const BUCKET_ORDER: CompareBucket[] = [
     'same',
 ];
 
+/** Look of each bucket; its name and description come from the locale
+ *  (`bucketNameLabel` / `bucketDescriptionLabel`), shared with the Plan tab. */
 const BUCKET_META: Record<CompareBucket, {
-    label: string;
-    description: string;
     accentClass: string;
     icon: LucideIcon;
 }> = {
     'only-left': {
-        label: 'Only on left',
-        description: 'Present on the source panel, missing from the destination.',
         accentClass: 'border-l-emerald-400 bg-emerald-50/60 dark:border-l-emerald-500 dark:bg-emerald-900/20',
         icon: ArrowRight,
     },
     'newer-left': {
-        label: 'Newer on left',
-        description: 'Present on both sides, the source copy has the more recent timestamp.',
         accentClass: 'border-l-sky-400 bg-sky-50/60 dark:border-l-sky-500 dark:bg-sky-900/20',
         icon: ArrowRight,
     },
     'only-right': {
-        label: 'Only on right',
-        description: 'Present on the destination, missing from the source panel.',
         accentClass: 'border-l-amber-400 bg-amber-50/60 dark:border-l-amber-500 dark:bg-amber-900/20',
         icon: ArrowRight,
     },
     'newer-right': {
-        label: 'Newer on right',
-        description: 'Present on both sides, the destination copy has the more recent timestamp.',
         accentClass: 'border-l-orange-400 bg-orange-50/60 dark:border-l-orange-500 dark:bg-orange-900/20',
         icon: ArrowRight,
     },
     conflict: {
-        label: 'Conflict',
-        description: 'Both sides have the entry but they disagree on size with comparable timestamps.',
         accentClass: 'border-l-rose-400 bg-rose-50/60 dark:border-l-rose-500 dark:bg-rose-900/20',
         icon: FileWarning,
     },
     same: {
-        label: 'Same',
-        description: 'Entries match according to the active comparison policy.',
         accentClass: 'border-l-gray-300 bg-gray-50/60 dark:border-l-gray-600 dark:bg-gray-800/40',
         icon: Equal,
     },
@@ -141,6 +135,7 @@ interface BucketSectionProps {
 }
 
 const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, count, bytes, initiallyOpen }) => {
+    const t = useTranslation();
     const [open, setOpen] = React.useState(initiallyOpen);
     const meta = BUCKET_META[bucket];
     const Icon = meta.icon;
@@ -159,7 +154,7 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, count, b
                 <div className="flex min-w-0 items-center gap-2">
                     <Icon size={14} className="shrink-0 text-gray-600 dark:text-gray-300" />
                     <span className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
-                        {meta.label}
+                        {resolveLabel(t, bucketNameLabel(bucket))}
                     </span>
                     <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium text-gray-700 shadow-sm dark:bg-gray-900/40 dark:text-gray-200">
                         {count}
@@ -174,23 +169,23 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, count, b
             </button>
             {open && (
                 <div className="border-t border-gray-200 px-3 py-2 dark:border-gray-700">
-                    <p className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{meta.description}</p>
+                    <p className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{resolveLabel(t, bucketDescriptionLabel(bucket))}</p>
                     {entries.length === 0 ? (
                         <p className="text-xs italic text-gray-400 dark:text-gray-500">
                             {unlisted > 0
-                                ? `Counted but not listed: the scan reports identical files as a total instead of one row each, so large trees stay fast.`
-                                : 'No entries.'}
+                                ? (t('aerosync.compareTable.countedNotListed') || 'Counted but not listed: the scan reports identical files as a total instead of one row each, so large trees stay fast.')
+                                : (t('aerosync.compareTable.noEntries') || 'No entries.')}
                         </p>
                     ) : (
                         <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white/60 dark:border-gray-700 dark:bg-gray-900/30">
                             <table className="w-full text-[11px]">
                                 <thead className="sticky top-0 bg-gray-100 text-left text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                                     <tr>
-                                        <th className="px-2 py-1 font-medium">Name</th>
-                                        <th className="px-2 py-1 font-medium text-right">Left size</th>
-                                        <th className="px-2 py-1 font-medium text-right">Right size</th>
-                                        <th className="px-2 py-1 font-medium">Left mtime</th>
-                                        <th className="px-2 py-1 font-medium">Right mtime</th>
+                                        <th className="px-2 py-1 font-medium">{t('aerosync.compareTable.name') || 'Name'}</th>
+                                        <th className="px-2 py-1 font-medium text-right">{t('aerosync.compareTable.leftSize') || 'Left size'}</th>
+                                        <th className="px-2 py-1 font-medium text-right">{t('aerosync.compareTable.rightSize') || 'Right size'}</th>
+                                        <th className="px-2 py-1 font-medium">{t('aerosync.compareTable.leftModified') || 'Left modified'}</th>
+                                        <th className="px-2 py-1 font-medium">{t('aerosync.compareTable.rightModified') || 'Right modified'}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -200,10 +195,10 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, count, b
                                                 {entry.relativePath ?? entry.name}
                                             </td>
                                             <td className="px-2 py-1 text-right text-gray-600 dark:text-gray-300">
-                                                {entry.leftIsDir ? 'dir' : formatSize(entry.leftSize)}
+                                                {entry.leftIsDir ? (t('aerosync.compareTable.folder') || 'folder') : formatSize(entry.leftSize)}
                                             </td>
                                             <td className="px-2 py-1 text-right text-gray-600 dark:text-gray-300">
-                                                {entry.rightIsDir ? 'dir' : formatSize(entry.rightSize)}
+                                                {entry.rightIsDir ? (t('aerosync.compareTable.folder') || 'folder') : formatSize(entry.rightSize)}
                                             </td>
                                             <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
                                                 {formatTimestamp(entry.leftMtimeMs)}
@@ -217,12 +212,12 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, count, b
                             </table>
                             {truncated && (
                                 <p className="border-t border-gray-200 px-3 py-1 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                                    Showing first {MAX_PREVIEW_ROWS} of {entries.length} entries.
+                                    {t('aerosync.compareTable.shown', { shown: MAX_PREVIEW_ROWS, total: entries.length }) || `Shown: ${MAX_PREVIEW_ROWS} of ${entries.length}`}
                                 </p>
                             )}
                             {unlisted > 0 && (
                                 <p className="border-t border-gray-200 px-3 py-1 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                                    {unlisted} more counted but not listed.
+                                    {t('aerosync.compareTable.moreNotListed', { count: unlisted }) || `Counted but not listed: ${unlisted}`}
                                 </p>
                             )}
                         </div>
@@ -253,16 +248,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     // (GAP-5) flips `result` from null to a value while this component stays
     // mounted, so an early return above a hook would change the hook count
     // between renders. Each memo guards the null case instead.
-    const policyLabel = React.useMemo(() => {
-        switch (result?.appliedOptions.policy) {
-            case 'size-only':
-                return 'Size only';
-            case 'mtime-only':
-                return 'Timestamp only';
-            default:
-                return 'Size + timestamp';
-        }
-    }, [result?.appliedOptions.policy]);
+    const policyLabel = resolveLabel(t, comparePolicyLabel(result?.appliedOptions.policy));
 
     const leftToRightEntries = React.useMemo(
         () => (result

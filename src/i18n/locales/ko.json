@@ -1599,7 +1599,7 @@
             "update_checking": "업데이트 확인 중...",
             "update_available": "Update available: v{version} (.{format})",
             "update_uptodate": "최신 버전 (v{version})",
-            "update_error": "Update check failed: {error}",
+            "update_error": "업데이트 확인 실패: {error}",
             "file_skipped": "건너뜀 (변경 없음): {filename}",
             "navigate_opened": "[{location}] 폴더를 열었습니다: {path}",
             "navigate_entered": "[{location}] 폴더에 들어갔습니다: {path}",
@@ -5043,6 +5043,78 @@
             "tabCompare": "비교",
             "tabPlan": "계획",
             "tabSync": "동기화",
+            "presetDefault": "기본값",
+            "actionLabel": {
+                "skip": "건너뛰기",
+                "copy-to-right": "복사 → 오른쪽",
+                "copy-to-left": "복사 ← 왼쪽",
+                "overwrite-right": "오른쪽 덮어쓰기",
+                "overwrite-left": "왼쪽 덮어쓰기",
+                "delete-right": "오른쪽에서 삭제",
+                "delete-left": "왼쪽에서 삭제",
+                "rename-to-right": "둘 다 유지 → 오른쪽",
+                "rename-to-left": "둘 다 유지 ← 왼쪽",
+                "conflict-skip": "충돌 (건너뛰기)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "건너뛰기",
+                    "tagline": "양쪽의 충돌을 그대로 둡니다."
+                },
+                "rename": {
+                    "label": "둘 다 유지",
+                    "tagline": "원본 쪽 버전에 날짜와 시간 접미사를 붙여 복사합니다."
+                },
+                "newer-wins": {
+                    "label": "더 새로운 쪽 우선",
+                    "tagline": "수정 시간이 더 최근인 쪽이 다른 쪽을 덮어씁니다."
+                },
+                "older-wins": {
+                    "label": "더 오래된 쪽 우선",
+                    "tagline": "더 오래된 쪽이 더 새로운 쪽을 덮어씁니다(보관 용도)."
+                },
+                "larger-wins": {
+                    "label": "더 큰 쪽 우선",
+                    "tagline": "크기가 더 큰 쪽이 더 작은 쪽을 덮어씁니다."
+                },
+                "smaller-wins": {
+                    "label": "더 작은 쪽 우선",
+                    "tagline": "더 작은 쪽이 더 큰 쪽을 덮어씁니다."
+                }
+            },
+            "bucketName": {
+                "only-left": "왼쪽에만 있음",
+                "newer-left": "왼쪽이 더 최신",
+                "only-right": "오른쪽에만 있음",
+                "newer-right": "오른쪽이 더 최신",
+                "conflict": "충돌",
+                "same": "동일"
+            },
+            "bucketDescription": {
+                "only-left": "원본 패널에는 있고 대상에는 없습니다.",
+                "newer-left": "양쪽에 있으며 원본 사본의 타임스탬프가 더 최근입니다.",
+                "only-right": "대상에는 있고 원본 패널에는 없습니다.",
+                "newer-right": "양쪽에 있으며 대상 사본의 타임스탬프가 더 최근입니다.",
+                "conflict": "양쪽에 항목이 있지만 타임스탬프가 비슷한데도 크기가 다릅니다.",
+                "same": "현재 비교 정책에 따라 항목이 일치합니다."
+            },
+            "comparePolicy": {
+                "sizeOnly": "크기만",
+                "mtimeOnly": "타임스탬프만",
+                "sizeAndMtime": "크기 + 타임스탬프"
+            },
+            "compareTable": {
+                "name": "이름",
+                "leftSize": "왼쪽 크기",
+                "rightSize": "오른쪽 크기",
+                "leftModified": "왼쪽 수정 시간",
+                "rightModified": "오른쪽 수정 시간",
+                "folder": "폴더",
+                "noEntries": "항목이 없습니다.",
+                "countedNotListed": "집계되었으나 목록에 없음: 큰 트리에서도 빠르게 동작하도록 검사 시 동일한 파일은 파일마다 한 행씩이 아니라 합계로 보고됩니다.",
+                "shown": "표시됨: {total}개 중 {shown}개",
+                "moreNotListed": "집계되었으나 목록에 없음: {count}"
+            },
             "compareUnavailable": "비교하려면 두 번째 패널 또는 원격 연결을 여세요.",
             "planUnavailable": "프리셋을 선택하기 전에 비교 결과가 필요합니다. 먼저 비교 탭을 여세요.",
             "totalEntries": "총 항목",

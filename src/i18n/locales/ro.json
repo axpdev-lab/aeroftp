@@ -5043,6 +5043,78 @@
             "tabCompare": "Compară",
             "tabPlan": "Plan",
             "tabSync": "Sincronizează",
+            "presetDefault": "Implicit",
+            "actionLabel": {
+                "skip": "Omite",
+                "copy-to-right": "Copiază → dreapta",
+                "copy-to-left": "Copiază ← stânga",
+                "overwrite-right": "Suprascrie în dreapta",
+                "overwrite-left": "Suprascrie în stânga",
+                "delete-right": "Șterge în dreapta",
+                "delete-left": "Șterge în stânga",
+                "rename-to-right": "Păstrează ambele → dreapta",
+                "rename-to-left": "Păstrează ambele ← stânga",
+                "conflict-skip": "Conflict (omite)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Omite",
+                    "tagline": "Lasă conflictele neatinse pe ambele părți."
+                },
+                "rename": {
+                    "label": "Păstrează ambele",
+                    "tagline": "Copiază versiunea din sursă cu un sufix de dată și oră."
+                },
+                "newer-wins": {
+                    "label": "Câștigă cel mai nou",
+                    "tagline": "Partea cu data modificării mai recentă o suprascrie pe cealaltă."
+                },
+                "older-wins": {
+                    "label": "Câștigă cel mai vechi",
+                    "tagline": "Partea mai veche o suprascrie pe cea mai nouă (pentru arhivare)."
+                },
+                "larger-wins": {
+                    "label": "Câștigă cel mai mare",
+                    "tagline": "Partea cu dimensiunea mai mare o suprascrie pe cea mai mică."
+                },
+                "smaller-wins": {
+                    "label": "Câștigă cel mai mic",
+                    "tagline": "Partea mai mică o suprascrie pe cea mai mare."
+                }
+            },
+            "bucketName": {
+                "only-left": "Doar în stânga",
+                "newer-left": "Mai nou în stânga",
+                "only-right": "Doar în dreapta",
+                "newer-right": "Mai nou în dreapta",
+                "conflict": "Conflict",
+                "same": "Identice"
+            },
+            "bucketDescription": {
+                "only-left": "Prezent în panoul sursă, lipsește din destinație.",
+                "newer-left": "Prezent pe ambele părți, copia din sursă are marcajul temporal mai recent.",
+                "only-right": "Prezent în destinație, lipsește din panoul sursă.",
+                "newer-right": "Prezent pe ambele părți, copia din destinație are marcajul temporal mai recent.",
+                "conflict": "Ambele părți au intrarea, dar dimensiunea diferă la marcaje temporale comparabile.",
+                "same": "Intrările coincid conform politicii de comparare active."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Doar dimensiunea",
+                "mtimeOnly": "Doar marcajul temporal",
+                "sizeAndMtime": "Dimensiune + marcaj temporal"
+            },
+            "compareTable": {
+                "name": "Nume",
+                "leftSize": "Dimensiune în stânga",
+                "rightSize": "Dimensiune în dreapta",
+                "leftModified": "Modificat în stânga",
+                "rightModified": "Modificat în dreapta",
+                "folder": "dosar",
+                "noEntries": "Nicio intrare.",
+                "countedNotListed": "Numărate, dar nelistate: scanarea raportează fișierele identice ca total în loc de câte un rând pentru fiecare, astfel încât arborii mari rămân rapizi.",
+                "shown": "Afișate: {shown} din {total}",
+                "moreNotListed": "Numărate, dar nelistate: {count}"
+            },
             "compareUnavailable": "Deschide un al doilea panou sau o conexiune la distanță pentru a compara.",
             "planUnavailable": "Este necesar un rezultat de comparare înainte de a alege o presetare. Deschide mai întâi fila Compară.",
             "totalEntries": "Total intrări",

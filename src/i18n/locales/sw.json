@@ -5043,6 +5043,78 @@
             "tabCompare": "Linganisha",
             "tabPlan": "Mpango",
             "tabSync": "Sawazisha",
+            "presetDefault": "Chaguo-msingi",
+            "actionLabel": {
+                "skip": "Ruka",
+                "copy-to-right": "Nakili → kulia",
+                "copy-to-left": "Nakili ← kushoto",
+                "overwrite-right": "Andika juu upande wa kulia",
+                "overwrite-left": "Andika juu upande wa kushoto",
+                "delete-right": "Futa upande wa kulia",
+                "delete-left": "Futa upande wa kushoto",
+                "rename-to-right": "Weka zote mbili → kulia",
+                "rename-to-left": "Weka zote mbili ← kushoto",
+                "conflict-skip": "Mgogoro (ruka)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Ruka",
+                    "tagline": "Huacha migogoro bila kuguswa pande zote mbili."
+                },
+                "rename": {
+                    "label": "Weka zote mbili",
+                    "tagline": "Hunakili toleo la chanzo likiwa na kiambishi cha tarehe na saa."
+                },
+                "newer-wins": {
+                    "label": "Mpya zaidi hushinda",
+                    "tagline": "Upande wenye muda wa marekebisho wa karibuni zaidi huandika juu ya upande mwingine."
+                },
+                "older-wins": {
+                    "label": "Ya zamani zaidi hushinda",
+                    "tagline": "Upande wa zamani zaidi huandika juu ya ule mpya zaidi (kwa kuhifadhi kumbukumbu)."
+                },
+                "larger-wins": {
+                    "label": "Kubwa zaidi hushinda",
+                    "tagline": "Upande wenye ukubwa mkubwa zaidi huandika juu ya ule mdogo zaidi."
+                },
+                "smaller-wins": {
+                    "label": "Ndogo zaidi hushinda",
+                    "tagline": "Upande mdogo zaidi huandika juu ya ule mkubwa zaidi."
+                }
+            },
+            "bucketName": {
+                "only-left": "Kushoto pekee",
+                "newer-left": "Mpya zaidi kushoto",
+                "only-right": "Kulia pekee",
+                "newer-right": "Mpya zaidi kulia",
+                "conflict": "Mgogoro",
+                "same": "Sawa"
+            },
+            "bucketDescription": {
+                "only-left": "Ipo kwenye paneli ya chanzo, haipo kwenye lengo.",
+                "newer-left": "Ipo pande zote mbili, nakala ya chanzo ina alama ya wakati ya karibuni zaidi.",
+                "only-right": "Ipo kwenye lengo, haipo kwenye paneli ya chanzo.",
+                "newer-right": "Ipo pande zote mbili, nakala ya lengo ina alama ya wakati ya karibuni zaidi.",
+                "conflict": "Pande zote mbili zina ingizo hilo lakini ukubwa unatofautiana ingawa alama za wakati zinakaribiana.",
+                "same": "Maingizo yanalingana kulingana na sera ya ulinganisho inayotumika."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Ukubwa pekee",
+                "mtimeOnly": "Alama ya wakati pekee",
+                "sizeAndMtime": "Ukubwa + alama ya wakati"
+            },
+            "compareTable": {
+                "name": "Jina",
+                "leftSize": "Ukubwa kushoto",
+                "rightSize": "Ukubwa kulia",
+                "leftModified": "Ilibadilishwa kushoto",
+                "rightModified": "Ilibadilishwa kulia",
+                "folder": "folda",
+                "noEntries": "Hakuna maingizo.",
+                "countedNotListed": "Zimehesabiwa lakini hazijaorodheshwa: uchanganuzi huripoti faili zinazofanana kama jumla badala ya safu moja kwa kila moja, ili miti mikubwa ibaki haraka.",
+                "shown": "Zinaonyeshwa: {shown} kati ya {total}",
+                "moreNotListed": "Zimehesabiwa lakini hazijaorodheshwa: {count}"
+            },
             "compareUnavailable": "Fungua paneli ya pili au muunganisho wa mbali ili kulinganisha.",
             "planUnavailable": "Matokeo ya ulinganisho yanahitajika kabla ya kuchagua mpangilio. Fungua kichupo cha Linganisha kwanza.",
             "totalEntries": "Jumla ya maingizo",

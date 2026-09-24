@@ -5043,6 +5043,78 @@
             "tabCompare": "Comparer",
             "tabPlan": "Plan",
             "tabSync": "Synchroniser",
+            "presetDefault": "Par défaut",
+            "actionLabel": {
+                "skip": "Ignorer",
+                "copy-to-right": "Copier → droite",
+                "copy-to-left": "Copier ← gauche",
+                "overwrite-right": "Écraser à droite",
+                "overwrite-left": "Écraser à gauche",
+                "delete-right": "Supprimer à droite",
+                "delete-left": "Supprimer à gauche",
+                "rename-to-right": "Garder les deux → droite",
+                "rename-to-left": "Garder les deux ← gauche",
+                "conflict-skip": "Conflit (ignorer)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Ignorer",
+                    "tagline": "Laisse les conflits intacts des deux côtés."
+                },
+                "rename": {
+                    "label": "Garder les deux",
+                    "tagline": "Copie la version source avec un suffixe de date et d'heure."
+                },
+                "newer-wins": {
+                    "label": "Le plus récent l'emporte",
+                    "tagline": "Le côté dont la date de modification est la plus récente écrase l'autre."
+                },
+                "older-wins": {
+                    "label": "Le plus ancien l'emporte",
+                    "tagline": "Le côté le plus ancien écrase le plus récent (pour l'archivage)."
+                },
+                "larger-wins": {
+                    "label": "Le plus grand l'emporte",
+                    "tagline": "Le côté dont la taille est la plus grande écrase le plus petit."
+                },
+                "smaller-wins": {
+                    "label": "Le plus petit l'emporte",
+                    "tagline": "Le côté le plus petit écrase le plus grand."
+                }
+            },
+            "bucketName": {
+                "only-left": "Uniquement à gauche",
+                "newer-left": "Plus récent à gauche",
+                "only-right": "Uniquement à droite",
+                "newer-right": "Plus récent à droite",
+                "conflict": "Conflit",
+                "same": "Identiques"
+            },
+            "bucketDescription": {
+                "only-left": "Présent dans le panneau source, absent de la destination.",
+                "newer-left": "Présent des deux côtés, la copie source a l'horodatage le plus récent.",
+                "only-right": "Présent dans la destination, absent du panneau source.",
+                "newer-right": "Présent des deux côtés, la copie de destination a l'horodatage le plus récent.",
+                "conflict": "Les deux côtés contiennent l'entrée, mais la taille diffère avec des horodatages comparables.",
+                "same": "Les entrées correspondent selon la règle de comparaison active."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Taille uniquement",
+                "mtimeOnly": "Horodatage uniquement",
+                "sizeAndMtime": "Taille + horodatage"
+            },
+            "compareTable": {
+                "name": "Nom",
+                "leftSize": "Taille à gauche",
+                "rightSize": "Taille à droite",
+                "leftModified": "Modifié à gauche",
+                "rightModified": "Modifié à droite",
+                "folder": "dossier",
+                "noEntries": "Aucune entrée.",
+                "countedNotListed": "Comptés mais non listés : l'analyse indique les fichiers identiques sous forme de total plutôt qu'une ligne pour chacun, afin que les grandes arborescences restent rapides.",
+                "shown": "Affichés : {shown} sur {total}",
+                "moreNotListed": "Comptés mais non listés : {count}"
+            },
             "compareUnavailable": "Ouvrez un second panneau ou une connexion distante pour comparer.",
             "planUnavailable": "Un résultat de comparaison est requis avant de choisir un preset. Ouvrez d'abord l'onglet Comparer.",
             "totalEntries": "Entrées totales",

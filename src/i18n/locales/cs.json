@@ -5043,6 +5043,78 @@
             "tabCompare": "Porovnat",
             "tabPlan": "Plán",
             "tabSync": "Synchronizovat",
+            "presetDefault": "Výchozí",
+            "actionLabel": {
+                "skip": "Přeskočit",
+                "copy-to-right": "Kopírovat → doprava",
+                "copy-to-left": "Kopírovat ← doleva",
+                "overwrite-right": "Přepsat vpravo",
+                "overwrite-left": "Přepsat vlevo",
+                "delete-right": "Smazat vpravo",
+                "delete-left": "Smazat vlevo",
+                "rename-to-right": "Ponechat obě → doprava",
+                "rename-to-left": "Ponechat obě ← doleva",
+                "conflict-skip": "Konflikt (přeskočit)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Přeskočit",
+                    "tagline": "Ponechá konflikty na obou stranách beze změny."
+                },
+                "rename": {
+                    "label": "Ponechat obě",
+                    "tagline": "Zkopíruje verzi ze zdroje s příponou obsahující datum a čas."
+                },
+                "newer-wins": {
+                    "label": "Vyhrává novější",
+                    "tagline": "Strana s novějším časem změny přepíše druhou."
+                },
+                "older-wins": {
+                    "label": "Vyhrává starší",
+                    "tagline": "Starší strana přepíše novější (pro archivaci)."
+                },
+                "larger-wins": {
+                    "label": "Vyhrává větší",
+                    "tagline": "Strana s větší velikostí přepíše menší."
+                },
+                "smaller-wins": {
+                    "label": "Vyhrává menší",
+                    "tagline": "Menší strana přepíše větší."
+                }
+            },
+            "bucketName": {
+                "only-left": "Pouze vlevo",
+                "newer-left": "Novější vlevo",
+                "only-right": "Pouze vpravo",
+                "newer-right": "Novější vpravo",
+                "conflict": "Konflikt",
+                "same": "Shodné"
+            },
+            "bucketDescription": {
+                "only-left": "Existuje na zdrojovém panelu, v cíli chybí.",
+                "newer-left": "Existuje na obou stranách, kopie ve zdroji má novější časové razítko.",
+                "only-right": "Existuje v cíli, na zdrojovém panelu chybí.",
+                "newer-right": "Existuje na obou stranách, kopie v cíli má novější časové razítko.",
+                "conflict": "Položka je na obou stranách, ale při srovnatelných časových razítkách se liší velikostí.",
+                "same": "Položky se shodují podle aktivního pravidla porovnání."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Pouze velikost",
+                "mtimeOnly": "Pouze časové razítko",
+                "sizeAndMtime": "Velikost + časové razítko"
+            },
+            "compareTable": {
+                "name": "Název",
+                "leftSize": "Velikost vlevo",
+                "rightSize": "Velikost vpravo",
+                "leftModified": "Změněno vlevo",
+                "rightModified": "Změněno vpravo",
+                "folder": "složka",
+                "noEntries": "Žádné položky.",
+                "countedNotListed": "Započteno, ale nevypsáno: prohledávání uvádí shodné soubory jako souhrnný počet místo samostatného řádku pro každý, aby velké stromy zůstaly rychlé.",
+                "shown": "Zobrazeno: {shown} z {total}",
+                "moreNotListed": "Započteno, ale nevypsáno: {count}"
+            },
             "compareUnavailable": "Otevřete druhý panel nebo vzdálené připojení pro porovnání.",
             "planUnavailable": "Před výběrem předvolby je nutný výsledek porovnání. Nejprve otevřete kartu Porovnat.",
             "totalEntries": "Celkem položek",

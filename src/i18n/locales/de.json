@@ -5043,6 +5043,78 @@
             "tabCompare": "Vergleichen",
             "tabPlan": "Plan",
             "tabSync": "Synchronisieren",
+            "presetDefault": "Standard",
+            "actionLabel": {
+                "skip": "Überspringen",
+                "copy-to-right": "Kopieren → rechts",
+                "copy-to-left": "Kopieren ← links",
+                "overwrite-right": "Rechts überschreiben",
+                "overwrite-left": "Links überschreiben",
+                "delete-right": "Rechts löschen",
+                "delete-left": "Links löschen",
+                "rename-to-right": "Beide behalten → rechts",
+                "rename-to-left": "Beide behalten ← links",
+                "conflict-skip": "Konflikt (überspringen)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Überspringen",
+                    "tagline": "Lässt Konflikte auf beiden Seiten unverändert."
+                },
+                "rename": {
+                    "label": "Beide behalten",
+                    "tagline": "Kopiert die Version der Quelle mit einem Suffix aus Datum und Uhrzeit."
+                },
+                "newer-wins": {
+                    "label": "Neuere gewinnt",
+                    "tagline": "Die Seite mit dem jüngeren Änderungsdatum überschreibt die andere."
+                },
+                "older-wins": {
+                    "label": "Ältere gewinnt",
+                    "tagline": "Die ältere Seite überschreibt die neuere (für Archivierung)."
+                },
+                "larger-wins": {
+                    "label": "Größere gewinnt",
+                    "tagline": "Die Seite mit der größeren Dateigröße überschreibt die kleinere."
+                },
+                "smaller-wins": {
+                    "label": "Kleinere gewinnt",
+                    "tagline": "Die kleinere Seite überschreibt die größere."
+                }
+            },
+            "bucketName": {
+                "only-left": "Nur links",
+                "newer-left": "Neuer links",
+                "only-right": "Nur rechts",
+                "newer-right": "Neuer rechts",
+                "conflict": "Konflikt",
+                "same": "Gleich"
+            },
+            "bucketDescription": {
+                "only-left": "Im Quellpanel vorhanden, fehlt im Ziel.",
+                "newer-left": "Auf beiden Seiten vorhanden, die Kopie in der Quelle hat den neueren Zeitstempel.",
+                "only-right": "Im Ziel vorhanden, fehlt im Quellpanel.",
+                "newer-right": "Auf beiden Seiten vorhanden, die Kopie im Ziel hat den neueren Zeitstempel.",
+                "conflict": "Der Eintrag ist auf beiden Seiten vorhanden, aber die Größe weicht bei vergleichbaren Zeitstempeln ab.",
+                "same": "Die Einträge stimmen gemäß der aktiven Vergleichsrichtlinie überein."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Nur Größe",
+                "mtimeOnly": "Nur Zeitstempel",
+                "sizeAndMtime": "Größe + Zeitstempel"
+            },
+            "compareTable": {
+                "name": "Name",
+                "leftSize": "Größe links",
+                "rightSize": "Größe rechts",
+                "leftModified": "Geändert links",
+                "rightModified": "Geändert rechts",
+                "folder": "Ordner",
+                "noEntries": "Keine Einträge.",
+                "countedNotListed": "Gezählt, aber nicht aufgeführt: Der Scan meldet identische Dateien als Gesamtzahl statt einer Zeile pro Datei, damit große Verzeichnisbäume schnell bleiben.",
+                "shown": "Angezeigt: {shown} von {total}",
+                "moreNotListed": "Gezählt, aber nicht aufgeführt: {count}"
+            },
             "compareUnavailable": "Öffne ein zweites Panel oder eine Remoteverbindung zum Vergleichen.",
             "planUnavailable": "Ein Vergleichsergebnis ist erforderlich, bevor ein Preset gewählt werden kann. Öffne zuerst den Reiter Vergleichen.",
             "totalEntries": "Gesamteinträge",

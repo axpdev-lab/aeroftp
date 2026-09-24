@@ -5062,6 +5062,78 @@
             "tabCompare": "Ihambing",
             "tabPlan": "Plano",
             "tabSync": "I-sync",
+            "presetDefault": "Default",
+            "actionLabel": {
+                "skip": "Laktawan",
+                "copy-to-right": "Kopyahin → kanan",
+                "copy-to-left": "Kopyahin ← kaliwa",
+                "overwrite-right": "Patungan sa kanan",
+                "overwrite-left": "Patungan sa kaliwa",
+                "delete-right": "Burahin sa kanan",
+                "delete-left": "Burahin sa kaliwa",
+                "rename-to-right": "Panatilihin ang dalawa → kanan",
+                "rename-to-left": "Panatilihin ang dalawa ← kaliwa",
+                "conflict-skip": "Salungatan (laktawan)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Laktawan",
+                    "tagline": "Hinahayaang hindi nagagalaw ang mga salungatan sa magkabilang panig."
+                },
+                "rename": {
+                    "label": "Panatilihin ang dalawa",
+                    "tagline": "Kinokopya ang bersyon ng pinagmulan na may hulaping petsa at oras."
+                },
+                "newer-wins": {
+                    "label": "Mas bago ang panalo",
+                    "tagline": "Ang panig na may mas bagong oras ng pagbabago ang papatong sa kabila."
+                },
+                "older-wins": {
+                    "label": "Mas luma ang panalo",
+                    "tagline": "Ang mas lumang panig ang papatong sa mas bago (para sa pag-archive)."
+                },
+                "larger-wins": {
+                    "label": "Mas malaki ang panalo",
+                    "tagline": "Ang panig na may mas malaking sukat ang papatong sa mas maliit."
+                },
+                "smaller-wins": {
+                    "label": "Mas maliit ang panalo",
+                    "tagline": "Ang mas maliit na panig ang papatong sa mas malaki."
+                }
+            },
+            "bucketName": {
+                "only-left": "Nasa kaliwa lamang",
+                "newer-left": "Mas bago sa kaliwa",
+                "only-right": "Nasa kanan lamang",
+                "newer-right": "Mas bago sa kanan",
+                "conflict": "Salungatan",
+                "same": "Pareho"
+            },
+            "bucketDescription": {
+                "only-left": "Nasa panel ng pinagmulan, wala sa destinasyon.",
+                "newer-left": "Nasa magkabilang panig, mas bago ang tatak ng oras ng kopya sa pinagmulan.",
+                "only-right": "Nasa destinasyon, wala sa panel ng pinagmulan.",
+                "newer-right": "Nasa magkabilang panig, mas bago ang tatak ng oras ng kopya sa destinasyon.",
+                "conflict": "Nasa magkabilang panig ang entry pero magkaiba ang sukat kahit magkalapit ang mga tatak ng oras.",
+                "same": "Tugma ang mga entry ayon sa aktibong patakaran sa paghahambing."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Sukat lamang",
+                "mtimeOnly": "Tatak ng oras lamang",
+                "sizeAndMtime": "Sukat + tatak ng oras"
+            },
+            "compareTable": {
+                "name": "Pangalan",
+                "leftSize": "Sukat sa kaliwa",
+                "rightSize": "Sukat sa kanan",
+                "leftModified": "Binago sa kaliwa",
+                "rightModified": "Binago sa kanan",
+                "folder": "folder",
+                "noEntries": "Walang entry.",
+                "countedNotListed": "Binilang pero hindi inilista: iniuulat ng pag-scan ang magkakaparehong file bilang kabuuan sa halip na tig-iisang hilera, para manatiling mabilis ang malalaking puno ng folder.",
+                "shown": "Ipinapakita: {shown} sa {total}",
+                "moreNotListed": "Binilang pero hindi inilista: {count}"
+            },
             "compareUnavailable": "Magbukas ng pangalawang panel o malayuang koneksyon upang ihambing.",
             "planUnavailable": "Kailangan ng resulta ng paghahambing bago pumili ng preset. Buksan muna ang tab na Ihambing.",
             "totalEntries": "Kabuuang mga entry",

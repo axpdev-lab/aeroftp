@@ -5062,16 +5062,88 @@
             "tabCompare": "Sammenlign",
             "tabPlan": "Plan",
             "tabSync": "Synkroniser",
+            "presetDefault": "Standard",
+            "actionLabel": {
+                "skip": "Hopp over",
+                "copy-to-right": "Kopier → høyre",
+                "copy-to-left": "Kopier ← venstre",
+                "overwrite-right": "Overskriv på høyre side",
+                "overwrite-left": "Overskriv på venstre side",
+                "delete-right": "Slett på høyre side",
+                "delete-left": "Slett på venstre side",
+                "rename-to-right": "Behold begge → høyre",
+                "rename-to-left": "Behold begge ← venstre",
+                "conflict-skip": "Konflikt (hopp over)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Hopp over",
+                    "tagline": "Lar konflikter være urørt på begge sider."
+                },
+                "rename": {
+                    "label": "Behold begge",
+                    "tagline": "Kopierer kildens versjon med et suffiks med dato og klokkeslett."
+                },
+                "newer-wins": {
+                    "label": "Nyeste vinner",
+                    "tagline": "Siden med det nyeste endringstidspunktet overskriver den andre."
+                },
+                "older-wins": {
+                    "label": "Eldste vinner",
+                    "tagline": "Den eldste siden overskriver den nyeste (for arkivering)."
+                },
+                "larger-wins": {
+                    "label": "Største vinner",
+                    "tagline": "Siden med størst filstørrelse overskriver den minste."
+                },
+                "smaller-wins": {
+                    "label": "Minste vinner",
+                    "tagline": "Den minste siden overskriver den største."
+                }
+            },
+            "bucketName": {
+                "only-left": "Bare til venstre",
+                "newer-left": "Nyere til venstre",
+                "only-right": "Bare til høyre",
+                "newer-right": "Nyere til høyre",
+                "conflict": "Konflikt",
+                "same": "Like"
+            },
+            "bucketDescription": {
+                "only-left": "Finnes i kildepanelet, mangler i destinasjonen.",
+                "newer-left": "Finnes på begge sider, kildens kopi har det nyeste tidsstempelet.",
+                "only-right": "Finnes i destinasjonen, mangler i kildepanelet.",
+                "newer-right": "Finnes på begge sider, destinasjonens kopi har det nyeste tidsstempelet.",
+                "conflict": "Begge sider har oppføringen, men størrelsen er ulik ved sammenlignbare tidsstempler.",
+                "same": "Oppføringene samsvarer etter den aktive sammenligningspolicyen."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Bare størrelse",
+                "mtimeOnly": "Bare tidsstempel",
+                "sizeAndMtime": "Størrelse + tidsstempel"
+            },
+            "compareTable": {
+                "name": "Navn",
+                "leftSize": "Størrelse venstre",
+                "rightSize": "Størrelse høyre",
+                "leftModified": "Endret venstre",
+                "rightModified": "Endret høyre",
+                "folder": "mappe",
+                "noEntries": "Ingen oppføringer.",
+                "countedNotListed": "Telt, men ikke oppført: skanningen rapporterer identiske filer som et samlet antall i stedet for én rad per fil, slik at store trær forblir raske.",
+                "shown": "Vist: {shown} av {total}",
+                "moreNotListed": "Telt, men ikke oppført: {count}"
+            },
             "compareUnavailable": "Åpne et andre panel eller en ekstern tilkobling for å sammenligne.",
             "planUnavailable": "Et sammenligningsresultat kreves før du velger en forhåndsinnstilling. Åpne Sammenlign-fanen først.",
             "totalEntries": "Totalt antall oppføringer",
             "differences": "Forskjeller",
             "totalBytes": "Totalt antall byte",
             "mirrorHint": "Mirror-knappene klargjør matchende oppføringer i den samlede overføringsplanleggeren for gjennomgang.",
-            "mirrorLeftToRight": "Speil fra venstre til hoyre",
-            "mirrorRightToLeft": "Speil fra hoyre til venstre",
-            "directionLeftRight": "Venstre til Hoyre",
-            "directionRightLeft": "Hoyre til Venstre",
+            "mirrorLeftToRight": "Speil fra venstre til høyre",
+            "mirrorRightToLeft": "Speil fra høyre til venstre",
+            "directionLeftRight": "Venstre til Høyre",
+            "directionRightLeft": "Høyre til Venstre",
             "directionLocalToRemote": "Lokal → Ekstern",
             "directionRemoteToLocal": "Ekstern → Lokal",
             "directionBothWays": "Begge veier",

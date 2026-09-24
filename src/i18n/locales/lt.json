@@ -5043,6 +5043,78 @@
             "tabCompare": "Palyginti",
             "tabPlan": "Planas",
             "tabSync": "Sinchronizuoti",
+            "presetDefault": "Numatytasis",
+            "actionLabel": {
+                "skip": "Praleisti",
+                "copy-to-right": "Kopijuoti → į dešinę",
+                "copy-to-left": "Kopijuoti ← į kairę",
+                "overwrite-right": "Perrašyti dešinėje",
+                "overwrite-left": "Perrašyti kairėje",
+                "delete-right": "Ištrinti dešinėje",
+                "delete-left": "Ištrinti kairėje",
+                "rename-to-right": "Palikti abu → į dešinę",
+                "rename-to-left": "Palikti abu ← į kairę",
+                "conflict-skip": "Konfliktas (praleisti)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Praleisti",
+                    "tagline": "Palieka konfliktus nepakeistus abiejose pusėse."
+                },
+                "rename": {
+                    "label": "Palikti abu",
+                    "tagline": "Nukopijuoja šaltinio versiją su datos ir laiko priesaga."
+                },
+                "newer-wins": {
+                    "label": "Laimi naujesnis",
+                    "tagline": "Pusė su vėlesniu keitimo laiku perrašo kitą."
+                },
+                "older-wins": {
+                    "label": "Laimi senesnis",
+                    "tagline": "Senesnė pusė perrašo naujesnę (archyvavimui)."
+                },
+                "larger-wins": {
+                    "label": "Laimi didesnis",
+                    "tagline": "Pusė su didesniu dydžiu perrašo mažesnę."
+                },
+                "smaller-wins": {
+                    "label": "Laimi mažesnis",
+                    "tagline": "Mažesnė pusė perrašo didesnę."
+                }
+            },
+            "bucketName": {
+                "only-left": "Tik kairėje",
+                "newer-left": "Naujesnis kairėje",
+                "only-right": "Tik dešinėje",
+                "newer-right": "Naujesnis dešinėje",
+                "conflict": "Konfliktas",
+                "same": "Vienodi"
+            },
+            "bucketDescription": {
+                "only-left": "Yra šaltinio skydelyje, trūksta paskirties vietoje.",
+                "newer-left": "Yra abiejose pusėse, šaltinio kopija turi naujesnę laiko žymą.",
+                "only-right": "Yra paskirties vietoje, trūksta šaltinio skydelyje.",
+                "newer-right": "Yra abiejose pusėse, paskirties vietos kopija turi naujesnę laiko žymą.",
+                "conflict": "Įrašas yra abiejose pusėse, tačiau esant panašioms laiko žymoms skiriasi dydis.",
+                "same": "Įrašai sutampa pagal aktyvią palyginimo taisyklę."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Tik dydis",
+                "mtimeOnly": "Tik laiko žyma",
+                "sizeAndMtime": "Dydis + laiko žyma"
+            },
+            "compareTable": {
+                "name": "Pavadinimas",
+                "leftSize": "Dydis kairėje",
+                "rightSize": "Dydis dešinėje",
+                "leftModified": "Pakeista kairėje",
+                "rightModified": "Pakeista dešinėje",
+                "folder": "aplankas",
+                "noEntries": "Įrašų nėra.",
+                "countedNotListed": "Suskaičiuota, bet neišvardyta: nuskaitymas pateikia identiškus failus kaip bendrą skaičių, o ne po eilutę kiekvienam, kad dideli medžiai išliktų greiti.",
+                "shown": "Rodoma: {shown} iš {total}",
+                "moreNotListed": "Suskaičiuota, bet neišvardyta: {count}"
+            },
             "compareUnavailable": "Atidarykite antrą skydelį arba nuotolinį prisijungimą palyginimui.",
             "planUnavailable": "Prieš pasirenkant išankstinį nustatymą reikia palyginimo rezultato. Pirma atidarykite Palyginti kortelę.",
             "totalEntries": "Iš viso įrašų",

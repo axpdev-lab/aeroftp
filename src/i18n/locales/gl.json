@@ -5062,6 +5062,78 @@
             "tabCompare": "Comparar",
             "tabPlan": "Plan",
             "tabSync": "Sincronizar",
+            "presetDefault": "Predeterminado",
+            "actionLabel": {
+                "skip": "Omitir",
+                "copy-to-right": "Copiar → dereita",
+                "copy-to-left": "Copiar ← esquerda",
+                "overwrite-right": "Sobrescribir á dereita",
+                "overwrite-left": "Sobrescribir á esquerda",
+                "delete-right": "Eliminar á dereita",
+                "delete-left": "Eliminar á esquerda",
+                "rename-to-right": "Conservar ambos → dereita",
+                "rename-to-left": "Conservar ambos ← esquerda",
+                "conflict-skip": "Conflito (omitir)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Omitir",
+                    "tagline": "Deixa os conflitos intactos nos dous lados."
+                },
+                "rename": {
+                    "label": "Conservar ambos",
+                    "tagline": "Copia a versión de orixe cun sufixo de data e hora."
+                },
+                "newer-wins": {
+                    "label": "Gaña o máis recente",
+                    "tagline": "O lado coa data de modificación máis recente sobrescribe o outro."
+                },
+                "older-wins": {
+                    "label": "Gaña o máis antigo",
+                    "tagline": "O lado máis antigo sobrescribe o máis recente (para arquivado)."
+                },
+                "larger-wins": {
+                    "label": "Gaña o máis grande",
+                    "tagline": "O lado co tamaño maior sobrescribe o menor."
+                },
+                "smaller-wins": {
+                    "label": "Gaña o máis pequeno",
+                    "tagline": "O lado máis pequeno sobrescribe o máis grande."
+                }
+            },
+            "bucketName": {
+                "only-left": "Só á esquerda",
+                "newer-left": "Máis recente á esquerda",
+                "only-right": "Só á dereita",
+                "newer-right": "Máis recente á dereita",
+                "conflict": "Conflito",
+                "same": "Iguais"
+            },
+            "bucketDescription": {
+                "only-left": "Presente no panel de orixe, ausente no destino.",
+                "newer-left": "Presente nos dous lados, a copia de orixe ten a marca de tempo máis recente.",
+                "only-right": "Presente no destino, ausente no panel de orixe.",
+                "newer-right": "Presente nos dous lados, a copia de destino ten a marca de tempo máis recente.",
+                "conflict": "Os dous lados teñen a entrada, pero o tamaño difire con marcas de tempo comparables.",
+                "same": "As entradas coinciden segundo o criterio de comparación activo."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Só tamaño",
+                "mtimeOnly": "Só marca de tempo",
+                "sizeAndMtime": "Tamaño + marca de tempo"
+            },
+            "compareTable": {
+                "name": "Nome",
+                "leftSize": "Tamaño á esquerda",
+                "rightSize": "Tamaño á dereita",
+                "leftModified": "Modificado á esquerda",
+                "rightModified": "Modificado á dereita",
+                "folder": "cartafol",
+                "noEntries": "Non hai entradas.",
+                "countedNotListed": "Contados pero non listados: a análise informa dos ficheiros idénticos como un total en lugar dunha fila para cada un, para que as árbores grandes sigan sendo rápidas.",
+                "shown": "Mostrados: {shown} de {total}",
+                "moreNotListed": "Contados pero non listados: {count}"
+            },
             "compareUnavailable": "Abre un segundo panel ou unha conexión remota para comparar.",
             "planUnavailable": "Cómpre un resultado de comparación antes de escoller un preset. Abre primeiro a lapela Comparar.",
             "totalEntries": "Entradas totais",

@@ -5043,6 +5043,78 @@
             "tabCompare": "Vertaa",
             "tabPlan": "Suunnitelma",
             "tabSync": "Synkronoi",
+            "presetDefault": "Oletus",
+            "actionLabel": {
+                "skip": "Ohita",
+                "copy-to-right": "Kopioi → oikealle",
+                "copy-to-left": "Kopioi ← vasemmalle",
+                "overwrite-right": "Korvaa oikealla",
+                "overwrite-left": "Korvaa vasemmalla",
+                "delete-right": "Poista oikealta",
+                "delete-left": "Poista vasemmalta",
+                "rename-to-right": "Säilytä molemmat → oikealle",
+                "rename-to-left": "Säilytä molemmat ← vasemmalle",
+                "conflict-skip": "Ristiriita (ohita)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Ohita",
+                    "tagline": "Jättää ristiriidat koskematta molemmilla puolilla."
+                },
+                "rename": {
+                    "label": "Säilytä molemmat",
+                    "tagline": "Kopioi lähteen version päivämäärän ja kellonajan sisältävällä päätteellä."
+                },
+                "newer-wins": {
+                    "label": "Uudempi voittaa",
+                    "tagline": "Puoli, jonka muokkausaika on uudempi, korvaa toisen."
+                },
+                "older-wins": {
+                    "label": "Vanhempi voittaa",
+                    "tagline": "Vanhempi puoli korvaa uudemman (arkistointia varten)."
+                },
+                "larger-wins": {
+                    "label": "Suurempi voittaa",
+                    "tagline": "Puoli, jonka koko on suurempi, korvaa pienemmän."
+                },
+                "smaller-wins": {
+                    "label": "Pienempi voittaa",
+                    "tagline": "Pienempi puoli korvaa suuremman."
+                }
+            },
+            "bucketName": {
+                "only-left": "Vain vasemmalla",
+                "newer-left": "Uudempi vasemmalla",
+                "only-right": "Vain oikealla",
+                "newer-right": "Uudempi oikealla",
+                "conflict": "Ristiriita",
+                "same": "Samat"
+            },
+            "bucketDescription": {
+                "only-left": "Löytyy lähdepaneelista, puuttuu kohteesta.",
+                "newer-left": "Löytyy molemmilta puolilta, lähteen kopiolla on uudempi aikaleima.",
+                "only-right": "Löytyy kohteesta, puuttuu lähdepaneelista.",
+                "newer-right": "Löytyy molemmilta puolilta, kohteen kopiolla on uudempi aikaleima.",
+                "conflict": "Merkintä on molemmilla puolilla, mutta koko eroaa, vaikka aikaleimat ovat vertailukelpoiset.",
+                "same": "Merkinnät vastaavat toisiaan aktiivisen vertailukäytännön mukaan."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Vain koko",
+                "mtimeOnly": "Vain aikaleima",
+                "sizeAndMtime": "Koko + aikaleima"
+            },
+            "compareTable": {
+                "name": "Nimi",
+                "leftSize": "Koko vasemmalla",
+                "rightSize": "Koko oikealla",
+                "leftModified": "Muokattu vasemmalla",
+                "rightModified": "Muokattu oikealla",
+                "folder": "kansio",
+                "noEntries": "Ei merkintöjä.",
+                "countedNotListed": "Laskettu mutta ei listattu: skannaus raportoi identtiset tiedostot yhteismääränä eikä yhtenä rivinä kutakin, joten suuret puut pysyvät nopeina.",
+                "shown": "Näytetään: {shown}, yhteensä {total}",
+                "moreNotListed": "Laskettu mutta ei listattu: {count}"
+            },
             "compareUnavailable": "Avaa toinen paneeli tai etäyhteys vertailua varten.",
             "planUnavailable": "Vertailutulos vaaditaan ennen esiasetuksen valintaa. Avaa ensin Vertaa-välilehti.",
             "totalEntries": "Merkintöjä yhteensä",

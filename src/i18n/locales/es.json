@@ -5043,6 +5043,78 @@
             "tabCompare": "Comparar",
             "tabPlan": "Plan",
             "tabSync": "Sincronizar",
+            "presetDefault": "Predeterminado",
+            "actionLabel": {
+                "skip": "Omitir",
+                "copy-to-right": "Copiar → derecha",
+                "copy-to-left": "Copiar ← izquierda",
+                "overwrite-right": "Sobrescribir a la derecha",
+                "overwrite-left": "Sobrescribir a la izquierda",
+                "delete-right": "Eliminar a la derecha",
+                "delete-left": "Eliminar a la izquierda",
+                "rename-to-right": "Conservar ambos → derecha",
+                "rename-to-left": "Conservar ambos ← izquierda",
+                "conflict-skip": "Conflicto (omitir)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Omitir",
+                    "tagline": "Deja los conflictos intactos en ambos lados."
+                },
+                "rename": {
+                    "label": "Conservar ambos",
+                    "tagline": "Copia la versión de origen con un sufijo de fecha y hora."
+                },
+                "newer-wins": {
+                    "label": "Gana el más reciente",
+                    "tagline": "El lado con la fecha de modificación más reciente sobrescribe al otro."
+                },
+                "older-wins": {
+                    "label": "Gana el más antiguo",
+                    "tagline": "El lado más antiguo sobrescribe al más reciente (para archivado)."
+                },
+                "larger-wins": {
+                    "label": "Gana el más grande",
+                    "tagline": "El lado con el tamaño mayor sobrescribe al menor."
+                },
+                "smaller-wins": {
+                    "label": "Gana el más pequeño",
+                    "tagline": "El lado más pequeño sobrescribe al más grande."
+                }
+            },
+            "bucketName": {
+                "only-left": "Solo a la izquierda",
+                "newer-left": "Más reciente a la izquierda",
+                "only-right": "Solo a la derecha",
+                "newer-right": "Más reciente a la derecha",
+                "conflict": "Conflicto",
+                "same": "Iguales"
+            },
+            "bucketDescription": {
+                "only-left": "Presente en el panel de origen, ausente en el destino.",
+                "newer-left": "Presente en ambos lados, la copia de origen tiene la marca de tiempo más reciente.",
+                "only-right": "Presente en el destino, ausente en el panel de origen.",
+                "newer-right": "Presente en ambos lados, la copia de destino tiene la marca de tiempo más reciente.",
+                "conflict": "Ambos lados tienen la entrada, pero el tamaño difiere con marcas de tiempo comparables.",
+                "same": "Las entradas coinciden según el criterio de comparación activo."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Solo tamaño",
+                "mtimeOnly": "Solo marca de tiempo",
+                "sizeAndMtime": "Tamaño + marca de tiempo"
+            },
+            "compareTable": {
+                "name": "Nombre",
+                "leftSize": "Tamaño a la izquierda",
+                "rightSize": "Tamaño a la derecha",
+                "leftModified": "Modificado a la izquierda",
+                "rightModified": "Modificado a la derecha",
+                "folder": "carpeta",
+                "noEntries": "No hay entradas.",
+                "countedNotListed": "Contados pero no listados: el análisis informa de los archivos idénticos como un total en lugar de una fila por cada uno, para que los árboles grandes sigan siendo rápidos.",
+                "shown": "Mostrados: {shown} de {total}",
+                "moreNotListed": "Contados pero no listados: {count}"
+            },
             "compareUnavailable": "Abre un segundo panel o una conexión remota para comparar.",
             "planUnavailable": "Se requiere un resultado de comparación antes de elegir un preset. Abre primero la pestaña Comparar.",
             "totalEntries": "Entradas totales",

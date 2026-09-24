@@ -5043,6 +5043,78 @@
             "tabCompare": "Összehasonlítás",
             "tabPlan": "Terv",
             "tabSync": "Szinkronizálás",
+            "presetDefault": "Alapértelmezett",
+            "actionLabel": {
+                "skip": "Kihagyás",
+                "copy-to-right": "Másolás → jobbra",
+                "copy-to-left": "Másolás ← balra",
+                "overwrite-right": "Felülírás jobb oldalon",
+                "overwrite-left": "Felülírás bal oldalon",
+                "delete-right": "Törlés jobb oldalon",
+                "delete-left": "Törlés bal oldalon",
+                "rename-to-right": "Mindkettő megtartása → jobbra",
+                "rename-to-left": "Mindkettő megtartása ← balra",
+                "conflict-skip": "Ütközés (kihagyás)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Kihagyás",
+                    "tagline": "Az ütközéseket mindkét oldalon érintetlenül hagyja."
+                },
+                "rename": {
+                    "label": "Mindkettő megtartása",
+                    "tagline": "A forrásoldali változatot dátumot és időt tartalmazó utótaggal másolja."
+                },
+                "newer-wins": {
+                    "label": "Az újabb nyer",
+                    "tagline": "A későbbi módosítási idejű oldal felülírja a másikat."
+                },
+                "older-wins": {
+                    "label": "A régebbi nyer",
+                    "tagline": "A régebbi oldal felülírja az újabbat (archiválási célra)."
+                },
+                "larger-wins": {
+                    "label": "A nagyobb nyer",
+                    "tagline": "A nagyobb méretű oldal felülírja a kisebbet."
+                },
+                "smaller-wins": {
+                    "label": "A kisebb nyer",
+                    "tagline": "A kisebb oldal felülírja a nagyobbat."
+                }
+            },
+            "bucketName": {
+                "only-left": "Csak bal oldalon",
+                "newer-left": "Újabb bal oldalon",
+                "only-right": "Csak jobb oldalon",
+                "newer-right": "Újabb jobb oldalon",
+                "conflict": "Ütközés",
+                "same": "Azonos"
+            },
+            "bucketDescription": {
+                "only-left": "A forráspanelen megvan, a célból hiányzik.",
+                "newer-left": "Mindkét oldalon megvan, a forrásoldali másolat időbélyege újabb.",
+                "only-right": "A célban megvan, a forráspanelről hiányzik.",
+                "newer-right": "Mindkét oldalon megvan, a céloldali másolat időbélyege újabb.",
+                "conflict": "A bejegyzés mindkét oldalon megvan, de hasonló időbélyegek mellett a méret eltér.",
+                "same": "A bejegyzések az aktív összehasonlítási szabály szerint egyeznek."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Csak méret",
+                "mtimeOnly": "Csak időbélyeg",
+                "sizeAndMtime": "Méret + időbélyeg"
+            },
+            "compareTable": {
+                "name": "Név",
+                "leftSize": "Bal oldali méret",
+                "rightSize": "Jobb oldali méret",
+                "leftModified": "Bal oldali módosítás",
+                "rightModified": "Jobb oldali módosítás",
+                "folder": "mappa",
+                "noEntries": "Nincsenek bejegyzések.",
+                "countedNotListed": "Megszámolva, de nem listázva: a vizsgálat az azonos fájlokat összesítve jelenti, nem mindegyiket külön sorban, így a nagy fák is gyorsak maradnak.",
+                "shown": "Megjelenítve: {shown}, összesen {total}",
+                "moreNotListed": "Megszámolva, de nem listázva: {count}"
+            },
             "compareUnavailable": "Nyiss meg egy második panelt vagy egy távoli kapcsolatot az összehasonlításhoz.",
             "planUnavailable": "Egy összehasonlítási eredményre van szükség a preset kiválasztása előtt. Először nyisd meg az Összehasonlítás fület.",
             "totalEntries": "Összes bejegyzés",
@@ -5075,7 +5147,7 @@
                     "tagline": "A hiányzó és újabb fájlokat mindkét irányba átviszi. Kihagyja az ütközéseket."
                 }
             },
-            "conflictPolicy": "Utkozesi szabaly",
+            "conflictPolicy": "Ütközési szabály",
             "ignoredForMirror": "TUKROZESBOL KIHAGYVA",
             "versionedBackup": "Verziózott biztonsági mentés",
             "enable": "Engedélyezés",

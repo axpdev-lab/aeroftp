@@ -5268,6 +5268,78 @@
             "tabCompare": "Compare",
             "tabPlan": "Plan",
             "tabSync": "Sync",
+            "presetDefault": "Default",
+            "actionLabel": {
+                "skip": "Skip",
+                "copy-to-right": "Copy → right",
+                "copy-to-left": "Copy ← left",
+                "overwrite-right": "Overwrite right",
+                "overwrite-left": "Overwrite left",
+                "delete-right": "Delete on right",
+                "delete-left": "Delete on left",
+                "rename-to-right": "Keep both → right",
+                "rename-to-left": "Keep both ← left",
+                "conflict-skip": "Conflict (skip)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Skip",
+                    "tagline": "Leave conflicts untouched on both sides."
+                },
+                "rename": {
+                    "label": "Keep both",
+                    "tagline": "Copy the source-side copy under a timestamped suffix."
+                },
+                "newer-wins": {
+                    "label": "Newer wins",
+                    "tagline": "The side with the more recent mtime overwrites the other."
+                },
+                "older-wins": {
+                    "label": "Older wins",
+                    "tagline": "The older side overwrites the newer (archive use case)."
+                },
+                "larger-wins": {
+                    "label": "Larger wins",
+                    "tagline": "The side with the larger size overwrites the smaller."
+                },
+                "smaller-wins": {
+                    "label": "Smaller wins",
+                    "tagline": "The smaller side overwrites the larger."
+                }
+            },
+            "bucketName": {
+                "only-left": "Only on left",
+                "newer-left": "Newer on left",
+                "only-right": "Only on right",
+                "newer-right": "Newer on right",
+                "conflict": "Conflict",
+                "same": "Same"
+            },
+            "bucketDescription": {
+                "only-left": "Present on the source panel, missing from the destination.",
+                "newer-left": "Present on both sides, the source copy has the more recent timestamp.",
+                "only-right": "Present on the destination, missing from the source panel.",
+                "newer-right": "Present on both sides, the destination copy has the more recent timestamp.",
+                "conflict": "Both sides have the entry but they disagree on size with comparable timestamps.",
+                "same": "Entries match according to the active comparison policy."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Size only",
+                "mtimeOnly": "Timestamp only",
+                "sizeAndMtime": "Size + timestamp"
+            },
+            "compareTable": {
+                "name": "Name",
+                "leftSize": "Left size",
+                "rightSize": "Right size",
+                "leftModified": "Left modified",
+                "rightModified": "Right modified",
+                "folder": "folder",
+                "noEntries": "No entries.",
+                "countedNotListed": "Counted but not listed: the scan reports identical files as a total instead of one row each, so large trees stay fast.",
+                "shown": "Shown: {shown} of {total}",
+                "moreNotListed": "Counted but not listed: {count}"
+            },
             "compareUnavailable": "Open a second panel or a remote connection to compare.",
             "planUnavailable": "A compare result is required before picking a preset. Open the Compare tab first.",
             "totalEntries": "Total entries",

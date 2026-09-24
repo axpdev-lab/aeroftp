@@ -5043,6 +5043,78 @@
             "tabCompare": "Porównaj",
             "tabPlan": "Plan",
             "tabSync": "Synchronizuj",
+            "presetDefault": "Domyślny",
+            "actionLabel": {
+                "skip": "Pomiń",
+                "copy-to-right": "Kopiuj → w prawo",
+                "copy-to-left": "Kopiuj ← w lewo",
+                "overwrite-right": "Nadpisz po prawej",
+                "overwrite-left": "Nadpisz po lewej",
+                "delete-right": "Usuń po prawej",
+                "delete-left": "Usuń po lewej",
+                "rename-to-right": "Zachowaj oba → w prawo",
+                "rename-to-left": "Zachowaj oba ← w lewo",
+                "conflict-skip": "Konflikt (pomiń)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Pomiń",
+                    "tagline": "Pozostawia konflikty nietknięte po obu stronach."
+                },
+                "rename": {
+                    "label": "Zachowaj oba",
+                    "tagline": "Kopiuje wersję ze źródła z przyrostkiem zawierającym datę i godzinę."
+                },
+                "newer-wins": {
+                    "label": "Wygrywa nowszy",
+                    "tagline": "Strona z późniejszą datą modyfikacji nadpisuje drugą."
+                },
+                "older-wins": {
+                    "label": "Wygrywa starszy",
+                    "tagline": "Starsza strona nadpisuje nowszą (do archiwizacji)."
+                },
+                "larger-wins": {
+                    "label": "Wygrywa większy",
+                    "tagline": "Strona o większym rozmiarze nadpisuje mniejszą."
+                },
+                "smaller-wins": {
+                    "label": "Wygrywa mniejszy",
+                    "tagline": "Mniejsza strona nadpisuje większą."
+                }
+            },
+            "bucketName": {
+                "only-left": "Tylko po lewej",
+                "newer-left": "Nowsze po lewej",
+                "only-right": "Tylko po prawej",
+                "newer-right": "Nowsze po prawej",
+                "conflict": "Konflikt",
+                "same": "Takie same"
+            },
+            "bucketDescription": {
+                "only-left": "Obecne w panelu źródłowym, brak w miejscu docelowym.",
+                "newer-left": "Obecne po obu stronach, kopia w źródle ma nowszy znacznik czasu.",
+                "only-right": "Obecne w miejscu docelowym, brak w panelu źródłowym.",
+                "newer-right": "Obecne po obu stronach, kopia w miejscu docelowym ma nowszy znacznik czasu.",
+                "conflict": "Wpis istnieje po obu stronach, ale rozmiar się różni przy porównywalnych znacznikach czasu.",
+                "same": "Wpisy są zgodne według aktywnej zasady porównywania."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Tylko rozmiar",
+                "mtimeOnly": "Tylko znacznik czasu",
+                "sizeAndMtime": "Rozmiar + znacznik czasu"
+            },
+            "compareTable": {
+                "name": "Nazwa",
+                "leftSize": "Rozmiar po lewej",
+                "rightSize": "Rozmiar po prawej",
+                "leftModified": "Zmodyfikowano po lewej",
+                "rightModified": "Zmodyfikowano po prawej",
+                "folder": "folder",
+                "noEntries": "Brak wpisów.",
+                "countedNotListed": "Policzone, ale niewymienione: skanowanie podaje identyczne pliki jako sumę zamiast jednego wiersza dla każdego, dzięki czemu duże drzewa pozostają szybkie.",
+                "shown": "Wyświetlono: {shown} z {total}",
+                "moreNotListed": "Policzone, ale niewymienione: {count}"
+            },
             "compareUnavailable": "Otwórz drugi panel lub połączenie zdalne, aby porównać.",
             "planUnavailable": "Wynik porównania jest wymagany przed wyborem ustawienia. Najpierw otwórz kartę Porównaj.",
             "totalEntries": "Łączna liczba wpisów",

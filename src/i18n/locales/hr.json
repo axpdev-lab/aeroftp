@@ -5043,6 +5043,78 @@
             "tabCompare": "Usporedi",
             "tabPlan": "Plan",
             "tabSync": "Sinkroniziraj",
+            "presetDefault": "Zadano",
+            "actionLabel": {
+                "skip": "Preskoči",
+                "copy-to-right": "Kopiraj → desno",
+                "copy-to-left": "Kopiraj ← lijevo",
+                "overwrite-right": "Prepiši desno",
+                "overwrite-left": "Prepiši lijevo",
+                "delete-right": "Izbriši desno",
+                "delete-left": "Izbriši lijevo",
+                "rename-to-right": "Zadrži obje → desno",
+                "rename-to-left": "Zadrži obje ← lijevo",
+                "conflict-skip": "Sukob (preskoči)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Preskoči",
+                    "tagline": "Ostavlja sukobe netaknutima na obje strane."
+                },
+                "rename": {
+                    "label": "Zadrži obje",
+                    "tagline": "Kopira verziju iz izvora sa sufiksom datuma i vremena."
+                },
+                "newer-wins": {
+                    "label": "Novija pobjeđuje",
+                    "tagline": "Strana s novijim vremenom izmjene prepisuje drugu."
+                },
+                "older-wins": {
+                    "label": "Starija pobjeđuje",
+                    "tagline": "Starija strana prepisuje noviju (za arhiviranje)."
+                },
+                "larger-wins": {
+                    "label": "Veća pobjeđuje",
+                    "tagline": "Strana s većom veličinom prepisuje manju."
+                },
+                "smaller-wins": {
+                    "label": "Manja pobjeđuje",
+                    "tagline": "Manja strana prepisuje veću."
+                }
+            },
+            "bucketName": {
+                "only-left": "Samo lijevo",
+                "newer-left": "Novije lijevo",
+                "only-right": "Samo desno",
+                "newer-right": "Novije desno",
+                "conflict": "Sukob",
+                "same": "Isto"
+            },
+            "bucketDescription": {
+                "only-left": "Postoji na izvornom panelu, nedostaje na odredištu.",
+                "newer-left": "Postoji na obje strane, kopija u izvoru ima noviju vremensku oznaku.",
+                "only-right": "Postoji na odredištu, nedostaje na izvornom panelu.",
+                "newer-right": "Postoji na obje strane, kopija na odredištu ima noviju vremensku oznaku.",
+                "conflict": "Stavka postoji na obje strane, ali se veličina razlikuje uz usporedive vremenske oznake.",
+                "same": "Stavke se podudaraju prema aktivnom pravilu usporedbe."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Samo veličina",
+                "mtimeOnly": "Samo vremenska oznaka",
+                "sizeAndMtime": "Veličina + vremenska oznaka"
+            },
+            "compareTable": {
+                "name": "Naziv",
+                "leftSize": "Veličina lijevo",
+                "rightSize": "Veličina desno",
+                "leftModified": "Izmijenjeno lijevo",
+                "rightModified": "Izmijenjeno desno",
+                "folder": "mapa",
+                "noEntries": "Nema stavki.",
+                "countedNotListed": "Prebrojeno, ali nije navedeno: skeniranje prikazuje identične datoteke kao ukupan broj umjesto zasebnog retka za svaku, kako bi velika stabla ostala brza.",
+                "shown": "Prikazano: {shown} od {total}",
+                "moreNotListed": "Prebrojeno, ali nije navedeno: {count}"
+            },
             "compareUnavailable": "Otvori drugi panel ili udaljenu vezu za usporedbu.",
             "planUnavailable": "Potreban je rezultat usporedbe prije odabira presetа. Najprije otvori karticu Usporedi.",
             "totalEntries": "Ukupno stavki",
