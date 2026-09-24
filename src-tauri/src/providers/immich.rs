@@ -173,14 +173,27 @@ impl ImmichConfig {
     }
 
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let base_url = if config.host.is_empty() {
+        let host = config.host.trim();
+        if host.is_empty() {
             return Err(ProviderError::Other(
                 "Missing Immich server URL".to_string(),
             ));
-        } else if config.host.starts_with("http") {
-            config.host.clone()
-        } else {
-            format!("https://{}", config.host)
+        }
+        // Parse instead of testing a prefix: `starts_with("http")` took
+        // `httpd.example.com` for a URL and prefixed `HTTPS://host` or
+        // `ftp://host` with a second scheme, which reqwest reads as a request
+        // to a host named `https` or `ftp`.
+        let base_url = match url::Url::parse(host) {
+            Ok(u) if matches!(u.scheme(), "http" | "https") && u.has_host() => {
+                u.as_str().to_string()
+            }
+            Ok(u) if host.contains("://") => {
+                return Err(ProviderError::Other(format!(
+                    "Unsupported Immich URL scheme '{}': use http:// or https://",
+                    u.scheme()
+                )));
+            }
+            _ => format!("https://{}", host),
         };
 
         let api_key = config
@@ -1832,6 +1845,60 @@ mod tests {
             assert!(m.contains("Rate limited"));
         } else {
             panic!("429 must map to Other");
+        }
+    }
+}
+
+// SECVAL-B (2026-09-19), lead 8: what `starts_with("http")` lets through, and
+// what reqwest then does with it. No request can reach the network here: the
+// hosts are `.invalid` and every non-http(s) URL is refused before a socket.
+#[cfg(test)]
+mod secval_b_tests {
+    use super::*;
+
+    fn cfg(host: &str) -> ProviderConfig {
+        ProviderConfig {
+            name: "t".into(),
+            provider_type: ProviderType::Immich,
+            host: host.into(),
+            port: None,
+            username: None,
+            password: Some("k".into()),
+            initial_path: None,
+            extra: Default::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn lead8_host_forms() {
+        let client = reqwest::Client::new();
+        for host in [
+            "http://127.0.0.1:9",
+            "https://photos.invalid",
+            "photos.invalid",
+            "httpx://secval.invalid",
+            "http-evil.invalid",
+            "httpd.secval.invalid",
+            "HTTPS://upper.invalid",
+            "ftp://secval.invalid",
+        ] {
+            let c = match ImmichConfig::from_provider_config(&cfg(host)) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("host={host:<28} rejected by from_provider_config: {e}");
+                    continue;
+                }
+            };
+            let url = format!("{}/api/server/ping", c.base_url);
+            let outcome = match client.get(&url).build() {
+                Err(e) => format!("builder error: {e}"),
+                Ok(req) => match client.execute(req).await {
+                    Err(e) if e.is_builder() => format!("refused before connect: {e}"),
+                    Err(e) => format!("network error (request attempted): {e}"),
+                    Ok(r) => format!("HTTP {}", r.status()),
+                },
+            };
+            eprintln!("host={host:<28} base_url={:<32} -> {outcome}", c.base_url);
         }
     }
 }

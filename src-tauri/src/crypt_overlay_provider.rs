@@ -1368,6 +1368,12 @@ impl StorageProvider for CryptOverlayProvider {
         false
     }
 
+    fn listing_is_authoritative(&self) -> bool {
+        // The wrapper lists what the inner provider lists: a listing that can
+        // omit stored objects stays non-authoritative through the overlay.
+        self.inner.listing_is_authoritative()
+    }
+
     fn reports_exact_size(&self) -> bool {
         // rclone / AeroCrypt v3 map the ciphertext size to the exact plaintext
         // size; legacy AeroCrypt v1/v2 defer (return ciphertext length). Tell the

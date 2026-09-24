@@ -2138,7 +2138,6 @@ async fn download_update_artifact(
 enum VerificationMode {
     SigstoreVerified,
     VerificationUnavailable,
-    #[allow(dead_code)]
     VerificationFailed,
 }
 
@@ -2369,18 +2368,19 @@ fn verify_sigstore_bundle(
             verifier_version: SIGSTORE_VERIFIER_VERSION,
         }),
         Err(e) => {
-            // Sigstore verification errors should NEVER block the user from installing.
-            // The artifact is already downloaded and SHA256-verified. Sigstore is a supply-chain
-            // transparency bonus, not a gate. Treat all verification errors as non-blocking.
+            // A bundle that parses and then fails verification (digest, signature,
+            // certificate identity, transparency-log proof) is evidence AGAINST the
+            // artifact, not an absence of evidence: download_update deletes it and
+            // no install command ever sees it. (SEC-2)
             Ok(UpdateVerificationInfo {
-                mode: VerificationMode::VerificationUnavailable,
+                mode: VerificationMode::VerificationFailed,
                 workflow_identity: Some(identity),
                 oidc_issuer: Some(SIGSTORE_OIDC_ISSUER.to_string()),
                 artifact_sha256,
                 bundle_present: true,
                 bundle_parsed: true,
                 bundle_fetch_failed: false,
-                message: format!("Signature verification unavailable: {}", e),
+                message: format!("Signature verification failed: {}", e),
                 bundle_metadata,
                 digest_match,
                 verifier_version: SIGSTORE_VERIFIER_VERSION,
@@ -7682,7 +7682,8 @@ async fn extract_archive(
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let subfolder = std::path::Path::new(&output_dir).join(&archive_stem);
+        let subfolder =
+            std::path::Path::new(&output_dir).join(safe_extract_folder_name(&archive_stem));
         subfolder.to_string_lossy().to_string()
     } else {
         output_dir.clone()
@@ -7977,11 +7978,10 @@ pub(crate) fn is_safe_archive_entry(entry_name: &str) -> bool {
         return false;
     }
     // Reject path traversal via ".." in any component (handles both / and \ separators)
-    if entry_name
-        .split('/')
-        .chain(entry_name.split('\\'))
-        .any(|c| c == "..")
-    {
+    // Split on BOTH separators at once: a component bounded by `/` on one side
+    // and `\\` on the other (`a/..\\x`) is a parent-dir component for Windows
+    // path parsing, and two independent splits never see it as "..".
+    if entry_name.split(['/', '\\']).any(|c| c == "..") {
         return false;
     }
     // Reject null bytes
@@ -8040,7 +8040,7 @@ async fn extract_7z(
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "extracted".to_string());
         Path::new(&output_dir)
-            .join(&archive_name)
+            .join(safe_extract_folder_name(&archive_name))
             .to_string_lossy()
             .to_string()
     } else {
@@ -9008,7 +9008,9 @@ async fn extract_single_impl(
     let member_name = single_stream_member_name(&archive_name, &codec);
 
     let dest_dir = if create_subfolder {
-        Path::new(&output_dir).join(archive_extract_stem(&archive_name))
+        Path::new(&output_dir).join(safe_extract_folder_name(&archive_extract_stem(
+            &archive_name,
+        )))
     } else {
         Path::new(&output_dir).to_path_buf()
     };
@@ -9114,7 +9116,7 @@ fn tar_final_output(
         } else {
             stem.to_string()
         };
-        let subfolder = out.join(&folder_name);
+        let subfolder = out.join(safe_extract_folder_name(&folder_name));
         std::fs::create_dir_all(&subfolder).map_err(|e| format!("Failed to create dir: {}", e))?;
         Ok(subfolder)
     } else {
@@ -9299,7 +9301,7 @@ async fn extract_rar(
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "extracted".to_string());
-        Path::new(&output_dir).join(&archive_name)
+        Path::new(&output_dir).join(safe_extract_folder_name(&archive_name))
     } else {
         Path::new(&output_dir).to_path_buf()
     };
@@ -9409,6 +9411,18 @@ struct ExtractProbe {
     archive_bytes: u64,
 }
 
+/// The per-archive subfolder name used when `create_subfolder` is set: the
+/// stem, unless it is empty or a path component with a meaning of its own
+/// (`.` or `..`), which names such as `...zip`, `...tar.gz` or `..tar.gz`
+/// produce. Joining `..` put the extraction root in the PARENT of the chosen
+/// output folder.
+pub(crate) fn safe_extract_folder_name(stem: &str) -> &str {
+    match stem.trim() {
+        "" | "." | ".." => "extracted",
+        _ => stem,
+    }
+}
+
 /// Strip the full archive extension from a file name, returning the stem used to
 /// name an "Extract to folder" subfolder. Handles the multi-part tar extensions
 /// (.tar.gz / .tar.xz / .tar.bz2) and the aero* + general single extensions,
@@ -9450,11 +9464,7 @@ fn unique_extract_dir_with<P: Fn(&std::path::Path) -> bool>(
     exists: P,
 ) -> Result<std::path::PathBuf, String> {
     let stem = archive_extract_stem(archive_name);
-    let stem = if stem.trim().is_empty() {
-        "extracted"
-    } else {
-        stem.as_str()
-    };
+    let stem = safe_extract_folder_name(&stem);
     let first = parent.join(stem);
     if !exists(&first) {
         return Ok(first);
@@ -21921,5 +21931,300 @@ mod update_verification_tests {
         // An unknown content length reports 0 rather than a fabricated fraction.
         assert_eq!(compute_update_download_progress(500, 0, false), 0);
         assert_eq!(compute_update_download_progress(0, 0, true), 100);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SECVAL-B (2026-09-19): probes for the v4.2.0 audit leads 1, 2 and 3.
+// Scratch worktree only; every test asserts the SAFE property, so a red test
+// is the reproduction of the lead.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod secval_b_tests {
+    use super::*;
+    use std::io::Write as _;
+
+    /// Windows path grammar oracle: a component is bounded by EITHER separator
+    /// (Win32 normalisation and std::path on Windows both treat `/` and `\`
+    /// alike). Returns true when the name climbs above the extraction root.
+    fn escapes_under_windows_grammar(name: &str) -> bool {
+        let mut depth: i64 = 0;
+        for c in name.split(['/', '\\']) {
+            match c {
+                "" | "." => {}
+                ".." => {
+                    depth -= 1;
+                    if depth < 0 {
+                        return true;
+                    }
+                }
+                _ => depth += 1,
+            }
+        }
+        false
+    }
+
+    fn zip_with_entry(path: &std::path::Path, entry: &str, body: &[u8]) {
+        let f = std::fs::File::create(path).unwrap();
+        let mut w = zip::ZipWriter::new(f);
+        let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        w.start_file(entry, opts).unwrap();
+        w.write_all(body).unwrap();
+        w.finish().unwrap();
+    }
+
+    // Lead 1, part A: the guard and the Windows grammar disagree.
+    #[test]
+    fn lead1_mixed_separator_parent_components_are_rejected() {
+        for name in [
+            "a/..\\../..\\x",           // climbs two levels on Windows
+            "a/..\\../..\\../..\\evil", // three levels
+            "a\\../..\\..\\x",          // variant starting with a backslash boundary
+        ] {
+            assert!(
+                escapes_under_windows_grammar(name),
+                "oracle precondition: {name:?} must climb above the root under Windows grammar"
+            );
+            assert!(
+                !is_safe_archive_entry(name),
+                "is_safe_archive_entry accepted {name:?}, which escapes the destination on Windows"
+            );
+        }
+    }
+
+    // Lead 1, part B: the zip crate's own Windows-grammar validator
+    // (`enclosed_name`, built on typed_path::Utf8WindowsPath on every platform)
+    // refuses the very entry AeroFTP's guard lets through, and the real ZIP
+    // extractor then joins it (on Linux the backslash is a literal character,
+    // so here it stays inside dest; on Windows the same join walks out).
+    #[tokio::test]
+    async fn lead1_zip_entry_reaches_the_join_on_every_platform() {
+        let root = tempfile::tempdir().unwrap();
+        let archive = root.path().join("mixed.zip");
+        let name = "a/..\\../..\\x.txt";
+        zip_with_entry(&archive, name, b"payload");
+
+        let f = std::fs::File::open(&archive).unwrap();
+        let mut za = zip::ZipArchive::new(f).unwrap();
+        let entry = za.by_index(0).unwrap();
+        assert_eq!(entry.name(), name, "zip crate returns the raw name");
+        let zip_crate_says = entry.enclosed_name();
+        let guard_says = is_safe_archive_entry(entry.name());
+        drop(entry);
+        eprintln!("zip enclosed_name = {zip_crate_says:?}; is_safe_archive_entry = {guard_says}");
+
+        let dest = root.path().join("out");
+        std::fs::create_dir_all(&dest).unwrap();
+        let out = extract_archive_core(
+            archive.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+        let literal = dest.join("a").join("..\\..").join("..\\x.txt");
+        eprintln!(
+            "extracted into {out}; literal-name file on this platform exists = {}",
+            literal.exists()
+        );
+        assert!(
+            zip_crate_says.is_none(),
+            "zip's Windows-grammar validator must reject the name"
+        );
+        assert!(
+            !guard_says,
+            "AeroFTP guard accepted a name the zip crate's own validator rejects"
+        );
+    }
+
+    // Lead 2: stems that `file_stem` / `archive_extract_stem` turn into `..`.
+    #[test]
+    fn lead2_stem_values() {
+        use std::path::Path;
+        let stem = |n: &str| {
+            Path::new("/x")
+                .join(n)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+        };
+        eprintln!(
+            "file_stem: ...zip={:?} ..zip={:?} ..tar.gz={:?} ...tar.gz={:?} ...7z={:?} ...rar={:?}",
+            stem("...zip"),
+            stem("..zip"),
+            stem("..tar.gz"),
+            stem("...tar.gz"),
+            stem("...7z"),
+            stem("...rar")
+        );
+        eprintln!(
+            "archive_extract_stem: ...zip={:?} ..tar.gz={:?} ...tar.gz={:?} ...gz={:?}",
+            archive_extract_stem("...zip"),
+            archive_extract_stem("..tar.gz"),
+            archive_extract_stem("...tar.gz"),
+            archive_extract_stem("...gz")
+        );
+        let root = tempfile::tempdir().unwrap();
+        let out = root.path().join("downloads");
+        std::fs::create_dir_all(&out).unwrap();
+        for name in ["..tar.gz", "...tar.gz", "...tgz", "...tar"] {
+            let archive = out.join(name);
+            let resolved =
+                tar_final_output(&archive.to_string_lossy(), &out.to_string_lossy(), true).unwrap();
+            eprintln!("tar_final_output({name}) = {}", resolved.display());
+        }
+        // GUI "Extract to folder" path: the unique resolver sees `parent/..`
+        // as existing and moves on to `.. (2)`, a plain folder name.
+        let gui = unique_extract_dir_with(&out, "...zip", |p| p.exists()).unwrap();
+        eprintln!("unique_extract_dir_with(...zip) = {}", gui.display());
+        assert!(
+            gui.starts_with(&out)
+                && !gui
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir)),
+            "GUI resolver must stay inside the chosen folder: {}",
+            gui.display()
+        );
+    }
+
+    #[tokio::test]
+    async fn lead2_create_subfolder_never_writes_outside_output_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let downloads = root.path().join("downloads");
+        std::fs::create_dir_all(&downloads).unwrap();
+        let archive = downloads.join("...zip");
+        zip_with_entry(&archive, "planted.txt", b"from the archive");
+
+        let out = extract_archive_core(
+            archive.to_string_lossy().to_string(),
+            downloads.to_string_lossy().to_string(),
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+        eprintln!("extract_archive(create_subfolder=true) returned {out}");
+        assert!(
+            !root.path().join("planted.txt").exists(),
+            "an entry of `...zip` landed in the PARENT of output_dir ({})",
+            root.path().display()
+        );
+    }
+
+    #[tokio::test]
+    async fn lead2_tar_create_subfolder_never_writes_outside_output_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let downloads = root.path().join("downloads");
+        std::fs::create_dir_all(&downloads).unwrap();
+        let archive = downloads.join("...tar.gz");
+        {
+            let f = std::fs::File::create(&archive).unwrap();
+            let gz = flate2::write::GzEncoder::new(f, flate2::Compression::default());
+            let mut b = tar::Builder::new(gz);
+            let body = b"from the tarball";
+            let mut h = tar::Header::new_gnu();
+            h.set_size(body.len() as u64);
+            h.set_mode(0o644);
+            h.set_cksum();
+            b.append_data(&mut h, "planted-tar.txt", &body[..]).unwrap();
+            b.into_inner().unwrap().finish().unwrap();
+        }
+        let out = extract_tar_as_core(
+            archive.to_string_lossy().to_string(),
+            downloads.to_string_lossy().to_string(),
+            true,
+            "tar.gz".to_string(),
+        )
+        .await
+        .unwrap();
+        eprintln!("extract_tar_as_core(create_subfolder=true) returned {out}");
+        assert!(
+            !root.path().join("planted-tar.txt").exists(),
+            "an entry of `...tar.gz` landed in the PARENT of output_dir"
+        );
+    }
+
+    // Lead 3: a Sigstore bundle that does NOT match the artifact. Network
+    // (TUF trust root + a real bundle) is required, so the test only runs when
+    // SECVAL_SIGSTORE_DIR points at a folder holding the v4.1.9 exe and bundle.
+    #[test]
+    fn lead3_failed_verification_blocks_install() {
+        let Ok(dir) = std::env::var("SECVAL_SIGSTORE_DIR") else {
+            eprintln!("SECVAL_SIGSTORE_DIR unset: skipping");
+            return;
+        };
+        let dir = std::path::PathBuf::from(dir);
+        let bundle = dir.join("AeroFTP_4.1.9_x64-setup.exe.sigstore.json");
+        let real = dir.join("AeroFTP_4.1.9_x64-setup.exe");
+        let mode = |info: &UpdateVerificationInfo| {
+            serde_json::to_value(&info.mode)
+                .unwrap()
+                .as_str()
+                .unwrap_or("?")
+                .to_string()
+        };
+
+        // Positive control: the genuine artifact verifies.
+        let ok = verify_sigstore_bundle(&real, &bundle, "v4.1.9").expect("infra ok");
+        eprintln!("genuine: mode={} message={}", mode(&ok), ok.message);
+        assert_eq!(mode(&ok), "SigstoreVerified", "positive control");
+
+        // Tampered artifact: same bundle, same tag, one byte flipped.
+        let tampered = dir.join("tampered.exe");
+        let mut bytes = std::fs::read(&real).unwrap();
+        let mid = bytes.len() / 2;
+        bytes[mid] ^= 0xFF;
+        std::fs::write(&tampered, &bytes).unwrap();
+        let bad = verify_sigstore_bundle(&tampered, &bundle, "v4.1.9").expect("infra ok");
+        eprintln!(
+            "tampered: mode={} digest_match={:?} message={}",
+            mode(&bad),
+            bad.digest_match,
+            bad.message
+        );
+
+        // Wrong identity: genuine artifact, bundle checked against another tag.
+        let other = verify_sigstore_bundle(&real, &bundle, "v4.1.8").expect("infra ok");
+        eprintln!("wrong tag: mode={} message={}", mode(&other), other.message);
+
+        // Missing bundle.
+        let none = verify_sigstore_bundle(&real, &dir.join("absent.json"), "v4.1.9").unwrap();
+        eprintln!("no bundle: mode={} message={}", mode(&none), none.message);
+
+        // Garbage bundle.
+        let junk = dir.join("junk.json");
+        std::fs::write(&junk, b"{\"mediaType\":\"x\"}").unwrap();
+        let unparsed = verify_sigstore_bundle(&real, &junk, "v4.1.9").unwrap();
+        eprintln!(
+            "junk bundle: mode={} message={}",
+            mode(&unparsed),
+            unparsed.message
+        );
+
+        // Non-JSON bundle (what a path that can swap the artifact can also serve).
+        let garbage = dir.join("garbage.json");
+        std::fs::write(&garbage, b"\x00not json").unwrap();
+        let g = verify_sigstore_bundle(&tampered, &garbage, "v4.1.9").unwrap();
+        eprintln!(
+            "tampered + non-JSON bundle: mode={} message={}",
+            mode(&g),
+            g.message
+        );
+        let n = verify_sigstore_bundle(&tampered, &dir.join("absent.json"), "v4.1.9").unwrap();
+        eprintln!(
+            "tampered + no bundle: mode={} message={}",
+            mode(&n),
+            n.message
+        );
+
+        let _ = std::fs::remove_file(&tampered);
+        let _ = std::fs::remove_file(&junk);
+        let _ = std::fs::remove_file(&garbage);
+        assert_eq!(
+            mode(&bad),
+            "VerificationFailed",
+            "a bundle whose signed digest differs from the artifact must block install"
+        );
     }
 }
