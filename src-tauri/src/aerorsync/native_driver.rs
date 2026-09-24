@@ -2042,8 +2042,26 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                         entry_seen = true;
                         continue;
                     }
-                    Ok((FileListDecodeOutcome::EndOfList { .. }, consumed)) => {
+                    Ok((FileListDecodeOutcome::EndOfList { io_error }, consumed)) => {
                         flist_buf.drain(..consumed);
+                        // A sender that could not read part of what it was
+                        // asked for ends the list with a nonzero io_error
+                        // (`flist.c::write_end_of_flist`: 1 general, 2
+                        // vanished, 4 delete limit); stock rsync then exits
+                        // 23. The list is not to be trusted, so the session
+                        // stops here, pre-commit, as a remote error the
+                        // fallback may retry. Checked before the empty-list
+                        // case so a vanished file is not taken for a
+                        // malformed frame.
+                        if io_error != 0 {
+                            return Err(AerorsyncError::new(
+                                AerorsyncErrorKind::RemoteError,
+                                format!(
+                                    "rsync sender ended the file list with I/O error {io_error:#x}; \
+                                     not trusting a list the peer marks incomplete"
+                                ),
+                            ));
+                        }
                         if !entry_seen {
                             return Err(AerorsyncError::invalid_frame(
                                 "file list ended without any entry",
@@ -6781,6 +6799,76 @@ mod tests {
         assert_eq!(d.file_list()[0].path, "target.bin");
         assert_eq!(d.file_list()[0].size, 4096);
         assert!(!d.committed());
+    }
+
+    /// A sender that ends the file list with a nonzero io_error marks the
+    /// list incomplete. The download must stop before any data phase, as a
+    /// remote error the fallback may retry, in both terminator encodings:
+    /// varint (`00 01`) and classic (`04 10 01`, a pre-3.2 peer). A list
+    /// that is empty because the file vanished is the same case, not a
+    /// malformed frame.
+    #[tokio::test]
+    async fn download_stops_on_a_file_list_that_ends_with_an_io_error() {
+        use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
+        for (legacy, with_entry) in [(false, true), (true, true), (false, false)] {
+            let opts = FileListDecodeOptions {
+                protocol: 31,
+                xfer_flags_as_varint: !legacy,
+                always_checksum: true,
+                csum_len: 16,
+                preserve_uid: true,
+                preserve_gid: true,
+                previous_name: None,
+                preserve_acls: false,
+                preserve_xattrs: false,
+            };
+            let mut inbound = if legacy {
+                encode_server_preamble(&ServerPreamble {
+                    protocol_version: 31,
+                    compat_flags: 0x3f,
+                    checksum_algos: String::new(),
+                    compression_algos: String::new(),
+                    checksum_seed: 0xDEAD_BEEF,
+                    consumed: 0,
+                })
+            } else {
+                canonical_server_preamble_bytes()
+            };
+            if with_entry {
+                let entry = sample_file_list_entry("target.bin");
+                inbound.extend_from_slice(&mux_frame(
+                    MuxTag::Data,
+                    &encode_file_list_entry(&entry, &opts),
+                ));
+            }
+            let terminator: &[u8] = if legacy {
+                &[0x04, 0x10, 0x01]
+            } else {
+                &[0x00, 0x01]
+            };
+            inbound.extend_from_slice(&mux_frame(MuxTag::Data, terminator));
+
+            let mut d = make_driver(mock_transport_with_raw_inbound(inbound));
+            let mut sink = CollectingSink::default();
+            let err = d
+                .drive_download(
+                    RemoteCommandSpec::capture_download("/remote/target.bin"),
+                    &[],
+                    &MockSigAdapter::default(),
+                    &mut sink,
+                )
+                .await
+                .unwrap_err();
+            let case = format!("legacy={legacy} with_entry={with_entry}");
+            assert_eq!(err.kind, AerorsyncErrorKind::RemoteError, "{case}: {err:?}");
+            assert!(err.detail.contains("I/O error 0x1"), "{case}: {err:?}");
+            assert!(!d.committed(), "{case}");
+            assert_eq!(
+                classify_fallback(&err, d.committed()),
+                FallbackVerdict::AttemptClassicSftpFallback,
+                "{case}"
+            );
+        }
     }
 
     /// CLAUDE-AV-B3-18: exact regression for the live xxh64 hang. The
