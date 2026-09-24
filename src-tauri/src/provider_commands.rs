@@ -960,6 +960,7 @@ impl ProviderConnectionParams {
                     .as_deref()
                     .map(str::trim)
                     .filter(|s| !s.is_empty()),
+                &self.server,
             );
             if !extra.contains_key("region") {
                 extra.insert("region".to_string(), "us-east-1".to_string());
@@ -14868,49 +14869,21 @@ mod tests {
     }
 
     #[test]
-    fn test_s3_provider_params_template_preset_without_region_or_endpoint() {
-        // Presets whose template needs {region} but that ship no default
-        // region (Wasabi, MEGA S4, ...) used to fall through to
-        // `s3.us-east-1.amazonaws.com` when a caller omitted both. They must
-        // expand the template with the region the GUI form preselects.
-        for (preset, region, endpoint) in [
-            ("wasabi", "us-east-1", "https://s3.us-east-1.wasabisys.com"),
-            ("mega-s4", "eu-central-1", "s3.eu-central-1.s4.mega.io"),
-            (
-                "digitalocean-spaces",
-                "nyc3",
-                "https://nyc3.digitaloceanspaces.com",
-            ),
-        ] {
-            let mut params = s3_params(None);
-            params.provider_id = Some(preset.to_string());
-            params.region = None;
-            params.endpoint = None;
-            let config = params.to_provider_config().unwrap();
-            assert_eq!(
-                config.extra.get("region").map(String::as_str),
-                Some(region),
-                "{preset}"
-            );
-            assert_eq!(
-                config.extra.get("endpoint").map(String::as_str),
-                Some(endpoint),
-                "{preset}"
-            );
-        }
-        // An explicit endpoint keeps the profile's own signing region.
+    fn test_s3_provider_params_endpoint_in_server_wins_over_template() {
+        // A profile whose endpoint lives in `server` (Cyberduck / restic
+        // import, AeroCloud sends no endpoint option) must connect there, not
+        // to the preset template built from the default region.
         let mut params = s3_params(None);
-        params.provider_id = Some("wasabi".to_string());
+        params.provider_id = Some("ibm-cos".to_string());
+        params.server = "s3.us-south.cloud-object-storage.appdomain.cloud".to_string();
+        params.port = Some(443);
         params.region = None;
-        params.endpoint = Some("https://s3.eu-central-1.wasabisys.com".to_string());
+        params.endpoint = None;
         let config = params.to_provider_config().unwrap();
+        let s3 = crate::providers::S3Config::from_provider_config(&config).unwrap();
         assert_eq!(
-            config.extra.get("region").map(String::as_str),
-            Some("us-east-1")
-        );
-        assert_eq!(
-            config.extra.get("endpoint").map(String::as_str),
-            Some("https://s3.eu-central-1.wasabisys.com")
+            s3.endpoint.as_deref(),
+            Some("https://s3.us-south.cloud-object-storage.appdomain.cloud")
         );
     }
 
@@ -14921,6 +14894,7 @@ mod tests {
         // `s3.{region}.amazonaws.com` (seen live on IBM COS Fetch with
         // region eu-de). The template must resolve here, for every caller.
         let mut params = s3_params(None);
+        params.server = String::new(); // a preset form sends no server
         params.provider_id = Some("ibm-cos".to_string());
         params.region = Some("eu-de".to_string());
         params.endpoint = None;
@@ -14931,6 +14905,7 @@ mod tests {
         );
         // Explicit endpoint still wins over the template.
         let mut params = s3_params(None);
+        params.server = String::new(); // a preset form sends no server
         params.provider_id = Some("ibm-cos".to_string());
         params.region = Some("eu-de".to_string());
         params.endpoint =
@@ -14945,6 +14920,7 @@ mod tests {
         // run first and shadowed the preset, building an invalid
         // `s3.us-east-1...` endpoint for IBM).
         let mut params = s3_params(None);
+        params.server = String::new(); // a preset form sends no server
         params.provider_id = Some("ibm-cos".to_string());
         params.region = None;
         params.endpoint = None;

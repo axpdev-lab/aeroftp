@@ -716,7 +716,7 @@ pub fn resolve_export_endpoint(
         // path style, endpoint), and the resolved endpoint as host when the
         // profile stores none.
         if let Some(resolved) =
-            crate::profile_loader::apply_s3_profile_defaults(&mut extra, provider_id)
+            crate::profile_loader::apply_s3_profile_defaults(&mut extra, provider_id, &host)
         {
             if host.is_empty() {
                 host = resolved;

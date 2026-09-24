@@ -239,20 +239,6 @@ fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
     }
 }
 
-/// Region used to expand a `{region}` endpoint template when the profile has
-/// neither a region nor an endpoint. Mirrors the first option of each preset's
-/// region select in `src/providers/registry.ts`, which the GUI form preselects.
-fn s3_profile_template_default_region(provider_id: &str) -> Option<&'static str> {
-    match provider_id {
-        "wasabi" => Some("us-east-1"),
-        "mega-s4" => Some("eu-central-1"),
-        "alibaba-oss" => Some("cn-hangzhou"),
-        "tencent-cos" => Some("ap-guangzhou"),
-        "digitalocean-spaces" => Some("nyc3"),
-        _ => s3_profile_default_region(provider_id),
-    }
-}
-
 /// Addressing style a preset is known to need. `custom-s3` is deliberately
 /// absent: it is not a preset, and `S3Config` already defaults a custom
 /// endpoint to path-style, which is what self-hosted MinIO/Garage/Ceph need.
@@ -322,9 +308,17 @@ fn s3_profile_endpoint_template(provider_id: &str) -> Option<&'static str> {
 /// Resolve S3 preset defaults (region, path_style, endpoint) from the provider
 /// id. Values already present in `extra` take precedence. Returns the resolved
 /// endpoint string so callers can use it as fallback host.
+///
+/// `host` is the profile's own host. Several importers (Cyberduck, restic)
+/// and older profiles carry the endpoint there and nowhere else; when it names
+/// a non-AWS endpoint it is the profile's explicit endpoint and wins over the
+/// preset template, exactly like `extra["endpoint"]`. Without this the template
+/// wrote `extra["endpoint"]`, which `S3Config` reads before the host, so a
+/// Wasabi or IBM COS profile in one region was silently pointed at another.
 pub fn apply_s3_profile_defaults(
     extra: &mut HashMap<String, String>,
     provider_id: Option<&str>,
+    host: &str,
 ) -> Option<String> {
     let provider_id = provider_id?;
     extra.insert(S3_PROVIDER_ID_META_KEY.to_string(), provider_id.to_string());
@@ -380,6 +374,15 @@ pub fn apply_s3_profile_defaults(
         return Some(existing_endpoint);
     }
 
+    let host = host.trim();
+    if crate::bridge_shared::map_s3_provider_from_endpoint(host) != "amazon-s3" {
+        extra.insert(
+            S3_ENDPOINT_SOURCE_META_KEY.to_string(),
+            "profile".to_string(),
+        );
+        return Some(host.to_string());
+    }
+
     let resolved_endpoint = if let Some(endpoint) = s3_profile_static_endpoint(provider_id) {
         Some(endpoint.to_string())
     } else {
@@ -387,25 +390,8 @@ pub fn apply_s3_profile_defaults(
         let mut endpoint = template.to_string();
 
         if endpoint.contains("{region}") {
-            // No region and no explicit endpoint: take the region the GUI form
-            // preselects (first select option), so every caller builds the same
-            // host instead of falling through to `s3.{region}.amazonaws.com`.
-            // Reached only without an explicit endpoint, so a profile that
-            // already signs against its own endpoint keeps its region.
-            let region = match extra
-                .get("region")
-                .map(|r| r.trim())
-                .filter(|r| !r.is_empty())
-            {
-                Some(region) => region.to_string(),
-                None => {
-                    let region = s3_profile_template_default_region(provider_id)?;
-                    extra.insert("region".to_string(), region.to_string());
-                    extra.insert(S3_REGION_SOURCE_META_KEY.to_string(), "preset".to_string());
-                    region.to_string()
-                }
-            };
-            endpoint = endpoint.replace("{region}", &region);
+            let region = extra.get("region").map(String::as_str)?;
+            endpoint = endpoint.replace("{region}", region);
         }
 
         // Jurisdiction: a bucket created in one answers ONLY on its own host
@@ -564,7 +550,7 @@ mod tests {
         // addressing, EU default. Explicit profile values must win over the
         // preset (same precedence contract as the wasabi preset).
         let mut extra = HashMap::new();
-        let endpoint = apply_s3_profile_defaults(&mut extra, Some("ibm-cos"));
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("ibm-cos"), "");
         assert_eq!(
             endpoint.as_deref(),
             Some("https://s3.eu-de.cloud-object-storage.appdomain.cloud")
@@ -575,12 +561,67 @@ mod tests {
         let mut explicit = HashMap::new();
         explicit.insert("region".to_string(), "us-south".to_string());
         explicit.insert("path_style".to_string(), "true".to_string());
-        let endpoint = apply_s3_profile_defaults(&mut explicit, Some("ibm-cos"));
+        let endpoint = apply_s3_profile_defaults(&mut explicit, Some("ibm-cos"), "");
         assert_eq!(
             endpoint.as_deref(),
             Some("https://s3.us-south.cloud-object-storage.appdomain.cloud")
         );
         assert_eq!(explicit.get("path_style").map(String::as_str), Some("true"));
+    }
+
+    #[test]
+    fn s3_endpoint_carried_in_host_wins_over_the_preset_template() {
+        // Cyberduck and restic imports (and older profiles) carry the endpoint
+        // only in the profile host. The template used to write
+        // `extra["endpoint"]`, which S3Config reads before the host, so an IBM
+        // COS bucket in us-south without a region was sent to eu-de, and a
+        // Wasabi bucket in eu-central-2 to the region default.
+        for (preset, host) in [
+            (
+                "ibm-cos",
+                "s3.us-south.cloud-object-storage.appdomain.cloud",
+            ),
+            ("wasabi", "s3.eu-central-2.wasabisys.com"),
+            (
+                "ibm-cos",
+                "https://s3.jp-tok.cloud-object-storage.appdomain.cloud",
+            ),
+        ] {
+            let mut extra = HashMap::new();
+            let endpoint = apply_s3_profile_defaults(&mut extra, Some(preset), host);
+            assert_eq!(endpoint.as_deref(), Some(host), "{preset}");
+            assert!(
+                !extra.contains_key("endpoint"),
+                "{preset}: host must stay the endpoint"
+            );
+            assert_eq!(
+                extra.get(S3_ENDPOINT_SOURCE_META_KEY).map(String::as_str),
+                Some("profile")
+            );
+        }
+        // An explicit endpoint option still wins over the host.
+        let mut extra = HashMap::new();
+        extra.insert(
+            "endpoint".to_string(),
+            "https://s3.eu-gb.cloud-object-storage.appdomain.cloud".to_string(),
+        );
+        let endpoint = apply_s3_profile_defaults(
+            &mut extra,
+            Some("ibm-cos"),
+            "s3.us-south.cloud-object-storage.appdomain.cloud",
+        );
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://s3.eu-gb.cloud-object-storage.appdomain.cloud")
+        );
+        // An AWS host is not an explicit endpoint: the preset still resolves.
+        let mut extra = HashMap::new();
+        extra.insert("region".to_string(), "eu-central-1".to_string());
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("wasabi"), "s3.amazonaws.com");
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://s3.eu-central-1.wasabisys.com")
+        );
     }
 
     #[test]
@@ -642,7 +683,7 @@ mod tests {
         });
         let mut extra = HashMap::new();
         apply_profile_options(&mut extra, &profile);
-        let endpoint = apply_s3_profile_defaults(&mut extra, Some("filen-desktop-s3"));
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("filen-desktop-s3"), "");
         assert_eq!(endpoint.as_deref(), Some("https://local.s3.filen.io:1800"));
         assert_eq!(extra.get("region").map(String::as_str), Some("filen"));
         assert_eq!(extra.get("bucket").map(String::as_str), Some("filen"));
@@ -696,7 +737,7 @@ mod tests {
         });
         let mut extra = HashMap::new();
         apply_profile_options(&mut extra, &profile);
-        let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"));
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"), "");
         assert_eq!(
             endpoint.as_deref(),
             Some("a1b2c3d4e5f6.r2.cloudflarestorage.com")
@@ -726,7 +767,7 @@ mod tests {
             });
             let mut extra = HashMap::new();
             apply_profile_options(&mut extra, &profile);
-            let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"));
+            let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"), "");
             assert_eq!(
                 endpoint.as_deref(),
                 Some(expected),
@@ -752,7 +793,7 @@ mod tests {
         });
         let mut extra = HashMap::new();
         apply_profile_options(&mut extra, &profile);
-        let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"));
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"), "");
         assert_eq!(endpoint.as_deref(), Some("https://r2.example.test"));
     }
 

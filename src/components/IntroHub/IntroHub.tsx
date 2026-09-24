@@ -10,7 +10,7 @@ import { PortableIsolationBanner } from './PortableIsolationBanner';
 import { ConnectionScreen } from '../ConnectionScreen';
 import { ExportImportDialog } from '../ExportImportDialog';
 import { getTotalServiceCount } from './discoverData';
-import { getProviderById } from '../../providers';
+import { getProviderById, presetDefaultS3Region, resolveS3Endpoint } from '../../providers';
 import { useTranslation } from '../../i18n';
 import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
 import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
@@ -219,8 +219,10 @@ export function IntroHub(props: IntroHubProps) {
                 providerId,
                 options: {
                     pathStyle: provider?.defaults?.pathStyle,
-                    region: provider?.defaults?.region,
-                    endpoint: provider?.defaults?.endpoint,
+                    // Template presets (IBM COS, Wasabi, MEGA S4) get the region the
+                    // form preselects and the endpoint built from it, as on selection.
+                    region: presetDefaultS3Region(providerId),
+                    endpoint: resolveS3Endpoint(providerId, presetDefaultS3Region(providerId)) ?? undefined,
                     anonymous: provider?.defaults?.anonymous,
                     // Pre-populate bucket from preset (e.g. Filen Desktop S3 hardcodes "filen")
                     bucket: provider?.defaults?.bucket,

@@ -45,7 +45,7 @@ import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
-import { getProviderById, resolveS3Endpoint, s3TemplateParams, parseS3EndpointParams, ProviderConfig } from '../providers';
+import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDefaultS3Region, parseS3EndpointParams, ProviderConfig } from '../providers';
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
@@ -2285,23 +2285,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     }
                 }
 
-                // Resolve endpoint if missing
+                // Resolve endpoint if missing, with the rule the connect path
+                // uses: an endpoint carried only in the host (Cyberduck /
+                // restic imports) is kept, not replaced by the template.
                 if (!profileOptions.endpoint) {
-                    let effectiveRegion = profileOptions.region || provider.defaults?.region;
-                    if (!effectiveRegion && provider.defaults?.endpointTemplate && !template?.includes('{accountId}')) {
-                        const regionField = provider.fields?.find(f => f.key === 'region');
-                        if (regionField?.type === 'select' && regionField.options?.length) {
-                            effectiveRegion = regionField.options[0].value;
-                        }
-                    }
-                    const extraParams = s3TemplateParams(profileOptions);
-                    const resolvedEndpoint = provider.defaults?.endpoint
-                        || resolveS3Endpoint(provider.id, effectiveRegion, extraParams)
-                        || undefined;
-                    if (resolvedEndpoint) {
-                        profileOptions = { ...profileOptions, endpoint: resolvedEndpoint };
-                        if (effectiveRegion && !profileOptions.region) {
-                            profileOptions = { ...profileOptions, region: effectiveRegion };
+                    const location = resolveProfileS3Location(provider.id, profileOptions, profile.host);
+                    if (location.endpoint) {
+                        profileOptions = { ...profileOptions, endpoint: location.endpoint };
+                        if (location.region && !profileOptions.region) {
+                            profileOptions = { ...profileOptions, region: location.region };
                         }
                     }
                 }
@@ -2642,13 +2634,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             // back to the current server only when the preset
                             // has none. A restored stash already holds this
                             // mode's own host, so it wins.
-                            server: restored ? restored.server : (provider.defaults?.server || connectionParams.server || ''),
+                            // An S3 mode takes its endpoint from the preset, never
+                            // from the host of the mode being left (MEGA native ->
+                            // MEGA S4 kept `mega.nz` with no region or endpoint).
+                            server: restored ? restored.server : (provider.defaults?.server || (newProtocol === 's3' ? '' : connectionParams.server) || ''),
                             username: switchCreds.username,
                             password: switchCreds.password,
                             options: restored ? (restored.options ?? {}) : {
                                 pathStyle: provider.defaults?.pathStyle,
-                                region: provider.defaults?.region,
-                                endpoint: provider.defaults?.endpoint,
+                                region: presetDefaultS3Region(provider.id),
+                                endpoint: resolveS3Endpoint(provider.id, presetDefaultS3Region(provider.id)) ?? undefined,
                                 anonymous: provider.defaults?.anonymous,
                                 webdavScheme: provider.defaults?.webdavScheme,
                                 bucket: provider.defaults?.bucket,
@@ -2769,14 +2764,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setPresetUnlocked({});
         setAdvancedUnlocked(false);
 
-        // For endpointTemplate providers without a default region, auto-select the first region option
-        let effectiveRegion = provider.defaults?.region;
-        if (!effectiveRegion && provider.defaults?.endpointTemplate) {
-            const regionField = provider.fields?.find(f => f.key === 'region');
-            if (regionField?.type === 'select' && regionField.options?.length) {
-                effectiveRegion = regionField.options[0].value;
-            }
-        }
+        // Preset default region, or the first region option of a template preset
+        const effectiveRegion = presetDefaultS3Region(provider.id);
 
         // Resolve S3 endpoint: static defaults.endpoint OR computed from endpointTemplate + region
         const resolvedEndpoint = provider.defaults?.endpoint

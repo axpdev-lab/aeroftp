@@ -1963,9 +1963,11 @@ pub fn export_rclone(
                                 crate::profile_loader::insert_profile_option(&mut probe, k, v);
                             }
                         }
+                        // Host already tried above: resolve the preset only.
                         crate::profile_loader::apply_s3_profile_defaults(
                             &mut probe,
                             Some(provider_id),
+                            "",
                         )
                     });
 

@@ -2383,3 +2383,51 @@ export const resolveS3Endpoint = (providerId: string | undefined, region?: strin
     if (result.includes('{')) return null;
     return result;
 };
+
+/**
+ * A saved S3 profile's host is its explicit endpoint unless it is empty or an
+ * AWS host. Importers (Cyberduck, restic) and older profiles carry the endpoint
+ * only there. Mirrors `apply_s3_profile_defaults` in
+ * src-tauri/src/profile_loader.rs, where the same host wins over the preset
+ * template for the CLI, MCP and AeroCloud paths.
+ */
+const isExplicitS3Host = (host?: string | null): boolean => {
+    const h = host?.trim().toLowerCase() ?? '';
+    return h !== '' && !h.includes('amazonaws.com');
+};
+
+/**
+ * Region a preset uses when the profile stores none: its default region, else,
+ * for a template preset, the first option of its region select (what the form
+ * preselects). Undefined for presets that need neither.
+ */
+export const presetDefaultS3Region = (providerId?: string): string | undefined => {
+    const provider = providerId ? getProviderById(providerId) : undefined;
+    if (!provider) return undefined;
+    if (provider.defaults?.region) return provider.defaults.region;
+    if (!provider.defaults?.endpointTemplate) return undefined;
+    const field = provider.fields?.find(f => f.key === 'region');
+    return field?.type === 'select' ? field.options?.[0]?.value : undefined;
+};
+
+/**
+ * Endpoint and region a saved S3 profile connects with: the stored endpoint
+ * option, then an explicit host, then the preset (static endpoint, or template
+ * expanded with the stored or default region). The preset default region is
+ * returned only when the template actually used it, so the region sent always
+ * matches the host built from it, and a profile with its own endpoint keeps
+ * signing with whatever region it stored. The single rule the connect,
+ * speed-test and edit paths share.
+ */
+export const resolveProfileS3Location = (
+    providerId: string | undefined,
+    options: { endpoint?: unknown; region?: unknown; accountId?: unknown; jurisdiction?: unknown } | null | undefined,
+    host?: string | null,
+): { endpoint: string | null; region?: string } => {
+    const storedRegion = typeof options?.region === 'string' && options.region.trim() ? options.region.trim() : undefined;
+    const storedEndpoint = typeof options?.endpoint === 'string' ? options.endpoint.trim() : '';
+    if (storedEndpoint) return { endpoint: storedEndpoint, region: storedRegion };
+    if (isExplicitS3Host(host)) return { endpoint: host!.trim(), region: storedRegion };
+    const region = storedRegion || presetDefaultS3Region(providerId);
+    return { endpoint: resolveS3Endpoint(providerId, region, s3TemplateParams(options)), region };
+};
