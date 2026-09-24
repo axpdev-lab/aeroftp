@@ -88,13 +88,14 @@ jobs:
       # on the version that had its defect (proxy deadlock in both directions,
       # queued bytes dropped at server exit, the proxy killed by SIGPIPE when
       # the client left, a truncated capture or one cut at a frame boundary
-      # decoded as rc 0). 11 is a floor, like the suite count below.
+      # decoded as rc 0), and the stats total that left symlinks out. 13 is a
+      # floor, like the suite count below.
       - name: Capture instruments self-test (proxy and decoder)
         run: |
           set -o pipefail
           python3 src-tauri/src/aerorsync/capture/test_capture_tools.py -v 2>&1 | tee /tmp/capture-tools.log
           ran=$(sed -n 's/^Ran \([0-9]*\) tests\{0,1\} in .*/\1/p' /tmp/capture-tools.log)
-          [ "${ran:-0}" -ge 11 ] || { echo "capture self-test ran ${ran:-0} tests, expected at least 11"; exit 1; }
+          [ "${ran:-0}" -ge 13 ] || { echo "capture self-test ran ${ran:-0} tests, expected at least 13"; exit 1; }
       - name: cargo check --features aerorsync --lib
         working-directory: src-tauri
         run: cargo check --features aerorsync --lib

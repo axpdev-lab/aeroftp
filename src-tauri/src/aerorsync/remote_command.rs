@@ -72,6 +72,7 @@ pub(crate) enum CompactFlagProfile {
 pub(crate) struct EffectiveMetadataFlags {
     pub preserve_owner: bool,
     pub preserve_group: bool,
+    pub preserve_links: bool,
     pub preserve_devices: bool,
     pub preserve_acls: bool,
     pub preserve_xattrs: bool,
@@ -82,6 +83,7 @@ impl EffectiveMetadataFlags {
         Self {
             preserve_owner: false,
             preserve_group: false,
+            preserve_links: true,
             preserve_devices: false,
             preserve_acls,
             preserve_xattrs,
@@ -93,6 +95,7 @@ impl EffectiveMetadataFlags {
         Self {
             preserve_owner: true,
             preserve_group: true,
+            preserve_links: true,
             preserve_devices: true,
             preserve_acls,
             preserve_xattrs,
@@ -134,6 +137,7 @@ pub(crate) fn metadata_flags_from_args(args: &[String]) -> Option<EffectiveMetad
     Some(EffectiveMetadataFlags {
         preserve_owner: short_options.contains('o'),
         preserve_group: short_options.contains('g'),
+        preserve_links: short_options.contains('l'),
         preserve_devices: short_options.contains('D'),
         preserve_acls: short_options.contains('A'),
         preserve_xattrs: short_options.contains('X'),
@@ -663,6 +667,7 @@ mod tests {
             Some(EffectiveMetadataFlags {
                 preserve_owner: true,
                 preserve_group: true,
+                preserve_links: true,
                 preserve_devices: true,
                 preserve_acls: true,
                 preserve_xattrs: true,

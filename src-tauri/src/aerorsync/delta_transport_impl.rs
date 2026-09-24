@@ -768,6 +768,20 @@ async fn create_symlink_atomic(
             ),
         });
     };
+    // The wire carries the target as bytes. The product creates links from
+    // UTF-8 targets only, the same policy as the upload side
+    // (`do_upload_rejects_non_utf8_symlink_target_hard`); the driver
+    // already refuses such a name before commit, so this is the second
+    // line, not the first.
+    let Ok(target) = std::str::from_utf8(target) else {
+        return Err(TransferError::Hard {
+            detail: format!(
+                "symlink entry for {} has a target that is not UTF-8 ({}); refusing",
+                remote_path,
+                String::from_utf8_lossy(target)
+            ),
+        });
+    };
     #[cfg(unix)]
     {
         // Audit S1: the target is peer-controlled. A hostile server can
@@ -1806,7 +1820,7 @@ fn build_source_entry(
     // classic rsync so the receiver may short-circuit equal files.
     FileListEntry {
         flags,
-        path: name,
+        path: name.into_bytes(),
         size: size as i64,
         mtime: mtime_secs,
         // MOD_NSEC requires a value on the wire even if subsec is zero;
@@ -1819,7 +1833,8 @@ fn build_source_entry(
         gid,
         gid_name,
         checksum: file_checksum,
-        symlink_target,
+        symlink_target: symlink_target.map(String::into_bytes),
+        rdev: None,
         xattrs,
         acls,
     }
@@ -2189,7 +2204,7 @@ mod tests {
         use crate::aerorsync::real_wire::{
             compress_zstd_literal_stream, encode_delta_stream, encode_file_list_entry,
             encode_file_list_terminator, encode_item_flags, encode_ndx, encode_server_preamble,
-            encode_sum_head, encode_summary_frame, DeltaOp, DeltaStreamReport,
+            encode_sum_head, encode_summary_frame, DeltaOp, DeltaStreamReport, FileListCodecState,
             FileListDecodeOptions, FileListEntry, MuxHeader, MuxTag, NdxState, ServerPreamble,
             SumHead, SummaryFrame,
         };
@@ -2221,7 +2236,7 @@ mod tests {
         let checksum_len = trailer.len();
         let entry = FileListEntry {
             flags: XMIT_LONG_NAME | XMIT_SAME_UID | XMIT_SAME_GID | XMIT_SAME_TIME,
-            path: "target.bin".to_string(),
+            path: b"target.bin".to_vec(),
             size: content.len() as i64,
             mtime: 0,
             mtime_nsec: None,
@@ -2232,6 +2247,7 @@ mod tests {
             gid_name: None,
             checksum: Vec::new(),
             symlink_target: None,
+            rdev: None,
             xattrs: None,
             acls: None,
         };
@@ -2242,9 +2258,11 @@ mod tests {
             csum_len: checksum_len,
             preserve_uid: false,
             preserve_gid: false,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
 
         // Sender's signature-phase echo: ndx + iflags + an empty sum_head
@@ -2291,8 +2309,12 @@ mod tests {
             checksum_seed: 0xDEAD_BEEF,
             consumed: 0,
         });
-        inbound.extend_from_slice(&mux(&encode_file_list_entry(&entry, &opts)));
-        inbound.extend_from_slice(&mux(&encode_file_list_terminator(&opts)));
+        inbound.extend_from_slice(&mux(&encode_file_list_entry(
+            &entry,
+            &opts,
+            &mut FileListCodecState::new(),
+        )));
+        inbound.extend_from_slice(&mux(&encode_file_list_terminator(&opts, 0)));
         inbound.extend_from_slice(&mux(&prefix));
         inbound.extend_from_slice(&mux(&delta_bytes));
         inbound.extend_from_slice(&mux(&summary));
@@ -2748,7 +2770,7 @@ mod tests {
             None,
             EffectiveMetadataFlags::capture(false, false),
         );
-        assert_eq!(entry.path, "payload.bin");
+        assert_eq!(entry.path, b"payload.bin");
         assert_eq!(entry.size, 1_234_567);
         // U-07 regression pin: mtime MUST be populated from metadata;
         // hardcoding zero was the original bug.
@@ -2818,7 +2840,7 @@ mod tests {
             None,
             EffectiveMetadataFlags::product(false, false),
         );
-        assert_eq!(entry.path, "source.bin");
+        assert_eq!(entry.path, b"source.bin");
     }
 
     #[test]
@@ -2872,7 +2894,7 @@ mod tests {
         );
 
         assert_eq!(entry.mode & 0o170000, 0o120000, "S_IFLNK mode bits");
-        assert_eq!(entry.symlink_target.as_deref(), Some(target));
+        assert_eq!(entry.symlink_target.as_deref(), Some(target.as_bytes()));
         assert_eq!(entry.size, target.len() as i64, "rsync F_LENGTH for links");
         assert!(
             entry.checksum.is_empty(),
@@ -2892,7 +2914,7 @@ mod tests {
         let dest = dir.path().join("no-target.lnk");
         let mut entry = crate::aerorsync::real_wire::FileListEntry {
             flags: 1 << 13,
-            path: "no-target.lnk".to_string(),
+            path: b"no-target.lnk".to_vec(),
             size: 0,
             mtime: 0,
             mtime_nsec: Some(0),
@@ -2903,6 +2925,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: None,
+            rdev: None,
             xattrs: None,
             acls: None,
         };
@@ -2912,7 +2935,7 @@ mod tests {
         assert!(matches!(err, TransferError::Hard { .. }));
         // Empty target string is equally refused: readlink can never
         // produce it, so it only appears from a malformed peer.
-        entry.symlink_target = Some(String::new());
+        entry.symlink_target = Some(Vec::new());
         let err = create_symlink_atomic(&entry, &dest, "/remote/no-target.lnk")
             .await
             .unwrap_err();
@@ -2945,7 +2968,7 @@ mod tests {
         let dest = dir.path().join("evil.lnk");
         let entry = crate::aerorsync::real_wire::FileListEntry {
             flags: 1 << 13,
-            path: "evil.lnk".to_string(),
+            path: b"evil.lnk".to_vec(),
             size: 0,
             mtime: 0,
             mtime_nsec: Some(0),
@@ -2955,7 +2978,8 @@ mod tests {
             gid: None,
             gid_name: None,
             checksum: vec![],
-            symlink_target: Some("../../../../etc/passwd".to_string()),
+            symlink_target: Some(b"../../../../etc/passwd".to_vec()),
+            rdev: None,
             xattrs: None,
             acls: None,
         };
@@ -2980,7 +3004,7 @@ mod tests {
         std::fs::write(&dest, b"old regular content").unwrap();
         let entry = crate::aerorsync::real_wire::FileListEntry {
             flags: 1 << 13,
-            path: "replace-me.lnk".to_string(),
+            path: b"replace-me.lnk".to_vec(),
             size: 11,
             mtime: 1_700_000_000,
             mtime_nsec: Some(0),
@@ -2990,7 +3014,8 @@ mod tests {
             gid: None,
             gid_name: None,
             checksum: vec![],
-            symlink_target: Some("rel/tgt.bin".to_string()),
+            symlink_target: Some(b"rel/tgt.bin".to_vec()),
+            rdev: None,
             xattrs: None,
             acls: None,
         };
@@ -3091,7 +3116,7 @@ mod tests {
         let dest = dir.path().join("dated.lnk");
         let entry = crate::aerorsync::real_wire::FileListEntry {
             flags: 1 << 13,
-            path: "dated.lnk".to_string(),
+            path: b"dated.lnk".to_vec(),
             size: 14,
             mtime: LINK_MTIME,
             mtime_nsec: Some(LINK_MTIME_NSEC),
@@ -3101,7 +3126,8 @@ mod tests {
             gid: None,
             gid_name: None,
             checksum: vec![],
-            symlink_target: Some("tgt.bin".to_string()),
+            symlink_target: Some(b"tgt.bin".to_vec()),
+            rdev: None,
             xattrs: None,
             acls: None,
         };
@@ -3181,7 +3207,7 @@ mod tests {
         let dest = dir.path().join("refused.lnk");
         let entry = crate::aerorsync::real_wire::FileListEntry {
             flags: 1 << 13,
-            path: "refused.lnk".to_string(),
+            path: b"refused.lnk".to_vec(),
             size: 7,
             mtime: 0,
             mtime_nsec: Some(0),
@@ -3191,7 +3217,8 @@ mod tests {
             gid: None,
             gid_name: None,
             checksum: vec![],
-            symlink_target: Some("tgt.bin".to_string()),
+            symlink_target: Some(b"tgt.bin".to_vec()),
+            rdev: None,
             xattrs: None,
             acls: None,
         };
@@ -3305,8 +3332,8 @@ mod tests {
     fn symlink_download_session_inbound(link_name: &str, target: &str) -> Vec<u8> {
         use crate::aerorsync::real_wire::{
             encode_file_list_entry, encode_file_list_terminator, encode_server_preamble,
-            encode_summary_frame, FileListDecodeOptions, FileListEntry, MuxHeader, MuxTag,
-            ServerPreamble, SummaryFrame,
+            encode_summary_frame, FileListCodecState, FileListDecodeOptions, FileListEntry,
+            MuxHeader, MuxTag, ServerPreamble, SummaryFrame,
         };
 
         fn mux(payload: &[u8]) -> Vec<u8> {
@@ -3321,7 +3348,7 @@ mod tests {
 
         let entry = FileListEntry {
             flags: 1 << 13, // XMIT_MOD_NSEC: explicit first-entry shape
-            path: link_name.to_string(),
+            path: link_name.as_bytes().to_vec(),
             size: target.len() as i64,
             mtime: 1_750_000_000,
             mtime_nsec: Some(0),
@@ -3331,7 +3358,8 @@ mod tests {
             gid: Some(1000),
             gid_name: None,
             checksum: vec![],
-            symlink_target: Some(target.to_string()),
+            symlink_target: Some(target.as_bytes().to_vec()),
+            rdev: None,
             xattrs: None,
             acls: None,
         };
@@ -3342,9 +3370,11 @@ mod tests {
             csum_len: 16,
             preserve_uid: false,
             preserve_gid: false,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
         let mut finish_tail = vec![0x00; 3];
         finish_tail.extend_from_slice(&encode_summary_frame(
@@ -3366,8 +3396,12 @@ mod tests {
             checksum_seed: 0xDEAD_BEEF,
             consumed: 0,
         });
-        inbound.extend_from_slice(&mux(&encode_file_list_entry(&entry, &opts)));
-        inbound.extend_from_slice(&mux(&encode_file_list_terminator(&opts)));
+        inbound.extend_from_slice(&mux(&encode_file_list_entry(
+            &entry,
+            &opts,
+            &mut FileListCodecState::new(),
+        )));
+        inbound.extend_from_slice(&mux(&encode_file_list_terminator(&opts, 0)));
         inbound.extend_from_slice(&mux(&finish_tail));
         inbound.extend_from_slice(&mux(&[0x00]));
         inbound

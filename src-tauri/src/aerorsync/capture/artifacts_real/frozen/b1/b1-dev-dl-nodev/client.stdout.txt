@@ -1,0 +1,7 @@
+skipping non-regular file "dv/bloop"
+skipping non-regular file "dv/cbig"
+skipping non-regular file "dv/cnull"
+skipping non-regular file "dv/cwide"
+skipping non-regular file "dv/czero"
+skipping non-regular file "dv/fifo"
+skipping non-regular file "dv/sock"

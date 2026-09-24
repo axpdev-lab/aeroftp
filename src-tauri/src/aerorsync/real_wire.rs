@@ -244,6 +244,48 @@ pub enum RealWireError {
         declared: i64,
         available: usize,
     },
+    /// A file-list entry carries `XMIT_HLINKED` without
+    /// `XMIT_HLINK_FIRST`: a hard-link follower whose body is a
+    /// `first_hlink_ndx` back-reference and, inside the same segment,
+    /// nothing else. Decoding it as a full entry would read the index as
+    /// the file size and desynchronise the rest of the list, so the codec
+    /// refuses it by name. Hard links are not supported in this version
+    /// (`12-multi-entry-wire-evidence.md` §7).
+    HardlinkUnsupported {
+        path: String,
+    },
+    /// The streaming file-list decoder buffered `buffered` bytes without
+    /// completing one entry, past the per-entry ceiling `limit`. The
+    /// ceiling bounds one entry, never the list: a legitimate list of any
+    /// length decodes within it.
+    FileListEntryTooLarge {
+        limit: usize,
+        buffered: usize,
+    },
+    /// The streaming file-list decoder reached its caller-chosen entry
+    /// ceiling before the end-of-list marker.
+    FileListTooManyEntries {
+        limit: usize,
+    },
+    /// A uid/gid list (sent after the file list when incremental
+    /// recursion is off) declared a negative id.
+    InvalidIdListId {
+        id: i64,
+    },
+    /// A path or a symlink target at or beyond [`MAXPATHLEN`]. rsync's
+    /// `recv_file_entry` exits with "overflow" on the same condition,
+    /// before reading a single byte of the name: it is a structural
+    /// refusal, never "the entry is not complete yet".
+    PathTooLong {
+        field: &'static str,
+        declared: usize,
+        max: usize,
+    },
+    /// The file-list codec speaks protocol 30 and later: below 30 rsync
+    /// sends ids, times and device numbers in other shapes.
+    FileListProtocolUnsupported {
+        protocol: u32,
+    },
 }
 
 impl fmt::Display for RealWireError {
@@ -402,6 +444,37 @@ impl fmt::Display for RealWireError {
                 write!(
                     f,
                     "invalid acl {field}: declared {declared}, {available} byte(s) available"
+                )
+            }
+            RealWireError::HardlinkUnsupported { path } => {
+                write!(
+                    f,
+                    "file-list entry {path:?} is a hard-link follower; hard links are not supported in this version"
+                )
+            }
+            RealWireError::FileListEntryTooLarge { limit, buffered } => {
+                write!(
+                    f,
+                    "file-list entry not complete after {buffered} byte(s), above the per-entry limit {limit}"
+                )
+            }
+            RealWireError::FileListTooManyEntries { limit } => {
+                write!(f, "file list exceeds the {limit} entry limit")
+            }
+            RealWireError::InvalidIdListId { id } => {
+                write!(f, "uid/gid list declares negative id {id}")
+            }
+            RealWireError::PathTooLong {
+                field,
+                declared,
+                max,
+            } => {
+                write!(f, "file-list {field} of {declared} bytes exceeds {max}")
+            }
+            RealWireError::FileListProtocolUnsupported { protocol } => {
+                write!(
+                    f,
+                    "file-list codec supports protocol 30 and later, not {protocol}"
                 )
             }
         }
@@ -1273,7 +1346,10 @@ pub fn encode_varlong(x: i64, min_bytes: u8) -> Vec<u8> {
     while cnt > min_bytes && b[cnt] == 0 {
         cnt -= 1;
     }
-    let bit: u8 = 1u8 << (7 - cnt as u8 + min_bytes as u8);
+    // `io.c` computes `7 - cnt + min_bytes` in `int`. Here `cnt` reaches 8
+    // for any value of 2^56 and above, so the subtraction must not happen
+    // in `u8` before the addition (it overflowed, and panicked in debug).
+    let bit: u8 = 1u8 << (7 + min_bytes - cnt);
 
     if b[cnt] >= bit {
         cnt += 1;
@@ -1328,8 +1404,8 @@ pub const XMIT_SAME_ATIME: u32 = 1 << 14;
 /// command-line options (`--checksum`, `--numeric-ids`, `-o/-g`, …) and
 /// by negotiated compat flags. This struct captures what is needed to
 /// walk the bytes unambiguously.
-#[derive(Debug, Clone)]
-pub struct FileListDecodeOptions<'a> {
+#[derive(Debug, Clone, Copy)]
+pub struct FileListDecodeOptions {
     /// Negotiated protocol version (31 or 32 in current transcripts).
     pub protocol: u32,
     /// `CF_VARINT_FLIST_FLAGS` was negotiated: flags are encoded as a
@@ -1365,15 +1441,24 @@ pub struct FileListDecodeOptions<'a> {
     /// Off by default: the frozen oracles were captured without `-X`, and
     /// leaving it off is what keeps their byte-pinned path unchanged.
     pub preserve_xattrs: bool,
-    /// Last file's name, used when `XMIT_SAME_NAME` with `l1 > 0` asks
-    /// us to reuse its prefix.
-    pub previous_name: Option<&'a str>,
+    /// `-l` / `--links`: a symlink entry carries its target. Without it the
+    /// sender still lists the symlink, with no target on the wire
+    /// (`flist.c::send_file_entry` gates the target on `preserve_links`),
+    /// so the target is keyed on this option and never on the mode alone.
+    pub preserve_links: bool,
+    /// `-D` / `--devices`: a character or block device entry carries its
+    /// device number. Without it the device is still listed, with no
+    /// number on the wire.
+    pub preserve_devices: bool,
+    /// `-D` / `--specials`: below protocol 31 a fifo or socket entry
+    /// carries a device number too; from 31 on it never does.
+    pub preserve_specials: bool,
 }
 
-impl<'a> FileListDecodeOptions<'a> {
+impl FileListDecodeOptions {
     /// Defaults tailored for the S8a frozen oracle capture: rsync 3.2.7
     /// with protocol 32, `--checksum` active, xxh128 negotiated,
-    /// `CF_VARINT_FLIST_FLAGS` on.
+    /// `CF_VARINT_FLIST_FLAGS` on, and the `-logD` of its flag string.
     pub fn frozen_oracle_default() -> Self {
         Self {
             protocol: 32,
@@ -1384,7 +1469,80 @@ impl<'a> FileListDecodeOptions<'a> {
             preserve_gid: true,
             preserve_acls: false,
             preserve_xattrs: false,
-            previous_name: None,
+            preserve_links: true,
+            preserve_devices: true,
+            preserve_specials: true,
+        }
+    }
+}
+
+/// What one file-list entry inherits from the entry sent **before it on
+/// the wire**: the path that `XMIT_SAME_NAME` compresses against, and the
+/// values that `XMIT_SAME_MODE`, `XMIT_SAME_TIME`, `XMIT_SAME_UID` and
+/// `XMIT_SAME_GID` stand for. Mirrors the function-local statics of
+/// `flist.c::recv_file_entry` / `send_file_entry` in rsync 3.2.7, which
+/// start at zero and the empty name.
+///
+/// Three facts measured on the wire (`12-multi-entry-wire-evidence.md`
+/// §2) fix the shape of this type:
+///
+/// - the reference is the previous entry **as sent**, not as sorted, so
+///   the state follows the byte stream and never a sorted list;
+/// - the state **crosses segments** under incremental recursion: the first
+///   entry of segment "d" compresses its name against the last entry of
+///   the segment before it, so one state lives for the whole session
+///   direction, not for one list;
+/// - end-of-list leaves the state untouched, and a failed decode must not
+///   touch it either (a truncated entry is retried once more bytes arrive).
+///
+/// uid and gid only move when `-o` / `-g` put them on the wire, and the
+/// device major (what `XMIT_SAME_RDEV_MAJOR` stands for) only when a device
+/// number is on the wire. The
+/// product profile (`-ltp`) sets `XMIT_SAME_UID|XMIT_SAME_GID` on entries
+/// that carry no id at all (§8), so the bits alone never mean "an id
+/// exists".
+///
+/// Decoder and encoder each own one instance per direction. Nanoseconds
+/// are not part of it: rsync resets them to zero unless `XMIT_MOD_NSEC`
+/// is set on the entry itself.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FileListCodecState {
+    name: Option<Vec<u8>>,
+    mode: u32,
+    mtime: i64,
+    uid: i64,
+    gid: i64,
+    rdev_major: u32,
+}
+
+impl FileListCodecState {
+    /// The state before the first entry of a session direction.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Full path of the previous entry on the wire, `None` before the first.
+    pub fn previous_name(&self) -> Option<&[u8]> {
+        self.name.as_deref()
+    }
+
+    /// Record `entry` as the previous entry on the wire.
+    fn advance(&mut self, entry: &FileListEntry, options: &FileListDecodeOptions) {
+        self.name = Some(entry.path.clone());
+        self.mode = entry.mode;
+        self.mtime = entry.mtime;
+        if options.preserve_uid {
+            if let Some(uid) = entry.uid {
+                self.uid = uid;
+            }
+        }
+        if options.preserve_gid {
+            if let Some(gid) = entry.gid {
+                self.gid = gid;
+            }
+        }
+        if let Some(rdev) = entry.rdev {
+            self.rdev_major = rdev.major;
         }
     }
 }
@@ -1597,13 +1755,21 @@ pub struct FileListAcls {
     pub default: Option<AclWireEntry>,
 }
 
-/// Decoded file-list entry (regular file, protocol ≥ 31 path). Device /
-/// symlink / hardlink extensions are deferred: they land in a later
-/// sinergia when we encounter them in a transcript.
+/// Decoded file-list entry, protocol ≥ 31: a regular file, a directory
+/// or a symlink. Every `XMIT_SAME_*` field holds the resolved value (the
+/// one inherited from [`FileListCodecState`]), and `flags` keeps the raw
+/// wire bits, so re-encoding reproduces the original bytes. Device and
+/// special-file fields (`rdev`) and hard-link followers are not modelled:
+/// a follower is refused with [`RealWireError::HardlinkUnsupported`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileListEntry {
     pub flags: u32,
-    pub path: String,
+    /// Path relative to the transfer root, as rsync sends it: bytes, not
+    /// text. rsync puts a filename's bytes on the wire unchanged, and a
+    /// name that is not UTF-8 (measured, `b1-nonutf8-dl`: `nu/caf\xe9.txt`)
+    /// is a legal entry. Whether a caller can use such a name is the
+    /// caller's policy; [`FileListEntry::path_lossy`] is for logs and errors.
+    pub path: Vec<u8>,
     pub size: i64,
     pub mtime: i64,
     pub mtime_nsec: Option<i32>,
@@ -1617,15 +1783,22 @@ pub struct FileListEntry {
     /// symlink entries: from proto 28 onward `flist.c` sends the flist
     /// checksum only for `S_ISREG` entries.
     pub checksum: Vec<u8>,
-    /// Symlink target, present iff this entry's `mode` is `S_IFLNK`.
-    /// `None` for every regular file / directory, so the encoder emits
-    /// zero extra bytes for non-symlink entries and the byte-pinned
-    /// regular-file path is provably unchanged (the frozen-oracle tests
-    /// are the regression proof). rsync proto >= 30 wire shape:
+    /// Symlink target, present iff this entry's `mode` is `S_IFLNK` and
+    /// `-l` was negotiated (without it rsync lists the symlink and sends no
+    /// target: measured, `b1-dev-dl-nolinks`). `None` for every other
+    /// entry, so the encoder emits zero extra bytes for them and the
+    /// byte-pinned regular-file path is provably unchanged (the
+    /// frozen-oracle tests are the regression proof). Bytes, like the path:
+    /// rsync sends the target unchanged. rsync proto >= 30 wire shape:
     /// `write_varint(len)` then `len` raw target bytes, placed after the
-    /// uid/gid block and before the trailing checksum (mirrors
-    /// `flist.c::send_file_entry`'s `S_ISLNK` branch).
-    pub symlink_target: Option<String>,
+    /// uid/gid block and the device number and before the trailing
+    /// checksum (mirrors `flist.c::send_file_entry`'s `S_ISLNK` branch).
+    pub symlink_target: Option<Vec<u8>>,
+    /// Device number, present iff this entry is a character or block
+    /// device and `-D` was negotiated (or, below protocol 31, a fifo or
+    /// socket under `--specials`). `None` for everything else, and for a
+    /// device listed without `-D`, whose number is not on the wire.
+    pub rdev: Option<Rdev>,
     /// Extended attributes, present iff `-X` was negotiated for the
     /// session (`FileListDecodeOptions::preserve_xattrs`). Three states,
     /// all measured on rsync 3.2.7 (`04-xattr-wire-evidence.md` §4.1):
@@ -1660,12 +1833,67 @@ pub struct FileListEntry {
     pub acls: Option<FileListAcls>,
 }
 
-/// POSIX `S_IFMT` mask and `S_IFLNK` / `S_IFDIR` values. Used to gate
-/// symlink and directory wire handling on the entry mode exactly like
-/// rsync's `S_ISLNK` / `S_ISDIR`.
+impl FileListEntry {
+    /// The path for logs and error messages: never fails, a byte that is
+    /// not UTF-8 shows as U+FFFD.
+    pub fn path_lossy(&self) -> std::borrow::Cow<'_, str> {
+        String::from_utf8_lossy(&self.path)
+    }
+}
+
+/// A device number as rsync puts it on the wire: major and minor, each a
+/// 32-bit value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rdev {
+    pub major: u32,
+    pub minor: u32,
+}
+
+/// rsync's `MAXPATHLEN` on Linux. A path, relative to the transfer root,
+/// must be shorter than this (`l1 + l2 >= MAXPATHLEN` is an overflow in
+/// `recv_file_entry`), and so must a symlink target. A sender on a
+/// platform with a smaller `MAXPATHLEN` (macOS: 1024) never exceeds it.
+pub const MAXPATHLEN: usize = 4096;
+
+/// POSIX `S_IFMT` mask and file-type values. Used to gate checksum,
+/// symlink, device and directory wire handling on the entry mode exactly
+/// like rsync's `S_ISREG` / `S_ISLNK` / `S_ISDIR` / `IS_DEVICE` /
+/// `IS_SPECIAL`.
 pub const S_IFMT: u32 = 0o170000;
+pub const S_IFREG: u32 = 0o100000;
 pub const S_IFLNK: u32 = 0o120000;
 pub const S_IFDIR: u32 = 0o040000;
+pub const S_IFCHR: u32 = 0o020000;
+pub const S_IFBLK: u32 = 0o060000;
+pub const S_IFIFO: u32 = 0o010000;
+pub const S_IFSOCK: u32 = 0o140000;
+
+/// True for a character or block device (rsync's `IS_DEVICE`).
+#[inline]
+pub fn is_device_mode(mode: u32) -> bool {
+    matches!(mode & S_IFMT, S_IFCHR | S_IFBLK)
+}
+
+/// True for a fifo or a socket (rsync's `IS_SPECIAL`).
+#[inline]
+pub fn is_special_mode(mode: u32) -> bool {
+    matches!(mode & S_IFMT, S_IFIFO | S_IFSOCK)
+}
+
+/// Whether an entry of `mode` carries a device number under `options`.
+/// Mirrors the condition of `flist.c::send_file_entry` /
+/// `recv_file_entry`.
+fn carries_rdev(mode: u32, options: &FileListDecodeOptions) -> bool {
+    (options.preserve_devices && is_device_mode(mode))
+        || (options.preserve_specials && is_special_mode(mode) && options.protocol < 31)
+}
+
+/// True when `mode`'s file-type bits mark a regular file. Mirrors libc
+/// `S_ISREG`, the gate rsync uses for the per-entry `--checksum` bytes.
+#[inline]
+pub fn is_regular_mode(mode: u32) -> bool {
+    (mode & S_IFMT) == S_IFREG
+}
 
 /// True when `mode`'s file-type bits mark a symbolic link. Mirrors the
 /// libc `S_ISLNK` macro so the wire codec keys symlink-target presence
@@ -1677,9 +1905,7 @@ pub fn is_symlink_mode(mode: u32) -> bool {
 
 /// True when `mode`'s file-type bits mark a directory. Mirrors libc
 /// `S_ISDIR` so a negotiated `-A` session emits the default-ACL slot
-/// on the same condition stock rsync does. Single-file transfers never
-/// send a directory entry today; adding the predicate here does not
-/// change that path.
+/// on the same condition stock rsync does.
 #[inline]
 pub fn is_directory_mode(mode: u32) -> bool {
     (mode & S_IFMT) == S_IFDIR
@@ -2195,11 +2421,24 @@ fn encode_acl_wire(entry: &AclWireEntry, out: &mut Vec<u8>) {
 
 /// Decode a single file-list entry, or signal end-of-list if the entry
 /// is the terminator. Returns `(outcome, bytes_consumed)`.
+///
+/// `state` is the previous entry on the wire (see [`FileListCodecState`]):
+/// `XMIT_SAME_*` fields resolve to its values, and a decoded entry
+/// becomes the new state. On end-of-list and on any error the state is
+/// left exactly as it was, so a caller that hits `TruncatedBuffer` can
+/// retry the same entry once more bytes have arrived.
 pub fn decode_file_list_entry(
     buf: &[u8],
     options: &FileListDecodeOptions,
+    state: &mut FileListCodecState,
 ) -> Result<(FileListDecodeOutcome, usize), RealWireError> {
     let mut cursor = 0;
+
+    if options.protocol < 30 {
+        return Err(RealWireError::FileListProtocolUnsupported {
+            protocol: options.protocol,
+        });
+    }
 
     // --- 1. Flags -----------------------------------------------------------
     let (flags, consumed_flags) = decode_flist_flags(&buf[cursor..], options.xfer_flags_as_varint)?;
@@ -2208,9 +2447,22 @@ pub fn decode_file_list_entry(
     // Terminator: flags == 0 means end of file-list. For varint mode an
     // explicit io_error varint follows the terminator (mirroring
     // `flist.c::write_end_of_flist` which emits two `write_varint(0)`
-    // calls on the happy path). For classic mode a
-    // `XMIT_EXTENDED_FLAGS | XMIT_IO_ERROR_ENDLIST` pairing carries the
-    // same info.
+    // calls on the happy path). In classic mode a clean end is the single
+    // zero byte, and a list that met an I/O error ends with the flags
+    // `XMIT_EXTENDED_FLAGS | XMIT_IO_ERROR_ENDLIST` (`04 10`) and the error
+    // as a varint: measured against rsync 3.1.3 (`b1-313-ioerr-dl`, an
+    // unreadable directory, `04 10 01`). Without this branch those flags
+    // would be read as an entry.
+    if !options.xfer_flags_as_varint && flags == XMIT_EXTENDED_FLAGS | XMIT_IO_ERROR_ENDLIST {
+        let (raw, consumed) = decode_varint(&buf[cursor..])?;
+        cursor += consumed;
+        return Ok((
+            FileListDecodeOutcome::EndOfList {
+                io_error: raw as i32,
+            },
+            cursor,
+        ));
+    }
     if flags == 0 {
         let io_error = if options.xfer_flags_as_varint {
             let (raw, consumed) = decode_varint(&buf[cursor..])?;
@@ -2235,8 +2487,8 @@ pub fn decode_file_list_entry(
         let l1 = buf[cursor] as usize;
         cursor += 1;
         if l1 > 0 {
-            let prev = options
-                .previous_name
+            let prev = state
+                .previous_name()
                 .ok_or(RealWireError::SameNameWithoutPrevious)?;
             if l1 > prev.len() {
                 return Err(RealWireError::SameNamePrefixTooLong {
@@ -2244,7 +2496,7 @@ pub fn decode_file_list_entry(
                     previous_len: prev.len(),
                 });
             }
-            path_bytes.extend_from_slice(&prev.as_bytes()[..l1]);
+            path_bytes.extend_from_slice(&prev[..l1]);
         }
     }
 
@@ -2271,6 +2523,19 @@ pub fn decode_file_list_entry(
         n
     };
 
+    // `recv_file_entry`: `if (l2 >= MAXPATHLEN - l1)` is an overflow exit,
+    // checked before the name is read. Refused here for the same reason: a
+    // declared length the peer can never legally finish is not a truncation
+    // to wait out.
+    let declared_path = path_bytes.len().saturating_add(l2);
+    if declared_path >= MAXPATHLEN {
+        return Err(RealWireError::PathTooLong {
+            field: "path",
+            declared: declared_path,
+            max: MAXPATHLEN - 1,
+        });
+    }
+
     if cursor + l2 > buf.len() {
         return Err(RealWireError::InvalidNameLen {
             declared: l2,
@@ -2280,14 +2545,19 @@ pub fn decode_file_list_entry(
     path_bytes.extend_from_slice(&buf[cursor..cursor + l2]);
     cursor += l2;
 
-    let path = match String::from_utf8(path_bytes) {
-        Ok(s) => s,
-        Err(e) => {
-            return Err(RealWireError::NonUtf8Name {
-                offset: e.utf8_error().valid_up_to(),
-            });
-        }
-    };
+    let path = path_bytes;
+
+    // --- 2.5 Hard-link follower ------------------------------------------
+    // `flist.c::recv_file_entry` reads `first_hlink_ndx` right here, and a
+    // follower in the same segment ends at that index (§7 of the B0
+    // evidence). Reading on as if it were a full entry would take the
+    // index for the file size. A group leader (`XMIT_HLINK_FIRST`) is a
+    // full entry and decodes as one; only followers are refused.
+    if flags & XMIT_HLINKED != 0 && flags & XMIT_HLINK_FIRST == 0 {
+        return Err(RealWireError::HardlinkUnsupported {
+            path: String::from_utf8_lossy(&path).into_owned(),
+        });
+    }
 
     // --- 3. Size (varlong, min_bytes=3) ------------------------------------
     let (size, consumed_size) = decode_varlong(&buf[cursor..], 3)?;
@@ -2295,24 +2565,11 @@ pub fn decode_file_list_entry(
 
     // --- 4. mtime (varlong, min_bytes=4) unless XMIT_SAME_TIME -------------
     let mtime: i64 = if flags & XMIT_SAME_TIME != 0 {
-        0
-    } else if options.protocol >= 30 {
+        state.mtime
+    } else {
         let (m, consumed) = decode_varlong(&buf[cursor..], 4)?;
         cursor += consumed;
         m
-    } else {
-        // Pre-30 fallback: not expected in this sinergia.
-        if cursor + 4 > buf.len() {
-            return Err(RealWireError::TruncatedBuffer {
-                at: "flist_mtime_legacy",
-                needed: 4,
-                available: buf.len().saturating_sub(cursor),
-            });
-        }
-        let mut a = [0u8; 4];
-        a.copy_from_slice(&buf[cursor..cursor + 4]);
-        cursor += 4;
-        i64::from(i32::from_le_bytes(a))
     };
 
     // --- 5. Mtime nanoseconds (protocol ≥ 31, XMIT_MOD_NSEC) --------------
@@ -2326,7 +2583,7 @@ pub fn decode_file_list_entry(
 
     // --- 6. Mode (u32 LE) unless XMIT_SAME_MODE ----------------------------
     let mode: u32 = if flags & XMIT_SAME_MODE != 0 {
-        0
+        state.mode
     } else {
         if cursor + 4 > buf.len() {
             return Err(RealWireError::TruncatedBuffer {
@@ -2342,7 +2599,14 @@ pub fn decode_file_list_entry(
     };
 
     // --- 7. uid (varint) + optional USER_NAME_FOLLOWS ----------------------
-    let (uid, uid_name) = if options.preserve_uid && (flags & XMIT_SAME_UID == 0) {
+    // Keyed on `-o` first and on the bit second: without `-o` the product
+    // profile still sets XMIT_SAME_UID and no uid travels (§8 of the B0
+    // evidence). With `-o` and the bit set the uid is the previous one.
+    let (uid, uid_name) = if !options.preserve_uid {
+        (None, None)
+    } else if flags & XMIT_SAME_UID != 0 {
+        (Some(state.uid), None)
+    } else {
         let (uid_raw, consumed) = decode_varint(&buf[cursor..])?;
         cursor += consumed;
         let name = if flags & XMIT_USER_NAME_FOLLOWS != 0 {
@@ -2362,12 +2626,14 @@ pub fn decode_file_list_entry(
             None
         };
         (Some(uid_raw), name)
-    } else {
-        (None, None)
     };
 
     // --- 8. gid (varint) + optional GROUP_NAME_FOLLOWS ---------------------
-    let (gid, gid_name) = if options.preserve_gid && (flags & XMIT_SAME_GID == 0) {
+    let (gid, gid_name) = if !options.preserve_gid {
+        (None, None)
+    } else if flags & XMIT_SAME_GID != 0 {
+        (Some(state.gid), None)
+    } else {
         let (gid_raw, consumed) = decode_varint(&buf[cursor..])?;
         cursor += consumed;
         let name = if flags & XMIT_GROUP_NAME_FOLLOWS != 0 {
@@ -2387,27 +2653,45 @@ pub fn decode_file_list_entry(
             None
         };
         (Some(gid_raw), name)
-    } else {
-        (None, None)
     };
 
-    // --- 8.5 Symlink target (proto >= 30, gated on S_ISLNK(mode)) ---------
+    // --- 8.2 Device number (`-D`) -----------------------------------------
+    // `flist.c::recv_file_entry`, protocol 30 and later: the major travels
+    // as a varint unless XMIT_SAME_RDEV_MAJOR (bit 8, the same bit a
+    // directory uses for NO_CONTENT_DIR) repeats the previous device's,
+    // then the minor as a varint. Both are unsigned 32-bit values carried
+    // in the signed varint, so the bit pattern is kept, not the sign.
+    let rdev = if carries_rdev(mode, options) {
+        let major = if flags & XMIT_SAME_RDEV_MAJOR != 0 {
+            state.rdev_major
+        } else {
+            let (raw, consumed) = decode_varint(&buf[cursor..])?;
+            cursor += consumed;
+            raw as u32
+        };
+        let (raw_minor, consumed) = decode_varint(&buf[cursor..])?;
+        cursor += consumed;
+        Some(Rdev {
+            major,
+            minor: raw_minor as u32,
+        })
+    } else {
+        None
+    };
+
+    // --- 8.5 Symlink target (proto >= 30, `-l` and S_ISLNK(mode)) ----------
     // Mirrors `flist.c::recv_file_entry`:
     //   if (preserve_links && S_ISLNK(mode)) {
     //       len = read_varint30(f); read `len` raw bytes
     //   }
+    // Without `-l` the symlink is still listed and carries no target.
     // Placed after the uid/gid block and before the trailing checksum,
     // exactly like `send_file_entry`. Regular files and directories
     // never set S_IFLNK, so they skip this branch and their wire bytes
     // are identical to before this change (the frozen-oracle round-trip
-    // tests are the regression proof).
-    //
-    // Note: when `XMIT_SAME_MODE` is set the decoder above yields
-    // `mode == 0`, so a SAME_MODE symlink would be missed. That cannot
-    // happen on the single-file path (the sole entry has no previous
-    // entry to SAME against); multi-entry SAME_MODE symlink handling is
-    // out of scope until the recursive file-list lands.
-    let symlink_target = if is_symlink_mode(mode) {
+    // tests are the regression proof). A SAME_MODE symlink is recognised
+    // too, because `mode` above is the inherited one.
+    let symlink_target = if options.preserve_links && is_symlink_mode(mode) {
         let (len, consumed) = decode_varint(&buf[cursor..])?;
         cursor += consumed;
         if len < 0 {
@@ -2417,9 +2701,24 @@ pub fn decode_file_list_entry(
             });
         }
         let len = len as usize;
-        let s = read_utf8_slice(buf, cursor, len)?;
+        // `linkname_len = read_varint30(f) + 1; if (... > MAXPATHLEN)`:
+        // the target plus its NUL must fit, checked before reading it.
+        if len >= MAXPATHLEN {
+            return Err(RealWireError::PathTooLong {
+                field: "symlink_target",
+                declared: len,
+                max: MAXPATHLEN - 1,
+            });
+        }
+        if cursor + len > buf.len() {
+            return Err(RealWireError::InvalidNameLen {
+                declared: len,
+                available: buf.len().saturating_sub(cursor),
+            });
+        }
+        let target = buf[cursor..cursor + len].to_vec();
         cursor += len;
-        Some(s)
+        Some(target)
     } else {
         None
     };
@@ -2430,15 +2729,11 @@ pub fn decode_file_list_entry(
     // symlink entry carries NO checksum bytes on the wire (the target
     // string in section 8.5 is its whole payload). Decoding `csum_len`
     // bytes here for a symlink would swallow the list terminator and
-    // desynchronise the stream against stock rsync. The codec keys the
-    // skip on `S_ISLNK(mode)` rather than the full `!S_ISREG(mode)`:
-    // in the single-file scope the sole entry is either an explicit
-    // regular file or an explicit symlink, and keying on S_ISLNK keeps
-    // mode-0 (SAME_MODE) entries byte-identical to before this change.
-    // Directory / device / SAME_MODE checksum gating is deferred to the
-    // recursive file-list work together with the SAME_MODE symlink
-    // caveat documented in section 8.5.
-    let checksum = if options.always_checksum && options.csum_len > 0 && !is_symlink_mode(mode) {
+    // desynchronise the stream against stock rsync. The same holds for a
+    // directory (`p1c-dl`: 16 bytes of xxh128 after each regular file,
+    // none after "d"), so the gate is the full `S_ISREG(mode)`, on the
+    // inherited mode when XMIT_SAME_MODE is set.
+    let checksum = if options.always_checksum && options.csum_len > 0 && is_regular_mode(mode) {
         if cursor + options.csum_len > buf.len() {
             return Err(RealWireError::TruncatedBuffer {
                 at: "flist_checksum",
@@ -2457,11 +2752,8 @@ pub fn decode_file_list_entry(
     // `flist.c::send_file_entry` calls `send_acl` after the checksum and
     // before `send_xattr`. `receive_acl` skips `S_ISLNK` and always reads
     // a default ACL for `S_ISDIR`. With `-A` off this branch consumes
-    // nothing, so every byte-pinned capture stays identical.
-    // `XMIT_SAME_MODE` decodes as mode zero, so a future recursive file list
-    // must resolve the inherited mode before deciding whether to consume the
-    // directory default-ACL slot. The current single-entry path cannot emit
-    // SAME_MODE and therefore cannot reach that ambiguity.
+    // nothing, so every byte-pinned capture stays identical. Under
+    // XMIT_SAME_MODE the directory test runs on the inherited mode.
     let acls = if options.preserve_acls && !is_symlink_mode(mode) {
         let (access, consumed) = decode_acl_wire(&buf[cursor..])?;
         cursor += consumed;
@@ -2497,25 +2789,25 @@ pub fn decode_file_list_entry(
         None
     };
 
-    Ok((
-        FileListDecodeOutcome::Entry(FileListEntry {
-            flags,
-            path,
-            size,
-            mtime,
-            mtime_nsec,
-            mode,
-            uid,
-            uid_name,
-            gid,
-            gid_name,
-            checksum,
-            symlink_target,
-            xattrs,
-            acls,
-        }),
-        cursor,
-    ))
+    let entry = FileListEntry {
+        flags,
+        path,
+        size,
+        mtime,
+        mtime_nsec,
+        mode,
+        uid,
+        uid_name,
+        gid,
+        gid_name,
+        checksum,
+        symlink_target,
+        rdev,
+        xattrs,
+        acls,
+    };
+    state.advance(&entry, options);
+    Ok((FileListDecodeOutcome::Entry(entry), cursor))
 }
 
 // ----------------------------------------------------------------------------
@@ -2528,7 +2820,7 @@ pub fn decode_file_list_entry(
 //
 // **SAME_NAME prefix semantics**: when `entry.flags & XMIT_SAME_NAME`
 // is set, the encoder computes `l1` as the longest common byte prefix
-// between `entry.path` and `options.previous_name`. The remaining
+// between `entry.path` and the previous name in the codec state. The remaining
 // suffix length `l2 = entry.path.len() - l1` is emitted via `l2` length
 // prefix (varint if `XMIT_LONG_NAME` else 1-byte) followed by the raw
 // suffix bytes. This is the exact mirror of `flist.c:480` `for (l1=0;
@@ -2541,16 +2833,15 @@ pub fn decode_file_list_entry(
 /// SAME_NAME is unset, `l1` is always 0 and the full path is the
 /// suffix.
 fn compute_flist_name_split<'a>(
-    entry_path: &'a str,
-    previous_name: Option<&str>,
+    entry_path: &'a [u8],
+    previous_name: Option<&[u8]>,
     same_name: bool,
 ) -> (usize, &'a [u8]) {
     if !same_name {
-        return (0, entry_path.as_bytes());
+        return (0, entry_path);
     }
-    let prev = previous_name.unwrap_or("");
-    let entry_bytes = entry_path.as_bytes();
-    let prev_bytes = prev.as_bytes();
+    let entry_bytes = entry_path;
+    let prev_bytes = previous_name.unwrap_or(b"");
     let max_common = entry_bytes.len().min(prev_bytes.len()).min(255);
     let mut l1 = 0;
     while l1 < max_common && entry_bytes[l1] == prev_bytes[l1] {
@@ -2759,36 +3050,121 @@ pub fn resolve_xattr_datum_section(
 /// The encoder honours those flags exactly: it does NOT recompute
 /// SAME_TIME/SAME_MODE/SAME_UID/SAME_GID from entry deltas, because
 /// the decision matrix lives one layer up (the planner /
-/// flist-builder, which knows the full file list and previous-entry
-/// context). For SAME_NAME, the encoder DOES compute `l1` from
-/// `entry.path` vs `options.previous_name` since that is the only
-/// well-defined choice given the path.
-pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOptions) -> Vec<u8> {
+/// flist-builder), and because the wire does not always set them by
+/// value: the product profile sets SAME_UID|SAME_GID with no id at all.
+/// For SAME_NAME, the encoder DOES compute `l1` from `entry.path` vs the
+/// previous name in `state`, since that is the only well-defined choice
+/// given the path.
+///
+/// Zero flags are mapped the way rsync maps them (see the flags section
+/// below). A SAME_MODE / SAME_TIME / SAME_UID / SAME_GID flag whose value
+/// differs from `state` is a caller bug and panics: the peer would silently apply
+/// the previous entry's value, which is metadata loss. A `None` uid or gid
+/// under its SAME flag means "inherit" and passes. The entry then becomes
+/// the new `state`, exactly as on the decoding side.
+pub fn encode_file_list_entry(
+    entry: &FileListEntry,
+    options: &FileListDecodeOptions,
+    state: &mut FileListCodecState,
+) -> Vec<u8> {
     let mut out = Vec::with_capacity(64);
 
+    assert!(
+        options.protocol >= 30,
+        "the file-list codec supports protocol 30 and later, not {}",
+        options.protocol
+    );
+    assert!(
+        entry.path.len() < MAXPATHLEN,
+        "entry path of {} bytes reaches MAXPATHLEN {MAXPATHLEN}",
+        entry.path.len()
+    );
+
+    if entry.flags & XMIT_SAME_MODE != 0 {
+        assert_eq!(
+            entry.mode,
+            state.mode,
+            "entry {:?} sets XMIT_SAME_MODE but its mode differs from the previous entry",
+            entry.path_lossy()
+        );
+    }
+    if entry.flags & XMIT_SAME_TIME != 0 {
+        assert_eq!(
+            entry.mtime,
+            state.mtime,
+            "entry {:?} sets XMIT_SAME_TIME but its mtime differs from the previous entry",
+            entry.path_lossy()
+        );
+    }
+    if options.preserve_uid && entry.flags & XMIT_SAME_UID != 0 {
+        assert!(
+            entry.uid.is_none() || entry.uid == Some(state.uid),
+            "entry {:?} sets XMIT_SAME_UID but its uid differs from the previous entry",
+            entry.path_lossy()
+        );
+    }
+    if options.preserve_gid && entry.flags & XMIT_SAME_GID != 0 {
+        assert!(
+            entry.gid.is_none() || entry.gid == Some(state.gid),
+            "entry {:?} sets XMIT_SAME_GID but its gid differs from the previous entry",
+            entry.path_lossy()
+        );
+    }
+
     // --- 1. Flags ---------------------------------------------------------
+    // The bytes rsync's sender writes (`flist.c::send_file_entry`):
+    //   varint:  write_varint(f, xflags ? xflags : XMIT_EXTENDED_FLAGS);
+    //   classic: if (!xflags && !S_ISDIR(mode)) xflags |= XMIT_TOP_DIR;
+    //            if ((xflags & 0xFF00) || !xflags) {
+    //                xflags |= XMIT_EXTENDED_FLAGS; write_shortint(f, xflags);
+    //            } else write_byte(f, xflags);
+    // Zero flags are therefore mapped, never written as the end-of-list
+    // marker, and a classic entry with any high bit (XMIT_MOD_NSEC, the name
+    // FOLLOWS bits) carries its second byte whether or not the caller set
+    // XMIT_EXTENDED_FLAGS: writing the low byte alone of the product's
+    // MOD_NSEC-only entry gave `00`, the end of the list, against rsync
+    // 3.1.3. One condition goes beyond rsync, whose sender never has
+    // XMIT_EXTENDED_FLAGS set at this point: an entry decoded from `04 00`
+    // (a directory with no other flag) has, and must go back out in the
+    // same two bytes.
     if options.xfer_flags_as_varint {
-        out.extend_from_slice(&encode_varint(entry.flags as i32));
-    } else {
-        let lo = (entry.flags & 0xFF) as u8;
-        let needs_ext = (entry.flags & XMIT_EXTENDED_FLAGS) != 0;
-        if needs_ext {
-            out.push(lo);
-            out.push(((entry.flags >> 8) & 0xFF) as u8);
+        let xflags = if entry.flags == 0 {
+            XMIT_EXTENDED_FLAGS
         } else {
-            out.push(lo);
+            entry.flags
+        };
+        out.extend_from_slice(&encode_varint(xflags as i32));
+    } else {
+        let mut xflags = entry.flags;
+        if xflags == 0 && !is_directory_mode(entry.mode) {
+            xflags |= XMIT_TOP_DIR;
+        }
+        if xflags & 0xFF00 != 0 || xflags == 0 || xflags & XMIT_EXTENDED_FLAGS != 0 {
+            xflags |= XMIT_EXTENDED_FLAGS;
+            out.extend_from_slice(&(xflags as u16).to_le_bytes());
+        } else {
+            out.push(xflags as u8);
         }
     }
 
     // --- 2. Name length + suffix bytes -----------------------------------
     let same_name = (entry.flags & XMIT_SAME_NAME) != 0;
-    let (l1, suffix) = compute_flist_name_split(&entry.path, options.previous_name, same_name);
+    let (l1, suffix) = compute_flist_name_split(&entry.path, state.previous_name(), same_name);
     if same_name {
         out.push(l1 as u8);
     }
     if (entry.flags & XMIT_LONG_NAME) != 0 {
         out.extend_from_slice(&encode_varint(suffix.len() as i32));
     } else {
+        // rsync sets XMIT_LONG_NAME for any suffix above 255 bytes; without
+        // it the length would be cut to its low byte and the rest of the
+        // name read as the next field.
+        assert!(
+            suffix.len() <= u8::MAX as usize,
+            "entry {:?}: a name suffix of {} bytes needs XMIT_LONG_NAME",
+            entry.path_lossy(),
+            suffix.len()
+        );
         out.push(suffix.len() as u8);
     }
     out.extend_from_slice(suffix);
@@ -2798,13 +3174,7 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
 
     // --- 4. mtime (varlong, min_bytes=4) unless XMIT_SAME_TIME -----------
     if (entry.flags & XMIT_SAME_TIME) == 0 {
-        if options.protocol >= 30 {
-            out.extend_from_slice(&encode_varlong(entry.mtime, 4));
-        } else {
-            // Pre-30 path mirrors the legacy 4-byte LE fallback in
-            // the decoder. Truncating cast is the historic behaviour.
-            out.extend_from_slice(&(entry.mtime as i32).to_le_bytes());
-        }
+        out.extend_from_slice(&encode_varlong(entry.mtime, 4));
     }
 
     // --- 5. mtime nsec (protocol ≥ 31, XMIT_MOD_NSEC) --------------------
@@ -2850,22 +3220,60 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
         }
     }
 
-    // --- 8.5 Symlink target (proto >= 30, gated on S_ISLNK(mode)) ---------
+    // --- 8.2 Device number (`-D`) -----------------------------------------
+    // Exact mirror of the decoder. A number the session does not carry, or
+    // a missing one it does, is a caller bug: one would desynchronise the
+    // peer, the other would give the device a number it never had.
+    if carries_rdev(entry.mode, options) {
+        let rdev = entry.rdev.unwrap_or_else(|| {
+            panic!(
+                "device entry {:?} negotiated -D but carries no device number",
+                entry.path_lossy()
+            )
+        });
+        if entry.flags & XMIT_SAME_RDEV_MAJOR != 0 {
+            assert_eq!(
+                rdev.major, state.rdev_major,
+                "entry {:?} sets XMIT_SAME_RDEV_MAJOR but its major differs from the previous device",
+                entry.path_lossy()
+            );
+        } else {
+            out.extend_from_slice(&encode_varint(rdev.major as i32));
+        }
+        out.extend_from_slice(&encode_varint(rdev.minor as i32));
+    } else {
+        assert!(
+            entry.rdev.is_none(),
+            "entry {:?} carries a device number the session does not put on the wire",
+            entry.path_lossy()
+        );
+    }
+
+    // --- 8.5 Symlink target (proto >= 30, `-l` and S_ISLNK(mode)) ----------
     // Exact mirror of the decoder: `write_varint(len)` then `len` raw
-    // bytes, only for symlink entries. Non-symlink entries skip this and
-    // emit the identical byte sequence as before this change.
-    if is_symlink_mode(entry.mode) {
-        let target = entry.symlink_target.as_deref().unwrap_or("");
+    // bytes, only for symlink entries of a `-l` session.
+    if options.preserve_links && is_symlink_mode(entry.mode) {
+        let target = entry.symlink_target.as_deref().unwrap_or(b"");
+        assert!(
+            target.len() < MAXPATHLEN,
+            "symlink target of {} bytes reaches MAXPATHLEN {MAXPATHLEN}",
+            target.len()
+        );
         out.extend_from_slice(&encode_varint(target.len() as i32));
-        out.extend_from_slice(target.as_bytes());
+        out.extend_from_slice(target);
+    } else {
+        assert!(
+            entry.symlink_target.is_none(),
+            "entry {:?} carries a symlink target the session does not put on the wire",
+            entry.path_lossy()
+        );
     }
 
     // --- 9. Checksum (always_checksum) ------------------------------------
-    // Mirror of the decoder gate: symlink entries never carry a flist
-    // checksum on the wire from proto 28 onward (`flist.c::send_file_entry`
-    // sends it only for `S_ISREG(mode)`); see the decoder comment for why
-    // the codec keys on `S_ISLNK` in the single-file scope.
-    if options.always_checksum && options.csum_len > 0 && !is_symlink_mode(entry.mode) {
+    // Mirror of the decoder gate: from proto 28 onward
+    // `flist.c::send_file_entry` sends the flist checksum only for
+    // `S_ISREG(mode)`, never for a directory or a symlink.
+    if options.always_checksum && options.csum_len > 0 && is_regular_mode(entry.mode) {
         assert_eq!(
             entry.checksum.len(),
             options.csum_len,
@@ -2874,6 +3282,12 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
             options.csum_len
         );
         out.extend_from_slice(&entry.checksum);
+    } else {
+        assert!(
+            entry.checksum.is_empty() || !options.always_checksum,
+            "non-regular entry {:?} carries a checksum that rsync never puts on the wire",
+            entry.path_lossy()
+        );
     }
 
     // --- 9.5 ACL (`-A` negotiated, skipped on symlinks) -------------------
@@ -2887,13 +3301,13 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
             assert!(
                 entry.acls.is_none(),
                 "symlink entry {:?} carries ACL bytes, which rsync never puts on the wire",
-                entry.path
+                entry.path_lossy()
             );
         } else {
             let acls = entry.acls.as_ref().unwrap_or_else(|| {
                 panic!(
                     "entry {:?} negotiated -A but carries no access ACL",
-                    entry.path
+                    entry.path_lossy()
                 )
             });
             encode_acl_wire(&acls.access, &mut out);
@@ -2901,7 +3315,7 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
                 let default = acls.default.as_ref().unwrap_or_else(|| {
                     panic!(
                         "directory entry {:?} negotiated -A but carries no default ACL",
-                        entry.path
+                        entry.path_lossy()
                     )
                 });
                 encode_acl_wire(default, &mut out);
@@ -2909,7 +3323,7 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
                 assert!(
                     acls.default.is_none(),
                     "non-directory entry {:?} carries a default ACL that rsync would not send",
-                    entry.path
+                    entry.path_lossy()
                 );
             }
         }
@@ -2917,7 +3331,7 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
         assert!(
             entry.acls.is_none(),
             "entry {:?} carries ACL data but the session did not negotiate -A",
-            entry.path
+            entry.path_lossy()
         );
     }
 
@@ -2937,28 +3351,328 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
         assert!(
             entry.xattrs.is_none(),
             "entry {:?} carries {} xattr(s) but the session did not negotiate -X",
-            entry.path,
+            entry.path_lossy(),
             entry.xattrs.as_ref().map_or(0, Vec::len)
         );
     }
 
+    state.advance(entry, options);
     out
 }
 
-/// Encode a file-list terminator. In `xfer_flags_as_varint` mode this
-/// is `varint(0) + varint(0)` (terminator + io_error count, 2 zero
-/// bytes), matching `flist.c::write_end_of_flist` for the happy path
-/// (no io_error). In classic mode this is a single `XMIT_EXTENDED_FLAGS
-/// = 0` byte. Symmetric to the `flags == 0` early return in
-/// `decode_file_list_entry`.
-pub fn encode_file_list_terminator(options: &FileListDecodeOptions) -> Vec<u8> {
+/// Encode a file-list terminator carrying `io_error` (0 for a list that
+/// met no I/O error). Mirrors `flist.c::write_end_of_flist` and the
+/// decoder's `EndOfList`:
+///
+/// | Flags | `io_error` | Wire |
+/// |---|---|---|
+/// | varint | any | `varint(0) varint(io_error)` |
+/// | classic | 0 | `00` |
+/// | classic | not 0 | `04 10 varint(io_error)` (`XMIT_EXTENDED_FLAGS | XMIT_IO_ERROR_ENDLIST`) |
+pub fn encode_file_list_terminator(options: &FileListDecodeOptions, io_error: i32) -> Vec<u8> {
     if options.xfer_flags_as_varint {
-        // write_end_of_flist(f, 0): write_varint(0) + write_varint(0)
         let mut out = encode_varint(0);
-        out.extend_from_slice(&encode_varint(0));
+        out.extend_from_slice(&encode_varint(io_error));
         out
-    } else {
+    } else if io_error == 0 {
         vec![0u8]
+    } else {
+        let flags = XMIT_EXTENDED_FLAGS | XMIT_IO_ERROR_ENDLIST;
+        let mut out = vec![(flags & 0xFF) as u8, (flags >> 8) as u8];
+        out.extend_from_slice(&encode_varint(io_error));
+        out
+    }
+}
+
+// ---------------------------------------------------------------------------
+// B1: uid / gid name lists.
+//
+// Without incremental recursion the file-list entries carry bare ids and
+// the names follow the list, one list per preserved id kind
+// (`uidlist.c::send_id_lists`). Measured on `p2-dl-noinc`
+// (`12-multi-entry-wire-evidence.md` §8):
+//
+//   83 ea 08 "testuser"   id 1002, name length, name
+//   00 04 "root"          end (varint 0), then with CF_ID0_NAMES the name of id 0
+//
+// With incremental recursion the names ride inline in the entries
+// (`XMIT_USER_NAME_FOLLOWS`) and these lists are not sent.
+// ---------------------------------------------------------------------------
+
+/// One uid or gid name list, as sent after a non-incremental file list.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct IdNameList {
+    /// `(id, name)` pairs in wire order. Never id 0: a zero id is the
+    /// list terminator on the wire.
+    pub names: Vec<(i64, String)>,
+    /// Name of id 0, present iff `CF_ID0_NAMES` was negotiated.
+    pub id0_name: Option<String>,
+}
+
+/// Read a name prefixed by one length byte.
+fn read_byte_len_name(
+    buf: &[u8],
+    cursor: usize,
+    at: &'static str,
+) -> Result<(String, usize), RealWireError> {
+    let Some(&len) = buf.get(cursor) else {
+        return Err(RealWireError::TruncatedBuffer {
+            at,
+            needed: 1,
+            available: 0,
+        });
+    };
+    let len = len as usize;
+    let name = read_utf8_slice(buf, cursor + 1, len)?;
+    Ok((name, 1 + len))
+}
+
+/// Decode one uid or gid list. `id0_names` is the negotiated
+/// `CF_ID0_NAMES` compat flag. Returns the list and the bytes consumed.
+pub fn decode_id_list(buf: &[u8], id0_names: bool) -> Result<(IdNameList, usize), RealWireError> {
+    let mut cursor = 0usize;
+    let mut list = IdNameList::default();
+    loop {
+        let (id, consumed) = decode_varint(&buf[cursor..])?;
+        cursor += consumed;
+        if id == 0 {
+            break;
+        }
+        if id < 0 {
+            return Err(RealWireError::InvalidIdListId { id });
+        }
+        let (name, consumed) = read_byte_len_name(buf, cursor, "id_list_name_len")?;
+        cursor += consumed;
+        list.names.push((id, name));
+    }
+    if id0_names {
+        let (name, consumed) = read_byte_len_name(buf, cursor, "id_list_id0_name_len")?;
+        cursor += consumed;
+        list.id0_name = Some(name);
+    }
+    Ok((list, cursor))
+}
+
+/// Encode one uid or gid list, exact mirror of [`decode_id_list`].
+pub fn encode_id_list(list: &IdNameList, id0_names: bool) -> Vec<u8> {
+    let mut out = Vec::new();
+    let push_name = |out: &mut Vec<u8>, name: &str| {
+        assert!(
+            name.len() <= u8::MAX as usize,
+            "id list name length {} exceeds u8 wire encoding",
+            name.len()
+        );
+        out.push(name.len() as u8);
+        out.extend_from_slice(name.as_bytes());
+    };
+    for (id, name) in &list.names {
+        assert!(
+            *id > 0 && *id <= i64::from(i32::MAX),
+            "id list entry {id} is not a positive varint id (0 terminates the list)"
+        );
+        out.extend_from_slice(&encode_varint(*id as i32));
+        push_name(&mut out, name);
+    }
+    out.extend_from_slice(&encode_varint(0));
+    if id0_names {
+        let name = list.id0_name.as_deref().unwrap_or_else(|| {
+            panic!("CF_ID0_NAMES negotiated but the id list carries no name for id 0")
+        });
+        push_name(&mut out, name);
+    } else {
+        assert!(
+            list.id0_name.is_none(),
+            "id list carries a name for id 0 but CF_ID0_NAMES was not negotiated"
+        );
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// B1: streaming file-list decoder.
+//
+// Measured on `p8-dl` (`12-multi-entry-wire-evidence.md` §9): one
+// directory of 50,000 files is ONE segment of 2,546,687 bytes spread over
+// MSG_DATA frames of up to 65,532 bytes. A decoder that buffers the whole
+// list before looking at it needs a ceiling on the list, and any ceiling
+// small enough to protect memory rejects a legitimate directory. This one
+// holds at most one incomplete entry plus the last chunk fed, and bounds
+// the entry, not the list.
+// ---------------------------------------------------------------------------
+
+/// Ceiling on the bytes one file-list entry may occupy before it is
+/// complete. It bounds one entry, never the list.
+///
+/// The largest legal entry is a directory (the only kind with two ACLs),
+/// every field at the ceiling this codec enforces:
+///
+/// | Field | Bytes |
+/// |---|---|
+/// | flags, size, mtime, nsec, mode, uid, gid | under 64 |
+/// | path, `MAXPATHLEN` 4096 minus the NUL, plus its length varint | 4,100 |
+/// | owner and group names | 2 x 256 |
+/// | two ACLs, [`MAX_ACL_NAMED_ENTRIES`] names of [`MAX_ACL_NAME_LEN`] bytes each | 2 x (11 + 256 x 262) = 134,166 |
+/// | [`MAX_XATTR_PAIRS`] xattrs, names of [`MAX_XATTR_NAME_LEN`], values inline up to [`MAX_FULL_DATUM`] | 10 + 256 x (10 + 256 + 32) = 76,298 |
+///
+/// About 215,000 bytes. [`MAX_XATTR_TOTAL_BYTES`] does not sit in the
+/// entry: a value above [`MAX_FULL_DATUM`] rides out of band behind a
+/// 16-byte digest. A symlink adds a target of at most 4,100 bytes but
+/// carries no ACL. 512 KiB leaves more than twice the maximum, and
+/// `b1_streaming_largest_legal_entry_fits_the_ceiling` builds that
+/// entry and pins it under the ceiling.
+///
+/// Every field is bounded by its own check (the path and the symlink
+/// target by [`MAXPATHLEN`]), so neither a legal entry nor a malformed one
+/// the codec can recognise ever reaches this ceiling. It is the last line:
+/// what keeps a codec defect, or a field added later without its own
+/// bound, from turning into unbounded buffering. The default of
+/// [`FileListStreamDecoder`]; a caller can lower it with
+/// [`FileListStreamDecoder::with_max_entry_bytes`].
+pub const MAX_FILE_LIST_ENTRY_BYTES: usize = 512 * 1024;
+
+/// True when `err` only means "the entry is not complete yet". A
+/// structurally impossible value is never in this set, so it fails at
+/// once instead of waiting for bytes that cannot fix it.
+fn is_incomplete_entry(err: &RealWireError) -> bool {
+    match err {
+        RealWireError::TruncatedBuffer { .. } => true,
+        RealWireError::InvalidNameLen {
+            declared,
+            available,
+        } => available < declared,
+        _ => false,
+    }
+}
+
+/// Decode one file list entry by entry from bytes that arrive in chunks
+/// of any size (for example `MSG_DATA` payloads, whose boundaries are
+/// arbitrary: §9 of the B0 evidence).
+///
+/// Memory is bounded by one incomplete entry, at most
+/// [`MAX_FILE_LIST_ENTRY_BYTES`] (or the caller's
+/// [`FileListStreamDecoder::with_max_entry_bytes`]), plus the chunk being
+/// fed; the number of entries by the caller's `max_entries`. Decoded entries are handed out
+/// one at a time and never kept.
+///
+/// The decoder covers one list, up to and including its end-of-list
+/// marker. [`FileListStreamDecoder::into_parts`] then returns the codec
+/// state, which the next segment of the same session direction must
+/// continue from, and the bytes fed past the marker.
+#[derive(Debug)]
+pub struct FileListStreamDecoder {
+    options: FileListDecodeOptions,
+    state: FileListCodecState,
+    pending: Vec<u8>,
+    start: usize,
+    max_entries: usize,
+    max_entry_bytes: usize,
+    entries: usize,
+    finished: bool,
+}
+
+impl FileListStreamDecoder {
+    /// Start a list from `state`: [`FileListCodecState::new`] for the
+    /// first list of a session direction, the state returned by the
+    /// previous list's [`FileListStreamDecoder::into_parts`] otherwise.
+    pub fn new(
+        options: FileListDecodeOptions,
+        state: FileListCodecState,
+        max_entries: usize,
+    ) -> Self {
+        Self {
+            options,
+            state,
+            pending: Vec::new(),
+            start: 0,
+            max_entries,
+            max_entry_bytes: MAX_FILE_LIST_ENTRY_BYTES,
+            entries: 0,
+            finished: false,
+        }
+    }
+
+    /// Replace the per-entry ceiling ([`MAX_FILE_LIST_ENTRY_BYTES`] by
+    /// default), for a caller that wants a tighter memory bound.
+    pub fn with_max_entry_bytes(mut self, max_entry_bytes: usize) -> Self {
+        self.max_entry_bytes = max_entry_bytes;
+        self
+    }
+
+    /// Append the next chunk of the application stream.
+    pub fn feed(&mut self, chunk: &[u8]) {
+        if self.start > 0 {
+            self.pending.drain(..self.start);
+            self.start = 0;
+        }
+        self.pending.extend_from_slice(chunk);
+    }
+
+    /// Bytes fed and not yet consumed by a decoded entry.
+    pub fn buffered(&self) -> usize {
+        self.pending.len() - self.start
+    }
+
+    /// Bytes physically held, consumed ones not yet compacted included:
+    /// what the memory bound is about, as opposed to [`Self::buffered`].
+    #[cfg(test)]
+    pub(crate) fn retained(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Entries decoded so far, the end-of-list marker excluded.
+    pub fn entries_decoded(&self) -> usize {
+        self.entries
+    }
+
+    /// True once the end-of-list marker has been decoded.
+    pub fn is_finished(&self) -> bool {
+        self.finished
+    }
+
+    /// Decode the next entry or the end-of-list marker. `Ok(None)` means
+    /// the buffered bytes do not hold a complete one yet (feed more), or
+    /// that the list is already finished ([`Self::is_finished`]).
+    pub fn next_outcome(&mut self) -> Result<Option<FileListDecodeOutcome>, RealWireError> {
+        if self.finished {
+            return Ok(None);
+        }
+        let buf = &self.pending[self.start..];
+        match decode_file_list_entry(buf, &self.options, &mut self.state) {
+            Ok((outcome, consumed)) => {
+                self.start += consumed;
+                match outcome {
+                    FileListDecodeOutcome::EndOfList { .. } => self.finished = true,
+                    FileListDecodeOutcome::Entry(_) => {
+                        self.entries += 1;
+                        if self.entries > self.max_entries {
+                            return Err(RealWireError::FileListTooManyEntries {
+                                limit: self.max_entries,
+                            });
+                        }
+                    }
+                }
+                Ok(Some(outcome))
+            }
+            Err(err) if is_incomplete_entry(&err) => {
+                let buffered = self.buffered();
+                if buffered > self.max_entry_bytes {
+                    return Err(RealWireError::FileListEntryTooLarge {
+                        limit: self.max_entry_bytes,
+                        buffered,
+                    });
+                }
+                Ok(None)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// The codec state after the last decoded entry, and the bytes fed
+    /// past the end-of-list marker (or not yet decoded, if the list is
+    /// unfinished).
+    pub fn into_parts(mut self) -> (FileListCodecState, Vec<u8>) {
+        self.pending.drain(..self.start);
+        (self.state, self.pending)
     }
 }
 
@@ -5400,6 +6114,48 @@ mod tests {
     }
 
     #[test]
+    fn varlong_full_width_values_match_rsync_bytes() {
+        // Expected bytes from `io.c::write_varlong`, emulated with C `int`
+        // arithmetic; the same emulation gives the measured mtime
+        // `65 00 f1 53` for 1_700_000_000 (B0 evidence, section 2).
+        let cases: [(i64, u8, &[u8]); 7] = [
+            (1 << 56, 3, &[0xf9, 0, 0, 0, 0, 0, 0, 0]),
+            (
+                (1 << 56) - 1,
+                3,
+                &[0xf8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+            ),
+            (
+                i64::MAX,
+                3,
+                &[0xfc, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f],
+            ),
+            (
+                -1,
+                3,
+                &[0xfc, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+            ),
+            (1 << 56, 4, &[0xf1, 0, 0, 0, 0, 0, 0, 0]),
+            (
+                i64::MAX,
+                4,
+                &[0xf8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f],
+            ),
+            (1_700_000_000, 4, &[0x65, 0x00, 0xf1, 0x53]),
+        ];
+        for (value, min_bytes, expected) in cases {
+            let encoded = encode_varlong(value, min_bytes);
+            assert_eq!(encoded, expected, "encode {value} min {min_bytes}");
+            let (decoded, consumed) = decode_varlong(&encoded, min_bytes).unwrap();
+            assert_eq!(
+                (decoded, consumed),
+                (value, expected.len()),
+                "decode {value}"
+            );
+        }
+    }
+
+    #[test]
     fn varlong_truncated_min_bytes() {
         let err = decode_varlong(&[0x01, 0x02], 3).unwrap_err();
         assert!(matches!(
@@ -5415,10 +6171,16 @@ mod tests {
     // File-list entry decoder (S8d)
     // -------------------------------------------------------------------------
 
-    fn frozen_oracle_opts<'a>(previous_name: Option<&'a str>) -> FileListDecodeOptions<'a> {
-        FileListDecodeOptions {
-            previous_name,
-            ..FileListDecodeOptions::frozen_oracle_default()
+    fn frozen_oracle_opts() -> FileListDecodeOptions {
+        FileListDecodeOptions::frozen_oracle_default()
+    }
+
+    /// Codec state whose previous entry on the wire is `name`, every
+    /// other field at rsync's zero start.
+    fn state_after_name(name: &str) -> FileListCodecState {
+        FileListCodecState {
+            name: Some(name.as_bytes().to_vec()),
+            ..FileListCodecState::new()
         }
     }
 
@@ -5446,14 +6208,15 @@ mod tests {
         buf.extend_from_slice(b"axpnet");
         buf.extend_from_slice(&[0xAA; 16]); // xxh128 checksum
 
-        let opts = frozen_oracle_opts(None);
-        let (outcome, consumed) = decode_file_list_entry(&buf, &opts).unwrap();
+        let opts = frozen_oracle_opts();
+        let (outcome, consumed) =
+            decode_file_list_entry(&buf, &opts, &mut FileListCodecState::new()).unwrap();
         assert_eq!(consumed, buf.len());
         let entry = match outcome {
             FileListDecodeOutcome::Entry(e) => e,
             _ => panic!("expected Entry, got {outcome:?}"),
         };
-        assert_eq!(entry.path, "sample.bin");
+        assert_eq!(entry.path, b"sample.bin");
         assert_eq!(entry.size, 262_144);
         assert_eq!(entry.mtime, 0x69E2_7F58);
         assert_eq!(entry.mtime_nsec, Some(958_829_505));
@@ -5468,11 +6231,12 @@ mod tests {
 
     #[test]
     fn decode_file_list_entry_recognises_terminator_varint_zero() {
-        let opts = frozen_oracle_opts(None);
+        let opts = frozen_oracle_opts();
         // B.2 fix: terminator in varint mode is 2 bytes (flags varint(0) +
         // io_error count varint(0)) per write_end_of_flist semantics.
         let buf = [0x00u8, 0x00u8];
-        let (outcome, consumed) = decode_file_list_entry(&buf, &opts).unwrap();
+        let (outcome, consumed) =
+            decode_file_list_entry(&buf, &opts, &mut FileListCodecState::new()).unwrap();
         assert_eq!(consumed, 2);
         assert_eq!(outcome, FileListDecodeOutcome::EndOfList { io_error: 0 });
     }
@@ -5499,17 +6263,20 @@ mod tests {
             csum_len: 0,
             preserve_uid: false,
             preserve_gid: false,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let (outcome, consumed) = decode_file_list_entry(&buf, &opts).unwrap();
+        let (outcome, consumed) =
+            decode_file_list_entry(&buf, &opts, &mut FileListCodecState::new()).unwrap();
         assert_eq!(consumed, buf.len());
         let entry = match outcome {
             FileListDecodeOutcome::Entry(e) => e,
             _ => panic!("expected Entry"),
         };
-        assert_eq!(entry.path, "A.txt");
+        assert_eq!(entry.path, b"A.txt");
         assert_eq!(entry.size, 7);
         assert_eq!(entry.mtime, 100);
         assert_eq!(entry.mode, 0o100_644);
@@ -5540,16 +6307,19 @@ mod tests {
             csum_len: 0,
             preserve_uid: false,
             preserve_gid: false,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let (outcome, _) = decode_file_list_entry(&buf, &opts).unwrap();
+        let (outcome, _) =
+            decode_file_list_entry(&buf, &opts, &mut FileListCodecState::new()).unwrap();
         let entry = match outcome {
             FileListDecodeOutcome::Entry(e) => e,
             _ => panic!("expected Entry"),
         };
-        assert_eq!(entry.path, "x");
+        assert_eq!(entry.path, b"x");
         assert_eq!(entry.mtime_nsec, Some(42));
         assert_eq!(
             entry.flags & XMIT_MOD_NSEC,
@@ -5562,13 +6332,13 @@ mod tests {
     fn decode_file_list_entry_same_name_without_previous_errors() {
         let mut buf: Vec<u8> = Vec::new();
         // varint flags with XMIT_SAME_NAME set, l1 = 3: and no
-        // previous_name in the options.
+        // previous name in the codec state.
         let flags = XMIT_SAME_NAME;
         buf.extend_from_slice(&encode_varint(flags as i32));
         buf.push(3); // l1
 
-        let opts = frozen_oracle_opts(None);
-        let err = decode_file_list_entry(&buf, &opts).unwrap_err();
+        let opts = frozen_oracle_opts();
+        let err = decode_file_list_entry(&buf, &opts, &mut FileListCodecState::new()).unwrap_err();
         assert!(matches!(err, RealWireError::SameNameWithoutPrevious));
     }
 
@@ -5590,16 +6360,19 @@ mod tests {
             csum_len: 0,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: Some("/tmp"),
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         };
-        let (outcome, _consumed) = decode_file_list_entry(&buf, &opts).unwrap();
+        let (outcome, _consumed) =
+            decode_file_list_entry(&buf, &opts, &mut state_after_name("/tmp")).unwrap();
         let entry = match outcome {
             FileListDecodeOutcome::Entry(e) => e,
             _ => panic!("expected Entry"),
         };
-        assert_eq!(entry.path, "/tmp/.a");
+        assert_eq!(entry.path, b"/tmp/.a");
         assert_eq!(entry.size, 0);
     }
 
@@ -6752,16 +7525,23 @@ mod tests {
     // Sinergia 8i-encode: Fase 2: file_list_entry round-trip.
     // -------------------------------------------------------------------------
 
-    fn frozen_oracle_options_for_test<'a>(prev: Option<&'a str>) -> FileListDecodeOptions<'a> {
-        let mut opts = FileListDecodeOptions::frozen_oracle_default();
-        opts.previous_name = prev;
-        opts
+    fn frozen_oracle_options_for_test() -> FileListDecodeOptions {
+        FileListDecodeOptions::frozen_oracle_default()
     }
 
     fn assert_flist_entry_round_trip(entry: FileListEntry, opts: &FileListDecodeOptions) {
-        let bytes = encode_file_list_entry(&entry, opts);
-        let (outcome, consumed) =
-            decode_file_list_entry(&bytes, opts).expect("entry must decode after encode");
+        assert_flist_entry_round_trip_from(entry, opts, &FileListCodecState::new());
+    }
+
+    /// Round trip with both codec ends starting from `state`.
+    fn assert_flist_entry_round_trip_from(
+        entry: FileListEntry,
+        opts: &FileListDecodeOptions,
+        state: &FileListCodecState,
+    ) {
+        let bytes = encode_file_list_entry(&entry, opts, &mut state.clone());
+        let (outcome, consumed) = decode_file_list_entry(&bytes, opts, &mut state.clone())
+            .expect("entry must decode after encode");
         assert_eq!(
             consumed,
             bytes.len(),
@@ -6811,7 +7591,7 @@ mod tests {
             // varint flags: includes USER+GROUP names, MOD_NSEC, LONG_NAME bit
             // off (path < 255 bytes), no SAME_*.
             flags: XMIT_USER_NAME_FOLLOWS | XMIT_GROUP_NAME_FOLLOWS | XMIT_MOD_NSEC,
-            path: "upload.bin".to_string(),
+            path: b"upload.bin".to_vec(),
             size: 262_144,
             mtime: 1_700_000_000,
             mtime_nsec: Some(123_456_789),
@@ -6822,6 +7602,7 @@ mod tests {
             gid_name: Some("axpnet".to_string()),
             checksum: vec![0xAB; 16],
             symlink_target: None,
+            rdev: None,
             xattrs: None,
             acls: None,
         }
@@ -6829,7 +7610,7 @@ mod tests {
 
     #[test]
     fn encode_file_list_entry_round_trip_baseline() {
-        let opts = frozen_oracle_options_for_test(None);
+        let opts = frozen_oracle_options_for_test();
         assert_flist_entry_round_trip(baseline_entry(), &opts);
     }
 
@@ -6862,7 +7643,7 @@ mod tests {
         let target = "../relative/path/to/target.bin".to_string();
         let entry = FileListEntry {
             flags: XMIT_USER_NAME_FOLLOWS | XMIT_GROUP_NAME_FOLLOWS,
-            path: "link.lnk".to_string(),
+            path: b"link.lnk".to_vec(),
             size: target.len() as i64,
             mtime: 1_700_000_000,
             mtime_nsec: None,
@@ -6872,11 +7653,12 @@ mod tests {
             gid: Some(1000),
             gid_name: Some("axpnet".to_string()),
             checksum: vec![],
-            symlink_target: Some(target),
+            symlink_target: Some(target.into_bytes()),
+            rdev: None,
             xattrs: None,
             acls: None,
         };
-        let opts = frozen_oracle_options_for_test(None);
+        let opts = frozen_oracle_options_for_test();
         assert_flist_entry_round_trip(entry, &opts);
     }
 
@@ -6892,7 +7674,7 @@ mod tests {
         let target = "rel/tgt.bin".to_string();
         let entry = FileListEntry {
             flags: XMIT_MOD_NSEC,
-            path: "pin.lnk".to_string(),
+            path: b"pin.lnk".to_vec(),
             size: target.len() as i64,
             mtime: 1_750_000_000,
             mtime_nsec: Some(0),
@@ -6902,13 +7684,14 @@ mod tests {
             gid: Some(1000),
             gid_name: None,
             checksum: vec![],
-            symlink_target: Some(target.clone()),
+            symlink_target: Some(target.clone().into_bytes()),
+            rdev: None,
             xattrs: None,
             acls: None,
         };
-        let opts = frozen_oracle_options_for_test(None);
+        let opts = frozen_oracle_options_for_test();
         assert_eq!(opts.csum_len, 16, "pin assumes the production csum_len");
-        let bytes = encode_file_list_entry(&entry, &opts);
+        let bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
 
         // Encoded length: identical entry with a 16-byte checksum would
         // be exactly 16 bytes longer. Prove the tail really is the
@@ -6918,11 +7701,12 @@ mod tests {
             "symlink entry must end with the raw target bytes (no trailing checksum)"
         );
 
-        let (outcome, consumed) = decode_file_list_entry(&bytes, &opts).expect("decode");
+        let (outcome, consumed) =
+            decode_file_list_entry(&bytes, &opts, &mut FileListCodecState::new()).expect("decode");
         assert_eq!(consumed, bytes.len(), "no residual bytes");
         match outcome {
             FileListDecodeOutcome::Entry(d) => {
-                assert_eq!(d.symlink_target.as_deref(), Some(target.as_str()));
+                assert_eq!(d.symlink_target.as_deref(), Some(target.as_bytes()));
                 assert!(
                     d.checksum.is_empty(),
                     "symlink entries must decode with an empty flist checksum"
@@ -6943,19 +7727,19 @@ mod tests {
         // byte-identical to before the symlink codec was added (the
         // frozen-oracle tests are the companion proof on real captured
         // bytes).
-        let opts = frozen_oracle_options_for_test(None);
+        let opts = frozen_oracle_options_for_test();
         let target = "target/over/here".to_string();
 
         let mut reg = baseline_entry();
         reg.symlink_target = None;
         reg.mode = 0o100_644; // S_IFREG
-        let reg_bytes = encode_file_list_entry(&reg, &opts);
+        let reg_bytes = encode_file_list_entry(&reg, &opts, &mut FileListCodecState::new());
 
         let mut lnk = baseline_entry();
         lnk.mode = S_IFLNK | 0o777;
         lnk.checksum = vec![];
-        lnk.symlink_target = Some(target.clone());
-        let lnk_bytes = encode_file_list_entry(&lnk, &opts);
+        lnk.symlink_target = Some(target.clone().into_bytes());
+        let lnk_bytes = encode_file_list_entry(&lnk, &opts, &mut FileListCodecState::new());
 
         let expected_extra = encode_varint(target.len() as i32).len() + target.len();
         assert_eq!(
@@ -6965,7 +7749,8 @@ mod tests {
         );
 
         // And a regular entry decodes back with no symlink target.
-        let (outcome, _) = decode_file_list_entry(&reg_bytes, &opts).unwrap();
+        let (outcome, _) =
+            decode_file_list_entry(&reg_bytes, &opts, &mut FileListCodecState::new()).unwrap();
         match outcome {
             FileListDecodeOutcome::Entry(d) => {
                 assert!(
@@ -6986,7 +7771,7 @@ mod tests {
         // with no extra-field implications in the decoder.
         let entry = FileListEntry {
             flags: XMIT_TOP_DIR,
-            path: "e.lnk".to_string(),
+            path: b"e.lnk".to_vec(),
             size: 0,
             mtime: 0,
             mtime_nsec: None,
@@ -6996,11 +7781,12 @@ mod tests {
             gid: None,
             gid_name: None,
             checksum: vec![],
-            symlink_target: Some(String::new()),
+            symlink_target: Some(Vec::new()),
+            rdev: None,
             xattrs: None,
             acls: None,
         };
-        let mut opts = frozen_oracle_options_for_test(None);
+        let mut opts = frozen_oracle_options_for_test();
         opts.always_checksum = false;
         opts.csum_len = 0;
         opts.preserve_uid = false;
@@ -7016,7 +7802,7 @@ mod tests {
         // decoder must reject it with a typed error, never panic.
         let entry = FileListEntry {
             flags: XMIT_TOP_DIR,
-            path: "e.lnk".to_string(),
+            path: b"e.lnk".to_vec(),
             size: 0,
             mtime: 0,
             mtime_nsec: None,
@@ -7026,11 +7812,12 @@ mod tests {
             gid: None,
             gid_name: None,
             checksum: vec![],
-            symlink_target: Some(String::new()),
+            symlink_target: Some(Vec::new()),
+            rdev: None,
             xattrs: None,
             acls: None,
         };
-        let mut opts = frozen_oracle_options_for_test(None);
+        let mut opts = frozen_oracle_options_for_test();
         opts.always_checksum = false;
         opts.csum_len = 0;
         opts.preserve_uid = false;
@@ -7039,11 +7826,11 @@ mod tests {
         // With checksum disabled and an empty target, the trailing bytes
         // are exactly the symlink-target varint (varint(0) == 0x00).
         // Replace it with a negative varint to hit the vulnerable branch.
-        let mut buf = encode_file_list_entry(&entry, &opts);
+        let mut buf = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
         assert_eq!(buf.pop(), Some(0x00), "expected trailing symlink varint(0)");
         buf.extend_from_slice(&encode_varint(-1));
 
-        match decode_file_list_entry(&buf, &opts) {
+        match decode_file_list_entry(&buf, &opts, &mut FileListCodecState::new()) {
             Err(RealWireError::InvalidNameLen { .. }) => {}
             other => panic!("expected InvalidNameLen error, got {other:?}"),
         }
@@ -7062,8 +7849,8 @@ mod tests {
     // -------------------------------------------------------------------------
 
     /// Options for an entry sent under a negotiated `-X` session.
-    fn xattr_options_for_test<'a>(prev: Option<&'a str>) -> FileListDecodeOptions<'a> {
-        let mut opts = frozen_oracle_options_for_test(prev);
+    fn xattr_options_for_test() -> FileListDecodeOptions {
+        let mut opts = frozen_oracle_options_for_test();
         opts.preserve_xattrs = true;
         opts
     }
@@ -7074,11 +7861,19 @@ mod tests {
     fn encoded_xattr_blob(pairs: Vec<XattrPair>) -> Vec<u8> {
         let mut without = baseline_entry();
         without.xattrs = None;
-        let base = encode_file_list_entry(&without, &frozen_oracle_options_for_test(None));
+        let base = encode_file_list_entry(
+            &without,
+            &frozen_oracle_options_for_test(),
+            &mut FileListCodecState::new(),
+        );
 
         let mut with = baseline_entry();
         with.xattrs = Some(pairs);
-        let full = encode_file_list_entry(&with, &xattr_options_for_test(None));
+        let full = encode_file_list_entry(
+            &with,
+            &xattr_options_for_test(),
+            &mut FileListCodecState::new(),
+        );
 
         assert!(
             full.starts_with(&base),
@@ -7121,9 +7916,10 @@ mod tests {
 
         let mut entry = baseline_entry();
         entry.xattrs = Some(vec![]);
-        let opts = xattr_options_for_test(None);
-        let bytes = encode_file_list_entry(&entry, &opts);
-        let (outcome, consumed) = decode_file_list_entry(&bytes, &opts).expect("decode");
+        let opts = xattr_options_for_test();
+        let bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        let (outcome, consumed) =
+            decode_file_list_entry(&bytes, &opts, &mut FileListCodecState::new()).expect("decode");
         assert_eq!(consumed, bytes.len(), "no residual bytes");
         match outcome {
             FileListDecodeOutcome::Entry(d) => assert_eq!(
@@ -7143,15 +7939,19 @@ mod tests {
         // encoder must emit byte-for-byte what it emitted before this
         // codec existed. Not "roughly the same", not "the same plus a
         // zero byte": identical.
-        let opts_off = frozen_oracle_options_for_test(None);
+        let opts_off = frozen_oracle_options_for_test();
         let mut off = baseline_entry();
         off.xattrs = None;
-        let off_bytes = encode_file_list_entry(&off, &opts_off);
+        let off_bytes = encode_file_list_entry(&off, &opts_off, &mut FileListCodecState::new());
 
         let pair = XattrPair::inline("user.aeroftp.test", b"v1".to_vec());
         let mut on = baseline_entry();
         on.xattrs = Some(vec![pair]);
-        let on_bytes = encode_file_list_entry(&on, &xattr_options_for_test(None));
+        let on_bytes = encode_file_list_entry(
+            &on,
+            &xattr_options_for_test(),
+            &mut FileListCodecState::new(),
+        );
 
         assert_eq!(
             on_bytes.len(),
@@ -7166,7 +7966,9 @@ mod tests {
 
         // And the un-negotiated entry decodes back with no xattr field at
         // all, so nothing downstream can mistake absence for emptiness.
-        let (outcome, consumed) = decode_file_list_entry(&off_bytes, &opts_off).expect("decode");
+        let (outcome, consumed) =
+            decode_file_list_entry(&off_bytes, &opts_off, &mut FileListCodecState::new())
+                .expect("decode");
         assert_eq!(consumed, off_bytes.len());
         match outcome {
             FileListDecodeOutcome::Entry(d) => assert!(d.xattrs.is_none()),
@@ -7196,7 +7998,7 @@ mod tests {
 
         let mut entry = baseline_entry();
         entry.xattrs = Some(pairs);
-        assert_flist_entry_round_trip(entry, &xattr_options_for_test(None));
+        assert_flist_entry_round_trip(entry, &xattr_options_for_test());
     }
 
     #[test]
@@ -7214,7 +8016,7 @@ mod tests {
 
         let mut entry = baseline_entry();
         entry.xattrs = Some(vec![pair]);
-        assert_flist_entry_round_trip(entry, &xattr_options_for_test(None));
+        assert_flist_entry_round_trip(entry, &xattr_options_for_test());
     }
 
     #[test]
@@ -7235,7 +8037,7 @@ mod tests {
 
         let mut entry = baseline_entry();
         entry.xattrs = Some(vec![pair]);
-        assert_flist_entry_round_trip(entry, &xattr_options_for_test(None));
+        assert_flist_entry_round_trip(entry, &xattr_options_for_test());
     }
 
     #[test]
@@ -7266,9 +8068,10 @@ mod tests {
         // And it decodes back as deferred, not as a 16-byte value.
         let mut entry = baseline_entry();
         entry.xattrs = Some(vec![XattrPair::inline("user.long", value.clone())]);
-        let opts = xattr_options_for_test(None);
-        let bytes = encode_file_list_entry(&entry, &opts);
-        let (outcome, consumed) = decode_file_list_entry(&bytes, &opts).expect("decode");
+        let opts = xattr_options_for_test();
+        let bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        let (outcome, consumed) =
+            decode_file_list_entry(&bytes, &opts, &mut FileListCodecState::new()).expect("decode");
         assert_eq!(consumed, bytes.len());
         match outcome {
             FileListDecodeOutcome::Entry(d) => {
@@ -7443,12 +8246,14 @@ mod tests {
         ];
         let mut entry = baseline_entry();
         entry.xattrs = Some(originals.clone());
-        let opts = xattr_options_for_test(None);
+        let opts = xattr_options_for_test();
 
-        let entry_bytes = encode_file_list_entry(&entry, &opts);
+        let entry_bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
         let section_bytes = encode_xattr_datum_section(&originals);
 
-        let (outcome, consumed) = decode_file_list_entry(&entry_bytes, &opts).expect("decode");
+        let (outcome, consumed) =
+            decode_file_list_entry(&entry_bytes, &opts, &mut FileListCodecState::new())
+                .expect("decode");
         assert_eq!(consumed, entry_bytes.len());
         let mut decoded = match outcome {
             FileListDecodeOutcome::Entry(d) => d.xattrs.expect("xattrs present"),
@@ -7493,9 +8298,12 @@ mod tests {
     fn decode_pairs_from_entry(pairs: &[XattrPair]) -> Vec<XattrPair> {
         let mut entry = baseline_entry();
         entry.xattrs = Some(pairs.to_vec());
-        let opts = xattr_options_for_test(None);
-        let bytes = encode_file_list_entry(&entry, &opts);
-        match decode_file_list_entry(&bytes, &opts).expect("decode").0 {
+        let opts = xattr_options_for_test();
+        let bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
+        match decode_file_list_entry(&bytes, &opts, &mut FileListCodecState::new())
+            .expect("decode")
+            .0
+        {
             FileListDecodeOutcome::Entry(d) => d.xattrs.expect("xattrs present"),
             other => panic!("expected Entry, got {other:?}"),
         }
@@ -7616,13 +8424,13 @@ mod tests {
         // entry's bytes as xattr names.
         let mut entry = baseline_entry();
         entry.xattrs = Some(vec![]);
-        let opts = xattr_options_for_test(None);
-        let mut bytes = encode_file_list_entry(&entry, &opts);
+        let opts = xattr_options_for_test();
+        let mut bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
         let marker_at = bytes.len() - 2;
         assert_eq!(bytes[marker_at], 0x00, "expected the blob marker here");
         bytes[marker_at] = 0x03;
 
-        match decode_file_list_entry(&bytes, &opts) {
+        match decode_file_list_entry(&bytes, &opts, &mut FileListCodecState::new()) {
             Err(RealWireError::XattrAbbrevUnsupported { reference }) => {
                 assert_eq!(reference, 3);
             }
@@ -7637,11 +8445,11 @@ mod tests {
         // audit S1 (peer-supplied symlink targets materialised without
         // sanitisation). Each case must produce a typed error; none may
         // panic, wrap around, or allocate on the declared size.
-        let opts = xattr_options_for_test(None);
+        let opts = xattr_options_for_test();
         let mut base = baseline_entry();
         base.xattrs = Some(vec![]);
         let prefix = {
-            let bytes = encode_file_list_entry(&base, &opts);
+            let bytes = encode_file_list_entry(&base, &opts, &mut FileListCodecState::new());
             bytes[..bytes.len() - 2].to_vec() // drop the `00 00` blob
         };
 
@@ -7708,7 +8516,7 @@ mod tests {
         cases.push(("empty blob", prefix.clone()));
 
         for (label, buf) in cases {
-            match decode_file_list_entry(&buf, &opts) {
+            match decode_file_list_entry(&buf, &opts, &mut FileListCodecState::new()) {
                 Err(_) => {}
                 Ok(other) => panic!("{label}: expected a typed error, decoded {other:?}"),
             }
@@ -7771,15 +8579,15 @@ mod tests {
         //
         // If that allowlist in `native_driver.rs` ever changes, this test
         // is what should stop it.
-        let opts = xattr_options_for_test(None);
+        let opts = xattr_options_for_test();
         let mut entry = baseline_entry();
         entry.xattrs = Some(vec![XattrPair::inline("user.aeroftp.test", b"v1".to_vec())]);
-        let full = encode_file_list_entry(&entry, &opts);
+        let full = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
 
         // Every prefix that cuts into the blob must read as a truncation.
         let blob_starts = full.len() - 24;
         for cut in blob_starts..full.len() {
-            match decode_file_list_entry(&full[..cut], &opts) {
+            match decode_file_list_entry(&full[..cut], &opts, &mut FileListCodecState::new()) {
                 Err(RealWireError::TruncatedBuffer { .. }) => {}
                 other => panic!(
                     "a blob cut at byte {cut} of {} must be recoverable, got {other:?}",
@@ -7788,7 +8596,8 @@ mod tests {
             }
         }
         // And the whole thing decodes once the last byte is there.
-        let (_, consumed) = decode_file_list_entry(&full, &opts).expect("complete blob decodes");
+        let (_, consumed) = decode_file_list_entry(&full, &opts, &mut FileListCodecState::new())
+            .expect("complete blob decodes");
         assert_eq!(consumed, full.len());
 
         // A structurally impossible length must NOT be recoverable, or
@@ -7799,7 +8608,7 @@ mod tests {
         bogus.extend_from_slice(&encode_varint(1)); // count
         bogus.extend_from_slice(&encode_varint(-1)); // name_len
         bogus.extend_from_slice(&encode_varint(2)); // datum_len
-        match decode_file_list_entry(&bogus, &opts) {
+        match decode_file_list_entry(&bogus, &opts, &mut FileListCodecState::new()) {
             Err(RealWireError::InvalidXattrField { field, .. }) => {
                 assert_eq!(field, "name_len");
             }
@@ -7814,11 +8623,11 @@ mod tests {
         // is how a crafted blob would shift every following field.
         // Mirrors the `name[name_len-1] != '\0'` guard in
         // `xattrs.c::recv_xattr`.
-        let opts = xattr_options_for_test(None);
+        let opts = xattr_options_for_test();
         let mut base = baseline_entry();
         base.xattrs = Some(vec![]);
         let mut buf = {
-            let bytes = encode_file_list_entry(&base, &opts);
+            let bytes = encode_file_list_entry(&base, &opts, &mut FileListCodecState::new());
             bytes[..bytes.len() - 2].to_vec()
         };
         buf.extend_from_slice(&encode_varint(0)); // marker
@@ -7828,7 +8637,7 @@ mod tests {
         buf.extend_from_slice(b"user.a"); // ...and indeed no NUL
         buf.extend_from_slice(b"v1");
 
-        match decode_file_list_entry(&buf, &opts) {
+        match decode_file_list_entry(&buf, &opts, &mut FileListCodecState::new()) {
             Err(RealWireError::XattrNameNotNulTerminated { name_len }) => {
                 assert_eq!(name_len, 6);
             }
@@ -7855,15 +8664,15 @@ mod tests {
         // privileged `security.*` attribute is reachable.
         let target = "rel/tgt.bin".to_string();
         let mut entry = baseline_entry();
-        entry.path = "pin.lnk".to_string();
+        entry.path = b"pin.lnk".to_vec();
         entry.mode = S_IFLNK | 0o777;
         entry.size = target.len() as i64;
         entry.checksum = vec![];
-        entry.symlink_target = Some(target.clone());
+        entry.symlink_target = Some(target.clone().into_bytes());
         entry.xattrs = Some(vec![]);
 
-        let opts = xattr_options_for_test(None);
-        let bytes = encode_file_list_entry(&entry, &opts);
+        let opts = xattr_options_for_test();
+        let bytes = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
         assert_eq!(
             &bytes[bytes.len() - 2..],
             &[0x00, 0x00],
@@ -7885,15 +8694,19 @@ mod tests {
         // combination is refused outright.
         let mut entry = baseline_entry();
         entry.xattrs = Some(vec![XattrPair::inline("user.a", b"v1".to_vec())]);
-        let _ = encode_file_list_entry(&entry, &frozen_oracle_options_for_test(None));
+        let _ = encode_file_list_entry(
+            &entry,
+            &frozen_oracle_options_for_test(),
+            &mut FileListCodecState::new(),
+        );
     }
 
     #[test]
     fn encode_file_list_entry_round_trip_with_long_name() {
         let mut entry = baseline_entry();
         entry.flags |= XMIT_LONG_NAME;
-        entry.path = "a".repeat(300);
-        let opts = frozen_oracle_options_for_test(None);
+        entry.path = "a".repeat(300).into_bytes();
+        let opts = frozen_oracle_options_for_test();
         assert_flist_entry_round_trip(entry, &opts);
     }
 
@@ -7901,38 +8714,46 @@ mod tests {
     fn encode_file_list_entry_round_trip_with_same_name_full_prefix_match() {
         let mut entry = baseline_entry();
         entry.flags |= XMIT_SAME_NAME;
-        entry.path = "upload.bin".to_string();
-        let opts = frozen_oracle_options_for_test(Some("upload.bin"));
+        entry.path = b"upload.bin".to_vec();
+        let opts = frozen_oracle_options_for_test();
         // l1 should equal full path length, suffix length 0.
-        assert_flist_entry_round_trip(entry, &opts);
+        assert_flist_entry_round_trip_from(entry, &opts, &state_after_name("upload.bin"));
     }
 
     #[test]
     fn encode_file_list_entry_round_trip_with_same_name_partial_prefix() {
         let mut entry = baseline_entry();
         entry.flags |= XMIT_SAME_NAME;
-        entry.path = "upload.bin".to_string();
+        entry.path = b"upload.bin".to_vec();
         // Common prefix "upload." (7 bytes), suffix "bin".
-        let opts = frozen_oracle_options_for_test(Some("upload.txt"));
-        assert_flist_entry_round_trip(entry, &opts);
+        let opts = frozen_oracle_options_for_test();
+        assert_flist_entry_round_trip_from(entry, &opts, &state_after_name("upload.txt"));
     }
 
     #[test]
     fn encode_file_list_entry_round_trip_same_time_omits_mtime() {
         let mut entry = baseline_entry();
         entry.flags |= XMIT_SAME_TIME;
-        entry.mtime = 0; // gated out, value MUST be 0 to match decoder behaviour
-        let opts = frozen_oracle_options_for_test(None);
-        assert_flist_entry_round_trip(entry, &opts);
+        let opts = frozen_oracle_options_for_test();
+        // Gated out on the wire: the decoder takes the mtime from the
+        // previous entry, so the round trip holds only against that state.
+        let previous = FileListCodecState {
+            mtime: entry.mtime,
+            ..state_after_name("previous.bin")
+        };
+        assert_flist_entry_round_trip_from(entry, &opts, &previous);
     }
 
     #[test]
     fn encode_file_list_entry_round_trip_same_mode_omits_mode_field() {
         let mut entry = baseline_entry();
         entry.flags |= XMIT_SAME_MODE;
-        entry.mode = 0;
-        let opts = frozen_oracle_options_for_test(None);
-        assert_flist_entry_round_trip(entry, &opts);
+        let opts = frozen_oracle_options_for_test();
+        let previous = FileListCodecState {
+            mode: entry.mode,
+            ..state_after_name("previous.bin")
+        };
+        assert_flist_entry_round_trip_from(entry, &opts, &previous);
     }
 
     #[test]
@@ -7943,7 +8764,7 @@ mod tests {
         // test is the decoder option toggle, not the flag value.
         let entry = FileListEntry {
             flags: XMIT_TOP_DIR,
-            path: "x.bin".to_string(),
+            path: b"x.bin".to_vec(),
             size: 42,
             mtime: 1_700_000_000,
             mtime_nsec: None,
@@ -7954,6 +8775,7 @@ mod tests {
             gid_name: None,
             checksum: vec![0; 16],
             symlink_target: None,
+            rdev: None,
             xattrs: None,
             acls: None,
         };
@@ -7970,7 +8792,6 @@ mod tests {
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.always_checksum = false;
         opts.csum_len = 0;
-        opts.previous_name = None;
         assert_flist_entry_round_trip(entry, &opts);
     }
 
@@ -7979,17 +8800,18 @@ mod tests {
         let entry = FileListEntry {
             // Lower-byte flags only, no XMIT_EXTENDED_FLAGS bit.
             flags: XMIT_SAME_GID,
-            path: "small.txt".to_string(),
+            path: b"small.txt".to_vec(),
             size: 100,
             mtime: 1_700_000_000,
             mtime_nsec: None,
             mode: 0o100_644,
             uid: Some(1000),
             uid_name: None,
-            gid: None, // gated out by SAME_GID
+            gid: Some(0), // gated out by SAME_GID: inherited from the zero start state
             gid_name: None,
             checksum: vec![],
             symlink_target: None,
+            rdev: None,
             xattrs: None,
             acls: None,
         };
@@ -7998,7 +8820,6 @@ mod tests {
         opts.always_checksum = false;
         opts.csum_len = 0;
         opts.preserve_gid = true;
-        opts.previous_name = None;
         assert_flist_entry_round_trip(entry, &opts);
     }
 
@@ -8006,7 +8827,7 @@ mod tests {
     fn encode_file_list_entry_round_trip_classic_flags_with_extended() {
         let entry = FileListEntry {
             flags: XMIT_EXTENDED_FLAGS | XMIT_USER_NAME_FOLLOWS | XMIT_MOD_NSEC,
-            path: "ext.txt".to_string(),
+            path: b"ext.txt".to_vec(),
             size: 100,
             mtime: 1_700_000_000,
             mtime_nsec: Some(0),
@@ -8017,6 +8838,7 @@ mod tests {
             gid_name: None,
             checksum: vec![],
             symlink_target: None,
+            rdev: None,
             xattrs: None,
             acls: None,
         };
@@ -8024,7 +8846,6 @@ mod tests {
         opts.xfer_flags_as_varint = false;
         opts.always_checksum = false;
         opts.csum_len = 0;
-        opts.previous_name = None;
         assert_flist_entry_round_trip(entry, &opts);
     }
 
@@ -8032,11 +8853,12 @@ mod tests {
     fn encode_file_list_terminator_round_trip_varint_mode() {
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.xfer_flags_as_varint = true;
-        let bytes = encode_file_list_terminator(&opts);
+        let bytes = encode_file_list_terminator(&opts, 0);
         // B.2 fix: terminator in varint mode is 2 bytes (flags varint(0)
         // + io_error count varint(0)) per write_end_of_flist semantics.
         assert_eq!(bytes, vec![0x00, 0x00]);
-        let (outcome, consumed) = decode_file_list_entry(&bytes, &opts).unwrap();
+        let (outcome, consumed) =
+            decode_file_list_entry(&bytes, &opts, &mut FileListCodecState::new()).unwrap();
         assert!(matches!(
             outcome,
             FileListDecodeOutcome::EndOfList { io_error: 0 }
@@ -8048,21 +8870,21 @@ mod tests {
     fn encode_file_list_terminator_round_trip_classic_mode() {
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.xfer_flags_as_varint = false;
-        let bytes = encode_file_list_terminator(&opts);
+        let bytes = encode_file_list_terminator(&opts, 0);
         assert_eq!(bytes, vec![0x00]);
     }
 
     #[test]
     fn compute_flist_name_split_handles_disjoint_paths() {
-        let (l1, suffix) = compute_flist_name_split("foo.txt", Some("bar.txt"), true);
+        let (l1, suffix) = compute_flist_name_split(b"foo.txt", Some(b"bar.txt"), true);
         assert_eq!(l1, 0);
         assert_eq!(suffix, b"foo.txt");
     }
 
     #[test]
     fn compute_flist_name_split_caps_at_255_bytes() {
-        let prev = "x".repeat(300);
-        let entry = "x".repeat(300);
+        let prev = vec![b'x'; 300];
+        let entry = vec![b'x'; 300];
         let (l1, suffix) = compute_flist_name_split(&entry, Some(&prev), true);
         assert_eq!(l1, 255);
         assert_eq!(suffix.len(), 45);
@@ -8100,8 +8922,8 @@ mod tests {
         }
     }
 
-    fn acl_options_for_test<'a>(prev: Option<&'a str>) -> FileListDecodeOptions<'a> {
-        let mut opts = frozen_oracle_options_for_test(prev);
+    fn acl_options_for_test() -> FileListDecodeOptions {
+        let mut opts = frozen_oracle_options_for_test();
         opts.preserve_acls = true;
         opts
     }
@@ -8109,11 +8931,19 @@ mod tests {
     fn encoded_acl_blob(acls: FileListAcls) -> Vec<u8> {
         let mut without = baseline_entry();
         without.acls = None;
-        let base = encode_file_list_entry(&without, &frozen_oracle_options_for_test(None));
+        let base = encode_file_list_entry(
+            &without,
+            &frozen_oracle_options_for_test(),
+            &mut FileListCodecState::new(),
+        );
 
         let mut with = baseline_entry();
         with.acls = Some(acls);
-        let full = encode_file_list_entry(&with, &acl_options_for_test(None));
+        let full = encode_file_list_entry(
+            &with,
+            &acl_options_for_test(),
+            &mut FileListCodecState::new(),
+        );
 
         assert!(
             full.starts_with(&base),
@@ -8132,14 +8962,18 @@ mod tests {
         let mut without = baseline_entry();
         without.acls = None;
         without.xattrs = None;
-        let base = encode_file_list_entry(&without, &frozen_oracle_options_for_test(None));
+        let base = encode_file_list_entry(
+            &without,
+            &frozen_oracle_options_for_test(),
+            &mut FileListCodecState::new(),
+        );
 
         let mut with = baseline_entry();
         with.acls = Some(nobody_access_acl());
         with.xattrs = Some(vec![]);
-        let mut opts = acl_options_for_test(None);
+        let mut opts = acl_options_for_test();
         opts.preserve_xattrs = true;
-        let full = encode_file_list_entry(&with, &opts);
+        let full = encode_file_list_entry(&with, &opts, &mut FileListCodecState::new());
 
         assert_eq!(&full[..base.len()], &base[..]);
         let mut expected = MEASURED_ACL_NOBODY.to_vec();
@@ -8169,7 +9003,7 @@ mod tests {
         };
         let mut entry = baseline_entry();
         entry.acls = Some(acls);
-        assert_flist_entry_round_trip(entry, &acl_options_for_test(None));
+        assert_flist_entry_round_trip(entry, &acl_options_for_test());
     }
 
     #[test]
@@ -8179,7 +9013,7 @@ mod tests {
             access: AclWireEntry::Reference(3),
             default: None,
         });
-        assert_flist_entry_round_trip(entry, &acl_options_for_test(None));
+        assert_flist_entry_round_trip(entry, &acl_options_for_test());
         let blob = encoded_acl_blob(FileListAcls {
             access: AclWireEntry::Reference(3),
             default: None,
@@ -8202,14 +9036,18 @@ mod tests {
             }),
             default: None,
         });
-        assert_flist_entry_round_trip(entry, &acl_options_for_test(None));
+        assert_flist_entry_round_trip(entry, &acl_options_for_test());
     }
 
     #[test]
     #[should_panic(expected = "negotiated -A but carries no access ACL")]
     fn acl_negotiated_without_access_model_panics_instead_of_losing_metadata() {
         let entry = baseline_entry();
-        let _ = encode_file_list_entry(&entry, &acl_options_for_test(None));
+        let _ = encode_file_list_entry(
+            &entry,
+            &acl_options_for_test(),
+            &mut FileListCodecState::new(),
+        );
     }
 
     #[test]
@@ -8220,7 +9058,11 @@ mod tests {
             access: AclWireEntry::Literal(RsyncAcl::empty()),
             default: Some(AclWireEntry::Literal(RsyncAcl::empty())),
         });
-        let _ = encode_file_list_entry(&entry, &acl_options_for_test(None));
+        let _ = encode_file_list_entry(
+            &entry,
+            &acl_options_for_test(),
+            &mut FileListCodecState::new(),
+        );
     }
 
     #[test]
@@ -8242,7 +9084,7 @@ mod tests {
         entry.mode = S_IFDIR | 0o755;
         entry.checksum = vec![];
         entry.acls = Some(acls);
-        let mut opts = acl_options_for_test(None);
+        let mut opts = acl_options_for_test();
         opts.always_checksum = false;
         opts.csum_len = 0;
         assert_flist_entry_round_trip(entry, &opts);
@@ -8254,14 +9096,14 @@ mod tests {
         let mut entry = baseline_entry();
         entry.mode = S_IFLNK | 0o777;
         entry.checksum = vec![];
-        entry.symlink_target = Some(target.clone());
+        entry.symlink_target = Some(target.clone().into_bytes());
         entry.acls = None;
         entry.size = target.len() as i64;
 
-        let off = frozen_oracle_options_for_test(None);
-        let on = acl_options_for_test(None);
-        let off_bytes = encode_file_list_entry(&entry, &off);
-        let on_bytes = encode_file_list_entry(&entry, &on);
+        let off = frozen_oracle_options_for_test();
+        let on = acl_options_for_test();
+        let off_bytes = encode_file_list_entry(&entry, &off, &mut FileListCodecState::new());
+        let on_bytes = encode_file_list_entry(&entry, &on, &mut FileListCodecState::new());
         assert_eq!(
             off_bytes, on_bytes,
             "symlink entries must not grow when -A is negotiated"
@@ -8272,7 +9114,7 @@ mod tests {
         ax_entry.xattrs = Some(vec![]);
         let mut ax_opts = on;
         ax_opts.preserve_xattrs = true;
-        let ax_bytes = encode_file_list_entry(&ax_entry, &ax_opts);
+        let ax_bytes = encode_file_list_entry(&ax_entry, &ax_opts, &mut FileListCodecState::new());
         assert_eq!(
             &ax_bytes[..on_bytes.len()],
             &on_bytes[..],
@@ -8284,13 +9126,13 @@ mod tests {
 
     #[test]
     fn truncated_acl_blob_is_recoverable_but_a_bogus_one_is_not() {
-        let opts = acl_options_for_test(None);
+        let opts = acl_options_for_test();
         let mut entry = baseline_entry();
         entry.acls = Some(nobody_access_acl());
-        let full = encode_file_list_entry(&entry, &opts);
+        let full = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
         let blob_starts = full.len() - MEASURED_ACL_NOBODY.len();
         for cut in blob_starts..full.len() {
-            match decode_file_list_entry(&full[..cut], &opts) {
+            match decode_file_list_entry(&full[..cut], &opts, &mut FileListCodecState::new()) {
                 Err(RealWireError::TruncatedBuffer { .. }) => {}
                 other => panic!(
                     "an ACL cut at byte {cut} of {} must be recoverable, got {other:?}",
@@ -8298,7 +9140,8 @@ mod tests {
                 ),
             }
         }
-        let (_, consumed) = decode_file_list_entry(&full, &opts).expect("complete ACL decodes");
+        let (_, consumed) = decode_file_list_entry(&full, &opts, &mut FileListCodecState::new())
+            .expect("complete ACL decodes");
         assert_eq!(consumed, full.len());
 
         for cut in 0..MEASURED_ACL_NOBODY.len() {
@@ -8311,7 +9154,7 @@ mod tests {
         let mut bogus = full[..blob_starts].to_vec();
         bogus.extend_from_slice(&encode_varint(0));
         bogus.push(0x20);
-        match decode_file_list_entry(&bogus, &opts) {
+        match decode_file_list_entry(&bogus, &opts, &mut FileListCodecState::new()) {
             Err(RealWireError::InvalidAclField { field, .. }) => {
                 assert_eq!(field, "flags");
             }
@@ -8321,11 +9164,11 @@ mod tests {
 
     #[test]
     fn hostile_acl_fields_error_and_never_panic() {
-        let opts = acl_options_for_test(None);
+        let opts = acl_options_for_test();
         let mut base = baseline_entry();
         base.acls = Some(nobody_access_acl());
         let prefix = {
-            let bytes = encode_file_list_entry(&base, &opts);
+            let bytes = encode_file_list_entry(&base, &opts, &mut FileListCodecState::new());
             bytes[..bytes.len() - MEASURED_ACL_NOBODY.len()].to_vec()
         };
 
@@ -8362,7 +9205,7 @@ mod tests {
         cases.push(("xbits out of range", b, "xbits"));
 
         for (label, buf, field) in cases {
-            match decode_file_list_entry(&buf, &opts) {
+            match decode_file_list_entry(&buf, &opts, &mut FileListCodecState::new()) {
                 Err(RealWireError::InvalidAclField {
                     field: got_field, ..
                 }) => {
@@ -8375,18 +9218,21 @@ mod tests {
 
     #[test]
     fn acl_default_off_adds_zero_bytes() {
-        let opts_off = frozen_oracle_options_for_test(None);
+        let opts_off = frozen_oracle_options_for_test();
         let mut off = baseline_entry();
         off.acls = None;
-        let off_bytes = encode_file_list_entry(&off, &opts_off);
+        let off_bytes = encode_file_list_entry(&off, &opts_off, &mut FileListCodecState::new());
 
         let mut on = baseline_entry();
         on.acls = Some(nobody_access_acl());
-        let on_bytes = encode_file_list_entry(&on, &acl_options_for_test(None));
+        let on_bytes =
+            encode_file_list_entry(&on, &acl_options_for_test(), &mut FileListCodecState::new());
         assert_eq!(on_bytes.len(), off_bytes.len() + MEASURED_ACL_NOBODY.len());
         assert_eq!(&on_bytes[..off_bytes.len()], &off_bytes[..]);
 
-        let (outcome, consumed) = decode_file_list_entry(&off_bytes, &opts_off).expect("decode");
+        let (outcome, consumed) =
+            decode_file_list_entry(&off_bytes, &opts_off, &mut FileListCodecState::new())
+                .expect("decode");
         assert_eq!(consumed, off_bytes.len());
         match outcome {
             FileListDecodeOutcome::Entry(d) => assert!(d.acls.is_none()),
@@ -8412,7 +9258,7 @@ mod tests {
             // xflags varint = 0x2c00 = USER_NAME_FOLLOWS | GROUP_NAME_FOLLOWS | MOD_NSEC.
             // No SAME_* and no LONG_NAME: first entry, name <= 255.
             flags: XMIT_USER_NAME_FOLLOWS | XMIT_GROUP_NAME_FOLLOWS | XMIT_MOD_NSEC,
-            path: "upload.bin".to_string(),
+            path: b"upload.bin".to_vec(),
             size: 262_144,
             mtime: 1_776_451_416, // 0x69E27F58 (decoded from oracle bytes `69 58 7f e2`)
             mtime_nsec: Some(958_813_121), // 0x39265301 (decoded from oracle bytes `f0 c1 53 26 39`)
@@ -8426,6 +9272,7 @@ mod tests {
                 0x82, 0xc9,
             ],
             symlink_target: None,
+            rdev: None,
             xattrs: None,
             acls: None,
         }
@@ -8434,7 +9281,7 @@ mod tests {
     /// Decode options matching the oracle compat negotiation:
     /// CF_VARINT_FLIST_FLAGS on, --checksum on (xxh128, 16 B),
     /// preserve_uid + preserve_gid on (rsync command had `-o -g`).
-    fn oracle_upload_bin_options() -> FileListDecodeOptions<'static> {
+    fn oracle_upload_bin_options() -> FileListDecodeOptions {
         FileListDecodeOptions {
             protocol: 31,
             xfer_flags_as_varint: true,
@@ -8442,9 +9289,11 @@ mod tests {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
-            previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
+            preserve_links: true,
+            preserve_devices: false,
+            preserve_specials: false,
         }
     }
 
@@ -8472,7 +9321,7 @@ mod tests {
     fn encode_file_list_entry_matches_oracle_byte_for_byte() {
         let entry = oracle_upload_bin_entry();
         let opts = oracle_upload_bin_options();
-        let encoded = encode_file_list_entry(&entry, &opts);
+        let encoded = encode_file_list_entry(&entry, &opts, &mut FileListCodecState::new());
         assert_eq!(
             encoded, ORACLE_FLIST_ENTRY_BYTES,
             "encoder output diverges from frozen oracle bytes [0..63] (entry+checksum)"
@@ -8487,7 +9336,7 @@ mod tests {
         // count (write_end_of_flist with `xfer_flags_as_varint`).
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.xfer_flags_as_varint = true;
-        let bytes = encode_file_list_terminator(&opts);
+        let bytes = encode_file_list_terminator(&opts, 0);
         assert_eq!(
             bytes,
             vec![0x00, 0x00],
