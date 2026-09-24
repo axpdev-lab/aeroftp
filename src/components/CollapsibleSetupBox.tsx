@@ -10,7 +10,7 @@
  * and auto-expands otherwise (🔴/🟠) — until the user manually toggles, after
  * which the choice sticks until the bridge state actually changes again. With no
  * `bridgeState` (non-bridge providers) it is simply a collapsible defaulting to
- * open.
+ * closed (owner 2026-09-24).
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
@@ -25,16 +25,18 @@ const TONE: Record<Tone, string> = {
 };
 
 /**
- * Default open/closed state for the setup box (pure, for tests). A non-bridge box
- * is always open. A bridge box is collapsed while loading (`bridgeState`
- * undefined) and on 🟢, and open only once it settles to a non-green state — so it
- * never flashes open during "Checking…" and then collapses on 🟢 (#215 idea D).
+ * Default open/closed state for the setup box (pure, for tests). A non-bridge
+ * box starts CLOSED (owner 2026-09-24: the setup steps are for users without an
+ * account yet, everyone else saves a click and vertical space). A bridge box is
+ * collapsed while loading (`bridgeState` undefined) and on 🟢, and open only
+ * once it settles to a non-green state — so it never flashes open during
+ * "Checking…" and then collapses on 🟢 (#215 idea D).
  */
 export function setupBoxDefaultOpen(
     isBridge: boolean | undefined,
     bridgeState: BridgeUiState | undefined,
 ): boolean {
-    if (!isBridge) return true;
+    if (!isBridge) return false;
     if (bridgeState === undefined) return false;
     return bridgeState !== 'green';
 }

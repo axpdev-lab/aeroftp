@@ -8,10 +8,10 @@ import { setupBoxChevronClass, setupBoxDefaultOpen } from './CollapsibleSetupBox
 // moment and then collapse on 🟢. It starts collapsed and only opens once the
 // state settles to a non-green value.
 describe('setupBoxDefaultOpen', () => {
-    it('non-bridge box is always open', () => {
-        expect(setupBoxDefaultOpen(false, undefined)).toBe(true);
-        expect(setupBoxDefaultOpen(false, 'green')).toBe(true);
-        expect(setupBoxDefaultOpen(undefined, undefined)).toBe(true);
+    it('non-bridge box starts closed (owner 2026-09-24)', () => {
+        expect(setupBoxDefaultOpen(false, undefined)).toBe(false);
+        expect(setupBoxDefaultOpen(false, 'green')).toBe(false);
+        expect(setupBoxDefaultOpen(undefined, undefined)).toBe(false);
     });
 
     it('bridge box stays collapsed while loading (undefined) — no flash', () => {
