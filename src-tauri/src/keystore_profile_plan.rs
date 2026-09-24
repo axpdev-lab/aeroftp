@@ -111,6 +111,11 @@ pub struct ProfilePreview {
     pub replaces_list: bool,
     pub unchanged: u32,
     pub changes: Vec<ProfileChange>,
+    /// Identifies the exact state this preview describes (both lists, their
+    /// secrets and the options). The import recomputes it and refuses the
+    /// decisions when it differs, so a choice made on one version of a
+    /// profile never lands on another with the same id.
+    pub fingerprint: String,
 }
 
 /// One decision from the dialog. `copy_name` is the translated name for the
@@ -232,6 +237,7 @@ pub fn preview(inputs: &PlanInputs) -> ProfilePreview {
             replaces_list: false,
             unchanged: inputs.local.len() as u32,
             changes: Vec::new(),
+            fingerprint: fingerprint(inputs),
         };
     };
     let local_by_id = index_by_id(&inputs.local);
@@ -313,6 +319,7 @@ pub fn preview(inputs: &PlanInputs) -> ProfilePreview {
         replaces_list: inputs.replaces_list,
         unchanged,
         changes,
+        fingerprint: fingerprint(inputs),
     }
 }
 
@@ -377,13 +384,78 @@ fn copy_of(
 /// order follows the list the import would have produced: the backup's when
 /// it replaces the list, this machine's (with additions at the end) when it
 /// merges.
+/// HMAC-SHA256 over everything a decision depends on: the options, both
+/// lists as serialized, and every per-profile secret on both sides. Keyed with
+/// a random key that lives only in this process, so the value handed to the
+/// dialog reveals nothing about the secrets, and it is only meaningful to the
+/// process that produced it (a preview and its import run in the same one).
+pub fn fingerprint(inputs: &PlanInputs) -> String {
+    use hmac::{Hmac, Mac};
+    static KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
+    let key = KEY.get_or_init(rand::random::<[u8; 32]>);
+    let mut mac =
+        <Hmac<sha2::Sha256> as Mac>::new_from_slice(key).expect("HMAC takes any key length");
+    // Every field is length-prefixed, so no two different states can
+    // concatenate to the same bytes.
+    let mut field = |bytes: &[u8]| {
+        mac.update(&(bytes.len() as u64).to_le_bytes());
+        mac.update(bytes);
+    };
+    field(
+        format!(
+            "{:?}|{:?}|{}|{}",
+            inputs.source, inputs.local_source, inputs.replaces_list, inputs.keep_local_by_default
+        )
+        .as_bytes(),
+    );
+    field(
+        serde_json::to_string(&inputs.local)
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    field(
+        serde_json::to_string(&inputs.backup)
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    let mut keys: Vec<&String> = inputs
+        .local_secrets
+        .keys()
+        .chain(inputs.backup_secrets.keys())
+        .collect();
+    keys.sort();
+    keys.dedup();
+    for key in keys {
+        field(key.as_bytes());
+        match inputs.local_secrets.get(key).and_then(|v| v.as_ref()) {
+            Some(v) => field(v.as_bytes()),
+            None => field(b"\0absent"),
+        }
+        match inputs.backup_secrets.get(key) {
+            Some(v) => field(v.as_bytes()),
+            None => field(b"\0absent"),
+        }
+    }
+    hex::encode(mac.finalize().into_bytes())
+}
+
 /// Refuse decisions that do not belong to this plan, before anything is
 /// written: an id the plan does not list means the backup or this device
 /// changed since the preview the user answered, and "keep both" exists only
 /// for a changed profile. Either way the dialog is out of date, and applying
 /// the rest would quietly do something the user did not choose.
-pub fn validate(inputs: &PlanInputs, decisions: &[ProfileDecisionInput]) -> Result<(), String> {
+pub fn validate(
+    inputs: &PlanInputs,
+    decisions: &[ProfileDecisionInput],
+    previewed: &str,
+) -> Result<(), String> {
     let plan = preview(inputs);
+    if plan.fingerprint != previewed {
+        return Err(
+            "The backup or this device changed since the preview; review the changes again"
+                .to_string(),
+        );
+    }
     let kinds: HashMap<&str, ProfileChangeKind> = plan
         .changes
         .iter()
@@ -412,9 +484,10 @@ pub fn validate(inputs: &PlanInputs, decisions: &[ProfileDecisionInput]) -> Resu
 pub fn apply(
     inputs: &PlanInputs,
     decisions: &[ProfileDecisionInput],
+    previewed: &str,
     new_id: &mut dyn FnMut() -> String,
 ) -> Result<PlanOutcome, String> {
-    validate(inputs, decisions)?;
+    validate(inputs, decisions, previewed)?;
     let Some(backup) = inputs.backup.as_deref() else {
         return Ok(PlanOutcome {
             profiles: inputs.local.clone(),
@@ -563,6 +636,37 @@ mod tests {
         }
     }
 
+    fn fp(inputs: &PlanInputs) -> String {
+        preview(inputs).fingerprint
+    }
+
+    /// A decision is bound to the state the user reviewed: the same id and
+    /// kind with different content, or a different secret, is refused.
+    #[test]
+    fn decisions_are_bound_to_the_previewed_state() {
+        let reviewed = fp(&inputs(true));
+        let keep = [ProfileDecisionInput {
+            id: "srv_b".into(),
+            decision: ProfileDecision::Reject,
+            copy_name: None,
+        }];
+        assert!(validate(&inputs(true), &keep, &reviewed).is_ok());
+
+        let mut renamed = inputs(true);
+        renamed.backup.as_mut().unwrap()[1]["name"] = serde_json::json!("Beta NAS 2");
+        let err = validate(&renamed, &keep, &reviewed).unwrap_err();
+        assert!(err.contains("changed since the preview"), "{err}");
+
+        let mut new_password = inputs(true);
+        new_password
+            .backup_secrets
+            .insert("server_srv_b".into(), Zeroizing::new("pw-b-other".into()));
+        assert!(validate(&new_password, &keep, &reviewed).is_err());
+        // The value handed out is not a plain hash of the inputs.
+        assert!(!reviewed.contains("pw-b"));
+        assert_eq!(reviewed.len(), 64);
+    }
+
     fn ids(list: &[Value]) -> Vec<&str> {
         list.iter().filter_map(profile_id).collect()
     }
@@ -618,7 +722,7 @@ mod tests {
     #[test]
     fn defaults_reproduce_the_import_without_decisions() {
         let mut next = || "srv_new".to_string();
-        let replaced = apply(&inputs(true), &[], &mut next).unwrap();
+        let replaced = apply(&inputs(true), &[], &fp(&inputs(true)), &mut next).unwrap();
         assert_eq!(ids(&replaced.profiles), vec!["srv_a", "srv_b", "srv_d"]);
         assert_eq!(replaced.profiles[1]["name"], "Beta NAS");
         assert_eq!(
@@ -626,7 +730,7 @@ mod tests {
             Some(Some("pw-b-backup"))
         );
 
-        let merged = apply(&inputs(false), &[], &mut next).unwrap();
+        let merged = apply(&inputs(false), &[], &fp(&inputs(false)), &mut next).unwrap();
         assert_eq!(
             ids(&merged.profiles),
             vec!["srv_a", "srv_b", "srv_c", "srv_d"]
@@ -640,7 +744,10 @@ mod tests {
 
     #[test]
     fn an_accepted_removal_purges_the_profile_secrets() {
-        let out = apply(&inputs(true), &[], &mut || "srv_new".to_string()).unwrap();
+        let out = apply(&inputs(true), &[], &fp(&inputs(true)), &mut || {
+            "srv_new".to_string()
+        })
+        .unwrap();
         assert!(!ids(&out.profiles).contains(&"srv_c"));
         assert_eq!(op(&out.secret_ops, "server_srv_c"), Some(None));
     }
@@ -664,7 +771,10 @@ mod tests {
                 copy_name: None,
             },
         ];
-        let out = apply(&inputs(true), &decisions, &mut || "srv_new".to_string()).unwrap();
+        let out = apply(&inputs(true), &decisions, &fp(&inputs(true)), &mut || {
+            "srv_new".to_string()
+        })
+        .unwrap();
         assert_eq!(ids(&out.profiles), vec!["srv_a", "srv_b", "srv_c"]);
         assert_eq!(out.profiles[1]["name"], "Beta");
         assert_eq!(out.profiles[1]["color"], "#f00");
@@ -684,7 +794,10 @@ mod tests {
             decision: ProfileDecision::Both,
             copy_name: Some("Beta NAS (backup)".into()),
         }];
-        let out = apply(&inputs(true), &decisions, &mut || "srv_copy".to_string()).unwrap();
+        let out = apply(&inputs(true), &decisions, &fp(&inputs(true)), &mut || {
+            "srv_copy".to_string()
+        })
+        .unwrap();
         assert_eq!(
             ids(&out.profiles),
             vec!["srv_a", "srv_b", "srv_copy", "srv_d"]
@@ -710,9 +823,12 @@ mod tests {
             decision: ProfileDecision::Both,
             copy_name: None,
         }];
-        let err = apply(&inputs(true), &both_on_added, &mut || {
-            "srv_copy".to_string()
-        })
+        let err = apply(
+            &inputs(true),
+            &both_on_added,
+            &fp(&inputs(true)),
+            &mut || "srv_copy".to_string(),
+        )
         .err()
         .expect("keep both on an added profile");
         assert!(err.contains("Keep both"), "{err}");
@@ -722,7 +838,7 @@ mod tests {
             decision: ProfileDecision::Accept,
             copy_name: None,
         }];
-        let err = validate(&inputs(true), &unknown).unwrap_err();
+        let err = validate(&inputs(true), &unknown, &fp(&inputs(true))).unwrap_err();
         assert!(err.contains("srv_gone"), "{err}");
         // An unchanged profile is not a change either.
         let unchanged = [ProfileDecisionInput {
@@ -730,7 +846,7 @@ mod tests {
             decision: ProfileDecision::Accept,
             copy_name: None,
         }];
-        assert!(validate(&inputs(true), &unchanged).is_err());
+        assert!(validate(&inputs(true), &unchanged, &fp(&inputs(true))).is_err());
     }
 
     /// "Skip existing" keeps this device's side by default even where the
@@ -747,7 +863,7 @@ mod tests {
             };
             assert_eq!(c.default_decision, expected, "{}", c.id);
         }
-        let out = apply(&i, &[], &mut || unreachable!()).unwrap();
+        let out = apply(&i, &[], &fp(&i), &mut || unreachable!()).unwrap();
         assert_eq!(ids(&out.profiles), vec!["srv_a", "srv_b", "srv_d", "srv_c"]);
         assert_eq!(out.profiles[1]["name"], "Beta");
     }
@@ -757,7 +873,7 @@ mod tests {
         let mut i = inputs(true);
         i.backup = None;
         assert_eq!(preview(&i).source, ProfileListSource::None);
-        let out = apply(&i, &[], &mut || unreachable!()).unwrap();
+        let out = apply(&i, &[], &fp(&i), &mut || unreachable!()).unwrap();
         assert_eq!(ids(&out.profiles), vec!["srv_a", "srv_b", "srv_c"]);
         assert!(out.secret_ops.is_empty());
     }

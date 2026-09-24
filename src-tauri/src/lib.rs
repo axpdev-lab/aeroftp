@@ -17531,7 +17531,12 @@ async fn import_keystore(
     // #347: per-profile decisions from the import preview. Absent keeps the
     // import as it was (the first-run wizard and older callers).
     profile_decisions: Option<Vec<keystore_profile_plan::ProfileDecisionInput>>,
+    // The `fingerprint` of the preview those decisions were made on.
+    profile_fingerprint: Option<String>,
 ) -> Result<keystore_export::KeystoreImportResult, String> {
+    if profile_decisions.is_some() && profile_fingerprint.is_none() {
+        return Err("Profile decisions need the fingerprint of their preview".to_string());
+    }
     let progress_app = app.clone();
     let progress_cb = move |phase: &str, current: u32, total: u32| {
         let _ = progress_app.emit(
@@ -17566,7 +17571,13 @@ async fn import_keystore(
             sections,
             config_dir.as_deref(),
             Some(&progress_cb),
-            profile_decisions.as_deref(),
+            profile_decisions
+                .as_deref()
+                .zip(profile_fingerprint.as_deref())
+                .map(|(decisions, fingerprint)| keystore_export::ProfileChoices {
+                    decisions,
+                    fingerprint,
+                }),
         )
         .map_err(|e| e.to_string())
     })

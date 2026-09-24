@@ -3675,6 +3675,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                 ? decisionsPayload(keystorePreview, keystoreDecisions, c =>
                                                                                     t('settings.keystoreCopyName', { name: c.backupName ?? c.id }))
                                                                                 : undefined,
+                                                                            profileFingerprint: keystorePreview?.fingerprint,
                                                                         });
                                                                         // Apply the localStorage map returned by the
                                                                         // backend. The backend deliberately stays out of

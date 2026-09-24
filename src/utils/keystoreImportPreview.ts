@@ -37,6 +37,8 @@ export interface ProfilePreview {
     replacesList: boolean;
     unchanged: number;
     changes: ProfileChange[];
+    /** Sent back with the decisions; the import refuses them if it differs. */
+    fingerprint: string;
 }
 
 export interface ProfileDecisionInput {

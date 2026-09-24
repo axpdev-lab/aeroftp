@@ -1213,7 +1213,7 @@ pub fn import_keystore(
     sections: ImportSections,
     config_dir: Option<&Path>,
     on_progress: Option<&dyn Fn(&str, u32, u32)>,
-    profile_decisions: Option<&[ProfileDecisionInput]>,
+    profile_decisions: Option<ProfileChoices<'_>>,
 ) -> Result<KeystoreImportResult, KeystoreExportError> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or(KeystoreExportError::VaultNotReady)?;
@@ -1547,45 +1547,177 @@ fn new_profile_id() -> String {
     )
 }
 
+/// The user's per-profile decisions, and the fingerprint of the preview they
+/// were made on (`ProfilePreview::fingerprint`).
+#[derive(Clone, Copy)]
+pub struct ProfileChoices<'a> {
+    pub decisions: &'a [ProfileDecisionInput],
+    pub fingerprint: &'a str,
+}
+
+/// What the profile step can undo: each touched secret as the app read it,
+/// the active partition list, and the legacy blob.
+struct ProfileStepSnapshot {
+    secrets: Vec<(String, Option<Zeroizing<String>>)>,
+    partition_list: Option<Vec<serde_json::Value>>,
+    blob: Option<String>,
+}
+
+fn snapshot_profile_step(
+    store: &crate::credential_store::CredentialStore,
+    db: Option<&Path>,
+    keys: &[String],
+) -> Result<ProfileStepSnapshot, String> {
+    let conn = db.and_then(|db| {
+        rusqlite::Connection::open_with_flags(
+            db,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .ok()
+    });
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let mut secrets = Vec::with_capacity(keys.len());
+    let mut failure = None;
+    for key in keys {
+        match read_effective_secret(store, conn.as_ref(), &root_key, key) {
+            Ok(v) => secrets.push((key.clone(), v)),
+            Err(e) => {
+                failure = Some(e.to_string());
+                break;
+            }
+        }
+    }
+    root_key.zeroize();
+    if let Some(e) = failure {
+        return Err(e);
+    }
+    let partition_list = match db {
+        Some(db) => Some(crate::user_partitions::read_active_profiles_from_db(
+            store, db,
+        )?),
+        None => None,
+    };
+    let blob = match store.get("config_server_profiles") {
+        Ok(v) => Some(v),
+        Err(crate::credential_store::CredentialError::NotFound(_)) => None,
+        Err(e) => return Err(e.to_string()),
+    };
+    Ok(ProfileStepSnapshot {
+        secrets,
+        partition_list,
+        blob,
+    })
+}
+
+fn save_partition_list(
+    store: &crate::credential_store::CredentialStore,
+    db: &Path,
+    profiles: &[serde_json::Value],
+) -> Result<(), String> {
+    let mut conn =
+        rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let saved =
+        crate::user_partitions::replace_active_server_profiles(&mut conn, &root_key, profiles);
+    root_key.zeroize();
+    saved
+}
+
+fn restore_profile_step(
+    store: &crate::credential_store::CredentialStore,
+    db: Option<&Path>,
+    snapshot: &ProfileStepSnapshot,
+) -> Vec<String> {
+    let mut failures = Vec::new();
+    for (key, value) in &snapshot.secrets {
+        if let Err(e) = write_profile_secret(store, db, key, value.as_ref().map(|v| v.as_str())) {
+            failures.push(format!("{key}: {e}"));
+        }
+    }
+    if let (Some(db), Some(list)) = (db, snapshot.partition_list.as_ref()) {
+        if let Err(e) = save_partition_list(store, db, list) {
+            failures.push(format!("server list: {e}"));
+        }
+    }
+    let blob = match snapshot.blob.as_deref() {
+        Some(v) => store
+            .store("config_server_profiles", v)
+            .map_err(|e| e.to_string()),
+        None => match store.delete("config_server_profiles") {
+            Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        },
+    };
+    if let Err(e) = blob {
+        failures.push(format!("config_server_profiles: {e}"));
+    }
+    failures
+}
+
 /// Apply the user's per-profile decisions once the import has written
-/// everything else: the secret of each profile is made to match the version
-/// kept, in the vault and in the partition, and the legacy blob gets the final
-/// list, which the GUI then stores into the active partition. Returns the
-/// number of profiles in that list.
+/// everything else: each profile's secrets are made to match the version
+/// kept, in the vault and in the partition, then the final list is saved to
+/// the active partition and mirrored to the legacy blob. Returns the number
+/// of profiles in that list.
+///
+/// All or nothing: the touched secrets, the partition list and the blob are
+/// read first, and any failure puts them back, so a profile is never left
+/// listed without the credentials it was kept with, nor a copy's credentials
+/// left without its profile.
 fn apply_profile_decisions(
     store: &crate::credential_store::CredentialStore,
     config_dir: Option<&Path>,
     inputs: &PlanInputs,
-    decisions: &[ProfileDecisionInput],
+    choices: ProfileChoices<'_>,
 ) -> Result<u32, String> {
-    let outcome = keystore_profile_plan::apply(inputs, decisions, &mut new_profile_id)?;
+    let outcome = keystore_profile_plan::apply(
+        inputs,
+        choices.decisions,
+        choices.fingerprint,
+        &mut new_profile_id,
+    )?;
     let db = partition_db(config_dir);
-    for (key, value) in &outcome.secret_ops {
-        write_profile_secret(
-            store,
-            db.as_deref(),
-            key,
-            value.as_ref().map(|v| v.as_str()),
-        )
-        .map_err(|e| format!("{key}: {e}"))?;
+    let mut touched: Vec<String> = outcome.secret_ops.iter().map(|(k, _)| k.clone()).collect();
+    touched.sort();
+    touched.dedup();
+    let snapshot = snapshot_profile_step(store, db.as_deref(), &touched)
+        .map_err(|e| format!("read the current state before applying: {e}"))?;
+
+    let applied = (|| -> Result<(), String> {
+        for (key, value) in &outcome.secret_ops {
+            write_profile_secret(
+                store,
+                db.as_deref(),
+                key,
+                value.as_ref().map(|v| v.as_str()),
+            )
+            .map_err(|e| format!("{key}: {e}"))?;
+        }
+        // The partition is the list My Servers loads, and loading it
+        // realigns the legacy blob to it (#924): writing only the blob would
+        // let the next load put back the restored list and drop the decisions.
+        if let Some(db) = db.as_deref() {
+            save_partition_list(store, db, &outcome.profiles)
+                .map_err(|e| format!("save the chosen server list: {e}"))?;
+        }
+        crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, &outcome.profiles)?;
+        Ok(())
+    })();
+
+    match applied {
+        Ok(()) => Ok(outcome.profiles.len() as u32),
+        Err(e) => {
+            let failures = restore_profile_step(store, db.as_deref(), &snapshot);
+            if failures.is_empty() {
+                Err(format!("{e}; the server list and its credentials were put back as the import left them"))
+            } else {
+                Err(format!(
+                    "{e}; restoring the previous state also failed for: {}",
+                    failures.join(", ")
+                ))
+            }
+        }
     }
-    // The partition is the list My Servers loads, and loading it realigns the
-    // legacy blob to it (#924): writing only the blob would let the next load
-    // put back the restored list and drop the decisions without a word.
-    if let Some(db) = db.as_deref() {
-        let mut conn =
-            rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
-        let mut root_key = store.derive_user_partition_wrapping_key();
-        let saved = crate::user_partitions::replace_active_server_profiles(
-            &mut conn,
-            &root_key,
-            &outcome.profiles,
-        );
-        root_key.zeroize();
-        saved.map_err(|e| format!("save the chosen server list: {e}"))?;
-    }
-    crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, &outcome.profiles)?;
-    Ok(outcome.profiles.len() as u32)
 }
 
 /// Phase, current and total, as reported to the import progress callback.
@@ -1679,7 +1811,7 @@ fn import_keystore_with_store(
     sections: ImportSections,
     config_dir: Option<&Path>,
     on_progress: Option<ImportProgress<'_>>,
-    profile_decisions: Option<&[ProfileDecisionInput]>,
+    profile_decisions: Option<ProfileChoices<'_>>,
 ) -> Result<KeystoreImportResult, KeystoreExportError> {
     let merge_strategy = normalize_merge_strategy(merge_strategy)?;
     let mut payload = open_backup(password, file_path, on_progress)?;
@@ -1688,7 +1820,7 @@ fn import_keystore_with_store(
     // and refuse decisions that do not match this plan while nothing has
     // changed yet.
     let profile_plan = match profile_decisions {
-        Some(decisions) => {
+        Some(choices) => {
             let inputs = profile_plan_inputs(
                 store,
                 &payload,
@@ -1697,9 +1829,9 @@ fn import_keystore_with_store(
                 sections,
                 config_dir,
             )?;
-            keystore_profile_plan::validate(&inputs, decisions)
+            keystore_profile_plan::validate(&inputs, choices.decisions, choices.fingerprint)
                 .map_err(KeystoreExportError::StaleProfileDecisions)?;
-            Some((inputs, decisions))
+            Some((inputs, choices))
         }
         None => None,
     };
@@ -2023,8 +2155,8 @@ fn import_keystore_with_store(
     // as a failed import that would hide the restart and backup notes.
     let mut profiles_after_decisions = None;
     let mut profile_decisions_error = None;
-    if let Some((inputs, decisions)) = &profile_plan {
-        match apply_profile_decisions(store, config_dir, inputs, decisions) {
+    if let Some((inputs, choices)) = &profile_plan {
+        match apply_profile_decisions(store, config_dir, inputs, *choices) {
             Ok(count) => profiles_after_decisions = Some(count),
             Err(e) => {
                 tracing::error!("Keystore import: profile decisions not applied: {e}");
@@ -2894,6 +3026,24 @@ mod tests {
         (store, cfg, backup)
     }
 
+    fn previewed(
+        store: &crate::credential_store::CredentialStore,
+        cfg: &Path,
+        backup: &Path,
+        merge: &str,
+    ) -> String {
+        preview_keystore_import_with_store(
+            store,
+            PASSWORD_736,
+            backup,
+            merge,
+            ImportSections::default(),
+            Some(cfg),
+        )
+        .unwrap()
+        .fingerprint
+    }
+
     fn set_partition_secret(
         store: &crate::credential_store::CredentialStore,
         cfg: &Path,
@@ -3005,6 +3155,7 @@ mod tests {
                 copy_name: None,
             },
         ];
+        let fingerprint = previewed(&store, &cfg, &backup, "overwrite");
         let result = import_keystore_with_store(
             &store,
             PASSWORD_736,
@@ -3013,7 +3164,10 @@ mod tests {
             ImportSections::default(),
             Some(&cfg),
             None,
-            Some(&decisions),
+            Some(ProfileChoices {
+                decisions: &decisions,
+                fingerprint: &fingerprint,
+            }),
         )
         .unwrap();
 
@@ -3062,6 +3216,7 @@ mod tests {
         let vault_file = dir.path().join("vault.db");
         let vault_before = std::fs::read(&vault_file).unwrap();
         let db_before = std::fs::read(cfg.join("user_partitions.db")).unwrap();
+        let fingerprint = previewed(&store, &cfg, &backup, "overwrite");
         let stale = [ProfileDecisionInput {
             id: "srv_not_in_this_backup".into(),
             decision: keystore_profile_plan::ProfileDecision::Accept,
@@ -3075,7 +3230,10 @@ mod tests {
             ImportSections::default(),
             Some(&cfg),
             None,
-            Some(&stale),
+            Some(ProfileChoices {
+                decisions: &stale,
+                fingerprint: &fingerprint,
+            }),
         );
         assert!(matches!(
             result,
@@ -3086,6 +3244,89 @@ mod tests {
             std::fs::read(cfg.join("user_partitions.db")).unwrap(),
             db_before
         );
+    }
+
+    /// A fingerprint from another preview (or another state) stops the import
+    /// before it writes.
+    #[test]
+    fn decisions_for_another_preview_stop_the_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg, backup) = machine_and_backup_347(dir.path());
+        let vault_file = dir.path().join("vault.db");
+        let vault_before = std::fs::read(&vault_file).unwrap();
+        let decisions = [ProfileDecisionInput {
+            id: "srv_photos".into(),
+            decision: keystore_profile_plan::ProfileDecision::Reject,
+            copy_name: None,
+        }];
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            Some(ProfileChoices {
+                decisions: &decisions,
+                fingerprint: "0000",
+            }),
+        );
+        assert!(matches!(
+            result,
+            Err(KeystoreExportError::StaleProfileDecisions(_))
+        ));
+        assert_eq!(std::fs::read(&vault_file).unwrap(), vault_before);
+    }
+
+    /// When the profile step cannot finish, what it already wrote is put back:
+    /// here the partition cannot be written, so the backup password written to
+    /// the vault for an accepted change must return to this device's value.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_profile_step_puts_the_secrets_back() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg, backup) = machine_and_backup_347(dir.path());
+        let payload = open_backup(PASSWORD_736, &backup, None).unwrap();
+        let inputs = profile_plan_inputs(
+            &store,
+            &payload,
+            PASSWORD_736,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+        )
+        .unwrap();
+        let fingerprint = keystore_profile_plan::preview(&inputs).fingerprint;
+        let blob_before = store.get("config_server_profiles").unwrap();
+
+        let db = cfg.join("user_partitions.db");
+        std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o444)).unwrap();
+        if std::fs::OpenOptions::new().write(true).open(&db).is_ok() {
+            eprintln!("running with write access to a 0444 file (root?): skipped");
+            return;
+        }
+        let decisions = [ProfileDecisionInput {
+            id: "srv_drive".into(),
+            decision: keystore_profile_plan::ProfileDecision::Accept,
+            copy_name: None,
+        }];
+        let err = apply_profile_decisions(
+            &store,
+            Some(&cfg),
+            &inputs,
+            ProfileChoices {
+                decisions: &decisions,
+                fingerprint: &fingerprint,
+            },
+        )
+        .unwrap_err();
+        std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert!(err.contains("server_srv_drive"), "{err}");
+        assert_eq!(store.get("server_srv_drive").unwrap(), "local-password");
+        assert_eq!(store.get("config_server_profiles").unwrap(), blob_before);
     }
 
     /// No decisions: the import behaves as before this change.
