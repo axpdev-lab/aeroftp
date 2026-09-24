@@ -14854,6 +14854,20 @@ mod tests {
     }
 
     #[test]
+    fn test_s3_provider_params_custom_s3_keeps_endpoint_path_style_default() {
+        // An imported `custom-s3` profile (AWS config / rclone "Other") with a
+        // self-hosted endpoint and no explicit path style must keep the
+        // endpoint heuristic (path-style), not a preset default: a MinIO host
+        // addressed virtual-hosted resolves `bucket.host` and fails.
+        let mut params = s3_params(None);
+        params.provider_id = Some("custom-s3".to_string());
+        params.endpoint = Some("http://minio.lab.example:9000".to_string());
+        let config = params.to_provider_config().unwrap();
+        let s3 = crate::providers::S3Config::from_provider_config(&config).unwrap();
+        assert!(s3.path_style);
+    }
+
+    #[test]
     fn test_s3_provider_params_preset_template_without_explicit_endpoint() {
         // Bucket Fetch discovery sends region but no endpoint for template
         // presets. Without preset resolution the provider fell back to

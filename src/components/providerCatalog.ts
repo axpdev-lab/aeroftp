@@ -438,7 +438,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'yandex-storage', icon: 'yandexcloud.png', docsPath: 'providers/yandex-object-storage' },
     { logoId: 's3drive', icon: 's3drive.png', docsPath: 'providers/s3drive' },
     { logoId: 'quotaless-s3', icon: 'quotaless.png', docsPath: 'providers/quotaless' },
-    { logoId: 'ibm-cos', icon: 'ibm-cloud.svg', docsPath: 'providers/ibm-cloud-object-storage', label: 'IBM COS' },
+    { logoId: 'ibm-cos', icon: 'ibm-cloud.png', docsPath: 'providers/ibm-cloud-object-storage', label: 'IBM COS' },
     // WebDAV
     { logoId: 'nextcloud', icon: 'nextcloud.png', docsPath: 'providers/nextcloud' },
     { logoId: 'felicloud', icon: 'felicloud.png', docsPath: 'providers/felicloud' },
@@ -448,7 +448,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'jianguoyun', icon: 'jianguoyun.png', docsPath: 'providers/jianguoyun' },
     { logoId: 'seafile', icon: 'seafile.png', docsPath: 'providers/seafile' },
     { logoId: 'drivehq', icon: 'drivehq.png', docsPath: 'providers/drivehq' },
-    { logoId: 'mailru-cloud', icon: 'mailru-cloud.svg', docsPath: 'providers/mailru-cloud', label: 'Mail.ru Cloud' },
+    { logoId: 'mailru-cloud', icon: 'mailru-cloud.png', docsPath: 'providers/mailru-cloud', label: 'Mail.ru Cloud' },
     // SFTP
     { logoId: 'hetzner-storage-box', icon: 'hetzner.png', docsPath: 'providers/hetzner-storage-box' },
     // Developer

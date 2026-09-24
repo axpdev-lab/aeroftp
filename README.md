@@ -138,7 +138,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/quotaless"><img src="public/icons/providers/grid/quotaless.png" width="36" alt="Quotaless" /></a><br><sub>Quotaless</sub></td>
   </tr>
   <tr>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/ibm-cloud-object-storage" title="IBM Cloud Object Storage"><img src="public/icons/providers/grid/ibm-cloud.svg" width="36" alt="IBM COS" /></a><br><sub>IBM COS</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/ibm-cloud-object-storage" title="IBM Cloud Object Storage"><img src="public/icons/providers/grid/ibm-cloud.png" width="36" alt="IBM COS" /></a><br><sub>IBM COS</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/nextcloud"><img src="public/icons/providers/grid/nextcloud.png" width="36" alt="Nextcloud" /></a><br><sub>Nextcloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/felicloud"><img src="public/icons/providers/grid/felicloud.png" width="36" alt="Felicloud" /></a><br><sub>Felicloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/tabdigital"><img src="public/icons/providers/grid/tabdigital.png" width="36" alt="TAB.DIGITAL" /></a><br><sub>TAB.DIGITAL</sub></td>
@@ -149,7 +149,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/drivehq"><img src="public/icons/providers/grid/drivehq.png" width="36" alt="DriveHQ" /></a><br><sub>DriveHQ</sub></td>
   </tr>
   <tr>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/mailru-cloud"><img src="public/icons/providers/grid/mailru-cloud.svg" width="36" alt="Mail.ru Cloud" /></a><br><sub>Mail.ru Cloud</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/mailru-cloud"><img src="public/icons/providers/grid/mailru-cloud.png" width="36" alt="Mail.ru Cloud" /></a><br><sub>Mail.ru Cloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/hetzner-storage-box"><img src="public/icons/providers/grid/hetzner.png" width="36" alt="Hetzner Storage Box" /></a><br><sub>Hetzner Storage Box</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/github"><img src="public/icons/providers/grid/github.png" width="36" alt="GitHub" /></a><br><sub>GitHub</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/gitlab"><img src="public/icons/providers/grid/gitlab.png" width="36" alt="GitLab" /></a><br><sub>GitLab</sub></td>

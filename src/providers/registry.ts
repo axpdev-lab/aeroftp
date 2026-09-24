@@ -887,9 +887,11 @@ export const PROVIDERS: ProviderConfig[] = [
                 options: [
                     { value: 'eu-de', label: 'EU Germany (Frankfurt)' },
                     { value: 'eu-gb', label: 'EU United Kingdom (London)' },
+                    { value: 'eu-es', label: 'EU Spain (Madrid)' },
                     { value: 'us-south', label: 'US South (Dallas)' },
                     { value: 'us-east', label: 'US East (Washington DC)' },
                     { value: 'ca-tor', label: 'CA Toronto' },
+                    { value: 'ca-mon', label: 'CA Montreal' },
                     { value: 'br-sao', label: 'BR São Paulo' },
                     { value: 'au-syd', label: 'AU Sydney' },
                     { value: 'jp-tok', label: 'JP Tokyo' },

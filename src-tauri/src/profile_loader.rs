@@ -239,9 +239,11 @@ fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
     }
 }
 
+/// Addressing style a preset is known to need. `custom-s3` is deliberately
+/// absent: it is not a preset, and `S3Config` already defaults a custom
+/// endpoint to path-style, which is what self-hosted MinIO/Garage/Ceph need.
 fn s3_profile_default_path_style(provider_id: &str) -> Option<bool> {
     match provider_id {
-        "custom-s3" => Some(false),
         "backblaze" => Some(true),
         "mega-s4" => Some(false),
         "cloudflare-r2" => Some(true),
