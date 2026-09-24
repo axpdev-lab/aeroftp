@@ -537,9 +537,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         };
     } | null>(null);
     const [keystoreImportFilePath, setKeystoreImportFilePath] = useState<string | null>(null);
+    // A preview answers the inputs it was asked with: a change bumps the
+    // generation, so a preview still in flight for the old inputs is dropped.
+    const keystorePreviewGenRef = useRef(0);
     useEffect(() => {
+        keystorePreviewGenRef.current += 1;
         setKeystorePreview(null);
         setKeystoreDecisions({});
+        setKeystorePreviewing(false);
     }, [keystoreImportFilePath, keystoreImportPassword, keystoreImportMerge]);
     const [keystoreMessage, setKeystoreMessage] = useState<{
         type: 'success' | 'error' | 'info';
@@ -3555,6 +3560,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 onClick={async () => {
                                                                     if (!keystoreImportFilePath) return;
                                                                     setKeystoreMessage(null);
+                                                                    const gen = keystorePreviewGenRef.current;
                                                                     setKeystorePreviewing(true);
                                                                     try {
                                                                         const preview = await invoke<ProfilePreview>('preview_keystore_import', {
@@ -3562,16 +3568,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             filePath: keystoreImportFilePath,
                                                                             mergeStrategy: keystoreImportMerge,
                                                                         });
+                                                                        if (gen !== keystorePreviewGenRef.current) return;
                                                                         setKeystorePreview(preview);
                                                                         setKeystoreDecisions(defaultDecisions(preview));
                                                                     } catch (err) {
+                                                                        if (gen !== keystorePreviewGenRef.current) return;
                                                                         const errStr = String(err);
                                                                         setKeystoreMessage({
                                                                             type: 'error',
                                                                             text: errStr.includes('Invalid password') || errStr.includes('decrypt') ? t('settings.invalidPassword') : errStr,
                                                                         });
                                                                     } finally {
-                                                                        setKeystorePreviewing(false);
+                                                                        if (gen === keystorePreviewGenRef.current) setKeystorePreviewing(false);
                                                                     }
                                                                 }}
                                                                 className="w-full px-4 py-2 border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors"
@@ -3807,7 +3815,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         setKeystoreImportProgress(null);
                                                                     }
                                                                 }}
-                                                                disabled={keystoreImporting || keystoreImportPassword.length < 8}
+                                                                disabled={keystoreImporting || keystorePreviewing || keystoreImportPassword.length < 8}
                                                                 className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                                                             >
                                                                 {keystoreImporting ? (

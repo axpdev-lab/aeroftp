@@ -321,6 +321,10 @@ pub enum KeystoreExportError {
     UnsupportedCodec(String),
     #[error("Vault not ready")]
     VaultNotReady,
+    /// The per-profile decisions do not match what this import would change:
+    /// the backup or this device changed since the preview was answered.
+    #[error("Import choices are out of date: {0}")]
+    StaleProfileDecisions(String),
 }
 
 /// Classify an import rollback failure, keeping both halves of it.
@@ -1294,9 +1298,15 @@ fn read_effective_secret(
             match crate::user_partitions::get_user_credential_for(conn, root_key, user_id, key) {
                 Ok(Some(value)) => return Ok(Some(value)),
                 Ok(None) => {}
-                // A locked or unreadable partition row: the app falls back to
-                // the vault too.
-                Err(e) => tracing::debug!("Import plan: partition row {key} not readable: {e}"),
+                // A locked passphrase account: the app falls back to the vault
+                // too (`read_credential_with_fallback_inner`), and so does this.
+                Err(e) if e == "USER_LOCKED" => {}
+                // Anything else the app would report, so the plan stops too.
+                Err(e) => {
+                    return Err(KeystoreExportError::Encryption(format!(
+                        "Read {key} from this device's partition: {e}"
+                    )))
+                }
             }
         }
     }
@@ -1357,19 +1367,25 @@ fn write_profile_secret(
 fn read_local_profiles(
     store: &crate::credential_store::CredentialStore,
     config_dir: Option<&Path>,
-) -> (Vec<serde_json::Value>, ProfileListSource) {
+) -> Result<(Vec<serde_json::Value>, ProfileListSource), KeystoreExportError> {
     if let Some(db) = partition_db(config_dir) {
         match crate::user_partitions::read_active_profiles_from_db(store, &db) {
-            Ok(list) => return (list, ProfileListSource::Partition),
+            Ok(list) => return Ok((list, ProfileListSource::Partition)),
+            // Reported to the user through `local_source`.
             Err(e) => tracing::warn!("Import preview: local partition not readable: {e}"),
         }
     }
-    let list = store
-        .get("config_server_profiles")
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default();
-    (list, ProfileListSource::Vault)
+    // Only an absent blob is an empty list: a vault that cannot be read would
+    // otherwise make every local profile look removed.
+    let raw = match store.get("config_server_profiles") {
+        Ok(raw) => raw,
+        Err(crate::credential_store::CredentialError::NotFound(_)) => {
+            return Ok((Vec::new(), ProfileListSource::Vault))
+        }
+        Err(e) => return Err(from_store_error(e)),
+    };
+    let list = serde_json::from_str(&raw)?;
+    Ok((list, ProfileListSource::Vault))
 }
 
 /// The backup's partition database, written to a private temporary directory
@@ -1410,7 +1426,7 @@ fn profile_plan_inputs(
     sections: ImportSections,
     config_dir: Option<&Path>,
 ) -> Result<PlanInputs, KeystoreExportError> {
-    let (local, local_source) = read_local_profiles(store, config_dir);
+    let (local, local_source) = read_local_profiles(store, config_dir)?;
 
     let mut backup_partition = None;
     let mut backup: Option<Vec<serde_json::Value>> = None;
@@ -1553,6 +1569,21 @@ fn apply_profile_decisions(
         )
         .map_err(|e| format!("{key}: {e}"))?;
     }
+    // The partition is the list My Servers loads, and loading it realigns the
+    // legacy blob to it (#924): writing only the blob would let the next load
+    // put back the restored list and drop the decisions without a word.
+    if let Some(db) = db.as_deref() {
+        let mut conn =
+            rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
+        let mut root_key = store.derive_user_partition_wrapping_key();
+        let saved = crate::user_partitions::replace_active_server_profiles(
+            &mut conn,
+            &root_key,
+            &outcome.profiles,
+        );
+        root_key.zeroize();
+        saved.map_err(|e| format!("save the chosen server list: {e}"))?;
+    }
     crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, &outcome.profiles)?;
     Ok(outcome.profiles.len() as u32)
 }
@@ -1667,7 +1698,7 @@ fn import_keystore_with_store(
                 config_dir,
             )?;
             keystore_profile_plan::validate(&inputs, decisions)
-                .map_err(KeystoreExportError::Encryption)?;
+                .map_err(KeystoreExportError::StaleProfileDecisions)?;
             Some((inputs, decisions))
         }
         None => None,
@@ -2987,6 +3018,9 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.profiles_after_decisions, Some(2));
+        // My Servers loads the partition, and a load realigns the blob to it:
+        // the decided list must be in the partition itself.
+        assert_eq!(my_servers(&store, &cfg), blob_of(&store));
         let list = blob_of(&store);
         assert_eq!(list[0], profile("srv_drive", "Drive 2TB"));
         assert_eq!(list[1]["name"], "Drive (backup)");
@@ -3043,7 +3077,10 @@ mod tests {
             None,
             Some(&stale),
         );
-        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(KeystoreExportError::StaleProfileDecisions(_))
+        ));
         assert_eq!(std::fs::read(&vault_file).unwrap(), vault_before);
         assert_eq!(
             std::fs::read(cfg.join("user_partitions.db")).unwrap(),

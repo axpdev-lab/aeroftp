@@ -780,7 +780,7 @@
             "keystorePreviewLoading": "Sicherung wird gelesen...",
             "keystorePreviewTitle": "Serverprofile in dieser Sicherung",
             "keystorePreviewNone": "Der Import dieser Sicherung ändert Ihre Serverprofile nicht.",
-            "keystorePreviewUnchanged": "{count} unverändert",
+            "keystorePreviewUnchanged": "Unverändert: {count}",
             "keystorePreviewReplaces": "Diese Sicherung ersetzt Ihre Serverliste: Profile, die nur auf diesem Gerät existieren, werden entfernt, sofern Sie sie nicht behalten.",
             "keystorePreviewAdded": "Neu",
             "keystorePreviewRemoved": "Nur auf diesem Gerät",

@@ -780,7 +780,7 @@
             "keystorePreviewLoading": "Back-up wordt gelezen...",
             "keystorePreviewTitle": "Serverprofielen in deze back-up",
             "keystorePreviewNone": "Het importeren van deze back-up wijzigt je serverprofielen niet.",
-            "keystorePreviewUnchanged": "{count} ongewijzigd",
+            "keystorePreviewUnchanged": "Ongewijzigd: {count}",
             "keystorePreviewReplaces": "Deze back-up vervangt je serverlijst: profielen die alleen op dit apparaat bestaan worden verwijderd, tenzij je ze behoudt.",
             "keystorePreviewAdded": "Nieuw",
             "keystorePreviewRemoved": "Alleen op dit apparaat",

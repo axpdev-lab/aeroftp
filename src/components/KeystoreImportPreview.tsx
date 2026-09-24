@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import type { FC } from 'react';
 import { AlertTriangle, KeyRound } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import {
@@ -20,7 +21,7 @@ interface KeystoreImportPreviewProps {
  * What a keystore import changes in the server profile list, one row per
  * profile, each with its own accept / reject / keep-both choice (#347).
  */
-export const KeystoreImportPreview: React.FC<KeystoreImportPreviewProps> = ({ preview, decisions, onDecide }) => {
+export const KeystoreImportPreview: FC<KeystoreImportPreviewProps> = ({ preview, decisions, onDecide }) => {
     const t = useTranslation();
 
     const kindLabel = (c: ProfileChange): string => {

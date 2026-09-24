@@ -38956,11 +38956,12 @@ async fn cmd_aerorsync_probe(
 fn classify_keystore_error(err: &ftp_client_gui_lib::keystore_export::KeystoreExportError) -> i32 {
     use ftp_client_gui_lib::keystore_export::KeystoreExportError as E;
     match err {
-        E::InvalidPassword => 6,       // auth failure
-        E::VaultNotReady => 5,         // configuration / vault-locked
-        E::UnsupportedVersion(_) => 7, // not-supported / unsupported version
-        E::UnsupportedCodec(_) => 7,   // same family: this build cannot read it
-        E::Io(_) => 11,                // I/O
+        E::InvalidPassword => 6,          // auth failure
+        E::VaultNotReady => 5,            // configuration / vault-locked
+        E::UnsupportedVersion(_) => 7,    // not-supported / unsupported version
+        E::UnsupportedCodec(_) => 7,      // same family: this build cannot read it
+        E::StaleProfileDecisions(_) => 5, // usage: the choices do not fit this backup
+        E::Io(_) => 11,                   // I/O
         // Both cover too many distinct causes for one code to say anything
         // useful, so they say nothing rather than something false.
         E::Serialization(_) | E::Encryption(_) => 99,

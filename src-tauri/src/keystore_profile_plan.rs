@@ -450,7 +450,14 @@ pub fn apply(
                 restore_local(inputs, &keys, ops);
                 Vec::new()
             }
-            (ProfileChangeKind::Removed, ProfileDecision::Accept) => Vec::new(),
+            (ProfileChangeKind::Removed, ProfileDecision::Accept) => {
+                // Removing a profile in the GUI purges its secrets; an
+                // accepted removal must not leave them behind (CWE-459).
+                for k in &keys {
+                    ops.push((k.clone(), None));
+                }
+                Vec::new()
+            }
             (ProfileChangeKind::Removed, _) => {
                 restore_local(inputs, &keys, ops);
                 local.cloned().into_iter().collect()
@@ -629,6 +636,13 @@ mod tests {
             op(&merged.secret_ops, "server_srv_b"),
             Some(Some("pw-b-local"))
         );
+    }
+
+    #[test]
+    fn an_accepted_removal_purges_the_profile_secrets() {
+        let out = apply(&inputs(true), &[], &mut || "srv_new".to_string()).unwrap();
+        assert!(!ids(&out.profiles).contains(&"srv_c"));
+        assert_eq!(op(&out.secret_ops, "server_srv_c"), Some(None));
     }
 
     #[test]
