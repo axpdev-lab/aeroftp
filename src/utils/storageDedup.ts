@@ -81,6 +81,7 @@ const S3_PRESET_IDS = new Set<string>([
     'yandex-storage',
     'filelu-s3',
     'filebase',
+    'ibm-cos',
 ]);
 
 /** Lowercase, trim, strip scheme + www. + trailing path. */

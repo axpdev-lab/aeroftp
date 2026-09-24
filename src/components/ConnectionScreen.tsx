@@ -2499,6 +2499,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setSaveConnection(false);
         setPersistModeCredentials(false);
         setAeroCryptEnabled(false);
+        // Back to the fresh-form default: an unbound profile must not inherit
+        // the expanded section from the edit session just closed.
+        setOverlaysExpanded(false);
         setOverlayBindingLocked(false);
         setAeroCryptKind(null);
         setAeroCryptPassword('');
