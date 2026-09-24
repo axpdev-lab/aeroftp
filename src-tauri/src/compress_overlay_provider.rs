@@ -129,6 +129,43 @@ impl CompressOverlayProvider {
     }
 }
 
+/// Counts the bytes a reader hands out, so a pass over the source can be
+/// checked against the length the header will declare.
+struct CountingReader<R> {
+    inner: R,
+    count: u64,
+}
+
+impl<R> CountingReader<R> {
+    fn new(inner: R) -> Self {
+        Self { inner, count: 0 }
+    }
+}
+
+impl<R: Read> Read for CountingReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.count += n as u64;
+        Ok(n)
+    }
+}
+
+/// The header declares `plain_len`, taken before the source is read. A file
+/// that grows or shrinks while it is being read would otherwise go out with a
+/// header that disagrees with its payload: a stored payload of the wrong
+/// length is not recognised on download and comes back with the header bytes
+/// in front, and a zstd payload decompresses to a length the header does not
+/// claim. Refusing the upload is the only answer that cannot corrupt a file.
+fn ensure_source_unchanged(plain_len: u64, read: u64) -> Result<(), ProviderError> {
+    if read == plain_len {
+        Ok(())
+    } else {
+        Err(ProviderError::TransferFailed(format!(
+            "source changed while it was being read: expected {plain_len} bytes, read {read}"
+        )))
+    }
+}
+
 /// Write the object to upload for `local_path`: the header followed by either
 /// the zstd frame or the raw bytes, whichever is smaller. Streams through temp
 /// files, so memory stays bounded regardless of file size.
@@ -161,8 +198,10 @@ fn build_upload_wire(
         let mut writer = comp_tmp
             .reopen()
             .map_err(|e| ProviderError::TransferFailed(format!("reopen comp: {e}")))?;
-        zstd::stream::copy_encode(&mut reader, &mut writer, level)
+        let mut counted = CountingReader::new(&mut reader);
+        zstd::stream::copy_encode(&mut counted, &mut writer, level)
             .map_err(|e| ProviderError::TransferFailed(format!("compress: {e}")))?;
+        ensure_source_unchanged(plain_len, counted.count)?;
         writer
             .flush()
             .map_err(|e| ProviderError::TransferFailed(format!("flush comp: {e}")))?;
@@ -199,8 +238,9 @@ fn build_upload_wire(
                 .map_err(|e| ProviderError::TransferFailed(format!("write header: {e}")))?;
             let mut r = std::fs::File::open(local_path)
                 .map_err(|e| ProviderError::TransferFailed(format!("reopen local: {e}")))?;
-            std::io::copy(&mut r, &mut w)
+            let copied = std::io::copy(&mut r, &mut w)
                 .map_err(|e| ProviderError::TransferFailed(format!("copy raw: {e}")))?;
+            ensure_source_unchanged(plain_len, copied)?;
         }
         w.flush()
             .map_err(|e| ProviderError::TransferFailed(format!("flush wire: {e}")))?;
@@ -449,6 +489,16 @@ mod tests {
             );
             assert_eq!(&wire[COMPRESS_HEADER_LEN..], &plain[..], "{name}");
         }
+    }
+
+    /// A source whose length no longer matches the header is refused, never
+    /// sent with a header that disagrees with its payload.
+    #[test]
+    fn a_source_that_changed_size_is_refused() {
+        assert!(ensure_source_unchanged(10, 10).is_ok());
+        let err = ensure_source_unchanged(10, 12).unwrap_err().to_string();
+        assert!(err.contains("expected 10 bytes, read 12"), "{err}");
+        assert!(ensure_source_unchanged(10, 7).is_err());
     }
 
     /// Everything else is still decided on the real outcome.
