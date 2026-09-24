@@ -318,7 +318,7 @@ AeroFTP defines seven user-facing file formats. Each has a single purpose and a 
 
 ```
 AeroFTP
-├── AeroCloud    - Personal cloud (7 transport protocols + 24 native providers + 5 media services, sync, share)
+├── AeroCloud    - Personal cloud (7 transport protocols + 26 native providers, media services included, sync, share)
 ├── AeroFile     - Professional file manager (multi-file Properties, recursive search, default-app routing)
 ├── AeroShare    - Peer-to-peer user-to-user transfer (end-to-end encrypted, no server in the middle) [Beta]
 ├── AeroMount    - Persistent FUSE / WebDAV mounts with cross-platform autostart (the Mount Manager)
