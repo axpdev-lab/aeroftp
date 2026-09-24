@@ -9,6 +9,18 @@ export type AeroSyncTab = 'compare' | 'plan' | 'sync';
 
 export type AeroSyncPairKind = 'local-local' | 'local-remote' | 'remote-local';
 
+/**
+ * Tabs the dialog offers for a pair. The Sync tab is the local-to-local
+ * AeroRsync engine (`local_sync_run`): with a remote on one side it would copy
+ * the local folder into a LOCAL directory named after the remote path, so it is
+ * offered only when both sides are local (or there is no panel context). A
+ * pair with a remote is synced from the Plan tab.
+ */
+export const aeroSyncTabsFor = (pairKind: AeroSyncPairKind | null | undefined): AeroSyncTab[] =>
+    pairKind === 'local-remote' || pairKind === 'remote-local'
+        ? ['compare', 'plan']
+        : ['compare', 'plan', 'sync'];
+
 // CO-1: runtime hints attached to onExecute. Carry the Plan tab knobs
 // (speed mode + verify policy) into App.tsx so the unified executor can
 // forward them to the Rust planner. Kept separate from PresetPlan to

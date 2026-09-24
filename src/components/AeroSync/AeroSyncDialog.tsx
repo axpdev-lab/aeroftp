@@ -24,9 +24,7 @@ import { RollbackDialog } from '../Sync/RollbackDialog';
 import { useTransferCapabilities } from '../Sync/useTransferCapabilities';
 import { TabStateStoreContext, createTabStateStore } from './tabStateStore';
 import { buildAeroSyncTabStatePatch, type ImportedSyncSettings } from '../../utils/syncTemplateApply';
-import type { AeroSyncDialogProps, AeroSyncTab } from './types';
-
-const TAB_ORDER: AeroSyncTab[] = ['compare', 'plan', 'sync'];
+import { aeroSyncTabsFor, type AeroSyncDialogProps, type AeroSyncTab } from './types';
 
 export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     isOpen,
@@ -41,7 +39,11 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
-    const [activeTab, setActiveTab] = React.useState<AeroSyncTab>(initialTab);
+    const visibleTabs = aeroSyncTabsFor(context.pairKind);
+    const [selectedTab, setActiveTab] = React.useState<AeroSyncTab>(initialTab);
+    // A tab the pair does not offer (the command palette opens on Sync, or the
+    // context switched to a remote pair while open) shows Compare instead.
+    const activeTab: AeroSyncTab = visibleTabs.includes(selectedTab) ? selectedTab : 'compare';
     const [showTemplates, setShowTemplates] = React.useState(false);
     const [showMultiPath, setShowMultiPath] = React.useState(false);
     const [showRollback, setShowRollback] = React.useState(false);
@@ -190,7 +192,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                 </div>
 
                 <div className="flex gap-1 px-4 pt-3 border-b border-gray-200 dark:border-gray-700">
-                    {TAB_ORDER.map((tab) => {
+                    {visibleTabs.map((tab) => {
                         const active = activeTab === tab;
                         // While a local sync runs, lock the user onto the Sync
                         // tab: leaving it would unmount SyncTabContent and orphan
