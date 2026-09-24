@@ -327,7 +327,14 @@
             "protonCliTitle": "Uporablja uradni Proton Drive CLI",
             "protonCliBody": "Namestite Proton Drive CLI s proton.me/download/drive/cli, nato v terminalu zaženite proton-drive auth login in dokončajte v brskalniku. AeroFTP nikoli ne vidi vašega gesla; seja ostane v shrambi skrivnosti OS.",
             "protonUnofficial": "To je aplikacija tretje osebe, ki je Proton uradno ne podpira.",
-            "protonConnectHint": "\"Poveži se\" uporabi CLI, ki je na tem računalniku že prijavljen. En račun Proton na uporabnika OS."
+            "protonConnectHint": "\"Poveži se\" uporabi CLI, ki je na tem računalniku že prijavljen. En račun Proton na uporabnika OS.",
+            "twakeInstance": "Naslov Twake",
+            "twakeInstanceHelp": "Vaš lasten naslov, na primer yourname.twake.app. Prilepite lahko tudi kateri koli naslov strani Twake iz brskalnika.",
+            "twakeSignIn": "Prijava s Twake",
+            "twakeSignInAgain": "Ponovno se prijavite",
+            "twakeSignedIn": "Prijavljeni ste",
+            "twakeWaitingBrowser": "Dokončajte prijavo v brskalniku...",
+            "twakeSignInHelp": "AeroFTP odpre Twake v vašem brskalniku in zahteva dostop samo do vaših datotek. Če Twake prvič prikaže napako, se prijavite v Twake v brskalniku in se ponovno prijavite. Dostop lahko kadar koli prekličete v nastavitvah Twake, Povezane naprave."
         },
         "browser": {
             "remote": "Oddaljeno",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Ta končna točka streže S3 prek nešifriranega HTTP po omrežju. Sprejmite to za ta profil: podpisane poverilnice in vsaka datoteka potujejo prek omrežja nešifrirane.",
             "discoverFilebase": "Filebase: objektna shramba, združljiva s S3 (5 GB brezplačno)",
             "protonDesc": "Povezuje se prek Proton Drive CLI",
-            "protonTooltip": "Uporablja Proton Drive CLI - namestite, prijavite se v brskalniku, AeroFTP je GUI"
+            "protonTooltip": "Uporablja Proton Drive CLI - namestite, prijavite se v brskalniku, AeroFTP je GUI",
+            "twakeDesc": "Twake Drive (5 GB brezplačno)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (prej Cozy Cloud), francoski odprtokodni oblak s 5 GB brezplačno",
+            "discoverTwake": "Evropski odprtokodni oblak podjetja Linagora, prej Cozy Cloud (5 GB brezplačno)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

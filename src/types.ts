@@ -49,6 +49,7 @@ export type ProviderType =
   | "gitlab"
   | "swift"
   | "immich"
+  | "twake"
   | "imagekit"
   | "uploadcare"
   | "backblaze"
@@ -146,6 +147,7 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     "gitlab",
     "swift",
     "immich",
+    "twake",
     "imagekit",
     "uploadcare",
     "backblaze",
@@ -214,7 +216,7 @@ const NATIVE_API_PROTOCOLS: ReadonlySet<string> = new Set([
   "mega", "proton", "box", "pcloud", "azure", "filen", "internxt", "kdrive", "drime",
   "filelu", "koofr", "opendrive", "yandexdisk", "googledrive", "dropbox",
   "onedrive", "fourshared", "zohoworkdrive", "github", "gitlab", "immich",
-  "jottacloud", "swift",
+  "jottacloud", "swift", "twake",
 ]);
 
 export const isNativeApiProtocol = (protocol?: string | null): boolean => {
@@ -296,6 +298,7 @@ export const supportsStorageQuota = (type: ProviderType): boolean => {
     "swift",
     "cloudinary",
     "backblaze",
+    "twake",
   ].includes(type);
 };
 

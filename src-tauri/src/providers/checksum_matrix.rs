@@ -126,6 +126,7 @@ pub fn capability(kind: ProviderType) -> ChecksumCapability {
         ProviderType::Backblaze => cap(&["sha1"], Some(B2_UNVERIFIED)),
         ProviderType::GitHub => cap(&["git-sha1"], Some(GITHUB_BLOB)),
         ProviderType::Immich => cap(&["sha1"], Some(IMMICH_ASSET)),
+        ProviderType::Twake => cap(&["md5"], None),
 
         // ── Backends with no server-side digest ──────────────────────────
         // Not "not implemented yet" in every case: Azure publishes
@@ -179,6 +180,7 @@ const DOC_ORDER: &[ProviderType] = &[
     ProviderType::GitHub,
     ProviderType::GitLab,
     ProviderType::Immich,
+    ProviderType::Twake,
     ProviderType::Mega,
     ProviderType::Proton,
     ProviderType::Filen,

@@ -327,7 +327,14 @@
             "protonCliTitle": "Notar opinbera Proton Drive CLI",
             "protonCliBody": "Settu upp Proton Drive CLI frá proton.me/download/drive/cli, keyrðu svo proton-drive auth login í skjáhermi og ljúktu í vafranum. AeroFTP sér aldrei lykilorðið þitt; lotan er áfram í leyndarmálageymslu stýrikerfisins.",
             "protonUnofficial": "Þetta er forrit frá þriðja aðila sem Proton styður ekki opinberlega.",
-            "protonConnectHint": "\"Tengjast\" notar CLI sem er þegar innskráð á þessari vél. Einn Proton-reikningur á hvern stýrikerfisnotanda."
+            "protonConnectHint": "\"Tengjast\" notar CLI sem er þegar innskráð á þessari vél. Einn Proton-reikningur á hvern stýrikerfisnotanda.",
+            "twakeInstance": "Twake vistfang",
+            "twakeInstanceHelp": "Þitt eigið vistfang, til dæmis yourname.twake.app. Þú getur líka límt inn hvaða Twake síðuvistfang sem er úr vafranum þínum.",
+            "twakeSignIn": "Skrá inn með Twake",
+            "twakeSignInAgain": "Skrá inn aftur",
+            "twakeSignedIn": "Innskráð/ur",
+            "twakeWaitingBrowser": "Kláraðu innskráningu í vafranum þínum...",
+            "twakeSignInHelp": "AeroFTP opnar Twake í vafranum þínum og biður aðeins um aðgang að skránum þínum. Ef Twake sýnir villu í fyrsta skipti skaltu skrá þig inn á Twake í vafranum og reyna aftur. Þú getur afturkallað aðgang hvenær sem er í Twake stillingum, Tengd tæki."
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Þessi endapunktur þjónar S3 um ódulkóðað HTTP yfir net. Samþykktu það fyrir þennan prófíl: undirrituðu auðkennin og hver skrá fara ódulkóðuð um netið.",
             "discoverFilebase": "Filebase: S3-samhæf hlutgeymsla (5 GB ókeypis)",
             "protonDesc": "Tengist í gegnum Proton Drive CLI",
-            "protonTooltip": "Notar Proton Drive CLI - settu upp, skráðu þig inn í vafranum, AeroFTP er GUI"
+            "protonTooltip": "Notar Proton Drive CLI - settu upp, skráðu þig inn í vafranum, AeroFTP er GUI",
+            "twakeDesc": "Twake Drive (5 GB frítt)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (áður Cozy Cloud), franskt opinn hugbúnaðar ský með 5 GB frítt",
+            "discoverTwake": "Evrópskt opinn hugbúnaðar ský frá Linagora, áður Cozy Cloud (5 GB frítt)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

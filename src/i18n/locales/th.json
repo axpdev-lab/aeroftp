@@ -327,7 +327,14 @@
             "protonCliTitle": "ใช้ Proton Drive CLI ทางการ",
             "protonCliBody": "ติดตั้ง Proton Drive CLI จาก proton.me/download/drive/cli จากนั้นรัน proton-drive auth login ในเทอร์มินัลแล้วทำให้เสร็จในเบราว์เซอร์ AeroFTP ไม่เคยเห็นรหัสผ่านของคุณ เซสชันอยู่ในที่เก็บความลับของ OS",
             "protonUnofficial": "นี่เป็นแอปของบุคคลที่สามที่ Proton ไม่รองรับอย่างเป็นทางการ",
-            "protonConnectHint": "\"เชื่อมต่อ\" ใช้ CLI ที่ลงชื่อเข้าแล้วบนเครื่องนี้ บัญชี Proton หนึ่งบัญชีต่อผู้ใช้ OS"
+            "protonConnectHint": "\"เชื่อมต่อ\" ใช้ CLI ที่ลงชื่อเข้าแล้วบนเครื่องนี้ บัญชี Proton หนึ่งบัญชีต่อผู้ใช้ OS",
+            "twakeInstance": "ที่อยู่ Twake",
+            "twakeInstanceHelp": "ที่อยู่ของคุณเอง เช่น yourname.twake.app คุณสามารถวางที่อยู่หน้า Twake ใดก็ได้จากเบราว์เซอร์ของคุณ",
+            "twakeSignIn": "ลงชื่อเข้าใช้ด้วย Twake",
+            "twakeSignInAgain": "ลงชื่อเข้าใช้อีกครั้ง",
+            "twakeSignedIn": "ลงชื่อเข้าใช้แล้ว",
+            "twakeWaitingBrowser": "ดำเนินการลงชื่อเข้าใช้ในเบราว์เซอร์ของคุณให้เสร็จสิ้น...",
+            "twakeSignInHelp": "AeroFTP จะเปิด Twake ในเบราว์เซอร์ของคุณและขอสิทธิ์เข้าถึงเฉพาะไฟล์ของคุณเท่านั้น หาก Twake แสดงข้อผิดพลาดในครั้งแรก ให้เข้าสู่ระบบ Twake ในเบราว์เซอร์แล้วลงชื่อเข้าใช้อีกครั้ง คุณสามารถเพิกถอนสิทธิ์การเข้าถึงได้ทุกเมื่อในการตั้งค่า Twake หัวข้ออุปกรณ์ที่เชื่อมต่อ"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "เอ็นด์พอยต์นี้ให้บริการ S3 ผ่าน HTTP แบบไม่เข้ารหัสข้ามเครือข่าย ยอมรับสำหรับโปรไฟล์นี้: ข้อมูลรับรองที่ลงนามและไฟล์ทุกไฟล์จะผ่านเครือข่ายโดยไม่ถูกเข้ารหัส",
             "discoverFilebase": "Filebase: ที่เก็บออบเจ็กต์ที่เข้ากันได้กับ S3 (ฟรี 5 GB)",
             "protonDesc": "เชื่อมต่อผ่าน Proton Drive CLI",
-            "protonTooltip": "ใช้ Proton Drive CLI - ติดตั้ง, ลงชื่อเข้าในเบราว์เซอร์, AeroFTP คือ GUI"
+            "protonTooltip": "ใช้ Proton Drive CLI - ติดตั้ง, ลงชื่อเข้าในเบราว์เซอร์, AeroFTP คือ GUI",
+            "twakeDesc": "Twake Drive (ฟรี 5 GB)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (เดิมชื่อ Cozy Cloud) คลาวด์โอเพนซอร์สจากฝรั่งเศส ให้พื้นที่ฟรี 5 GB",
+            "discoverTwake": "คลาวด์โอเพนซอร์สยุโรปโดย Linagora เดิมชื่อ Cozy Cloud (ฟรี 5 GB)"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",

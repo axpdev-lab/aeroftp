@@ -877,6 +877,7 @@ impl ProviderConnectionParams {
             "swift" => ProviderType::Swift,
             "googlephotos" | "google_photos" => ProviderType::GooglePhotos,
             "immich" => ProviderType::Immich,
+            "twake" | "twakedrive" => ProviderType::Twake,
             "imagekit" | "image_kit" => ProviderType::ImageKit,
             "uploadcare" | "upload_care" => ProviderType::Uploadcare,
             "cloudinary" => ProviderType::Cloudinary,
@@ -5837,6 +5838,113 @@ pub async fn oauth2_connect(
     Ok(OAuth2ConnectResult {
         display_name,
         account_email,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TwakeSignInParams {
+    /// What the user typed: instance host, instance URL or any app URL.
+    pub instance: String,
+    /// Credentials of the profile being re-authorized. Its OAuth client is
+    /// deleted from the instance once the new sign-in succeeds, so repeated
+    /// sign-ins do not pile up in the user's Connected devices.
+    #[serde(default)]
+    pub previous_credentials: Option<String>,
+    #[serde(default, alias = "connect_token")]
+    pub connect_token: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TwakeSignInResult {
+    /// Normalized instance origin, to store as the profile host.
+    pub instance: String,
+    /// Credentials blob, to store as the profile password.
+    pub credentials: String,
+}
+
+/// Sign in to a Twake Drive instance: register an OAuth client on it (RFC 7591),
+/// open the authorization page in the system browser, wait for the loopback
+/// callback, and exchange the code (PKCE). Returns the credentials the profile
+/// stores; nothing is written to the vault here.
+#[tauri::command]
+pub async fn twake_sign_in(
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
+    params: TwakeSignInParams,
+) -> Result<TwakeSignInResult, String> {
+    use crate::providers::oauth2::{bind_callback_listener_on_port, wait_for_callback};
+    use crate::providers::twake;
+
+    let cancel_token = params
+        .connect_token
+        .as_deref()
+        .map(|key| cancel_registry.register(key));
+    let _cancel_guard = params
+        .connect_token
+        .as_deref()
+        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+
+    let (listener, port) = bind_callback_listener_on_port(twake::TWAKE_CALLBACK_PORT)
+        .await
+        .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
+    let pending = twake::begin_sign_in(&params.instance, port, env!("CARGO_PKG_VERSION"))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let expected_state = pending.state.clone();
+    let callback_state = expected_state.clone();
+    let mut callback_task =
+        AbortOnDrop::spawn(async move { wait_for_callback(listener, &callback_state).await });
+
+    // System browser only: Twake refuses embedded webviews.
+    if let Err(e) = open::that(&pending.auth_url) {
+        return Err(format!(
+            "Could not open browser: {}. Please open this URL manually: {}",
+            e, pending.auth_url
+        ));
+    }
+    info!("Twake sign-in: browser opened, waiting for callback");
+
+    let (code, state) = tokio::select! {
+        res = callback_task.wait() => res
+            .map_err(|e| format!("Callback server error: {}", e))?
+            .map_err(|e| format!("Callback error: {}", e))?,
+        _ = tokio::time::sleep(tokio::time::Duration::from_secs(300)) => {
+            return Err("Twake sign-in timeout: no response within 5 minutes. If Twake showed \"The state parameter is mandatory\", log in to Twake in your browser first, then sign in again.".to_string());
+        }
+        _ = async {
+            match cancel_token.as_ref() {
+                Some(token) => token.cancelled().await,
+                None => std::future::pending::<()>().await,
+            }
+        } => {
+            return Err(CONNECT_CANCELLED.to_string());
+        }
+    };
+    if state != expected_state {
+        return Err("OAuth state mismatch - possible CSRF attack".to_string());
+    }
+
+    let creds = twake::finish_sign_in(pending, &code)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(previous) = params
+        .previous_credentials
+        .as_deref()
+        .and_then(|raw| twake::TwakeCredentials::from_stored(raw).ok())
+    {
+        if previous.client_id != creds.client_id {
+            if let Err(e) = twake::revoke_client(&previous).await {
+                info!("Twake: could not delete the previous OAuth client: {}", e);
+            }
+        }
+    }
+
+    Ok(TwakeSignInResult {
+        instance: creds.instance.clone(),
+        credentials: creds.to_stored(),
     })
 }
 

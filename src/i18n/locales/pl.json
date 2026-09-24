@@ -327,7 +327,14 @@
             "protonCliTitle": "Używa oficjalnego Proton Drive CLI",
             "protonCliBody": "Zainstaluj CLI Proton Drive ze strony proton.me/download/drive/cli, potem w terminalu uruchom proton-drive auth login i dokończ w przeglądarce. AeroFTP nigdy nie widzi hasła; sesja zostaje w magazynie tajemnic systemu.",
             "protonUnofficial": "To aplikacja zewnętrzna, której Proton oficjalnie nie wspiera.",
-            "protonConnectHint": "\"Połącz\" używa CLI już zalogowanego na tej maszynie. Jedno konto Proton na użytkownika systemu."
+            "protonConnectHint": "\"Połącz\" używa CLI już zalogowanego na tej maszynie. Jedno konto Proton na użytkownika systemu.",
+            "twakeInstance": "Adres Twake",
+            "twakeInstanceHelp": "Twój własny adres, na przykład yourname.twake.app. Możesz też wkleić dowolny adres strony Twake ze swojej przeglądarki.",
+            "twakeSignIn": "Zaloguj się przez Twake",
+            "twakeSignInAgain": "Zaloguj się ponownie",
+            "twakeSignedIn": "Zalogowano",
+            "twakeWaitingBrowser": "Dokończ logowanie w przeglądarce...",
+            "twakeSignInHelp": "AeroFTP otwiera Twake w Twojej przeglądarce i prosi o dostęp tylko do Twoich plików. Jeśli Twake pokaże błąd za pierwszym razem, zaloguj się do Twake w przeglądarce i zaloguj się ponownie. Dostęp możesz odwołać w dowolnym momencie w ustawieniach Twake, Połączone urządzenia."
         },
         "browser": {
             "remote": "Zdalny",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Ten punkt końcowy udostępnia S3 przez nieszyfrowany HTTP w sieci. Zaakceptuj to dla tego profilu: podpisane poświadczenia i każdy plik przechodzą przez sieć bez szyfrowania.",
             "discoverFilebase": "Filebase: pamięć obiektowa zgodna z S3 (5 GB za darmo)",
             "protonDesc": "Łączy się przez Proton Drive CLI",
-            "protonTooltip": "Używa Proton Drive CLI - zainstaluj, zaloguj się w przeglądarce, AeroFTP jest GUI"
+            "protonTooltip": "Używa Proton Drive CLI - zainstaluj, zaloguj się w przeglądarce, AeroFTP jest GUI",
+            "twakeDesc": "Twake Drive (5 GB za darmo)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (dawniej Cozy Cloud), francuska chmura open source z 5 GB za darmo",
+            "discoverTwake": "Europejska chmura open source od Linagory, dawniej Cozy Cloud (5 GB za darmo)"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

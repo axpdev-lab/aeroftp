@@ -327,7 +327,14 @@
             "protonCliTitle": "Menggunakan CLI resmi Proton Drive",
             "protonCliBody": "Pasang Proton Drive CLI dari proton.me/download/drive/cli, lalu jalankan proton-drive auth login di terminal dan selesaikan di peramban. AeroFTP tidak pernah melihat kata sandi Anda; sesi tetap di penyimpanan rahasia OS.",
             "protonUnofficial": "Ini aplikasi pihak ketiga yang tidak didukung secara resmi oleh Proton.",
-            "protonConnectHint": "\"Hubungkan\" memakai CLI yang sudah masuk di mesin ini. Satu akun Proton per pengguna OS."
+            "protonConnectHint": "\"Hubungkan\" memakai CLI yang sudah masuk di mesin ini. Satu akun Proton per pengguna OS.",
+            "twakeInstance": "Alamat Twake",
+            "twakeInstanceHelp": "Alamat Anda sendiri, misalnya yourname.twake.app. Anda juga bisa menempelkan alamat halaman Twake mana pun dari browser Anda.",
+            "twakeSignIn": "Masuk dengan Twake",
+            "twakeSignInAgain": "Masuk lagi",
+            "twakeSignedIn": "Sudah masuk",
+            "twakeWaitingBrowser": "Selesaikan proses masuk di browser Anda...",
+            "twakeSignInHelp": "AeroFTP membuka Twake di browser Anda dan hanya meminta akses ke file Anda. Jika Twake menampilkan error pertama kali, masuk ke Twake di browser lalu masuk lagi. Anda dapat mencabut akses kapan saja di Pengaturan Twake, Perangkat Tersambung."
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Endpoint ini menyajikan S3 melalui HTTP biasa lewat jaringan. Terima untuk profil ini: kredensial bertanda tangan dan setiap berkas melintasi jaringan tanpa enkripsi.",
             "discoverFilebase": "Filebase: penyimpanan objek kompatibel S3 (5 GB gratis)",
             "protonDesc": "Terhubung melalui CLI Proton Drive",
-            "protonTooltip": "Menggunakan CLI Proton Drive - pasang, masuk di peramban, AeroFTP adalah GUI"
+            "protonTooltip": "Menggunakan CLI Proton Drive - pasang, masuk di peramban, AeroFTP adalah GUI",
+            "twakeDesc": "Twake Drive (5 GB gratis)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (dahulu Cozy Cloud), cloud open-source Prancis dengan 5 GB gratis",
+            "discoverTwake": "Cloud Eropa open-source oleh Linagora, dahulu Cozy Cloud (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

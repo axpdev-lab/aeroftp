@@ -259,6 +259,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | GitHub | Git blob SHA-1 | The git blob SHA-1, computed over `blob <len>\0` + content, so it does not match a plain SHA-1 of the same file. |
 | GitLab | - |  |
 | Immich | SHA-1 | The asset checksum Immich records at upload time. |
+| Twake Drive | MD5 |  |
 | MEGA | - |  |
 | Proton Drive | - |  |
 | Filen | - |  |

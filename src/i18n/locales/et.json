@@ -327,7 +327,14 @@
             "protonCliTitle": "Kasutab ametlikku Proton Drive CLI",
             "protonCliBody": "Installige Proton Drive CLI aadressilt proton.me/download/drive/cli, käivitage terminalis proton-drive auth login ja lõpetage brauseris. AeroFTP ei näe kunagi teie parooli; seanss jääb operatsioonisüsteemi saladuste salve.",
             "protonUnofficial": "See on kolmanda osapoole rakendus, mida Proton ametlikult ei toeta.",
-            "protonConnectHint": "\"Ühenda\" kasutab sellel masinal juba sisse logitud CLI-d. Üks Proton konto operatsioonisüsteemi kasutaja kohta."
+            "protonConnectHint": "\"Ühenda\" kasutab sellel masinal juba sisse logitud CLI-d. Üks Proton konto operatsioonisüsteemi kasutaja kohta.",
+            "twakeInstance": "Twake aadress",
+            "twakeInstanceHelp": "Teie enda aadress, näiteks yourname.twake.app. Samuti võite kleepida mis tahes Twake lehe aadressi oma brauserist.",
+            "twakeSignIn": "Logi sisse Twake'iga",
+            "twakeSignInAgain": "Logi uuesti sisse",
+            "twakeSignedIn": "Sisse logitud",
+            "twakeWaitingBrowser": "Lõpetage sisselogimine oma brauseris...",
+            "twakeSignInHelp": "AeroFTP avab Twake teie brauseris ja palub ligipääsu ainult teie failidele. Kui Twake näitab esimesel korral viga, logige brauseris Twake'i sisse ja logige uuesti sisse. Ligipääsu saate igal ajal tühistada Twake seadetes, Ühendatud seadmed."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "See lõpp-punkt pakub S3 krüptimata HTTP kaudu üle võrgu. Nõustu sellega selle profiili puhul: allkirjastatud mandaat ja iga fail liiguvad võrgus krüptimata.",
             "discoverFilebase": "Filebase: S3-ühilduv objektisalvestus (5 GB tasuta)",
             "protonDesc": "Ühendub Proton Drive CLI kaudu",
-            "protonTooltip": "Kasutab Proton Drive CLI - installige, logige brauseris sisse, AeroFTP on GUI"
+            "protonTooltip": "Kasutab Proton Drive CLI - installige, logige brauseris sisse, AeroFTP on GUI",
+            "twakeDesc": "Twake Drive (5 GB tasuta)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (varem Cozy Cloud), Prantsuse avatud lähtekoodiga pilv 5 GB tasuta ruumiga",
+            "discoverTwake": "Linagora avatud lähtekoodiga Euroopa pilv, varem Cozy Cloud (5 GB tasuta)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

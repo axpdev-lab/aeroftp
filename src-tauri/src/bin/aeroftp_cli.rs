@@ -140,7 +140,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     name = "aeroftp",
     about = "AeroFTP CLI - Multi-protocol file transfer client",
     version,
-    long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, and Drime.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\n\nAI agents: use --machine (recommended) or --format json.\n  'aeroftp --machine --profile NAME ls /path --json'   → pure data on stdout\n  'aeroftp agent-info --json'                        → capability discovery\n  'aeroftp agent-bootstrap --json'                   → canonical workflows",
+    long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Drime, and Twake Drive.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\n\nAI agents: use --machine (recommended) or --format json.\n  'aeroftp --machine --profile NAME ls /path --json'   → pure data on stdout\n  'aeroftp agent-info --json'                        → capability discovery\n  'aeroftp agent-bootstrap --json'                   → canonical workflows",
     after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli --machine --profile \"My Server\" ls /path --json   (recommended for agents)\n  aeroftp-cli agent-bootstrap --json                         AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp-script\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Stopped at a limit, nothing failed\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n 99  Unknown error            130  Interrupted (SIGINT)\n\nEXIT CODE 8 MEANS ONE THING: the run stopped at a limit and NOTHING failed.\nThe run did what it could inside the limit it was given, and the decision is\nwhether to raise it. WHICH limit depends on the command: for most it is a\ntimeout, and for sync it is the --max-transfer budget, because there a\ntimeout that fails a transfer is a failure and reports 4 instead. With --json\na reached budget is named by an over_budget count of the files it left\nbehind; a timeout has no such field."
 )]
 struct Cli {
@@ -26187,6 +26187,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
         "filelu",
         "fourshared",
         "immich",
+        "twake",
         "github",
         "gitlab",
     ]
@@ -26329,7 +26330,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
             "mega", "filen", "internxt", "kdrive", "koofr",
             "jottacloud", "filelu", "opendrive", "yandexdisk", "azure",
             "github", "gitlab", "googledrive", "dropbox", "onedrive", "box",
-            "pcloud", "zohoworkdrive", "fourshared", "drime", "swift"
+            "pcloud", "zohoworkdrive", "fourshared", "drime", "swift", "twake"
         ],
         // Per-protocol capability matrix: answers "which protocols
         // support feature X" in one call instead of N agent-connect
@@ -26364,6 +26365,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
             "fourshared": ftp_client_gui_lib::agent_session::capabilities_for_protocol("fourshared"),
             "swift": ftp_client_gui_lib::agent_session::capabilities_for_protocol("swift"),
             "immich": ftp_client_gui_lib::agent_session::capabilities_for_protocol("immich"),
+            "twake": ftp_client_gui_lib::agent_session::capabilities_for_protocol("twake"),
             "github": ftp_client_gui_lib::agent_session::capabilities_for_protocol("github"),
             "gitlab": ftp_client_gui_lib::agent_session::capabilities_for_protocol("gitlab")
         },
@@ -27437,6 +27439,7 @@ fn profile_value_to_provider_config(
         "fourshared" => ProviderType::FourShared,
         "drime" => ProviderType::DrimeCloud,
         "immich" => ProviderType::Immich,
+        "twake" | "twakedrive" => ProviderType::Twake,
         "imagekit" | "image_kit" => ProviderType::ImageKit,
         "uploadcare" | "upload_care" => ProviderType::Uploadcare,
         "cloudinary" => ProviderType::Cloudinary,

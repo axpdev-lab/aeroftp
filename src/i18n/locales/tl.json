@@ -327,7 +327,14 @@
             "protonCliTitle": "Gumagamit ng opisyal na Proton Drive CLI",
             "protonCliBody": "I-install ang Proton Drive CLI mula sa proton.me/download/drive/cli, pagkatapos ay patakbuhin ang proton-drive auth login sa terminal at tapusin sa browser. Hindi kailanman nakikita ng AeroFTP ang iyong password; nananatili ang session sa secret store ng OS.",
             "protonUnofficial": "Isa itong third-party na app na hindi opisyal na sinusuportahan ng Proton.",
-            "protonConnectHint": "Ginagamit ng \"Kumonekta\" ang CLI na naka-sign in na sa makinang ito. Isang Proton account bawat user ng OS."
+            "protonConnectHint": "Ginagamit ng \"Kumonekta\" ang CLI na naka-sign in na sa makinang ito. Isang Proton account bawat user ng OS.",
+            "twakeInstance": "Address ng Twake",
+            "twakeInstanceHelp": "Ang sarili mong address, halimbawa yourname.twake.app. Puwede mo ring i-paste ang anumang address ng pahina ng Twake mula sa iyong browser.",
+            "twakeSignIn": "Mag-sign in gamit ang Twake",
+            "twakeSignInAgain": "Mag-sign in ulit",
+            "twakeSignedIn": "Naka-sign in",
+            "twakeWaitingBrowser": "Tapusin ang pag-sign in sa iyong browser...",
+            "twakeSignInHelp": "Binubuksan ng AeroFTP ang Twake sa iyong browser at humihiling lamang ng access sa iyong mga file. Kung nagpakita ng error ang Twake sa unang pagkakataon, mag-log in sa Twake sa browser at mag-sign in ulit. Puwede mong bawiin ang access anumang oras sa Mga Setting ng Twake, Mga Nakakonektang Device."
         },
         "browser": {
             "remote": "Remote",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Naghahain ang endpoint na ito ng S3 sa plain HTTP sa kabila ng isang network. Tanggapin ito para sa profile na ito: ang mga nilagdaang kredensyal at bawat file ay tumatawid sa network nang hindi naka-encrypt.",
             "discoverFilebase": "Filebase: S3-compatible na object storage (5 GB libre)",
             "protonDesc": "Kumokonekta sa pamamagitan ng Proton Drive CLI",
-            "protonTooltip": "Gumagamit ng Proton Drive CLI - i-install, mag-sign in sa browser, ang AeroFTP ang GUI"
+            "protonTooltip": "Gumagamit ng Proton Drive CLI - i-install, mag-sign in sa browser, ang AeroFTP ang GUI",
+            "twakeDesc": "Twake Drive (5 GB libre)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (dating Cozy Cloud), open-source na cloud mula France na may 5 GB libre",
+            "discoverTwake": "Open-source na Europeong cloud ng Linagora, dating Cozy Cloud (5 GB libre)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

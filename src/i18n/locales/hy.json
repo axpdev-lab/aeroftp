@@ -327,7 +327,14 @@
             "protonCliTitle": "Օգտագործում է պաշտոնական Proton Drive CLI",
             "protonCliBody": "Տեղադրեք Proton Drive CLI-ը proton.me/download/drive/cli-ից, ապա տերմինալում գործարկեք proton-drive auth login և ավարտեք դիտարկիչում։ AeroFTP-ը երբեք չի տեսնում ձեր գաղտնաբառը. նիստը մնում է OS-ի գաղտնիքների պահոցում։",
             "protonUnofficial": "Սա երրորդ կողմի հավելված է, որը Proton-ը պաշտոնապես չի աջակցում։",
-            "protonConnectHint": "\"Միանալ\" կոճակը օգտագործում է այս մեքենայում արդեն մուտք գործած CLI-ը։ Մեկ Proton հաշիվ OS օգտատիրոջ համար։"
+            "protonConnectHint": "\"Միանալ\" կոճակը օգտագործում է այս մեքենայում արդեն մուտք գործած CLI-ը։ Մեկ Proton հաշիվ OS օգտատիրոջ համար։",
+            "twakeInstance": "Twake հասցե",
+            "twakeInstanceHelp": "Ձեր սեփական հասցեն, օրինակ՝ yourname.twake.app: Կարող եք նաև տեղադրել Twake-ի ցանկացած էջի հասցե ձեր դիտարկիչից:",
+            "twakeSignIn": "Մուտք գործել Twake-ով",
+            "twakeSignInAgain": "Կրկին մուտք գործեք",
+            "twakeSignedIn": "Մուտք գործած է",
+            "twakeWaitingBrowser": "Ավարտեք մուտքը ձեր դիտարկիչում...",
+            "twakeSignInHelp": "AeroFTP-ը բացում է Twake-ը ձեր դիտարկիչում և հասանելիություն է խնդրում միայն ձեր ֆայլերին: Եթե Twake-ն առաջին անգամ սխալ ցույց տա, մուտք գործեք Twake դիտարկիչում և կրկին մուտք գործեք: Դուք կարող եք հասանելիությունը հետ կանչել ցանկացած պահի Twake-ի կարգավորումներում, Միացված սարքեր բաժնում:"
         },
         "browser": {
             "remote": "Հեռավոր",
@@ -1938,7 +1945,10 @@
             "s3AllowCleartextEndpoint": "Այս վերջնակետը S3-ը մատուցում է սովորական HTTP-ով՝ ցանցի միջով։ Ընդունեք այն այս պրոֆիլի համար. ստորագրված մուտքի տվյալները և յուրաքանչյուր ֆայլ ցանցով անցնում են չգաղտնագրված։",
             "discoverFilebase": "Filebase: S3-համատեղելի օբյեկտների պահոց (5 GB անվճար)",
             "protonDesc": "Միանում է Proton Drive CLI-ով",
-            "protonTooltip": "Օգտագործում է Proton Drive CLI - տեղադրեք, մուտք գործեք դիտարկիչում, AeroFTP-ը GUI-ն է"
+            "protonTooltip": "Օգտագործում է Proton Drive CLI - տեղադրեք, մուտք գործեք դիտարկիչում, AeroFTP-ը GUI-ն է",
+            "twakeDesc": "Twake Drive (5 ԳԲ անվճար)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (նախկինում Cozy Cloud), ֆրանսիական բաց կոդով ամպ՝ 5 ԳԲ անվճար տարածքով",
+            "discoverTwake": "Linagora-ի բաց կոդով եվրոպական ամպ, նախկինում Cozy Cloud (5 ԳԲ անվճար)"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",

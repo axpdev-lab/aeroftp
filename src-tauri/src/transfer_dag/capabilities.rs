@@ -195,6 +195,7 @@ impl TransferCapabilities {
             | ProviderType::Proton
             | ProviderType::Internxt
             | ProviderType::Immich
+            | ProviderType::Twake
             | ProviderType::ImageKit
             | ProviderType::Uploadcare
             | ProviderType::Cloudinary

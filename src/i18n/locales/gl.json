@@ -327,7 +327,14 @@
             "protonCliTitle": "Usa o CLI oficial de Proton Drive",
             "protonCliBody": "Instale o CLI de Proton Drive desde proton.me/download/drive/cli, execute proton-drive auth login nun terminal e remate no navegador. AeroFTP nunca ve o seu contrasinal; a sesión queda no almacén de segredos do sistema.",
             "protonUnofficial": "Esta é unha aplicación de terceiros non admitida oficialmente por Proton.",
-            "protonConnectHint": "\"Conectar\" usa o CLI xa iniciado nesta máquina. Unha conta Proton por usuario do sistema."
+            "protonConnectHint": "\"Conectar\" usa o CLI xa iniciado nesta máquina. Unha conta Proton por usuario do sistema.",
+            "twakeInstance": "Enderezo de Twake",
+            "twakeInstanceHelp": "O teu propio enderezo, por exemplo yourname.twake.app. Tamén podes pegar calquera enderezo de páxina de Twake desde o teu navegador.",
+            "twakeSignIn": "Iniciar sesión con Twake",
+            "twakeSignInAgain": "Iniciar sesión de novo",
+            "twakeSignedIn": "Sesión iniciada",
+            "twakeWaitingBrowser": "Remata de iniciar sesión no teu navegador...",
+            "twakeSignInHelp": "AeroFTP abre Twake no teu navegador e só pide acceso aos teus ficheiros. Se Twake amosa un erro a primeira vez, inicia sesión en Twake no navegador e téntao de novo. Podes revogar o acceso en calquera momento na Configuración de Twake, Dispositivos conectados."
         },
         "browser": {
             "remote": "Remoto",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Este punto de conexión serve S3 por HTTP sen cifrar a través dunha rede. Acéptao para este perfil: as credenciais asinadas e todos os ficheiros atravesan a rede sen cifrar.",
             "discoverFilebase": "Filebase: almacenamento de obxectos compatible con S3 (5 GB gratis)",
             "protonDesc": "Conéctase a través do CLI de Proton Drive",
-            "protonTooltip": "Usa o CLI de Proton Drive - instáleo, inicie sesión no navegador, AeroFTP é a GUI"
+            "protonTooltip": "Usa o CLI de Proton Drive - instáleo, inicie sesión no navegador, AeroFTP é a GUI",
+            "twakeDesc": "Twake Drive (5 GB gratis)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (antes Cozy Cloud), nube francesa de código aberto con 5 GB gratis",
+            "discoverTwake": "Nube europea de código aberto de Linagora, antes Cozy Cloud (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Atallos de teclado",

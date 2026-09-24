@@ -32,7 +32,7 @@ import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplatePara
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { Bucket } from './connectionMethodIcons';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
-import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, ProtonDriveLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
+import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, ProtonDriveLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, TwakeLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
 
 // Google Drive, Google Photos, Dropbox and OneDrive used to be redrawn here as
 // local copies. The 2026 mark refresh (#347, Ehud) updated the canonical ones in
@@ -354,6 +354,17 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         tooltip: t('protocol.koofrTooltip'),
     },
     {
+        type: 'twake',
+        name: 'Twake Drive',
+        icon: <TwakeLogo size={18} />,
+        description: t('protocol.twakeDesc'),
+        defaultPort: 443,
+        badge: 'OAuth',
+        color: 'text-sky-500',
+        isCloudStorage: true,
+        tooltip: t('protocol.twakeTooltip'),
+    },
+    {
         type: 'webdav',
         name: 'Felicloud',
         icon: <FeliCloudLogo size={18} />,
@@ -481,6 +492,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud: Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
     { type: 'webdav', name: 'TAB.DIGITAL', icon: <TabDigitalLogo size={18} />, description: 'TAB.DIGITAL (8 GB free, Nextcloud-based, EU)', defaultPort: 443, badge: 'API OCS', color: 'text-emerald-500', isCloudStorage: true, tooltip: 'TAB.DIGITAL: Nextcloud-as-a-service, 8GB free, regional subdomains (fie.nl, fie.de, ...)', providerId: 'tabdigital' },
     { type: 'immich', name: 'Immich', icon: <ImmichLogo size={18} />, description: 'Self-hosted photo management', defaultPort: 443, badge: 'API', color: 'text-indigo-500', isCloudStorage: true, tooltip: 'Immich: Self-hosted photo/video management, API key auth' },
+    { type: 'twake', name: 'Twake Drive', icon: <TwakeLogo size={18} />, description: 'Twake Workplace drive (5 GB free, EU)', defaultPort: 443, badge: 'OAuth', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Twake Drive (Linagora, formerly Cozy Cloud): sign in on your own instance, no app to register' },
     { type: 'imagekit', name: 'ImageKit', icon: <ImageKitLogo size={18} />, description: 'Media CDN + storage (20 GB free)', defaultPort: 443, badge: 'API', color: 'text-blue-500', isCloudStorage: true, tooltip: 'ImageKit: private key auth, filesystem-style media library' },
     { type: 'uploadcare', name: 'Uploadcare', icon: <UploadcareLogo size={18} />, description: 'EU media CDN (3 GB free)', defaultPort: 443, badge: 'EU', color: 'text-emerald-500', isCloudStorage: true, tooltip: 'Uploadcare: public + secret key, flat media library' },
     { type: 'cloudinary', name: 'Cloudinary', icon: <CloudinaryLogo size={18} />, description: 'Media CDN (25 credits/month free)', defaultPort: 443, badge: 'API', color: 'text-indigo-600', isCloudStorage: true, tooltip: 'Cloudinary: api_key + api_secret, REST + Upload API, dynamic folders' },
@@ -1700,6 +1712,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         gitlab: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
         swift: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
         immich: 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300',
+        twake: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
         imagekit: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         uploadcare: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
         cloudinary: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300',

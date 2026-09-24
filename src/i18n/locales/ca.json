@@ -327,7 +327,14 @@
             "protonCliTitle": "Utilitza el CLI oficial de Proton Drive",
             "protonCliBody": "Instal·leu el CLI de Proton Drive des de proton.me/download/drive/cli, executeu proton-drive auth login al terminal i acabeu al navegador. AeroFTP no veu mai la contrasenya; la sessió resta al magatzem de secrets del sistema.",
             "protonUnofficial": "Aquesta és una aplicació de tercers no admesa oficialment per Proton.",
-            "protonConnectHint": "\"Connecta\" usa el CLI ja iniciat en aquesta màquina. Un compte Proton per usuari del sistema."
+            "protonConnectHint": "\"Connecta\" usa el CLI ja iniciat en aquesta màquina. Un compte Proton per usuari del sistema.",
+            "twakeInstance": "Adreça de Twake",
+            "twakeInstanceHelp": "La teva pròpia adreça, per exemple yourname.twake.app. També pots enganxar qualsevol adreça d'una pàgina de Twake des del navegador.",
+            "twakeSignIn": "Inicia sessió amb Twake",
+            "twakeSignInAgain": "Torna a iniciar sessió",
+            "twakeSignedIn": "Sessió iniciada",
+            "twakeWaitingBrowser": "Acaba d'iniciar sessió al navegador...",
+            "twakeSignInHelp": "AeroFTP obre Twake al teu navegador i sol·licita accés només als teus fitxers. Si Twake mostra un error la primera vegada, inicia sessió a Twake al navegador i torna-ho a provar. Pots revocar l'accés en qualsevol moment a Configuració de Twake, Dispositius connectats."
         },
         "browser": {
             "remote": "Remot",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Aquest punt final serveix S3 per HTTP en text clar a través d'una xarxa. Accepta-ho per a aquest perfil: les credencials signades i tots els fitxers travessen la xarxa sense xifrar.",
             "discoverFilebase": "Filebase: emmagatzematge d'objectes compatible amb S3 (5 GB gratis)",
             "protonDesc": "Es connecta a través del CLI de Proton Drive",
-            "protonTooltip": "Utilitza el CLI de Proton Drive - instal·leu-lo, inicieu sessió al navegador, AeroFTP és la GUI"
+            "protonTooltip": "Utilitza el CLI de Proton Drive - instal·leu-lo, inicieu sessió al navegador, AeroFTP és la GUI",
+            "twakeDesc": "Twake Drive (5 GB gratis)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace (abans Cozy Cloud), núvol francès de codi obert amb 5 GB gratis",
+            "discoverTwake": "Núvol europeu de codi obert de Linagora, abans Cozy Cloud (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
