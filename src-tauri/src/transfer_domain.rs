@@ -48,6 +48,9 @@ pub enum TransferFailureKind {
     Auth,
     /// Hard storage / quota limit (never congestion).
     QuotaExceeded,
+    /// One file over the destination's per-file size limit (never congestion,
+    /// never retried; the other files are unaffected).
+    FileTooLarge,
     Unknown,
 }
 
@@ -146,6 +149,7 @@ pub fn transfer_failure_from_transfer_error(error: &TransferError) -> TransferFa
                 | TransferErrorKind::NotFound
                 | TransferErrorKind::PermissionDenied
                 | TransferErrorKind::QuotaExceeded
+                | TransferErrorKind::FileTooLarge
         );
     let mut failure =
         TransferFailure::new(kind, user_facing_transfer_failure_message(&kind), retryable);
@@ -176,6 +180,7 @@ fn transfer_error_kind_from_failure_kind(kind: TransferFailureKind) -> TransferE
         TransferFailureKind::Cancelled => TransferErrorKind::Cancelled,
         TransferFailureKind::Auth => TransferErrorKind::Auth,
         TransferFailureKind::QuotaExceeded => TransferErrorKind::QuotaExceeded,
+        TransferFailureKind::FileTooLarge => TransferErrorKind::FileTooLarge,
         TransferFailureKind::Unknown => TransferErrorKind::Unknown,
     }
 }
@@ -195,6 +200,7 @@ fn transfer_failure_kind_from_error_kind(kind: TransferErrorKind) -> TransferFai
         TransferErrorKind::Cancelled => TransferFailureKind::Cancelled,
         TransferErrorKind::Auth => TransferFailureKind::Auth,
         TransferErrorKind::QuotaExceeded => TransferFailureKind::QuotaExceeded,
+        TransferErrorKind::FileTooLarge => TransferFailureKind::FileTooLarge,
         TransferErrorKind::NotConnected => TransferFailureKind::ConnectionLost,
         TransferErrorKind::ResourceAcquire => TransferFailureKind::Unknown,
         TransferErrorKind::Unknown => TransferFailureKind::Unknown,
@@ -341,6 +347,7 @@ pub fn transfer_failure_kind_from_sync(kind: &crate::sync::SyncErrorKind) -> Tra
         crate::sync::SyncErrorKind::DiskError => TransferFailureKind::LocalIo,
         crate::sync::SyncErrorKind::Auth => TransferFailureKind::Auth,
         crate::sync::SyncErrorKind::QuotaExceeded => TransferFailureKind::QuotaExceeded,
+        crate::sync::SyncErrorKind::FileTooLarge => TransferFailureKind::FileTooLarge,
         _ => TransferFailureKind::Unknown,
     }
 }
@@ -361,6 +368,7 @@ pub fn user_facing_transfer_failure_message(kind: &TransferFailureKind) -> &'sta
         TransferFailureKind::Cancelled => "Transfer cancelled by user",
         TransferFailureKind::Auth => "Authentication failed during transfer",
         TransferFailureKind::QuotaExceeded => "Storage quota exceeded during transfer",
+        TransferFailureKind::FileTooLarge => "File is larger than the destination accepts",
         TransferFailureKind::Unknown => "Transfer failed",
     }
 }
@@ -468,6 +476,7 @@ mod tests {
             TransferFailureKind::NotFound,
             TransferFailureKind::PermissionDenied,
             TransferFailureKind::QuotaExceeded,
+            TransferFailureKind::FileTooLarge,
             TransferFailureKind::LocalIo,
             TransferFailureKind::RemoteIo,
             TransferFailureKind::Cancelled,
