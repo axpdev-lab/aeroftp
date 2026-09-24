@@ -61,6 +61,7 @@ const WEBDAV_PRESET_IDS = new Set<string>([
     'seafile',
     'cloudme',
     'drivehq',
+    'mailru-cloud',
     'jianguoyun',
     'filelu-webdav',
     'felicloud-webdav',

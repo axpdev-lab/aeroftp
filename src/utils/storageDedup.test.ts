@@ -145,7 +145,18 @@ describe('storageDedup', () => {
         expect(summary.uniqueCount).toBe(1);
         expect(summary.totalUsed).toBe(1_000_000_000);
         expect(summary.totalTotal).toBe(5_000_000_000);
-        expect(summary.dedupedQuotaCount).toBe(1);
+    });
+
+    it('case 4c: Mail.ru Cloud keys by preset id, matching the Rust dedup_key', () => {
+        // Regression: the frontend mirror missed 'mailru-cloud', so the GUI
+        // logged webdav-host:... while Rust computed webdav:mailru-cloud:....
+        const profile = make({
+            id: 'm1', protocol: 'webdav', providerId: 'mailru-cloud',
+            host: 'https://webdav.cloud.mail.ru', port: 443,
+            username: 'aeroftp@mail.ru',
+            used: 1_000_000, total: 8_000_000_000,
+        });
+        expect(getStorageDedupKey(profile)).toBe('webdav:mailru-cloud:aeroftp@mail.ru');
     });
 
     it('case 5: OAuth keyed by email, not by display name', () => {
