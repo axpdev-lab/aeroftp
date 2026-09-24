@@ -275,6 +275,38 @@ fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
     }
 }
 
+/// Region an explicit endpoint names, read back through the preset's
+/// `{region}` template (`s3.us-south.cloud-object-storage.appdomain.cloud`
+/// gives `us-south` for `ibm-cos`). `None` for a preset without such a
+/// template, a template with other placeholders, or a host the template does
+/// not produce (a virtual-hosted `bucket.` host, another provider). Mirrors
+/// `regionFromS3Endpoint` in `src/providers/registry.ts`.
+pub fn s3_region_from_endpoint(provider_id: &str, endpoint: &str) -> Option<String> {
+    fn without_scheme(value: &str) -> &str {
+        value
+            .strip_prefix("https://")
+            .or_else(|| value.strip_prefix("http://"))
+            .unwrap_or(value)
+    }
+    let template = without_scheme(s3_profile_endpoint_template(provider_id)?);
+    let (prefix, suffix) = template.split_once("{region}")?;
+    if prefix.contains('{') || suffix.contains('{') {
+        return None;
+    }
+    let host = without_scheme(endpoint.trim())
+        .split(['/', '?', '#'])
+        .next()?
+        .split(':')
+        .next()?
+        .to_ascii_lowercase();
+    let region = host.strip_prefix(prefix)?.strip_suffix(suffix)?;
+    (!region.is_empty()
+        && region
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+    .then(|| region.to_string())
+}
+
 /// Endpoint host segment for a Cloudflare R2 jurisdiction code.
 ///
 /// `eu` and `us` are the two jurisdictions R2 publishes; everything else,
@@ -323,20 +355,37 @@ pub fn apply_s3_profile_defaults(
     let provider_id = provider_id?;
     extra.insert(S3_PROVIDER_ID_META_KEY.to_string(), provider_id.to_string());
 
-    let region_from_profile = extra.contains_key("region");
-    if !region_from_profile {
+    // The explicit endpoint, if any: the stored option first, then a non-AWS
+    // host (see below). A region it names is the one to sign with: SigV4
+    // puts the region in the credential scope, and a regional endpoint
+    // (IBM COS, Wasabi, ...) expects its own, not the preset default.
+    let explicit_endpoint = extra
+        .get("endpoint")
+        .map(|endpoint| endpoint.trim().to_string())
+        .filter(|endpoint| !endpoint.is_empty())
+        .or_else(|| {
+            let host = host.trim();
+            (crate::bridge_shared::map_s3_provider_from_endpoint(host) != "amazon-s3")
+                .then(|| host.to_string())
+        });
+
+    let region_source = if extra.contains_key("region") {
+        "profile"
+    } else if let Some(region) = explicit_endpoint
+        .as_deref()
+        .and_then(|endpoint| s3_region_from_endpoint(provider_id, endpoint))
+    {
+        extra.insert("region".to_string(), region);
+        "endpoint"
+    } else {
         if let Some(default_region) = s3_profile_default_region(provider_id) {
             extra.insert("region".to_string(), default_region.to_string());
         }
-    }
+        "preset"
+    };
     extra.insert(
         S3_REGION_SOURCE_META_KEY.to_string(),
-        if region_from_profile {
-            "profile"
-        } else {
-            "preset"
-        }
-        .to_string(),
+        region_source.to_string(),
     );
 
     let path_style_from_profile = extra.contains_key("path_style");
@@ -622,6 +671,111 @@ mod tests {
             endpoint.as_deref(),
             Some("https://s3.eu-central-1.wasabisys.com")
         );
+    }
+
+    #[test]
+    fn s3_region_is_read_back_from_a_regional_endpoint() {
+        // Same case table as src/providers/s3ProfileLocation.test.ts.
+        for (preset, endpoint, region) in [
+            (
+                "ibm-cos",
+                "s3.us-south.cloud-object-storage.appdomain.cloud",
+                Some("us-south"),
+            ),
+            (
+                "ibm-cos",
+                "https://s3.eu-gb.cloud-object-storage.appdomain.cloud/bucket",
+                Some("eu-gb"),
+            ),
+            (
+                "ibm-cos",
+                "https://S3.JP-OSA.cloud-object-storage.appdomain.cloud:443",
+                Some("jp-osa"),
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-2.wasabisys.com",
+                Some("eu-central-2"),
+            ),
+            ("wasabi", "s3.wasabisys.com", None),
+            (
+                "mega-s4",
+                "s3.eu-central-2.s4.mega.io",
+                Some("eu-central-2"),
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-eu-central-1.aliyuncs.com",
+                Some("eu-central-1"),
+            ),
+            (
+                "tencent-cos",
+                "https://cos.eu-frankfurt.myqcloud.com",
+                Some("eu-frankfurt"),
+            ),
+            (
+                "digitalocean-spaces",
+                "https://fra1.digitaloceanspaces.com",
+                Some("fra1"),
+            ),
+            (
+                "digitalocean-spaces",
+                "https://bucket.fra1.digitaloceanspaces.com",
+                None,
+            ),
+            (
+                "cloudflare-r2",
+                "https://abc.r2.cloudflarestorage.com",
+                None,
+            ),
+            ("backblaze", "s3.eu-central-003.backblazeb2.com", None),
+        ] {
+            assert_eq!(
+                s3_region_from_endpoint(preset, endpoint).as_deref(),
+                region,
+                "{preset} {endpoint}"
+            );
+        }
+    }
+
+    #[test]
+    fn s3_signing_region_follows_an_explicit_endpoint_without_a_stored_region() {
+        // An imported IBM profile in us-south must not sign with the eu-de
+        // preset default (SigV4 credential scope, CodeRabbit on PR #923).
+        let mut extra = HashMap::new();
+        apply_s3_profile_defaults(
+            &mut extra,
+            Some("ibm-cos"),
+            "s3.us-south.cloud-object-storage.appdomain.cloud",
+        );
+        assert_eq!(extra.get("region").map(String::as_str), Some("us-south"));
+        assert_eq!(
+            extra.get(S3_REGION_SOURCE_META_KEY).map(String::as_str),
+            Some("endpoint")
+        );
+        // Stored endpoint option, same rule.
+        let mut extra = HashMap::new();
+        extra.insert(
+            "endpoint".to_string(),
+            "https://s3.eu-central-2.wasabisys.com".to_string(),
+        );
+        apply_s3_profile_defaults(&mut extra, Some("wasabi"), "");
+        assert_eq!(
+            extra.get("region").map(String::as_str),
+            Some("eu-central-2")
+        );
+        // A stored region always wins; an unreadable host keeps the default.
+        let mut extra = HashMap::new();
+        extra.insert("region".to_string(), "eu-gb".to_string());
+        apply_s3_profile_defaults(
+            &mut extra,
+            Some("ibm-cos"),
+            "s3.us-south.cloud-object-storage.appdomain.cloud",
+        );
+        assert_eq!(extra.get("region").map(String::as_str), Some("eu-gb"));
+        let mut extra = HashMap::new();
+        apply_s3_profile_defaults(&mut extra, Some("ibm-cos"), "cos.example.internal");
+        assert_eq!(extra.get("region").map(String::as_str), Some("eu-de"));
     }
 
     #[test]

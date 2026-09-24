@@ -12,7 +12,7 @@ describe('resolveProfileS3Location', () => {
         // Before: the template built s3.us-east-1.cloud-object-storage... (no
         // such region) for an IBM bucket imported with its us-south host.
         expect(resolveProfileS3Location('ibm-cos', {}, 's3.us-south.cloud-object-storage.appdomain.cloud'))
-            .toEqual({ endpoint: 's3.us-south.cloud-object-storage.appdomain.cloud', region: undefined, signingRegion: 'us-east-1' });
+            .toEqual({ endpoint: 's3.us-south.cloud-object-storage.appdomain.cloud', region: 'us-south', signingRegion: 'us-south' });
         expect(resolveProfileS3Location('wasabi', { region: 'eu-central-2' }, 's3.eu-central-2.wasabisys.com'))
             .toEqual({ endpoint: 's3.eu-central-2.wasabisys.com', region: 'eu-central-2', signingRegion: 'eu-central-2' });
     });
@@ -58,6 +58,37 @@ describe('resolveProfileS3Location signingRegion', () => {
         expect(resolveProfileS3Location('custom-s3', {}, 'minio.lab:9000').signingRegion).toBe('us-east-1');
         // The template region is also the signing region, never the fallback.
         expect(resolveProfileS3Location('ibm-cos', {}, '').signingRegion).toBe('eu-de');
+    });
+});
+
+describe('signing region read back from an explicit endpoint', () => {
+    // Same case table as s3_region_is_read_back_from_a_regional_endpoint in
+    // src-tauri/src/profile_loader.rs: the two sides must agree.
+    const cases: Array<[string, string, string | undefined]> = [
+        ['ibm-cos', 's3.us-south.cloud-object-storage.appdomain.cloud', 'us-south'],
+        ['ibm-cos', 'https://s3.eu-gb.cloud-object-storage.appdomain.cloud/bucket', 'eu-gb'],
+        ['ibm-cos', 'https://S3.JP-OSA.cloud-object-storage.appdomain.cloud:443', 'jp-osa'],
+        ['wasabi', 'https://s3.eu-central-2.wasabisys.com', 'eu-central-2'],
+        ['wasabi', 's3.wasabisys.com', undefined],
+        ['mega-s4', 's3.eu-central-2.s4.mega.io', 'eu-central-2'],
+        ['alibaba-oss', 'https://oss-eu-central-1.aliyuncs.com', 'eu-central-1'],
+        ['tencent-cos', 'https://cos.eu-frankfurt.myqcloud.com', 'eu-frankfurt'],
+        ['digitalocean-spaces', 'https://fra1.digitaloceanspaces.com', 'fra1'],
+        ['digitalocean-spaces', 'https://bucket.fra1.digitaloceanspaces.com', undefined],
+        ['cloudflare-r2', 'https://abc.r2.cloudflarestorage.com', undefined],
+        ['backblaze', 's3.eu-central-003.backblazeb2.com', undefined],
+    ];
+    it.each(cases)('%s %s -> %s', (preset, endpoint, region) => {
+        // Through both explicit forms: stored endpoint option and host.
+        expect(resolveProfileS3Location(preset, { endpoint }, '').region).toBe(region);
+        expect(resolveProfileS3Location(preset, {}, endpoint).region).toBe(region);
+    });
+
+    it('signs an IBM regional endpoint with its own region, not us-east-1', () => {
+        expect(resolveProfileS3Location('ibm-cos', {}, 's3.us-south.cloud-object-storage.appdomain.cloud').signingRegion)
+            .toBe('us-south');
+        expect(resolveProfileS3Location('ibm-cos', { region: 'eu-gb' }, 's3.us-south.cloud-object-storage.appdomain.cloud').signingRegion)
+            .toBe('eu-gb');
     });
 });
 

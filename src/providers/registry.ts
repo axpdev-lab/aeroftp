@@ -2421,6 +2421,26 @@ export const presetDefaultS3Region = (providerId?: string): string | undefined =
 };
 
 /**
+ * Region an explicit endpoint names, read back through the preset's
+ * `{region}` template (`s3.us-south.cloud-object-storage.appdomain.cloud`
+ * gives `us-south` for `ibm-cos`). Undefined for a preset without such a
+ * template, a template with other placeholders, or a host the template does not
+ * produce (a virtual-hosted `bucket.` host, another provider). Mirrors
+ * `s3_region_from_endpoint` in src-tauri/src/profile_loader.rs.
+ */
+const regionFromS3Endpoint = (providerId: string | undefined, endpoint: string): string | undefined => {
+    const template = providerId ? getProviderById(providerId)?.defaults?.endpointTemplate : undefined;
+    if (!template) return undefined;
+    const withoutScheme = (v: string) => v.replace(/^https?:\/\//i, '');
+    const [prefix, suffix, ...rest] = withoutScheme(template).split('{region}');
+    if (suffix === undefined || rest.length || prefix.includes('{') || suffix.includes('{')) return undefined;
+    const host = withoutScheme(endpoint.trim()).split(/[/?#]/)[0].split(':')[0].toLowerCase();
+    if (!host.startsWith(prefix) || !host.endsWith(suffix)) return undefined;
+    const region = host.slice(prefix.length, host.length - suffix.length);
+    return /^[a-z0-9-]+$/.test(region) ? region : undefined;
+};
+
+/**
  * Endpoint and region a saved S3 profile connects with: the stored endpoint
  * option, then an explicit host, then the preset (static endpoint, or template
  * expanded with the stored or default region). `region` carries the preset
@@ -2439,8 +2459,14 @@ export const resolveProfileS3Location = (
     const storedRegion = typeof options?.region === 'string' && options.region.trim() ? options.region.trim() : undefined;
     const storedEndpoint = typeof options?.endpoint === 'string' ? options.endpoint.trim() : '';
     const signing = (region?: string) => region || (providerId === 'filelu-s3' ? 'global' : 'us-east-1');
-    if (storedEndpoint) return { endpoint: storedEndpoint, region: storedRegion, signingRegion: signing(storedRegion) };
-    if (isExplicitS3Host(host)) return { endpoint: host!.trim(), region: storedRegion, signingRegion: signing(storedRegion) };
+    // An explicit endpoint without a stored region signs with the region the
+    // endpoint names (SigV4 credential scope), not a default.
+    const explicit = (endpoint: string) => {
+        const region = storedRegion || regionFromS3Endpoint(providerId, endpoint);
+        return { endpoint, region, signingRegion: signing(region) };
+    };
+    if (storedEndpoint) return explicit(storedEndpoint);
+    if (isExplicitS3Host(host)) return explicit(host!.trim());
     const region = storedRegion || presetDefaultS3Region(providerId);
     return { endpoint: resolveS3Endpoint(providerId, region, s3TemplateParams(options)), region, signingRegion: signing(region) };
 };
