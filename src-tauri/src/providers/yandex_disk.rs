@@ -221,7 +221,7 @@ fn validate_yd_url(url: &str) -> Result<(), ProviderError> {
     if !url.starts_with("https://") {
         return Err(ProviderError::ServerError(format!(
             "Unsafe URL scheme (expected https): {}",
-            &url[..url.len().min(40)]
+            &url[..url.floor_char_boundary(40)]
         )));
     }
     if let Some(host) = url
