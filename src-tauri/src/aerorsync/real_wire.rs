@@ -549,11 +549,14 @@ impl MuxHeader {
     }
 }
 
-/// Decode the 4-byte protocol version prefix. Accepts 30..=40: this is
-/// intentionally permissive, covering the current 31/32 range plus a
-/// small forward-compat envelope. Anything else is flagged, because an
-/// unexpected protocol version at offset 0 usually means we are reading
-/// the wrong channel.
+/// Decode the 4-byte protocol version prefix. Accepts 20..=40, rsync's own
+/// `MIN_PROTOCOL_VERSION` and `MAX_PROTOCOL_VERSION` (`rsync.h`): every
+/// value in that range is a real rsync, and whether this module speaks its
+/// protocol is the driver's gate to decide, as a refusal that falls back.
+/// Until 2026-09-25 the floor was 30, so rsync 2.6.x (protocols 27 to 29)
+/// came out as a corrupt frame, a hard error with no fallback. A value
+/// outside the range means the stream is not rsync talking (shell noise on
+/// the channel, the wrong channel), and is flagged here.
 pub fn decode_protocol_version(buf: &[u8]) -> Result<(u32, usize), RealWireError> {
     if buf.len() < PROTOCOL_VERSION_LEN {
         return Err(RealWireError::TruncatedBuffer {
@@ -565,11 +568,17 @@ pub fn decode_protocol_version(buf: &[u8]) -> Result<(u32, usize), RealWireError
     let mut arr = [0u8; PROTOCOL_VERSION_LEN];
     arr.copy_from_slice(&buf[..PROTOCOL_VERSION_LEN]);
     let version = u32::from_le_bytes(arr);
-    if !(30..=40).contains(&version) {
+    if !(RSYNC_MIN_PROTOCOL_VERSION..=RSYNC_MAX_PROTOCOL_VERSION).contains(&version) {
         return Err(RealWireError::InvalidProtocolVersion { value: version });
     }
     Ok((version, PROTOCOL_VERSION_LEN))
 }
+
+/// rsync's `MIN_PROTOCOL_VERSION` (`rsync.h`), the oldest protocol any rsync
+/// still speaks.
+pub const RSYNC_MIN_PROTOCOL_VERSION: u32 = 20;
+/// rsync's `MAX_PROTOCOL_VERSION` (`rsync.h`).
+pub const RSYNC_MAX_PROTOCOL_VERSION: u32 = 40;
 
 /// Encode the 4-byte LE protocol version.
 pub fn encode_protocol_version(version: u32) -> [u8; PROTOCOL_VERSION_LEN] {
@@ -669,6 +678,16 @@ impl ServerHello {
 /// Parse the protocol version and compat flags at the start of `buf`.
 pub fn decode_server_hello(buf: &[u8]) -> Result<ServerHello, RealWireError> {
     let (protocol_version, mut cursor) = decode_protocol_version(buf)?;
+    // Compat flags exist from protocol 30 on (`compat.c::setup_protocol`).
+    // An older peer sends none: waiting for them would read its checksum
+    // seed, or hang on a peer that sends nothing more before reading.
+    if protocol_version < 30 {
+        return Ok(ServerHello {
+            protocol_version,
+            compat_flags: 0,
+            consumed: cursor,
+        });
+    }
     // compat_flags is a rsync varint written by `compat.c`. Width depends
     // on which CF_* bits are set: values up to 0x7F take one byte,
     // larger ones take two or more.
@@ -4662,9 +4681,34 @@ mod tests {
 
     #[test]
     fn protocol_version_rejects_out_of_range() {
-        let bytes = encode_protocol_version(999);
-        let err = decode_protocol_version(&bytes).unwrap_err();
-        assert!(matches!(err, RealWireError::InvalidProtocolVersion { .. }));
+        for version in [999, 41, 19, 0] {
+            let bytes = encode_protocol_version(version);
+            let err = decode_protocol_version(&bytes).unwrap_err();
+            assert!(
+                matches!(err, RealWireError::InvalidProtocolVersion { .. }),
+                "{version}: {err:?}"
+            );
+        }
+    }
+
+    /// Every protocol a real rsync speaks decodes; refusing the ones this
+    /// module does not implement is the driver's gate, not a corrupt frame.
+    #[test]
+    fn protocol_version_accepts_every_rsync_protocol() {
+        for version in [20, 27, 29, 30, 31, 40] {
+            let (decoded, _) = decode_protocol_version(&encode_protocol_version(version))
+                .unwrap_or_else(|e| panic!("{version}: {e:?}"));
+            assert_eq!(decoded, version);
+        }
+    }
+
+    #[test]
+    fn a_server_hello_below_protocol_30_carries_no_compat_flags() {
+        let hello = decode_server_hello(&encode_protocol_version(29)).expect("hello");
+        assert_eq!(
+            (hello.protocol_version, hello.compat_flags, hello.consumed),
+            (29, 0, 4)
+        );
     }
 
     #[test]

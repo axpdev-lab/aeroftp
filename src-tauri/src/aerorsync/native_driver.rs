@@ -6003,6 +6003,32 @@ mod tests {
         argv.iter().any(|arg| arg == "--new-compress")
     }
 
+    /// rsync 2.6.x (protocols 27 to 29) is a sane server this module does
+    /// not speak: a refusal at the gate that falls back and is remembered,
+    /// never the corrupt-frame hard error it used to be.
+    #[tokio::test]
+    async fn protocols_27_and_29_are_refused_at_the_gate_and_remembered() {
+        for version in [29u32, 27] {
+            let endpoint = dialect_endpoint(&format!("rsync26-{version}.dialect.invalid"), "alice");
+            let mut hello = encode_protocol_version(version).to_vec();
+            hello.extend_from_slice(&7u32.to_le_bytes());
+            let (res, argvs) = negotiate_scripted(&endpoint, vec![peer_sends(hello)]).await;
+            let err = res.unwrap_err();
+            assert_eq!(
+                err.kind,
+                AerorsyncErrorKind::UnsupportedVersion,
+                "{version}: {err:?}"
+            );
+            assert_eq!(
+                crate::aerorsync::fallback_policy::classify_fallback(&err, false),
+                crate::aerorsync::fallback_policy::FallbackVerdict::AttemptClassicSftpFallback,
+                "{version}"
+            );
+            assert_eq!(argvs.len(), 1);
+            assert!(peer_dialect::is_refused(&endpoint), "{version}");
+        }
+    }
+
     #[test]
     fn peer_dialect_remembers_legacy_until_a_session_negotiates() {
         let endpoint = dialect_endpoint("remember.dialect.invalid", "alice");
