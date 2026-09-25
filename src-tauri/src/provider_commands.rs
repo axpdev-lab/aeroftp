@@ -12988,6 +12988,8 @@ async fn walk_compare_remote_serially(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut remote_files: HashMap<String, crate::sync::FileInfo> = HashMap::new();
     let mut skipped_links = Vec::new();
     let mut dirs_to_process = vec![remote_path.to_string()];
@@ -13065,7 +13067,8 @@ async fn walk_compare_remote_serially(
                 }
             };
 
-            if crate::sync::should_exclude(&relative_path, exclude_patterns) {
+            // The entry's own name is matched too: it may hold a `/`.
+            if excludes.is_excluded_entry(&relative_path, &entry.name) {
                 continue;
             }
 
@@ -13672,6 +13675,53 @@ mod tests {
                 .any(|path| *path == "parent" || path.starts_with("parent/link")),
             "the compare offers nothing at or above the protected file: {offered:?}"
         );
+    }
+
+    /// The serial walk (an armed crypt overlay) matches the entry's own name
+    /// like the shared walk does: a name holding a `/` (Google Drive) is not
+    /// its path's last segment.
+    #[tokio::test]
+    async fn compare_serial_walk_matches_an_entry_name_holding_a_slash() {
+        // Nested, so the name is not the whole relative path (`d/x/y`), which
+        // the path alone would already match.
+        let tree = crate::sync_core::scan::tests::WalkTreeProvider::new(
+            HashMap::from([
+                (
+                    "/root".to_string(),
+                    vec![crate::providers::RemoteEntry::directory(
+                        "d".into(),
+                        "/root/d".into(),
+                    )],
+                ),
+                (
+                    "/root/d".to_string(),
+                    vec![
+                        crate::providers::RemoteEntry::file("x/y".into(), "/root/d/x/y".into(), 1),
+                        crate::providers::RemoteEntry::file(
+                            "keep".into(),
+                            "/root/d/keep".into(),
+                            1,
+                        ),
+                    ],
+                ),
+            ]),
+            false,
+        );
+        let provider: Mutex<Option<Box<dyn StorageProvider>>> = Mutex::new(Some(Box::new(tree)));
+        let (rows, _) = walk_compare_remote_serially(
+            &provider,
+            "/root",
+            &["x?y".to_string()],
+            usize::MAX,
+            &AtomicBool::new(false),
+            &|| true,
+            &mut |_, _, _| {},
+        )
+        .await
+        .expect("the walk completes");
+        let mut paths: Vec<_> = rows.keys().cloned().collect();
+        paths.sort();
+        assert_eq!(paths, vec!["d", "d/keep"]);
     }
 
     /// A cancel that lands while the serial walk lists its last directory must
