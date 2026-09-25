@@ -651,7 +651,7 @@ impl SwiftProvider {
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
                 "Container list failed: HTTP {status}: {}",
-                &body[..body.len().min(200)]
+                &body[..body.floor_char_boundary(200)]
             )));
         }
 
@@ -662,13 +662,13 @@ impl SwiftProvider {
         debug!(
             "Container list (HTTP {}): {}",
             status,
-            &text[..text.len().min(300)]
+            &text[..text.floor_char_boundary(300)]
         );
 
         let containers: Vec<ContainerEntry> = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ServerError(format!(
                 "Invalid container JSON: {e}: body: {}",
-                &text[..text.len().min(200)]
+                &text[..text.floor_char_boundary(200)]
             ))
         })?;
 

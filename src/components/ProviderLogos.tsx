@@ -557,6 +557,17 @@ export const CloudinaryLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img src="/icons/providers/cloudinary.png" alt="Cloudinary" width={size} height={size} style={{ objectFit: 'contain' }} />
 );
 
+// IBM Cloud Object Storage: 48x48 PNG (the source SVG has no viewBox and
+// renders clipped when scaled down in an <img>).
+export const IbmCosLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img src="/icons/providers/ibm-cloud.png" alt="IBM Cloud" width={size} height={size} style={{ objectFit: 'contain' }} />
+);
+
+// Mail.ru Cloud: 48x48 PNG (same reason as IBM COS above).
+export const MailruCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img src="/icons/providers/mailru-cloud.png" alt="Mail.ru Cloud" width={size} height={size} style={{ objectFit: 'contain' }} />
+);
+
 /** Map of provider ID → logo component */
 export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'amazon-s3': AwsLogo,
@@ -632,4 +643,6 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'imagekit': ImageKitLogo,
     'uploadcare': UploadcareLogo,
     'cloudinary': CloudinaryLogo,
+    'ibm-cos': IbmCosLogo,
+    'mailru-cloud': MailruCloudLogo,
 };

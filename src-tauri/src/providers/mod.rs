@@ -316,6 +316,21 @@ pub struct TransferOptimizationHints {
     pub delta_sync_eligible: bool,
     pub delta_sync_active: bool,
     pub delta_sync_note: Option<String>,
+    /// Largest single file the provider accepts, in bytes, when its own
+    /// documentation states one. `None` means no documented limit, never
+    /// "unlimited" and never a guess: an invented cap would tell the user a
+    /// file cannot be uploaded when it can (#347).
+    pub max_file_size: Option<u64>,
+    /// Longest file name the provider accepts, in UTF-8 bytes, when documented.
+    pub max_name_bytes: Option<u32>,
+    /// Longest file name the provider accepts, in characters, when documented.
+    pub max_name_chars: Option<u32>,
+    /// Longest whole path (or object key) the provider accepts, in UTF-8
+    /// bytes, when the documentation states the limit for the path rather
+    /// than for one name.
+    pub max_path_bytes: Option<u32>,
+    /// The same, in characters.
+    pub max_path_chars: Option<u32>,
 }
 
 impl Default for TransferOptimizationHints {
@@ -335,7 +350,165 @@ impl Default for TransferOptimizationHints {
             delta_sync_eligible: false,
             delta_sync_active: false,
             delta_sync_note: None,
+            max_file_size: None,
+            max_name_bytes: None,
+            max_name_chars: None,
+            max_path_bytes: None,
+            max_path_chars: None,
         }
+    }
+}
+
+/// Single-file and file-name limits a provider documents itself (#347).
+///
+/// The Compare tab warns about a file that exceeds them before a sync, so a
+/// value here must make that warning TRUE for every user of the provider. The
+/// rules that follow from it, applied to the official pages cited below
+/// (read 2026-09-24):
+///
+/// - Only the provider's own documentation counts. No value = no warning.
+/// - A plan-dependent limit uses the highest plan: a file above it cannot fit
+///   on any plan, whatever the user pays for.
+/// - When two official pages disagree, the larger value wins.
+/// - "GB" and "TB" are read as GiB and TiB, the larger reading.
+/// - A limit stated for the whole path or object key goes in the path fields,
+///   checked against the destination path, not against the file name.
+/// - Limits an operator can change (OpenStack Swift, self-hosted GitLab) and
+///   plans with a "custom" ceiling are left out.
+///
+/// S3 is not here: the AWS limits hold only for AWS, so the S3 provider sets
+/// them itself when its endpoint is AWS.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DocumentedFileLimits {
+    pub max_file_size: Option<u64>,
+    pub max_name_bytes: Option<u32>,
+    pub max_name_chars: Option<u32>,
+    pub max_path_bytes: Option<u32>,
+    pub max_path_chars: Option<u32>,
+}
+
+const GIB: u64 = 1 << 30;
+const TIB: u64 = 1 << 40;
+
+pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
+    let size = |bytes: u64| DocumentedFileLimits {
+        max_file_size: Some(bytes),
+        ..Default::default()
+    };
+    match provider {
+        // "Maximum file size: 5,120 GB"
+        // https://developers.google.com/workspace/drive/api/reference/rest/v3/files/create
+        ProviderType::GoogleDrive => size(5120 * GIB),
+        // API: photos 200 MB, videos 20 GB; "The file name, including the file
+        // extension, shouldn't be more than 255 characters."
+        // https://developers.google.com/photos/library/guides/upload-media
+        // https://developers.google.com/photos/library/reference/rest/v1/mediaItems/batchCreate
+        ProviderType::GooglePhotos => DocumentedFileLimits {
+            max_file_size: Some(20 * GIB),
+            max_name_chars: Some(255),
+            ..Default::default()
+        },
+        // Help center: 2 TB (2,199,019,061,248 bytes) per file; the API spec
+        // says 350 GB per upload session. The larger one, by the rule above.
+        // https://help.dropbox.com/sync/upload-limitations
+        ProviderType::Dropbox => size(2_199_019_061_248),
+        // "250 GB - File upload limit"; "The entire decoded file path,
+        // including the file name, can't exceed 400 characters."
+        // https://learn.microsoft.com/en-us/office365/servicedescriptions/sharepoint-online-service-description/sharepoint-online-limits
+        // https://support.microsoft.com/en-us/onedrive/what-are-file-path-length-limits
+        ProviderType::OneDrive => DocumentedFileLimits {
+            max_file_size: Some(250 * GIB),
+            max_path_chars: Some(400),
+            ..Default::default()
+        },
+        // Highest plan "Enterprise Advanced: 500 GB"; "Box only supports file
+        // or folder names that are 255 characters or less."
+        // https://support.box.com/hc/en-us/articles/360043697314
+        // https://support.box.com/hc/en-us/articles/360044196773
+        ProviderType::Box => DocumentedFileLimits {
+            max_file_size: Some(500 * GIB),
+            max_name_chars: Some(255),
+            ..Default::default()
+        },
+        // No size limit beyond free storage; "All filenames must be between 1
+        // and 255 characters". https://proton.me/support/drive-filenames
+        ProviderType::Proton => DocumentedFileLimits {
+            max_name_chars: Some(255),
+            ..Default::default()
+        },
+        // Free 2 GB, Premium "up to 100 GB each".
+        // https://www.4shared.com/web/helpCenter/ffqSEuqpUce
+        ProviderType::FourShared => size(100 * GIB),
+        // Highest plan "Business Plan: ... a single file of up to 250 GB".
+        // https://help.zoho.com/portal/en/kb/workdrive/manage-files-and-folders/articles/upload-large-files-in-chunks
+        ProviderType::ZohoWorkdrive => size(250 * GIB),
+        // Highest plan "Ultimate: 100GB per file".
+        // https://help.internxt.com/en/articles/6534031
+        ProviderType::Internxt => size(100 * GIB),
+        // "1000 GB per file sent via the desktop app, the web app, and the API"
+        // https://www.infomaniak.com/en/support/faq/2387/manage-kdrive-storage
+        ProviderType::KDrive => size(1000 * GIB),
+        // No size limit; "The maximum file name length is 255 characters,
+        // and the total path length cannot exceed 1023 characters."
+        // https://koofr.eu/help/koofr_files/what-is-the-max-file-name-length-on-koofr/
+        ProviderType::Koofr => DocumentedFileLimits {
+            max_name_chars: Some(255),
+            max_path_chars: Some(1023),
+            ..Default::default()
+        },
+        // "With any Yandex 360 plan: 50 GB."
+        // https://yandex.com/support/disk/uploading.html
+        ProviderType::YandexDisk => size(50 * GIB),
+        // "Maximum size of a block blob | 50,000 x 4,000 MiB"; a blob name
+        // "cannot be more than 1,024 characters long".
+        // https://learn.microsoft.com/en-us/azure/storage/blobs/scalability-targets
+        // https://learn.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-containers--blobs--and-metadata
+        ProviderType::Azure => DocumentedFileLimits {
+            max_file_size: Some(50_000 * 4_000 * (1 << 20)),
+            max_path_chars: Some(1024),
+            ..Default::default()
+        },
+        // "Large files can range in size from 5 MB to 10 TB."; "Names should be
+        // a UTF-8 string up to 1024 bytes".
+        // https://www.backblaze.com/docs/cloud-storage-large-files
+        // https://www.backblaze.com/docs/cloud-storage-files
+        ProviderType::Backblaze => DocumentedFileLimits {
+            max_file_size: Some(10 * TIB),
+            max_path_bytes: Some(1024),
+            ..Default::default()
+        },
+        // Size is plan-dependent up to "Custom"; public_id "Can be up to 255
+        // characters". https://cloudinary.com/documentation/image_upload_api_reference
+        ProviderType::Cloudinary => DocumentedFileLimits {
+            max_name_chars: Some(255),
+            ..Default::default()
+        },
+        _ => DocumentedFileLimits::default(),
+    }
+}
+
+/// AWS S3: "Maximum object size | 48.8 TiB", which is 10,000 parts of 5 GiB,
+/// 50,000 GiB exactly (the upload page rounds it to "50 TB"); an object key
+/// has "a maximum length of 1,024 bytes", prefix included.
+/// https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
+/// https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html
+pub const AWS_S3_FILE_LIMITS: DocumentedFileLimits = DocumentedFileLimits {
+    max_file_size: Some(50_000 * GIB),
+    max_name_bytes: None,
+    max_name_chars: None,
+    max_path_bytes: Some(1024),
+    max_path_chars: None,
+};
+
+impl TransferOptimizationHints {
+    /// Fill the limits the provider left empty from `limits`.
+    pub fn with_documented_limits(mut self, limits: DocumentedFileLimits) -> Self {
+        self.max_file_size = self.max_file_size.or(limits.max_file_size);
+        self.max_name_bytes = self.max_name_bytes.or(limits.max_name_bytes);
+        self.max_name_chars = self.max_name_chars.or(limits.max_name_chars);
+        self.max_path_bytes = self.max_path_bytes.or(limits.max_path_bytes);
+        self.max_path_chars = self.max_path_chars.or(limits.max_path_chars);
+        self
     }
 }
 
@@ -1854,5 +2027,65 @@ mod tests {
     #[test]
     fn sanitize_api_error_empty_body_falls_back() {
         assert_eq!(sanitize_api_error(""), "unknown error");
+    }
+}
+
+#[cfg(test)]
+mod documented_file_limits_tests {
+    use super::*;
+
+    /// No official number, no value: these must never produce a warning.
+    #[test]
+    fn providers_without_a_documented_limit_have_none() {
+        for provider in [
+            ProviderType::Ftp,
+            ProviderType::Sftp,
+            ProviderType::WebDav,
+            ProviderType::S3,
+            ProviderType::Swift,
+            ProviderType::Mega,
+            ProviderType::Filen,
+            ProviderType::Jottacloud,
+            ProviderType::PCloud,
+            ProviderType::OpenDrive,
+            ProviderType::GitLab,
+            ProviderType::Immich,
+        ] {
+            assert_eq!(
+                documented_file_limits(provider),
+                DocumentedFileLimits::default(),
+                "{provider:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_documented_limit_is_the_highest_plan_and_the_larger_reading() {
+        // Zoho WorkDrive: Starter 10 GB, Team 50 GB, Business 250 GB.
+        assert_eq!(
+            documented_file_limits(ProviderType::ZohoWorkdrive).max_file_size,
+            Some(250 * GIB)
+        );
+        // Dropbox: 2 TB in the help center against 350 GB in the API spec.
+        assert_eq!(
+            documented_file_limits(ProviderType::Dropbox).max_file_size,
+            Some(2_199_019_061_248)
+        );
+        assert_eq!(
+            documented_file_limits(ProviderType::Box).max_name_chars,
+            Some(255)
+        );
+    }
+
+    /// What the provider set itself (S3 on AWS) is never replaced.
+    #[test]
+    fn provider_values_win_over_the_table() {
+        let hints = TransferOptimizationHints {
+            max_file_size: Some(7),
+            ..Default::default()
+        }
+        .with_documented_limits(documented_file_limits(ProviderType::Box));
+        assert_eq!(hints.max_file_size, Some(7));
+        assert_eq!(hints.max_name_chars, Some(255));
     }
 }

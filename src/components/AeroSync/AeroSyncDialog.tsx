@@ -24,6 +24,8 @@ import { RollbackDialog } from '../Sync/RollbackDialog';
 import { TabStateStoreContext, createTabStateStore } from './tabStateStore';
 import { buildAeroSyncTabStatePatch, type ImportedSyncSettings } from '../../utils/syncTemplateApply';
 import { aeroSyncTabsFor, effectiveAeroSyncTab, type AeroSyncDialogProps, type AeroSyncTab } from './types';
+import type { TransferOptimizationHints } from '../../types';
+import { limitsFromHints, type ProviderFileLimits } from '../../utils/providerFileLimits';
 
 export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     isOpen,
@@ -88,6 +90,21 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         if (isOpen) setActiveTab(initialTab);
     }, [isOpen, initialTab]);
 
+
+    // #347: the remote's documented file limits, for the Compare warning.
+    const [remoteLimits, setRemoteLimits] = React.useState<ProviderFileLimits | null>(null);
+    const hasRemote = context.pairKind === 'local-remote' || context.pairKind === 'remote-local';
+    React.useEffect(() => {
+        if (!isOpen || !hasRemote || !context.protocol) {
+            setRemoteLimits(null);
+            return;
+        }
+        let cancelled = false;
+        invoke<TransferOptimizationHints>('get_transfer_optimization_hints', { providerType: context.protocol })
+            .then((hints) => { if (!cancelled) setRemoteLimits(limitsFromHints(hints)); })
+            .catch(() => { if (!cancelled) setRemoteLimits(null); });
+        return () => { cancelled = true; };
+    }, [isOpen, hasRemote, context.protocol]);
 
     if (!isOpen) return null;
 
@@ -258,6 +275,8 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             canMirrorRightToLeft={canMirrorAny}
                             onApplyMirrorLeftToRight={onApplyMirrorLeftToRight}
                             onApplyMirrorRightToLeft={onApplyMirrorRightToLeft}
+                            remoteLimits={remoteLimits}
+                            remoteBasePath={context.initialDestination || ''}
                         />
                     )}
                     {activeTab === 'plan' && (

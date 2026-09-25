@@ -148,6 +148,42 @@ describe('storageDedup', () => {
         expect(summary.dedupedQuotaCount).toBe(1);
     });
 
+    it('case 4c: Mail.ru Cloud keys by preset id, matching the Rust dedup_key', () => {
+        // Regression: the frontend mirror missed 'mailru-cloud', so the GUI
+        // logged webdav-host:... while Rust computed webdav:mailru-cloud:....
+        const profile = make({
+            id: 'm1', protocol: 'webdav', providerId: 'mailru-cloud',
+            host: 'https://webdav.cloud.mail.ru', port: 443,
+            username: 'aeroftp@mail.ru',
+            used: 1_000_000, total: 8_000_000_000,
+        });
+        expect(getStorageDedupKey(profile)).toBe('webdav:mailru-cloud:aeroftp@mail.ru');
+    });
+
+    it('case 4d: IBM COS same access key in two regions counts one drive', () => {
+        // The frontend S3 mirror missed 'ibm-cos', so same-key profiles in
+        // different regions keyed by host (two drives) while Rust keyed by
+        // provider id (one drive). Parity with is_s3_preset.
+        const profiles = [
+            make({
+                id: 'i1', protocol: 's3', providerId: 'ibm-cos',
+                host: 's3.eu-de.cloud-object-storage.appdomain.cloud', port: 443,
+                username: 'IBMACCESSKEY12345',
+                used: 1_000_000_000, total: 5_000_000_000,
+            }),
+            make({
+                id: 'i2', protocol: 's3', providerId: 'ibm-cos',
+                host: 's3.us-south.cloud-object-storage.appdomain.cloud', port: 443,
+                username: 'IBMACCESSKEY12345',
+                used: 2_000_000_000, total: 5_000_000_000,
+            }),
+        ];
+        const summary = aggregateByDedupKey(profiles);
+        expect(summary.uniqueCount).toBe(1);
+        expect(getStorageDedupKey(profiles[0]).startsWith('s3:ibm-cos:')).toBe(true);
+        expect(getStorageDedupKey(profiles[0])).toBe(getStorageDedupKey(profiles[1]));
+    });
+
     it('case 5: OAuth keyed by email, not by display name', () => {
         const profiles = [
             make({

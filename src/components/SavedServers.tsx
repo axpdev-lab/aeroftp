@@ -94,6 +94,10 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
     }
     if (proto === 'webdav') {
         if (host.includes('drivehq')) return 'drivehq';
+        // Domain-boundary match (same pattern as the filebase S3 rule below):
+        // exact mail.ru or *.mail.ru subdomains; rejects lookalikes like gmail.ru.
+        const davHost = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
+        if (davHost === 'mail.ru' || davHost.endsWith('.mail.ru')) return 'mailru-cloud';
         if (host.includes('nextcloud')) return 'nextcloud';
         if (host.includes('koofr')) return 'koofr';
         if (host.includes('jianguoyun')) return 'jianguoyun';
