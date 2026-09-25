@@ -7719,15 +7719,45 @@ fn sync_doctor_planned_upload_sizes(
         .collect()
 }
 
+/// Every exclude a sync-family command honours: its own `--exclude`, the
+/// global `--exclude-global`, the patterns of `--exclude-from`, and the EC
+/// sidecars when error correction is on. `sync` used to accept the two global
+/// flags and ignore them, so `sync --delete --exclude-from list.txt` protected
+/// nothing; and a `--exclude-from` file that cannot be read is a usage error
+/// (exit 5), never an empty list.
 fn sync_effective_exclude_patterns(
+    cli: &Cli,
     exclude: &[String],
     error_correction_enabled: bool,
-) -> Vec<String> {
+    format: OutputFormat,
+) -> Result<Vec<String>, i32> {
     let mut patterns = exclude.to_vec();
+    patterns.extend(cli.exclude_global.iter().cloned());
+    if let Some(path) = &cli.exclude_from {
+        match load_patterns_from_file(path) {
+            Ok(from_file) => patterns.extend(from_file),
+            Err(e) => {
+                print_error(format, &e, 5);
+                return Err(5);
+            }
+        }
+    }
     if error_correction_enabled {
         ftp_client_gui_lib::sync::ensure_error_correction_exclude_patterns(&mut patterns);
     }
-    patterns
+    Ok(patterns)
+}
+
+type SyncExcludes = ftp_client_gui_lib::sync_exclude::ExcludeMatcher;
+
+/// Compile a sync `--exclude` list with the matcher the GUI shares
+/// (`sync_exclude`). An invalid pattern is a usage error (exit 5): it used to be
+/// dropped in silence, which left the files it was meant to protect in scope.
+fn compile_sync_excludes(patterns: &[String], format: OutputFormat) -> Result<SyncExcludes, i32> {
+    SyncExcludes::new(patterns).map_err(|e| {
+        print_error(format, &e.to_string(), 5);
+        5
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -9108,15 +9138,20 @@ fn scan_local_tree_with_progress(
     ftp_client_gui_lib::sync_core::ScanCompleteness,
     ftp_client_gui_lib::sync_core::ScanBoundaries,
 ) {
-    let matchers: Vec<globset::GlobMatcher> = opts
-        .exclude_patterns
-        .iter()
-        .filter_map(|pat| {
-            globset::Glob::new(pat)
-                .ok()
-                .map(|glob| glob.compile_matcher())
-        })
-        .collect();
+    let excludes = opts.excludes_or_everything();
+    if excludes.excludes_everything() {
+        // The same fail-closed answer as `scan_local_tree_checked`: an invalid
+        // list sees nothing and says so, so no orphan delete trusts the walk.
+        let completeness = ftp_client_gui_lib::sync_core::ScanCompleteness {
+            truncated: true,
+            ..Default::default()
+        };
+        let boundaries = ftp_client_gui_lib::sync_core::ScanBoundaries {
+            unbounded: Some("invalid_exclude"),
+            ..Default::default()
+        };
+        return (Vec::new(), completeness, boundaries);
+    }
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(MAX_SCAN_DEPTH);
     let mut last_update = Instant::now()
@@ -9129,6 +9164,18 @@ fn scan_local_tree_with_progress(
     for result in walkdir::WalkDir::new(root)
         .follow_links(false)
         .max_depth(depth)
+        .into_iter()
+        // An excluded directory is not descended into: its subtree is excluded.
+        .filter_entry(|e| {
+            e.depth() == 0
+                || !excludes.is_excluded(
+                    &e.path()
+                        .strip_prefix(root)
+                        .unwrap_or(e.path())
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                )
+        })
     {
         let walk_entry = match result {
             Ok(entry) => entry,
@@ -9196,10 +9243,7 @@ fn scan_local_tree_with_progress(
         if opts.skip_filenames.iter().any(|name| name == &fname) {
             continue;
         }
-        if matchers
-            .iter()
-            .any(|matcher| matcher.is_match(&relative) || matcher.is_match(&fname))
-        {
+        if excludes.is_excluded(&relative) {
             continue;
         }
         if let Some(ref set) = opts.files_from {
@@ -9407,6 +9451,7 @@ fn load_sync_plan_from_reconcile(
     direction: &str,
     delete: bool,
     listed: Option<&std::collections::HashSet<String>>,
+    excludes: &SyncExcludes,
 ) -> Result<ReconcileSyncPlan, ReconcilePlanError> {
     let raw = std::fs::read_to_string(path).map_err(|err| {
         ReconcilePlanError::Invalid(format!("Cannot read reconcile file '{}': {}", path, err))
@@ -9467,6 +9512,19 @@ fn load_sync_plan_from_reconcile(
             &mut groups.missing_local,
         ] {
             group.retain(|entry| listed.contains(&entry.path));
+        }
+    }
+    // `--exclude` bounds it the same way. A stored plan was made with its own
+    // list (or none), so a path excluded now must not be copied or deleted
+    // because an older plan named it.
+    if !excludes.is_empty() {
+        for group in [
+            &mut groups.matches,
+            &mut groups.differ,
+            &mut groups.missing_remote,
+            &mut groups.missing_local,
+        ] {
+            group.retain(|entry| !excludes.is_excluded(&entry.path));
         }
     }
 
@@ -10237,6 +10295,7 @@ async fn download_transfer_task(
     url: &str,
     remote_path: String,
     local_path: String,
+    remote_modified: Option<String>,
     cli: &Cli,
     format: OutputFormat,
     aggregate: Option<Arc<AtomicU64>>,
@@ -10271,8 +10330,10 @@ async fn download_transfer_task(
         let _ = std::fs::remove_file(&local_path);
     }
 
-    // Account transferred bytes
+    // Account transferred bytes, and keep the remote mtime on the local copy
+    // (same as the shared executor and the GUI).
     if result.is_ok() {
+        ftp_client_gui_lib::preserve_remote_mtime(&local_path, remote_modified.as_deref());
         let bytes = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
         session_transfer_add(bytes);
     }
@@ -10433,6 +10494,7 @@ impl ftp_client_gui_lib::transfer_event_sink::TransferEventSink for CliBatchSink
 async fn run_shared_provider_download_batch(
     base: Box<dyn StorageProvider>,
     files: &[(String, String, u64)],
+    remote_mtimes: &HashMap<String, String>,
     cli: &Cli,
     overall_pb: Option<ProgressBar>,
     cancelled: Arc<AtomicBool>,
@@ -10565,7 +10627,11 @@ async fn run_shared_provider_download_batch(
                 remote_path: remote_path.clone(),
                 local_path: local_path.clone(),
                 size: *size,
-                modified: None,
+                // The executor stamps this on the local copy after the
+                // download (`preserve_remote_mtime`), as the GUI does. Left
+                // `None`, every CLI download carried the time of download and
+                // a later `sync --direction both` took it for a local edit.
+                modified: remote_mtimes.get(remote_path).cloned(),
             }
         })
         .collect();
@@ -31928,8 +31994,13 @@ async fn cmd_get(
 
     let start = Instant::now();
 
-    // Get file size for progress bar
-    let total_size = provider.size(remote).await.unwrap_or(0);
+    // Size for the progress bar, and the remote mtime to keep on the local
+    // copy (the GUI does the same through `preserve_remote_mtime`). `size`
+    // stays the fallback for a backend whose stat fails where size works.
+    let (total_size, remote_modified) = match provider.stat(remote).await {
+        Ok(entry) => (entry.size, entry.modified),
+        Err(_) => (provider.size(remote).await.unwrap_or(0), None),
+    };
 
     // ── Segmented parallel download (pget) ──
     let segments = segments.clamp(1, 16);
@@ -31943,7 +32014,7 @@ async fn cmd_get(
         let planned = pget_planned_segments(total_size, segments, pget_cutoff);
         if hints.supports_range_download && planned >= 2 {
             let _ = provider.disconnect().await;
-            return pget_segmented_download(
+            let code = pget_segmented_download(
                 url,
                 remote,
                 local_path,
@@ -31954,6 +32025,10 @@ async fn cmd_get(
                 cancelled.clone(),
             )
             .await;
+            if code == 0 {
+                ftp_client_gui_lib::preserve_remote_mtime(local_path, remote_modified.as_deref());
+            }
+            return code;
         } else if !quiet {
             let reason = if !hints.supports_range_download {
                 "provider does not support range downloads".to_string()
@@ -32091,6 +32166,7 @@ async fn cmd_get(
 
     match dl_result {
         Ok(()) => {
+            ftp_client_gui_lib::preserve_remote_mtime(local_path, remote_modified.as_deref());
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
             session_transfer_add(file_size);
@@ -32717,6 +32793,7 @@ async fn cmd_get_recursive(
     let scan_max_depth = cli.max_depth.unwrap_or(MAX_SCAN_DEPTH as u32) as usize;
     let mut queue: Vec<(String, usize)> = vec![(remote_dir.to_string(), 0)];
     let mut files: Vec<(String, String, u64)> = Vec::new();
+    let mut remote_mtimes: HashMap<String, String> = HashMap::new();
     let mut dirs: Vec<String> = Vec::new();
     // G108: directories the scan could not read. Collected here because the
     // run's error list is built further down, and folded into it below.
@@ -32774,6 +32851,9 @@ async fn cmd_get_recursive(
                                     eprintln!("Skipping (immutable): {}", relative);
                                 }
                                 continue;
+                            }
+                            if let Some(modified) = e.modified {
+                                remote_mtimes.insert(e.path.clone(), modified);
                             }
                             files.push((
                                 e.path,
@@ -32860,6 +32940,7 @@ async fn cmd_get_recursive(
     match run_shared_provider_download_batch(
         provider,
         &files,
+        &remote_mtimes,
         cli,
         overall_pb.clone(),
         cancelled.clone(),
@@ -32886,6 +32967,7 @@ async fn cmd_get_recursive(
                     let cancelled = cancelled.clone();
                     let aggregate = aggregate.clone();
                     let overall_pb = overall_pb.clone();
+                    let remote_modified = remote_mtimes.get(&remote_path).cloned();
                     async move {
                         if cancelled.load(Ordering::Relaxed) {
                             return Err("Cancelled by user".to_string());
@@ -32897,6 +32979,7 @@ async fn cmd_get_recursive(
                             url,
                             remote_path.clone(),
                             local_path,
+                            remote_modified,
                             cli,
                             format,
                             Some(aggregate),
@@ -33071,12 +33154,16 @@ async fn cmd_get_glob(
     // semantics: an unsafe name becomes a reported error, never a
     // download.
     let mut files: Vec<(String, String, u64)> = Vec::new();
+    let mut remote_mtimes: HashMap<String, String> = HashMap::new();
     for entry in &matched {
         if validate_relative_path(&entry.name).is_none() {
             errors.push(format!("{}: unsafe path (traversal rejected)", entry.name));
             continue;
         }
         let local_path = format!("{}/{}", local_base, entry.name);
+        if let Some(modified) = &entry.modified {
+            remote_mtimes.insert(entry.path.clone(), modified.clone());
+        }
         files.push((entry.path.clone(), local_path, entry.size));
     }
 
@@ -33117,6 +33204,7 @@ async fn cmd_get_glob(
     match run_shared_provider_download_batch(
         provider,
         &files,
+        &remote_mtimes,
         cli,
         overall_pb.clone(),
         cancelled.clone(),
@@ -33137,6 +33225,7 @@ async fn cmd_get_glob(
                     let cancelled = cancelled.clone();
                     let aggregate = aggregate.clone();
                     let overall_pb = overall_pb.clone();
+                    let remote_modified = remote_mtimes.get(&remote_path).cloned();
                     async move {
                         if cancelled.load(Ordering::Relaxed) {
                             return Err("Cancelled by user".to_string());
@@ -33148,6 +33237,7 @@ async fn cmd_get_glob(
                             url,
                             remote_path.clone(),
                             local_path,
+                            remote_modified,
                             cli,
                             format,
                             Some(aggregate),
@@ -42348,7 +42438,7 @@ async fn cmd_speed_compare(
                 for e in report.results.iter() {
                     if let Some(r) = e.result.as_ref() {
                         let url_disp = if e.url.len() > 48 {
-                            format!("{}...", &e.url[..45])
+                            format!("{}...", &e.url[..e.url.floor_char_boundary(45)])
                         } else {
                             e.url.clone()
                         };
@@ -45765,7 +45855,10 @@ async fn cmd_cleanup(
     let mut skipped_recent = 0u32;
     let mut skipped_no_mtime = 0u32;
     for (p, s, mtime) in &orphans {
-        match mtime.as_deref().and_then(parse_mtime_secs) {
+        match mtime
+            .as_deref()
+            .and_then(ftp_client_gui_lib::parse_remote_mtime)
+        {
             Some(ts) if ts <= threshold => eligible.push((p, *s)),
             Some(_) => skipped_recent += 1,
             None => skipped_no_mtime += 1,
@@ -46689,32 +46782,6 @@ fn save_bisync_snapshot(
     }
 }
 
-/// Parse an mtime string to a comparable timestamp (seconds since epoch).
-fn parse_mtime_secs(s: &str) -> Option<i64> {
-    // Try ISO 8601 with timezone
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-        return Some(dt.timestamp());
-    }
-    // Try ISO 8601 without timezone (assume UTC)
-    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
-        return Some(dt.and_utc().timestamp());
-    }
-    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-        return Some(dt.and_utc().timestamp());
-    }
-    // FTP MLSD timestamps: "2024-01-15 10:30:00Z": strip trailing Z and parse
-    let stripped = s.strip_suffix('Z').or_else(|| s.strip_suffix("UTC"));
-    if let Some(bare) = stripped {
-        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(bare, "%Y-%m-%d %H:%M:%S") {
-            return Some(dt.and_utc().timestamp());
-        }
-        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(bare, "%Y-%m-%dT%H:%M:%S") {
-            return Some(dt.and_utc().timestamp());
-        }
-    }
-    None
-}
-
 /// Compare two mtime strings (ISO 8601). Returns Ordering.
 /// Parses timestamps to handle timezone differences (e.g., "T10:30:00" vs "T10:30:00Z").
 /// Resolve a default mtime value from the --default-time flag.
@@ -46763,8 +46830,8 @@ const SYNC_MTIME_TOLERANCE_SECS: i64 = 2;
 /// the exact comparison the planner always used.
 fn destination_is_current(src_mtime: Option<&str>, dst_mtime: Option<&str>) -> bool {
     match (
-        src_mtime.and_then(parse_mtime_secs),
-        dst_mtime.and_then(parse_mtime_secs),
+        src_mtime.and_then(ftp_client_gui_lib::parse_remote_mtime),
+        dst_mtime.and_then(ftp_client_gui_lib::parse_remote_mtime),
     ) {
         (Some(src), Some(dst)) => dst + SYNC_MTIME_TOLERANCE_SECS >= src,
         _ => compare_mtime(src_mtime, dst_mtime) == std::cmp::Ordering::Equal,
@@ -46774,7 +46841,10 @@ fn destination_is_current(src_mtime: Option<&str>, dst_mtime: Option<&str>) -> b
 fn compare_mtime(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
     match (a, b) {
         (Some(a), Some(b)) => {
-            match (parse_mtime_secs(a), parse_mtime_secs(b)) {
+            match (
+                ftp_client_gui_lib::parse_remote_mtime(a),
+                ftp_client_gui_lib::parse_remote_mtime(b),
+            ) {
                 (Some(ta), Some(tb)) => ta.cmp(&tb),
                 _ => a.cmp(b), // fallback to lexicographic
             }
@@ -47005,15 +47075,25 @@ async fn cmd_sync_local_to_local(
         }
     }
 
-    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect();
+    let effective_exclude = match sync_effective_exclude_patterns(cli, exclude, false, format) {
+        Ok(p) => p,
+        Err(code) => return code.into(),
+    };
+    let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
+        Ok(m) => m,
+        Err(code) => return code.into(),
+    };
 
     let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(100);
+    // An excluded directory is not entered: nothing under it is counted as
+    // skipped, and no walk error inside it counts as a failure.
     let walker = walkdir::WalkDir::new(&local_root)
         .follow_links(false)
-        .max_depth(scan_depth);
+        .max_depth(scan_depth)
+        .into_iter()
+        .filter_entry(|e| {
+            e.depth() == 0 || !exclude_matchers.is_excluded(&sync_relative_path(e.path(), local))
+        });
 
     let mut stats = SyncCycleStats::default();
     let mut total_bytes_on_wire: u64 = 0;
@@ -47061,13 +47141,8 @@ async fn cmd_sync_local_to_local(
         if rel_str.is_empty() {
             continue;
         }
-        let fname = entry.file_name().to_string_lossy();
-        let fname_ref: &str = fname.as_ref();
         let rel_str_ref: &str = rel_str.as_ref();
-        if exclude_matchers
-            .iter()
-            .any(|m| m.is_match(rel_str_ref) || m.is_match(fname_ref))
-        {
+        if exclude_matchers.is_excluded(rel_str_ref) {
             stats.skipped += 1;
             continue;
         }
@@ -47250,7 +47325,7 @@ fn scan_sync_s3_listing(
     remote: &str,
     max_depth: Option<usize>,
     max_entries: usize,
-    exclude_matchers: &[globset::GlobMatcher],
+    exclude_matchers: &SyncExcludes,
     files_from: Option<&std::collections::HashSet<String>>,
 ) -> SyncScan {
     let (entries, listing_truncated) = listing;
@@ -47269,6 +47344,11 @@ fn scan_sync_s3_listing(
             .trim_start_matches('/')
             .to_string();
         if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+            continue;
+        }
+        // Excluded first: a key under an excluded directory is no boundary of
+        // the scan, however deep it sits (the walk never enters that directory).
+        if exclude_matchers.is_excluded_entry(&relative, &e.name) {
             continue;
         }
         if let Some(max_d) = max_depth {
@@ -47299,12 +47379,6 @@ fn scan_sync_s3_listing(
         if e.is_dir {
             continue;
         }
-        if exclude_matchers
-            .iter()
-            .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-        {
-            continue;
-        }
         if files_from.is_some_and(|set| !set.contains(relative.as_str())) {
             continue;
         }
@@ -47323,7 +47397,7 @@ fn scan_sync_s3_listing(
 /// by the list, whatever produced it.
 struct SyncLocalFilter<'a> {
     max_depth: usize,
-    exclude: &'a [globset::GlobMatcher],
+    exclude: &'a SyncExcludes,
 }
 
 impl SyncLocalFilter<'_> {
@@ -47331,12 +47405,8 @@ impl SyncLocalFilter<'_> {
     /// slash) takes part in the sync. A walk bounded at `max_depth` yields
     /// files at most that many components deep; the depth check repeats that
     /// bound for paths that do not come from a walk.
-    fn keeps(&self, relative: &str, file_name: &str) -> bool {
-        relative.split('/').count() <= self.max_depth
-            && !self
-                .exclude
-                .iter()
-                .any(|m| m.is_match(relative) || m.is_match(file_name))
+    fn keeps(&self, relative: &str) -> bool {
+        relative.split('/').count() <= self.max_depth && !self.exclude.is_excluded(relative)
     }
 }
 
@@ -47361,9 +47431,20 @@ fn sync_local_mtime(meta: &std::fs::Metadata) -> Option<String> {
 /// unseen, not absent.
 fn scan_sync_local(local: &str, filter: &SyncLocalFilter) -> SyncScan {
     let mut scan = SyncScan::default();
+    // An excluded directory is not entered: its subtree is excluded, so an
+    // unreadable folder or a dangling link inside it must not count against
+    // the completeness of the scan (a --delete would refuse over it) nor
+    // against the entry cap.
     let walker = walkdir::WalkDir::new(local)
         .follow_links(false)
-        .max_depth(filter.max_depth);
+        .max_depth(filter.max_depth)
+        .into_iter()
+        .filter_entry(|e| {
+            e.depth() == 0
+                || !filter
+                    .exclude
+                    .is_excluded(&sync_relative_path(e.path(), local))
+        });
     for entry in walker {
         if scan.entries.len() + scan.boundaries.links.len() + scan.boundaries.unseen.len()
             >= 500_000
@@ -47455,7 +47536,7 @@ fn scan_sync_local(local: &str, filter: &SyncLocalFilter) -> SyncScan {
         if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
             continue;
         }
-        if !filter.keeps(&relative, &entry.file_name().to_string_lossy()) {
+        if !filter.keeps(&relative) {
             continue;
         }
 
@@ -47693,11 +47774,15 @@ async fn cmd_sync(
     }
 
     // Pre-compile exclude matchers (avoids O(n*m) recompilation)
-    let effective_exclude = sync_effective_exclude_patterns(exclude, error_correction_enabled);
-    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect();
+    let effective_exclude =
+        match sync_effective_exclude_patterns(cli, exclude, error_correction_enabled, format) {
+            Ok(p) => p,
+            Err(code) => return code.into(),
+        };
+    let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
+        Ok(m) => m,
+        Err(code) => return code.into(),
+    };
 
     let files_from_set = load_files_from(cli);
     let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(100);
@@ -47719,6 +47804,7 @@ async fn cmd_sync(
                 direction,
                 delete,
                 files_from_set.as_ref(),
+                &exclude_matchers,
             ) {
                 Ok(plan) => {
                     let local_scan = SyncScan {
@@ -49127,6 +49213,15 @@ async fn cmd_sync(
         .iter()
         .map(|(_, local_path, remote_path, size)| (remote_path.clone(), local_path.clone(), *size))
         .collect();
+    let remote_mtimes: HashMap<String, String> = download_jobs
+        .iter()
+        .filter_map(|(relative, _, remote_path, _)| {
+            remote_map
+                .get(relative.as_str())
+                .and_then(|(_, modified)| *modified)
+                .map(|m| (remote_path.clone(), m.to_string()))
+        })
+        .collect();
 
     let use_legacy_download = if download_files.is_empty() {
         false
@@ -49135,6 +49230,7 @@ async fn cmd_sync(
             Ok((base, _)) => match run_shared_provider_download_batch(
                 base,
                 &download_files,
+                &remote_mtimes,
                 cli,
                 overall_pb.clone(),
                 cancelled.clone(),
@@ -49166,6 +49262,7 @@ async fn cmd_sync(
                 let cancelled = cancelled.clone();
                 let aggregate = aggregate.clone();
                 let overall_pb = overall_pb.clone();
+                let remote_modified = remote_mtimes.get(&remote_path).cloned();
                 async move {
                     if cancelled.load(Ordering::Relaxed) {
                         return Err(format!("download {}: cancelled", path));
@@ -49177,6 +49274,7 @@ async fn cmd_sync(
                         url,
                         remote_path,
                         local_path,
+                        remote_modified,
                         cli,
                         format,
                         Some(aggregate),
@@ -50533,17 +50631,12 @@ mod fuse_mount {
     }
 
     fn parse_mtime_to_system(mtime: &Option<String>) -> SystemTime {
+        // The shared parser: the local copy of it read only two naive shapes,
+        // so a WebDAV (RFC 2822) or RFC 3339 mtime showed as "now" in the mount.
         mtime
             .as_deref()
-            .and_then(|s| {
-                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                    .ok()
-                    .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok())
-            })
-            .map(|dt| {
-                let ts = dt.and_utc().timestamp();
-                UNIX_EPOCH + Duration::from_secs(ts.max(0) as u64)
-            })
+            .and_then(ftp_client_gui_lib::parse_remote_mtime)
+            .map(|ts| UNIX_EPOCH + Duration::from_secs(ts.max(0) as u64))
             .unwrap_or(SystemTime::now())
     }
 
@@ -56657,11 +56750,7 @@ fn incremental_local_scan(
             continue;
         }
         // The same depth bound and excludes as the walk
-        let fname = changed
-            .file_name()
-            .map(|n| n.to_string_lossy())
-            .unwrap_or_default();
-        if !filter.keeps(&relative, &fname) {
+        if !filter.keeps(&relative) {
             result.remove(&relative);
             continue;
         }
@@ -57006,11 +57095,15 @@ async fn cmd_sync_watch(
 
     // Pre-compile exclude matchers for incremental scan
     let effective_exclude =
-        sync_effective_exclude_patterns(exclude, error_correction_pct.is_some());
-    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect();
+        match sync_effective_exclude_patterns(cli, exclude, error_correction_pct.is_some(), format)
+        {
+            Ok(p) => p,
+            Err(code) => return code,
+        };
+    let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
+        Ok(m) => m,
+        Err(code) => return code,
+    };
 
     // Incremental scan is only safe when:
     // - direction is not download-only (local scan is irrelevant)
@@ -57188,7 +57281,7 @@ async fn cmd_sync_doctor(
 async fn scan_doctor_remote_tree(
     provider: &mut dyn StorageProvider,
     remote: &str,
-    exclude_matchers: &[globset::GlobMatcher],
+    exclude_matchers: &SyncExcludes,
     max_depth: usize,
     max_entries: usize,
 ) -> (
@@ -57213,24 +57306,22 @@ async fn scan_doctor_remote_tree(
             }
         };
         for e in listed {
+            let relative = e
+                .path
+                .strip_prefix(remote)
+                .unwrap_or(&e.path)
+                .trim_start_matches('/')
+                .to_string();
+            // An excluded directory is not walked, as the sync scan prunes it.
+            if !relative.is_empty() && exclude_matchers.is_excluded_entry(&relative, &e.name) {
+                continue;
+            }
             if e.is_dir {
                 if e.is_walkable_dir() {
                     queue.push((e.path.clone(), depth + 1));
                 }
             } else {
-                let relative = e
-                    .path
-                    .strip_prefix(remote)
-                    .unwrap_or(&e.path)
-                    .trim_start_matches('/')
-                    .to_string();
                 if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                    continue;
-                }
-                if exclude_matchers
-                    .iter()
-                    .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                {
                     continue;
                 }
                 if entries_found.len() >= max_entries {
@@ -57310,11 +57401,12 @@ async fn sync_doctor_report(
     }
 
     let error_correction_enabled = error_correction_pct.is_some();
-    let effective_exclude = sync_effective_exclude_patterns(exclude, error_correction_enabled);
-    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect();
+    let effective_exclude =
+        sync_effective_exclude_patterns(cli, exclude, error_correction_enabled, format)?;
+    let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
+        Ok(m) => m,
+        Err(code) => return Err(code),
+    };
 
     // The walk `sync` itself runs, so the report counts what it could not
     // read (a directory it cannot open, a file it cannot stat, the entry cap)
@@ -58592,8 +58684,14 @@ async fn check_report(
     // They are reported with the verdict, and a gap that has no name is refused
     // below instead of being answered.
     let (locals, local_scan, local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
-    let (remotes, remote_health, remote_boundaries, returned) =
-        scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &None, None).await;
+    let (remotes, remote_health, remote_boundaries, returned) = scan_remote_tree_with_progress(
+        provider,
+        remote_path,
+        &ftp_client_gui_lib::crypt_compare::remote_scan_options(&scan_opts, crypt_keys.is_some()),
+        &None,
+        None,
+    )
+    .await;
     let mut remotes = remotes;
     provider = returned;
     if let Some((side, reason)) = scan_gap_with_no_name(&local_boundaries, &remote_boundaries) {
@@ -58602,9 +58700,17 @@ async fn check_report(
         return Err(4);
     }
     if let Some(keys) = &crypt_keys {
+        // The scan read the list on ciphertext names; it is read again on
+        // the plaintext ones.
+        let scan_excludes = scan_opts.excludes_or_everything();
         let raw_len = remotes.len();
-        remotes = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(remotes, keys);
-        if keys.wrong_key_suspected(raw_len, remotes.len()) {
+        let normalized = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(
+            remotes,
+            keys,
+            &scan_excludes,
+        );
+        remotes = normalized.entries;
+        if keys.wrong_key_suspected(raw_len, normalized.decrypted) {
             print_error(
                 format,
                 "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote.",
@@ -59240,14 +59346,17 @@ async fn cmd_reconcile(
         return 5;
     }
 
-    // Merge per-command excludes with global `--exclude-global` and any
-    // patterns loaded from `--exclude-from` file.
-    let mut all_exclude = exclude.to_vec();
-    all_exclude.extend(cli.exclude_global.clone());
-    if let Some(ref path) = cli.exclude_from {
-        if let Ok(patterns) = load_patterns_from_file(path) {
-            all_exclude.extend(patterns);
+    // Per-command excludes, `--exclude-global` and `--exclude-from`, the same
+    // list `sync` reads; an unreadable `--exclude-from` is an error.
+    let all_exclude = match sync_effective_exclude_patterns(cli, exclude, false, format) {
+        Ok(p) => p,
+        Err(code) => {
+            let _ = provider.disconnect().await;
+            return code;
         }
+    };
+    if let Err(code) = compile_sync_excludes(&all_exclude, format) {
+        return code;
     }
 
     // Unlock the profile's crypt overlay (if any) before scanning so the remote
@@ -59286,17 +59395,30 @@ async fn cmd_reconcile(
     }
 
     let remote_spinner = maybe_create_scan_spinner(format, cli, "Scanning remote...");
-    let (mut remotes, remote_health, remote_boundaries, returned) =
-        scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &remote_spinner, None)
-            .await;
+    let (mut remotes, remote_health, remote_boundaries, returned) = scan_remote_tree_with_progress(
+        provider,
+        remote_path,
+        &ftp_client_gui_lib::crypt_compare::remote_scan_options(&scan_opts, crypt_keys.is_some()),
+        &remote_spinner,
+        None,
+    )
+    .await;
     provider = returned;
     if let Some(pb) = remote_spinner {
         pb.finish_and_clear();
     }
     if let Some(keys) = &crypt_keys {
+        // The scan read the list on ciphertext names; it is read again on
+        // the plaintext ones.
+        let scan_excludes = scan_opts.excludes_or_everything();
         let raw_len = remotes.len();
-        remotes = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(remotes, keys);
-        if keys.wrong_key_suspected(raw_len, remotes.len()) {
+        let normalized = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(
+            remotes,
+            keys,
+            &scan_excludes,
+        );
+        remotes = normalized.entries;
+        if keys.wrong_key_suspected(raw_len, normalized.decrypted) {
             print_error(
                 format,
                 "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote.",
@@ -68708,7 +68830,14 @@ mod tests {
                 .into_iter()
                 .map(|name| RemoteEntry::file(name.to_string(), format!("/root/{name}"), 1))
                 .collect();
-            let scan = scan_sync_s3_listing((entries, provider_cut), "/root", None, cap, &[], None);
+            let scan = scan_sync_s3_listing(
+                (entries, provider_cut),
+                "/root",
+                None,
+                cap,
+                &SyncExcludes::default(),
+                None,
+            );
             assert!(scan.completeness.truncated);
             assert_eq!(scan.boundaries.unbounded, Some("entry_cap"));
             let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
@@ -68726,7 +68855,7 @@ mod tests {
     }
 
     fn assert_s3_sync_filtered_tail_does_not_refuse(
-        excludes: &[globset::GlobMatcher],
+        excludes: &SyncExcludes,
         files_from: Option<&std::collections::HashSet<String>>,
     ) {
         let entries = ["keep.txt", "ignored.tmp"]
@@ -68755,14 +68884,14 @@ mod tests {
 
     #[test]
     fn s3_sync_boundaries_ignore_excluded_tail_at_full_cap() {
-        let excludes = [globset::Glob::new("*.tmp").unwrap().compile_matcher()];
+        let excludes = SyncExcludes::new(&["*.tmp"]).unwrap();
         assert_s3_sync_filtered_tail_does_not_refuse(&excludes, None);
     }
 
     #[test]
     fn s3_sync_boundaries_ignore_unlisted_tail_at_full_cap() {
         let listed = std::collections::HashSet::from(["keep.txt".to_string()]);
-        assert_s3_sync_filtered_tail_does_not_refuse(&[], Some(&listed));
+        assert_s3_sync_filtered_tail_does_not_refuse(&SyncExcludes::default(), Some(&listed));
     }
 
     #[test]
@@ -68774,7 +68903,14 @@ mod tests {
             RemoteEntry::file("two.txt".into(), "/root/deep/two.txt".into(), 3),
         ];
         // A full retained-entry budget must still let depth cuts name their boundary.
-        let scan = scan_sync_s3_listing((entries, false), "/root", Some(1), 1, &[], None);
+        let scan = scan_sync_s3_listing(
+            (entries, false),
+            "/root",
+            Some(1),
+            1,
+            &SyncExcludes::default(),
+            None,
+        );
         assert_eq!(scan.entries.len(), 1);
         assert_eq!(
             scan.boundaries.unseen.len(),
@@ -68797,6 +68933,23 @@ mod tests {
         assert!(!bound.covers("visible.txt"));
     }
 
+    /// An excluded directory deeper than `--max-depth` is no boundary: the
+    /// flat listing used to check the depth first and refused the run (exit 4)
+    /// over keys the walk would never have entered.
+    #[test]
+    fn s3_sync_an_excluded_directory_past_the_depth_limit_is_no_boundary() {
+        let entries = vec![
+            RemoteEntry::file("a.txt".into(), "/root/a.txt".into(), 1),
+            RemoteEntry::directory("node_modules".into(), "/root/web/node_modules".into()),
+            RemoteEntry::file("i.js".into(), "/root/web/node_modules/x/i.js".into(), 1),
+        ];
+        let excludes = SyncExcludes::new(&["node_modules"]).unwrap();
+        let scan = scan_sync_s3_listing((entries, false), "/root", Some(2), 10, &excludes, None);
+        assert_eq!(scan.entries, vec![("a.txt".to_string(), 1, None)]);
+        assert!(scan.completeness.is_complete(), "{:?}", scan.boundaries);
+        assert_eq!(scan.boundaries, Default::default());
+    }
+
     #[test]
     fn s3_sync_boundaries_report_a_root_depth_cut() {
         let scan = scan_sync_s3_listing(
@@ -68807,7 +68960,7 @@ mod tests {
             "/root",
             Some(0),
             10,
-            &[],
+            &SyncExcludes::default(),
             None,
         );
         assert!(scan.entries.is_empty());
@@ -68820,7 +68973,7 @@ mod tests {
             .into_iter()
             .map(|name| RemoteEntry::file(name.to_string(), format!("/root/{name}"), 1))
             .collect();
-        let excludes = [globset::Glob::new("*.tmp").unwrap().compile_matcher()];
+        let excludes = SyncExcludes::new(&["*.tmp"]).unwrap();
         let listed = std::collections::HashSet::from(["keep.txt".to_string()]);
         let scan = scan_sync_s3_listing(
             (entries, false),
@@ -73093,37 +73246,52 @@ mod tests {
         assert!(!e);
     }
 
-    // ── BUG-4: parse_mtime_secs with FTP Z suffix ──────────────────────
+    // ── BUG-4: sync mtime parsing (shared parse_remote_mtime) with FTP Z suffix ──────────────────────
 
     #[test]
-    fn test_parse_mtime_secs_ftp_z_suffix() {
+    fn test_sync_mtime_ftp_z_suffix() {
         // FTP MLSD format: "2024-01-15 10:30:00Z"
-        let ftp_ts = parse_mtime_secs("2024-01-15 10:30:00Z");
-        let local_ts = parse_mtime_secs("2024-01-15T10:30:00");
+        let ftp_ts = ftp_client_gui_lib::parse_remote_mtime("2024-01-15 10:30:00Z");
+        let local_ts = ftp_client_gui_lib::parse_remote_mtime("2024-01-15T10:30:00");
         assert!(ftp_ts.is_some(), "FTP timestamp with Z suffix should parse");
         assert!(local_ts.is_some(), "Local ISO timestamp should parse");
         assert_eq!(ftp_ts, local_ts, "Same moment should produce same epoch");
     }
 
     #[test]
-    fn test_parse_mtime_secs_utc_suffix() {
-        let ts = parse_mtime_secs("2024-06-01 08:00:00UTC");
+    fn test_sync_mtime_utc_suffix() {
+        let ts = ftp_client_gui_lib::parse_remote_mtime("2024-06-01 08:00:00UTC");
         assert!(ts.is_some(), "UTC suffix should parse");
-        assert_eq!(ts, parse_mtime_secs("2024-06-01T08:00:00"));
+        assert_eq!(
+            ts,
+            ftp_client_gui_lib::parse_remote_mtime("2024-06-01T08:00:00")
+        );
     }
 
     #[test]
-    fn test_parse_mtime_secs_plain_formats() {
-        assert!(parse_mtime_secs("2024-01-15T10:30:00").is_some());
-        assert!(parse_mtime_secs("2024-01-15 10:30:00").is_some());
-        assert!(parse_mtime_secs("2024-01-15T10:30:00+00:00").is_some());
+    fn test_sync_mtime_plain_formats() {
+        assert!(ftp_client_gui_lib::parse_remote_mtime("2024-01-15T10:30:00").is_some());
+        assert!(ftp_client_gui_lib::parse_remote_mtime("2024-01-15 10:30:00").is_some());
+        assert!(ftp_client_gui_lib::parse_remote_mtime("2024-01-15T10:30:00+00:00").is_some());
     }
 
     #[test]
-    fn test_parse_mtime_secs_invalid() {
-        assert!(parse_mtime_secs("not-a-date").is_none());
-        assert!(parse_mtime_secs("?").is_none());
-        assert!(parse_mtime_secs("").is_none());
+    fn test_sync_mtime_webdav_rfc2822_matches_its_iso_twin() {
+        // WebDAV getlastmodified is RFC 2822. The sync's own parser did not
+        // read it, so after a download with a preserved mtime a bidirectional
+        // sync still planned the file as changed on every run.
+        assert_eq!(
+            ftp_client_gui_lib::parse_remote_mtime("Thu, 24 Sep 2026 19:51:29 GMT"),
+            ftp_client_gui_lib::parse_remote_mtime("2026-09-24T19:51:29Z"),
+        );
+        assert!(ftp_client_gui_lib::parse_remote_mtime("Thu, 24 Sep 2026 19:51:29 GMT").is_some());
+    }
+
+    #[test]
+    fn test_sync_mtime_invalid() {
+        assert!(ftp_client_gui_lib::parse_remote_mtime("not-a-date").is_none());
+        assert!(ftp_client_gui_lib::parse_remote_mtime("?").is_none());
+        assert!(ftp_client_gui_lib::parse_remote_mtime("").is_none());
     }
 
     #[test]
@@ -73184,8 +73352,14 @@ mod tests {
         )
         .unwrap();
 
-        let plan =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", true, None).unwrap();
+        let plan = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "upload",
+            true,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap();
 
         assert_eq!(plan.skipped, 1);
         assert_eq!(plan.to_upload, vec!["changed.txt", "upload.txt"]);
@@ -73207,8 +73381,14 @@ mod tests {
         )
         .unwrap();
 
-        let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", false, None)
-            .unwrap_err();
+        let err = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "upload",
+            false,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap_err();
 
         assert!(err.message().contains("does not contain detailed groups"));
     }
@@ -73238,16 +73418,28 @@ mod tests {
         std::fs::write(&path, &body).unwrap();
 
         // --delete is refused on a partial reconcile.
-        let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None)
-            .unwrap_err();
+        let err = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "download",
+            true,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap_err();
         assert!(
             err.message().contains("incomplete remote scan"),
             "unexpected error: {err}"
         );
 
         // The same partial file is still usable for a non-delete transfer.
-        let plan =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", false, None).unwrap();
+        let plan = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "download",
+            false,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap();
         assert!(plan.to_delete_local.is_empty());
     }
 
@@ -73274,8 +73466,14 @@ mod tests {
         .to_string();
         std::fs::write(&path, &body).unwrap();
 
-        let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None)
-            .unwrap_err();
+        let err = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "download",
+            true,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap_err();
         assert!(
             err.message().contains("incomplete remote scan"),
             "unexpected error: {err}"
@@ -73305,9 +73503,102 @@ mod tests {
         .to_string();
         std::fs::write(&path, &body).unwrap();
 
-        let plan =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None).unwrap();
+        let plan = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "download",
+            true,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap();
         assert_eq!(plan.to_delete_local, vec!["orphan.txt"]);
+    }
+
+    /// `sync` accepted `--exclude-global` and `--exclude-from` and ignored
+    /// them, so `sync --delete --exclude-from list.txt` protected nothing; and
+    /// reconcile read an unreadable list as an empty one.
+    #[test]
+    fn sync_reads_the_global_exclude_flags_and_refuses_an_unreadable_list() {
+        // The derived parser is deep; parse on a thread with room for it,
+        // as the other `Cli` parse tests do.
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let dir = tempfile::tempdir().unwrap();
+                let list = dir.path().join("list.txt");
+                std::fs::write(&list, "node_modules\n# a comment\n*.tmp\n").unwrap();
+                let list = list.to_str().unwrap();
+                let cli = Cli::try_parse_from([
+                    "aeroftp",
+                    "--exclude-global",
+                    "*.log",
+                    "--exclude-from",
+                    list,
+                    "sync",
+                    "u",
+                    "l",
+                    "r",
+                ])
+                .unwrap();
+                let patterns = sync_effective_exclude_patterns(
+                    &cli,
+                    &["x".to_string()],
+                    false,
+                    OutputFormat::Json,
+                )
+                .unwrap();
+                assert_eq!(patterns, vec!["x", "*.log", "node_modules", "*.tmp"]);
+
+                let missing = dir.path().join("missing.txt");
+                let cli = Cli::try_parse_from([
+                    "aeroftp",
+                    "--exclude-from",
+                    missing.to_str().unwrap(),
+                    "sync",
+                    "u",
+                    "l",
+                    "r",
+                ])
+                .unwrap();
+                assert_eq!(
+                    sync_effective_exclude_patterns(&cli, &[], false, OutputFormat::Json),
+                    Err(5)
+                );
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    /// `sync --from-reconcile plan.json --exclude X --delete` used to delete
+    /// the plan's orphans under X: the stored plan was never filtered by the
+    /// exclude list the sync was given.
+    #[test]
+    fn from_reconcile_applies_the_exclude_list_to_the_stored_plan() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("reconcile.json");
+        std::fs::write(
+            &path,
+            serde_json::json!({
+                "groups": {
+                    "match": [],
+                    "differ": [{"path": "node_modules/b.js", "local_size": 2, "remote_size": 3}],
+                    "missing_remote": [{"path": "node_modules/a.js", "local_size": 1}],
+                    "missing_local": [
+                        {"path": "node_modules/x.js", "remote_size": 4},
+                        {"path": "remote-only.txt", "remote_size": 5}
+                    ]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let excludes = SyncExcludes::new(&["node_modules"]).unwrap();
+        let plan =
+            load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", true, None, &excludes)
+                .unwrap();
+        assert_eq!(plan.to_delete_remote, vec!["remote-only.txt"]);
+        assert!(plan.to_upload.is_empty(), "{:?}", plan.to_upload);
     }
 
     // -----------------------------------------------------------------------
@@ -73421,7 +73712,7 @@ mod tests {
             &dir,
             std::slice::from_ref(&file),
             &previous,
-            &watch_test_filter(&[]),
+            &watch_test_filter(&SyncExcludes::default()),
         )
         .entries;
 
@@ -73433,7 +73724,7 @@ mod tests {
     }
 
     /// The filter a watch loop builds with no `--max-depth`.
-    fn watch_test_filter(exclude: &[globset::GlobMatcher]) -> SyncLocalFilter<'_> {
+    fn watch_test_filter(exclude: &SyncExcludes) -> SyncLocalFilter<'_> {
         SyncLocalFilter {
             max_depth: 100,
             exclude,
@@ -73453,8 +73744,13 @@ mod tests {
 
         // File does not exist on disk
         let ghost = dir.join("gone.txt");
-        let result =
-            incremental_local_scan(&dir, &[ghost], &previous, &watch_test_filter(&[])).entries;
+        let result = incremental_local_scan(
+            &dir,
+            &[ghost],
+            &previous,
+            &watch_test_filter(&SyncExcludes::default()),
+        )
+        .entries;
 
         assert!(result.is_empty()); // deleted file removed from snapshot
 
@@ -73478,7 +73774,7 @@ mod tests {
             &dir,
             std::slice::from_ref(&file),
             &previous,
-            &watch_test_filter(&[]),
+            &watch_test_filter(&SyncExcludes::default()),
         )
         .entries;
 
@@ -73498,12 +73794,12 @@ mod tests {
         let file = dir.join("debug.log");
         std::fs::write(&file, "log data").unwrap();
 
-        let matcher = globset::Glob::new("*.log").unwrap().compile_matcher();
+        let matcher = SyncExcludes::new(&["*.log"]).unwrap();
         let result = incremental_local_scan(
             &dir,
             std::slice::from_ref(&file),
             &WatchLocalSnapshot::default(),
-            &watch_test_filter(std::slice::from_ref(&matcher)),
+            &watch_test_filter(&matcher),
         )
         .entries;
 
@@ -75688,6 +75984,7 @@ mod tests {
                 output.to_string_lossy().into_owned(),
                 size,
             )],
+            &HashMap::new(),
             &cli,
             None,
             Arc::new(AtomicBool::new(false)),
@@ -75976,6 +76273,58 @@ mod tests {
             Some("abc"),
             "abc"
         ));
+    }
+
+    /// The CLI used to hand the shared executor `modified: None`, so every
+    /// download carried the time of download and a later bidirectional sync
+    /// took it for a local edit. The remote mtime must land on the copy.
+    #[tokio::test]
+    async fn cli_shared_download_keeps_the_remote_mtime() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("object");
+        let mut cli = test_cli();
+        cli.quiet = true;
+        cli.multi_thread_streams = 1;
+        let probe = BatchDownloadProbe {
+            kind: ProviderType::WebDav,
+            whole: Arc::default(),
+            ranges: Arc::default(),
+            cutoff_floor: 0,
+            size: BatchDownloadProbe::SIZE,
+        };
+        let mut remote_mtimes = HashMap::new();
+        remote_mtimes.insert(
+            "/object".to_string(),
+            "Fri, 15 Jan 2021 10:00:00 GMT".to_string(),
+        );
+        let outcome = match run_shared_provider_download_batch(
+            Box::new(probe),
+            &[(
+                "/object".to_string(),
+                output.to_string_lossy().into_owned(),
+                BatchDownloadProbe::SIZE,
+            )],
+            &remote_mtimes,
+            &cli,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(_) => panic!("the clone-backed fixture must use the shared batch"),
+        };
+        assert_eq!(outcome.downloaded, 1, "{:?}", outcome.errors);
+        let mtime = std::fs::metadata(&output)
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        // 2021-01-15T10:00:00Z
+        assert_eq!(mtime, 1_610_704_800);
     }
 
     #[tokio::test]
@@ -76680,7 +77029,7 @@ mod tests {
             },
         };
         let snapshot = WatchLocalSnapshot::from_scan(&scan);
-        let exclude: Vec<globset::GlobMatcher> = Vec::new();
+        let exclude = SyncExcludes::default();
         let filter = SyncLocalFilter {
             max_depth: 100,
             exclude: &exclude,
@@ -76746,6 +77095,27 @@ mod tests {
         }
     }
 
+    /// An unreadable folder inside an EXCLUDED one must not make the sync's
+    /// local scan incomplete: the walk does not enter an excluded directory, so
+    /// a `--delete` run is not refused over a folder the user excluded (review
+    /// of #939: the walk used to descend and count the failure).
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_folder_inside_an_excluded_one_keeps_the_scan_complete() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir_all(Path::new(&local).join("node_modules/locked"))
+            .expect("excluded tree");
+        fixture.local_file("a.txt", 1);
+        let _locked = UnreadableDir::lock(Path::new(&local).join("node_modules/locked"));
+        let excludes = SyncExcludes::new(&["node_modules"]).expect("valid exclude");
+        let scan = scan_sync_local(&local, &watch_test_filter(&excludes));
+        assert!(scan.completeness.is_complete(), "{:?}", scan.completeness);
+        assert!(scan.boundaries.unseen.is_empty());
+        let names: Vec<&str> = scan.entries.iter().map(|e| e.0.as_str()).collect();
+        assert_eq!(names, vec!["a.txt"]);
+    }
+
     /// A local tree with `a.txt` and `locked/keep.txt`, both also on the
     /// remote with the same size and mtime, so nothing is left to upload and
     /// any delete the run attempts is a wrong one.
@@ -76771,7 +77141,8 @@ mod tests {
         let (fixture, remote) = watch_fixture();
         let local = fixture.local();
         let _locked = UnreadableDir::lock(Path::new(&local).join("locked"));
-        let filter = watch_test_filter(&[]);
+        let no_excludes = SyncExcludes::default();
+        let filter = watch_test_filter(&no_excludes);
         let snapshot = build_watch_local_snapshot(&local, &filter);
         let scan = incremental_local_scan(
             Path::new(&local),
@@ -76803,7 +77174,8 @@ mod tests {
     fn watch_cycle_does_not_take_a_file_it_cannot_stat_for_a_deleted_one() {
         let (fixture, remote) = watch_fixture();
         let local = fixture.local();
-        let filter = watch_test_filter(&[]);
+        let no_excludes = SyncExcludes::default();
+        let filter = watch_test_filter(&no_excludes);
         let snapshot = build_watch_local_snapshot(&local, &filter);
         let _locked = UnreadableDir::lock(Path::new(&local).join("locked"));
         let scan = incremental_local_scan(
@@ -76840,7 +77212,7 @@ mod tests {
         std::fs::write(root.join("secret.env"), b"s").expect("secret.env");
         std::fs::create_dir(root.join("d")).expect("d/");
         std::fs::write(root.join("d").join("deep.txt"), b"d").expect("d/deep.txt");
-        let exclude = [globset::Glob::new("*.env").expect("glob").compile_matcher()];
+        let exclude = SyncExcludes::new(&["*.env"]).expect("glob");
         let filter = SyncLocalFilter {
             max_depth: 1,
             exclude: &exclude,
@@ -76871,6 +77243,24 @@ mod tests {
             std::collections::BTreeSet::from(["a.txt"]),
             "a watcher event does not bring in a filtered file"
         );
+    }
+
+    /// An invalid exclude list reaching the reconcile walk sees nothing and
+    /// says why, the same answer as `scan_local_tree_checked`: it used to
+    /// exclude every file and report a complete, empty tree.
+    #[test]
+    fn reconcile_local_scan_fails_closed_on_an_invalid_exclude() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        std::fs::write(dir.path().join("a.txt"), b"a").expect("a.txt");
+        let opts = ftp_client_gui_lib::sync_core::ScanOptions {
+            exclude_patterns: vec!["a[b".to_string()],
+            ..Default::default()
+        };
+        let (entries, completeness, boundaries) =
+            scan_local_tree_with_progress(dir.path().to_str().expect("utf-8 root"), &opts, &None);
+        assert!(entries.is_empty());
+        assert!(!completeness.is_complete());
+        assert_eq!(boundaries.unbounded, Some("invalid_exclude"));
     }
 
     /// `reconcile` walks the local tree with `scan_local_tree_with_progress`.
@@ -77349,8 +77739,9 @@ mod tests {
             }),
         );
 
-        let loaded = load_sync_plan_from_reconcile(&plan, "upload", true, None)
-            .unwrap_or_else(|_| panic!("a summary in the earlier format must load"));
+        let loaded =
+            load_sync_plan_from_reconcile(&plan, "upload", true, None, &SyncExcludes::default())
+                .unwrap_or_else(|_| panic!("a summary in the earlier format must load"));
 
         assert_eq!(loaded.to_delete_remote, vec!["b.txt"]);
     }
@@ -77370,7 +77761,7 @@ mod tests {
 
         let snapshot = build_watch_local_snapshot(
             dir.path().to_str().expect("utf-8 root"),
-            &watch_test_filter(&[]),
+            &watch_test_filter(&SyncExcludes::default()),
         );
 
         assert!(
@@ -77909,7 +78300,8 @@ mod tests {
     async fn the_doctor_remote_walk_reports_the_entry_cap_it_hits() {
         let mut provider = MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1), ("c.txt", 1)]);
 
-        let (entries, scan) = scan_doctor_remote_tree(&mut provider, "/root", &[], 100, 2).await;
+        let (entries, scan) =
+            scan_doctor_remote_tree(&mut provider, "/root", &SyncExcludes::default(), 100, 2).await;
 
         assert!(
             entries.len() <= 2,
@@ -77927,7 +78319,9 @@ mod tests {
     async fn the_doctor_remote_walk_is_complete_under_its_cap() {
         let mut provider = MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1)]);
 
-        let (entries, scan) = scan_doctor_remote_tree(&mut provider, "/root", &[], 100, 10).await;
+        let (entries, scan) =
+            scan_doctor_remote_tree(&mut provider, "/root", &SyncExcludes::default(), 100, 10)
+                .await;
 
         assert_eq!(entries.len(), 2);
         assert!(scan.is_complete(), "nothing was cut here: {scan:?}");

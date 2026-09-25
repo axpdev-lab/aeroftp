@@ -364,7 +364,7 @@ pub async fn dispatch_gui_tool(
 
             // Delegate to existing cyber_tools::hash_file (default classic digest length)
             let hash =
-                crate::cyber_tools::hash_file(path.clone(), algorithm.clone(), None).await?;
+                crate::cyber_tools::hash_file(path.clone(), algorithm.clone(), None, None, None).await?;
 
             Ok(json!({
                 "path": path,

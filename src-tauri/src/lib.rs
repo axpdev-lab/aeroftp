@@ -247,6 +247,7 @@ mod sync_badge;
 #[cfg(test)]
 mod sync_command_audit;
 pub mod sync_core;
+pub mod sync_exclude;
 mod sync_ignore;
 mod sync_scheduler;
 pub mod sync_script;
@@ -4286,26 +4287,63 @@ async fn upload_files_batch(
 }
 
 /// Preserve remote file modification time on a downloaded local file.
-/// Parses common ISO 8601 / timestamp formats and sets the file's mtime via `filetime`.
+/// Parses the timestamp shapes providers report (see [`parse_remote_mtime`])
+/// and sets the file's mtime via `filetime`.
 /// Best-effort: silently ignores failures (e.g. permission denied, unparseable timestamp).
 pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
-    let Some(modified_str) = remote_modified else {
+    let Some(secs) = remote_modified.and_then(parse_remote_mtime) else {
         return;
     };
-    // Strip trailing 'Z' suffix (UTC marker added in v2.9.6) before NaiveDateTime parsing
-    let clean_str = modified_str.strip_suffix('Z').unwrap_or(modified_str);
-    let ts = chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
+    let ft = filetime::FileTime::from_unix_time(secs, 0);
+    let _ = filetime::set_file_mtime(local_path, ft);
+}
+
+/// Unix seconds of a provider-reported modification time: naive
+/// `YYYY-MM-DD HH:MM:SS` / ISO 8601 (read as UTC, optional trailing `Z` added
+/// in v2.9.6), RFC 3339 with an offset, and RFC 2822 (`Thu, 24 Sep 2026
+/// 19:41:46 GMT`), which is what WebDAV `getlastmodified` carries. Without the
+/// RFC 2822 arm no WebDAV download ever kept its remote mtime, and a later
+/// sync saw every downloaded file as changed.
+pub fn parse_remote_mtime(modified_str: &str) -> Option<i64> {
+    let trimmed = modified_str.trim();
+    // FTP MLSD-derived listings end in `Z` or `UTC` with no offset.
+    let clean_str = trimmed
+        .strip_suffix('Z')
+        .or_else(|| trimmed.strip_suffix("UTC"))
+        .unwrap_or(trimmed);
+    chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
-        .or_else(|_| {
-            // Try parsing full RFC 3339 (with timezone) → strip tz suffix
-            chrono::DateTime::parse_from_rfc3339(modified_str).map(|dt| dt.naive_utc())
-        })
-        .ok();
-    if let Some(ndt) = ts {
-        let secs = ndt.and_utc().timestamp();
-        let ft = filetime::FileTime::from_unix_time(secs, 0);
-        let _ = filetime::set_file_mtime(local_path, ft);
+        .map(|ndt| ndt.and_utc().timestamp())
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(trimmed).map(|dt| dt.timestamp()))
+        .or_else(|_| chrono::DateTime::parse_from_rfc2822(trimmed).map(|dt| dt.timestamp()))
+        .ok()
+}
+
+#[cfg(test)]
+mod parse_remote_mtime_tests {
+    use super::parse_remote_mtime;
+
+    // 2026-09-24T19:41:46Z
+    const EXPECTED: i64 = 1_790_278_906;
+
+    #[test]
+    fn reads_every_shape_providers_report() {
+        for s in [
+            "2026-09-24 19:41:46",
+            "2026-09-24T19:41:46",
+            "2026-09-24T19:41:46Z",
+            "2026-09-24T19:41:46.123456Z",
+            "2026-09-24T21:41:46+02:00",
+            "Thu, 24 Sep 2026 19:41:46 GMT",
+            "Thu, 24 Sep 2026 21:41:46 +0200",
+            "2026-09-24 19:41:46UTC",
+        ] {
+            assert_eq!(parse_remote_mtime(s), Some(EXPECTED), "{s}");
+        }
+        assert_eq!(parse_remote_mtime("yesterday"), None);
+        assert_eq!(parse_remote_mtime("?"), None);
+        assert_eq!(parse_remote_mtime(""), None);
     }
 }
 
@@ -11087,9 +11125,9 @@ use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use sync::{
     classify_sync_error, classify_with_summary, delete_sync_journal, journal_sig_filename,
     load_sync_index, load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample,
-    should_exclude, sign_journal, verify_local_file, CanaryResult, CanarySampleResult,
-    CanarySummary, CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus,
-    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+    sign_journal, verify_local_file, CanaryResult, CanarySampleResult, CanarySummary,
+    CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus, SyncErrorInfo, SyncIndex,
+    SyncJournal, VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -11717,6 +11755,8 @@ pub async fn get_local_files_recursive_checked(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut files = HashMap::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
     let base = PathBuf::from(base_path);
@@ -11809,7 +11849,7 @@ pub async fn get_local_files_recursive_checked(
                 .unwrap_or_else(|_| name.clone());
 
             // Skip excluded paths
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -11954,6 +11994,8 @@ pub async fn get_local_files_recursive_parallel(
     max_concurrent_hashes: usize,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<HashMap<String, FileInfo>, String> {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let base = PathBuf::from(base_path);
     if !base.exists() {
         return Ok(HashMap::new());
@@ -11990,7 +12032,7 @@ pub async fn get_local_files_recursive_parallel(
                 .map(|p| p.to_string_lossy().to_string().replace('\\', "/"))
                 .unwrap_or_else(|_| name.clone());
 
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -12145,6 +12187,8 @@ async fn get_remote_files_recursive_with_progress(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut files = HashMap::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
     // (absolute_path, depth): depth limit prevents infinite loops on servers
@@ -12216,7 +12260,7 @@ async fn get_remote_files_recursive_with_progress(
                 }
             };
 
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -12589,6 +12633,28 @@ fn get_watcher_status_cmd_blocking(
 }
 
 /// Get transfer optimization hints for the current cloud provider
+/// Fill the documented file limits for the provider the hints describe: the
+/// requested type, or the connected one when none was requested.
+fn with_documented_file_limits(
+    hints: providers::TransferOptimizationHints,
+    requested: &str,
+    active: Option<&str>,
+) -> providers::TransferOptimizationHints {
+    let kind = if requested.is_empty() {
+        active.unwrap_or_default()
+    } else {
+        requested
+    };
+    match serde_json::from_value::<providers::ProviderType>(serde_json::Value::String(
+        kind.to_string(),
+    )) {
+        Ok(provider_type) => {
+            hints.with_documented_limits(providers::documented_file_limits(provider_type))
+        }
+        Err(_) => hints,
+    }
+}
+
 fn default_transfer_optimization_hints(
     provider_type: &str,
 ) -> providers::TransferOptimizationHints {
@@ -12786,6 +12852,10 @@ async fn get_transfer_optimization_hints(
             "Session is ready for Delta Sync.".to_string()
         });
     }
+
+    // #347: the documented single-file and name limits, for the Compare
+    // warning. A connected provider may have set its own (S3 on AWS).
+    let hints = with_documented_file_limits(hints, &requested, active_protocol.as_deref());
 
     Ok(hints)
 }
@@ -20051,6 +20121,7 @@ pub fn run() {
             cyber_tools::stage_hash_drop,
             cyber_tools::discard_hash_drop,
             cyber_tools::compare_hashes,
+            cyber_tools::argon2id_hash,
             cyber_tools::crypto_encrypt_text,
             cyber_tools::crypto_decrypt_text,
             cyber_tools::generate_password,
@@ -22585,5 +22656,26 @@ mod secval_b_tests {
             !root.path().join("planted-tar.txt").exists(),
             "an entry of `...tar.gz` landed in the PARENT of output_dir"
         );
+    }
+}
+
+#[cfg(test)]
+mod documented_file_limits_command_tests {
+    use super::*;
+
+    /// The command resolves the type it describes the same way for a requested
+    /// type and for the connected one, so the Compare warning gets the limits
+    /// of the remote it is about (#347).
+    #[test]
+    fn hints_get_the_limits_of_the_provider_they_describe() {
+        let base = providers::TransferOptimizationHints::default();
+        let requested = with_documented_file_limits(base.clone(), "zohoworkdrive", None);
+        assert_eq!(requested.max_file_size, Some(250 * (1 << 30)));
+        let active = with_documented_file_limits(base.clone(), "", Some("koofr"));
+        assert_eq!(active.max_name_chars, Some(255));
+        let unknown = with_documented_file_limits(base.clone(), "not-a-provider", None);
+        assert_eq!(unknown.max_file_size, None);
+        let ftp = with_documented_file_limits(base, "ftp", None);
+        assert_eq!(ftp.max_file_size, None);
     }
 }

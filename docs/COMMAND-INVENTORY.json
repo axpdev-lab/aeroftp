@@ -951,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 480,
+    "name_matched_count": 481,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -2111,6 +2111,7 @@
       "stage_hash_drop",
       "discard_hash_drop",
       "compare_hashes",
+      "argon2id_hash",
       "crypto_encrypt_text",
       "crypto_decrypt_text",
       "generate_password",
