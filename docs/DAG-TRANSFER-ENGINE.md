@@ -724,6 +724,46 @@ the audit appendix at
 Bounded dispatch (P0-04), typed outcomes (P0-03), and graph-scoped
 fail-fast cancel/timeout (P0-05) are already in the core executor.
 
+## Measured results, September 2026
+
+These are campaign results. Each table names the date, the link, the binary and how many repetitions it has. A single run stays a single run. Cells the campaign later marked invalid are left out: a download "resume" whose file had already finished, and a claimed 17 percent upload gain on one mixed tree that a later pass put at -2.0 points against a 13.4 percent noise floor.
+
+### SFTP, 5,000 files of 4 KiB
+
+Wired gigabit, RTT 47.4 ms, 8 September 2026, `--parallel 4`. One run per cell. "Before" is `3417fcb46`. "After" is `38d5c0b96`, the build that reuses the SFTP session across the tree. rclone ran on the same link and barely moved, which is the check that the window itself did not drift.
+
+![Five thousand small files over SFTP, before and after the session reuse fix](images/dag-sftp-smallfiles-2026-09-08.png)
+
+| Operation | AeroFTP before | AeroFTP after | rclone before | rclone after |
+|---|---:|---:|---:|---:|
+| Upload | 1391.20 s | 330.52 s | 687.47 s | 643.64 s |
+| Download | 1294.21 s | 272.76 s | 421.92 s | 431.57 s |
+
+The same binary at `--parallel 16` stayed flat (upload 316.02 s, download 264.41 s). rclone at 16 streams went to 344.00 s upload and 109.89 s download. On that build the SFTP session ceiling was 4, so the flag could not open more sessions. On current `main` the ceiling is 16 (`SFTP_POOL_MAX_SESSIONS` in `providers/sftp.rs`) and the default parallelism is still 4. The table describes the binary that had the ceiling of 4. It is not a timing of today's ceiling.
+
+At parallel 16 the download was still behind rclone (264 s against 110 s). The upload had moved ahead of rclone (316 s against 344 s).
+
+### S3 and WebDAV, same day, two repetitions
+
+Same station and link, 5,000 files of 4 KiB, two interleaved repetitions per binary. Integrity of each uploaded tree was checked in both directions. The quiet-window spread on AeroFTP was 3.3 percent on S3 and 4.9 percent on WebDAV. A third binary, `7336fa6b5`, removed an extra size probe that had doubled small-file downloads on the middle build (S3 download mean 68.35 s, then 126.35 s, then 68.54 s). Upload did not move, which matches a change that only touches download.
+
+| Cell | AeroFTP upload, two runs | rclone upload, two runs |
+|---|---|---|
+| S3, before `3417fcb46` | 62.98 s, 66.19 s | 119.79 s, 114.23 s |
+| S3, third `7336fa6b5` | 70.49 s, 65.15 s | 124.37 s, 123.62 s |
+| WebDAV, before | 62.27 s, 67.16 s | 199.81 s, 191.58 s |
+| WebDAV, third | 62.35 s, 60.78 s | 195.16 s, 198.24 s |
+
+Upload of this tree is about twice rclone on S3 and about 3.2 times rclone on WebDAV, on every binary in the window.
+
+### One resume that the review kept
+
+5 September 2026, wide-area link of about 53 ms, one 300 MiB S3 upload. The kill arrived at 60 s of a transfer that takes about 128 s, so the file was mid-transfer. AeroFTP resumed in 82.8 s. rclone started over and took 128.4 s. One run. The matching download rows from that session are omitted: the download had already finished before the kill.
+
+### What is not in the tables
+
+A 19 September comparison of a 300 MB S3 download (31.51 s against rclone at 16.95 s) was taken while the client announced four streams and used one: the size probe read `content_length` from a HEAD response, which is 0. Those seconds describe the broken path. They are not a before and they are not an after.
+
 ## See also
 
 - `docs/PROVIDER-INTEGRATION-GUIDE.md` - provider primitives and capability
