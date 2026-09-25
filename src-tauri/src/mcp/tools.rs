@@ -1287,8 +1287,12 @@ pub async fn execute_tool(
                     // directory that is genuinely absent on the other side.
                     let (locals, local_scan, local_boundaries) =
                         scan_local_tree_checked(&local_dir, &opts);
-                    let (remote_rows, remote_scan, remote_boundaries) =
-                        scan_remote_tree_checked(&mut p, &remote_dir, &opts).await;
+                    let (remote_rows, remote_scan, remote_boundaries) = scan_remote_tree_checked(
+                        &mut p,
+                        &remote_dir,
+                        &crate::crypt_compare::remote_scan_options(&opts, crypt_keys.is_some()),
+                    )
+                    .await;
                     let mut remotes = remote_rows;
                     if let Some(keys) = &crypt_keys {
                         // The scan read the list on ciphertext names; it is read again on

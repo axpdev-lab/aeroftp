@@ -1243,12 +1243,9 @@ impl CloudService {
                 let is_dir = metadata.is_dir();
 
                 // Check exclusions: .aeroignore first (with negation), then config patterns
-                let excluded = if let Some(ai) = aeroignore {
-                    ai.should_exclude(&relative, is_dir, exclude)
-                } else {
-                    exclude.is_excluded(&relative)
-                };
-                if excluded {
+                let decision =
+                    crate::sync_ignore::scan_decision(aeroignore, &relative, is_dir, exclude);
+                if decision == crate::sync_ignore::ScanDecision::Skip {
                     continue;
                 }
 
@@ -1259,6 +1256,18 @@ impl CloudService {
                         relative == ef_norm || relative.starts_with(&format!("{}/", ef_norm))
                     })
                 {
+                    continue;
+                }
+                if decision == crate::sync_ignore::ScanDecision::WalkOnly {
+                    scan_recursive(
+                        base,
+                        &path,
+                        files,
+                        complete,
+                        exclude,
+                        excluded_folders,
+                        aeroignore,
+                    )?;
                     continue;
                 }
 
@@ -1372,53 +1381,60 @@ impl CloudService {
                 };
 
                 // Check exclusions: .aeroignore first, then config patterns
-                let excluded = if let Some(ref ai) = aeroignore {
-                    ai.should_exclude(&relative_path, entry.is_dir, &excludes)
-                } else {
-                    excludes.is_excluded(&relative_path)
-                };
-                if excluded {
+                let decision = crate::sync_ignore::scan_decision(
+                    aeroignore.as_ref(),
+                    &relative_path,
+                    entry.is_dir,
+                    &excludes,
+                );
+                if decision == crate::sync_ignore::ScanDecision::Skip {
                     continue;
                 }
 
-                // P1-6: Cap file index at 100K to prevent unbounded memory growth.
-                // A truncated scan is an INCOMPLETE scan: report it so the delete
-                // gate refuses to act on it. (CLAUDE-AV-B3-11)
-                if files.len() >= 100_000 {
-                    tracing::warn!("Remote file index cap reached (100K), truncating scan");
-                    return Ok((files, false));
-                }
+                // A walk-only directory is not listed; its children decide alone.
+                if decision == crate::sync_ignore::ScanDecision::Keep {
+                    // P1-6: Cap file index at 100K to prevent unbounded memory growth.
+                    // A truncated scan is an INCOMPLETE scan: report it so the delete
+                    // gate refuses to act on it. (CLAUDE-AV-B3-11)
+                    if files.len() >= 100_000 {
+                        tracing::warn!("Remote file index cap reached (100K), truncating scan");
+                        return Ok((files, false));
+                    }
 
-                files.insert(
-                    relative_path.clone(),
-                    FileInfo {
-                        name: entry.name.clone(),
-                        path: format!("{}/{}", current_path, entry.name),
-                        size: entry.size.unwrap_or(0),
-                        modified: entry.modified.and_then(|s| {
-                            // Try RFC 3339 first (with T separator)
-                            DateTime::parse_from_rfc3339(&s)
-                                .ok()
-                                .map(|dt| dt.with_timezone(&Utc))
-                                .or_else(|| {
-                                    // Fallback: replace space with T for timestamps like "2026-03-12 00:00:00Z"
-                                    let fixed = s.replacen(' ', "T", 1);
-                                    DateTime::parse_from_rfc3339(&fixed)
-                                        .ok()
-                                        .map(|dt| dt.with_timezone(&Utc))
-                                })
-                                .or_else(|| {
-                                    // Fallback: parse without timezone (assume UTC)
-                                    chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S")
+                    files.insert(
+                        relative_path.clone(),
+                        FileInfo {
+                            name: entry.name.clone(),
+                            path: format!("{}/{}", current_path, entry.name),
+                            size: entry.size.unwrap_or(0),
+                            modified: entry.modified.and_then(|s| {
+                                // Try RFC 3339 first (with T separator)
+                                DateTime::parse_from_rfc3339(&s)
+                                    .ok()
+                                    .map(|dt| dt.with_timezone(&Utc))
+                                    .or_else(|| {
+                                        // Fallback: replace space with T for timestamps like "2026-03-12 00:00:00Z"
+                                        let fixed = s.replacen(' ', "T", 1);
+                                        DateTime::parse_from_rfc3339(&fixed)
+                                            .ok()
+                                            .map(|dt| dt.with_timezone(&Utc))
+                                    })
+                                    .or_else(|| {
+                                        // Fallback: parse without timezone (assume UTC)
+                                        chrono::NaiveDateTime::parse_from_str(
+                                            &s,
+                                            "%Y-%m-%d %H:%M:%S",
+                                        )
                                         .ok()
                                         .map(|naive| naive.and_utc())
-                                })
-                        }),
-                        is_dir: entry.is_dir,
-                        checksum_alg: None,
-                        checksum: None,
-                    },
-                );
+                                    })
+                            }),
+                            is_dir: entry.is_dir,
+                            checksum_alg: None,
+                            checksum: None,
+                        },
+                    );
+                }
 
                 if entry.is_dir {
                     // Selective sync: skip excluded folders (don't descend)
@@ -1670,55 +1686,62 @@ impl CloudService {
                 };
 
                 // Check exclusions: .aeroignore first, then config patterns
-                let excluded = if let Some(ref ai) = aeroignore {
-                    ai.should_exclude(&relative_path, entry.is_dir, &excludes)
-                } else {
-                    excludes.is_excluded(&relative_path)
-                };
-                if excluded {
+                let decision = crate::sync_ignore::scan_decision(
+                    aeroignore.as_ref(),
+                    &relative_path,
+                    entry.is_dir,
+                    &excludes,
+                );
+                if decision == crate::sync_ignore::ScanDecision::Skip {
                     continue;
                 }
 
-                // P1-6: Cap file index at 100K to prevent unbounded memory growth.
-                // A truncated scan is an INCOMPLETE scan: report it so the delete
-                // gate refuses to act on it. (CLAUDE-AV-B3-11)
-                if files.len() >= 100_000 {
-                    tracing::warn!("Remote file index cap reached (100K), truncating scan");
-                    return Ok((files, false));
-                }
+                // A walk-only directory is not listed; its children decide alone.
+                if decision == crate::sync_ignore::ScanDecision::Keep {
+                    // P1-6: Cap file index at 100K to prevent unbounded memory growth.
+                    // A truncated scan is an INCOMPLETE scan: report it so the delete
+                    // gate refuses to act on it. (CLAUDE-AV-B3-11)
+                    if files.len() >= 100_000 {
+                        tracing::warn!("Remote file index cap reached (100K), truncating scan");
+                        return Ok((files, false));
+                    }
 
-                files.insert(
-                    relative_path.clone(),
-                    FileInfo {
-                        name: entry.name.clone(),
-                        path: format!("{}/{}", current_path, entry.name),
-                        size: entry.size,
-                        modified: entry.modified.and_then(|s| {
-                            // Try RFC 3339 first (with T separator)
-                            DateTime::parse_from_rfc3339(&s)
-                                .ok()
-                                .map(|dt| dt.with_timezone(&Utc))
-                                .or_else(|| {
-                                    // Fallback: replace space with T for timestamps like "2026-03-12 00:00:00Z"
-                                    let fixed = s.replacen(' ', "T", 1);
-                                    DateTime::parse_from_rfc3339(&fixed)
-                                        .ok()
-                                        .map(|dt| dt.with_timezone(&Utc))
-                                })
-                                .or_else(|| {
-                                    // Fallback: parse without timezone (assume UTC)
-                                    chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S")
+                    files.insert(
+                        relative_path.clone(),
+                        FileInfo {
+                            name: entry.name.clone(),
+                            path: format!("{}/{}", current_path, entry.name),
+                            size: entry.size,
+                            modified: entry.modified.and_then(|s| {
+                                // Try RFC 3339 first (with T separator)
+                                DateTime::parse_from_rfc3339(&s)
+                                    .ok()
+                                    .map(|dt| dt.with_timezone(&Utc))
+                                    .or_else(|| {
+                                        // Fallback: replace space with T for timestamps like "2026-03-12 00:00:00Z"
+                                        let fixed = s.replacen(' ', "T", 1);
+                                        DateTime::parse_from_rfc3339(&fixed)
+                                            .ok()
+                                            .map(|dt| dt.with_timezone(&Utc))
+                                    })
+                                    .or_else(|| {
+                                        // Fallback: parse without timezone (assume UTC)
+                                        chrono::NaiveDateTime::parse_from_str(
+                                            &s,
+                                            "%Y-%m-%d %H:%M:%S",
+                                        )
                                         .ok()
                                         .map(|naive| naive.and_utc())
-                                })
-                        }),
-                        is_dir: entry.is_dir,
-                        // Use provider-supplied content hash if available (e.g. FileLu).
-                        // Enables hash-based comparison for providers that don't preserve mtime.
-                        checksum_alg: None,
-                        checksum: entry.metadata.get("content_hash").cloned(),
-                    },
-                );
+                                    })
+                            }),
+                            is_dir: entry.is_dir,
+                            // Use provider-supplied content hash if available (e.g. FileLu).
+                            // Enables hash-based comparison for providers that don't preserve mtime.
+                            checksum_alg: None,
+                            checksum: entry.metadata.get("content_hash").cloned(),
+                        },
+                    );
+                }
 
                 if entry.is_dir {
                     // Selective sync: skip excluded folders (don't descend)

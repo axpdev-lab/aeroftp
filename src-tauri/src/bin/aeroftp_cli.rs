@@ -58662,8 +58662,14 @@ async fn check_report(
     // They are reported with the verdict, and a gap that has no name is refused
     // below instead of being answered.
     let (locals, local_scan, local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
-    let (remotes, remote_health, remote_boundaries, returned) =
-        scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &None, None).await;
+    let (remotes, remote_health, remote_boundaries, returned) = scan_remote_tree_with_progress(
+        provider,
+        remote_path,
+        &ftp_client_gui_lib::crypt_compare::remote_scan_options(&scan_opts, crypt_keys.is_some()),
+        &None,
+        None,
+    )
+    .await;
     let mut remotes = remotes;
     provider = returned;
     if let Some((side, reason)) = scan_gap_with_no_name(&local_boundaries, &remote_boundaries) {
@@ -59367,9 +59373,14 @@ async fn cmd_reconcile(
     }
 
     let remote_spinner = maybe_create_scan_spinner(format, cli, "Scanning remote...");
-    let (mut remotes, remote_health, remote_boundaries, returned) =
-        scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &remote_spinner, None)
-            .await;
+    let (mut remotes, remote_health, remote_boundaries, returned) = scan_remote_tree_with_progress(
+        provider,
+        remote_path,
+        &ftp_client_gui_lib::crypt_compare::remote_scan_options(&scan_opts, crypt_keys.is_some()),
+        &remote_spinner,
+        None,
+    )
+    .await;
     provider = returned;
     if let Some(pb) = remote_spinner {
         pb.finish_and_clear();

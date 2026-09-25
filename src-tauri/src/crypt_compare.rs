@@ -157,6 +157,27 @@ impl CryptCompareKeys {
     }
 }
 
+/// The options for scanning the remote side of a compare. A raw crypt remote
+/// (`raw_crypt`: the keys are held apart and the listing is ciphertext) is
+/// scanned without the exclude list, which is applied after decryption by
+/// [`normalize_remote_entries`]: on ciphertext a pattern can only misfire
+/// (with filename encryption off `keep.txt` lists as `keep.txt.bin`, and
+/// `*.bin` would drop it). A provider already wrapped in the overlay lists
+/// plaintext and keeps the list at scan time.
+pub fn remote_scan_options(
+    opts: &crate::sync_core::ScanOptions,
+    raw_crypt: bool,
+) -> crate::sync_core::ScanOptions {
+    if raw_crypt {
+        crate::sync_core::ScanOptions {
+            exclude_patterns: Vec::new(),
+            ..opts.clone()
+        }
+    } else {
+        opts.clone()
+    }
+}
+
 /// A remote tree read through a crypt overlay.
 pub struct NormalizedRemote {
     /// The decrypted rows the compare reads, the exclude list applied.
@@ -489,6 +510,24 @@ mod tests {
         assert!(only_excluded.entries.is_empty());
         assert!(!CryptCompareKeys::Rclone(rclone_keys(true))
             .wrong_key_suspected(1, only_excluded.decrypted));
+    }
+
+    /// A raw crypt remote is scanned without the list (it is read after
+    /// decryption); a wrapped provider lists plaintext and keeps it.
+    #[test]
+    fn a_raw_crypt_remote_is_scanned_without_the_exclude_list() {
+        let opts = crate::sync_core::ScanOptions {
+            exclude_patterns: vec!["*.bin".to_string()],
+            max_depth: Some(3),
+            ..Default::default()
+        };
+        let raw = remote_scan_options(&opts, true);
+        assert!(raw.exclude_patterns.is_empty());
+        assert_eq!(raw.max_depth, Some(3));
+        assert_eq!(
+            remote_scan_options(&opts, false).exclude_patterns,
+            vec!["*.bin"]
+        );
     }
 
     #[test]

@@ -33,6 +33,8 @@ fn build_ignore_matcher(pattern: &str) -> Option<globset::GlobMatcher> {
 struct IgnoreRule {
     /// Original pattern text (for debugging/display)
     _pattern: String,
+    /// The glob the rule was compiled from (`**/name` when unanchored).
+    glob: String,
     /// Whether this is a negation rule (starts with `!`)
     negated: bool,
     /// Whether this rule only applies to directories (ends with `/`)
@@ -136,6 +138,7 @@ impl AeroIgnore {
                     individual_globs.push(m);
                     rules.push(IgnoreRule {
                         _pattern: trimmed.to_string(),
+                        glob: glob_pattern.clone(),
                         negated,
                         dir_only,
                     });
@@ -154,6 +157,22 @@ impl AeroIgnore {
         Some(Self {
             rules,
             individual_globs,
+        })
+    }
+
+    /// Whether a `!` rule could re-include a path below the directory
+    /// `dir_rel`, so a scan must walk into that directory although it is
+    /// excluded: pruning it would hide the re-included file from every side.
+    /// Read conservatively: a negation that is unanchored (it matches in any
+    /// directory) or holds a glob character may match below anything; an
+    /// anchored literal only below its own prefix.
+    pub fn may_reinclude_below(&self, dir_rel: &str) -> bool {
+        let prefix = format!("{}/", dir_rel.trim_end_matches('/').replace('\\', "/"));
+        self.rules.iter().any(|rule| {
+            rule.negated
+                && (rule.glob.starts_with("**/")
+                    || rule.glob.contains(['*', '?', '[', '{'])
+                    || rule.glob.starts_with(&prefix))
         })
     }
 
@@ -222,9 +241,76 @@ impl AeroIgnore {
     }
 }
 
+/// What a scan does with an entry, under the configured list and the sync
+/// root's `.aeroignore`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanDecision {
+    /// Listed (and walked, when a directory).
+    Keep,
+    /// Left out, and a directory is not walked.
+    Skip,
+    /// An excluded directory under which a `!` rule may re-include a path: it
+    /// is not listed itself, but it is walked and each child decided alone.
+    WalkOnly,
+}
+
+/// The one decision every AeroCloud scan (local, FTP, provider) makes, so a
+/// `!` re-inclusion survives each of them and the compare that follows.
+pub fn scan_decision(
+    aeroignore: Option<&AeroIgnore>,
+    relative_path: &str,
+    is_dir: bool,
+    config_excludes: &crate::sync_exclude::ExcludeMatcher,
+) -> ScanDecision {
+    let excluded = match aeroignore {
+        Some(rules) => rules.should_exclude(relative_path, is_dir, config_excludes),
+        None => config_excludes.is_excluded(relative_path),
+    };
+    if !excluded {
+        ScanDecision::Keep
+    } else if is_dir && aeroignore.is_some_and(|rules| rules.may_reinclude_below(relative_path)) {
+        ScanDecision::WalkOnly
+    } else {
+        ScanDecision::Skip
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A configured exclusion used to prune `build` before `!build/keep.txt`
+    /// could re-include its file: the scans never listed it.
+    #[test]
+    fn an_excluded_directory_with_a_reinclusion_below_is_walked() {
+        let excludes = crate::sync_exclude::ExcludeMatcher::new(&["build"]).unwrap();
+        let rules = AeroIgnore::parse("!build/keep.txt").unwrap();
+        assert_eq!(
+            scan_decision(Some(&rules), "build", true, &excludes),
+            ScanDecision::WalkOnly
+        );
+        assert_eq!(
+            scan_decision(Some(&rules), "build/keep.txt", false, &excludes),
+            ScanDecision::Keep
+        );
+        assert_eq!(
+            scan_decision(Some(&rules), "build/drop.txt", false, &excludes),
+            ScanDecision::Skip
+        );
+        // No re-inclusion below: the directory is pruned as before.
+        let other = AeroIgnore::parse("!docs/keep.txt").unwrap();
+        assert_eq!(
+            scan_decision(Some(&other), "build", true, &excludes),
+            ScanDecision::Skip
+        );
+        assert_eq!(
+            scan_decision(None, "build", true, &excludes),
+            ScanDecision::Skip
+        );
+        // An unanchored negation may match below any directory.
+        let anywhere = AeroIgnore::parse("!keep.txt").unwrap();
+        assert!(anywhere.may_reinclude_below("build"));
+    }
 
     #[test]
     fn test_basic_patterns() {
