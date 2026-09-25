@@ -754,7 +754,7 @@ Same station and link, 5,000 files of 4 KiB, two interleaved repetitions per bin
 | WebDAV, before | 62.27 s, 67.16 s | 199.81 s, 191.58 s |
 | WebDAV, third | 62.35 s, 60.78 s | 195.16 s, 198.24 s |
 
-Upload of this tree is about twice rclone on S3 and about 3.2 times rclone on WebDAV, on every binary in the window.
+Upload of this tree is about twice rclone on S3. On WebDAV the before build is about 3.0 times rclone and the third build is about 3.2 times.
 
 ### One resume that the review kept
 
