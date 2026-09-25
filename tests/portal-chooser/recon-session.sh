@@ -311,6 +311,9 @@ bash -uo pipefail -c '
     sleep 1
   done
   echo "app_ready seen: $ready"
+  if [ "$ready" -eq 1 ] && [ -n "${WEBKIT_INSPECTOR_HTTP_SERVER:-}" ] && [ -n "${RECON_ON_MISS_HOOK:-}" ]; then
+    timeout 40 node "$HERE/diag/inspect-page.mjs" "$WEBKIT_INSPECTOR_HTTP_SERVER" 15000 >"$OUT/inspector-ready.json" 2>&1 || true
+  fi
   sleep "$SETTLE_SECONDS"
 
   # Fail on the PRECONDITION, with the precondition named. Without this the run
@@ -356,6 +359,9 @@ bash -uo pipefail -c '
     echo "  Read frontend-probe.txt: a 200 there means the bundle is fine and WebKit" >&2
     echo "  did not render it; a failure there means the frontend never got served." >&2
     grep -iE "splash|panic|webkit|localhost is listening" "$OUT/app.log" 2>/dev/null | tail -5 >&2
+    if [ -n "${RECON_ON_MISS_HOOK:-}" ]; then
+      "$RECON_ON_MISS_HOOK" "$APP_PID" "$OUT" >"$OUT/on-miss.txt" 2>&1 || true
+    fi
     kill -TERM -- "-$APP_PID" 2>/dev/null
     exit 1
   fi

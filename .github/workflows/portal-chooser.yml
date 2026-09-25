@@ -145,7 +145,7 @@ jobs:
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
             librsvg2-dev patchelf libacl1-dev \
             xvfb x11-apps xdotool imagemagick \
-            dbus at-spi2-core python3-pyatspi
+            dbus at-spi2-core python3-pyatspi gdb psmisc
 
       - name: Build the frontend and the app (Tauri CLI, not bare cargo)
         run: |
@@ -170,10 +170,25 @@ jobs:
       # exists to check a safety property of the shipped app, so it has to run
       # the app the way users run it. A release-relevant check passing only with
       # the web-process sandbox disabled would be checking a different program.
-      - name: File chooser gate
+      # DIAGNOSTIC ONLY (branch diag/portal-chooser-cold-start-stacks).
+      - name: Runner facts
+        run: |
+          nproc; uname -r; id; ls -la /dev/dri || true; free -m
+          dpkg -l | grep -E "libwebkit2gtk-4.1-0|libegl-mesa0|libgl1-mesa-dri" | awk '{print $2, $3}'
+          cat /proc/sys/kernel/yama/ptrace_scope
+
+      - name: Cold start diagnostics (N launches, stacks on every miss)
         env:
-          PORTAL_TEST_OUT: ${{ github.workspace }}/portal-test-out
-        run: tests/portal-chooser/portal-chooser-test.sh src-tauri/target/release/aeroftp
+          DIAG_OUT: ${{ github.workspace }}/cold-start-diag
+        run: tests/portal-chooser/diag/cold-start-loop.sh src-tauri/target/release/aeroftp 24
+
+      - name: Upload the cold start diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cold-start-diag
+          path: cold-start-diag/
+          if-no-files-found: warn
 
       - name: Upload the evidence
         if: always()
