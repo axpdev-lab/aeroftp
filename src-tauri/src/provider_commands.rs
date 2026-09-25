@@ -5864,11 +5864,6 @@ pub async fn oauth2_connect(
 pub struct TwakeSignInParams {
     /// What the user typed: instance host, instance URL or any app URL.
     pub instance: String,
-    /// Credentials of the profile being re-authorized. Its OAuth client is
-    /// deleted from the instance once the new sign-in succeeds, so repeated
-    /// sign-ins do not pile up in the user's Connected devices.
-    #[serde(default)]
-    pub previous_credentials: Option<String>,
     #[serde(default, alias = "connect_token")]
     pub connect_token: Option<String>,
 }
@@ -5958,18 +5953,10 @@ pub async fn twake_sign_in(
         }
     };
 
-    if let Some(previous) = params
-        .previous_credentials
-        .as_deref()
-        .and_then(|raw| twake::TwakeCredentials::from_stored(raw).ok())
-    {
-        if previous.client_id != creds.client_id {
-            if let Err(e) = twake::revoke_client(&previous).await {
-                info!("Twake: could not delete the previous OAuth client: {}", e);
-            }
-        }
-    }
-
+    // The previous client of a re-signed profile is NOT deleted here: the new
+    // credentials only exist in the form until the profile is saved, and
+    // revoking now would leave a cancelled edit holding dead credentials. An
+    // old client stays listed in the user's Connected devices until removed.
     Ok(TwakeSignInResult {
         instance: creds.instance.clone(),
         credentials: creds.to_stored(),

@@ -405,20 +405,6 @@ pub async fn finish_sign_in(
     })
 }
 
-/// Delete the OAuth client from the instance (it disappears from the user's
-/// Connected devices). Used when a profile signs in again, so re-authorizing
-/// does not leave orphan clients behind. Not called on profile removal: a
-/// duplicated profile shares the client, and revoking it would silently sign
-/// the copy out.
-pub async fn revoke_client(creds: &TwakeCredentials) -> Result<(), ProviderError> {
-    delete_registration(
-        &creds.instance,
-        &creds.client_id,
-        &creds.registration_access_token,
-    )
-    .await
-}
-
 impl TwakePendingSignIn {
     /// Delete the client registered for this attempt. Called when the sign-in
     /// fails or is cancelled after the registration, so an abandoned attempt

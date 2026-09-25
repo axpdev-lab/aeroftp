@@ -5978,7 +5978,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         const result = await invoke<{ instance: string; credentials: string }>('twake_sign_in', {
                                                             params: {
                                                                 instance: connectionParams.server,
-                                                                previousCredentials: connectionParams.password || null,
                                                                 connectToken: token,
                                                             },
                                                         });
