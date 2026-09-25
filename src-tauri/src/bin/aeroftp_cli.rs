@@ -76931,6 +76931,70 @@ mod tests {
         )
     }
 
+    /// Export the Mirror preset against `remote`, then run its `SYNC` line the
+    /// way the batch does (batch parser, then `dispatch_sync`). Returns the exit
+    /// code and every delete the run attempted.
+    fn run_exported_mirror(
+        remote: MemTreeProvider,
+        local_files: &[(&str, usize)],
+    ) -> (i32, Vec<String>) {
+        use ftp_client_gui_lib::sync::SyncProfile;
+        use ftp_client_gui_lib::sync_script::{generate_script, AerosyncScriptProfile};
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let local = dir.path().join("local");
+        std::fs::create_dir(&local).expect("local dir");
+        for (name, size) in local_files {
+            let path = local.join(name);
+            std::fs::write(&path, vec![b'x'; *size]).expect("write local file");
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .and_then(|file| {
+                    file.set_modified(
+                        std::time::UNIX_EPOCH
+                            + std::time::Duration::from_secs(FIXTURE_MTIME_EPOCH_SECS),
+                    )
+                })
+                .expect("stamp the local mtime");
+        }
+        let script = generate_script(
+            &AerosyncScriptProfile {
+                profile: SyncProfile::mirror(),
+                local_path: local.to_string_lossy().into_owned(),
+                remote_path: "/root".into(),
+                connect_profile: None,
+                connect_url: Some("memory://".into()),
+                dry_run: false,
+                conflict_mode: None,
+                track_renames: false,
+                skip_matching: false,
+                resync: false,
+                watch: false,
+            },
+            "test",
+        );
+        let lines = read_batch_script(&script).expect("the exported script reads");
+        let sync = lines.iter().find(|l| l.cmd == "SYNC").expect("a SYNC line");
+        let command = parse_batch_sync("memory://", &sync.sync_args).expect("SYNC parses");
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let code = run_against_remote(remote, move || async move {
+            dispatch_sync(
+                &command,
+                &cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let deleted = deletes.lock().expect("delete log").clone();
+        (code, deleted)
+    }
+
     /// The real `cmd_sync` with `--delete` against `remote`, as a dry run or
     /// not. A run that is not dry reaches the scan guards (TX-01) and the
     /// deletes themselves, which the remote records and refuses.
@@ -76941,67 +77005,6 @@ mod tests {
     #[test]
     fn exported_mirror_runs_unattended_and_stops_on_a_nearly_emptied_source() {
         on_big_stack(|| {
-            use ftp_client_gui_lib::sync::SyncProfile;
-            use ftp_client_gui_lib::sync_script::{generate_script, AerosyncScriptProfile};
-
-            fn run_exported_mirror(
-                remote: MemTreeProvider,
-                local_files: &[(&str, usize)],
-            ) -> (i32, Vec<String>) {
-                let dir = tempfile::tempdir().expect("temp dir");
-                let local = dir.path().join("local");
-                std::fs::create_dir(&local).expect("local dir");
-                for (name, size) in local_files {
-                    let path = local.join(name);
-                    std::fs::write(&path, vec![b'x'; *size]).expect("write local file");
-                    std::fs::File::options()
-                        .write(true)
-                        .open(&path)
-                        .and_then(|file| {
-                            file.set_modified(
-                                std::time::UNIX_EPOCH
-                                    + std::time::Duration::from_secs(FIXTURE_MTIME_EPOCH_SECS),
-                            )
-                        })
-                        .expect("stamp the local mtime");
-                }
-                let script = generate_script(
-                    &AerosyncScriptProfile {
-                        profile: SyncProfile::mirror(),
-                        local_path: local.to_string_lossy().into_owned(),
-                        remote_path: "/root".into(),
-                        connect_profile: None,
-                        connect_url: Some("memory://".into()),
-                        dry_run: false,
-                        conflict_mode: None,
-                        track_renames: false,
-                        skip_matching: false,
-                        resync: false,
-                        watch: false,
-                    },
-                    "test",
-                );
-                let lines = read_batch_script(&script).expect("the exported script reads");
-                let sync = lines.iter().find(|l| l.cmd == "SYNC").expect("a SYNC line");
-                let command = parse_batch_sync("memory://", &sync.sync_args).expect("SYNC parses");
-                let deletes = Arc::clone(&remote.delete_attempts);
-                let cli = Cli {
-                    quiet: true,
-                    ..test_cli()
-                };
-                let code = run_against_remote(remote, move || async move {
-                    dispatch_sync(
-                        &command,
-                        &cli,
-                        OutputFormat::Json,
-                        Arc::new(AtomicBool::new(false)),
-                    )
-                    .await
-                });
-                let deleted = deletes.lock().expect("delete log").clone();
-                (code, deleted)
-            }
-
             // Source in place: one orphan on the destination, deleted, run succeeds.
             let (code, deleted) = run_exported_mirror(
                 MemTreeProvider::root_files(&[("a.txt", 3), ("b.txt", 4), ("orphan.txt", 5)]),
@@ -77032,6 +77035,31 @@ mod tests {
                 "the cap must stop a mirror whose source lost most files"
             );
             assert!(deleted.is_empty(), "nothing may be deleted: {deleted:?}");
+        });
+    }
+
+    /// KNOWN GAP, pending the fix in `cmd_sync` (CLI parity PR B, Twake
+    /// session): the `--max-delete N%` base is the file count of both sides
+    /// added together, not the destination. A Mirror whose source was replaced
+    /// by 100 new files against 100 old ones plans 100 deletes out of a base of
+    /// 200, which is exactly 50% and passes, emptying the destination. This test
+    /// states the behaviour the cap should have; it fails today and is ignored
+    /// until the base moves to the destination count, when the `#[ignore]` goes.
+    #[test]
+    #[ignore = "known gap: --max-delete % counts both sides together; fix pending in cmd_sync (CLI parity PR B)"]
+    fn exported_mirror_cap_stops_a_fully_replaced_source() {
+        on_big_stack(|| {
+            let old: Vec<String> = (0..100).map(|i| format!("old-{i:03}.txt")).collect();
+            let new: Vec<String> = (0..100).map(|i| format!("new-{i:03}.txt")).collect();
+            let remote_files: Vec<(&str, u64)> = old.iter().map(|n| (n.as_str(), 3)).collect();
+            let local_files: Vec<(&str, usize)> = new.iter().map(|n| (n.as_str(), 3)).collect();
+            let (_code, deleted) =
+                run_exported_mirror(MemTreeProvider::root_files(&remote_files), &local_files);
+            assert!(
+                deleted.is_empty(),
+                "the cap let {} of the 100 destination files be deleted",
+                deleted.len()
+            );
         });
     }
 
