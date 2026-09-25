@@ -17,7 +17,7 @@ const DEFAULT_RECOVERY_PCT: u32 = 20;
 /// `.aerozip` is the AeroFTP app-layer extension for a passwordless,
 /// unencrypted archive: compression + integrity + Reed-Solomon recovery,
 /// NOT confidentiality. Anyone with the file can read the contents.
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub(crate) enum ArchiveCommands {
     /// Create an unencrypted `.aerozip` archive (application/x-aerozip).
     ///

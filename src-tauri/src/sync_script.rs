@@ -37,6 +37,53 @@ const KNOWN_META_FIELDS: &[&str] = &[
 
 const CONFLICT_MODES: &[&str] = &["newer", "older", "larger", "smaller", "rename", "skip"];
 
+/// Preset settings `aeroftp-cli sync` has no flag for yet. The exported script
+/// names each one, with the preset's value, in a comment above its `SYNC`
+/// line, so running the script never drops them silently; they still travel
+/// in the metadata for the GUI import. An entry leaves this list when `sync`
+/// gains the flag, and the batch round-trip test in the CLI fails if a preset
+/// field is neither checked against a flag nor listed here.
+pub const SETTINGS_NOT_APPLIED_BY_CLI: &[&str] = &["compare", "retry", "verify"];
+
+/// The preset's value of one `SETTINGS_NOT_APPLIED_BY_CLI` entry, as the
+/// script comment shows it.
+fn not_applied_setting_value(profile: &SyncProfile, setting: &str) -> String {
+    match setting {
+        "compare" => {
+            let mut on = Vec::new();
+            if profile.compare_timestamp {
+                on.push("timestamp");
+            }
+            if profile.compare_size {
+                on.push("size");
+            }
+            if profile.compare_checksum {
+                on.push("checksum");
+            }
+            if on.is_empty() {
+                "none".to_string()
+            } else {
+                on.join(", ")
+            }
+        }
+        "retry" => format!(
+            "{} retries, {} ms to {} ms backoff, {} ms timeout",
+            profile.retry_policy.max_retries,
+            profile.retry_policy.base_delay_ms,
+            profile.retry_policy.max_delay_ms,
+            profile.retry_policy.timeout_ms
+        ),
+        "verify" => match profile.verify_policy {
+            VerifyPolicy::None => "none",
+            VerifyPolicy::SizeOnly => "size only",
+            VerifyPolicy::SizeAndMtime => "size and mtime",
+            VerifyPolicy::Full => "full",
+        }
+        .to_string(),
+        other => unreachable!("no value for setting {other}"),
+    }
+}
+
 /// Wire format for AeroSync script export/import. Embeds the
 /// authoritative `SyncProfile`, the path pair, and a connection
 /// reference. CLI-level runtime knobs (`dry_run`, `conflict_mode`,
@@ -154,6 +201,18 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
     }
     out.push('\n');
 
+    if !SETTINGS_NOT_APPLIED_BY_CLI.is_empty() {
+        out.push_str(
+            "# Not applied by `aeroftp-cli sync` yet (kept in the metadata for the GUI):\n",
+        );
+        for setting in SETTINGS_NOT_APPLIED_BY_CLI {
+            out.push_str(&format!(
+                "#   {}: {}\n",
+                setting,
+                not_applied_setting_value(&profile.profile, setting)
+            ));
+        }
+    }
     out.push_str("SYNC ${LOCAL} ${REMOTE}");
     let direction_flag = direction_to_flag(profile.profile.direction);
     out.push_str(" \\\n  --direction ");

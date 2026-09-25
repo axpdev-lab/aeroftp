@@ -880,8 +880,9 @@ aeroftp-cli sync --profile "server" ./local/ /remote/ --conflict-mode rename
 # Force full resync (ignore previous snapshot)
 aeroftp-cli sync --profile "server" ./local/ /remote/ --resync
 
-# Backup overwritten files before delete
-aeroftp-cli sync --profile "server" ./local/ /remote/ --delete --backup-dir /tmp/bak
+# Keep a copy of each local file before sync deletes it (local deletes only;
+# overwritten files and remote deletes are not backed up)
+aeroftp-cli sync --profile "server" ./local/ /remote/ --direction download --delete --backup-dir /tmp/bak
 ```
 
 Bisync saves a `.aeroftp-bisync.json` snapshot after each successful sync. This enables delta detection: files deleted on one side are propagated to the other with `--delete`.
@@ -2234,34 +2235,56 @@ Create `.aeroftp-script` files for automated workflows:
 SET SERVER=sftp://deploy@prod.example.com
 
 CONNECT ${SERVER}
-LS /var/www/ -l
+LS -l /var/www/
 PUT ./dist/index.html /var/www/index.html
 PUT ./dist/app.js /var/www/app.js
 ECHO Deployment complete
 DISCONNECT
 ```
 
+A saved profile connects with `CONNECT --profile "<name>"`, resolved exactly as `--profile` on the command line. A line ending in `\` continues on the next line, so a long `SYNC` reads like the command it is:
+
+```
+SET LOCAL="/home/me/Local Copy"
+SET REMOTE=/Backup
+
+CONNECT --profile "My NAS"
+SYNC ${LOCAL} ${REMOTE} \
+  --direction download \
+  --delete \
+  --exclude "*.tmp"
+DISCONNECT
+```
+
+The whole script is read and checked before anything runs: an unknown command, a flag the command does not take, a wrong number of arguments, an unclosed quote or a `\` followed by a blank line stops the script with the line number, and no line has run yet. `--` ends the flags, so `RM -- -odd-name` removes a file whose name starts with `-`.
+
 ### Commands
 
 | Command | Description |
 |---------|-------------|
 | `SET KEY=VALUE` | Define a variable |
-| `CONNECT <url>` | Connect to server |
+| `CONNECT <url>` | Connect to a server URL (`protocol://host/path`) |
+| `CONNECT --profile "<name>"` | Connect to a saved profile (a bare name is refused: it would read as a URL) |
 | `DISCONNECT` | Disconnect from server |
-| `LS <path> [flags]` | List directory |
+| `LS [-l] [path]` | List directory |
 | `GET <remote> [local]` | Download file |
 | `PUT <local> [remote]` | Upload file |
 | `MKDIR <path>` | Create directory |
-| `RM <path>` | Delete file |
+| `RM [-r] <path>` | Delete file (`-r` for a directory) |
 | `MV <from> <to>` | Move/rename |
 | `CAT <path>` | Print file |
 | `STAT <path>` | File info |
 | `FIND <path> <pattern>` | Search files |
-| `TREE <path> [flags]` | Directory tree |
+| `TREE [path]` | Directory tree |
 | `DF` | Storage quota |
-| `SYNC <local> <remote>` | Synchronize directories |
+| `SYNC <local> <remote> [flags]` | Synchronize directories: the same flags and the same code as `aeroftp-cli sync` (`--direction`, `--delete`, `--exclude`, `--conflict-mode`, `--dry-run`, ...); global flags such as `--profile` are not accepted on the line, and neither is `--local` |
+| `CONNECT_SOURCE_PROFILE <name>` | Open the source profile for `TRANSFER` |
+| `CONNECT_DEST_PROFILE <name>` | Open the destination profile for `TRANSFER` |
+| `TRANSFER <source> <dest> [-r] [--skip-existing] [--dry-run]` | Copy between the two profiles |
 | `ECHO <message>` | Print message |
 | `ON_ERROR CONTINUE\|FAIL` | Set error handling policy |
+
+A script exported from the AeroSync template dialog is in this form. Preset settings `aeroftp-cli sync` has no flag for yet (compare mode, retry, verify) are named in a comment above its `SYNC` line and kept in the metadata for the GUI import, not applied by the run.
 
 ### Variable Substitution
 

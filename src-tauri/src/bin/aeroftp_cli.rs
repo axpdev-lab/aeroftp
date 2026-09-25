@@ -135,7 +135,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     "gitlab",
 ];
 
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 #[command(
     name = "aeroftp",
     about = "AeroFTP CLI - Multi-protocol file transfer client",
@@ -1616,7 +1616,7 @@ impl CacheMode {
     }
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 enum CheckpointCommands {
     /// List the endpoints that currently hold resume records.
     List,
@@ -1640,7 +1640,7 @@ enum CheckpointCommands {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 enum TrashCommands {
     /// List the items currently in the server-side trash.
     List {
@@ -1675,7 +1675,7 @@ enum TrashCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum Commands {
     /// Test connection to a remote server
     Connect {
@@ -2567,7 +2567,9 @@ enum Commands {
         /// Safety limit: abort if more than N files (or N%) would be deleted
         #[arg(long)]
         max_delete: Option<String>,
-        /// Move overwritten/deleted files to backup directory
+        /// Copy each local file into this directory before sync deletes it. Local
+        /// deletes only: files overwritten by a transfer and files deleted on the
+        /// remote are not backed up
         #[arg(long)]
         backup_dir: Option<String>,
         /// Suffix for backup files (e.g., ".bak")
@@ -3883,7 +3885,7 @@ mod cli_dispatch_tests {
 }
 
 /// `aeroftp aerocloud <sub>`: configure and run the AeroCloud folder sync.
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum AeroCloudCommands {
     /// Print the current AeroCloud configuration (folders, profile, direction,
     /// interval, enabled, versioning, last sync).
@@ -3949,7 +3951,7 @@ enum AeroCloudCommands {
 }
 
 /// Subcommands under `aeroftp aerocloud pair`
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum PairCommands {
     /// List configured AeroCloud pairs (from cloud_pairs.json).
     List,
@@ -4001,7 +4003,7 @@ enum PairCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum UsersCommands {
     /// List local AeroFTP users
     List,
@@ -4059,7 +4061,7 @@ enum UsersCommands {
     Lock,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum VaultCommands {
     /// Create a new empty AeroVault container (v3 default; v1/v2 selectable).
     /// Use --error-correction for Reed-Solomon Error Correction (error-correction wrapper, last in 4-wrappers
@@ -4387,7 +4389,7 @@ enum VaultCommands {
 /// (par2-style). The same format protects vault containers and synced files; binding is
 /// by content SHA-256, so it works on arbitrary files. Generation/verify/repair stream
 /// the file in 64 MiB windows, so memory is bounded regardless of file size.
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum CorrectCommands {
     /// Generate a `.aerocorrect` recovery sidecar for a file. Default output is
     /// `<file>.aerocorrect`. The level sets the storage overhead (low ~7%, medium ~15%,
@@ -4433,7 +4435,7 @@ enum CorrectCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum ExportCommands {
     /// Export profiles to rclone.conf format (S3, SFTP, FTP, WebDAV, Mega).
     /// OAuth-based providers (pCloud, Dropbox, Google Drive, Box, OneDrive,
@@ -4693,7 +4695,7 @@ impl KeystoreMergeArg {
     }
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum KeystoreCommands {
     /// Export an encrypted `.aeroftp-keystore` backup file.
     ///
@@ -4813,7 +4815,7 @@ enum KeystoreCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum AerorsyncCommands {
     /// Get or set the AeroRsync mode (auto / classic / native)
     ///
@@ -4890,7 +4892,7 @@ enum AerorsyncCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum AerorsyncModeCommands {
     /// Print the current mode (auto / classic / native)
     Get,
@@ -4901,7 +4903,7 @@ enum AerorsyncModeCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum AuditCommands {
     /// Cloud storage quota: alert when used/total ratio exceeds threshold
     #[command(name = "storage-quota")]
@@ -4980,7 +4982,7 @@ enum AuditCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum ImportCommands {
     /// Import remotes from rclone configuration file
     Rclone {
@@ -5147,7 +5149,7 @@ enum ImportCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum DaemonCommands {
     /// Start the background daemon
     Start {
@@ -5167,7 +5169,7 @@ enum DaemonCommands {
     Status,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum JobCommands {
     /// Add a new background job
     Add {
@@ -5189,7 +5191,7 @@ enum JobCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum VersionCommands {
     /// List previous versions of a file (newest first)
     List {
@@ -5274,7 +5276,7 @@ enum VersionCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum CryptCommands {
     /// Initialize an encrypted overlay on a remote directory
     Init {
@@ -5588,7 +5590,7 @@ enum CryptCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum RcloneCryptCommands {
     /// Encrypt and upload a file using the rclone crypt format
     Put {
@@ -5622,7 +5624,7 @@ enum RcloneCryptCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum AliasCommands {
     /// Set or update an alias
     Set {
@@ -5646,7 +5648,7 @@ enum AliasCommands {
     List,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum ServeCommands {
     /// Serve a remote over local HTTP (read-only)
     Http {
@@ -12388,7 +12390,7 @@ enum Tone {
 // `ftp_client_gui_lib::peer` (the iroh-isolated peer-l0 crate behind it).
 // ============================================================================
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum PeerCommands {
     /// Manage this user-partition's P2P identity (its AeroFTP-ID)
     Identity {
@@ -12557,7 +12559,7 @@ enum PeerCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum PeerAgentCommands {
     /// Provision an agent: create the user-partition <name> if absent, initialise
     /// its P2P identity if absent, and print the AeroFTP-ID. Collapses the
@@ -12572,7 +12574,7 @@ enum PeerAgentCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum PeerIdentityCommands {
     /// Create this partition's identity if absent and print its AeroFTP-ID
     Init {
@@ -12584,7 +12586,7 @@ enum PeerIdentityCommands {
     Show,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum PeerContactCommands {
     /// Add (or rename) a contact by AeroFTP-ID
     Add {
@@ -12603,7 +12605,7 @@ enum PeerContactCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum PeerDriveCommands {
     /// List drives this partition holds keys for (namespace + role)
     List,
@@ -60922,6 +60924,706 @@ async fn run_audit_file_exists(
     emit_audit_report(&report, markdown, exit_code_flag)
 }
 
+/// Run a parsed `sync` command. The command line and the batch `SYNC` line
+/// both come here, so a script runs the same code with the same flags as
+/// `aeroftp-cli sync` (the batch used to call `cmd_sync` with fixed defaults
+/// and ignore every flag on the line).
+async fn dispatch_sync(
+    command: &Commands,
+    cli: &Cli,
+    format: OutputFormat,
+    cancelled: Arc<AtomicBool>,
+) -> i32 {
+    let Commands::Sync {
+        url,
+        local,
+        remote,
+        direction,
+        dry_run,
+        delete,
+        exclude,
+        error_correction,
+        ec_max_overhead,
+        track_renames,
+        max_delete,
+        backup_dir,
+        backup_suffix,
+        suffix_keep_extension,
+        compare_dest,
+        copy_dest,
+        from_reconcile,
+        conflict_mode,
+        skip_matching,
+        resync,
+        watch,
+        watch_mode,
+        watch_debounce_ms,
+        watch_cooldown,
+        watch_rescan,
+        watch_no_initial,
+        local_only,
+        no_local_delta,
+        delta,
+    } = command
+    else {
+        unreachable!("dispatch_sync takes a Commands::Sync");
+    };
+    // Z.2.2: local-to-local fast path. With `--local` the positional
+    // args become `<SRC> <DST>` (url=SRC, local=DST). Without
+    // `--local` the legacy 3-arg shape `<URL> <LOCAL> <REMOTE>`
+    // applies. Auto-detection also kicks in if both positional
+    // candidates look like real local fs paths (no scheme, exists or
+    // absolute) and no profile/URL was given.
+    let local_to_local_src;
+    let local_to_local_dst;
+    let local_to_local_match;
+    if *local_only {
+        local_to_local_src = url.as_str();
+        local_to_local_dst = local.as_str();
+        local_to_local_match = true;
+    } else if cli.profile.is_none()
+        && is_local_to_local_sync(false, url, cli.profile.as_deref(), local)
+    {
+        // Shape `<URL> <LOCAL> <REMOTE>` where URL is actually a path.
+        local_to_local_src = url.as_str();
+        local_to_local_dst = local.as_str();
+        local_to_local_match = true;
+    } else {
+        local_to_local_src = "";
+        local_to_local_dst = "";
+        local_to_local_match = false;
+    }
+
+    if local_to_local_match {
+        if error_correction.is_some() && !cli.quiet {
+            eprintln!("Warning: --error-correction is ignored for local-to-local sync");
+        }
+        let stats = cmd_sync_local_to_local(
+            local_to_local_src,
+            local_to_local_dst,
+            *dry_run,
+            exclude,
+            *no_local_delta,
+            cli,
+            format,
+            cancelled.clone(),
+        )
+        .await;
+        stats.exit_code
+    } else {
+        match parse_sync_error_correction_level_pct(error_correction.as_deref()) {
+            Err(err) => {
+                print_error(format, &err, 5);
+                5
+            }
+            Ok(error_correction_pct) => {
+                let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str(), local.as_str())
+                } else {
+                    (url.as_str(), local.as_str(), remote.as_str())
+                };
+
+                if *watch {
+                    cmd_sync_watch(
+                        u,
+                        l,
+                        r,
+                        direction,
+                        *dry_run,
+                        *delete,
+                        exclude,
+                        error_correction_pct,
+                        *ec_max_overhead,
+                        *track_renames,
+                        max_delete.as_deref(),
+                        backup_dir.as_deref(),
+                        backup_suffix,
+                        *suffix_keep_extension,
+                        compare_dest.as_deref(),
+                        copy_dest.as_deref(),
+                        from_reconcile.as_deref(),
+                        conflict_mode,
+                        *skip_matching,
+                        *resync,
+                        watch_mode,
+                        *watch_debounce_ms,
+                        *watch_cooldown,
+                        *watch_rescan,
+                        *watch_no_initial,
+                        cli,
+                        format,
+                        cancelled.clone(),
+                    )
+                    .await
+                } else {
+                    let max_attempts = effective_max_attempts(cli, format);
+                    let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+                    let max_transfer_limit = resolve_max_transfer(cli);
+                    let mut last_code = 0i32;
+                    for attempt in 1..=max_attempts {
+                        last_code = cmd_sync(
+                            u,
+                            l,
+                            r,
+                            direction,
+                            *dry_run,
+                            *delete,
+                            exclude,
+                            error_correction_pct,
+                            *ec_max_overhead,
+                            *track_renames,
+                            max_delete.as_deref(),
+                            backup_dir.as_deref(),
+                            backup_suffix,
+                            *suffix_keep_extension,
+                            compare_dest.as_deref(),
+                            copy_dest.as_deref(),
+                            from_reconcile.as_deref(),
+                            conflict_mode,
+                            *skip_matching,
+                            *resync,
+                            cli,
+                            format,
+                            cancelled.clone(),
+                            None,
+                            *delta,
+                        )
+                        .await
+                        .exit_code;
+                        if !is_retryable_exit(last_code)
+                            || session_transfer_exceeded(max_transfer_limit)
+                            || attempt == max_attempts
+                        {
+                            break;
+                        }
+                        if !cli.quiet {
+                            eprintln!(
+                                "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                                attempt, max_attempts, last_code, sleep_dur
+                            );
+                        }
+                        if !sleep_dur.is_zero() {
+                            tokio::time::sleep(sleep_dur).await;
+                        }
+                    }
+                    last_code
+                }
+            }
+        }
+    }
+}
+
+/// Where a batch script is connected: a URL, or a saved profile resolved the
+/// way `--profile` resolves it on the command line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BatchTarget {
+    Url(String),
+    Profile(String),
+}
+
+/// Positional arguments and flags a batch command accepts. Every line is
+/// checked against this before the script runs, so a mistyped flag or a stray
+/// token stops the script instead of being ignored.
+struct BatchCommandSpec {
+    name: &'static str,
+    min_args: usize,
+    max_args: usize,
+    flags: &'static [&'static str],
+    usage: &'static str,
+}
+
+const BATCH_COMMAND_SPECS: &[BatchCommandSpec] = &[
+    BatchCommandSpec {
+        name: "ON_ERROR",
+        min_args: 1,
+        max_args: 1,
+        flags: &[],
+        usage: "ON_ERROR CONTINUE|FAIL",
+    },
+    BatchCommandSpec {
+        name: "DISCONNECT",
+        min_args: 0,
+        max_args: 0,
+        flags: &[],
+        usage: "DISCONNECT",
+    },
+    BatchCommandSpec {
+        name: "GET",
+        min_args: 1,
+        max_args: 2,
+        flags: &[],
+        usage: "GET <remote> [local]",
+    },
+    BatchCommandSpec {
+        name: "PUT",
+        min_args: 1,
+        max_args: 2,
+        flags: &[],
+        usage: "PUT <local> [remote]",
+    },
+    BatchCommandSpec {
+        name: "RM",
+        min_args: 1,
+        max_args: 1,
+        flags: &["-r", "-rf"],
+        usage: "RM [-r] <remote>",
+    },
+    BatchCommandSpec {
+        name: "MV",
+        min_args: 2,
+        max_args: 2,
+        flags: &[],
+        usage: "MV <from> <to>",
+    },
+    BatchCommandSpec {
+        name: "LS",
+        min_args: 0,
+        max_args: 1,
+        flags: &["-l"],
+        usage: "LS [-l] [path]",
+    },
+    BatchCommandSpec {
+        name: "CAT",
+        min_args: 1,
+        max_args: 1,
+        flags: &[],
+        usage: "CAT <remote>",
+    },
+    BatchCommandSpec {
+        name: "STAT",
+        min_args: 1,
+        max_args: 1,
+        flags: &[],
+        usage: "STAT <remote>",
+    },
+    BatchCommandSpec {
+        name: "FIND",
+        min_args: 2,
+        max_args: 2,
+        flags: &[],
+        usage: "FIND <path> <pattern>",
+    },
+    BatchCommandSpec {
+        name: "DF",
+        min_args: 0,
+        max_args: 0,
+        flags: &[],
+        usage: "DF",
+    },
+    BatchCommandSpec {
+        name: "MKDIR",
+        min_args: 1,
+        max_args: 1,
+        flags: &[],
+        usage: "MKDIR <remote>",
+    },
+    BatchCommandSpec {
+        name: "TREE",
+        min_args: 0,
+        max_args: 1,
+        flags: &[],
+        usage: "TREE [path]",
+    },
+    BatchCommandSpec {
+        name: "TRANSFER",
+        min_args: 2,
+        max_args: 2,
+        flags: &["-r", "--recursive", "--skip-existing", "--dry-run"],
+        usage: "TRANSFER <source_path> <dest_path> [-r] [--skip-existing] [--dry-run]",
+    },
+];
+
+const BATCH_SUPPORTED_COMMANDS: &str = "SET, ECHO, ON_ERROR, CONNECT, DISCONNECT, GET, PUT, RM, MV, LS, CAT, STAT, FIND, DF, MKDIR, TREE, SYNC, CONNECT_SOURCE_PROFILE, CONNECT_DEST_PROFILE, TRANSFER";
+
+/// One logical line of a batch script, read and checked before anything runs.
+#[derive(Debug)]
+struct BatchLine {
+    /// 0-based index of the line's first physical line (messages print +1).
+    line_num: usize,
+    /// The command word, upper-cased.
+    cmd: String,
+    /// The line after variable expansion (ECHO prints from it).
+    expanded: String,
+    /// Positional arguments after the command word, flags removed.
+    args: Vec<String>,
+    /// Flags present on the line, each one known to the command.
+    flags: Vec<String>,
+    /// CONNECT: what it connects to.
+    target: Option<BatchTarget>,
+    /// SYNC: the tokens after the command word, parsed as `aeroftp-cli sync`.
+    sync_args: Vec<String>,
+}
+
+impl BatchLine {
+    fn has_flag(&self, flag: &str) -> bool {
+        self.flags.iter().any(|f| f == flag)
+    }
+}
+
+/// The `sync` subcommand of the CLI, without the global flags: a batch `SYNC`
+/// line takes exactly what `aeroftp-cli sync` takes, through the same clap
+/// definition, and a global flag on the line is an error instead of being
+/// silently dropped.
+#[derive(Parser)]
+#[command(no_binary_name = true, disable_help_subcommand = true)]
+struct BatchSyncLine {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+/// Parse the tokens of a `SYNC` line into the `sync` command. `url` is the
+/// connection the line runs against, `"_"` for a saved profile, exactly as the
+/// command line passes it with `--profile`.
+fn parse_batch_sync(url: &str, tokens: &[String]) -> Result<Commands, String> {
+    use clap::parser::ValueSource;
+    use clap::FromArgMatches;
+
+    let argv: Vec<&str> = ["sync", url]
+        .into_iter()
+        .chain(tokens.iter().map(String::as_str))
+        .collect();
+    let matches = BatchSyncLine::command()
+        .try_get_matches_from(argv)
+        .map_err(|e| {
+            e.render()
+                .to_string()
+                .lines()
+                .find(|l| l.starts_with("error:"))
+                .unwrap_or("invalid SYNC arguments")
+                .trim_start_matches("error: ")
+                .to_string()
+        })?;
+    let sub = matches
+        .subcommand_matches("sync")
+        .ok_or_else(|| "not a sync command".to_string())?;
+    // The CLI defaults `local` to "." and `remote` to "/"; a script must say
+    // both, or a missing path would sync the working directory to the root.
+    for field in ["local", "remote"] {
+        if sub.value_source(field) != Some(ValueSource::CommandLine) {
+            return Err("SYNC requires <local> <remote>".to_string());
+        }
+    }
+    if sub.get_flag("local_only_flag") {
+        return Err(
+            "--local is not available in a batch SYNC, which runs against the active CONNECT"
+                .to_string(),
+        );
+    }
+    BatchSyncLine::from_arg_matches(&matches)
+        .map(|line| line.command)
+        .map_err(|e| e.to_string())
+}
+
+/// Join a physical line ending in `\` with the next one. Returns the logical
+/// lines with the index of their first physical line.
+fn batch_logical_lines(content: &str) -> Result<Vec<(usize, String)>, (usize, String)> {
+    let mut out = Vec::new();
+    let mut pending: Option<(usize, String)> = None;
+    for (idx, raw) in content.lines().enumerate() {
+        let line = raw.trim();
+        if let Some((start, mut acc)) = pending.take() {
+            if line.is_empty() || line.starts_with('#') {
+                return Err((
+                    start,
+                    "a line ending in '\\' must be followed by its continuation, not by a blank or comment line".to_string(),
+                ));
+            }
+            match line.strip_suffix('\\') {
+                Some(head) => {
+                    acc.push(' ');
+                    acc.push_str(head.trim_end());
+                    pending = Some((start, acc));
+                }
+                None => {
+                    acc.push(' ');
+                    acc.push_str(line);
+                    out.push((start, acc));
+                }
+            }
+            continue;
+        }
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        match line.strip_suffix('\\') {
+            Some(head) => pending = Some((idx, head.trim_end().to_string())),
+            None => out.push((idx, line.to_string())),
+        }
+    }
+    if let Some((start, _)) = pending {
+        return Err((
+            start,
+            "the script ends inside a '\\' continuation".to_string(),
+        ));
+    }
+    Ok(out)
+}
+
+/// Expand `${VAR}` and `$VAR` in one pass (a value is never expanded again);
+/// `$$` is a literal `$`, and an unknown variable is kept as written.
+fn expand_batch_variables(line: &str, variables: &HashMap<String, String>) -> String {
+    let mut result = String::with_capacity(line.len());
+    let chars: Vec<(usize, char)> = line.char_indices().collect();
+    let mut ci = 0;
+    while ci < chars.len() {
+        let (byte_idx, ch) = chars[ci];
+        if ch == '$' && ci + 1 < chars.len() {
+            let (_, next_ch) = chars[ci + 1];
+            if next_ch == '$' {
+                result.push('$');
+                ci += 2;
+                continue;
+            } else if next_ch == '{' {
+                let start_byte = chars[ci + 2..]
+                    .first()
+                    .map(|(b, _)| *b)
+                    .unwrap_or(line.len());
+                if let Some(close_pos) = line[start_byte..].find('}') {
+                    let key = &line[start_byte..start_byte + close_pos];
+                    let end_byte = start_byte + close_pos + 1;
+                    match variables.get(key) {
+                        Some(val) => result.push_str(val),
+                        None => result.push_str(&line[byte_idx..end_byte]),
+                    }
+                    ci = chars
+                        .iter()
+                        .position(|(b, _)| *b >= end_byte)
+                        .unwrap_or(chars.len());
+                    continue;
+                }
+            } else if next_ch.is_ascii_alphabetic() || next_ch == '_' {
+                let start = ci + 1;
+                let mut end = start;
+                while end < chars.len()
+                    && (chars[end].1.is_ascii_alphanumeric() || chars[end].1 == '_')
+                {
+                    end += 1;
+                }
+                let key_start = chars[start].0;
+                let key_end = if end < chars.len() {
+                    chars[end].0
+                } else {
+                    line.len()
+                };
+                let key = &line[key_start..key_end];
+                match variables.get(key) {
+                    Some(val) => result.push_str(val),
+                    None => result.push_str(&line[byte_idx..key_end]),
+                }
+                ci = end;
+                continue;
+            }
+        }
+        result.push(ch);
+        ci += 1;
+    }
+    result
+}
+
+/// Split on whitespace, keeping double-quoted text together. `""` is an empty
+/// argument, not nothing, and an unclosed quote is an error.
+fn tokenize_batch_line(expanded: &str) -> Result<Vec<String>, String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut quoted = false;
+    for ch in expanded.chars() {
+        match ch {
+            '"' => {
+                in_quotes = !in_quotes;
+                quoted = true;
+            }
+            ' ' | '\t' if !in_quotes => {
+                if !current.is_empty() || quoted {
+                    parts.push(std::mem::take(&mut current));
+                }
+                quoted = false;
+            }
+            _ => current.push(ch),
+        }
+    }
+    if in_quotes {
+        return Err("unmatched quote".to_string());
+    }
+    if !current.is_empty() || quoted {
+        parts.push(current);
+    }
+    Ok(parts)
+}
+
+/// Check the arguments of a command against its spec: `--` ends the flags, a
+/// token starting with `-` must be one of the command's flags, and the number
+/// of positional arguments must fit.
+fn split_batch_args(
+    spec: &BatchCommandSpec,
+    tokens: &[String],
+) -> Result<(Vec<String>, Vec<String>), String> {
+    let mut args = Vec::new();
+    let mut flags = Vec::new();
+    let mut only_positional = false;
+    for token in tokens {
+        if !only_positional && token == "--" {
+            only_positional = true;
+        } else if !only_positional && token.len() > 1 && token.starts_with('-') {
+            if !spec.flags.contains(&token.as_str()) {
+                return Err(format!(
+                    "unknown flag '{}' for {} (usage: {})",
+                    token, spec.name, spec.usage
+                ));
+            }
+            flags.push(token.clone());
+        } else {
+            args.push(token.clone());
+        }
+    }
+    if args.len() < spec.min_args || args.len() > spec.max_args {
+        return Err(format!(
+            "{} takes {} (got {} argument{}): usage {}",
+            spec.name,
+            if spec.min_args == spec.max_args {
+                format!(
+                    "{} argument{}",
+                    spec.min_args,
+                    if spec.min_args == 1 { "" } else { "s" }
+                )
+            } else {
+                format!("{} to {} arguments", spec.min_args, spec.max_args)
+            },
+            args.len(),
+            if args.len() == 1 { "" } else { "s" },
+            spec.usage
+        ));
+    }
+    Ok((args, flags))
+}
+
+/// Read a whole batch script into checked lines: continuations joined,
+/// variables expanded in order (SET is applied here, so the values a line
+/// sees are the ones the run will see), every command and flag validated.
+/// Nothing runs until the whole script has passed, so an error on line 20
+/// never leaves lines 1 to 19 executed.
+fn read_batch_script(content: &str) -> Result<Vec<BatchLine>, (usize, String)> {
+    let mut variables: HashMap<String, String> = HashMap::new();
+    let mut lines = Vec::new();
+    for (line_num, logical) in batch_logical_lines(content)? {
+        let expanded = expand_batch_variables(&logical, &variables);
+        let parts = tokenize_batch_line(&expanded).map_err(|e| (line_num, e))?;
+        let Some(first) = parts.first() else {
+            continue;
+        };
+        let cmd = first.to_uppercase();
+        let rest = &parts[1..];
+        let mut line = BatchLine {
+            line_num,
+            cmd: cmd.clone(),
+            expanded: expanded.clone(),
+            args: Vec::new(),
+            flags: Vec::new(),
+            target: None,
+            sync_args: Vec::new(),
+        };
+        match cmd.as_str() {
+            "SET" => {
+                let body = expanded.get(3..).unwrap_or("").trim();
+                let Some(eq_pos) = body.find('=') else {
+                    return Err((line_num, "SET requires KEY=VALUE syntax".to_string()));
+                };
+                let key = body[..eq_pos].trim().to_string();
+                let value = body[eq_pos + 1..].trim().to_string();
+                if value.len() > 65_536 {
+                    return Err((line_num, "variable value too large (max 64 KB)".to_string()));
+                }
+                let valid_name = key
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                    && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+                if !valid_name {
+                    return Err((
+                        line_num,
+                        format!(
+                            "invalid variable name '{}' (must match [A-Za-z_][A-Za-z0-9_]*)",
+                            key
+                        ),
+                    ));
+                }
+                if variables.len() >= 256 && !variables.contains_key(&key) {
+                    return Err((line_num, "too many variables (max 256)".to_string()));
+                }
+                variables.insert(key, value);
+            }
+            "ECHO" => {}
+            "CONNECT" => {
+                line.target = Some(match rest {
+                    [flag, name] if flag == "--profile" => {
+                        if name.trim().is_empty() {
+                            return Err((
+                                line_num,
+                                "CONNECT --profile needs a saved profile name (the script was exported without one: write the name between the quotes)".to_string(),
+                            ));
+                        }
+                        BatchTarget::Profile(name.clone())
+                    }
+                    [flag, ..] if flag == "--profile" => {
+                        return Err((
+                            line_num,
+                            "CONNECT --profile takes one name: quote a name with spaces, CONNECT --profile \"My Server\"".to_string(),
+                        ));
+                    }
+                    [url] if url.contains("://") => BatchTarget::Url(url.clone()),
+                    [name] => {
+                        return Err((
+                            line_num,
+                            format!("'{}' is not a URL. For a saved profile write CONNECT --profile \"{}\"", name, name),
+                        ));
+                    }
+                    _ => {
+                        return Err((
+                            line_num,
+                            "CONNECT takes a URL (protocol://host/path) or --profile <name>"
+                                .to_string(),
+                        ));
+                    }
+                });
+            }
+            "SYNC" => {
+                parse_batch_sync("_", rest).map_err(|e| (line_num, format!("SYNC: {}", e)))?;
+                line.sync_args = rest.to_vec();
+            }
+            "CONNECT_SOURCE_PROFILE" | "CONNECT_DEST_PROFILE" => {
+                if rest.is_empty() {
+                    return Err((line_num, format!("{} requires a profile name", cmd)));
+                }
+                line.args = vec![rest.join(" ")];
+            }
+            _ => {
+                let Some(spec) = BATCH_COMMAND_SPECS.iter().find(|s| s.name == cmd) else {
+                    return Err((
+                        line_num,
+                        format!(
+                            "Unknown command '{}'. Supported: {}",
+                            cmd, BATCH_SUPPORTED_COMMANDS
+                        ),
+                    ));
+                };
+                let (args, flags) = split_batch_args(spec, rest).map_err(|e| (line_num, e))?;
+                if cmd == "ON_ERROR"
+                    && !matches!(args[0].to_uppercase().as_str(), "CONTINUE" | "FAIL")
+                {
+                    return Err((
+                        line_num,
+                        format!("ON_ERROR expects CONTINUE or FAIL, got '{}'", args[0]),
+                    ));
+                }
+                line.args = args;
+                line.flags = flags;
+            }
+        }
+        lines.push(line);
+    }
+    Ok(lines)
+}
+
 async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<AtomicBool>) -> i32 {
     // The `.aeroftp` extension is the canonical profile-export format
     // and is unrelated to batch scripts (issue #225). Reject it here
@@ -60971,8 +61673,10 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
         return 5;
     }
 
-    let mut variables: HashMap<String, String> = HashMap::new();
-    let mut current_url: Option<String> = None;
+    let mut current: Option<BatchTarget> = None;
+    // CONNECT --profile: a copy of the CLI whose `--profile` is the connected
+    // profile, so every command resolves it as `aeroftp-cli --profile` would.
+    let mut profile_cli: Option<Cli> = None;
     let mut exit_code = 0;
     let mut on_error_continue = false;
     let mut total_commands: u32 = 0;
@@ -61015,11 +61719,18 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
         }
     }
 
-    /// Require an active connection URL, or return error.
-    fn require_url(current_url: &Option<String>, line_num: usize) -> Result<String, i32> {
-        match current_url {
-            Some(u) => Ok(u.clone()),
-            None => {
+    /// The active connection as the command line passes it: the URL with the
+    /// batch CLI, or "_" with the CLI whose `--profile` is the connected one.
+    fn require_target<'a>(
+        current: &Option<BatchTarget>,
+        cli: &'a Cli,
+        profile_cli: &'a Option<Cli>,
+        line_num: usize,
+    ) -> Result<(String, &'a Cli), i32> {
+        match (current, profile_cli) {
+            (Some(BatchTarget::Url(u)), _) => Ok((u.clone(), cli)),
+            (Some(BatchTarget::Profile(_)), Some(pcli)) => Ok(("_".to_string(), pcli)),
+            _ => {
                 eprintln!(
                     "Line {}: No active connection. Use CONNECT first.",
                     line_num + 1
@@ -61029,197 +61740,61 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
         }
     }
 
-    for (line_num, raw_line) in content.lines().enumerate() {
+    // Read and check the whole script before running any of it.
+    let lines = match read_batch_script(&content) {
+        Ok(lines) => lines,
+        Err((line_num, message)) => {
+            print_error(format, &format!("Line {}: {}", line_num + 1, message), 5);
+            return 5;
+        }
+    };
+
+    for line in &lines {
+        let line_num = line.line_num;
         if cancelled.load(Ordering::Relaxed) {
             eprintln!("Batch interrupted at line {}", line_num + 1);
             return 4;
         }
-
-        let line = raw_line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        // Single-pass variable substitution (prevents recursive expansion)
-        // Uses char indices for proper UTF-8 handling
-        let expanded = {
-            let mut result = String::with_capacity(line.len());
-            let chars: Vec<(usize, char)> = line.char_indices().collect();
-            let mut ci = 0;
-            while ci < chars.len() {
-                let (byte_idx, ch) = chars[ci];
-                if ch == '$' && ci + 1 < chars.len() {
-                    let (_, next_ch) = chars[ci + 1];
-                    if next_ch == '$' {
-                        // $$ escape → literal $
-                        result.push('$');
-                        ci += 2;
-                        continue;
-                    } else if next_ch == '{' {
-                        // ${VAR} syntax
-                        let start_byte = chars[ci + 2..]
-                            .first()
-                            .map(|(b, _)| *b)
-                            .unwrap_or(line.len());
-                        if let Some(close_pos) = line[start_byte..].find('}') {
-                            let key = &line[start_byte..start_byte + close_pos];
-                            if let Some(val) = variables.get(key) {
-                                result.push_str(val);
-                            } else {
-                                let end_byte = start_byte + close_pos + 1;
-                                result.push_str(&line[byte_idx..end_byte]);
-                            }
-                            // Skip past the closing }
-                            let end_byte = start_byte + close_pos + 1;
-                            ci = chars
-                                .iter()
-                                .position(|(b, _)| *b >= end_byte)
-                                .unwrap_or(chars.len());
-                            continue;
-                        }
-                    } else if next_ch.is_ascii_alphabetic() || next_ch == '_' {
-                        // $VAR syntax
-                        let start = ci + 1;
-                        let mut end = start;
-                        while end < chars.len()
-                            && (chars[end].1.is_ascii_alphanumeric() || chars[end].1 == '_')
-                        {
-                            end += 1;
-                        }
-                        let key_start = chars[start].0;
-                        let key_end = if end < chars.len() {
-                            chars[end].0
-                        } else {
-                            line.len()
-                        };
-                        let key = &line[key_start..key_end];
-                        if let Some(val) = variables.get(key) {
-                            result.push_str(val);
-                        } else {
-                            result.push_str(&line[byte_idx..key_end]);
-                        }
-                        ci = end;
-                        continue;
-                    }
-                }
-                result.push(ch);
-                ci += 1;
-            }
-            result
-        };
-
-        // Shell-like splitting that respects double quotes for paths with spaces
-        let parts_owned: Vec<String> = {
-            let mut parts = Vec::new();
-            let mut current = String::new();
-            let mut in_quotes = false;
-            for ch in expanded.chars() {
-                match ch {
-                    '"' => in_quotes = !in_quotes,
-                    ' ' | '\t' if !in_quotes => {
-                        if !current.is_empty() {
-                            parts.push(std::mem::take(&mut current));
-                        }
-                    }
-                    _ => current.push(ch),
-                }
-            }
-            if in_quotes {
-                eprintln!("Warning: line {}: unmatched quote", line_num + 1);
-            }
-            if !current.is_empty() {
-                parts.push(current);
-            }
-            parts
-        };
-        if parts_owned.is_empty() {
-            continue;
-        }
-        let parts: Vec<&str> = parts_owned.iter().map(|s| s.as_str()).collect();
-
-        let cmd = parts[0].to_uppercase();
+        let args: Vec<&str> = line.args.iter().map(String::as_str).collect();
         total_commands += 1;
 
-        match cmd.as_str() {
-            "SET" => {
-                if expanded.len() > 3 {
-                    let rest = expanded[3..].trim();
-                    if let Some(eq_pos) = rest.find('=') {
-                        let key = rest[..eq_pos].trim().to_string();
-                        let value = rest[eq_pos + 1..].trim().to_string();
-                        // Limit variable value size to 64 KB
-                        if value.len() > 65_536 {
-                            eprintln!(
-                                "Line {}: variable value too large (max 64 KB)",
-                                line_num + 1
-                            );
-                            return 5;
-                        }
-                        // Validate variable name: [A-Za-z_][A-Za-z0-9_]*
-                        if !key.is_empty()
-                            && key
-                                .chars()
-                                .next()
-                                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-                            && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-                        {
-                            if variables.len() >= 256 && !variables.contains_key(&key) {
-                                eprintln!("Line {}: too many variables (max 256)", line_num + 1);
-                                return 5;
-                            }
-                            variables.insert(key, value);
-                        } else {
-                            eprintln!("Line {}: invalid variable name '{}' (must match [A-Za-z_][A-Za-z0-9_]*)", line_num + 1, key);
-                            return 5;
-                        }
-                    } else {
-                        eprintln!("Line {}: SET requires KEY=VALUE syntax", line_num + 1);
-                        return 5;
-                    }
-                } else {
-                    eprintln!("Line {}: SET requires KEY=VALUE syntax", line_num + 1);
-                    return 5;
-                }
-            }
+        match line.cmd.as_str() {
+            // Applied while reading, so later lines already see the value.
+            "SET" => {}
             "ECHO" => {
                 // ECHO <message> - print to stderr for logging
-                let msg = if expanded.len() > 4 {
-                    expanded[4..].trim()
-                } else {
-                    ""
-                };
+                let msg = line.expanded.get(4..).unwrap_or("").trim();
                 eprintln!("{}", msg);
             }
             "ON_ERROR" => {
-                // ON_ERROR CONTINUE | ON_ERROR FAIL
-                if parts.len() >= 2 {
-                    match parts[1].to_uppercase().as_str() {
-                        "CONTINUE" => on_error_continue = true,
-                        "FAIL" => on_error_continue = false,
-                        other => {
-                            eprintln!(
-                                "Line {}: ON_ERROR expects CONTINUE or FAIL, got '{}'",
-                                line_num + 1,
-                                other
-                            );
-                            return 5;
-                        }
-                    }
-                }
+                // ON_ERROR CONTINUE | ON_ERROR FAIL (checked while reading)
+                on_error_continue = args[0].eq_ignore_ascii_case("CONTINUE");
             }
             "CONNECT" => {
-                if parts.len() < 2 {
-                    eprintln!("Line {}: CONNECT requires a URL", line_num + 1);
-                    return 5;
-                }
-                // Clear previous URL before attempting new connection
-                // Prevents stale URL reuse if CONNECT fails with ON_ERROR CONTINUE
-                current_url = None;
+                // Clear the previous connection before trying the new one, so a
+                // failed CONNECT under ON_ERROR CONTINUE never leaves the old one live.
+                current = None;
+                profile_cli = None;
                 // Reset profile info flag so each batch CONNECT prints its profile
                 PROFILE_INFO_PRINTED.store(false, Ordering::Relaxed);
-                exit_code = cmd_connect(parts[1], cli, format).await;
+                let target = line
+                    .target
+                    .clone()
+                    .expect("read_batch_script sets the CONNECT target");
+                exit_code = match &target {
+                    BatchTarget::Url(url) => cmd_connect(url, cli, format).await,
+                    BatchTarget::Profile(name) => {
+                        let mut pcli = cli.clone();
+                        pcli.profile = Some(name.clone());
+                        let code = cmd_connect("_", &pcli, format).await;
+                        if code == 0 {
+                            profile_cli = Some(pcli);
+                        }
+                        code
+                    }
+                };
                 if exit_code == 0 {
-                    current_url = Some(parts[1].to_string());
+                    current = Some(target);
                 } else if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -61231,25 +61806,18 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "DISCONNECT" => {
-                current_url = None;
+                current = None;
+                profile_cli = None;
             }
             "GET" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                if parts.len() < 2 {
-                    eprintln!("Line {}: GET requires a remote path", line_num + 1);
-                    return 5;
-                }
-                let local = if parts.len() > 2 {
-                    Some(parts[2])
-                } else {
-                    None
-                };
+                let local = if args.len() > 1 { Some(args[1]) } else { None };
                 exit_code = cmd_get(
                     &url,
-                    parts[1],
+                    args[0],
                     local,
                     false,
                     1,
@@ -61270,22 +61838,14 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "PUT" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                if parts.len() < 2 {
-                    eprintln!("Line {}: PUT requires a local path", line_num + 1);
-                    return 5;
-                }
-                let remote = if parts.len() > 2 {
-                    Some(parts[2])
-                } else {
-                    None
-                };
+                let remote = if args.len() > 1 { Some(args[1]) } else { None };
                 exit_code = cmd_put(
                     &url,
-                    parts[1],
+                    args[0],
                     remote,
                     false,
                     false,
@@ -61307,16 +61867,12 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "RM" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                if parts.len() < 2 {
-                    eprintln!("Line {}: RM requires a path", line_num + 1);
-                    return 5;
-                }
-                let recursive = parts.contains(&"-r") || parts.contains(&"-rf");
-                exit_code = cmd_rm(&url, parts[1], recursive, true, false, cli, format).await;
+                let recursive = line.has_flag("-r") || line.has_flag("-rf");
+                exit_code = cmd_rm(&url, args[0], recursive, true, false, cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -61328,15 +61884,11 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "MV" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                if parts.len() < 3 {
-                    eprintln!("Line {}: MV requires <from> <to>", line_num + 1);
-                    return 5;
-                }
-                exit_code = cmd_mv(&url, parts[1], parts[2], cli, format).await;
+                exit_code = cmd_mv(&url, args[0], args[1], cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -61348,12 +61900,12 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "LS" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                let path = if parts.len() > 1 { parts[1] } else { "/" };
-                let long = parts.contains(&"-l");
+                let path = args.first().copied().unwrap_or("/");
+                let long = line.has_flag("-l");
                 exit_code = cmd_ls(
                     &url, path, long, "name", false, true, None, false, false, cli, format,
                 )
@@ -61369,15 +61921,11 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "CAT" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                if parts.len() < 2 {
-                    eprintln!("Line {}: CAT requires a path", line_num + 1);
-                    return 5;
-                }
-                exit_code = cmd_cat(&url, parts[1], cli, format).await;
+                exit_code = cmd_cat(&url, args[0], cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -61389,15 +61937,11 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "STAT" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                if parts.len() < 2 {
-                    eprintln!("Line {}: STAT requires a path", line_num + 1);
-                    return 5;
-                }
-                exit_code = cmd_stat(&url, parts[1], cli, format).await;
+                exit_code = cmd_stat(&url, args[0], cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -61409,16 +61953,11 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "FIND" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                if parts.len() < 3 {
-                    eprintln!("Line {}: FIND requires <path> <pattern>", line_num + 1);
-                    return 5;
-                }
-                exit_code =
-                    cmd_find(&url, parts[1], parts[2], false, false, None, cli, format).await;
+                exit_code = cmd_find(&url, args[0], args[1], false, false, None, cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -61430,8 +61969,8 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "DF" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
                 exit_code = cmd_df(&url, false, false, cli, format).await;
@@ -61446,15 +61985,11 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "MKDIR" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                if parts.len() < 2 {
-                    eprintln!("Line {}: MKDIR requires a path", line_num + 1);
-                    return 5;
-                }
-                exit_code = cmd_mkdir(&url, parts[1], false, None, cli, format).await;
+                exit_code = cmd_mkdir(&url, args[0], false, None, cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -61466,11 +62001,11 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "TREE" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                let path = if parts.len() > 1 { parts[1] } else { "/" };
+                let path = args.first().copied().unwrap_or("/");
                 exit_code = cmd_tree(&url, path, 3, cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
@@ -61483,43 +62018,18 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "SYNC" => {
-                let url = match require_url(&current_url, line_num) {
-                    Ok(u) => u,
+                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                    Ok(t) => t,
                     Err(code) => return code,
                 };
-                if parts.len() < 3 {
-                    eprintln!("Line {}: SYNC requires <local> <remote>", line_num + 1);
-                    return 5;
-                }
-                exit_code = cmd_sync(
-                    &url,
-                    parts[1],
-                    parts[2],
-                    "both",
-                    false,
-                    false,
-                    &[],
-                    None,
-                    0,
-                    false,
-                    None,
-                    None,
-                    "",
-                    false,
-                    None,
-                    None,
-                    None,
-                    "newer",
-                    false,
-                    false,
-                    cli,
-                    format,
-                    cancelled.clone(),
-                    None,
-                    false, // Z.1.2: batch script SYNC keeps classic path; users opt in via dedicated CLI invocation
-                )
-                .await
-                .exit_code;
+                // The same clap definition and the same code as `aeroftp-cli sync`.
+                exit_code = match parse_batch_sync(&url, &line.sync_args) {
+                    Ok(command) => dispatch_sync(&command, cli, format, cancelled.clone()).await,
+                    Err(e) => {
+                        print_error(format, &format!("Line {}: SYNC: {}", line_num + 1, e), 5);
+                        5
+                    }
+                };
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -61531,14 +62041,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "CONNECT_SOURCE_PROFILE" => {
-                if parts.len() < 2 {
-                    eprintln!(
-                        "Line {}: CONNECT_SOURCE_PROFILE requires a profile name",
-                        line_num + 1
-                    );
-                    return 5;
-                }
-                let profile_name = parts[1..].join(" ");
+                let profile_name = args[0].to_string();
                 PROFILE_INFO_PRINTED.store(false, Ordering::Relaxed);
                 // Disconnect previous source if any
                 if let Some((mut old, _)) = cross_source.take() {
@@ -61563,14 +62066,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "CONNECT_DEST_PROFILE" => {
-                if parts.len() < 2 {
-                    eprintln!(
-                        "Line {}: CONNECT_DEST_PROFILE requires a profile name",
-                        line_num + 1
-                    );
-                    return 5;
-                }
-                let profile_name = parts[1..].join(" ");
+                let profile_name = args[0].to_string();
                 PROFILE_INFO_PRINTED.store(false, Ordering::Relaxed);
                 if let Some((mut old, _)) = cross_dest.take() {
                     let _ = old.disconnect().await;
@@ -61627,15 +62123,11 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     }
                 };
 
-                if parts.len() < 3 {
-                    eprintln!("Line {}: TRANSFER requires <source_path> <dest_path> [-r] [--skip-existing]", line_num + 1);
-                    return 5;
-                }
-                let source_path = parts[1];
-                let dest_path = parts[2];
-                let recursive = parts.contains(&"-r") || parts.contains(&"--recursive");
-                let skip_existing = parts.contains(&"--skip-existing");
-                let dry_run = parts.contains(&"--dry-run");
+                let source_path = args[0];
+                let dest_path = args[1];
+                let recursive = line.has_flag("-r") || line.has_flag("--recursive");
+                let skip_existing = line.has_flag("--skip-existing");
+                let dry_run = line.has_flag("--dry-run");
 
                 let request = CrossProfileTransferRequest {
                     source_profile: src_name.clone(),
@@ -61709,17 +62201,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     }
                 }
             }
-            _ => {
-                print_error(
-                    format,
-                    &format!("Line {}: Unknown command '{}'. Supported: SET, ECHO, ON_ERROR, CONNECT, DISCONNECT, GET, PUT, RM, MV, LS, CAT, STAT, FIND, DF, MKDIR, TREE, SYNC, CONNECT_SOURCE_PROFILE, CONNECT_DEST_PROFILE, TRANSFER", line_num + 1, cmd),
-                    5,
-                );
-                if !on_error_continue {
-                    return 5;
-                }
-                failed_commands += 1;
-            }
+            other => unreachable!("read_batch_script rejects unknown command {other}"),
         }
     }
 
@@ -61741,6 +62223,400 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
         4
     } else {
         exit_code
+    }
+}
+
+/// Building the full `Cli` clap command tree overflows the 2MB default test
+/// stack (the tree is enormous), so run clap-parsing assertions on a 32MB
+/// thread exactly like `dispatcher_allowlist_matches_clap_subcommands`.
+#[cfg(test)]
+fn on_big_stack<F: FnOnce() + Send + 'static>(f: F) {
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(f)
+        .expect("spawn big-stack test thread")
+        .join()
+        .expect("big-stack test body panicked");
+}
+
+#[cfg(test)]
+mod batch_script_tests {
+    use super::*;
+    use ftp_client_gui_lib::sync::{CompareDirection, SyncProfile};
+    use ftp_client_gui_lib::sync_script::{
+        generate_script, ps1_wrapper, sh_wrapper, AerosyncScriptProfile,
+        SETTINGS_NOT_APPLIED_BY_CLI,
+    };
+
+    fn sync_of(line: &BatchLine) -> Commands {
+        parse_batch_sync("_", &line.sync_args).expect("SYNC parses")
+    }
+
+    /// The script L2 ran against Koofr with v4.2.0: a download sync written on
+    /// continuation lines. It ran as a bidirectional sync without delete or
+    /// exclude, then failed on the orphaned "--direction" line.
+    const EXPORTED_DOWNLOAD: &str = "# @aerosync:1\n\
+SET LOCAL=\"/home/me/Local Copy\"\n\
+SET REMOTE=\"/Backup\"\n\
+\n\
+CONNECT --profile \"Koofr\"\n\
+\n\
+SYNC ${LOCAL} ${REMOTE} \\\n\
+  --direction download \\\n\
+  --delete \\\n\
+  --exclude \"*.tmp\"\n\
+\n\
+DISCONNECT\n";
+
+    #[test]
+    fn continuation_lines_are_one_sync_with_every_flag() {
+        on_big_stack(|| {
+            let lines = read_batch_script(EXPORTED_DOWNLOAD).expect("script reads");
+            let cmds: Vec<&str> = lines.iter().map(|l| l.cmd.as_str()).collect();
+            assert_eq!(cmds, ["SET", "SET", "CONNECT", "SYNC", "DISCONNECT"]);
+            let sync = lines.iter().find(|l| l.cmd == "SYNC").unwrap();
+            assert_eq!(sync.line_num, 6, "reported on the SYNC line itself");
+            let Commands::Sync {
+                local,
+                remote,
+                direction,
+                delete,
+                exclude,
+                ..
+            } = sync_of(sync)
+            else {
+                panic!("not a sync");
+            };
+            assert_eq!(local, "/home/me/Local Copy");
+            assert_eq!(remote, "/Backup");
+            assert_eq!(direction, "download");
+            assert!(delete);
+            assert_eq!(exclude, vec!["*.tmp".to_string()]);
+        });
+    }
+
+    #[test]
+    fn connect_takes_a_url_or_a_saved_profile() {
+        let url = read_batch_script("CONNECT sftp://me@host/\n").unwrap();
+        assert_eq!(
+            url[0].target,
+            Some(BatchTarget::Url("sftp://me@host/".into()))
+        );
+        let profile = read_batch_script("CONNECT --profile \"My Koofr\"\n").unwrap();
+        assert_eq!(
+            profile[0].target,
+            Some(BatchTarget::Profile("My Koofr".into()))
+        );
+
+        let bare = read_batch_script("CONNECT Koofr\n").unwrap_err();
+        assert!(bare.1.contains("CONNECT --profile \"Koofr\""), "{}", bare.1);
+        let empty = read_batch_script("CONNECT --profile \"\"\n").unwrap_err();
+        assert!(
+            empty.1.contains("needs a saved profile name"),
+            "{}",
+            empty.1
+        );
+        let unquoted = read_batch_script("CONNECT --profile My Koofr\n").unwrap_err();
+        assert!(unquoted.1.contains("quote a name"), "{}", unquoted.1);
+    }
+
+    #[test]
+    fn an_unknown_flag_or_token_stops_the_script_before_it_runs() {
+        on_big_stack(|| {
+            // Every error here is raised while reading, before line 1 executes.
+            for (script, needle) in [
+                (
+                    "CONNECT sftp://h/\nSYNC /a /b --direktion download\n",
+                    "--direktion",
+                ),
+                (
+                    "CONNECT sftp://h/\nSYNC /a /b --profile Other\n",
+                    "--profile",
+                ),
+                (
+                    "CONNECT sftp://h/\nSYNC /a\n",
+                    "SYNC requires <local> <remote>",
+                ),
+                ("CONNECT sftp://h/\nSYNC /a /b --local\n", "--local"),
+                ("CONNECT sftp://h/\nLS --long /\n", "unknown flag '--long'"),
+                (
+                    "CONNECT sftp://h/\nGET /a /b /c\n",
+                    "GET takes 1 to 2 arguments",
+                ),
+                ("CONNECT sftp://h/\nDF /\n", "DF takes 0 arguments"),
+                ("ON_ERROR\n", "ON_ERROR takes 1 argument"),
+                ("ON_ERROR MAYBE\n", "CONTINUE or FAIL"),
+                ("--direction download\n", "Unknown command '--DIRECTION'"),
+                ("CONNECT sftp://h/\nLS \"/unterminated\n", "unmatched quote"),
+                (
+                    "SYNC /a /b \\\n\n  --delete\n",
+                    "must be followed by its continuation",
+                ),
+                ("SYNC /a /b \\\n", "ends inside"),
+            ] {
+                let err = read_batch_script(script).expect_err(script);
+                assert!(err.1.contains(needle), "{script:?}: {}", err.1);
+            }
+        });
+    }
+
+    #[test]
+    fn flags_are_not_read_as_paths() {
+        let lines =
+            read_batch_script("CONNECT sftp://h/\nLS -l /data\nRM -r /old\nRM -- -odd\n").unwrap();
+        assert_eq!(lines[1].args, ["/data"]);
+        assert!(lines[1].has_flag("-l"));
+        assert_eq!(lines[2].args, ["/old"]);
+        assert!(lines[2].has_flag("-r"));
+        assert_eq!(lines[3].args, ["-odd"], "`--` ends the flags");
+    }
+
+    #[test]
+    fn set_applies_in_order_and_quotes_keep_empty_arguments() {
+        let lines = read_batch_script("SET A=1\nECHO $A\nSET A=2\nECHO ${A} $$A\n").unwrap();
+        assert_eq!(lines[1].expanded, "ECHO 1");
+        assert_eq!(lines[3].expanded, "ECHO 2 $A");
+        assert_eq!(
+            tokenize_batch_line("X \"\" \"a b\"").unwrap(),
+            ["X", "", "a b"]
+        );
+    }
+
+    fn all_script_profiles() -> Vec<AerosyncScriptProfile> {
+        let mut out = Vec::new();
+        for preset in SyncProfile::builtins() {
+            out.push(AerosyncScriptProfile {
+                profile: preset.clone(),
+                local_path: "/Users/John Smith/Docs".into(),
+                remote_path: "/remote dir".into(),
+                connect_profile: Some("My Server".into()),
+                connect_url: None,
+                dry_run: false,
+                conflict_mode: None,
+                track_renames: false,
+                skip_matching: false,
+                resync: false,
+                watch: false,
+            });
+            out.push(AerosyncScriptProfile {
+                profile: preset,
+                local_path: "/l".into(),
+                remote_path: "/r".into(),
+                connect_profile: None,
+                connect_url: Some("sftp://me@host:22/".into()),
+                dry_run: true,
+                conflict_mode: Some("rename".into()),
+                track_renames: true,
+                skip_matching: true,
+                resync: true,
+                watch: true,
+            });
+        }
+        out
+    }
+
+    /// generate_script -> batch reader -> the `sync` parameters of the preset,
+    /// for every builtin. The destructurings below list every field: a field
+    /// added to SyncProfile or AerosyncScriptProfile does not compile until it
+    /// is either checked against a `sync` flag here or named in
+    /// SETTINGS_NOT_APPLIED_BY_CLI, which can therefore only shrink.
+    #[test]
+    fn exported_script_runs_the_preset_it_was_exported_from() {
+        on_big_stack(|| {
+            for exported in all_script_profiles() {
+                let AerosyncScriptProfile {
+                    profile,
+                    local_path,
+                    remote_path,
+                    connect_profile,
+                    connect_url,
+                    dry_run: want_dry_run,
+                    conflict_mode: want_conflict,
+                    track_renames: want_track,
+                    skip_matching: want_skip,
+                    resync: want_resync,
+                    watch: want_watch,
+                } = exported.clone();
+                let SyncProfile {
+                    id: _,
+                    name: _,
+                    builtin: _,
+                    direction: want_direction,
+                    // Not applied by `sync` yet: named in the script comment.
+                    compare_timestamp: _,
+                    compare_size: _,
+                    compare_checksum: _,
+                    retry_policy: _,
+                    verify_policy: _,
+                    exclude_patterns: want_exclude,
+                    delete_orphans: want_delete,
+                    // Not preset settings: the runner never applied them and the
+                    // GUI is dropping the controls, so the script does not name them.
+                    parallel_streams: _,
+                    compression_mode: _,
+                } = profile.clone();
+
+                let script = generate_script(&exported, "test");
+                let lines =
+                    read_batch_script(&script).unwrap_or_else(|e| panic!("{}: {script}", e.1));
+
+                let connect = lines.iter().find(|l| l.cmd == "CONNECT").unwrap();
+                let want_target = match (connect_profile, connect_url) {
+                    (Some(name), _) => BatchTarget::Profile(name),
+                    (None, Some(url)) => BatchTarget::Url(url),
+                    (None, None) => unreachable!(),
+                };
+                assert_eq!(connect.target.as_ref(), Some(&want_target));
+
+                let syncs: Vec<&BatchLine> = lines.iter().filter(|l| l.cmd == "SYNC").collect();
+                assert_eq!(syncs.len(), 1, "{script}");
+                let Commands::Sync {
+                    local,
+                    remote,
+                    direction,
+                    dry_run,
+                    delete,
+                    exclude,
+                    track_renames,
+                    conflict_mode,
+                    skip_matching,
+                    resync,
+                    watch,
+                    ..
+                } = sync_of(syncs[0])
+                else {
+                    panic!("not a sync");
+                };
+                assert_eq!(local, local_path);
+                assert_eq!(remote, remote_path);
+                let want_direction = match want_direction {
+                    CompareDirection::LocalToRemote => "upload",
+                    CompareDirection::RemoteToLocal => "download",
+                    CompareDirection::Bidirectional => "both",
+                };
+                assert_eq!(direction, want_direction, "{}", profile.id);
+                assert_eq!(delete, want_delete, "{}", profile.id);
+                assert_eq!(exclude, want_exclude, "{}", profile.id);
+                assert_eq!(dry_run, want_dry_run);
+                assert_eq!(track_renames, want_track);
+                assert_eq!(skip_matching, want_skip);
+                assert_eq!(resync, want_resync);
+                assert_eq!(watch, want_watch);
+                assert_eq!(
+                    conflict_mode,
+                    want_conflict.unwrap_or_else(|| "newer".into())
+                );
+
+                // Every setting `sync` cannot apply yet is named, never dropped.
+                for setting in SETTINGS_NOT_APPLIED_BY_CLI {
+                    assert!(
+                        script.contains(&format!("#   {}: ", setting)),
+                        "{setting} missing from:\n{script}"
+                    );
+                }
+            }
+        });
+    }
+
+    /// Every batch example in docs/CLI-GUIDE.md passes the reader: the public
+    /// docs site had drifted to `SYNC remote local` and a `-r` sync flag that
+    /// the batch now rejects before running.
+    #[test]
+    fn the_cli_guide_batch_examples_pass_the_reader() {
+        on_big_stack(|| {
+            let guide = include_str!("../../../docs/CLI-GUIDE.md");
+            let mut checked = 0;
+            for block in guide.split("```").skip(1).step_by(2) {
+                let Some(body) = block.strip_prefix('\n') else {
+                    continue; // a fenced block with a language tag is not a batch script
+                };
+                let first = body.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+                let is_batch = [
+                    "SET ",
+                    "CONNECT ",
+                    "# deploy.aeroftp-script",
+                    "# Comment lines",
+                ]
+                .iter()
+                .any(|p| first.starts_with(p));
+                if !is_batch {
+                    continue;
+                }
+                read_batch_script(body)
+                    .unwrap_or_else(|e| panic!("line {}: {}\n{body}", e.0 + 1, e.1));
+                checked += 1;
+            }
+            assert!(checked >= 3, "found {checked} batch examples in the guide");
+        });
+    }
+
+    #[test]
+    fn the_wrappers_invoke_a_batch_command_the_cli_accepts() {
+        on_big_stack(|| {
+            let sh = sh_wrapper("nightly.aeroftp-script");
+            let ps1 = ps1_wrapper("nightly.aeroftp-script");
+            assert!(
+                sh.contains("exec aeroftp-cli batch \"$here/nightly.aeroftp-script\" \"$@\""),
+                "{sh}"
+            );
+            assert!(
+                ps1.contains(
+                    "& aeroftp-cli batch (Join-Path $here 'nightly.aeroftp-script') @args"
+                ),
+                "{ps1}"
+            );
+            // What the wrappers run, with and without a forwarded global flag.
+            for argv in [
+                vec!["aeroftp-cli", "batch", "/s/nightly.aeroftp-script"],
+                vec![
+                    "aeroftp-cli",
+                    "batch",
+                    "/s/nightly.aeroftp-script",
+                    "--quiet",
+                ],
+            ] {
+                let cli = Cli::try_parse_from(&argv).unwrap_or_else(|e| panic!("{argv:?}: {e}"));
+                assert!(
+                    matches!(cli.command, Commands::Batch { ref file } if file == "/s/nightly.aeroftp-script")
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn the_ai_sync_suggestion_is_a_command_the_cli_accepts() {
+        on_big_stack(|| {
+            use ftp_client_gui_lib::ai_core::remote_tools::suggest_sync_command;
+            let line = suggest_sync_command(
+                "My Server",
+                "/home/me/a dir",
+                "/remote",
+                " --direction download --dry-run --json --delete --track-renames --exclude \"*.tmp\"",
+            );
+            assert!(!line.contains("--checksum"));
+            let argv = tokenize_batch_line(&line).unwrap();
+            let cli = Cli::try_parse_from(&argv).unwrap_or_else(|e| panic!("{line}: {e}"));
+            assert_eq!(cli.profile.as_deref(), Some("My Server"));
+            let Commands::Sync {
+                url,
+                local,
+                direction,
+                delete,
+                exclude,
+                ..
+            } = cli.command
+            else {
+                panic!("not a sync: {line}");
+            };
+            // With --profile, the dispatcher reads the first positional as LOCAL.
+            assert_eq!(
+                (url.as_str(), local.as_str()),
+                ("/home/me/a dir", "/remote")
+            );
+            assert_eq!(direction, "download");
+            assert!(delete);
+            assert_eq!(exclude, ["*.tmp"]);
+        });
     }
 }
 
@@ -65514,181 +66390,8 @@ async fn main() {
                 7
             }
         }
-        Commands::Sync {
-            url,
-            local,
-            remote,
-            direction,
-            dry_run,
-            delete,
-            exclude,
-            error_correction,
-            ec_max_overhead,
-            track_renames,
-            max_delete,
-            backup_dir,
-            backup_suffix,
-            suffix_keep_extension,
-            compare_dest,
-            copy_dest,
-            from_reconcile,
-            conflict_mode,
-            skip_matching,
-            resync,
-            watch,
-            watch_mode,
-            watch_debounce_ms,
-            watch_cooldown,
-            watch_rescan,
-            watch_no_initial,
-            local_only,
-            no_local_delta,
-            delta,
-        } => {
-            // Z.2.2: local-to-local fast path. With `--local` the positional
-            // args become `<SRC> <DST>` (url=SRC, local=DST). Without
-            // `--local` the legacy 3-arg shape `<URL> <LOCAL> <REMOTE>`
-            // applies. Auto-detection also kicks in if both positional
-            // candidates look like real local fs paths (no scheme, exists or
-            // absolute) and no profile/URL was given.
-            let local_to_local_src;
-            let local_to_local_dst;
-            let local_to_local_match;
-            if *local_only {
-                local_to_local_src = url.as_str();
-                local_to_local_dst = local.as_str();
-                local_to_local_match = true;
-            } else if cli.profile.is_none()
-                && is_local_to_local_sync(false, url, cli.profile.as_deref(), local)
-            {
-                // Shape `<URL> <LOCAL> <REMOTE>` where URL is actually a path.
-                local_to_local_src = url.as_str();
-                local_to_local_dst = local.as_str();
-                local_to_local_match = true;
-            } else {
-                local_to_local_src = "";
-                local_to_local_dst = "";
-                local_to_local_match = false;
-            }
-
-            if local_to_local_match {
-                if error_correction.is_some() && !cli.quiet {
-                    eprintln!("Warning: --error-correction is ignored for local-to-local sync");
-                }
-                let stats = cmd_sync_local_to_local(
-                    local_to_local_src,
-                    local_to_local_dst,
-                    *dry_run,
-                    exclude,
-                    *no_local_delta,
-                    &cli,
-                    format,
-                    cancelled.clone(),
-                )
-                .await;
-                stats.exit_code
-            } else {
-                match parse_sync_error_correction_level_pct(error_correction.as_deref()) {
-                    Err(err) => {
-                        print_error(format, &err, 5);
-                        5
-                    }
-                    Ok(error_correction_pct) => {
-                        let (u, l, r) =
-                            if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                                ("_", url.as_str(), local.as_str())
-                            } else {
-                                (url.as_str(), local.as_str(), remote.as_str())
-                            };
-
-                        if *watch {
-                            cmd_sync_watch(
-                                u,
-                                l,
-                                r,
-                                direction,
-                                *dry_run,
-                                *delete,
-                                exclude,
-                                error_correction_pct,
-                                *ec_max_overhead,
-                                *track_renames,
-                                max_delete.as_deref(),
-                                backup_dir.as_deref(),
-                                backup_suffix,
-                                *suffix_keep_extension,
-                                compare_dest.as_deref(),
-                                copy_dest.as_deref(),
-                                from_reconcile.as_deref(),
-                                conflict_mode,
-                                *skip_matching,
-                                *resync,
-                                watch_mode,
-                                *watch_debounce_ms,
-                                *watch_cooldown,
-                                *watch_rescan,
-                                *watch_no_initial,
-                                &cli,
-                                format,
-                                cancelled.clone(),
-                            )
-                            .await
-                        } else {
-                            let max_attempts = effective_max_attempts(&cli, format);
-                            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
-                            let max_transfer_limit = resolve_max_transfer(&cli);
-                            let mut last_code = 0i32;
-                            for attempt in 1..=max_attempts {
-                                last_code = cmd_sync(
-                                    u,
-                                    l,
-                                    r,
-                                    direction,
-                                    *dry_run,
-                                    *delete,
-                                    exclude,
-                                    error_correction_pct,
-                                    *ec_max_overhead,
-                                    *track_renames,
-                                    max_delete.as_deref(),
-                                    backup_dir.as_deref(),
-                                    backup_suffix,
-                                    *suffix_keep_extension,
-                                    compare_dest.as_deref(),
-                                    copy_dest.as_deref(),
-                                    from_reconcile.as_deref(),
-                                    conflict_mode,
-                                    *skip_matching,
-                                    *resync,
-                                    &cli,
-                                    format,
-                                    cancelled.clone(),
-                                    None,
-                                    *delta,
-                                )
-                                .await
-                                .exit_code;
-                                if !is_retryable_exit(last_code)
-                                    || session_transfer_exceeded(max_transfer_limit)
-                                    || attempt == max_attempts
-                                {
-                                    break;
-                                }
-                                if !cli.quiet {
-                                    eprintln!(
-                                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
-                                        attempt, max_attempts, last_code, sleep_dur
-                                    );
-                                }
-                                if !sleep_dur.is_zero() {
-                                    tokio::time::sleep(sleep_dur).await;
-                                }
-                            }
-                            last_code
-                        }
-                    }
-                }
-            }
+        command @ Commands::Sync { .. } => {
+            dispatch_sync(command, &cli, format, cancelled.clone()).await
         }
         Commands::SyncDoctor {
             url,
@@ -69287,18 +69990,6 @@ mod tests {
                 "label {label} must parse back to {dir:?}"
             );
         }
-    }
-
-    /// Building the full `Cli` clap command tree overflows the 2MB default test
-    /// stack (the tree is enormous), so run clap-parsing assertions on a 32MB
-    /// thread exactly like `dispatcher_allowlist_matches_clap_subcommands`.
-    fn on_big_stack<F: FnOnce() + Send + 'static>(f: F) {
-        std::thread::Builder::new()
-            .stack_size(32 * 1024 * 1024)
-            .spawn(f)
-            .expect("spawn big-stack test thread")
-            .join()
-            .expect("big-stack test body panicked");
     }
 
     #[test]

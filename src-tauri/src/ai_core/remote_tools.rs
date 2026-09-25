@@ -2738,6 +2738,32 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     }))
 }
 
+/// A runnable `aeroftp-cli sync` line for a tool result. The profile goes
+/// first (`sync LOCAL REMOTE` alone reads LOCAL as the URL, and the command
+/// fails), and only flags `sync` really has follow. `server` empty means the
+/// GUI's active connection, which has no name to put here, so the line carries
+/// the `NAME` placeholder the CLI `sync-doctor` uses.
+pub fn suggest_sync_command(
+    server: &str,
+    local_dir: &str,
+    remote_dir: &str,
+    flags: &str,
+) -> String {
+    let quote = |s: &str| s.replace('"', "\\\"");
+    let profile = if server.is_empty() {
+        "NAME".to_string()
+    } else {
+        quote(server)
+    };
+    format!(
+        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\"{}",
+        profile,
+        quote(local_dir),
+        quote(remote_dir),
+        flags
+    )
+}
+
 async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
     let local_dir = get_str(args, "local_dir")?;
@@ -2854,7 +2880,12 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         risks.push("track-renames is disabled; moved files may be recopied".to_string());
     }
     if checksum {
-        risks.push("checksum is enabled; verification will be slower but stricter".to_string());
+        // `sync` compares size and mtime and has no --checksum; content
+        // verification is `check --checksum`, run after the sync.
+        risks.push(
+            "checksum requested: sync compares size and mtime; verify contents afterwards with `aeroftp-cli check --checksum`"
+                .to_string(),
+        );
     }
     if !remote_root_ok {
         risks.push("remote path could not be listed".to_string());
@@ -2863,19 +2894,17 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         risks.push("both sides are empty; sync will be a no-op".to_string());
     }
 
-    let suggested_next_command = format!(
-        "aeroftp-cli sync \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}",
-        local_dir.replace('"', "\\\""),
-        remote_dir.replace('"', "\\\""),
-        direction,
-        if delete { " --delete" } else { "" },
-        if track_renames {
-            " --track-renames"
-        } else {
-            ""
-        },
-        if checksum { " --checksum" } else { "" },
-    );
+    let mut flags = format!(" --direction {} --dry-run --json", direction);
+    if delete {
+        flags.push_str(" --delete");
+    }
+    if track_renames {
+        flags.push_str(" --track-renames");
+    }
+    for pattern in &exclude {
+        flags.push_str(&format!(" --exclude \"{}\"", pattern.replace('"', "\\\"")));
+    }
+    let suggested_next_command = suggest_sync_command(&server, &local_dir, &remote_dir, &flags);
 
     Ok(json!({
         "server": server,
@@ -3467,11 +3496,8 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     }
 
     let elapsed = started.elapsed().as_secs_f64();
-    let suggested_next_command = format!(
-        "aeroftp-cli sync \"{}\" \"{}\" --dry-run --json",
-        local_dir.replace('"', "\\\""),
-        remote_dir.replace('"', "\\\""),
-    );
+    let suggested_next_command =
+        suggest_sync_command(&server, &local_dir, &remote_dir, " --dry-run --json");
 
     let status = if differ_g.is_empty() && missing_remote_g.is_empty() && missing_local_g.is_empty()
     {
