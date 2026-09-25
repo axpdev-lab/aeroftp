@@ -249,6 +249,27 @@ pub struct CompareOptions {
     /// Maximum file age in seconds (skip older files)
     #[serde(default)]
     pub max_age_secs: Option<u64>,
+    /// Versioned-backup folder, relative to each root. Nothing in it is
+    /// compared, on either side, so a Mirror never deletes old copies and a
+    /// Backup never uploads them. [`crate::sync_backup::is_backup_path`]
+    /// decides; the compare commands refuse a folder
+    /// [`crate::sync_backup::BackupDir::parse`] refuses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_dir: Option<String>,
+}
+
+impl CompareOptions {
+    /// The backup folder, validated. The compare commands call this first,
+    /// so an invalid folder is an error to the caller, not a folder that is
+    /// silently compared.
+    pub fn parsed_backup_dir(
+        &self,
+    ) -> Result<Option<crate::sync_backup::BackupDir>, crate::sync_backup::BackupDirError> {
+        self.backup_dir
+            .as_deref()
+            .map(crate::sync_backup::BackupDir::parse)
+            .transpose()
+    }
 }
 
 impl Default for CompareOptions {
@@ -274,6 +295,7 @@ impl Default for CompareOptions {
             max_size: None,
             min_age_secs: None,
             max_age_secs: None,
+            backup_dir: None,
         }
     }
 }
@@ -1140,6 +1162,8 @@ pub fn build_comparison_results(
     options: &CompareOptions,
 ) -> Vec<FileComparison> {
     let mut results = Vec::new();
+    // Validated by the commands that accept options from outside.
+    let backup_dir = options.parsed_backup_dir().ok().flatten();
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
 
@@ -1152,6 +1176,12 @@ pub fn build_comparison_results(
 
         // Skip excluded paths
         if should_exclude(&path, &options.exclude_patterns) {
+            continue;
+        }
+        if backup_dir
+            .as_ref()
+            .is_some_and(|dir| crate::sync_backup::is_backup_path(&path, dir))
+        {
             continue;
         }
 
@@ -3225,6 +3255,8 @@ pub fn classify_with_summary(
         examined_bytes: 0,
         identical_bytes: 0,
     };
+    // Validated by the commands that accept options from outside.
+    let backup_dir = options.parsed_backup_dir().ok().flatten();
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
 
@@ -3236,6 +3268,12 @@ pub fn classify_with_summary(
         }
 
         if should_exclude(&path, &options.exclude_patterns) {
+            continue;
+        }
+        if backup_dir
+            .as_ref()
+            .is_some_and(|dir| crate::sync_backup::is_backup_path(&path, dir))
+        {
             continue;
         }
 
@@ -7169,6 +7207,26 @@ mod tests {
         assert!(!snapshot.id.is_empty());
     }
 
+    // TEMPORARY (fixture generation, removed before commit): prints what
+    // export_sync_template_cmd returns for the Mirror preset, with this tree's
+    // export code still byte-identical to v4.2.0.
+    #[test]
+    #[ignore]
+    fn tmp_print_aerosync_export_for_fixture() {
+        let profile = SyncProfile::mirror();
+        let t = export_sync_template(
+            "Site mirror",
+            "Nightly mirror of the site",
+            &profile,
+            "/home/u/site",
+            "/www/site",
+            &["*.tmp".to_string(), "cache/".to_string()],
+            None,
+        )
+        .unwrap();
+        println!("FIXTURE-BEGIN\n{}\nFIXTURE-END", serde_json::to_string_pretty(&t).unwrap());
+    }
+
     #[test]
     fn test_sync_template_export() {
         let profile = SyncProfile::mirror();
@@ -8225,5 +8283,70 @@ mod tests {
         assert_eq!(report.summary.examined_count, 0);
         assert_eq!(report.summary.identical_count, 0);
         assert_eq!(report.summary.examined_bytes, 0);
+    }
+    /// Versioned backup: the backup folder is invisible to the compare on
+    /// both sides. On the destination, a second Mirror run would otherwise
+    /// list the old copies as orphans and delete them; on the source, a
+    /// Backup would upload them. A folder of the same name deeper in the tree
+    /// is ordinary data.
+    #[test]
+    fn test_compare_skips_the_backup_folder_on_both_sides_only_at_the_root() {
+        let now = Utc::now();
+        let mut local: HashMap<String, FileInfo> = HashMap::new();
+        let mut remote: HashMap<String, FileInfo> = HashMap::new();
+        local.insert(
+            ".aeroftp-versions/20260925T070000Z/a.txt".to_string(),
+            mk_file_info("a.txt", 10, Some(now)),
+        );
+        remote.insert(
+            ".aeroftp-versions/20260925T070000Z/b.txt".to_string(),
+            mk_file_info("b.txt", 20, Some(now)),
+        );
+        remote.insert(".aeroftp-versions".to_string(), mk_file_info(".aeroftp-versions", 0, Some(now)));
+        local.insert(
+            "docs/.aeroftp-versions/keep.txt".to_string(),
+            mk_file_info("keep.txt", 5, Some(now)),
+        );
+
+        let opts = CompareOptions {
+            exclude_patterns: vec![],
+            backup_dir: Some(".aeroftp-versions".to_string()),
+            ..Default::default()
+        };
+        let report = classify_with_summary(local.clone(), remote.clone(), &opts, None);
+        let paths: Vec<&str> = report.differences.iter().map(|d| d.relative_path.as_str()).collect();
+        assert_eq!(paths, vec!["docs/.aeroftp-versions/keep.txt"]);
+
+        let flat = build_comparison_results(local, remote, &opts);
+        let paths: Vec<&str> = flat.iter().map(|d| d.relative_path.as_str()).collect();
+        assert_eq!(paths, vec!["docs/.aeroftp-versions/keep.txt"]);
+    }
+
+    /// The Plan tab's own patterns reach the compare: a file that exists only
+    /// on the remote and matches one is not listed, so Mirror cannot delete it.
+    #[test]
+    fn test_compare_drops_a_remote_only_file_matching_a_user_pattern() {
+        let now = Utc::now();
+        let local: HashMap<String, FileInfo> = HashMap::new();
+        let mut remote: HashMap<String, FileInfo> = HashMap::new();
+        remote.insert("logs/app.log".to_string(), mk_file_info("app.log", 7, Some(now)));
+        remote.insert("keep.txt".to_string(), mk_file_info("keep.txt", 7, Some(now)));
+        let opts = CompareOptions {
+            exclude_patterns: vec!["*.log".to_string()],
+            ..Default::default()
+        };
+        let report = classify_with_summary(local, remote, &opts, None);
+        let paths: Vec<&str> = report.differences.iter().map(|d| d.relative_path.as_str()).collect();
+        assert_eq!(paths, vec!["keep.txt"]);
+    }
+
+    #[test]
+    fn test_compare_options_refuse_an_invalid_backup_folder() {
+        let opts = CompareOptions {
+            backup_dir: Some("../out".to_string()),
+            ..Default::default()
+        };
+        assert!(opts.parsed_backup_dir().is_err());
+        assert!(CompareOptions::default().parsed_backup_dir().unwrap().is_none());
     }
 }

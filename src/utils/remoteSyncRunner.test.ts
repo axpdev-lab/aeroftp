@@ -35,7 +35,7 @@ const baseConfig = (over: Partial<RemoteSyncConfig> = {}): RemoteSyncConfig => (
     retryPolicy: RETRY,
     verifyPolicy: 'none',
     deltaSyncEnabled: false,
-    versioningStrategy: null,
+    versionedBackup: null,
     transferBudget: 0,
     direction: 'bidirectional',
     ...over,
@@ -231,23 +231,7 @@ describe('remoteSyncRunner — orphan deletes', () => {
             && c.args?.path === '/srv/data/stale.txt')).toBe(true);
     });
 
-    it('archives a local file before deleting it when versioning is on', async () => {
-        const { invoke, calls } = makeInvoke();
-        const report = await runRemoteSync(
-            [file('old.txt', 'delete-local')],
-            noDirs,
-            baseConfig({ versioningStrategy: 'trash' }),
-            {},
-            noWaitDeps(invoke),
-        );
-        expect(report.deleted).toBe(1);
-        const archiveIdx = calls.findIndex((c) => c.cmd === 'archive_before_sync_delete');
-        const deleteIdx = calls.findIndex((c) => c.cmd === 'delete_local_file');
-        expect(archiveIdx).toBeGreaterThanOrEqual(0);
-        expect(deleteIdx).toBeGreaterThan(archiveIdx);
-    });
-
-    it('passes the isDir hint and skips archiving for directory deletes', async () => {
+    it('passes the isDir hint for directory deletes', async () => {
         const { invoke, calls } = makeInvoke();
         await runRemoteSync(
             [file('stale-dir', 'delete-remote', { isDir: true })],
@@ -258,29 +242,149 @@ describe('remoteSyncRunner — orphan deletes', () => {
         );
         const del = calls.find((c) => c.cmd === 'delete_remote_file');
         expect(del?.args).toEqual({ path: '/srv/data/stale-dir', isDir: true });
-
-        const { invoke: invoke2, calls: calls2 } = makeInvoke();
-        await runRemoteSync(
-            [file('old-dir', 'delete-local', { isDir: true })],
-            noDirs,
-            baseConfig({ versioningStrategy: 'trash' }),
-            {},
-            noWaitDeps(invoke2),
-        );
-        expect(calls2.some((c) => c.cmd === 'archive_before_sync_delete')).toBe(false);
-        expect(calls2.some((c) => c.cmd === 'delete_local_file')).toBe(true);
     });
+});
 
-    it('skips archiving when no versioning strategy is configured', async () => {
-        const { invoke, calls } = makeInvoke();
-        await runRemoteSync(
-            [file('old.txt', 'delete-local')],
+describe('remoteSyncRunner — versioned backup', () => {
+    const backup = { versionedBackup: { dir: '.aeroftp-versions' } };
+    const stampedInvoke = (handlers: Record<string, (args: Record<string, unknown> | undefined, idx: number) => unknown> = {}) =>
+        makeInvoke({ sync_backup_run_stamp: () => '20260925T070000Z', ...handlers });
+    const idx = (calls: { cmd: string }[], cmd: string) => calls.findIndex((c) => c.cmd === cmd);
+
+    it('moves the remote copy aside before an upload overwrites it', async () => {
+        const { invoke, calls } = stampedInvoke();
+        const report = await runRemoteSync(
+            [file('docs/a.txt', 'upload', { overwritesExisting: true })],
             noDirs,
-            baseConfig({ versioningStrategy: 'disabled' }),
+            baseConfig(backup),
             {},
             noWaitDeps(invoke),
         );
-        expect(calls.some((c) => c.cmd === 'archive_before_sync_delete')).toBe(false);
+        expect(report.uploaded).toBe(1);
+        const archive = calls.find((c) => c.cmd === 'sync_backup_archive_remote');
+        expect(archive?.args).toEqual({
+            useProvider: false,
+            root: '/srv/data',
+            dir: '.aeroftp-versions',
+            stamp: '20260925T070000Z',
+            rel: 'docs/a.txt',
+        });
+        expect(idx(calls, 'sync_backup_archive_remote')).toBeLessThan(idx(calls, 'upload_file'));
+    });
+
+    it('moves the local copy aside before a download overwrites it', async () => {
+        const { invoke, calls } = stampedInvoke();
+        await runRemoteSync(
+            [file('b.txt', 'download', { overwritesExisting: true })],
+            noDirs,
+            baseConfig(backup),
+            {},
+            noWaitDeps(invoke),
+        );
+        const archive = calls.find((c) => c.cmd === 'sync_backup_archive_local');
+        expect(archive?.args).toMatchObject({ root: '/home/u/work', rel: 'b.txt' });
+        expect(idx(calls, 'sync_backup_archive_local')).toBeLessThan(idx(calls, 'download_file'));
+    });
+
+    it('does not archive a new file or a keep-both copy', async () => {
+        const { invoke, calls } = stampedInvoke();
+        await runRemoteSync(
+            [file('new.txt', 'upload'), file('n.txt', 'download', { overwritesExisting: false })],
+            noDirs,
+            baseConfig(backup),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.some((c) => c.cmd.startsWith('sync_backup_'))).toBe(false);
+    });
+
+    it('turns a file delete into the move, on either side, and leaves folders to the delete', async () => {
+        const { invoke, calls } = stampedInvoke();
+        const report = await runRemoteSync(
+            [
+                file('gone.txt', 'delete-remote'),
+                file('old.txt', 'delete-local'),
+                file('empty-dir', 'delete-remote', { isDir: true }),
+            ],
+            noDirs,
+            baseConfig({ ...backup, isProvider: true }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.deleted).toBe(3);
+        expect(calls.find((c) => c.cmd === 'sync_backup_archive_remote')?.args)
+            .toMatchObject({ useProvider: true, rel: 'gone.txt' });
+        expect(calls.find((c) => c.cmd === 'sync_backup_archive_local')?.args)
+            .toMatchObject({ root: '/home/u/work', rel: 'old.txt' });
+        // The move replaced both file deletes; the folder is still deleted.
+        const deletes = calls.filter((c) => c.cmd === 'provider_delete_file' || c.cmd === 'delete_local_file');
+        expect(deletes.map((c) => c.args?.path)).toEqual(['/srv/data/empty-dir']);
+    });
+
+    it('asks for one stamp per run however many copies it keeps', async () => {
+        const { invoke, calls } = stampedInvoke();
+        await runRemoteSync(
+            [file('a.txt', 'delete-remote'), file('b.txt', 'delete-remote'), file('c.txt', 'upload', { overwritesExisting: true })],
+            noDirs,
+            baseConfig(backup),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.filter((c) => c.cmd === 'sync_backup_run_stamp')).toHaveLength(1);
+        const stamps = new Set(calls.filter((c) => c.cmd === 'sync_backup_archive_remote').map((c) => c.args?.stamp));
+        expect([...stamps]).toEqual(['20260925T070000Z']);
+    });
+
+    it('fails a file whose backup fails without writing or deleting it, and goes on', async () => {
+        const { invoke, calls } = stampedInvoke({
+            sync_backup_archive_remote: (args) => {
+                if (args?.rel === 'locked.txt') throw new Error('versioned backup needs to move files');
+                return '/srv/data/.aeroftp-versions/x';
+            },
+        });
+        const report = await runRemoteSync(
+            [
+                file('locked.txt', 'upload', { overwritesExisting: true }),
+                file('locked.txt', 'delete-remote'),
+                file('fine.txt', 'upload', { overwritesExisting: true }),
+            ],
+            noDirs,
+            baseConfig(backup),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.errors.map((e) => e.file_path)).toEqual(['locked.txt', 'locked.txt']);
+        const uploads = calls.filter((c) => c.cmd === 'upload_file');
+        expect(uploads).toHaveLength(1);
+        expect((uploads[0].args as { params: { remote_path: string } }).params.remote_path).toBe('/srv/data/fine.txt');
+        expect(calls.some((c) => c.cmd === 'delete_remote_file')).toBe(false);
+    });
+
+    it('archives the right-hand folder on the local disk for a local-local pair', async () => {
+        const { invoke, calls } = stampedInvoke();
+        await runRemoteSync(
+            [file('r.txt', 'upload', { overwritesExisting: true })],
+            noDirs,
+            baseConfig({ ...backup, isLocalLocal: true }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.find((c) => c.cmd === 'sync_backup_archive_local')?.args)
+            .toMatchObject({ root: '/srv/data', rel: 'r.txt' });
+        expect(calls.some((c) => c.cmd === 'sync_backup_archive_remote')).toBe(false);
+    });
+
+    it('does nothing of the kind when versioned backup is off', async () => {
+        const { invoke, calls } = stampedInvoke();
+        await runRemoteSync(
+            [file('a.txt', 'upload', { overwritesExisting: true }), file('b.txt', 'delete-local')],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.some((c) => c.cmd.startsWith('sync_backup_'))).toBe(false);
+        expect(calls.some((c) => c.cmd === 'delete_local_file')).toBe(true);
     });
 });
 
@@ -926,21 +1030,32 @@ describe('remoteSyncRunner — GAP-9a maniac mode', () => {
     });
 });
 
-describe('remoteSyncRunner — GAP-9b threaded transfer tuning', () => {
-    it('accepts parallelStreams + compressionMode config without altering the sequential run', async () => {
-        const { invoke, calls } = makeInvoke();
-        const report = await runRemoteSync(
-            [file('a.txt', 'upload'), file('b.txt', 'upload')],
-            noDirs,
-            baseConfig({ parallelStreams: 8, compressionMode: 'on' }),
-            {},
-            noWaitDeps(invoke),
-        );
-        // The run still completes both entries one at a time: the threaded
-        // tuning is config-only until APPENDIX-DAG-ENGINE Fase 2 consumes it.
-        expect(report.uploaded).toBe(2);
-        const uploads = calls.filter((c) => c.cmd === 'upload_file');
-        expect(uploads).toHaveLength(2);
+describe('remoteSyncRunner — speed mode reaches the transfer', () => {
+    // The speed mode's only transfer-level effect is the delta flag
+    // (SPEED_PRESETS); these pin that the flag reaches both transfer commands
+    // on both routes, since the Plan tab no longer shows stream or
+    // compression controls that would suggest otherwise.
+    it.each([true, false])('passes deltaSyncEnabled=%s to upload and download', async (delta) => {
+        for (const isProvider of [false, true]) {
+            const { invoke, calls } = makeInvoke();
+            await runRemoteSync(
+                [file('up.txt', 'upload'), file('down.txt', 'download')],
+                noDirs,
+                baseConfig({ deltaSyncEnabled: delta, isProvider }),
+                {},
+                noWaitDeps(invoke),
+            );
+            const transfers = calls.filter((c) => /^(provider_)?(upload|download)_file$/.test(c.cmd));
+            expect(transfers.map((c) => c.cmd).sort()).toEqual(
+                isProvider ? ['provider_download_file', 'provider_upload_file'] : ['download_file', 'upload_file'],
+            );
+            for (const c of transfers) {
+                const flag = isProvider
+                    ? (c.args as { useDelta?: boolean }).useDelta
+                    : (c.args as { params: { use_delta?: boolean } }).params.use_delta;
+                expect(flag, `${c.cmd} isProvider=${isProvider}`).toBe(delta);
+            }
+        }
     });
 });
 

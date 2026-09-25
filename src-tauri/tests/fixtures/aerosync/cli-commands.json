@@ -1,0 +1,51 @@
+[
+    {
+        "name": "mirror upload with the default exclusions and error correction",
+        "input": {
+            "pairKind": "local-remote",
+            "preset": "mirror",
+            "direction": "left-to-right",
+            "profileName": "My Server",
+            "profileInitialPath": "/www",
+            "localPath": "/home/u/site",
+            "remotePath": "/www/site",
+            "excludes": ["node_modules", ".git", "*.pyc"],
+            "canary": false,
+            "transferBudgetBytes": 0,
+            "errorCorrectionPct": 15,
+            "versionedBackup": false,
+            "excludesMatch": true
+        },
+        "argv": [
+            "aeroftp-cli", "--profile", "My Server", "sync", "/home/u/site", "/www/site",
+            "--direction", "upload", "--delete",
+            "--exclude", "node_modules", "--exclude", ".git", "--exclude", "*.pyc",
+            "--error-correction=15"
+        ],
+        "posix": "aeroftp-cli --profile 'My Server' sync /home/u/site /www/site --direction upload --delete --exclude node_modules --exclude .git --exclude '*.pyc' --error-correction=15",
+        "powershell": "aeroftp-cli --profile 'My Server' sync /home/u/site /www/site --direction upload --delete --exclude node_modules --exclude .git --exclude '*.pyc' --error-correction=15"
+    },
+    {
+        "name": "mirror towards the left panel on a remote-local pair is a download",
+        "input": {
+            "pairKind": "remote-local",
+            "preset": "mirror",
+            "direction": "left-to-right",
+            "profileName": "O'Brien NAS",
+            "profileInitialPath": "/",
+            "localPath": "/home/u/it's here",
+            "remotePath": "/data/a b",
+            "excludes": [],
+            "canary": false,
+            "transferBudgetBytes": 0,
+            "errorCorrectionPct": 15,
+            "versionedBackup": false
+        },
+        "argv": [
+            "aeroftp-cli", "--profile", "O'Brien NAS", "sync", "/home/u/it's here", "/data/a b",
+            "--direction", "download", "--delete"
+        ],
+        "posix": "aeroftp-cli --profile 'O'\\''Brien NAS' sync '/home/u/it'\\''s here' '/data/a b' --direction download --delete",
+        "powershell": "aeroftp-cli --profile 'O''Brien NAS' sync '/home/u/it''s here' '/data/a b' --direction download --delete"
+    }
+]
