@@ -85,7 +85,7 @@ use ftp_client_gui_lib::providers::{
     ShareLinkOptions, StorageProvider, TrashEntry, MAX_DOWNLOAD_TO_BYTES,
 };
 use ftp_client_gui_lib::sftp_download_tuning::SftpDownloadPreset;
-use ftp_client_gui_lib::shell_quote::double_quote_body as shell_double_quote;
+use ftp_client_gui_lib::shell_quote::shell_arg;
 use ftp_client_gui_lib::user_partitions;
 use ftp_client_gui_lib::util::shutdown_signal;
 use futures_util::StreamExt;
@@ -26478,7 +26478,7 @@ async fn cmd_agent_connect(cli: &Cli, query: &str) -> i32 {
 fn profile_or_placeholder(cli: &Cli) -> String {
     cli.profile
         .as_deref()
-        .map(shell_double_quote)
+        .map(shell_arg)
         .unwrap_or_else(|| "NAME".to_string())
 }
 
@@ -26488,25 +26488,25 @@ fn suggest_ls_followup(cli: &Cli, path: &str) -> String {
     // it literally and get zero results. `*` matches anything on every
     // backend and is the honest default.
     format!(
-        "aeroftp-cli find --profile \"{}\" \"{}\" \"*\" --json",
+        "aeroftp-cli find --profile {} {} \"*\" --json",
         profile_or_placeholder(cli),
-        shell_double_quote(path)
+        shell_arg(path)
     )
 }
 
 fn suggest_find_followup(cli: &Cli, path: &str) -> String {
     format!(
-        "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+        "aeroftp-cli ls --profile {} {} --json",
         profile_or_placeholder(cli),
-        shell_double_quote(path)
+        shell_arg(path)
     )
 }
 
 fn suggest_stat_followup(cli: &Cli, path: &str) -> String {
     format!(
-        "aeroftp-cli stat --profile \"{}\" \"{}\" --json",
+        "aeroftp-cli stat --profile {} {} --json",
         profile_or_placeholder(cli),
-        shell_double_quote(path)
+        shell_arg(path)
     )
 }
 
@@ -26517,20 +26517,20 @@ fn suggest_transfer_apply(
     dest_path: &str,
 ) -> String {
     format!(
-        "aeroftp-cli transfer \"{}\" \"{}\" \"{}\" \"{}\" --format json",
-        shell_double_quote(source_profile),
-        shell_double_quote(dest_profile),
-        shell_double_quote(source_path),
-        shell_double_quote(dest_path)
+        "aeroftp-cli transfer {} {} {} {} --format json",
+        shell_arg(source_profile),
+        shell_arg(dest_profile),
+        shell_arg(source_path),
+        shell_arg(dest_path)
     )
 }
 
 fn suggest_transfer_verify(dest_profile: &str, dest_path: &str, planned_files: u64) -> String {
     if planned_files <= 1 {
         format!(
-            "aeroftp-cli stat --profile \"{}\" \"{}\" --json",
-            shell_double_quote(dest_profile),
-            shell_double_quote(dest_path)
+            "aeroftp-cli stat --profile {} {} --json",
+            shell_arg(dest_profile),
+            shell_arg(dest_path)
         )
     } else {
         let parent = Path::new(dest_path)
@@ -26539,9 +26539,9 @@ fn suggest_transfer_verify(dest_profile: &str, dest_path: &str, planned_files: u
             .filter(|p| !p.is_empty())
             .unwrap_or_else(|| "/".to_string());
         format!(
-            "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
-            shell_double_quote(dest_profile),
-            shell_double_quote(&parent)
+            "aeroftp-cli ls --profile {} {} --json",
+            shell_arg(dest_profile),
+            shell_arg(&parent)
         )
     }
 }
@@ -26592,9 +26592,9 @@ fn build_agent_task_router(
             "goal": "Understand a remote quickly and safely",
             "commands": [
                 "aeroftp-cli profiles --json",
-                format!("aeroftp-cli ls --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(path)),
-                format!("aeroftp-cli tree --profile \"{}\" \"{}\" -d 2 --json", shell_double_quote(source_profile), shell_double_quote(path)),
-                format!("aeroftp-cli find --profile \"{}\" \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(path), shell_double_quote(pattern)),
+                format!("aeroftp-cli ls --profile {} {} --json", shell_arg(source_profile), shell_arg(path)),
+                format!("aeroftp-cli tree --profile {} {} -d 2 --json", shell_arg(source_profile), shell_arg(path)),
+                format!("aeroftp-cli find --profile {} {} {} --json", shell_arg(source_profile), shell_arg(path), shell_arg(pattern)),
             ],
             "rule": "Use ls for totals and find for subsets"
         }),
@@ -26602,8 +26602,8 @@ fn build_agent_task_router(
             "task": bootstrap_task_name(task),
             "goal": "Confirm exact existence and metadata for one remote path",
             "commands": [
-                format!("aeroftp-cli stat --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(source_path)),
-                format!("aeroftp-cli ls --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(&source_parent)),
+                format!("aeroftp-cli stat --profile {} {} --json", shell_arg(source_profile), shell_arg(source_path)),
+                format!("aeroftp-cli ls --profile {} {} --json", shell_arg(source_profile), shell_arg(&source_parent)),
             ],
             "rule": "Use stat for exact existence; do not infer from filtered listings"
         }),
@@ -26611,8 +26611,8 @@ fn build_agent_task_router(
             "task": bootstrap_task_name(task),
             "goal": "Copy one file or tree between saved profiles with verification",
             "commands": [
-                format!("aeroftp-cli stat --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(source_path)),
-                format!("aeroftp-cli transfer \"{}\" \"{}\" \"{}\" \"{}\" --dry-run --format json", shell_double_quote(source_profile), shell_double_quote(dest_profile), shell_double_quote(source_path), shell_double_quote(dest_path)),
+                format!("aeroftp-cli stat --profile {} {} --json", shell_arg(source_profile), shell_arg(source_path)),
+                format!("aeroftp-cli transfer {} {} {} {} --dry-run --format json", shell_arg(source_profile), shell_arg(dest_profile), shell_arg(source_path), shell_arg(dest_path)),
                 suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path),
                 suggest_transfer_verify(dest_profile, dest_path, 1),
             ],
@@ -26622,9 +26622,9 @@ fn build_agent_task_router(
             "task": bootstrap_task_name(task),
             "goal": "Plan and verify a backup-style copy with counts and exact destinations",
             "commands": [
-                format!("aeroftp-cli ls --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(source_path)),
-                format!("aeroftp-cli find --profile \"{}\" \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(source_path), shell_double_quote(pattern)),
-                format!("aeroftp-cli transfer \"{}\" \"{}\" \"{}\" \"{}\" --dry-run --format json", shell_double_quote(source_profile), shell_double_quote(dest_profile), shell_double_quote(source_path), shell_double_quote(dest_path)),
+                format!("aeroftp-cli ls --profile {} {} --json", shell_arg(source_profile), shell_arg(source_path)),
+                format!("aeroftp-cli find --profile {} {} {} --json", shell_arg(source_profile), shell_arg(source_path), shell_arg(pattern)),
+                format!("aeroftp-cli transfer {} {} {} {} --dry-run --format json", shell_arg(source_profile), shell_arg(dest_profile), shell_arg(source_path), shell_arg(dest_path)),
                 suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path),
                 suggest_transfer_verify(dest_profile, dest_path, 2),
             ],
@@ -26634,9 +26634,9 @@ fn build_agent_task_router(
             "task": bootstrap_task_name(task),
             "goal": "Compare local and remote state and prepare the next safe action",
             "commands": [
-                format!("aeroftp-cli check --profile \"{}\" \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(local_path), shell_double_quote(remote_path)),
-                format!("aeroftp-cli ls --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(remote_path)),
-                format!("aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json", shell_double_quote(source_profile), shell_double_quote(local_path), shell_double_quote(remote_path)),
+                format!("aeroftp-cli check --profile {} {} {} --json", shell_arg(source_profile), shell_arg(local_path), shell_arg(remote_path)),
+                format!("aeroftp-cli ls --profile {} {} --json", shell_arg(source_profile), shell_arg(remote_path)),
+                format!("aeroftp-cli sync --profile {} {} {} --dry-run --json", shell_arg(source_profile), shell_arg(local_path), shell_arg(remote_path)),
             ],
             "rule": "Use check to classify differences before sync"
         }),
@@ -40201,15 +40201,15 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                             "Next: {}",
                             if entry.is_dir {
                                 format!(
-                                    "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+                                    "aeroftp-cli ls --profile {} {} --json",
                                     profile_or_placeholder(cli),
-                                    shell_double_quote(&entry.path)
+                                    shell_arg(&entry.path)
                                 )
                             } else {
                                 format!(
-                                    "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+                                    "aeroftp-cli ls --profile {} {} --json",
                                     profile_or_placeholder(cli),
-                                    shell_double_quote(&parent_remote_path(&entry.path))
+                                    shell_arg(&parent_remote_path(&entry.path))
                                 )
                             }
                         );
@@ -40221,15 +40221,15 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                         "entry": remote_entry_to_filtered_json(&entry, cli),
                         "suggested_next_command": if entry.is_dir {
                             format!(
-                                "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+                                "aeroftp-cli ls --profile {} {} --json",
                                 profile_or_placeholder(cli),
-                                shell_double_quote(&entry.path)
+                                shell_arg(&entry.path)
                             )
                         } else {
                             format!(
-                                "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+                                "aeroftp-cli ls --profile {} {} --json",
                                 profile_or_placeholder(cli),
-                                shell_double_quote(&parent_remote_path(&entry.path))
+                                shell_arg(&parent_remote_path(&entry.path))
                             )
                         },
                     }));
@@ -57484,21 +57484,24 @@ async fn sync_doctor_report(
         }
     }
 
-    let suggested_next_command =
-        format!(
-        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}{}{}",
+    let suggested_next_command = format!(
+        "aeroftp-cli sync --profile {} {} {} --direction {} --dry-run --json{}{}{}{}{}{}",
         profile_or_placeholder(cli),
-        shell_double_quote(local),
-        shell_double_quote(&remote),
-        shell_double_quote(direction),
+        shell_arg(local),
+        shell_arg(&remote),
+        shell_arg(direction),
         if delete { " --delete" } else { "" },
-        if track_renames { " --track-renames" } else { "" },
+        if track_renames {
+            " --track-renames"
+        } else {
+            ""
+        },
         if resync { " --resync" } else { "" },
         error_correction_pct
             .map(|pct| format!(" --error-correction={pct}"))
             .unwrap_or_default(),
         files_from
-            .map(|(flag, path, _)| format!(" {flag} \"{}\"", shell_double_quote(path)))
+            .map(|(flag, path, _)| format!(" {flag} {}", shell_arg(path)))
             .unwrap_or_default(),
         if exclude.is_empty() {
             String::new()
@@ -57507,7 +57510,7 @@ async fn sync_doctor_report(
                 " {}",
                 exclude
                     .iter()
-                    .map(|pattern| format!("--exclude \"{}\"", shell_double_quote(pattern)))
+                    .map(|pattern| format!("--exclude {}", shell_arg(pattern)))
                     .collect::<Vec<_>>()
                     .join(" ")
             )
@@ -58676,10 +58679,10 @@ fn print_check_report(report: &CliCheckReport, local_path: &str, cli: &Cli, form
             "elapsed_secs": report.elapsed_secs,
             "details": report.details,
             "suggested_next_command": format!(
-                "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
+                "aeroftp-cli sync --profile {} {} {} --dry-run --json",
                 profile_or_placeholder(cli),
-                shell_double_quote(local_path),
-                shell_double_quote(&report.remote_path)
+                shell_arg(local_path),
+                shell_arg(&report.remote_path)
             ),
         });
         report.add_scan_fields(&mut doc);
@@ -58695,10 +58698,10 @@ fn print_check_report(report: &CliCheckReport, local_path: &str, cli: &Cli, form
         );
         report.warn_incomplete_scans();
         eprintln!(
-            "Next: aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
+            "Next: aeroftp-cli sync --profile {} {} {} --dry-run --json",
             profile_or_placeholder(cli),
-            shell_double_quote(local_path),
-            shell_double_quote(&report.remote_path)
+            shell_arg(local_path),
+            shell_arg(&report.remote_path)
         );
         for d in &report.details {
             let icon = match d.status.as_str() {
@@ -59397,10 +59400,10 @@ async fn cmd_reconcile(
 
     let elapsed = start.elapsed().as_secs_f64();
     let suggested_next_command = format!(
-        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
+        "aeroftp-cli sync --profile {} {} {} --dry-run --json",
         profile_or_placeholder(cli),
-        shell_double_quote(local_path),
-        shell_double_quote(remote_path)
+        shell_arg(local_path),
+        shell_arg(remote_path)
     );
 
     let result = CliReconcileResult {
@@ -61417,37 +61420,6 @@ fn expand_batch_variables(line: &str, variables: &HashMap<String, String>) -> St
     result
 }
 
-/// Split on whitespace, keeping double-quoted text together. `""` is an empty
-/// argument, not nothing, and an unclosed quote is an error.
-fn tokenize_batch_line(expanded: &str) -> Result<Vec<String>, String> {
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    let mut in_quotes = false;
-    let mut quoted = false;
-    for ch in expanded.chars() {
-        match ch {
-            '"' => {
-                in_quotes = !in_quotes;
-                quoted = true;
-            }
-            ' ' | '\t' if !in_quotes => {
-                if !current.is_empty() || quoted {
-                    parts.push(std::mem::take(&mut current));
-                }
-                quoted = false;
-            }
-            _ => current.push(ch),
-        }
-    }
-    if in_quotes {
-        return Err("unmatched quote".to_string());
-    }
-    if !current.is_empty() || quoted {
-        parts.push(current);
-    }
-    Ok(parts)
-}
-
 /// Check the arguments of a command against its spec: `--` ends the flags, a
 /// token starting with `-` must be one of the command's flags, and the number
 /// of positional arguments must fit.
@@ -61504,7 +61476,8 @@ fn read_batch_script(content: &str) -> Result<Vec<BatchLine>, (usize, String)> {
     let mut lines = Vec::new();
     for (line_num, logical) in batch_logical_lines(content)? {
         let expanded = expand_batch_variables(&logical, &variables);
-        let parts = tokenize_batch_line(&expanded).map_err(|e| (line_num, e))?;
+        let parts = ftp_client_gui_lib::sync_script::tokenize_script_line(&expanded)
+            .map_err(|e| (line_num, e))?;
         let Some(first) = parts.first() else {
             continue;
         };
@@ -62374,7 +62347,7 @@ DISCONNECT\n";
         assert_eq!(lines[1].expanded, "ECHO 1");
         assert_eq!(lines[3].expanded, "ECHO 2 $A");
         assert_eq!(
-            tokenize_batch_line("X \"\" \"a b\"").unwrap(),
+            ftp_client_gui_lib::sync_script::tokenize_script_line("X \"\" \"a b\"").unwrap(),
             ["X", "", "a b"]
         );
     }
@@ -62397,7 +62370,9 @@ DISCONNECT\n";
             });
             out.push(AerosyncScriptProfile {
                 profile: preset,
-                local_path: "/l".into(),
+                // A Windows path: the exporter's escapes and the batch reader
+                // must agree on every backslash.
+                local_path: r"C:\Users\Jane\My Docs".into(),
                 remote_path: "/r".into(),
                 connect_profile: None,
                 connect_url: Some("sftp://me@host:22/".into()),
@@ -62599,7 +62574,7 @@ DISCONNECT\n";
                 " --direction download --dry-run --json --delete --track-renames --exclude \"*.tmp\"",
             );
             assert!(!line.contains("--checksum"));
-            let argv = tokenize_batch_line(&line).unwrap();
+            let argv = ftp_client_gui_lib::sync_script::tokenize_script_line(&line).unwrap();
             let cli = Cli::try_parse_from(&argv).unwrap_or_else(|e| panic!("{line}: {e}"));
             assert_eq!(cli.profile.as_deref(), Some("My Server"));
             let Commands::Sync {

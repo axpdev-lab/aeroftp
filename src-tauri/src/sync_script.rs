@@ -803,8 +803,8 @@ fn collect_continued_line(first: &str, lines: &[&str], idx: &mut usize) -> Strin
 }
 
 fn parse_connect(body: &str, line: usize) -> Result<(Option<String>, Option<String>), ParseError> {
-    let tokens =
-        tokenize(body, line).map_err(|message| ParseError::MalformedConnect { line, message })?;
+    let tokens = tokenize_script_line(body)
+        .map_err(|message| ParseError::MalformedConnect { line, message })?;
     let mut it = tokens.into_iter().peekable();
     let mut profile: Option<String> = None;
     let mut url: Option<String> = None;
@@ -850,9 +850,27 @@ struct ParsedSyncLine {
     max_delete: Option<String>,
 }
 
+/// The value after a SYNC flag. A next token starting with `--` is another
+/// flag, so the value is missing: taking it would swallow that flag
+/// (`--exclude --dry-run` turned a preview into a live run on re-export).
+fn flag_value(
+    it: &mut std::iter::Peekable<std::vec::IntoIter<String>>,
+    flag: &str,
+    what: &str,
+    line: usize,
+) -> Result<String, ParseError> {
+    match it.next_if(|next| !next.starts_with("--")) {
+        Some(value) => Ok(value),
+        None => Err(ParseError::MalformedSync {
+            line,
+            message: format!("{} expects {}", flag, what),
+        }),
+    }
+}
+
 fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
-    let tokens =
-        tokenize(body, line).map_err(|message| ParseError::MalformedSync { line, message })?;
+    let tokens = tokenize_script_line(body)
+        .map_err(|message| ParseError::MalformedSync { line, message })?;
     let mut positional: Vec<String> = Vec::new();
     let mut direction: Option<CompareDirection> = None;
     let mut delete_orphans = false;
@@ -900,18 +918,10 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
                 conflict_mode = Some(v);
             }
             "--max-delete" => {
-                let v = it.next().ok_or_else(|| ParseError::MalformedSync {
-                    line,
-                    message: "--max-delete expects a value".to_string(),
-                })?;
-                max_delete = Some(v);
+                max_delete = Some(flag_value(&mut it, "--max-delete", "a value", line)?);
             }
             "--exclude" | "-e" => {
-                let v = it.next().ok_or_else(|| ParseError::MalformedSync {
-                    line,
-                    message: "--exclude expects a pattern".to_string(),
-                })?;
-                exclude_patterns.push(v);
+                exclude_patterns.push(flag_value(&mut it, "--exclude", "a pattern", line)?);
             }
             other if other.starts_with("--") => {
                 // Forward-compat: ignore unknown long flags but try to
@@ -956,25 +966,26 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
     })
 }
 
-/// Tokenise a shell-style command body. Supports double and single
-/// quotes and `\` escapes inside double-quoted regions.
-fn tokenize(body: &str, _line: usize) -> Result<Vec<String>, String> {
+/// Split one line of a `.aeroftp-script` into arguments. The single rule for
+/// the format, shared by the GUI import and the CLI batch runner so the two
+/// can never read a line differently:
+/// - whitespace separates arguments outside quotes;
+/// - inside double quotes `\\` is a backslash and `\"` a quote, the two
+///   escapes the exporter writes; any other backslash is kept, so a Windows
+///   path written by hand (`"C:\Users\me"`) reads as written;
+/// - inside single quotes every character is literal;
+/// - `""` or `''` is an empty argument, and an unclosed quote is an error.
+pub fn tokenize_script_line(body: &str) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = Vec::new();
     let mut current = String::new();
     let mut in_double = false;
     let mut in_single = false;
-    let mut escape = false;
     let mut has_token = false;
-    for ch in body.chars() {
-        if escape {
-            current.push(ch);
-            escape = false;
-            has_token = true;
-            continue;
-        }
+    let mut chars = body.chars().peekable();
+    while let Some(ch) = chars.next() {
         match ch {
-            '\\' if in_double => {
-                escape = true;
+            '\\' if in_double && matches!(chars.peek(), Some('\\') | Some('"')) => {
+                current.push(chars.next().expect("peeked"));
             }
             '"' if !in_single => {
                 in_double = !in_double;
@@ -997,7 +1008,7 @@ fn tokenize(body: &str, _line: usize) -> Result<Vec<String>, String> {
         }
     }
     if in_double || in_single {
-        return Err("unterminated quoted token".to_string());
+        return Err("unmatched quote".to_string());
     }
     if has_token {
         out.push(current);
@@ -1256,6 +1267,50 @@ mod tests {
         let content = "# @aerosync:1\nCONNECT --profile \"x\"\nSYNC /a /b --direction both\n";
         let target = detect_wrapper_target(&wrapper_path, content);
         assert!(target.is_none());
+    }
+
+    #[test]
+    fn tokenize_script_line_follows_the_format_rules() {
+        assert_eq!(
+            tokenize_script_line(r#"SYNC "C:\Users\me" "a \"q\" b" 'lit $x \n' "" x"#).unwrap(),
+            vec!["SYNC", r"C:\Users\me", r#"a "q" b"#, r"lit $x \n", "", "x"]
+        );
+        // Whatever the exporter quotes reads back as the value.
+        for value in [
+            r"C:\Users\me\Docs",
+            r#"has "quotes""#,
+            r"trailing\",
+            "sp ace",
+            "",
+        ] {
+            assert_eq!(
+                tokenize_script_line(&shell_quote(value)).unwrap(),
+                vec![value],
+                "{value}"
+            );
+        }
+        assert!(tokenize_script_line("\"open").is_err());
+        assert!(tokenize_script_line("'open").is_err());
+    }
+
+    #[test]
+    fn a_value_flag_never_swallows_the_next_flag() {
+        let script = generate_script(&sample(SyncProfile::mirror()), "test");
+        for (from, to) in [
+            (
+                format!("  --max-delete {}", UNATTENDED_MAX_DELETE),
+                "  --max-delete --dry-run".to_string(),
+            ),
+            (
+                "--exclude \"node_modules\"".to_string(),
+                "--exclude --dry-run".to_string(),
+            ),
+        ] {
+            let broken = script.replacen(&from, &to, 1);
+            assert_ne!(broken, script, "{from} is in the export");
+            let err = parse_script(&broken).expect_err(&to);
+            assert!(err.to_string().contains("expects"), "{to}: {err}");
+        }
     }
 
     #[test]

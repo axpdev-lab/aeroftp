@@ -2740,26 +2740,27 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
 
 /// A runnable `aeroftp-cli sync` line for a tool result. The profile goes
 /// first (`sync LOCAL REMOTE` alone reads LOCAL as the URL, and the command
-/// fails), and only flags `sync` really has follow. `server` empty means the
-/// GUI's active connection, which has no name to put here, so the line carries
-/// the `NAME` placeholder the CLI `sync-doctor` uses.
+/// fails), and only flags `sync` really has follow. Every value is one quoted
+/// shell argument (`shell_quote::shell_arg`). `server` empty means the GUI's
+/// active connection, which has no name to put here, so the line carries the
+/// `NAME` placeholder the CLI `sync-doctor` uses.
 pub fn suggest_sync_command(
     server: &str,
     local_dir: &str,
     remote_dir: &str,
     flags: &str,
 ) -> String {
-    let quote = crate::shell_quote::double_quote_body;
+    use crate::shell_quote::shell_arg;
     let profile = if server.is_empty() {
         "NAME".to_string()
     } else {
-        quote(server)
+        shell_arg(server)
     };
     format!(
-        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\"{}",
+        "aeroftp-cli sync --profile {} {} {}{}",
         profile,
-        quote(local_dir),
-        quote(remote_dir),
+        shell_arg(local_dir),
+        shell_arg(remote_dir),
         flags
     )
 }
@@ -2913,8 +2914,8 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     }
     for pattern in &exclude {
         flags.push_str(&format!(
-            " --exclude \"{}\"",
-            crate::shell_quote::double_quote_body(pattern)
+            " --exclude {}",
+            crate::shell_quote::shell_arg(pattern)
         ));
     }
     let suggested_next_command = suggest_sync_command(&server, &local_dir, &remote_dir, &flags);
@@ -4083,21 +4084,39 @@ mod tests {
         assert!(fake.remote_files.lock().unwrap().is_empty());
     }
 
-    /// The suggested `sync` line carries values the caller chose: a hostile
-    /// profile name, local path or exclude pattern must stay text (every `$`
-    /// and backtick escaped), and a direction outside the fixed set is refused
-    /// before it can reach the line.
+    /// Split a command line the way `sh` does, by having `sh` print each
+    /// argument NUL-terminated.
+    #[cfg(unix)]
+    fn shell_split(line: &str) -> Vec<String> {
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("printf '%s\\0' {line}"))
+            .output()
+            .expect("run sh");
+        String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|a| !a.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// The suggested `sync` line carries values the caller chose. A real shell
+    /// splits it: a hostile profile name, local path and exclude pattern each
+    /// come back as one argument, byte for byte, and nothing runs. A direction
+    /// outside the fixed set is refused before it can reach the line.
+    #[cfg(unix)]
     #[tokio::test]
     async fn sync_doctor_suggestion_keeps_hostile_values_as_text() {
         let fake = Arc::new(FakeBackend::sample());
         let ctx = test_ctx(Arc::clone(&fake));
         let tmp = tempfile::tempdir().expect("temp dir");
-        let local_dir = tmp.path().join("$(touch pwned)");
-        std::fs::create_dir(&local_dir).expect("local dir");
+        let marker = tmp.path().join("pwned");
+        let local_dir = tmp.path().join(format!("$(touch {})", marker.display()));
+        std::fs::create_dir_all(&local_dir).expect("local dir");
         let out = sync_doctor(
             &ctx,
             &json!({
-                "server": "`id`",
+                "server": "`touch pwned` it's!",
                 "local_dir": local_dir.to_string_lossy(),
                 "remote_dir": "/root",
                 "direction": "download",
@@ -4109,13 +4128,25 @@ mod tests {
         let line = out["suggested_next_command"]
             .as_str()
             .expect("a suggestion");
-        let chars: Vec<char> = line.chars().collect();
-        for (i, c) in chars.iter().enumerate() {
-            if matches!(c, '$' | '`') {
-                assert!(i > 0 && chars[i - 1] == '\\', "unescaped {c:?} in {line}");
-            }
-        }
-        assert!(line.contains("--profile \"\\`id\\`\""), "{line}");
+        let args = shell_split(line);
+        assert!(!marker.exists(), "a substitution ran: {line}");
+        assert_eq!(
+            args[..6],
+            [
+                "aeroftp-cli".to_string(),
+                "sync".to_string(),
+                "--profile".to_string(),
+                "`touch pwned` it's!".to_string(),
+                local_dir.to_string_lossy().into_owned(),
+                "/root".to_string(),
+            ],
+            "{line}"
+        );
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "--exclude" && w[1] == "$(rm -rf ~)"),
+            "{args:?}"
+        );
 
         let err = sync_doctor(
             &ctx,
