@@ -182,7 +182,8 @@ ignore = [
     #      So on Windows and macOS the app never loads an External URL in a
     #      shipped build at all, and the origin this advisory abuses has no
     #      entry point there. On Linux it does load one, from the bundled
-    #      `tauri-plugin-localhost` server, and Linux is not in the affected
+    #      `ui_server` loopback server (formerly tauri-plugin-localhost, same
+    #      origin), and Linux is not in the affected
     #      platform set. Two legs, one per platform, both stated.
     #
     #      `WebviewUrl::External` IS used, and an earlier version of this note
@@ -221,8 +222,8 @@ ignore = [
     # like it could be met by changing the webview origin; it cannot. The only
     # lever that makes `get_app_url()` return our HTTP URL is declaring
     # `frontendDist` as a URL, and tauri-codegen maps `FrontendDist::Url` to an
-    # EMPTY embedded asset set, which is precisely what tauri-plugin-localhost
-    # serves. The remedy erases the content the server exists to serve.
+    # EMPTY embedded asset set, which is precisely what `ui_server` serves.
+    # The remedy erases the content the server exists to serve.
     #
     # So migrating to 2.11.1 means giving all 1013 commands in the invoke
     # handler an ACL. There is no `src-tauri/permissions/` today, so
