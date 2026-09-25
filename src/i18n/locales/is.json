@@ -4070,7 +4070,7 @@
             "hashBlake3ModeHash": "Tætigildi",
             "hashBlake3ModeKeyed": "Með lykli",
             "hashBlake3ModeDerive": "Leiða út lykil",
-            "hashBlake3Key": "Lykill (32 bæti sem sextánundarkerfi)",
+            "hashBlake3Key": "Lykill (32 bæti sem sextándakerfi)",
             "hashBlake3Context": "Samhengisstrengur",
             "hashBlake3ContextHint": "Fastur og einstakur fyrir eitt forrit. Textinn eða skráin sem er tætt er lykilefnið.",
             "hashRandom": "Handahófskennt",

@@ -4072,7 +4072,7 @@
             "hashBlake3ModeDerive": "Išvesti raktą",
             "hashBlake3Key": "Raktas (32 baitai šešioliktaine forma)",
             "hashBlake3Context": "Konteksto eilutė",
-            "hashBlake3ContextHint": "Fiksuota ir unikali vienai programai. Maišos skaičiuojamas tekstas ar failas yra rakto medžiaga.",
+            "hashBlake3ContextHint": "Fiksuota ir unikali vienai programai. Tekstas ar failas, kurio maiša skaičiuojama, yra rakto medžiaga.",
             "hashRandom": "Atsitiktinis",
             "argon2PasswordPlaceholder": "Slaptažodis arba slaptafrazė...",
             "argon2Salt": "Druska",
