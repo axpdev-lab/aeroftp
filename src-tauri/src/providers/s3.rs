@@ -4879,6 +4879,20 @@ impl StorageProvider for S3Provider {
         // Check if this is a directory by listing objects under the prefix
         let keys = self.list_keys_with_prefix(&prefix).await?;
 
+        // The trait promises no overwrite, and CopyObject replaces whatever
+        // the destination key holds. A listing, not a HEAD: without
+        // s3:ListBucket AWS answers HEAD on a missing key with 403, and the
+        // listing above already needs that permission.
+        let to_prefix = format!("{}/", to_trimmed);
+        if self
+            .list_keys_with_prefix(to_trimmed)
+            .await?
+            .iter()
+            .any(|key| key == to_trimmed || key.starts_with(&to_prefix))
+        {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+
         if keys.is_empty() {
             if self.is_filelu_s3_endpoint() {
                 return self.rename_filelu_safe(from, to).await;
@@ -4942,22 +4956,26 @@ impl StorageProvider for S3Provider {
                 Err(e) => return Err(e),
             }
         } else {
-            // Directory rename: copy all objects to new prefix, then delete originals
-            let to_prefix = format!("{}/", to_trimmed);
-
+            // Directory rename: copy all objects to new prefix, then delete
+            // originals (the folder marker, when there is one, is among them).
             for old_key in &keys {
                 let new_key = old_key.replacen(&prefix, &to_prefix, 1);
                 self.server_copy(&format!("/{}", old_key), &format!("/{}", new_key))
                     .await?;
             }
 
-            // Delete all original objects
-            for old_key in &keys {
-                let _ = self.s3_request(Method::DELETE, old_key, None, None).await;
-            }
-
-            // Also try to delete the old directory marker (if exists)
-            let _ = self.s3_request(Method::DELETE, &prefix, None, None).await;
+            // A delete that fails leaves the folder under both names: that is
+            // a failed rename, never a success.
+            let originals: Vec<(String, Option<String>)> =
+                keys.iter().map(|key| (key.clone(), None)).collect();
+            self.batch_delete_objects(&originals).await.map_err(|e| {
+                ProviderError::Other(format!(
+                    "rename copied {} objects to {}, but deleting the originals failed, \
+                     so the folder now exists under both names: {e}",
+                    keys.len(),
+                    to
+                ))
+            })?;
 
             info!(
                 "Renamed directory (copy+delete {} objects) {} to {}",
@@ -8806,6 +8824,115 @@ mod tests {
             .await
             .unwrap();
         server.abort();
+    }
+
+    /// An S3 double for renaming the folder `src` (the marker `src/` and
+    /// `src/a.txt`) to `dst`. `dst` holds `existing`; a DELETE of
+    /// `src/a.txt` answers 403 when `deny_delete`. Batch delete answers 405,
+    /// so deletes go one by one. Returns the provider and every request as
+    /// `METHOD path`.
+    async fn provider_for_folder_rename(
+        existing: &'static [&'static str],
+        deny_delete: bool,
+    ) -> (S3Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{} {path}", req.method()));
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let prefix = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "prefix")
+                        .map(|(_, v)| v.to_string());
+                    let reply = |status: u16, body: String| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .body(axum::body::Body::from(body))
+                            .unwrap()
+                    };
+                    match (req.method().as_str(), prefix.as_deref()) {
+                        ("GET", Some(prefix)) => {
+                            let keys: Vec<&str> = match prefix {
+                                "src/" => vec!["src/", "src/a.txt"],
+                                _ => existing.to_vec(),
+                            };
+                            let contents: String = keys
+                                .iter()
+                                .map(|k| format!("<Contents><Key>{k}</Key></Contents>"))
+                                .collect();
+                            reply(
+                                200,
+                                format!(
+                                    "<ListBucketResult><IsTruncated>false</IsTruncated>\
+                                     {contents}</ListBucketResult>"
+                                ),
+                            )
+                        }
+                        ("POST", _) => reply(405, String::new()),
+                        ("DELETE", _) if deny_delete && path == "/test-bucket/src/a.txt" => {
+                            reply(403, String::new())
+                        }
+                        ("DELETE", _) => reply(204, String::new()),
+                        _ => reply(200, String::new()),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        (provider, log)
+    }
+
+    #[tokio::test]
+    async fn folder_rename_copies_then_deletes_every_original() {
+        let (mut provider, log) = provider_for_folder_rename(&[], false).await;
+        provider.rename("/src", "/dst").await.expect("rename");
+        let log = log.lock().unwrap().clone();
+        for key in ["src/", "src/a.txt"] {
+            assert!(
+                log.contains(&format!("DELETE /test-bucket/{key}")),
+                "{log:?}"
+            );
+        }
+    }
+
+    /// Two copies of a folder under an Ok is the one outcome a rename must
+    /// never give.
+    #[tokio::test]
+    async fn folder_rename_that_cannot_delete_an_original_is_an_error() {
+        let (mut provider, _) = provider_for_folder_rename(&[], true).await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("an original is left behind");
+        assert!(err.to_string().contains("both names"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination_before_copying() {
+        for existing in [&["dst"][..], &["dst/x.txt"][..]] {
+            let (mut provider, log) = provider_for_folder_rename(existing, false).await;
+            let outcome = provider.rename("/src", "/dst").await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{existing:?}: {outcome:?}"
+            );
+            assert!(
+                !log.lock().unwrap().iter().any(|r| r.starts_with("PUT")),
+                "{existing:?}"
+            );
+        }
     }
 
     /// Opt-in live check. Supply a disposable bucket's saved-profile export

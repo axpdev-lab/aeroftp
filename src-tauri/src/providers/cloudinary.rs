@@ -1120,6 +1120,11 @@ impl StorageProvider for CloudinaryProvider {
         let source = self.resolve_path(from);
         let target = self.resolve_path(to);
         let entry = self.stat(&source).await?;
+        // The trait promises no overwrite: refuse an occupied destination
+        // before either branch runs.
+        if source != target && self.exists(&target).await? {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
         if entry.is_dir {
             // PUT /folders/<from> with form to_folder=<to>
             let from_seg = source.trim_matches('/');
@@ -1157,8 +1162,10 @@ impl StorageProvider for CloudinaryProvider {
                 .cloned()
                 .unwrap_or_else(|| source.trim_matches('/').to_string());
             let to_pid = target.trim_matches('/').to_string();
+            // No `overwrite`: its default, false, makes Cloudinary refuse a
+            // target public id that is already taken (rename reference).
             let url = format!(
-                "{}/{}/rename?from_public_id={}&to_public_id={}&overwrite=true",
+                "{}/{}/rename?from_public_id={}&to_public_id={}",
                 self.api_base(),
                 kind,
                 urlencoding::encode(&from_pid),
@@ -1699,6 +1706,82 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A Cloudinary double for renaming `/a.jpg` to `/b.jpg` at the root:
+    /// no subfolders, the image `a` and, when `occupied`, the image `b`.
+    /// Returns the provider and the query strings of the rename calls.
+    async fn provider_for_file_rename(
+        occupied: bool,
+    ) -> (
+        CloudinaryProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let renames: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&renames);
+        let image = |id: &str| {
+            serde_json::json!({
+                "public_id": id, "display_name": id, "format": "jpg", "bytes": 3,
+                "resource_type": "image", "type": "upload", "asset_folder": "",
+            })
+        };
+        let mut resources = vec![image("a")];
+        if occupied {
+            resources.push(image("b"));
+        }
+        let listing = serde_json::json!({ "resources": resources }).to_string();
+        let app = axum::Router::new()
+            .route(
+                "/image/rename",
+                axum::routing::post(move |uri: axum::http::Uri| {
+                    seen.lock()
+                        .unwrap()
+                        .push(uri.query().unwrap_or("").to_string());
+                    async { r#"{"public_id":"b"}"# }
+                }),
+            )
+            .route(
+                "/folders",
+                axum::routing::get(|| async { r#"{"folders":[]}"# }),
+            )
+            .fallback(move || {
+                let listing = listing.clone();
+                async move { listing }
+            });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = CloudinaryProvider::new(CloudinaryConfig {
+            cloud_name: "test".to_string(),
+            api_key: "test".to_string(),
+            api_secret: SecretString::from("test".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, renames)
+    }
+
+    #[tokio::test]
+    async fn file_rename_never_asks_for_overwrite() {
+        let (mut provider, renames) = provider_for_file_rename(false).await;
+        provider.rename("/a.jpg", "/b.jpg").await.expect("rename");
+        let renames = renames.lock().unwrap().clone();
+        assert_eq!(renames.len(), 1, "{renames:?}");
+        assert!(renames[0].contains("to_public_id=b"), "{renames:?}");
+        assert!(!renames[0].contains("overwrite"), "{renames:?}");
+    }
+
+    #[tokio::test]
+    async fn file_rename_refuses_an_existing_destination() {
+        let (mut provider, renames) = provider_for_file_rename(true).await;
+        let outcome = provider.rename("/a.jpg", "/b.jpg").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(renames.lock().unwrap().is_empty());
+    }
 
     #[tokio::test]
     async fn folder_listing_failure_is_not_an_empty_or_missing_path() {

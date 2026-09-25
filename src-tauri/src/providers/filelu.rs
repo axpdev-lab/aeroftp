@@ -303,6 +303,9 @@ pub struct FileLuProvider {
     current_fld_id: u64,
     /// Cache: virtual path → entry metadata
     path_cache: HashMap<String, CacheEntry>,
+    /// Replaces the scheme and host of both API bases in tests.
+    #[cfg(test)]
+    api_origin_override: Option<String>,
 }
 
 impl FileLuProvider {
@@ -320,7 +323,18 @@ impl FileLuProvider {
             current_path: "/".to_string(),
             current_fld_id: 0,
             path_cache: HashMap::new(),
+            #[cfg(test)]
+            api_origin_override: None,
         }
+    }
+
+    /// `API_BASE` or `API_V2_BASE`, pointed at a local server in tests.
+    fn api_base(&self, base: &'static str) -> String {
+        #[cfg(test)]
+        if let Some(origin) = &self.api_origin_override {
+            return base.replacen("https://filelu.com", origin, 1);
+        }
+        base.to_string()
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────
@@ -330,12 +344,22 @@ impl FileLuProvider {
     }
 
     fn api_url(&self, endpoint: &str) -> String {
-        format!("{}/{}?key={}", API_BASE, endpoint, self.api_key())
+        format!(
+            "{}/{}?key={}",
+            self.api_base(API_BASE),
+            endpoint,
+            self.api_key()
+        )
     }
 
     /// Build URL for v2 path-based API endpoints
     fn api_v2_url(&self, endpoint: &str, params: &[(&str, &str)]) -> String {
-        let mut url = format!("{}/{}?key={}", API_V2_BASE, endpoint, self.api_key());
+        let mut url = format!(
+            "{}/{}?key={}",
+            self.api_base(API_V2_BASE),
+            endpoint,
+            self.api_key()
+        );
         for (k, v) in params {
             url.push('&');
             url.push_str(k);
@@ -356,7 +380,12 @@ impl FileLuProvider {
     }
 
     fn api_url_with(&self, endpoint: &str, params: &[(&str, &str)]) -> String {
-        let mut url = format!("{}/{}?key={}", API_BASE, endpoint, self.api_key());
+        let mut url = format!(
+            "{}/{}?key={}",
+            self.api_base(API_BASE),
+            endpoint,
+            self.api_key()
+        );
         for (k, v) in params {
             url.push('&');
             url.push_str(k);
@@ -997,7 +1026,7 @@ impl FileLuProvider {
     #[allow(dead_code)]
     async fn get_direct_url(&mut self, file_code: &str) -> Result<String, ProviderError> {
         let body = format!("file_code={}&key={}", file_code, self.api_key());
-        let url = format!("{}/file/direct_link", API_BASE);
+        let url = format!("{}/file/direct_link", self.api_base(API_BASE));
         let resp = self.post_form_with_retry(&url, body).await?;
         let result = Self::parse_api::<DirectLinkResult>(resp).await?;
         result
@@ -1907,7 +1936,8 @@ impl StorageProvider for FileLuProvider {
                         ("dest_fld_id", &dest_fld_id.to_string()),
                     ],
                 );
-                self.get_with_retry(&url).await?;
+                let resp = self.get_with_retry(&url).await?;
+                Self::ensure_api_ok(resp).await?;
                 if new_name != old_name {
                     // After move, rename at new location via v2
                     let moved_path = format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
@@ -2224,6 +2254,77 @@ fn mime_from_ext(ext: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A connected provider whose cache knows the folders `/src` (fld 11)
+    /// and `/dst` (fld 22), pointed at a v1 API double that answers
+    /// `folder/move` with `move_body`. Returns it and the query strings of
+    /// the `folder/move` calls.
+    async fn provider_for_folder_move(
+        move_body: &'static str,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let moves: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&moves);
+        let app = axum::Router::new().route(
+            "/api/folder/move",
+            axum::routing::get(move |uri: axum::http::Uri| {
+                seen.lock()
+                    .unwrap()
+                    .push(uri.query().unwrap_or("").to_string());
+                async move { move_body }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        for (path, fld_id) in [("/src", 11), ("/dst", 22)] {
+            provider.path_cache.insert(
+                path.to_string(),
+                CacheEntry {
+                    is_dir: true,
+                    fld_id,
+                    fld_token: None,
+                    file_code: String::new(),
+                    size: 0,
+                    modified: None,
+                    hash: None,
+                },
+            );
+        }
+        (provider, moves)
+    }
+
+    #[tokio::test]
+    async fn folder_move_sends_both_folder_ids() {
+        let (mut provider, moves) = provider_for_folder_move(r#"{"status":200,"msg":"OK"}"#).await;
+        provider.rename("/src", "/dst/src").await.expect("move");
+        let moves = moves.lock().unwrap().clone();
+        assert_eq!(moves.len(), 1);
+        assert!(moves[0].contains("fld_id=11"), "{moves:?}");
+        assert!(moves[0].contains("dest_fld_id=22"), "{moves:?}");
+    }
+
+    /// FileLu answers HTTP 200 and puts the refusal in the body: reading
+    /// only the transport status reported a move that never happened.
+    #[tokio::test]
+    async fn folder_move_refused_in_the_body_is_an_error() {
+        let (mut provider, _) =
+            provider_for_folder_move(r#"{"status":403,"msg":"Folder not accessible"}"#).await;
+        let outcome = provider.rename("/src", "/dst/src").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m == "Folder not accessible"),
+            "{outcome:?}"
+        );
+    }
 
     #[test]
     fn test_normalize_path() {

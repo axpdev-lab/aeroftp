@@ -56,6 +56,8 @@ pub mod oauth1;
 pub mod oauth2;
 pub mod onedrive;
 pub mod opendrive;
+#[cfg(test)]
+mod path_resolution_guard;
 pub mod pcloud;
 pub mod peer;
 pub mod proton;

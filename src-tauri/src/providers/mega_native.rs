@@ -264,6 +264,9 @@ struct MegaApiClient {
     client: reqwest::Client,
     next_request_id: AtomicU64,
     session_id: Option<String>,
+    /// Points the API at a local double in tests, so no test reaches MEGA.
+    #[cfg(test)]
+    base_url_override: Option<String>,
 }
 
 impl MegaApiClient {
@@ -279,7 +282,17 @@ impl MegaApiClient {
             client,
             next_request_id: AtomicU64::new(1),
             session_id,
+            #[cfg(test)]
+            base_url_override: None,
         }
+    }
+
+    fn base_url(&self) -> &str {
+        #[cfg(test)]
+        if let Some(url) = &self.base_url_override {
+            return url;
+        }
+        MEGA_API_BASE_URL
     }
 
     fn set_session_id(&mut self, session_id: Option<String>) {
@@ -294,7 +307,7 @@ impl MegaApiClient {
         T: DeserializeOwned,
     {
         let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
-        let mut url = reqwest::Url::parse(MEGA_API_BASE_URL).map_err(|err| {
+        let mut url = reqwest::Url::parse(self.base_url()).map_err(|err| {
             ProviderError::InvalidConfig(format!("Invalid MEGA API base URL: {err}"))
         })?;
 
@@ -1116,6 +1129,17 @@ impl MegaNativeProvider {
         Ok(current_handle)
     }
 
+    /// The child of the folder `parent_handle` named `name`, if any. MEGA
+    /// keeps siblings with the same name side by side, so nothing on the
+    /// server stops a second one: this in-memory look is the only guard.
+    fn child_named(&self, parent_handle: &str, name: &str) -> Option<&MegaNode> {
+        self.children
+            .get(parent_handle)?
+            .iter()
+            .filter_map(|handle| self.nodes.get(handle))
+            .find(|node| node.name == name)
+    }
+
     /// Resolve parent path and extract the final name component.
     fn resolve_parent_and_name(&self, path: &str) -> Result<(String, String), ProviderError> {
         let clean = path.trim_matches('/');
@@ -1663,6 +1687,9 @@ impl StorageProvider for MegaNativeProvider {
         let master_key = self.master_key.ok_or(ProviderError::NotConnected)?;
 
         let (parent_handle, folder_name) = self.resolve_parent_and_name(path)?;
+        if self.child_named(&parent_handle, &folder_name).is_some() {
+            return Err(ProviderError::AlreadyExists(path.to_string()));
+        }
 
         // Generate random folder key
         let folder_key: [u8; 16] = rand::random();
@@ -1753,9 +1780,26 @@ impl StorageProvider for MegaNativeProvider {
             .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
 
         let (to_parent_handle, to_name) = self.resolve_parent_and_name(to)?;
+        let moves = from_node.parent != to_parent_handle;
+        let renames = from_node.name != to_name;
+        if !moves && !renames {
+            return Ok(());
+        }
+        // The trait promises no overwrite, and MEGA would keep two siblings
+        // with one name. Both checks run before anything changes.
+        if self.child_named(&to_parent_handle, &to_name).is_some() {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+        // The new name is encrypted with the node key: without one the name
+        // cannot change, and moving first would leave a half-done rename.
+        if renames && from_node.key.is_empty() {
+            return Err(ProviderError::Other(format!(
+                "Cannot rename {from}: the node has no key to encrypt its new name with"
+            )));
+        }
 
         // If parent changed, move first
-        if from_node.parent != to_parent_handle {
+        if moves {
             let _: Value = self
                 .command_with_retry(json!({
                     "a": "m",
@@ -1766,20 +1810,17 @@ impl StorageProvider for MegaNativeProvider {
         }
 
         // If name changed, update attributes
-        if from_node.name != to_name {
-            let key = &from_node.key;
-            if !key.is_empty() {
-                let encrypted_attrs = encrypt_node_attrs(&to_name, key)?;
-                let attrs_b64 = mega_base64_encode(&encrypted_attrs);
+        if renames {
+            let encrypted_attrs = encrypt_node_attrs(&to_name, &from_node.key)?;
+            let attrs_b64 = mega_base64_encode(&encrypted_attrs);
 
-                let _: Value = self
-                    .command_with_retry(json!({
-                        "a": "a",
-                        "n": from_handle,
-                        "attr": attrs_b64,
-                    }))
-                    .await?;
-            }
+            let _: Value = self
+                .command_with_retry(json!({
+                    "a": "a",
+                    "n": from_handle,
+                    "attr": attrs_b64,
+                }))
+                .await?;
         }
 
         self.invalidate_nodes();
@@ -2556,6 +2597,123 @@ mod tests {
         assert_eq!(normalize_path("/a/./b"), "/a/b");
         assert_eq!(normalize_path("/a/b/.."), "/a");
         assert_eq!(normalize_path("//a///b//"), "/a/b");
+    }
+
+    /// A provider whose tree holds `/a` (folder), `/a/f.txt` (file, key
+    /// `file_key`) and `/b` (folder, holding `f.txt` when `b_holds_f`),
+    /// pointed at a MEGA API double that answers every command with `0`.
+    /// Returns it and the names (`a`) of the commands the double received.
+    async fn provider_with_tree(
+        file_key: Vec<u8>,
+        b_holds_f: bool,
+    ) -> (
+        super::MegaNativeProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let commands: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&commands);
+        let app = axum::Router::new().fallback(axum::routing::post(
+            move |axum::Json(body): axum::Json<serde_json::Value>| {
+                seen.lock()
+                    .unwrap()
+                    .push(body[0]["a"].as_str().unwrap_or("?").to_string());
+                async { axum::Json(json!([0])) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+
+        let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+            email: "test@example.com".to_string(),
+            password: secrecy::SecretString::new("unused".into()),
+            two_factor_code: None,
+            totp_secret: None,
+            save_session: false,
+            logout_on_disconnect: None,
+            connection_mode: crate::providers::types::MegaConnectionMode::Native,
+        });
+        provider.api_client.base_url_override = Some(format!("http://{addr}/cs"));
+        provider.root_handle = Some("ROOT".to_string());
+        provider.master_key = Some([7u8; 16]);
+        provider.nodes_loaded = true;
+        let mut add = |handle: &str, parent: &str, node_type: u8, name: &str, key: Vec<u8>| {
+            provider.nodes.insert(
+                handle.to_string(),
+                super::MegaNode {
+                    handle: handle.to_string(),
+                    parent: parent.to_string(),
+                    node_type,
+                    name: name.to_string(),
+                    size: 0,
+                    timestamp: 0,
+                    key,
+                },
+            );
+            provider
+                .children
+                .entry(parent.to_string())
+                .or_default()
+                .push(handle.to_string());
+        };
+        add("ROOT", "", 2, "", Vec::new());
+        add("A", "ROOT", 1, "a", vec![1u8; 16]);
+        add("F", "A", 0, "f.txt", file_key);
+        add("B", "ROOT", 1, "b", vec![2u8; 16]);
+        if b_holds_f {
+            add("G", "B", 0, "f.txt", vec![3u8; 32]);
+        }
+        (provider, commands)
+    }
+
+    #[tokio::test]
+    async fn mkdir_refuses_an_existing_folder() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], false).await;
+        let outcome = provider.mkdir("/a").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(commands.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn rename_moves_then_renames() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], false).await;
+        provider
+            .rename("/a/f.txt", "/b/g.txt")
+            .await
+            .expect("rename");
+        assert_eq!(*commands.lock().unwrap(), ["m", "a"]);
+    }
+
+    /// A node without a key cannot get a new name. That used to be skipped
+    /// in silence after the move, reporting a rename that never happened.
+    #[tokio::test]
+    async fn rename_of_a_node_without_a_key_fails_before_moving() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(Vec::new(), false).await;
+        let outcome = provider.rename("/a/f.txt", "/b/g.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::Other(ref m)) if m.contains("no key")),
+            "{outcome:?}"
+        );
+        assert!(commands.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/f.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(commands.lock().unwrap().is_empty());
     }
 
     #[test]
