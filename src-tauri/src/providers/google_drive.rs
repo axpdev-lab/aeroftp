@@ -482,6 +482,28 @@ impl GoogleDriveProvider {
         }
     }
 
+    /// The id of `parent`, the folder part of a path already stripped of
+    /// its slashes. An absolute path resolves from the root and a relative
+    /// one from the current folder, as on every other provider. Until
+    /// 2026-09-25 each call site chose for itself: most sent a one-segment
+    /// path to the current folder even with a leading slash, so `mkdir("/x")`
+    /// after a `cd` landed in the wrong folder; the downloads sent it to the
+    /// root; and a longer relative path always went to the root.
+    async fn parent_folder_id(
+        &mut self,
+        absolute: bool,
+        parent: &str,
+    ) -> Result<String, ProviderError> {
+        if absolute {
+            return self.resolve_path(&format!("/{parent}")).await;
+        }
+        if parent.is_empty() {
+            return Ok(self.current_folder_id.clone());
+        }
+        let joined = format!("{}/{parent}", self.current_path.trim_end_matches('/'));
+        self.resolve_path(&joined).await
+    }
+
     /// Resolve path to folder ID
     async fn resolve_path(&mut self, path: &str) -> Result<String, ProviderError> {
         // Check cache (update LRU counter on hit)
@@ -638,6 +660,7 @@ impl GoogleDriveProvider {
 
     /// Move a file to trash by path
     pub async fn trash_file(&mut self, path: &str) -> Result<(), ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -645,11 +668,7 @@ impl GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -710,6 +729,7 @@ impl GoogleDriveProvider {
 
     /// Star or unstar a file by path
     pub async fn set_starred(&mut self, path: &str, starred: bool) -> Result<(), ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -717,11 +737,7 @@ impl GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -762,6 +778,7 @@ impl GoogleDriveProvider {
         &mut self,
         path: &str,
     ) -> Result<Vec<serde_json::Value>, ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -769,11 +786,7 @@ impl GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -837,6 +850,7 @@ impl GoogleDriveProvider {
 
     /// Add a comment to a file
     pub async fn add_comment(&mut self, path: &str, message: &str) -> Result<(), ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -844,11 +858,7 @@ impl GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -889,6 +899,7 @@ impl GoogleDriveProvider {
         path: &str,
         comment_id: &str,
     ) -> Result<(), ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -896,11 +907,7 @@ impl GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -938,6 +945,7 @@ impl GoogleDriveProvider {
         path: &str,
         properties: &HashMap<String, String>,
     ) -> Result<(), ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -945,11 +953,7 @@ impl GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -987,6 +991,7 @@ impl GoogleDriveProvider {
         path: &str,
         description: &str,
     ) -> Result<(), ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -994,11 +999,7 @@ impl GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -1161,6 +1162,7 @@ impl GoogleDriveProvider {
         total_size: u64,
         content_type: Option<&str>,
     ) -> Result<String, ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -1168,11 +1170,7 @@ impl GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let existing_file_id = self
             .find_by_name(file_name, &parent_id)
@@ -1303,7 +1301,8 @@ impl StorageProvider for GoogleDriveProvider {
         let folder_id = if path == "." || path.is_empty() {
             self.current_folder_id.clone()
         } else {
-            self.resolve_path(path).await?
+            self.parent_folder_id(path.starts_with('/'), path.trim_matches('/'))
+                .await?
         };
 
         let files = self.list_folder(&folder_id).await?;
@@ -1363,6 +1362,7 @@ impl StorageProvider for GoogleDriveProvider {
     ) -> Result<(), ProviderError> {
         use futures_util::StreamExt;
 
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -1370,11 +1370,7 @@ impl StorageProvider for GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            "root".to_string()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -1452,6 +1448,7 @@ impl StorageProvider for GoogleDriveProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -1459,11 +1456,7 @@ impl StorageProvider for GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            "root".to_string()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -1499,6 +1492,7 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -1506,11 +1500,7 @@ impl StorageProvider for GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            "root".to_string()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -1531,6 +1521,7 @@ impl StorageProvider for GoogleDriveProvider {
             .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?
             .len();
 
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -1538,11 +1529,7 @@ impl StorageProvider for GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         // Check if file already exists in target folder: update instead of creating duplicate
         let existing_file_id = self
@@ -1712,6 +1699,7 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, folder_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -1719,11 +1707,7 @@ impl StorageProvider for GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         // Google Drive permits duplicate-named siblings, so a plain create makes a
         // second folder of the same name every time. That broke the benchmark base
@@ -1809,6 +1793,7 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_path_is_absolute = from.starts_with('/');
         let from_path = from.trim_matches('/');
         let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
             (&from_path[..pos], &from_path[pos + 1..])
@@ -1816,17 +1801,16 @@ impl StorageProvider for GoogleDriveProvider {
             ("", from_path)
         };
 
-        let from_parent_id = if from_parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(from_parent_path).await?
-        };
+        let from_parent_id = self
+            .parent_folder_id(from_path_is_absolute, from_parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &from_parent_id)
             .await?
             .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
 
+        let to_path_is_absolute = to.starts_with('/');
         let to_path = to.trim_matches('/');
         let (to_parent_path, new_name) = if let Some(pos) = to_path.rfind('/') {
             (&to_path[..pos], &to_path[pos + 1..])
@@ -1834,11 +1818,19 @@ impl StorageProvider for GoogleDriveProvider {
             ("", to_path)
         };
 
-        let to_parent_id = if to_parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(to_parent_path).await?
-        };
+        let to_parent_id = self
+            .parent_folder_id(to_path_is_absolute, to_parent_path)
+            .await?;
+
+        // The trait promises no overwrite, and Drive keeps two files with one
+        // name side by side: a move onto an existing name left both (found
+        // live on 2026-09-25). The source itself is no conflict, which is
+        // what a rename that only changes the letter case finds.
+        if let Some(existing) = self.find_by_name(new_name, &to_parent_id).await? {
+            if existing.id != file.id {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+        }
 
         // Determine if this is a cross-folder move or a simple rename
         let is_move = from_parent_id != to_parent_id;
@@ -1882,6 +1874,7 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -1889,11 +1882,7 @@ impl StorageProvider for GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -1964,6 +1953,7 @@ impl StorageProvider for GoogleDriveProvider {
         options: ShareLinkOptions,
     ) -> Result<ShareLinkResult, ProviderError> {
         // Resolve path to file ID
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -1971,11 +1961,7 @@ impl StorageProvider for GoogleDriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2079,6 +2065,7 @@ impl StorageProvider for GoogleDriveProvider {
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         // Resolve source file
+        let from_path_is_absolute = from.starts_with('/');
         let from_path = from.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
             (&from_path[..pos], &from_path[pos + 1..])
@@ -2086,11 +2073,9 @@ impl StorageProvider for GoogleDriveProvider {
             ("", from_path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(from_path_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2098,6 +2083,7 @@ impl StorageProvider for GoogleDriveProvider {
             .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
 
         // Resolve destination parent
+        let to_path_is_absolute = to.starts_with('/');
         let to_path = to.trim_matches('/');
         let (to_parent, to_name) = if let Some(pos) = to_path.rfind('/') {
             (&to_path[..pos], &to_path[pos + 1..])
@@ -2105,11 +2091,9 @@ impl StorageProvider for GoogleDriveProvider {
             ("", to_path)
         };
 
-        let to_parent_id = if to_parent.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(to_parent).await?
-        };
+        let to_parent_id = self
+            .parent_folder_id(to_path_is_absolute, to_parent)
+            .await?;
 
         let metadata = serde_json::json!({
             "name": to_name,
@@ -2291,6 +2275,7 @@ impl StorageProvider for GoogleDriveProvider {
         &mut self,
         path: &str,
     ) -> Result<Vec<super::FileVersion>, ProviderError> {
+        let file_path_is_absolute = path.starts_with('/');
         let file_path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
             (&file_path[..pos], &file_path[pos + 1..])
@@ -2298,11 +2283,9 @@ impl StorageProvider for GoogleDriveProvider {
             ("", file_path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(file_path_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2374,6 +2357,7 @@ impl StorageProvider for GoogleDriveProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        let file_path_is_absolute = path.starts_with('/');
         let file_path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
             (&file_path[..pos], &file_path[pos + 1..])
@@ -2381,11 +2365,9 @@ impl StorageProvider for GoogleDriveProvider {
             ("", file_path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(file_path_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2435,6 +2417,7 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn get_thumbnail(&mut self, path: &str) -> Result<String, ProviderError> {
+        let file_path_is_absolute = path.starts_with('/');
         let file_path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
             (&file_path[..pos], &file_path[pos + 1..])
@@ -2442,11 +2425,9 @@ impl StorageProvider for GoogleDriveProvider {
             ("", file_path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(file_path_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2495,6 +2476,7 @@ impl StorageProvider for GoogleDriveProvider {
         &mut self,
         path: &str,
     ) -> Result<Vec<super::SharePermission>, ProviderError> {
+        let file_path_is_absolute = path.starts_with('/');
         let file_path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
             (&file_path[..pos], &file_path[pos + 1..])
@@ -2502,11 +2484,9 @@ impl StorageProvider for GoogleDriveProvider {
             ("", file_path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(file_path_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2568,6 +2548,7 @@ impl StorageProvider for GoogleDriveProvider {
         path: &str,
         permission: &super::SharePermission,
     ) -> Result<(), ProviderError> {
+        let file_path_is_absolute = path.starts_with('/');
         let file_path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
             (&file_path[..pos], &file_path[pos + 1..])
@@ -2575,11 +2556,9 @@ impl StorageProvider for GoogleDriveProvider {
             ("", file_path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(file_path_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2753,6 +2732,7 @@ impl StorageProvider for GoogleDriveProvider {
         })?;
 
         // Need the actual permission ID from the API
+        let file_path_is_absolute = path.starts_with('/');
         let file_path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
             (&file_path[..pos], &file_path[pos + 1..])
@@ -2760,11 +2740,9 @@ impl StorageProvider for GoogleDriveProvider {
             ("", file_path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(file_path_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -3028,6 +3006,28 @@ mod tests {
 
     fn test_provider() -> GoogleDriveProvider {
         GoogleDriveProvider::new(GoogleDriveConfig::new("cid", "csec"))
+    }
+
+    /// After `cd /docs`: `/x` and `x` name different folders, `/x` the
+    /// root's and `x` the current one's, and a longer path follows the same
+    /// rule. Resolved from the cache alone, so no request is made.
+    #[tokio::test]
+    async fn absolute_paths_resolve_from_the_root_and_relative_ones_from_the_current_folder() {
+        let mut p = test_provider();
+        for (path, id) in [
+            ("/docs", "DOCS"),
+            ("/docs/sub", "DOCS_SUB"),
+            ("/sub", "ROOT_SUB"),
+        ] {
+            p.folder_cache.insert(path.to_string(), (id.to_string(), 0));
+        }
+        p.current_folder_id = "DOCS".to_string();
+        p.current_path = "/docs".to_string();
+
+        assert_eq!(p.parent_folder_id(true, "").await.unwrap(), "root");
+        assert_eq!(p.parent_folder_id(false, "").await.unwrap(), "DOCS");
+        assert_eq!(p.parent_folder_id(true, "sub").await.unwrap(), "ROOT_SUB");
+        assert_eq!(p.parent_folder_id(false, "sub").await.unwrap(), "DOCS_SUB");
     }
 
     fn make_file(

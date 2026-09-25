@@ -1522,16 +1522,8 @@ impl StorageProvider for OneDriveProvider {
         let new_name = to_path.rsplit('/').next().unwrap_or(&to_path);
 
         // Determine source and destination parent paths
-        let from_parent = from_path
-            .trim_matches('/')
-            .rsplit_once('/')
-            .map(|(p, _)| format!("/{}", p))
-            .unwrap_or_else(|| self.current_path.clone());
-        let to_parent = to_path
-            .trim_matches('/')
-            .rsplit_once('/')
-            .map(|(p, _)| format!("/{}", p))
-            .unwrap_or_else(|| self.current_path.clone());
+        let from_parent = parent_of_absolute(&from_path);
+        let to_parent = parent_of_absolute(&to_path);
 
         let is_move = from_parent != to_parent;
 
@@ -2531,6 +2523,17 @@ impl StorageProvider for OneDriveProvider {
     }
 }
 
+/// The parent folder of an absolute path: `/a/b` is in `/a`, `/x` in `/`.
+/// `rename` used to take the current folder as the parent of a one-segment
+/// path, so after `cd /docs` a move of `/x` into `/docs` read as a rename in
+/// place: the item stayed at the root and the call reported success.
+fn parent_of_absolute(path: &str) -> String {
+    path.trim_matches('/')
+        .rsplit_once('/')
+        .map(|(parent, _)| format!("/{parent}"))
+        .unwrap_or_else(|| "/".to_string())
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -2619,6 +2622,14 @@ mod tests {
         }
     }
     use super::*;
+
+    #[test]
+    fn the_parent_of_a_one_segment_path_is_the_root() {
+        assert_eq!(parent_of_absolute("/x"), "/");
+        assert_eq!(parent_of_absolute("/x/"), "/");
+        assert_eq!(parent_of_absolute("/docs/y"), "/docs");
+        assert_eq!(parent_of_absolute("/a/b/c"), "/a/b");
+    }
 
     fn test_provider() -> OneDriveProvider {
         OneDriveProvider::new(OneDriveConfig::new("cid", "csec"))

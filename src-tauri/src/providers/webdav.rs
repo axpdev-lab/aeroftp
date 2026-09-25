@@ -3518,17 +3518,13 @@ impl StorageProvider for WebDavProvider {
         }
 
         let destination = self.build_url(to);
-        let move_depth = match self.stat(from).await {
-            Ok(entry) => webdav_move_depth_header(Some(&entry)),
-            Err(_) => webdav_move_depth_header(None),
-        };
 
         let response = self
             .send_replaying_digest(|| {
                 self.request(webdav_methods::move_method(), from)
                     .header("Destination", &destination)
                     .header("Overwrite", "F") // Don't overwrite existing
-                    .header("Depth", move_depth)
+                    .header("Depth", MOVE_DEPTH)
             })
             .await?;
 
@@ -3562,17 +3558,13 @@ impl StorageProvider for WebDavProvider {
         }
 
         let destination = self.build_url(to);
-        let move_depth = match self.stat(from).await {
-            Ok(entry) => webdav_move_depth_header(Some(&entry)),
-            Err(_) => webdav_move_depth_header(None),
-        };
 
         let response = self
             .send_replaying_digest(|| {
                 self.request(webdav_methods::move_method(), from)
                     .header("Destination", &destination)
                     .header("Overwrite", "T")
-                    .header("Depth", move_depth)
+                    .header("Depth", MOVE_DEPTH)
             })
             .await?;
 
@@ -4906,12 +4898,14 @@ fn upload_failure_error(status: StatusCode) -> ProviderError {
     }
 }
 
-fn webdav_move_depth_header(entry: Option<&RemoteEntry>) -> &'static str {
-    match entry {
-        Some(entry) if !entry.is_dir => "0",
-        _ => "infinity",
-    }
-}
+/// `Depth` of every MOVE, file or collection. RFC 4918 section 9.9.2: a MOVE
+/// acts as `infinity` whatever it says, and a collection MOVE must not carry
+/// any other value. For a file the header means nothing, but servers built on
+/// golang.org/x/net/webdav (rclone serve webdav among them) accept only
+/// `infinity` or no header, and answered the `0` sent for files until
+/// 2026-09-25 with 400: every file rename failed there. Sending the one value
+/// valid for both also drops the PROPFIND that picked between them.
+const MOVE_DEPTH: &str = "infinity";
 
 #[cfg(test)]
 mod tests {
@@ -5505,17 +5499,55 @@ mod tests {
         assert!(matches!(via_legacy, Err(ProviderError::NotConnected)));
     }
 
-    #[test]
-    fn webdav_move_depth_header_keeps_file_move_bounded() {
-        let file = RemoteEntry::file("a.txt".to_string(), "/a.txt".to_string(), 1);
-        assert_eq!(webdav_move_depth_header(Some(&file)), "0");
+    /// A WebDAV double that treats MOVE as golang.org/x/net/webdav does:
+    /// `Depth` absent or `infinity` moves (201), any other value is a 400.
+    /// Returns its URL and the `Depth` of every MOVE it received.
+    async fn move_server_like_x_net_webdav() -> (
+        String,
+        std::sync::Arc<std::sync::Mutex<Vec<Option<String>>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let depths: Arc<Mutex<Vec<Option<String>>>> = Arc::default();
+        let seen = Arc::clone(&depths);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    if req.method().as_str() != "MOVE" {
+                        return axum::http::StatusCode::METHOD_NOT_ALLOWED;
+                    }
+                    let depth = req
+                        .headers()
+                        .get("depth")
+                        .map(|v| v.to_str().unwrap().to_string());
+                    let valid = matches!(depth.as_deref(), None | Some("infinity"));
+                    seen.lock().unwrap().push(depth);
+                    if valid {
+                        axum::http::StatusCode::CREATED
+                    } else {
+                        axum::http::StatusCode::BAD_REQUEST
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        (format!("http://{addr}/"), depths)
     }
 
-    #[test]
-    fn webdav_move_depth_header_uses_infinity_for_directories_and_unknowns() {
-        let dir = RemoteEntry::directory("docs".to_string(), "/docs".to_string());
-        assert_eq!(webdav_move_depth_header(Some(&dir)), "infinity");
-        assert_eq!(webdav_move_depth_header(None), "infinity");
+    /// Renaming a file failed with 400 on every server built on
+    /// golang.org/x/net/webdav while the MOVE carried `Depth: 0`.
+    #[tokio::test]
+    async fn file_rename_and_replace_move_with_depth_infinity() {
+        let (url, depths) = move_server_like_x_net_webdav().await;
+        let mut p = WebDavProvider::new(test_config(&url)).expect("provider");
+        p.connected = true;
+        p.rename("/a.txt", "/dir/a.txt").await.expect("rename");
+        p.replace("/b.tmp", "/dir/b.txt").await.expect("replace");
+        assert_eq!(
+            *depths.lock().unwrap(),
+            [Some("infinity".to_string()), Some("infinity".to_string())]
+        );
     }
 
     // ─── T-DEBT-07: Nextcloud chunked upload v2 gating + wire ─────────

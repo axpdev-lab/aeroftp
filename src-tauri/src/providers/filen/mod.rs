@@ -1034,6 +1034,63 @@ impl FilenProvider {
         }
     }
 
+    /// Split a normalized path into its parent folder and leaf name.
+    fn split_parent(normalized: &str) -> (String, String) {
+        match normalized.rfind('/') {
+            Some(pos) if pos > 0 => (
+                normalized[..pos].to_string(),
+                normalized[pos + 1..].to_string(),
+            ),
+            _ => (
+                "/".to_string(),
+                normalized.trim_start_matches('/').to_string(),
+            ),
+        }
+    }
+
+    /// Drop the cached uuid of `path` and of every folder below it, after
+    /// the folder was renamed or moved: the old paths no longer exist.
+    fn forget_dir_subtree(&mut self, path: &str) {
+        let below = format!("{}/", path.trim_end_matches('/'));
+        self.dir_cache
+            .retain(|cached, _| cached != path && !cached.starts_with(&below));
+    }
+
+    /// Move a file or folder into the folder `to_folder_uuid`, keeping its
+    /// name. The endpoints and body are the ones the official SDK sends
+    /// (filen-sdk-ts `src/api/v3/file/move.ts`, `src/api/v3/dir/move.ts`).
+    async fn move_item(
+        &self,
+        uuid: &str,
+        to_folder_uuid: &str,
+        is_dir: bool,
+    ) -> Result<(), ProviderError> {
+        let kind = if is_dir { "dir" } else { "file" };
+        let request = self
+            .client
+            .post(format!("{}/v3/{kind}/move", self.gateway_base()))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+            )
+            .json(&serde_json::json!({"uuid": uuid, "to": to_folder_uuid}))
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: GenericResponse = self
+            .send_retry(request)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        if !resp.status {
+            let msg = resp.message.unwrap_or_else(|| "Move failed".to_string());
+            filen_log(&format!("move {kind} FAILED: {msg}"));
+            return Err(ProviderError::Other(msg));
+        }
+        Ok(())
+    }
+
     /// Resolve a folder path to its UUID
     async fn resolve_folder_uuid(&mut self, path: &str) -> Result<String, ProviderError> {
         let normalized = Self::normalize_path(path);
@@ -2215,34 +2272,58 @@ impl StorageProvider for FilenProvider {
         self.rmdir(path).await // Filen trash handles recursive
     }
 
+    /// Rename and/or move. Filen renames and moves by uuid with two
+    /// separate calls, so a destination in another folder is first moved
+    /// there (`v3/file/move` / `v3/dir/move`), then renamed if its name
+    /// changes too. The trait promises no overwrite, and Filen would keep a
+    /// second item with the same name, so an occupied destination is refused.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let new_name = std::path::Path::new(to)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| to.to_string());
+        let from_path = Self::normalize_path(from);
+        let (from_parent, old_name) = Self::split_parent(&from_path);
+        let (to_parent, new_name) = Self::split_parent(&Self::normalize_path(to));
+        let moves = from_parent != to_parent;
+        let renames = new_name != old_name;
 
-        // Find the item
-        let normalized = Self::normalize_path(from);
-        let (parent_path, old_name) = match normalized.rfind('/') {
-            Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
-            _ => ("/", normalized.trim_start_matches('/')),
-        };
-
-        let entries = self.list(parent_path).await?;
+        let entries = self.list(&from_parent).await?;
         let entry = entries
             .iter()
             .find(|e| e.name == old_name)
-            .ok_or_else(|| ProviderError::NotFound(old_name.to_string()))?;
+            .cloned()
+            .ok_or_else(|| ProviderError::NotFound(old_name.clone()))?;
 
         let uuid = entry
             .metadata
             .get("uuid")
+            .cloned()
             .ok_or_else(|| ProviderError::Other("No UUID".to_string()))?;
 
         filen_log(&format!(
             "rename: '{}' -> '{}', is_dir={}, uuid={}",
             from, to, entry.is_dir, uuid
         ));
+
+        if !moves && !renames {
+            return Ok(());
+        }
+        let destination_siblings = if moves {
+            self.list(&to_parent).await?
+        } else {
+            entries
+        };
+        if destination_siblings.iter().any(|e| e.name == new_name) {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+
+        if moves {
+            let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
+            self.move_item(&uuid, &to_parent_uuid, entry.is_dir).await?;
+            if entry.is_dir {
+                self.forget_dir_subtree(&from_path);
+            }
+        }
+        if !renames {
+            return Ok(());
+        }
 
         let name_hashed = Self::hash_name(&new_name);
 
@@ -2309,7 +2390,7 @@ impl StorageProvider for FilenProvider {
             let encrypted_name = self.encrypt_metadata(&new_name)?;
             // H4: Reject empty key: using an empty key would produce a ciphertext
             // that any attacker could decrypt. Require re-listing the directory.
-            let file_key = self.file_key_cache.get(uuid).cloned().ok_or_else(|| {
+            let file_key = self.file_key_cache.get(&uuid).cloned().ok_or_else(|| {
                 ProviderError::Other(
                     "No encryption key in cache for file rename (re-list directory first)"
                         .to_string(),
@@ -2367,6 +2448,9 @@ impl StorageProvider for FilenProvider {
                 filen_log(&format!("rename file FAILED: {}", msg));
                 return Err(ProviderError::Other(msg));
             }
+        }
+        if entry.is_dir {
+            self.forget_dir_subtree(&from_path);
         }
 
         Ok(())
@@ -3423,6 +3507,174 @@ mod tests {
             if message == "folder access denied"),
             "{outcome:?}"
         );
+    }
+
+    /// Every mutating call the tree gateway received: endpoint and body.
+    type GatewayCalls = Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>;
+
+    const TEST_MASTER_KEY: &str =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    /// A gateway double holding `/a` (uuid `A`) with the file `f.txt`
+    /// (uuid `F`) and `/b` (uuid `B`) with the files named in `in_b`. The
+    /// move endpoints answer `move_status`; every other mutating endpoint
+    /// succeeds. Returns a connected provider pointed at it.
+    async fn tree_gateway(
+        in_b: &[&str],
+        move_status: bool,
+    ) -> (FilenProvider, GatewayCalls, tokio::task::JoinHandle<()>) {
+        use axum::{routing::post, Json, Router};
+
+        let folder = |uuid: &str, name: &str, parent: &str| {
+            let name = serde_json::json!({ "name": name }).to_string();
+            serde_json::json!({
+                "uuid": uuid,
+                "name": FilenProvider::encrypt_metadata_with_key(&name, TEST_MASTER_KEY).unwrap(),
+                "parent": parent,
+                "timestamp": 1_700_000_000u64,
+            })
+        };
+        let file = |uuid: &str, name: &str, parent: &str| {
+            let meta = serde_json::json!({
+                "name": name,
+                "size": 3,
+                "mime": "text/plain",
+                "key": "k".repeat(32),
+                "lastModified": 1_700_000_000_000u64,
+            })
+            .to_string();
+            serde_json::json!({
+                "uuid": uuid,
+                "metadata": FilenProvider::encrypt_metadata_with_key(&meta, TEST_MASTER_KEY).unwrap(),
+                "bucket": "b",
+                "region": "r",
+                "parent": parent,
+                "timestamp": 1_700_000_000u64,
+                "chunks": 1,
+                "size": 3,
+            })
+        };
+        let root = serde_json::json!({
+            "folders": [folder("A", "a", "root-uuid-test"), folder("B", "b", "root-uuid-test")],
+            "uploads": [],
+        });
+        let in_a = serde_json::json!({ "folders": [], "uploads": [file("F", "f.txt", "A")] });
+        let in_b = serde_json::json!({
+            "folders": [],
+            "uploads": in_b
+                .iter()
+                .enumerate()
+                .map(|(i, name)| file(&format!("B{i}"), name, "B"))
+                .collect::<Vec<_>>(),
+        });
+
+        let calls: GatewayCalls = Arc::default();
+        let mut app = Router::new().route(
+            "/v3/dir/content",
+            post(move |Json(body): Json<serde_json::Value>| {
+                let data = match body["uuid"].as_str() {
+                    Some("A") => in_a.clone(),
+                    Some("B") => in_b.clone(),
+                    _ => root.clone(),
+                };
+                async move { Json(serde_json::json!({ "status": true, "data": data })) }
+            }),
+        );
+        for endpoint in [
+            "/v3/file/move",
+            "/v3/dir/move",
+            "/v3/file/rename",
+            "/v3/dir/rename",
+            "/v3/dir/metadata",
+        ] {
+            let calls = Arc::clone(&calls);
+            let status = move_status || !endpoint.ends_with("/move");
+            app =
+                app.route(
+                    endpoint,
+                    post(move |Json(body): Json<serde_json::Value>| {
+                        calls.lock().unwrap().push((endpoint.to_string(), body));
+                        async move {
+                            Json(serde_json::json!({ "status": status, "message": "refused" }))
+                        }
+                    }),
+                );
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = FilenProvider::connected_for_test(demo_cfg());
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+        (provider, calls, server)
+    }
+
+    fn endpoints(calls: &GatewayCalls) -> Vec<String> {
+        calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(e, _)| e.clone())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn rename_into_another_folder_moves_the_file() {
+        let (mut provider, calls, server) = tree_gateway(&[], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/f.txt").await;
+        server.abort();
+        outcome.expect("the move succeeds");
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1, "{calls:?}");
+        assert_eq!(calls[0].0, "/v3/file/move");
+        assert_eq!(calls[0].1, serde_json::json!({ "uuid": "F", "to": "B" }));
+    }
+
+    #[tokio::test]
+    async fn rename_into_another_folder_under_a_new_name_moves_then_renames() {
+        let (mut provider, calls, server) = tree_gateway(&[], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/g.txt").await;
+        server.abort();
+        outcome.expect("move and rename succeed");
+        assert_eq!(endpoints(&calls), ["/v3/file/move", "/v3/file/rename"]);
+        assert_eq!(calls.lock().unwrap()[1].1["uuid"], "F");
+    }
+
+    #[tokio::test]
+    async fn moving_a_folder_uses_dir_move_and_forgets_its_cached_path() {
+        let (mut provider, calls, server) = tree_gateway(&[], true).await;
+        let outcome = provider.rename("/a", "/b/a").await;
+        server.abort();
+        outcome.expect("the folder move succeeds");
+        assert_eq!(endpoints(&calls), ["/v3/dir/move"]);
+        assert_eq!(
+            calls.lock().unwrap()[0].1,
+            serde_json::json!({ "uuid": "A", "to": "B" })
+        );
+        assert!(
+            !provider.dir_cache.contains_key("/a"),
+            "the old path must not resolve to the moved folder"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_occupied_destination_is_refused_before_any_change() {
+        let (mut provider, calls, server) = tree_gateway(&["f.txt"], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/f.txt").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(endpoints(&calls).is_empty(), "{:?}", endpoints(&calls));
+    }
+
+    #[tokio::test]
+    async fn a_refused_move_is_an_error_and_renames_nothing() {
+        let (mut provider, calls, server) = tree_gateway(&[], false).await;
+        let outcome = provider.rename("/a/f.txt", "/b/g.txt").await;
+        server.abort();
+        assert!(outcome.is_err(), "a refused move must not report success");
+        assert_eq!(endpoints(&calls), ["/v3/file/move"]);
     }
 
     /// Verify the chunk-count math used by `upload()`. Mirrors the boundary

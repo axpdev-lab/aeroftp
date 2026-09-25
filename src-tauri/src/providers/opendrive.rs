@@ -852,6 +852,16 @@ impl OpenDriveProvider {
             .ok_or(ProviderError::NotFound(normalized))
     }
 
+    /// Whether the folder `parent` holds a file or a folder whose stored
+    /// (encoded) name is `encoded_leaf`.
+    async fn child_exists(&self, parent: &str, encoded_leaf: &str) -> Result<bool, ProviderError> {
+        let folder_id = self.folder_id_by_path(parent).await?;
+        let listing = self.list_folder_response(&folder_id).await?;
+        let named = |name: &Option<String>| name.as_deref() == Some(encoded_leaf);
+        Ok(listing.files.iter().any(|file| named(&file.name))
+            || listing.folders.iter().any(|folder| named(&folder.name)))
+    }
+
     async fn resolve_file_id(&self, path: &str) -> Result<String, ProviderError> {
         let normalized = normalize_path(path)?;
 
@@ -1935,6 +1945,23 @@ impl StorageProvider for OpenDriveProvider {
         }
         // The new leaf is stored encoded (used for folder/file rename + move).
         let to_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &to_name);
+        if from_resolved == to_resolved {
+            return Ok(());
+        }
+
+        // The trait promises no overwrite. `file/move_copy.json` and the
+        // download+upload fallback below would both replace an existing file
+        // at the destination, so an occupied destination is refused first.
+        let occupied = self
+            .with_reauth(|this| {
+                let to_parent_path = to_parent_path.clone();
+                let to_name = to_name.clone();
+                Box::pin(async move { this.child_exists(&to_parent_path, &to_name).await })
+            })
+            .await?;
+        if occupied {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
 
         // Folder rename/move path
         let folder_result = self
@@ -2012,7 +2039,7 @@ impl StorageProvider for OpenDriveProvider {
                             ("src_file_id", file_id),
                             ("dst_folder_id", to_parent_id),
                             ("move", "true".to_string()),
-                            ("overwrite_if_exists", "true".to_string()),
+                            ("overwrite_if_exists", "false".to_string()),
                             ("new_file_name", to_name),
                         ],
                     )
@@ -2538,6 +2565,111 @@ impl StorageProvider for OpenDriveProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An OpenDrive API double for `rename("/src/f.txt", "/dst/f.txt")`:
+    /// `/dst` is folder `D`, holding `f.txt` only when `occupied`; the
+    /// source file is `F`. Returns the provider and the form bodies of the
+    /// `file/move_copy.json` calls.
+    async fn provider_for_file_move(
+        occupied: bool,
+    ) -> (
+        OpenDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let moves: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&moves);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                        .await
+                        .unwrap();
+                    let form: std::collections::HashMap<String, String> =
+                        form_urlencoded::parse(&body).into_owned().collect();
+                    let json = |status: u16, value: serde_json::Value| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(value.to_string()))
+                            .unwrap()
+                    };
+                    let not_found = || {
+                        json(
+                            404,
+                            serde_json::json!({ "error": { "code": 404, "message": "not found" } }),
+                        )
+                    };
+                    match path.as_str() {
+                        "/api/v1/folder/idbypath.json" => {
+                            match form.get("path").map(String::as_str) {
+                                Some("/dst") | Some("dst") => {
+                                    json(200, serde_json::json!({ "FolderId": "D" }))
+                                }
+                                _ => not_found(),
+                            }
+                        }
+                        "/api/v1/folder/list.json/sid/D" => {
+                            let files = if occupied {
+                                serde_json::json!([{ "FileId": "X", "Name": "f.txt" }])
+                            } else {
+                                serde_json::json!([])
+                            };
+                            json(200, serde_json::json!({ "Folders": [], "Files": files }))
+                        }
+                        "/api/v1/file/idbypath.json" => {
+                            json(200, serde_json::json!({ "FileId": "F" }))
+                        }
+                        "/api/v1/file/move_copy.json" => {
+                            seen.lock()
+                                .unwrap()
+                                .push(String::from_utf8_lossy(&body).to_string());
+                            json(200, serde_json::json!({}))
+                        }
+                        _ => not_found(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = OpenDriveProvider::new(OpenDriveConfig {
+            host: format!("http://{addr}"),
+            username: "u".to_string(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+            default_privacy: None,
+        });
+        provider.connected = true;
+        provider.session_id = "sid".to_string();
+        (provider, moves)
+    }
+
+    #[tokio::test]
+    async fn file_move_never_asks_the_server_to_overwrite() {
+        let (mut provider, moves) = provider_for_file_move(false).await;
+        provider
+            .rename("/src/f.txt", "/dst/f.txt")
+            .await
+            .expect("move");
+        let moves = moves.lock().unwrap().clone();
+        assert_eq!(moves.len(), 1, "{moves:?}");
+        assert!(moves[0].contains("overwrite_if_exists=false"), "{moves:?}");
+    }
+
+    #[tokio::test]
+    async fn file_move_refuses_an_existing_destination_before_moving() {
+        let (mut provider, moves) = provider_for_file_move(true).await;
+        let outcome = provider.rename("/src/f.txt", "/dst/f.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(moves.lock().unwrap().is_empty());
+    }
+
     use serde_json::json;
 
     #[test]

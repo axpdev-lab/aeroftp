@@ -141,6 +141,13 @@ struct IkBulkJob {
     job_id: String,
 }
 
+/// `GET /bulkJobs/{jobId}`: `status` is `Pending` or `Completed`.
+#[derive(Debug, Deserialize)]
+struct IkBulkJobStatus {
+    #[serde(default)]
+    status: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RenameFileRequest<'a> {
@@ -190,7 +197,15 @@ pub struct ImageKitProvider {
     client: reqwest::Client,
     connected: bool,
     current_path: String,
+    #[cfg(test)]
+    api_base_override: Option<String>,
 }
+
+/// How long a folder move or copy may stay a pending bulk job before the
+/// call gives up waiting and says so. The job keeps running server side.
+const FOLDER_JOB_WAIT: std::time::Duration = std::time::Duration::from_secs(300);
+const FOLDER_JOB_FIRST_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+const FOLDER_JOB_MAX_POLL: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl ImageKitProvider {
     pub fn new(config: ImageKitConfig) -> Self {
@@ -205,7 +220,17 @@ impl ImageKitProvider {
             client,
             connected: false,
             current_path,
+            #[cfg(test)]
+            api_base_override: None,
         }
+    }
+
+    fn api_base(&self) -> String {
+        #[cfg(test)]
+        if let Some(base) = &self.api_base_override {
+            return base.clone();
+        }
+        API_BASE.to_string()
     }
 
     fn auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -265,7 +290,7 @@ impl ImageKitProvider {
         // which is what the rest of this provider already expects.
         let url = format!(
             "{}/files?path={}&type=all&limit=1000&skip=0",
-            API_BASE,
+            self.api_base(),
             urlencoding::encode(path)
         );
         let resp = self
@@ -326,7 +351,7 @@ impl ImageKitProvider {
         let resp = self
             .auth(
                 self.client
-                    .delete(format!("{}/files/{}", API_BASE, item.file_id)),
+                    .delete(format!("{}/files/{}", self.api_base(), item.file_id)),
             )
             .send()
             .await
@@ -342,7 +367,7 @@ impl ImageKitProvider {
     async fn delete_folder_by_path(&self, path: &str) -> Result<(), ProviderError> {
         let folder_path = folder_path(path);
         let resp = self
-            .auth(self.client.delete(format!("{}/folder/", API_BASE)))
+            .auth(self.client.delete(format!("{}/folder/", self.api_base())))
             .json(&DeleteFolderRequest {
                 folder_path: &folder_path,
             })
@@ -361,7 +386,7 @@ impl ImageKitProvider {
         let source = normalize_path(from);
         let dest_parent = folder_path(&parent_path(&normalize_path(to)));
         let resp = self
-            .auth(self.client.post(format!("{}/files/copy", API_BASE)))
+            .auth(self.client.post(format!("{}/files/copy", self.api_base())))
             .json(&CopyFileRequest {
                 source_file_path: &source,
                 destination_path: &dest_parent,
@@ -388,7 +413,7 @@ impl ImageKitProvider {
     async fn rename_file(&self, from: &str, new_name: &str) -> Result<(), ProviderError> {
         let source = normalize_path(from);
         let resp = self
-            .auth(self.client.put(format!("{}/files/rename", API_BASE)))
+            .auth(self.client.put(format!("{}/files/rename", self.api_base())))
             .json(&RenameFileRequest {
                 file_path: &source,
                 new_file_name: new_name,
@@ -413,7 +438,7 @@ impl ImageKitProvider {
 
         if folder_path(&src_parent) != dest_parent {
             let resp = self
-                .auth(self.client.put(format!("{}/files/move", API_BASE)))
+                .auth(self.client.put(format!("{}/files/move", self.api_base())))
                 .json(&MoveFileRequest {
                     source_file_path: &source,
                     destination_path: &dest_parent,
@@ -448,7 +473,7 @@ impl ImageKitProvider {
         let resp = self
             .auth(
                 self.client
-                    .post(format!("{}/bulkJobs/{}", API_BASE, endpoint)),
+                    .post(format!("{}/bulkJobs/{}", self.api_base(), endpoint)),
             )
             .json(&BulkFolderRequest {
                 source_folder_path: &source,
@@ -463,12 +488,69 @@ impl ImageKitProvider {
             return Err(self.parse_error(resp).await);
         }
 
-        if let Ok(job) = resp.json::<IkBulkJob>().await {
-            if !job.job_id.is_empty() {
-                tracing::debug!("ImageKit folder job started: {}", job.job_id);
-            }
+        // The POST answers as soon as the job is queued. Returning then told
+        // the caller a folder had moved while it still sat at the source.
+        let job = resp
+            .json::<IkBulkJob>()
+            .await
+            .map_err(|e| ProviderError::ParseError(format!("bulk job response: {e}")))?;
+        if job.job_id.is_empty() {
+            return Err(ProviderError::ParseError(
+                "ImageKit queued the folder job without a jobId, so its outcome cannot be checked"
+                    .to_string(),
+            ));
         }
-        Ok(())
+        tracing::debug!("ImageKit folder job started: {}", job.job_id);
+        self.wait_for_folder_job(&job.job_id, FOLDER_JOB_WAIT).await
+    }
+
+    /// Poll `GET /bulkJobs/{jobId}` (official SDK, `folders/job.ts`) until
+    /// the job is `Completed`. A job still `Pending` after `budget` is an
+    /// error that says so: the folder may yet finish moving, and the caller
+    /// must not take it as done.
+    async fn wait_for_folder_job(
+        &self,
+        job_id: &str,
+        budget: std::time::Duration,
+    ) -> Result<(), ProviderError> {
+        let started = std::time::Instant::now();
+        let mut interval = FOLDER_JOB_FIRST_POLL;
+        loop {
+            let resp = self
+                .auth(self.client.get(format!(
+                    "{}/bulkJobs/{}",
+                    self.api_base(),
+                    urlencoding::encode(job_id)
+                )))
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            if !resp.status().is_success() {
+                return Err(self.parse_error(resp).await);
+            }
+            let job = resp
+                .json::<IkBulkJobStatus>()
+                .await
+                .map_err(|e| ProviderError::ParseError(format!("bulk job status: {e}")))?;
+            match job.status.as_str() {
+                "Completed" => return Ok(()),
+                "Pending" if started.elapsed() < budget => {}
+                "Pending" => {
+                    return Err(ProviderError::Other(format!(
+                        "ImageKit folder job {job_id} is still pending after {} s; \
+                         it may complete later, check the destination before retrying",
+                        budget.as_secs()
+                    )))
+                }
+                other => {
+                    return Err(ProviderError::ServerError(format!(
+                        "ImageKit folder job {job_id} reports the unknown status {other:?}"
+                    )))
+                }
+            }
+            tokio::time::sleep(interval).await;
+            interval = (interval * 2).min(FOLDER_JOB_MAX_POLL);
+        }
     }
 }
 
@@ -498,7 +580,7 @@ impl StorageProvider for ImageKitProvider {
         let resp = self
             .auth(
                 self.client
-                    .get(format!("{}/files?limit=1&skip=0", API_BASE)),
+                    .get(format!("{}/files?limit=1&skip=0", self.api_base())),
             )
             .send()
             .await
@@ -816,7 +898,7 @@ impl StorageProvider for ImageKitProvider {
         let parent = folder_path(&parent_path(&resolved));
 
         let resp = self
-            .auth(self.client.post(format!("{}/folder/", API_BASE)))
+            .auth(self.client.post(format!("{}/folder/", self.api_base())))
             .json(&FolderRequest {
                 folder_name: name,
                 parent_folder_path: &parent,
@@ -1166,6 +1248,78 @@ mod tests {
         assert_eq!(
             folder_copy_destination("/src/photos", "/dst/photos").unwrap(),
             "/dst"
+        );
+    }
+
+    /// An ImageKit double holding the folder `/src/photos`. A folder move
+    /// queues job `J`, whose status reads `Pending` for the first
+    /// `pending_polls` polls and `Completed` after. Returns the provider and
+    /// the number of status polls.
+    async fn provider_with_folder_job(
+        pending_polls: usize,
+    ) -> (
+        ImageKitProvider,
+        std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let polls = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&polls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let body = match (req.method().as_str(), req.uri().path()) {
+                        ("GET", "/files") => serde_json::json!([{
+                            "fileId": "", "name": "photos", "filePath": "/src/photos", "type": "folder",
+                        }]),
+                        ("POST", "/bulkJobs/moveFolder") => serde_json::json!({ "jobId": "J" }),
+                        ("GET", "/bulkJobs/J") => {
+                            let done = seen.fetch_add(1, Ordering::SeqCst) >= pending_polls;
+                            serde_json::json!({
+                                "jobId": "J",
+                                "type": "MOVE_FOLDER",
+                                "status": if done { "Completed" } else { "Pending" },
+                            })
+                        }
+                        _ => serde_json::json!({ "message": "unexpected" }),
+                    };
+                    axum::Json(body)
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, polls)
+    }
+
+    #[tokio::test]
+    async fn folder_move_returns_only_once_the_bulk_job_completed() {
+        let (mut provider, polls) = provider_with_folder_job(1).await;
+        provider
+            .rename("/src/photos", "/dst/photos")
+            .await
+            .expect("move");
+        assert_eq!(
+            polls.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "one Pending, then Completed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_folder_job_still_pending_after_the_wait_is_an_error() {
+        let (provider, _) = provider_with_folder_job(usize::MAX).await;
+        let outcome = provider
+            .wait_for_folder_job("J", std::time::Duration::ZERO)
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::Other(ref m)) if m.contains("still pending")),
+            "{outcome:?}"
         );
     }
 

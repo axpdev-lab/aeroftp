@@ -129,6 +129,12 @@ struct SwiftAuth {
     obtained_at: Instant,
 }
 
+/// A container or object name as a URL path segment: UTF-8, percent-encoded,
+/// with `/` kept as the separator it is inside an object name.
+fn encode_swift_name(name: &str) -> String {
+    urlencoding::encode(name).replace("%2F", "/")
+}
+
 impl SwiftAuth {
     fn is_valid(&self) -> bool {
         self.obtained_at.elapsed() < Duration::from_secs(23 * 3600)
@@ -721,9 +727,22 @@ impl SwiftProvider {
                 "{}/{}/{}",
                 storage,
                 self.container,
-                urlencoding::encode(clean).replace("%2F", "/")
+                encode_swift_name(clean)
             ))
         }
+    }
+
+    /// `/{container}/{object}` as a header or a bulk-delete line must carry
+    /// it: "You must UTF-8-encode and then URL-encode the names of the
+    /// container and object" (Swift API reference, `X-Copy-From`), and the
+    /// bulk middleware unquotes every line it reads. Sent raw, a name with
+    /// `%` names another object and a non-ASCII name fails the request.
+    fn object_reference(&self, object: &str) -> String {
+        format!(
+            "/{}/{}",
+            encode_swift_name(&self.container),
+            encode_swift_name(object)
+        )
     }
 
     /// Swift object keys are flat, so a path is only ever a prefix. This turns
@@ -1364,11 +1383,11 @@ impl StorageProvider for SwiftProvider {
         let mut object_paths: Vec<String> = entries
             .iter()
             .filter_map(|e| e.name.as_ref())
-            .map(|n| format!("/{}/{n}", self.container))
+            .map(|n| self.object_reference(n))
             .collect();
 
         // Also delete the directory marker itself
-        object_paths.push(format!("/{}/{prefix}/", self.container));
+        object_paths.push(self.object_reference(&format!("{prefix}/")));
 
         // Bulk delete in chunks of 10000
         for chunk in object_paths.chunks(10000) {
@@ -1447,8 +1466,16 @@ impl StorageProvider for SwiftProvider {
         let from_clean = Self::normalize_path(from);
         let to_clean = Self::normalize_path(to);
 
+        // The trait promises no overwrite, and a PUT with X-Copy-From
+        // replaces whatever the destination holds: look first.
+        match self.stat(to).await {
+            Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
+            Err(ProviderError::NotFound(_)) => {}
+            Err(e) => return Err(e),
+        }
+
         let dest_url = self.object_url(&to_clean)?;
-        let copy_from = format!("/{}/{from_clean}", self.container);
+        let copy_from = self.object_reference(&from_clean);
 
         let headers = vec![
             ("X-Copy-From".to_string(), copy_from),
@@ -1600,7 +1627,7 @@ impl StorageProvider for SwiftProvider {
         let from_clean = Self::normalize_path(from);
         let to_clean = Self::normalize_path(to);
         let dest_url = self.object_url(&to_clean)?;
-        let copy_from = format!("/{}/{from_clean}", self.container);
+        let copy_from = self.object_reference(&from_clean);
 
         let headers = vec![
             ("X-Copy-From".to_string(), copy_from),
@@ -1690,6 +1717,138 @@ mod tests {
             verify_cert: true,
             allow_cleartext_storage_endpoint: true,
         })
+    }
+
+    /// Every request the storage double received: method, raw path (as
+    /// sent, percent-encoding included), `X-Copy-From`, body.
+    type StorageLog =
+        std::sync::Arc<std::sync::Mutex<Vec<(String, String, Option<String>, String)>>>;
+
+    /// A storage double at `/v1/AUTH_a` for container `my box`. HEAD finds
+    /// an object only if its raw path is in `existing`; GET lists `listing`;
+    /// PUT, DELETE and the bulk-delete POST succeed.
+    async fn provider_on_storage(
+        existing: &'static [&'static str],
+        listing: serde_json::Value,
+    ) -> (SwiftProvider, StorageLog) {
+        let log: StorageLog = Default::default();
+        let seen = std::sync::Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = std::sync::Arc::clone(&seen);
+                let listing = listing.clone();
+                async move {
+                    let method = req.method().to_string();
+                    let path = req.uri().path().to_string();
+                    let copy_from = req
+                        .headers()
+                        .get("x-copy-from")
+                        .map(|v| v.to_str().unwrap().to_string());
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    seen.lock()
+                        .unwrap()
+                        .push((method.clone(), path.clone(), copy_from, body));
+                    let status = match method.as_str() {
+                        "HEAD" if existing.contains(&path.as_str()) => 200,
+                        "HEAD" => 404,
+                        "PUT" => 201,
+                        "DELETE" => 204,
+                        _ => 200,
+                    };
+                    let body = if method == "GET" {
+                        listing.to_string()
+                    } else {
+                        String::new()
+                    };
+                    axum::response::Response::builder()
+                        .status(status)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "my box".to_string();
+        (p, log)
+    }
+
+    #[test]
+    fn object_reference_encodes_container_and_object_names() {
+        let mut p = test_provider();
+        p.container = "my box".to_string();
+        assert_eq!(
+            p.object_reference("d/\u{e9}t\u{e9} 25%.txt"),
+            "/my%20box/d/%C3%A9t%C3%A9%2025%25.txt"
+        );
+    }
+
+    #[tokio::test]
+    async fn rename_copies_from_an_encoded_source_then_deletes_it() {
+        let (mut p, log) = provider_on_storage(&[], serde_json::json!([])).await;
+        p.rename("/d/\u{e9}t\u{e9} 25%.txt", "/d/x.txt")
+            .await
+            .expect("rename");
+        let log = log.lock().unwrap().clone();
+        let put = log.iter().find(|r| r.0 == "PUT").expect("a PUT");
+        assert_eq!(put.1, "/v1/AUTH_a/my%20box/d/x.txt");
+        assert_eq!(
+            put.2.as_deref(),
+            Some("/my%20box/d/%C3%A9t%C3%A9%2025%25.txt")
+        );
+        assert!(log
+            .iter()
+            .any(|r| r.0 == "DELETE" && r.1 == "/v1/AUTH_a/my%20box/d/%C3%A9t%C3%A9%2025%25.txt"));
+    }
+
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination_before_copying() {
+        let (mut p, log) =
+            provider_on_storage(&["/v1/AUTH_a/my%20box/d/x.txt"], serde_json::json!([])).await;
+        let outcome = p.rename("/d/a.txt", "/d/x.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(!log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.0 == "PUT" || r.0 == "DELETE"));
+    }
+
+    #[tokio::test]
+    async fn server_side_copy_sends_an_encoded_source() {
+        let (mut p, log) = provider_on_storage(&[], serde_json::json!([])).await;
+        p.server_side_copy("/d/a b%.txt", "/d/c.txt")
+            .await
+            .expect("copy");
+        let log = log.lock().unwrap().clone();
+        let put = log.iter().find(|r| r.0 == "PUT").expect("a PUT");
+        assert_eq!(put.2.as_deref(), Some("/my%20box/d/a%20b%25.txt"));
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_lines_name_the_objects_url_encoded() {
+        let (mut p, log) = provider_on_storage(
+            &[],
+            serde_json::json!([{ "name": "d/a b%.txt", "bytes": 1 }]),
+        )
+        .await;
+        p.rmdir_recursive("/d").await.expect("recursive delete");
+        let log = log.lock().unwrap().clone();
+        let bulk = log.iter().find(|r| r.0 == "POST").expect("a bulk delete");
+        assert_eq!(bulk.3, "/my%20box/d/a%20b%25.txt\n/my%20box/d/");
     }
 
     /// The GUI's default listing path is `"."`, not `"/"`, and Swift turned that

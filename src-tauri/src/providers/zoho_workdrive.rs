@@ -1434,12 +1434,9 @@ impl ZohoWorkdriveProvider {
         };
 
         // Resolve parent folder
-        let folder_path = folder_path.trim_matches('/');
-        let parent_id = if folder_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(folder_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(folder_path.starts_with('/'), folder_path.trim_matches('/'))
+            .await?;
 
         let body = serde_json::json!({
             "data": {
@@ -1505,6 +1502,7 @@ impl ZohoWorkdriveProvider {
 
     /// Resolve a file path to its Zoho ID (helper that splits parent/file)
     async fn resolve_file_id(&mut self, path: &str) -> Result<String, ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -1512,11 +1510,7 @@ impl ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2227,6 +2221,27 @@ impl ZohoWorkdriveProvider {
         Ok(files.into_iter().find(|f| f.attributes.name == name))
     }
 
+    /// The id of `parent`, the folder part of a path already stripped of
+    /// its slashes. An absolute path resolves from the root (the cached
+    /// `/`) and a relative one from the current folder, as on every other
+    /// provider. Until 2026-09-25 a one-segment path went to the current
+    /// folder even with a leading slash, and a longer relative path went to
+    /// the root.
+    async fn parent_folder_id(
+        &mut self,
+        absolute: bool,
+        parent: &str,
+    ) -> Result<String, ProviderError> {
+        if absolute {
+            return self.resolve_path(parent).await;
+        }
+        if parent.is_empty() {
+            return Ok(self.current_folder_id.clone());
+        }
+        let joined = format!("{}/{parent}", self.current_path.trim_end_matches('/'));
+        self.resolve_path(&joined).await
+    }
+
     /// Resolve a path like "/docs/file.txt" to a folder/file ID.
     /// First path component is checked against team folder names, then privatespace.
     async fn resolve_path(&mut self, path: &str) -> Result<String, ProviderError> {
@@ -2364,7 +2379,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let folder_id = if path == "." || path.is_empty() {
             self.current_folder_id.clone()
         } else {
-            self.resolve_path(path).await?
+            self.parent_folder_id(path.starts_with('/'), path.trim_matches('/'))
+                .await?
         };
 
         let files = self.list_folder(&folder_id).await?;
@@ -2418,6 +2434,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2425,11 +2442,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2537,6 +2550,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2544,11 +2558,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2593,6 +2603,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2600,11 +2611,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2653,6 +2660,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2660,11 +2668,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         // Streaming upload: read file as a stream instead of loading into memory
         let file_meta = tokio::fs::metadata(local_path)
@@ -2755,6 +2759,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, folder_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2762,11 +2767,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         // JSON:API format for folder creation
         let body = serde_json::json!({
@@ -2809,6 +2810,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2816,11 +2818,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2907,6 +2905,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_path_is_absolute = from.starts_with('/');
         let from_path = from.trim_matches('/');
         let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
             (&from_path[..pos], &from_path[pos + 1..])
@@ -2914,17 +2913,16 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", from_path)
         };
 
-        let from_parent_id = if from_parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(from_parent_path).await?
-        };
+        let from_parent_id = self
+            .parent_folder_id(from_path_is_absolute, from_parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &from_parent_id)
             .await?
             .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
 
+        let to_path_is_absolute = to.starts_with('/');
         let to_path = to.trim_matches('/');
         let (to_parent_path, new_name) = if let Some(pos) = to_path.rfind('/') {
             (&to_path[..pos], &to_path[pos + 1..])
@@ -2932,11 +2930,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", to_path)
         };
 
-        let to_parent_id = if to_parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(to_parent_path).await?
-        };
+        let to_parent_id = self
+            .parent_folder_id(to_path_is_absolute, to_parent_path)
+            .await?;
 
         let is_cross_folder = from_parent_id != to_parent_id;
         let is_rename = file_name != new_name;
@@ -3018,6 +3014,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        let path_str_is_absolute = path.starts_with('/');
         let path_str = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path_str.rfind('/') {
             (&path_str[..pos], &path_str[pos + 1..])
@@ -3025,11 +3022,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path_str)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(path_str_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -3101,6 +3096,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_path_is_absolute = from.starts_with('/');
         let from_path = from.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
             (&from_path[..pos], &from_path[pos + 1..])
@@ -3108,11 +3104,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", from_path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(from_path_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -3127,11 +3121,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ""
         };
 
-        let dest_id = if dest_parent.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(dest_parent).await?
-        };
+        let dest_id = self
+            .parent_folder_id(to.starts_with('/'), dest_parent)
+            .await?;
 
         let body = serde_json::json!({
             "data": {
@@ -3204,6 +3196,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         options: ShareLinkOptions,
     ) -> Result<ShareLinkResult, ProviderError> {
         // Resolve path to file/folder ID
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -3211,11 +3204,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -3710,6 +3699,29 @@ mod tests {
 
     fn config(region: &str) -> ZohoWorkdriveConfig {
         ZohoWorkdriveConfig::new("cid", "csec", region)
+    }
+
+    /// After `cd /docs`: `/x` and `x` name different folders, `/x` the
+    /// root's and `x` the current one's, and a longer path follows the same
+    /// rule. Resolved from the cache alone, so no request is made.
+    #[tokio::test]
+    async fn absolute_paths_resolve_from_the_root_and_relative_ones_from_the_current_folder() {
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        for (path, id) in [
+            ("/", "ROOT"),
+            ("/docs", "DOCS"),
+            ("/docs/sub", "DOCS_SUB"),
+            ("/sub", "ROOT_SUB"),
+        ] {
+            p.folder_cache.insert(path.to_string(), id.to_string());
+        }
+        p.current_folder_id = "DOCS".to_string();
+        p.current_path = "/docs".to_string();
+
+        assert_eq!(p.parent_folder_id(true, "").await.unwrap(), "ROOT");
+        assert_eq!(p.parent_folder_id(false, "").await.unwrap(), "DOCS");
+        assert_eq!(p.parent_folder_id(true, "sub").await.unwrap(), "ROOT_SUB");
+        assert_eq!(p.parent_folder_id(false, "sub").await.unwrap(), "DOCS_SUB");
     }
 
     /// #347: above the documented 250 MB of `POST /upload` (which answered a

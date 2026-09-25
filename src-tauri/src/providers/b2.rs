@@ -1417,15 +1417,10 @@ impl B2Provider {
         }
         // Materialize the new file. After this call the destination key is live.
         self.finish_large_file(&large_file_id, part_sha1s).await?;
-        // Delete the original version. Mirror `rename` semantics: a delete
-        // failure does not undo the rename: the new copy is already in place.
-        if let Err(e) = self.do_delete_file_version(from_key, source_file_id).await {
-            b2_log(&format!(
-                "rename_large_file: copy + finish ok but source delete failed: {}",
-                e
-            ));
-        }
-        Ok(())
+        // Delete the original version, as `rename` does.
+        self.do_delete_file_version(from_key, source_file_id)
+            .await
+            .map_err(|e| source_delete_failed(to_key, e))
     }
 
     /// Streamed download to a local path. Borrows `&self` only so the trait
@@ -2883,6 +2878,13 @@ impl StorageProvider for B2Provider {
             }
             Err(e) => return Err(e),
         };
+        // The trait promises no overwrite, and b2_copy_file would put a new
+        // version on top of whatever the destination holds: look first.
+        match self.lookup_file_id(&to_key).await {
+            Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
+            Err(ProviderError::NotFound(_)) => {}
+            Err(e) => return Err(e),
+        }
         if size > COPY_MAX_SIZE {
             // Files above the 5 GB b2_copy_file ceiling go through the
             // chunked b2_copy_part workflow. The inner method handles the
@@ -2917,8 +2919,6 @@ impl StorageProvider for B2Provider {
             Err(e) => return Err(e),
         };
         // Delete (hard) the original version so this is a true rename.
-        // If the source delete fails, the copy is still in place: surface as
-        // warning and keep the rename successful.
         let del = match self.do_delete_file_version(&from_key, &file_id).await {
             Err(e) if is_b2_token_failure(&e) => {
                 if self.maybe_reauth(&e).await {
@@ -2929,13 +2929,7 @@ impl StorageProvider for B2Provider {
             }
             other => other,
         };
-        if let Err(e) = del {
-            b2_log(&format!(
-                "rename: copy ok ({}) but delete of source failed: {}",
-                copied.file_name, e
-            ));
-        }
-        Ok(())
+        del.map_err(|e| source_delete_failed(&copied.file_name, e))
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -3730,6 +3724,16 @@ pub(crate) fn encode_path_segments(key: &str) -> String {
 /// In this file `AuthenticationFailed` is only a token condition.
 /// Authorize body-read and parse failures used to borrow the variant
 /// after a 2xx; they are `ConnectionFailed` and `ServerError`.
+/// A rename whose copy landed but whose source delete failed has left the
+/// file under both names. That is a failure, never a success: the caller
+/// asked for one file and would otherwise find two.
+fn source_delete_failed(copied_to: &str, error: ProviderError) -> ProviderError {
+    ProviderError::Other(format!(
+        "rename copied the file to {copied_to}, but deleting the source failed, \
+         so it now exists under both names: {error}"
+    ))
+}
+
 fn is_b2_token_failure(err: &ProviderError) -> bool {
     matches!(err, ProviderError::AuthenticationFailed(_))
 }
@@ -4972,6 +4976,130 @@ mod tests {
         provider.multi_thread_streams = 4;
         provider.multi_thread_cutoff = 1024 * 1024;
         provider
+    }
+
+    /// A B2 API double for `rename("/a.txt", "/b.txt")`: `a.txt` exists,
+    /// `b.txt` exists only when `destination_taken`, a copy succeeds, and a
+    /// delete answers `delete_status`. Returns the provider and the API
+    /// operations it received, in order.
+    async fn provider_for_rename(
+        destination_taken: bool,
+        delete_status: u16,
+    ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::Arc;
+        let ops: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&ops);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let op = req.uri().path().rsplit('/').next().unwrap_or("").to_string();
+                    let body: serde_json::Value = serde_json::from_slice(
+                        &axum::body::to_bytes(req.into_body(), 64 * 1024).await.unwrap(),
+                    )
+                    .unwrap_or_default();
+                    seen.lock().unwrap().push(op.clone());
+                    let json = |status: u16, value: serde_json::Value| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(value.to_string()))
+                            .unwrap()
+                    };
+                    let file = |name: &str, id: &str| {
+                        serde_json::json!({
+                            "fileId": id, "fileName": name, "action": "upload",
+                            "contentLength": 3, "uploadTimestamp": 1_700_000_000_000i64,
+                        })
+                    };
+                    match op.as_str() {
+                        "b2_list_file_names" => {
+                            let files = match body["prefix"].as_str() {
+                                Some("a.txt") => vec![file("a.txt", "src-id")],
+                                Some("b.txt") if destination_taken => {
+                                    vec![file("b.txt", "dst-id")]
+                                }
+                                _ => vec![],
+                            };
+                            json(200, serde_json::json!({ "files": files, "nextFileName": null }))
+                        }
+                        "b2_copy_file" => json(
+                            200,
+                            serde_json::json!({
+                                "fileId": "copy-id", "fileName": "b.txt", "contentLength": 3,
+                            }),
+                        ),
+                        "b2_delete_file_version" if delete_status == 200 => {
+                            json(200, serde_json::json!({}))
+                        }
+                        "b2_delete_file_version" => json(
+                            delete_status,
+                            serde_json::json!({
+                                "status": delete_status, "code": "access_denied",
+                                "message": "this key cannot delete files",
+                            }),
+                        ),
+                        _ => json(400, serde_json::json!({ "status": 400, "code": "bad_request", "message": op })),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = empty_provider();
+        provider.api_url = format!("http://{addr}");
+        provider.auth_token = SecretString::new("token".to_string().into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        (provider, ops)
+    }
+
+    #[tokio::test]
+    async fn rename_copies_then_deletes_the_source() {
+        let (mut provider, ops) = provider_for_rename(false, 200).await;
+        provider.rename("/a.txt", "/b.txt").await.expect("rename");
+        assert_eq!(
+            *ops.lock().unwrap(),
+            [
+                "b2_list_file_names",
+                "b2_list_file_names",
+                "b2_copy_file",
+                "b2_delete_file_version"
+            ]
+        );
+    }
+
+    /// Two copies under an Ok is the one outcome a rename must never give.
+    #[tokio::test]
+    async fn rename_whose_source_delete_fails_is_an_error() {
+        let (mut provider, _) = provider_for_rename(false, 403).await;
+        let err = provider
+            .rename("/a.txt", "/b.txt")
+            .await
+            .expect_err("the source is still there, so the rename did not happen");
+        let message = err.to_string();
+        assert!(message.contains("both names"), "{message}");
+        assert!(message.contains("b.txt"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination_before_copying() {
+        let (mut provider, ops) = provider_for_rename(true, 200).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            !ops.lock().unwrap().iter().any(|op| op == "b2_copy_file"),
+            "{:?}",
+            ops.lock().unwrap()
+        );
     }
 
     /// A refusal is a type, not a phrase: a server error whose message happens
