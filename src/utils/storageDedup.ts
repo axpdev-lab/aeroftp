@@ -61,6 +61,7 @@ const WEBDAV_PRESET_IDS = new Set<string>([
     'seafile',
     'cloudme',
     'drivehq',
+    'mailru-cloud',
     'jianguoyun',
     'filelu-webdav',
     'felicloud-webdav',
@@ -80,6 +81,7 @@ const S3_PRESET_IDS = new Set<string>([
     'yandex-storage',
     'filelu-s3',
     'filebase',
+    'ibm-cos',
 ]);
 
 /** Lowercase, trim, strip scheme + www. + trailing path. */
