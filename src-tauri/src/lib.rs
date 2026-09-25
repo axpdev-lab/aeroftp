@@ -12942,6 +12942,7 @@ fn provider_type_from_string(value: &str) -> Option<providers::ProviderType> {
             Some(providers::ProviderType::GooglePhotos)
         }
         "immich" => Some(providers::ProviderType::Immich),
+        "twake" | "twakedrive" => Some(providers::ProviderType::Twake),
         "imagekit" | "image_kit" => Some(providers::ProviderType::ImageKit),
         "uploadcare" => Some(providers::ProviderType::Uploadcare),
         "backblaze" | "b2" | "backblazeb2" | "backblaze_b2" => {
@@ -19802,6 +19803,7 @@ pub fn run() {
             provider_commands::oauth2_complete_auth,
             provider_commands::oauth2_connect,
             provider_commands::oauth2_full_auth,
+            provider_commands::twake_sign_in,
             provider_commands::oauth2_redirect_uri,
             provider_commands::oauth2_has_tokens,
             provider_commands::oauth2_logout,

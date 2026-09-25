@@ -74,6 +74,9 @@ pub enum ProviderType {
     GooglePhotos,
     /// Immich (Self-hosted photo/video management, API key auth)
     Immich,
+    /// Twake Drive (Linagora cozy-stack, per-user instance, OAuth2 with
+    /// dynamic client registration)
+    Twake,
     /// ImageKit (media CDN + DAM filesystem API, private key auth)
     ImageKit,
     /// Uploadcare (EU media management, public key + secret key auth)
@@ -132,6 +135,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Swift => write!(f, "Swift"),
             ProviderType::GooglePhotos => write!(f, "Google Photos"),
             ProviderType::Immich => write!(f, "Immich"),
+            ProviderType::Twake => write!(f, "Twake Drive"),
             ProviderType::ImageKit => write!(f, "ImageKit"),
             ProviderType::Uploadcare => write!(f, "Uploadcare"),
             ProviderType::Backblaze => write!(f, "Backblaze B2"),
@@ -183,6 +187,7 @@ impl ProviderType {
             "swift" => Some(Self::Swift),
             "photos" | "googlephotos" => Some(Self::GooglePhotos),
             "immich" => Some(Self::Immich),
+            "twake" | "twakedrive" | "cozy" => Some(Self::Twake),
             "imagekit" => Some(Self::ImageKit),
             "uploadcare" => Some(Self::Uploadcare),
             "b2" | "backblaze" | "backblazeb2" => Some(Self::Backblaze),
@@ -226,6 +231,7 @@ impl ProviderType {
             ProviderType::Swift => 443,
             ProviderType::GooglePhotos => 443,
             ProviderType::Immich => 2283,
+            ProviderType::Twake => 443,
             ProviderType::ImageKit => 443,
             ProviderType::Uploadcare => 443,
             ProviderType::Backblaze => 443,
@@ -271,6 +277,7 @@ impl ProviderType {
             ProviderType::Swift |
             ProviderType::GooglePhotos |
             ProviderType::Immich |
+            ProviderType::Twake |
             ProviderType::ImageKit |
             ProviderType::Uploadcare |
             ProviderType::Backblaze |
@@ -332,6 +339,7 @@ impl ProviderType {
             | ProviderType::GooglePhotos
             | ProviderType::Jottacloud
             | ProviderType::YandexDisk
+            | ProviderType::Twake
             | ProviderType::GitHub => "OAuth 2.0",
             // OAuth 1.0 (4shared is the only one remaining).
             ProviderType::FourShared => "OAuth 1.0",

@@ -110,6 +110,7 @@ pub async fn create_cloud_provider(
         "jottacloud" => create_via_factory(config, ProviderType::Jottacloud).await,
         "filelu" => create_via_factory(config, ProviderType::FileLu).await,
         "koofr" => create_via_factory(config, ProviderType::Koofr).await,
+        "twake" => create_via_factory(config, ProviderType::Twake).await,
         "opendrive" => create_via_factory(config, ProviderType::OpenDrive).await,
         "yandexdisk" => create_via_factory(config, ProviderType::YandexDisk).await,
         "imagekit" => create_via_factory(config, ProviderType::ImageKit).await,

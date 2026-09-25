@@ -327,7 +327,14 @@
             "protonCliTitle": "Yn defnyddio CLI swyddogol Proton Drive",
             "protonCliBody": "Gosodwch CLI Proton Drive o proton.me/download/drive/cli, yna rhedwch proton-drive auth login mewn terfynell a gorffen yn y porwr. Nid yw AeroFTP byth yn gweld eich cyfrinair; mae'r sesiwn yn aros yn storfa gyfrinachau'r OS.",
             "protonUnofficial": "Mae hwn yn gymhwysiad trydydd parti nad yw Proton yn ei gefnogi'n swyddogol.",
-            "protonConnectHint": "Mae \"Cysylltu\" yn defnyddio'r CLI sydd eisoes wedi mewngofnodi ar y peiriant hwn. Un cyfrif Proton fesul defnyddiwr OS."
+            "protonConnectHint": "Mae \"Cysylltu\" yn defnyddio'r CLI sydd eisoes wedi mewngofnodi ar y peiriant hwn. Un cyfrif Proton fesul defnyddiwr OS.",
+            "twakeInstance": "Cyfeiriad Twake",
+            "twakeInstanceHelp": "Eich cyfeiriad eich hun, er enghraifft yourname.twake.app. Gallwch hefyd ludo unrhyw gyfeiriad tudalen Twake o'ch porwr.",
+            "twakeSignIn": "Mewngofnodi gyda Twake",
+            "twakeSignInAgain": "Mewngofnodi eto",
+            "twakeSignedIn": "Wedi mewngofnodi",
+            "twakeWaitingBrowser": "Gorffennwch fewngofnodi yn eich porwr...",
+            "twakeSignInHelp": "Mae AeroFTP yn agor Twake yn eich porwr ac yn gofyn am fynediad i'ch ffeiliau yn unig. Os yw Twake yn dangos gwall y tro cyntaf, mewngofnodwch i Twake yn y porwr a mewngofnodwch eto. Gallwch ddiddymu mynediad unrhyw bryd yng Ngosodiadau Twake, Dyfeisiau Cysylltiedig."
         },
         "browser": {
             "remote": "Pell",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Mae'r pwynt terfyn hwn yn gweini S3 dros HTTP plaen ar draws rhwydwaith. Derbyniwch hyn ar gyfer y proffil hwn: mae'r manylion llofnodedig a phob ffeil yn croesi'r rhwydwaith heb eu hamgryptio.",
             "discoverFilebase": "Filebase: storfa wrthrychau sy'n gydnaws â S3 (5 GB am ddim)",
             "protonDesc": "Yn cysylltu trwy CLI Proton Drive",
-            "protonTooltip": "Yn defnyddio CLI Proton Drive - gosodwch ef, mewngofnodwch yn y porwr, AeroFTP yw'r GUI"
+            "protonTooltip": "Yn defnyddio CLI Proton Drive - gosodwch ef, mewngofnodwch yn y porwr, AeroFTP yw'r GUI",
+            "twakeDesc": "Twake Drive (5 GB am ddim)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cwmwl ffynhonnell agored o Ffrainc (mae Cozy Cloud bellach yn rhan ohono) gyda 5 GB am ddim",
+            "discoverTwake": "Cwmwl Ewropeaidd ffynhonnell agored gan Linagora, sydd bellach yn gartref i Cozy Cloud (5 GB am ddim)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

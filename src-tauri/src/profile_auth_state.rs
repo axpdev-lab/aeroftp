@@ -260,6 +260,8 @@ mod tests {
             "github",
             "mega",
             "swift",
+            // Twake keeps its sign-in blob in the profile password.
+            "twake",
         ] {
             assert_eq!(
                 oauth_vault_key_for_protocol(proto),
