@@ -224,6 +224,9 @@ mod provider_commands;
 // PD-CLI-CONV-A). Additive visibility only: no behaviour change, no API
 // break (visibility only widens).
 pub mod copy_fallback;
+/// Class-level pin: every consumer of a provider time uses the single parser.
+#[cfg(test)]
+mod mtime_parse_audit;
 pub mod progress_governor;
 pub mod provider_transfer_executor;
 pub mod providers;
@@ -4324,6 +4327,7 @@ pub fn parse_remote_mtime(modified_str: &str) -> Option<i64> {
     chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S%.f"))
         .map(|ndt| ndt.and_utc().timestamp())
         .or_else(|_| chrono::DateTime::parse_from_rfc3339(trimmed).map(|dt| dt.timestamp()))
         .or_else(|_| chrono::DateTime::parse_from_rfc2822(trimmed).map(|dt| dt.timestamp()))
@@ -4355,6 +4359,9 @@ mod parse_remote_mtime_tests {
             "Thu, 24 Sep 2026 19:41:46 GMT",
             "Thu, 24 Sep 2026 21:41:46 +0200",
             "2026-09-24 19:41:46UTC",
+            "2026-09-24 19:41:46.250Z",
+            "2026-09-24 21:41:46+02:00",
+            "2026-09-24T19:41:46.123456",
         ] {
             assert_eq!(parse_remote_mtime(s), Some(EXPECTED), "{s}");
         }

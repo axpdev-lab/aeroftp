@@ -7281,6 +7281,34 @@ mod tests {
         );
     }
 
+    /// The decisions under the default window (2 s): what the MCP walk uses
+    /// when both sides keep whole seconds.
+    fn decide_upload(
+        local: &crate::sync_core::LocalEntry,
+        remote: Option<&crate::sync_core::RemoteEntry>,
+        policy: DeltaPolicy,
+        mode: ConflictMode,
+    ) -> SyncTreeDecision {
+        super::decide_upload(local, remote, policy, mode, ModifyWindow::default())
+    }
+
+    fn decide_download(
+        remote: &crate::sync_core::RemoteEntry,
+        local: Option<&crate::sync_core::LocalEntry>,
+        policy: DeltaPolicy,
+        mode: ConflictMode,
+        already_handled_by_upload: bool,
+    ) -> SyncTreeDecision {
+        super::decide_download(
+            remote,
+            local,
+            policy,
+            mode,
+            ModifyWindow::default(),
+            already_handled_by_upload,
+        )
+    }
+
     fn local_entry(
         size: u64,
         mtime: Option<&str>,
