@@ -114,3 +114,123 @@ fn zoho_workdrive_resolves_every_path_through_parent_folder_id() {
         &["resolve_path"],
     );
 }
+
+fn entry_names(entries: Vec<super::RemoteEntry>) -> Vec<String> {
+    entries.into_iter().map(|entry| entry.name).collect()
+}
+
+fn failed(step: &'static str) -> impl Fn(super::ProviderError) -> String {
+    move |e| format!("{step}: {e}")
+}
+
+/// After `cd /t/sub`: `/x` lands at the root and `x` in `/t/sub`, for mkdir
+/// and for rename.
+async fn cd_then_one_segment_paths(
+    p: &mut dyn super::StorageProvider,
+    t: &str,
+) -> Result<(), String> {
+    let sub = format!("/{t}/sub");
+    p.mkdir(&format!("/{t}"))
+        .await
+        .map_err(failed("mkdir /t"))?;
+    p.mkdir(&sub).await.map_err(failed("mkdir /t/sub"))?;
+    p.cd(&sub).await.map_err(failed("cd /t/sub"))?;
+    p.mkdir(&format!("/{t}-abs"))
+        .await
+        .map_err(failed("mkdir /t-abs"))?;
+    p.mkdir("rel").await.map_err(failed("mkdir rel"))?;
+    let in_sub = entry_names(p.list(&sub).await.map_err(failed("list /t/sub"))?);
+    if !in_sub.contains(&"rel".to_string()) || in_sub.contains(&format!("{t}-abs")) {
+        return Err(format!(
+            "after cd, mkdir resolved wrongly: /t/sub holds {in_sub:?}"
+        ));
+    }
+    p.rename("rel", &format!("/{t}-moved"))
+        .await
+        .map_err(failed("rename rel -> /t-moved"))?;
+    let in_sub = entry_names(p.list(&sub).await.map_err(failed("list /t/sub"))?);
+    let at_root = entry_names(p.list("/").await.map_err(failed("list /"))?);
+    for name in [format!("{t}-abs"), format!("{t}-moved")] {
+        if !at_root.contains(&name) {
+            return Err(format!(
+                "{name} is not at the root; /t/sub holds {in_sub:?}"
+            ));
+        }
+    }
+    if !in_sub.is_empty() {
+        return Err(format!(
+            "/t/sub should be empty after the move, holds {in_sub:?}"
+        ));
+    }
+    Ok(())
+}
+
+/// Connect `p`, run the scenario under `/aeroftp-live-cd-<ms>`, and remove
+/// every folder it created, pass or fail.
+async fn run_live(mut p: Box<dyn super::StorageProvider>, label: &str) {
+    p.connect()
+        .await
+        .unwrap_or_else(|e| panic!("{label}: connect: {e}"));
+    let t = format!("aeroftp-live-cd-{}", chrono::Utc::now().timestamp_millis());
+    let outcome = cd_then_one_segment_paths(p.as_mut(), &t).await;
+    let _ = p.cd("/").await;
+    for dir in [format!("/{t}"), format!("/{t}-abs"), format!("/{t}-moved")] {
+        let _ = p.rmdir_recursive(&dir).await;
+    }
+    outcome.unwrap_or_else(|e| panic!("{label}: {e}"));
+    eprintln!("LIVE {label}: after cd, /x lands at the root and x in the current folder");
+}
+
+/// Live, opt-in companion of the guard: the case the Google Drive, Zoho
+/// WorkDrive and OneDrive fixes are about, in one connected session, on
+/// saved OAuth profiles of the development vault. The providers are built as
+/// the CLI builds them for an OAuth profile: the client config from the vault
+/// and the tokens stored under the profile id, which is what
+/// `AEROFTP_LIVE_CD_{GDRIVE,ZOHO,ONEDRIVE}_PROFILE_ID` name.
+#[tokio::test]
+#[ignore = "live: needs OAuth profiles in the development vault"]
+async fn live_cd_then_one_segment_paths_resolve_like_every_provider() {
+    use super::google_drive::{GoogleDriveConfig, GoogleDriveProvider};
+    use super::onedrive::{OneDriveConfig, OneDriveProvider};
+    use super::zoho_workdrive::{ZohoWorkdriveConfig, ZohoWorkdriveProvider};
+    use crate::bridge_commands::resolve_oauth_client_config;
+    use crate::credential_store::CredentialStore;
+
+    assert_eq!(CredentialStore::init().expect("open the vault"), "OK");
+    let store = CredentialStore::from_cache().expect("the vault is open");
+    let mut ran = 0;
+    if let Ok(pid) = std::env::var("AEROFTP_LIVE_CD_GDRIVE_PROFILE_ID") {
+        let (id, secret) = resolve_oauth_client_config(&store, "googledrive");
+        let config = GoogleDriveConfig::new(&id, &secret);
+        run_live(
+            Box::new(GoogleDriveProvider::new(config).with_profile_id(pid)),
+            "Google Drive",
+        )
+        .await;
+        ran += 1;
+    }
+    if let Ok(pid) = std::env::var("AEROFTP_LIVE_CD_ZOHO_PROFILE_ID") {
+        let (id, secret) = resolve_oauth_client_config(&store, "zohoworkdrive");
+        let region = store
+            .get("oauth_zohoworkdrive_region")
+            .unwrap_or_else(|_| "us".to_string());
+        let config = ZohoWorkdriveConfig::new(&id, &secret, &region);
+        run_live(
+            Box::new(ZohoWorkdriveProvider::new(config).with_profile_id(pid)),
+            "Zoho WorkDrive",
+        )
+        .await;
+        ran += 1;
+    }
+    if let Ok(pid) = std::env::var("AEROFTP_LIVE_CD_ONEDRIVE_PROFILE_ID") {
+        let (id, secret) = resolve_oauth_client_config(&store, "onedrive");
+        let config = OneDriveConfig::new(&id, &secret);
+        run_live(
+            Box::new(OneDriveProvider::new(config).with_profile_id(pid)),
+            "OneDrive",
+        )
+        .await;
+        ran += 1;
+    }
+    assert!(ran > 0, "set at least one AEROFTP_LIVE_CD_*_PROFILE_ID");
+}
