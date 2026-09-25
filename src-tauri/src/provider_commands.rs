@@ -939,14 +939,32 @@ impl ProviderConnectionParams {
             }
             if let Some(ref region) = self.region {
                 extra.insert("region".to_string(), region.clone());
-            } else {
-                extra.insert("region".to_string(), "us-east-1".to_string());
             }
             if let Some(ref endpoint) = self.endpoint {
                 extra.insert("endpoint".to_string(), endpoint.clone());
             }
             if let Some(path_style) = self.path_style {
                 extra.insert("path_style".to_string(), path_style.to_string());
+            }
+            // Preset endpoint templates (Wasabi, IBM COS, R2, ...): callers
+            // that build a config from raw form fields (bucket Fetch
+            // discovery, CLI, MCP) send region but no explicit endpoint, and
+            // without this the provider falls back to `s3.{region}.amazonaws.com`
+            // (seen live on the IBM COS Fetch button). Every caller gets the
+            // same address the save path computes. Explicit values win; a
+            // generic S3 without a template is untouched. The generic
+            // `us-east-1` fallback runs AFTER preset resolution so a preset
+            // default (e.g. IBM `eu-de`) is not shadowed by it.
+            crate::profile_loader::apply_s3_profile_defaults(
+                &mut extra,
+                self.provider_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty()),
+                &self.server,
+            );
+            if !extra.contains_key("region") {
+                extra.insert("region".to_string(), "us-east-1".to_string());
             }
             // S3 enterprise: storage class, SSE mode, KMS key
             if let Some(ref sc) = self.storage_class {
@@ -14951,6 +14969,87 @@ mod tests {
         assert_eq!(
             config.extra.get("path_style").map(String::as_str),
             Some("false")
+        );
+    }
+
+    #[test]
+    fn test_s3_provider_params_custom_s3_keeps_endpoint_path_style_default() {
+        // An imported `custom-s3` profile (AWS config / rclone "Other") with a
+        // self-hosted endpoint and no explicit path style must keep the
+        // endpoint heuristic (path-style), not a preset default: a MinIO host
+        // addressed virtual-hosted resolves `bucket.host` and fails.
+        let mut params = s3_params(None);
+        params.provider_id = Some("custom-s3".to_string());
+        params.endpoint = Some("http://minio.lab.example:9000".to_string());
+        let config = params.to_provider_config().unwrap();
+        let s3 = crate::providers::S3Config::from_provider_config(&config).unwrap();
+        assert!(s3.path_style);
+    }
+
+    #[test]
+    fn test_s3_provider_params_endpoint_in_server_wins_over_template() {
+        // A profile whose endpoint lives in `server` (Cyberduck / restic
+        // import, AeroCloud sends no endpoint option) must connect there, not
+        // to the preset template built from the default region.
+        let mut params = s3_params(None);
+        params.provider_id = Some("ibm-cos".to_string());
+        params.server = "s3.us-south.cloud-object-storage.appdomain.cloud".to_string();
+        params.port = Some(443);
+        params.region = None;
+        params.endpoint = None;
+        let config = params.to_provider_config().unwrap();
+        let s3 = crate::providers::S3Config::from_provider_config(&config).unwrap();
+        assert_eq!(
+            s3.endpoint.as_deref(),
+            Some("https://s3.us-south.cloud-object-storage.appdomain.cloud")
+        );
+    }
+
+    #[test]
+    fn test_s3_provider_params_preset_template_without_explicit_endpoint() {
+        // Bucket Fetch discovery sends region but no endpoint for template
+        // presets. Without preset resolution the provider fell back to
+        // `s3.{region}.amazonaws.com` (seen live on IBM COS Fetch with
+        // region eu-de). The template must resolve here, for every caller.
+        let mut params = s3_params(None);
+        params.server = String::new(); // a preset form sends no server
+        params.provider_id = Some("ibm-cos".to_string());
+        params.region = Some("eu-de".to_string());
+        params.endpoint = None;
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://s3.eu-de.cloud-object-storage.appdomain.cloud")
+        );
+        // Explicit endpoint still wins over the template.
+        let mut params = s3_params(None);
+        params.server = String::new(); // a preset form sends no server
+        params.provider_id = Some("ibm-cos".to_string());
+        params.region = Some("eu-de".to_string());
+        params.endpoint =
+            Some("https://s3.us-south.cloud-object-storage.appdomain.cloud".to_string());
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://s3.us-south.cloud-object-storage.appdomain.cloud")
+        );
+        // Omitted region resolves the preset default, not the generic
+        // `us-east-1` fallback (CodeRabbit on PR #923: the fallback used to
+        // run first and shadowed the preset, building an invalid
+        // `s3.us-east-1...` endpoint for IBM).
+        let mut params = s3_params(None);
+        params.server = String::new(); // a preset form sends no server
+        params.provider_id = Some("ibm-cos".to_string());
+        params.region = None;
+        params.endpoint = None;
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("eu-de")
+        );
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://s3.eu-de.cloud-object-storage.appdomain.cloud")
         );
     }
 

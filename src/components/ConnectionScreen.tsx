@@ -45,7 +45,7 @@ import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
-import { getProviderById, resolveS3Endpoint, s3TemplateParams, parseS3EndpointParams, ProviderConfig } from '../providers';
+import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDefaultS3Region, parseS3EndpointParams, ProviderConfig } from '../providers';
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
@@ -653,11 +653,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [persistModeCredentials, setPersistModeCredentials] = useState(false);
     // P3: AeroCrypt Profile binding (transparent encrypted overlay on the dual-panel).
     // Ehud #276 (17324431): a collapsible "Wrappers / Overlays" parent keeps the Quick
-    // Connect page tidy while staying collapsible. Expanded by default (Ehud 2026-06-28):
-    // the Crypt enable checkbox is the only thing it reveals when closed, and you have to
-    // tick it to configure anything, so opening the section by default removes a click and
-    // surfaces the option instead of burying it one level down.
-    const [overlaysExpanded, setOverlaysExpanded] = useState(true);
+    // Connect page tidy while staying collapsible. Collapsed by default (owner 2026-09-24):
+    // the overlay is an advanced option most users never touch, and an open section
+    // costs vertical space on every provider form. In edit mode it opens only when an
+    // overlay is actually bound (see hydration below).
+    const [overlaysExpanded, setOverlaysExpanded] = useState(false);
     const [aeroCryptEnabled, setAeroCryptEnabled] = useState(false);
     // No default crypt kind: the user must actively pick aerocrypt vs rclone-crypt
     // (Ehud #276, 2026-06-13: both opt-in, no tap-Enter default). null until chosen.
@@ -2296,23 +2296,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     }
                 }
 
-                // Resolve endpoint if missing
+                // Resolve endpoint if missing, with the rule the connect path
+                // uses: an endpoint carried only in the host (Cyberduck /
+                // restic imports) is kept, not replaced by the template.
                 if (!profileOptions.endpoint) {
-                    let effectiveRegion = profileOptions.region || provider.defaults?.region;
-                    if (!effectiveRegion && provider.defaults?.endpointTemplate && !template?.includes('{accountId}')) {
-                        const regionField = provider.fields?.find(f => f.key === 'region');
-                        if (regionField?.type === 'select' && regionField.options?.length) {
-                            effectiveRegion = regionField.options[0].value;
-                        }
-                    }
-                    const extraParams = s3TemplateParams(profileOptions);
-                    const resolvedEndpoint = provider.defaults?.endpoint
-                        || resolveS3Endpoint(provider.id, effectiveRegion, extraParams)
-                        || undefined;
-                    if (resolvedEndpoint) {
-                        profileOptions = { ...profileOptions, endpoint: resolvedEndpoint };
-                        if (effectiveRegion && !profileOptions.region) {
-                            profileOptions = { ...profileOptions, region: effectiveRegion };
+                    const location = resolveProfileS3Location(provider.id, profileOptions, profile.host);
+                    if (location.endpoint) {
+                        profileOptions = { ...profileOptions, endpoint: location.endpoint };
+                        if (location.region && !profileOptions.region) {
+                            profileOptions = { ...profileOptions, region: location.region };
                         }
                     }
                 }
@@ -2364,8 +2356,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // is never prefilled (it lives in the vault under aerocrypt_overlay_pw_<id>).
         const overlayBinding = profile.aeroCryptOverlay;
         setAeroCryptEnabled(!!overlayBinding?.enabled);
-        // Keep the overlays section expanded on edit too (default-open, Ehud 2026-06-28).
-        setOverlaysExpanded(true);
+        // Open the overlays section in edit mode only when an overlay is bound;
+        // otherwise it stays collapsed like on a fresh form (owner 2026-09-24).
+        setOverlaysExpanded(!!overlayBinding?.enabled);
         // C-EDIT-GUARD: lock kind + credential edits when a binding already exists.
         setOverlayBindingLocked(!!overlayBinding?.enabled);
         // Only seed a kind when a binding already exists; a binding-less profile
@@ -2509,6 +2502,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setSaveConnection(false);
         setPersistModeCredentials(false);
         setAeroCryptEnabled(false);
+        // Back to the fresh-form default: an unbound profile must not inherit
+        // the expanded section from the edit session just closed.
+        setOverlaysExpanded(false);
         setOverlayBindingLocked(false);
         setAeroCryptKind(null);
         setAeroCryptPassword('');
@@ -2649,13 +2645,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             // back to the current server only when the preset
                             // has none. A restored stash already holds this
                             // mode's own host, so it wins.
-                            server: restored ? restored.server : (provider.defaults?.server || connectionParams.server || ''),
+                            // An S3 mode takes its endpoint from the preset, never
+                            // from the host of the mode being left (MEGA native ->
+                            // MEGA S4 kept `mega.nz` with no region or endpoint).
+                            server: restored ? restored.server : (provider.defaults?.server || (newProtocol === 's3' ? '' : connectionParams.server) || ''),
                             username: switchCreds.username,
                             password: switchCreds.password,
                             options: restored ? (restored.options ?? {}) : {
                                 pathStyle: provider.defaults?.pathStyle,
-                                region: provider.defaults?.region,
-                                endpoint: provider.defaults?.endpoint,
+                                region: presetDefaultS3Region(provider.id),
+                                endpoint: resolveS3Endpoint(provider.id, presetDefaultS3Region(provider.id)) ?? undefined,
                                 anonymous: provider.defaults?.anonymous,
                                 webdavScheme: provider.defaults?.webdavScheme,
                                 bucket: provider.defaults?.bucket,
@@ -2776,14 +2775,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setPresetUnlocked({});
         setAdvancedUnlocked(false);
 
-        // For endpointTemplate providers without a default region, auto-select the first region option
-        let effectiveRegion = provider.defaults?.region;
-        if (!effectiveRegion && provider.defaults?.endpointTemplate) {
-            const regionField = provider.fields?.find(f => f.key === 'region');
-            if (regionField?.type === 'select' && regionField.options?.length) {
-                effectiveRegion = regionField.options[0].value;
-            }
-        }
+        // Preset default region, or the first region option of a template preset
+        const effectiveRegion = presetDefaultS3Region(provider.id);
 
         // Resolve S3 endpoint: static defaults.endpoint OR computed from endpointTemplate + region
         const resolvedEndpoint = provider.defaults?.endpoint

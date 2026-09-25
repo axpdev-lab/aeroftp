@@ -26,7 +26,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/support-multi--protocol-green" alt="Multi-Protocol Support" />
   <img src="https://img.shields.io/badge/AI%20providers-24-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
-  <img src="https://img.shields.io/badge/AI%20tools-39-ff6600" alt="AI Tools" />
+  <img src="https://img.shields.io/badge/AI%20tools-65-ff6600" alt="AI Tools" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
   <img src="https://img.shields.io/badge/CLI-ready-blue?logo=gnubash&logoColor=white" alt="CLI Ready" />
@@ -87,7 +87,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 
 1. **Transport protocols (7):** native wire-level support for FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift. Plus **portable devices over MTP / WPD** - attached phones, cameras and media players that the OS never assigns a drive letter, saved as profiles keyed to a stable device fingerprint (see [Portable devices](docs/PROTOCOL-FEATURES.md#portable-devices-mtp--wpd)).
 2. **Native provider integrations (26):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
-3. **Pre-configured presets (45):** the form arrives already filled in, server URL, port, base path and password-generation deep-link, for a named service on top of the protocols above (S3-compatible endpoints from MEGA S4 to FileLu S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.). A form with nothing pre-filled is not a preset: the two generic ones (Custom S3, WebDAV Server) exist precisely for when no preset applies.
+3. **Pre-configured presets (47):** the form arrives already filled in, server URL, port, base path and password-generation deep-link, for a named service on top of the protocols above (S3-compatible endpoints from MEGA S4 to FileLu S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.). A form with nothing pre-filled is not a preset: the two generic ones (Custom S3, WebDAV Server) exist precisely for when no preset applies.
 
 <!-- BEGIN PROVIDERS-GRID -->
 
@@ -139,6 +139,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
   </tr>
   <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/quotaless"><img src="public/icons/providers/grid/quotaless.png" width="36" alt="Quotaless" /></a><br><sub>Quotaless</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/ibm-cloud-object-storage" title="IBM Cloud Object Storage"><img src="public/icons/providers/grid/ibm-cloud.png" width="36" alt="IBM COS" /></a><br><sub>IBM COS</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/nextcloud"><img src="public/icons/providers/grid/nextcloud.png" width="36" alt="Nextcloud" /></a><br><sub>Nextcloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/felicloud"><img src="public/icons/providers/grid/felicloud.png" width="36" alt="Felicloud" /></a><br><sub>Felicloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/tabdigital"><img src="public/icons/providers/grid/tabdigital.png" width="36" alt="TAB.DIGITAL" /></a><br><sub>TAB.DIGITAL</sub></td>
@@ -146,9 +147,10 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/infinicloud"><img src="public/icons/providers/grid/infiniCloud.png" width="36" alt="InfiniCloud" /></a><br><sub>InfiniCloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/jianguoyun"><img src="public/icons/providers/grid/jianguoyun.png" width="36" alt="Jianguoyun" /></a><br><sub>Jianguoyun</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/seafile"><img src="public/icons/providers/grid/seafile.png" width="36" alt="Seafile" /></a><br><sub>Seafile</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/drivehq"><img src="public/icons/providers/grid/drivehq.png" width="36" alt="DriveHQ" /></a><br><sub>DriveHQ</sub></td>
   </tr>
   <tr>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/drivehq"><img src="public/icons/providers/grid/drivehq.png" width="36" alt="DriveHQ" /></a><br><sub>DriveHQ</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/mailru-cloud"><img src="public/icons/providers/grid/mailru-cloud.png" width="36" alt="Mail.ru Cloud" /></a><br><sub>Mail.ru Cloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/hetzner-storage-box"><img src="public/icons/providers/grid/hetzner.png" width="36" alt="Hetzner Storage Box" /></a><br><sub>Hetzner Storage Box</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/github"><img src="public/icons/providers/grid/github.png" width="36" alt="GitHub" /></a><br><sub>GitHub</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/gitlab"><img src="public/icons/providers/grid/gitlab.png" width="36" alt="GitLab" /></a><br><sub>GitLab</sub></td>
@@ -156,6 +158,8 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/immich"><img src="public/icons/providers/grid/immich.png" width="36" alt="Immich" /></a><br><sub>Immich</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/pixelunion"><img src="public/icons/providers/grid/pixelunion.png" width="36" alt="PixelUnion" /></a><br><sub>PixelUnion</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/imagekit"><img src="public/icons/providers/grid/imagekit.png" width="36" alt="ImageKit" /></a><br><sub>ImageKit</sub></td>
+  </tr>
+  <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/uploadcare"><img src="public/icons/providers/grid/uploadcare.png" width="36" alt="Uploadcare" /></a><br><sub>Uploadcare</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/cloudinary"><img src="public/icons/providers/grid/cloudinary.png" width="36" alt="Cloudinary" /></a><br><sub>Cloudinary</sub></td>
   </tr>
@@ -198,22 +202,24 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Dropbox | US | 2 GB | OAuth |
 | Felicloud | EU | 10 GB (Nextcloud host) | WebDAV |
 | Filebase | US | 5 GB | S3 |
-| FileLu | US | 10 GB | API, FTP, WebDAV, S5 (S3) |
+| FileLu | US | 1 GB | API, FTP, WebDAV, S5 (S3) |
 | Filen | DE | 10 GB (E2E) | API, S3, WebDAV |
 | GitHub | US | repo storage | API |
 | GitLab | US | repo storage | API |
 | Google Cloud Storage | US | 5 GB (always-free, card req.) | S3* |
 | Google Drive | US | 15 GB | OAuth |
 | Hetzner Storage Box | DE | paid plan | SFTP* |
+| IBM Cloud Object Storage | US | 12-month trial | S3* |
 | IDrive e2 | US | 7-day trial | S3* |
 | ImageKit | IN | 20 GB (media CDN) | API |
 | Immich | - | self-hosted | API |
-| InfiniCloud | JP | 20 GB | WebDAV |
+| InfiniCloud | JP | 25 GB | WebDAV |
 | Internxt | ES | 1 GB (E2E) | API |
-| Jianguoyun | CN | 1 GB (monthly traffic cap) | WebDAV |
+| Jianguoyun | CN | 3 GB (monthly traffic cap) | WebDAV |
 | Jottacloud | NO | 5 GB | API |
 | kDrive | CH | 15 GB | API |
 | Koofr | SI | 10 GB | API, WebDAV |
+| Mail.ru Cloud | RU | 8 GB (app password required) | WebDAV |
 | MEGA | NZ | 20 GB (E2E) | API, MEGAcmd, S4 (S3)* |
 | Microsoft Azure Blob | US | 12-month trial | Blob* |
 | Microsoft OneDrive | US | 5 GB | OAuth |
@@ -238,7 +244,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>54 providers, 68 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>56 providers, 70 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
 

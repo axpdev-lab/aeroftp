@@ -311,7 +311,7 @@ import { FileVersionsDialog } from './components/FileVersionsDialog';
 import { HostKeyDialog, HostKeyInfo } from './components/HostKeyDialog';
 import { KeystoreImportResultModal, KeystoreImportResult } from './components/KeystoreImportResultModal';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from './utils/appBackgroundPatterns';
-import { resolveS3Endpoint, getProviderById } from './providers/registry';
+import { resolveProfileS3Location, getProviderById } from './providers/registry';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
 import { CommandPalette, CommandItem, CommandCategory } from './components/CommandPalette';
 import { ScanningToast, INITIAL_SCANNING_STATE } from './components/ScanningToast';
@@ -6822,6 +6822,12 @@ const App: React.FC = () => {
       } catch { /* no stored Filen API key for this profile */ }
     }
 
+    // Endpoint + region from the one shared rule (stored endpoint, explicit
+    // host, preset); non-S3 protocols only forward a stored endpoint option.
+    const s3Location = protocol === 's3'
+      ? resolveProfileS3Location(effectiveParams.providerId, effectiveParams.options, effectiveParams.server)
+      : { endpoint: (effectiveParams.options?.endpoint as string | undefined) || null, signingRegion: (effectiveParams.options?.region as string | undefined) || 'us-east-1' };
+
     const providerParams = {
       protocol,
       provider_id: effectiveParams.providerId || null,
@@ -6832,8 +6838,8 @@ const App: React.FC = () => {
       password: effectiveParams.password,
       initial_path: initialPath,
       bucket: effectiveParams.options?.bucket,
-      region: effectiveParams.options?.region || (effectiveParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
-      endpoint: effectiveParams.options?.endpoint || resolveS3Endpoint(effectiveParams.providerId, effectiveParams.options?.region as string) || (protocol === 's3' && effectiveParams.server && !effectiveParams.server.includes('amazonaws.com') ? effectiveParams.server : null),
+      region: s3Location.signingRegion,
+      endpoint: s3Location.endpoint,
       path_style: effectiveParams.options?.pathStyle,
       anonymous: effectiveParams.options?.anonymous || false,
       storage_class: effectiveParams.options?.storage_class || null,
@@ -8786,6 +8792,10 @@ const App: React.FC = () => {
       const connectToCloudServer = async (): Promise<void> => {
         if (isProvider) {
           // Non-FTP: use provider_connect (SFTP, WebDAV, S3, MEGA, Azure, Filen, Koofr, etc.)
+          // S3 endpoint + region from the rule the main connect path uses.
+          const cloudS3Location = protocol === 's3'
+            ? resolveProfileS3Location(cloudServer.providerId, cloudServer.options, cloudServer.host)
+            : { endpoint: (cloudServer.options?.endpoint as string | undefined) || null, signingRegion: cloudServer.options?.region as string | undefined };
           const providerParams = {
             protocol,
             profile_id: cloudServer.id || null,
@@ -8795,8 +8805,8 @@ const App: React.FC = () => {
             password: cloudPassword,
             initial_path: cloudConfig.remote_folder || null,
             bucket: cloudServer.options?.bucket,
-            region: cloudServer.options?.region || (protocol === 's3' ? 'us-east-1' : undefined),
-            endpoint: cloudServer.options?.endpoint || null,
+            region: cloudS3Location.signingRegion,
+            endpoint: cloudS3Location.endpoint,
             path_style: cloudServer.options?.pathStyle,
             private_key_path: cloudServer.options?.private_key_path || null,
             key_passphrase: cloudServer.options?.key_passphrase || null,

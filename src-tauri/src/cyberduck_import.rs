@@ -774,6 +774,38 @@ mod tests {
     }
 
     #[test]
+    fn test_s3_bookmark_without_region_keeps_its_host_endpoint() {
+        // A Cyberduck IBM COS bookmark stores the endpoint only in Hostname and
+        // often no Region. The importer now names the `ibm-cos` preset, whose
+        // template must not replace that host on the CLI/MCP connect path.
+        let xml = S3_DUCK
+            .replace(
+                "s3.wasabisys.com",
+                "s3.us-south.cloud-object-storage.appdomain.cloud",
+            )
+            .replace("\t<key>Region</key>\n\t<string>us-east-1</string>\n", "");
+        assert!(!xml.contains("Region"));
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        ingest_duck(&xml, &mut servers, &mut skipped);
+        let s = &servers[0];
+        assert_eq!(s.provider_id.as_deref(), Some("ibm-cos"));
+        let profile = serde_json::json!({ "providerId": s.provider_id, "options": s.options });
+        let mut extra = std::collections::HashMap::new();
+        crate::profile_loader::apply_profile_options(&mut extra, &profile);
+        let endpoint = crate::profile_loader::apply_s3_profile_defaults(
+            &mut extra,
+            s.provider_id.as_deref(),
+            &s.host,
+        );
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("s3.us-south.cloud-object-storage.appdomain.cloud")
+        );
+        assert!(!extra.contains_key("endpoint"));
+    }
+
+    #[test]
     fn test_googledrive_is_skipped_oauth() {
         let mut servers = Vec::new();
         let mut skipped = Vec::new();

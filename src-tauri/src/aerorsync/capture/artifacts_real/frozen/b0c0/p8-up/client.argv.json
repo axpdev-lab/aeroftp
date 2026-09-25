@@ -1,0 +1,8 @@
+[
+ "rsync",
+ "-e",
+ "ssh -i <capture>/keys/id_ed25519 -p 2234 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=5 -o LogLevel=ERROR",
+ "-a",
+ "<capture>/workspace/b0c0/src/p8/big",
+ "testuser@127.0.0.1:/workspace/b0c0/up/p8-up/"
+]

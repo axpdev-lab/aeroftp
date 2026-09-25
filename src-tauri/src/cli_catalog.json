@@ -62,7 +62,7 @@
     "company": "InfiniCloud",
     "logoId": "infinicloud",
     "country": "JP",
-    "freeGb": 20,
+    "freeGb": 25,
     "freeNote": null,
     "freeRequiresCard": false,
     "regions": [
@@ -649,6 +649,27 @@
     ]
   },
   {
+    "company": "IBM Cloud Object Storage",
+    "logoId": "ibm-cos",
+    "country": "US",
+    "freeGb": null,
+    "freeNote": "12-month trial",
+    "freeRequiresCard": false,
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "ibm-cos",
+        "paid": true,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "CloudMe",
     "logoId": "cloudme",
     "country": "SE",
@@ -757,7 +778,7 @@
     "company": "FileLu",
     "logoId": "filelu",
     "country": "US",
-    "freeGb": 10,
+    "freeGb": 1,
     "freeNote": null,
     "freeRequiresCard": false,
     "regions": [
@@ -820,10 +841,31 @@
     ]
   },
   {
+    "company": "Mail.ru Cloud",
+    "logoId": "mailru-cloud",
+    "country": "RU",
+    "freeGb": 8,
+    "freeNote": "app password required",
+    "freeRequiresCard": false,
+    "regions": [
+      "RU"
+    ],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "mailru-cloud",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "Jianguoyun",
     "logoId": "jianguoyun",
     "country": "CN",
-    "freeGb": 1,
+    "freeGb": 3,
     "freeNote": "monthly traffic cap",
     "freeRequiresCard": false,
     "regions": [

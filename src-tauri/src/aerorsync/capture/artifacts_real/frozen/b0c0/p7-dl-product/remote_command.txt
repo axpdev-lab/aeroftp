@@ -1,0 +1,1 @@
+rsync --server --sender -ltpre.iLsfxCIvu . /workspace/b0c0/src/p7/g
