@@ -12589,6 +12589,28 @@ fn get_watcher_status_cmd_blocking(
 }
 
 /// Get transfer optimization hints for the current cloud provider
+/// Fill the documented file limits for the provider the hints describe: the
+/// requested type, or the connected one when none was requested.
+fn with_documented_file_limits(
+    hints: providers::TransferOptimizationHints,
+    requested: &str,
+    active: Option<&str>,
+) -> providers::TransferOptimizationHints {
+    let kind = if requested.is_empty() {
+        active.unwrap_or_default()
+    } else {
+        requested
+    };
+    match serde_json::from_value::<providers::ProviderType>(serde_json::Value::String(
+        kind.to_string(),
+    )) {
+        Ok(provider_type) => {
+            hints.with_documented_limits(providers::documented_file_limits(provider_type))
+        }
+        Err(_) => hints,
+    }
+}
+
 fn default_transfer_optimization_hints(
     provider_type: &str,
 ) -> providers::TransferOptimizationHints {
@@ -12786,6 +12808,10 @@ async fn get_transfer_optimization_hints(
             "Session is ready for Delta Sync.".to_string()
         });
     }
+
+    // #347: the documented single-file and name limits, for the Compare
+    // warning. A connected provider may have set its own (S3 on AWS).
+    let hints = with_documented_file_limits(hints, &requested, active_protocol.as_deref());
 
     Ok(hints)
 }
@@ -22584,5 +22610,26 @@ mod secval_b_tests {
             !root.path().join("planted-tar.txt").exists(),
             "an entry of `...tar.gz` landed in the PARENT of output_dir"
         );
+    }
+}
+
+#[cfg(test)]
+mod documented_file_limits_command_tests {
+    use super::*;
+
+    /// The command resolves the type it describes the same way for a requested
+    /// type and for the connected one, so the Compare warning gets the limits
+    /// of the remote it is about (#347).
+    #[test]
+    fn hints_get_the_limits_of_the_provider_they_describe() {
+        let base = providers::TransferOptimizationHints::default();
+        let requested = with_documented_file_limits(base.clone(), "zohoworkdrive", None);
+        assert_eq!(requested.max_file_size, Some(250 * (1 << 30)));
+        let active = with_documented_file_limits(base.clone(), "", Some("koofr"));
+        assert_eq!(active.max_name_chars, Some(255));
+        let unknown = with_documented_file_limits(base.clone(), "not-a-provider", None);
+        assert_eq!(unknown.max_file_size, None);
+        let ftp = with_documented_file_limits(base, "ftp", None);
+        assert_eq!(ftp.max_file_size, None);
     }
 }

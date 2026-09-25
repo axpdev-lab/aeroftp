@@ -1477,7 +1477,7 @@ impl StorageProvider for FilenProvider {
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         // F-LOG-01: Log raw response at debug level, truncated to 200 chars max
-        let preview_len = resp_text.len().min(200);
+        let preview_len = resp_text.floor_char_boundary(200);
         let preview = &resp_text[..preview_len];
         filen_log(&format!(
             "dir/content uuid={} response ({}B): {}",
@@ -3277,7 +3277,8 @@ async fn upload_filen_chunk(
     if !status.is_success() {
         // Body preview is application JSON; still scrub in case a gateway echoes
         // the upload key.
-        let preview = redact_filen_secrets_in_text(&resp_text[..resp_text.len().min(200)]);
+        let preview =
+            redact_filen_secrets_in_text(&resp_text[..resp_text.floor_char_boundary(200)]);
         return Err(ProviderError::TransferFailed(format_filen_error(
             &format!("Upload chunk {} failed", index),
             status,

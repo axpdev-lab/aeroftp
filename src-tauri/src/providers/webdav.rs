@@ -1628,7 +1628,7 @@ impl WebDavProvider {
                 return Err(ProviderError::ServerError(format!(
                     "OCS share failed: HTTP {} - {}",
                     status2,
-                    &text2[..text2.len().min(200)]
+                    &text2[..text2.floor_char_boundary(200)]
                 )));
             }
 
@@ -1653,7 +1653,7 @@ impl WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "OCS share failed: HTTP {} - {}",
                 status,
-                &text[..text.len().min(200)]
+                &text[..text.floor_char_boundary(200)]
             )));
         }
         let json: serde_json::Value = serde_json::from_str(&text)
@@ -1919,7 +1919,7 @@ impl WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "Restore failed: HTTP {}: {}",
                 status,
-                &body[..body.len().min(200)]
+                &body[..body.floor_char_boundary(200)]
             )));
         }
         Ok(())
@@ -2832,7 +2832,7 @@ impl StorageProvider for WebDavProvider {
                             tracing::warn!(
                                 "[WebDAV] Digest auth failed ({}): {}",
                                 retry_status,
-                                &body[..body.len().min(200)]
+                                &body[..body.floor_char_boundary(200)]
                             );
                             self.digest_auth = None;
                             Err(ProviderError::AuthenticationFailed(

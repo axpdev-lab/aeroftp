@@ -42345,7 +42345,7 @@ async fn cmd_speed_compare(
                 for e in report.results.iter() {
                     if let Some(r) = e.result.as_ref() {
                         let url_disp = if e.url.len() > 48 {
-                            format!("{}...", &e.url[..45])
+                            format!("{}...", &e.url[..e.url.floor_char_boundary(45)])
                         } else {
                             e.url.clone()
                         };
