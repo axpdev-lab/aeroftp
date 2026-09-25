@@ -281,52 +281,116 @@ const CF_CHKSUM_SEED_FIX: i32 = 1 << 5;
 /// to bloat the scratch buffer for idle-ish channels.
 const RAW_READ_CHUNK: usize = 8192;
 
-/// Endpoints known to run an rsync that negotiates nothing (3.0.x and
-/// 3.1.x), learned from the preamble of each finished session.
+/// What the driver learned about the rsync behind an endpoint, keyed by
+/// `(host, port, user)` and read from the preamble of each session.
 ///
-/// It only spares such a peer the reopen `open_and_negotiate` performs, and
-/// correctness never depends on it in either direction: a stale "legacy"
-/// entry sends `--new-compress` to a 3.2+ server, which accepts it and
-/// agrees on zlibx (measured 2026-09-24 against rsync 3.2.7), and the
-/// session that sees it negotiate clears the entry; a stale or missing
-/// entry costs one reopen. Hence no expiry, only a size bound.
+/// `Legacy` (3.1.x, which negotiates nothing) only spares such a peer the
+/// reopen `open_and_negotiate` performs, and correctness never depends on
+/// it: a stale entry sends `--new-compress` to a 3.2+ server, which accepts
+/// it and agrees on zlibx (measured 2026-09-24 against rsync 3.2.7); should
+/// that session fail anyway (a `ForceCommand` that filters options), the
+/// entry is dropped and the session retried once with the original argv. A
+/// missing entry costs one reopen. Hence no expiry, only a size bound.
+///
+/// `Refused` (protocol 30, rsync 3.0.x) turns every session to the endpoint
+/// away before it opens, so a sync batch, which runs no probe, pays one
+/// refused session per endpoint instead of one per file. It expires after
+/// [`REFUSAL_TTL`](peer_dialect::REFUSAL_TTL), the lifetime of the
+/// application's probe cache, so an upgraded server gets the native path
+/// back without a restart.
 mod peer_dialect {
-    use std::collections::HashSet;
+    use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant};
+
+    pub(super) type Endpoint = (String, u16, String);
 
     const MAX_ENDPOINTS: usize = 256;
+    pub(super) const REFUSAL_TTL: Duration = Duration::from_secs(300);
 
-    fn legacy() -> &'static Mutex<HashSet<(String, u16)>> {
-        static LEGACY: OnceLock<Mutex<HashSet<(String, u16)>>> = OnceLock::new();
-        LEGACY.get_or_init(|| Mutex::new(HashSet::new()))
+    #[derive(Clone, Copy)]
+    enum Dialect {
+        Legacy,
+        Refused { at: Instant },
     }
 
-    pub(super) fn is_known_legacy(endpoint: &(String, u16)) -> bool {
-        legacy()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .contains(endpoint)
-    }
-
-    pub(super) fn record(endpoint: (String, u16), negotiates_strings: bool) {
-        let mut set = legacy()
+    fn with_table<R>(f: impl FnOnce(&mut HashMap<Endpoint, Dialect>) -> R) -> R {
+        static TABLE: OnceLock<Mutex<HashMap<Endpoint, Dialect>>> = OnceLock::new();
+        let mut table = TABLE
+            .get_or_init(|| Mutex::new(HashMap::new()))
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if negotiates_strings {
-            set.remove(&endpoint);
-        } else {
-            if set.len() >= MAX_ENDPOINTS && !set.contains(&endpoint) {
-                set.clear();
+        f(&mut table)
+    }
+
+    pub(super) fn is_known_legacy(endpoint: &Endpoint) -> bool {
+        with_table(|table| matches!(table.get(endpoint), Some(Dialect::Legacy)))
+    }
+
+    pub(super) fn is_refused(endpoint: &Endpoint) -> bool {
+        is_refused_at(endpoint, Instant::now())
+    }
+
+    pub(super) fn is_refused_at(endpoint: &Endpoint, now: Instant) -> bool {
+        with_table(|table| match table.get(endpoint) {
+            Some(Dialect::Refused { at }) if now.saturating_duration_since(*at) < REFUSAL_TTL => {
+                true
             }
-            set.insert(endpoint);
+            Some(Dialect::Refused { .. }) => {
+                table.remove(endpoint);
+                false
+            }
+            _ => false,
+        })
+    }
+
+    /// A session got past the protocol gate.
+    pub(super) fn record_negotiation(endpoint: Endpoint, negotiates_strings: bool) {
+        if negotiates_strings {
+            forget(&endpoint);
+        } else {
+            insert(endpoint, Dialect::Legacy);
         }
     }
+
+    /// A session was turned away by the protocol gate.
+    pub(super) fn record_refusal(endpoint: Endpoint) {
+        insert(endpoint, Dialect::Refused { at: Instant::now() });
+    }
+
+    pub(super) fn forget(endpoint: &Endpoint) {
+        with_table(|table| {
+            table.remove(endpoint);
+        });
+    }
+
+    fn insert(endpoint: Endpoint, dialect: Dialect) {
+        with_table(|table| {
+            if table.len() >= MAX_ENDPOINTS && !table.contains_key(&endpoint) {
+                table.clear();
+            }
+            table.insert(endpoint, dialect);
+        });
+    }
+}
+
+/// Whether a failed `--new-compress` session to an endpoint known as
+/// legacy is worth one retry with the original argv. A cancel, a rejected
+/// host key and a protocol refusal come back the same whatever the argv.
+fn failure_depends_on_argv(err: &AerorsyncError) -> bool {
+    !matches!(
+        err.kind,
+        AerorsyncErrorKind::Cancelled
+            | AerorsyncErrorKind::HostKeyRejected
+            | AerorsyncErrorKind::UnsupportedVersion
+    )
 }
 
 /// Oldest peer protocol the native path speaks. rsync 3.0.x speaks 30,
 /// whose wire this module has never been measured against; it is refused
-/// before any data moves, as `UnsupportedVersion`, so the classic wrapper
-/// takes the file.
+/// before any data moves, as `UnsupportedVersion`, so the file goes over a
+/// plain SFTP transfer without delta (the fallback on every platform once
+/// the native path is the delta transport).
 pub(crate) const MIN_PEER_PROTOCOL: u32 = 31;
 
 /// P3-T01 W1.2: read-side chunking for the streaming source reader of
@@ -760,6 +824,9 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// and the argv carried `-z`, which such a peer reads as legacy zlib.
     /// `open_and_negotiate` reopens with `--new-compress` on this signal.
     legacy_peer_rejected_z: bool,
+    /// Set by `perform_preamble_exchange` when the peer's protocol is below
+    /// [`MIN_PEER_PROTOCOL`]; `open_and_negotiate` records the refusal.
+    peer_protocol_refused: bool,
     /// Whether the argv of the open session carries a compression list in
     /// the negotiated strings (from `preamble_compression_from_args`).
     preamble_compression: PreambleCompression,
@@ -945,6 +1012,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             compat_flags: 0,
             peer_negotiates_strings: None,
             legacy_peer_rejected_z: false,
+            peer_protocol_refused: false,
             preamble_compression: PreambleCompression::Negotiated,
             argv_new_compress: false,
             checksum_seed: 0,
@@ -1097,30 +1165,32 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.resolved_file_checksum_kind()
     }
 
-    /// Single source of truth for the negotiated checksum codec.
+    /// The checksum codec of this session, from [`Self::effective_checksum_algo`].
     ///
-    /// A named winner must be one of the six implemented algorithms.
-    /// Two non-empty advertisements with no intersection fail closed.
-    /// Only a genuinely empty peer string keeps the historical xxh128
-    /// compatibility used when the peer omitted the negotiated field.
+    /// A named winner must be one of the six implemented algorithms. No
+    /// winner fails closed, pre-commit, as `NegotiationFailed`: a
+    /// negotiating peer whose list is empty or shares nothing with ours,
+    /// or a peer that negotiates nothing while our advertisement excludes
+    /// its fixed MD5. Before 2026-09-25 an empty list from a negotiating
+    /// peer was read as xxh128 here while the trailer guard, reading the
+    /// same state as "no algorithm", skipped verification.
     fn resolved_file_checksum_kind(&self) -> Result<FileChecksumKind, AerorsyncError> {
         match self.effective_checksum_algo() {
             Some(name) => FileChecksumKind::try_from_negotiated_name(name),
-            None if self
-                .negotiated_checksum_algos
-                .split_whitespace()
-                .next()
-                .is_none() =>
-            {
-                Ok(FileChecksumKind::Xxh128)
-            }
             None => Err(AerorsyncError::new(
                 AerorsyncErrorKind::NegotiationFailed,
-                format!(
-                    "checksum negotiation found no common algorithm (client {:?} vs server {:?}); \
-                     falling back",
-                    self.preamble_profile.checksum_algos, self.negotiated_checksum_algos
-                ),
+                match self.peer_negotiates_strings {
+                    Some(false) => format!(
+                        "rsync peer negotiates no algorithms, so its checksum is MD5, which our \
+                         advertisement {:?} excludes; falling back",
+                        self.preamble_profile.checksum_algos
+                    ),
+                    _ => format!(
+                        "checksum negotiation found no common algorithm (client {:?} vs server \
+                         {:?}); falling back",
+                        self.preamble_profile.checksum_algos, self.negotiated_checksum_algos
+                    ),
+                },
             )),
         }
     }
@@ -1136,11 +1206,31 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// before 2026-09-24 they did, and against such a peer the answer
     /// was `None`, which the download guard took as "no trailer to
     /// verify" and the block matcher as an unknown algorithm.
+    ///
+    /// `None` means no algorithm, and the session must not go on: a
+    /// negotiating peer with an empty or disjoint list, or a peer that
+    /// negotiates nothing while our advertisement (for instance an
+    /// `AEROFTP_RSYNC_CSUM_ALGOS` override) excludes MD5, which is what
+    /// stock rsync refuses as well. Only a driver whose preamble never ran
+    /// (unit tests that drive a phase directly) keeps the historical
+    /// xxh128 default.
     pub fn effective_checksum_algo(&self) -> Option<&str> {
-        if self.peer_negotiates_strings == Some(false) {
-            return Some(MD5_ALGO_NAME);
+        match self.peer_negotiates_strings {
+            Some(false) => self
+                .preamble_profile
+                .checksum_algos
+                .split_whitespace()
+                .any(|ours| ours == MD5_ALGO_NAME)
+                .then_some(MD5_ALGO_NAME),
+            Some(true) => self.negotiated_checksum_algo(),
+            None => self.negotiated_checksum_algo().or_else(|| {
+                self.negotiated_checksum_algos
+                    .split_whitespace()
+                    .next()
+                    .is_none()
+                    .then_some(XXH128_ALGO_NAME)
+            }),
         }
-        self.negotiated_checksum_algo()
     }
     /// CLAUDE-AV-B3-12: the single checksum algorithm the two peers
     /// actually agreed on, or `None` when the lists intersect nowhere
@@ -1743,7 +1833,84 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// (`remote_command::ArgvCompression`). Nothing reached the destination,
     /// so the retry is pre-commit; a peer that refuses the second argv
     /// fails the session like any other negotiation failure.
+    ///
+    /// [`peer_dialect`] shapes the first attempt. An endpoint that refused
+    /// the native path within the last five minutes is turned away before
+    /// any exec. An endpoint known as legacy gets `--new-compress` at once;
+    /// if that session fails for a reason another argv could change, the
+    /// entry is dropped and the session retried with the original argv,
+    /// which then gets no `--new-compress` reopen of its own. Either way a
+    /// call opens at most two sessions.
     async fn open_and_negotiate(
+        &mut self,
+        command_spec: &RemoteCommandSpec,
+    ) -> Result<(), AerorsyncError> {
+        let endpoint = self.transport.endpoint();
+        if let Some((host, port, _)) = endpoint
+            .as_ref()
+            .filter(|endpoint| peer_dialect::is_refused(endpoint))
+        {
+            return Err(AerorsyncError::unsupported_version(format!(
+                "rsync peer at {host}:{port} speaks a protocol older than \
+                 {MIN_PEER_PROTOCOL} (seen within the last {} s); the native path \
+                 needs rsync 3.1.0 or later",
+                peer_dialect::REFUSAL_TTL.as_secs()
+            )));
+        }
+        let mut new_compress_failure = None;
+        if command_spec.compression == ArgvCompression::Negotiated
+            && endpoint.as_ref().is_some_and(peer_dialect::is_known_legacy)
+        {
+            let forced = command_spec
+                .clone()
+                .with_compression(ArgvCompression::NewCompress);
+            match self.open_and_exchange(&forced).await {
+                Err(err) if failure_depends_on_argv(&err) => {
+                    tracing::debug!(
+                        "aerorsync: --new-compress to an endpoint known as pre-3.2 failed ({err}); \
+                         retrying with the original argv"
+                    );
+                    if let Some(endpoint) = &endpoint {
+                        peer_dialect::forget(endpoint);
+                    }
+                    self.close_stream_for_reopen().await;
+                    new_compress_failure = Some(err);
+                }
+                outcome => return self.remember_dialect(endpoint, outcome),
+            }
+        }
+        let outcome = match self.open_and_exchange(command_spec).await {
+            Err(err) if self.legacy_peer_rejected_z => {
+                self.legacy_peer_rejected_z = false;
+                self.close_stream_for_reopen().await;
+                match new_compress_failure {
+                    // The peer wants `--new-compress` and this call already
+                    // saw it fail: that failure is the one to report.
+                    Some(first) => {
+                        tracing::debug!(
+                            "aerorsync: peer negotiates no algorithms and --new-compress \
+                             already failed in this call; not reopening ({err})"
+                        );
+                        Err(first)
+                    }
+                    None => {
+                        tracing::debug!(
+                            "aerorsync: peer negotiates no algorithms (pre-3.2 rsync); \
+                             reopening with --new-compress"
+                        );
+                        let retry = command_spec
+                            .clone()
+                            .with_compression(ArgvCompression::NewCompress);
+                        self.open_and_exchange(&retry).await
+                    }
+                }
+            }
+            other => other,
+        };
+        self.remember_dialect(endpoint, outcome)
+    }
+
+    async fn open_and_exchange(
         &mut self,
         command_spec: &RemoteCommandSpec,
     ) -> Result<(), AerorsyncError> {
@@ -1754,44 +1921,36 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // `capture/artifacts_real/frozen/upload/capture_in.bin` shape.
         let csum_algos = self.preamble_profile.checksum_algos.clone();
         let comp_algos = self.preamble_profile.compression_algos.clone();
-        let endpoint = self.transport.endpoint();
-        let known_legacy = endpoint.as_ref().is_some_and(peer_dialect::is_known_legacy);
-        let first = if known_legacy && command_spec.compression == ArgvCompression::Negotiated {
-            command_spec
-                .clone()
-                .with_compression(ArgvCompression::NewCompress)
-        } else {
-            command_spec.clone()
-        };
-        self.open_raw_stream_internal(&first).await?;
-        let outcome = match self
-            .perform_preamble_exchange(31, &csum_algos, &comp_algos)
+        // Verdicts of an earlier session must not outlive it: a session that
+        // fails before its preamble would otherwise report them as its own.
+        self.legacy_peer_rejected_z = false;
+        self.peer_protocol_refused = false;
+        self.open_raw_stream_internal(command_spec).await?;
+        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await
-        {
-            Err(_) if self.legacy_peer_rejected_z => {
-                self.legacy_peer_rejected_z = false;
-                if let Some(mut stream) = self.stream.take() {
-                    // The legacy server is waiting for data it will never
-                    // get; closing the channel is what ends it. A failing
-                    // teardown changes nothing about the retry.
-                    let _ = stream.shutdown().await;
-                }
-                tracing::debug!(
-                    "aerorsync: peer negotiates no algorithms (pre-3.2 rsync); \
-                     reopening with --new-compress"
-                );
-                let retry = command_spec
-                    .clone()
-                    .with_compression(ArgvCompression::NewCompress);
-                self.open_raw_stream_internal(&retry).await?;
-                self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
-                    .await
-            }
-            other => other,
-        };
-        if let (Some(endpoint), Some(negotiates)) = (endpoint, self.peer_negotiates_strings) {
-            if outcome.is_ok() {
-                peer_dialect::record(endpoint, negotiates);
+    }
+
+    /// Close the stream of a session about to be reopened. The server is
+    /// waiting for data it will never get; closing the channel is what ends
+    /// it. A failing teardown changes nothing about the retry.
+    async fn close_stream_for_reopen(&mut self) {
+        if let Some(mut stream) = self.stream.take() {
+            let _ = stream.shutdown().await;
+        }
+    }
+
+    /// Record in [`peer_dialect`] what the last preamble said about the
+    /// endpoint, then hand the outcome back.
+    fn remember_dialect(
+        &self,
+        endpoint: Option<peer_dialect::Endpoint>,
+        outcome: Result<(), AerorsyncError>,
+    ) -> Result<(), AerorsyncError> {
+        if let Some(endpoint) = endpoint {
+            if self.peer_protocol_refused {
+                peer_dialect::record_refusal(endpoint);
+            } else if let (Ok(()), Some(negotiates)) = (&outcome, self.peer_negotiates_strings) {
+                peer_dialect::record_negotiation(endpoint, negotiates);
             }
         }
         outcome
@@ -1799,8 +1958,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
     /// Whether the peer of the last session ran the negotiated strings:
     /// `Some(false)` for rsync 3.0.x / 3.1.x, `None` before any preamble.
-    /// The transport keeps this per endpoint so the next session opens
-    /// with the right argv instead of paying the reopen.
+    /// `open_and_negotiate` keeps it per endpoint in [`peer_dialect`] so the
+    /// next session opens with the right argv instead of paying the reopen.
     pub fn peer_negotiates_strings(&self) -> Option<bool> {
         self.peer_negotiates_strings
     }
@@ -1828,7 +1987,6 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         checksum_algos: &str,
         compression_algos: &str,
     ) -> Result<(), AerorsyncError> {
-        self.legacy_peer_rejected_z = false;
         self.write_preamble_bytes(&encode_protocol_version(protocol_version))
             .await?;
 
@@ -1848,6 +2006,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         };
         self.peer_negotiates_strings = Some(hello.negotiates_strings());
         if hello.protocol_version < MIN_PEER_PROTOCOL {
+            self.peer_protocol_refused = true;
             wire_dump_server_response(&scratch, "unsupported-protocol");
             return Err(AerorsyncError::unsupported_version(format!(
                 "rsync peer speaks protocol {}; the native path needs protocol {} \
@@ -4461,7 +4620,9 @@ mod tests {
     };
     use crate::aerorsync::events::{classify_oob_frame, AerorsyncEvent, CollectingSink};
     use crate::aerorsync::fixtures::RealRsyncBaselineByteTranscript;
-    use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
+    use crate::aerorsync::mock::{
+        MockRemoteShellTransport, MockTransportConfig, OpenRawStreamBehavior,
+    };
     use crate::aerorsync::real_wire::{
         decode_client_preamble, encode_client_preamble, encode_server_preamble,
         reassemble_msg_data, ClientPreamble, ServerPreamble,
@@ -5719,27 +5880,293 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn negotiating_peer_with_an_empty_checksum_list_is_refused() {
+        // CF_VARINT_FLIST_FLAGS on, checksum list empty. Stock rsync never
+        // sends that (send_negotiate_str exits), a third-party server may.
+        // It used to resolve to xxh128 while the trailer guard read "no
+        // algorithm" and skipped verification.
+        let inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x87,
+            checksum_algos: String::new(),
+            compression_algos: "zstd none".to_string(),
+            checksum_seed: 7,
+            consumed: 0,
+        });
+        let (d, res, _, _) = negotiate_against(inbound, RemoteCommandSpec::download("/r")).await;
+        let err = res.unwrap_err();
+        assert_eq!(err.kind, AerorsyncErrorKind::NegotiationFailed, "{err:?}");
+        assert_eq!(d.effective_checksum_algo(), None);
+        assert!(!d.committed());
+    }
+
+    #[tokio::test]
+    async fn legacy_peer_md5_is_used_only_if_our_advertisement_has_it() {
+        // A peer that negotiates nothing has MD5 fixed. An advertisement
+        // without md5 (an AEROFTP_RSYNC_CSUM_ALGOS override) refuses the
+        // session, as stock rsync does; the default list accepts it.
+        for (ours, accepted) in [("xxh128 xxh64", false), ("xxh128 md5", true)] {
+            let inbound =
+                legacy_peer_capture("313-stock-download-new-compress/capture_out.first64.bin");
+            let transport = mock_transport_with_raw_inbound(inbound);
+            let mut d = make_driver(transport).with_preamble_profile(PreambleProfile {
+                checksum_algos: ours.to_string(),
+                compression_algos: "zstd zlibx none".to_string(),
+            });
+            let res = d
+                .open_and_negotiate(
+                    &RemoteCommandSpec::download("/r")
+                        .with_compression(ArgvCompression::NewCompress),
+                )
+                .await;
+            if accepted {
+                res.unwrap();
+                assert_eq!(d.effective_checksum_algo(), Some(MD5_ALGO_NAME));
+            } else {
+                let err = res.unwrap_err();
+                assert_eq!(err.kind, AerorsyncErrorKind::NegotiationFailed, "{err:?}");
+                assert!(err.detail.contains("MD5"), "{err:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn protocol_30_peer_is_refused_before_any_data() {
-        let mut inbound = encode_protocol_version(30).to_vec();
-        inbound.push(0x00);
-        inbound.extend_from_slice(&7u32.to_le_bytes());
         let (_, res, outbound, _) =
-            negotiate_against(inbound, RemoteCommandSpec::download("/r")).await;
+            negotiate_against(protocol_30_hello(), RemoteCommandSpec::download("/r")).await;
         let err = res.unwrap_err();
         assert_eq!(err.kind, AerorsyncErrorKind::UnsupportedVersion);
         assert_eq!(outbound, encode_protocol_version(31));
     }
 
+    fn dialect_endpoint(host: &str, user: &str) -> peer_dialect::Endpoint {
+        (host.to_string(), 22, user.to_string())
+    }
+
+    fn peer_sends(inbound: Vec<u8>) -> OpenRawStreamBehavior {
+        OpenRawStreamBehavior::Success { inbound }
+    }
+
+    fn protocol_30_hello() -> Vec<u8> {
+        let mut inbound = encode_protocol_version(30).to_vec();
+        inbound.push(0x00);
+        inbound.extend_from_slice(&7u32.to_le_bytes());
+        inbound
+    }
+
+    /// Run `open_and_negotiate` for `endpoint` against one scripted
+    /// behaviour per open; a further open fails as unconfigured. Returns
+    /// the outcome and the argv of every open, failed ones included.
+    async fn negotiate_scripted(
+        endpoint: &peer_dialect::Endpoint,
+        script: Vec<OpenRawStreamBehavior>,
+    ) -> (Result<(), AerorsyncError>, Vec<Vec<String>>) {
+        let config = MockTransportConfig::healthy_upload()
+            .with_endpoint(&endpoint.0, endpoint.1, &endpoint.2)
+            .with_raw_open_script(script);
+        let transport = MockRemoteShellTransport::new(config);
+        let history = transport.raw_exec_history.clone();
+        let mut d = make_driver(transport);
+        let res = d
+            .open_and_negotiate(&RemoteCommandSpec::download("/r"))
+            .await;
+        let argvs = history
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|request| request.args.clone())
+            .collect();
+        (res, argvs)
+    }
+
+    fn asks_new_compress(argv: &[String]) -> bool {
+        argv.iter().any(|arg| arg == "--new-compress")
+    }
+
     #[test]
     fn peer_dialect_remembers_legacy_until_a_session_negotiates() {
-        let endpoint = ("dialect-test.invalid".to_string(), 2222);
+        let endpoint = dialect_endpoint("remember.dialect.invalid", "alice");
         assert!(!peer_dialect::is_known_legacy(&endpoint));
-        peer_dialect::record(endpoint.clone(), false);
+        peer_dialect::record_negotiation(endpoint.clone(), false);
         assert!(peer_dialect::is_known_legacy(&endpoint));
-        let other_port = ("dialect-test.invalid".to_string(), 2223);
+        let other_port = (
+            "remember.dialect.invalid".to_string(),
+            23,
+            "alice".to_string(),
+        );
         assert!(!peer_dialect::is_known_legacy(&other_port));
-        peer_dialect::record(endpoint.clone(), true);
+        let other_user = dialect_endpoint("remember.dialect.invalid", "bob");
+        assert!(!peer_dialect::is_known_legacy(&other_user));
+        peer_dialect::record_negotiation(endpoint.clone(), true);
         assert!(!peer_dialect::is_known_legacy(&endpoint));
+    }
+
+    #[tokio::test]
+    async fn known_legacy_endpoint_failing_new_compress_is_retried_with_the_original_argv() {
+        // The endpoint was legacy for an earlier session, but this account
+        // reaches a 3.2+ rsync behind a wrapper that drops the session on
+        // `--new-compress`. The entry goes, the original argv negotiates.
+        let endpoint = dialect_endpoint("retry.dialect.invalid", "alice");
+        peer_dialect::record_negotiation(endpoint.clone(), false);
+        let (res, argvs) = negotiate_scripted(
+            &endpoint,
+            vec![
+                peer_sends(Vec::new()),
+                peer_sends(canonical_server_preamble_bytes()),
+            ],
+        )
+        .await;
+        res.expect("the original argv negotiates");
+        assert_eq!(argvs.len(), 2, "{argvs:?}");
+        assert!(asks_new_compress(&argvs[0]), "{argvs:?}");
+        assert!(!asks_new_compress(&argvs[1]), "{argvs:?}");
+        assert!(!peer_dialect::is_known_legacy(&endpoint));
+    }
+
+    #[tokio::test]
+    async fn legacy_verdict_of_one_user_does_not_shape_another_users_session() {
+        let alice = dialect_endpoint("per-user.dialect.invalid", "alice");
+        let bob = dialect_endpoint("per-user.dialect.invalid", "bob");
+        peer_dialect::record_negotiation(alice.clone(), false);
+        let (res, argvs) =
+            negotiate_scripted(&bob, vec![peer_sends(canonical_server_preamble_bytes())]).await;
+        res.unwrap();
+        assert_eq!(argvs.len(), 1, "{argvs:?}");
+        assert!(!asks_new_compress(&argvs[0]), "{argvs:?}");
+        assert!(peer_dialect::is_known_legacy(&alice));
+    }
+
+    #[tokio::test]
+    async fn a_call_opens_at_most_two_sessions_when_new_compress_fails() {
+        // Known legacy, `--new-compress` fails, the original argv meets a
+        // peer that negotiates nothing: no third session, and the error
+        // reported is the `--new-compress` one.
+        let endpoint = dialect_endpoint("bound.dialect.invalid", "alice");
+        peer_dialect::record_negotiation(endpoint.clone(), false);
+        let (res, argvs) = negotiate_scripted(
+            &endpoint,
+            vec![
+                OpenRawStreamBehavior::Fail("new-compress refused".into()),
+                peer_sends(legacy_peer_capture(
+                    "313-stock-download-z/capture_out.first64.bin",
+                )),
+            ],
+        )
+        .await;
+        let err = res.unwrap_err();
+        assert_eq!(argvs.len(), 2, "{argvs:?}");
+        assert!(err.detail.contains("new-compress refused"), "{err:?}");
+        assert!(!peer_dialect::is_known_legacy(&endpoint));
+    }
+
+    #[tokio::test]
+    async fn cancel_or_rejected_host_key_on_new_compress_is_not_retried() {
+        for (index, error) in [
+            AerorsyncError::cancelled("cancelled by the user"),
+            AerorsyncError::new(AerorsyncErrorKind::HostKeyRejected, "host key mismatch"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let endpoint = dialect_endpoint(&format!("no-retry-{index}.dialect.invalid"), "alice");
+            peer_dialect::record_negotiation(endpoint.clone(), false);
+            let kind = error.kind;
+            let (res, argvs) =
+                negotiate_scripted(&endpoint, vec![OpenRawStreamBehavior::FailWith(error)]).await;
+            assert_eq!(res.unwrap_err().kind, kind);
+            assert_eq!(argvs.len(), 1, "{kind:?}: {argvs:?}");
+            assert!(peer_dialect::is_known_legacy(&endpoint), "{kind:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn protocol_refusal_turns_the_endpoint_away_before_any_exec() {
+        // A sync batch runs no probe: without the verdict every file would
+        // pay a refused session against rsync 3.0.x.
+        let endpoint = dialect_endpoint("refused.dialect.invalid", "alice");
+        let (res, argvs) =
+            negotiate_scripted(&endpoint, vec![peer_sends(protocol_30_hello())]).await;
+        assert_eq!(
+            res.unwrap_err().kind,
+            AerorsyncErrorKind::UnsupportedVersion
+        );
+        assert_eq!(argvs.len(), 1);
+        assert!(peer_dialect::is_refused(&endpoint));
+
+        let (res, argvs) = negotiate_scripted(
+            &endpoint,
+            vec![peer_sends(canonical_server_preamble_bytes())],
+        )
+        .await;
+        assert_eq!(
+            res.unwrap_err().kind,
+            AerorsyncErrorKind::UnsupportedVersion
+        );
+        assert!(argvs.is_empty(), "no session may open: {argvs:?}");
+
+        let other_user = dialect_endpoint("refused.dialect.invalid", "bob");
+        assert!(!peer_dialect::is_refused(&other_user));
+    }
+
+    #[test]
+    fn protocol_refusal_expires() {
+        let endpoint = dialect_endpoint("expiry.dialect.invalid", "alice");
+        peer_dialect::record_refusal(endpoint.clone());
+        let now = std::time::Instant::now();
+        assert!(peer_dialect::is_refused_at(&endpoint, now));
+        let later = now + peer_dialect::REFUSAL_TTL;
+        assert!(!peer_dialect::is_refused_at(&endpoint, later));
+        assert!(
+            !peer_dialect::is_refused(&endpoint),
+            "an expired verdict is dropped"
+        );
+    }
+
+    #[tokio::test]
+    async fn only_the_protocol_gate_records_a_refusal() {
+        // A negotiating peer with an empty checksum list fails the
+        // preamble for another reason: nothing about the endpoint's
+        // protocol was learned.
+        let endpoint = dialect_endpoint("other-failure.dialect.invalid", "alice");
+        let inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x87,
+            checksum_algos: String::new(),
+            compression_algos: "zstd none".to_string(),
+            checksum_seed: 7,
+            consumed: 0,
+        });
+        let (res, _) = negotiate_scripted(&endpoint, vec![peer_sends(inbound)]).await;
+        assert_eq!(res.unwrap_err().kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(!peer_dialect::is_refused(&endpoint));
+        assert!(!peer_dialect::is_known_legacy(&endpoint));
+    }
+
+    #[tokio::test]
+    async fn a_session_failing_before_its_preamble_does_not_inherit_a_refusal() {
+        // One driver, two calls. The first meets protocol 30; the verdict
+        // is then forgotten, and the second session fails at open. Its
+        // failure says nothing about the protocol and must not be recorded
+        // as a refusal carried over from the first.
+        let endpoint = dialect_endpoint("stale.dialect.invalid", "alice");
+        let config = MockTransportConfig::healthy_upload()
+            .with_endpoint(&endpoint.0, endpoint.1, &endpoint.2)
+            .with_raw_open_script(vec![
+                peer_sends(protocol_30_hello()),
+                OpenRawStreamBehavior::Fail("connection reset".into()),
+            ]);
+        let mut d = make_driver(MockRemoteShellTransport::new(config));
+        let spec = RemoteCommandSpec::download("/r");
+        assert_eq!(
+            d.open_and_negotiate(&spec).await.unwrap_err().kind,
+            AerorsyncErrorKind::UnsupportedVersion
+        );
+        peer_dialect::forget(&endpoint);
+        assert_eq!(
+            d.open_and_negotiate(&spec).await.unwrap_err().kind,
+            AerorsyncErrorKind::TransportFailure
+        );
+        assert!(!peer_dialect::is_refused(&endpoint));
     }
 
     #[tokio::test]
@@ -6309,23 +6736,24 @@ mod tests {
         );
     }
 
-    /// A peer that omitted the negotiated checksum string keeps the
-    /// historical xxh128 compatibility. This is not the same as two
-    /// non-empty lists missing each other.
+    /// A negotiating peer (CF_VARINT_FLIST_FLAGS on) that sends an empty
+    /// checksum list leaves no algorithm, and the session is refused.
+    /// Until 2026-09-25 this test pinned the opposite, xxh128, which the
+    /// trailer guard then read as "no algorithm" and skipped verification.
+    /// Only a driver whose preamble never ran keeps the xxh128 default.
     #[tokio::test]
-    async fn empty_legacy_checksum_advertisement_keeps_xxh128() {
-        let kind = resolve_checksum(PreambleProfile::default().checksum_algos.as_str(), "")
+    async fn empty_checksum_list_is_refused_and_only_no_preamble_keeps_xxh128() {
+        let err = resolve_checksum(PreambleProfile::default().checksum_algos.as_str(), "")
             .await
-            .expect("empty peer advertisement is the legacy compatibility path");
-        assert_eq!(kind, FileChecksumKind::Xxh128);
-        assert_eq!(kind.wire_len(), A2_3_FILE_CHECKSUM_LEN);
+            .expect_err("an empty list from a negotiating peer must be refused");
+        assert_eq!(err.kind, AerorsyncErrorKind::NegotiationFailed);
 
         let d = make_driver(mock_transport());
         assert_eq!(
             d.negotiated_file_checksum_len()
-                .expect("absent negotiation"),
+                .expect("a driver whose preamble never ran"),
             A2_3_FILE_CHECKSUM_LEN,
-            "absent negotiation must retain the historical fallback"
+            "no preamble keeps the historical xxh128 default"
         );
     }
 

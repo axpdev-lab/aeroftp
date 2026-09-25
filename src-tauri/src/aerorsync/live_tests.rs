@@ -625,6 +625,49 @@ async fn live_real_rsync_native_upload_completes_for_xxh64_and_xxh3_peers() {
     }
 }
 
+/// Upload twin of [`live_real_rsync_native_delta_download_verifies_whole_file`]:
+/// the product advertisement, no override. Against a negotiating peer it
+/// exercises the negotiated winner; against rsync 3.1.x, which negotiates
+/// nothing, it is the MD5 path with classic flag bytes and zlibx. The
+/// remote bytes must match the local source and the transfer must be a
+/// real delta (`copy_blocks > 0`), not a full resend.
+#[tokio::test]
+#[ignore = "requires the Docker real-rsync SSH fixture"]
+async fn live_real_rsync_native_upload_verifies_whole_file() {
+    if !real_lane_active() {
+        return;
+    }
+    let (transport, remote, local, remote_bind) = real_rsync_delta_upload_inputs();
+    let baseline = make_incompressible_payload(1024 * 1024, 0xC0FF_EE11_2233_4455);
+    let mut expected = baseline.clone();
+    for byte in &mut expected[512 * 1024..512 * 1024 + 4096] {
+        *byte ^= 0xA5;
+    }
+    write_bytes(&remote_bind, &baseline);
+    write_bytes(&local, &expected);
+
+    let report = transport
+        .upload_inner(&local, &remote, None)
+        .await
+        .unwrap_or_else(|e| panic!("native upload against real rsync failed: {e:?}"));
+    let got = fs::read(&remote_bind).expect("read reconstructed remote target");
+    assert_eq!(got, expected, "reconstruction must match local source");
+    assert_eq!(report.total_size, expected.len() as u64);
+    eprintln!(
+        "live real-rsync native upload (default profile): total_size={} bytes_sent={} bytes_received={} copy_blocks={} speedup={:.2} duration_ms={}",
+        report.total_size,
+        report.session.bytes_sent,
+        report.session.bytes_received,
+        report.session.copy_blocks,
+        speedup_of(&report),
+        report.duration_ms
+    );
+    assert!(
+        report.session.copy_blocks > 0,
+        "upload must emit at least one CopyRun block"
+    );
+}
+
 /// Y-RSC.3: upload twin for the two last-resort compatibility winners.
 /// Same harness and assertions as the xxh64/xxh3 loop above: remote
 /// bytes byte-identical to the local source AND `copy_blocks > 0`. The

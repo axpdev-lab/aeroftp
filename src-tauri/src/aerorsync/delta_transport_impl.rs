@@ -1287,7 +1287,8 @@ where
     // match never has to invent a digest. A peer that negotiates nothing
     // (rsync 3.1.x) reads as md5 through `effective_checksum_algo`: before
     // 2026-09-24 it read as `None` here and its trailer went unverified.
-    // The `_` arm is left for a driver whose preamble never ran.
+    // No resolved algorithm refuses the commit: the preamble already turns
+    // such a session away, so that arm is a second lock, not a path.
     //
     // HASHER DESIGN (CLAUDE-AV-B3-14): `HashingWriter` is constructed
     // BEFORE the drive, but the negotiated algo is only known AFTER it
@@ -1378,9 +1379,18 @@ where
                 }
             }
         }
-        _ => {
-            // No preamble ran. Named unsupported winners never reach this
-            // arm; they fail at preamble as NegotiationFailed.
+        other => {
+            // Not reachable after a successful preamble: a session without a
+            // resolved algorithm is refused there (`resolved_file_checksum_kind`),
+            // and a named unsupported winner too. Should that ever change, the
+            // reconstruction is not committed unverified.
+            let stderr = format!(
+                "delta reconstruction of {} has no resolved checksum algorithm ({:?}); \
+                 refusing to commit it unverified, falling back to classic download",
+                remote_path, other
+            );
+            discard_streaming_temp(writer).await;
+            return Err(TransferError::Soft { detail: stderr });
         }
     }
 
@@ -2546,6 +2556,28 @@ mod tests {
                 assert!(!local_path.exists());
             }
         }
+    }
+
+    /// A negotiating peer that sends an empty checksum list leaves no
+    /// algorithm to verify the trailer with. The download must stop before
+    /// any commit instead of accepting the reconstruction unverified.
+    #[tokio::test]
+    async fn download_with_an_empty_negotiated_checksum_list_is_not_committed() {
+        let dir = fresh_tempdir();
+        let content = b"the bytes that actually arrive on the wire".to_vec();
+        let (result, local_path) = run_download_fixture(&dir, &content, "", vec![0xCC; 16]).await;
+        match result {
+            Err(TransferError::Native { error, committed }) => {
+                assert!(!committed);
+                assert_eq!(
+                    error.kind,
+                    crate::aerorsync::types::AerorsyncErrorKind::NegotiationFailed,
+                    "{error:?}"
+                );
+            }
+            other => panic!("an empty checksum list must refuse the session, got {other:?}"),
+        }
+        assert!(!local_path.exists(), "nothing may be published");
     }
 
     /// CLAUDE-AV-B3-14: md5 peer + wrong trailer must fail the same way

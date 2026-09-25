@@ -2907,6 +2907,17 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
         // caller had set XMIT_EXTENDED_FLAGS itself: the product entry
         // (XMIT_MOD_NSEC, 0x2000) went out as the single byte 0x00, and
         // rsync 3.1.3 read the upload's file list as empty.
+        // Classic flags are at most a short; protocol 31 defines no bit
+        // above 14. A wider value would be truncated on the wire without a
+        // trace, so it is a caller bug like the encoder's other asserts
+        // (an assert, not a debug_assert: release builds must not ship the
+        // truncation either).
+        assert!(
+            entry.flags <= 0xFFFF,
+            "entry {:?} has flags {:#x}, wider than the classic two-byte encoding",
+            entry.path,
+            entry.flags
+        );
         let mut xflags = entry.flags;
         if xflags == 0 && !is_directory_mode(entry.mode) {
             xflags |= XMIT_TOP_DIR;
@@ -5073,6 +5084,41 @@ mod tests {
         };
         assert_eq!(dir_entry.flags, XMIT_EXTENDED_FLAGS);
         assert_eq!(encode_file_list_entry(&dir_entry, &opts), dir);
+    }
+
+    #[test]
+    #[should_panic(expected = "wider than the classic two-byte encoding")]
+    fn classic_flags_wider_than_a_short_are_refused() {
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: false,
+            always_checksum: false,
+            csum_len: 16,
+            preserve_uid: false,
+            preserve_gid: false,
+            preserve_acls: false,
+            preserve_xattrs: false,
+            previous_name: None,
+        };
+        encode_file_list_entry(
+            &FileListEntry {
+                flags: 0x1_0000 | XMIT_MOD_NSEC,
+                path: "f".to_string(),
+                size: 0,
+                mtime: 0,
+                mtime_nsec: Some(1),
+                mode: 0o100644,
+                uid: None,
+                uid_name: None,
+                gid: None,
+                gid_name: None,
+                checksum: Vec::new(),
+                symlink_target: None,
+                xattrs: None,
+                acls: None,
+            },
+            &opts,
+        );
     }
 
     #[test]
