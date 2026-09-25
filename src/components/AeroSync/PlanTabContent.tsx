@@ -31,6 +31,7 @@ import {
     type VersionedBackupConfig,
 } from '../../utils/syncPresets';
 import { formatBytes } from '../../utils/formatters';
+import { planDirectionLabel, presetNameLabel, presetTaglineLabel, resolveLabel } from '../../utils/syncDirectionLabels';
 import { retryPolicyForSpeed } from '../../utils/remoteSyncRunner';
 import { isCyberTheme, SPEED_PRESETS } from '../Sync/syncConstants';
 import { useTranslation } from '../../i18n';
@@ -38,6 +39,7 @@ import { useStickyState, useSkipSeedOnRestore } from './tabStateStore';
 import type { CompressionMode } from '../../types';
 import type {
     AeroSyncCanarySelection,
+    AeroSyncPairKind,
     AeroSyncRuntime,
     AeroSyncSpeedMode,
     AeroSyncVerifyPolicy,
@@ -91,6 +93,7 @@ const PresetChip: React.FC<{
     active: boolean;
     onSelect: () => void;
 }> = ({ preset, active, onSelect }) => {
+    const t = useTranslation();
     const info = describePreset(preset);
     const isDefault = preset === 'backup';
     return (
@@ -110,7 +113,7 @@ const PresetChip: React.FC<{
                     ) : (
                         <ShieldAlert size={14} className="text-amber-500" />
                     )}
-                    <span className="text-sm font-semibold">{info.name}</span>
+                    <span className="text-sm font-semibold">{resolveLabel(t, presetNameLabel(preset))}</span>
                 </div>
                 {isDefault && (
                     <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
@@ -118,7 +121,7 @@ const PresetChip: React.FC<{
                     </span>
                 )}
             </div>
-            <p className="text-[11px] leading-snug text-gray-500 dark:text-gray-400">{info.tagline}</p>
+            <p className="text-[11px] leading-snug text-gray-500 dark:text-gray-400">{resolveLabel(t, presetTaglineLabel(preset))}</p>
         </button>
     );
 };
@@ -276,6 +279,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     return (
         <div className="flex flex-col">
             <div className="px-4 py-3">
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    {t('aerosync.modeHeader') || 'Mode'}
+                </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {PRESET_ORDER.map((option) => (
                         <PresetChip
@@ -289,9 +295,13 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
 
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-[11px] text-gray-500 dark:text-gray-400">
-                        {describePreset(preset).tagline}
+                        {resolveLabel(t, presetTaglineLabel(preset))}
                     </div>
                     {!bisyncMode && (
+                        <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            {t('syncPanel.direction') || 'Direction'}
+                        </span>
                         <div className="inline-flex overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
                             <button
                                 type="button"
@@ -302,7 +312,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                         : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-900/40 dark:text-gray-300 dark:hover:bg-gray-700'
                                 }`}
                             >
-                                {t('aerosync.directionLeftRight') || 'Left to Right'}
+                                {resolveLabel(t, planDirectionLabel('left-to-right', pairKind as AeroSyncPairKind | null))}
                             </button>
                             <button
                                 type="button"
@@ -313,8 +323,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                         : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-900/40 dark:text-gray-300 dark:hover:bg-gray-700'
                                 }`}
                             >
-                                {t('aerosync.directionRightLeft') || 'Right to Left'}
+                                {resolveLabel(t, planDirectionLabel('right-to-left', pairKind as AeroSyncPairKind | null))}
                             </button>
+                        </div>
                         </div>
                     )}
                 </div>
@@ -844,7 +855,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             : plan.hasDestructive ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
                         {canaryMode
                             ? (t('syncPanel.canaryRun') || 'Canary Sync')
-                            : `${t('aerosync.execute') || 'Execute'} ${describePreset(preset).name} (${plan.totals.actionable})`}
+                            : `${t('aerosync.execute') || 'Execute'} ${resolveLabel(t, presetNameLabel(preset))} (${plan.totals.actionable})`}
                     </button>
                 </div>
             </div>

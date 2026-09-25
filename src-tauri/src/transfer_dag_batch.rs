@@ -2581,6 +2581,7 @@ mod tests {
             TransferFailureKind::NotFound,
             TransferFailureKind::PermissionDenied,
             TransferFailureKind::QuotaExceeded,
+            TransferFailureKind::FileTooLarge,
             TransferFailureKind::LocalIo,
             TransferFailureKind::RemoteIo,
             TransferFailureKind::Unknown,

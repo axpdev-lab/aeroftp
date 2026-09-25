@@ -564,6 +564,7 @@
                 "path_not_found": "Calea nu a fost găsită",
                 "permission_denied": "Permisiune refuzată",
                 "quota_exceeded": "Cota de stocare depășită",
+                "file_too_large": "Fișier prea mare pentru destinație",
                 "rate_limit": "Limita de solicitări depășită",
                 "timeout": "Conexiunea a expirat",
                 "file_locked": "Fișier blocat",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Nu a fost găsit",
                 "permission_denied": "Permisiune refuzată",
                 "quota_exceeded": "Cotă depășită",
+                "file_too_large": "Fișier prea mare",
                 "rate_limit": "Limită de rată",
                 "timeout": "Timeout",
                 "file_locked": "Fișier blocat",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binar",
             "hashOutputLength": "Lungimea ieșirii BLAKE3 (octeți)",
             "hashOutputLengthHint": "1-1024 · implicit 32",
-            "hashDropHint": "Plasați un fișier pe această filă pentru a-i calcula hash-ul"
+            "hashDropHint": "Plasați un fișier pe această filă pentru a-i calcula hash-ul",
+            "hashBlake3Mode": "Mod BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Cu cheie",
+            "hashBlake3ModeDerive": "Derivare cheie",
+            "hashBlake3Key": "Cheie (32 de octeți în hexazecimal)",
+            "hashBlake3Context": "Șir de context",
+            "hashBlake3ContextHint": "Fix și unic pentru o aplicație. Textul sau fișierul pentru care se calculează hash-ul este materialul cheii.",
+            "hashRandom": "Aleatoriu",
+            "argon2PasswordPlaceholder": "Parolă sau frază de acces...",
+            "argon2Salt": "Salt",
+            "argon2SaltHint": "Cel puțin 8 octeți, recomandat 16",
+            "argon2Memory": "Memorie (KiB)",
+            "argon2Iterations": "Iterații",
+            "argon2Parallelism": "Paralelism",
+            "argon2OutputLength": "Lungime (octeți)",
+            "argon2DefaultsHint": "Valori implicite: a doua opțiune recomandată de RFC 9106, pentru memorie limitată (64 MiB, 3 iterații, 4 benzi, salt de 16 octeți). Memorie până la 2 GiB.",
+            "argon2Derive": "Derivă",
+            "argon2Phc": "Șir PHC"
         },
         "dialog": {
             "deleteFile": "Ștergeți \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Compară",
             "tabPlan": "Plan",
             "tabSync": "Sincronizează",
+            "compareWontFitTitle": "Peste limitele {name}: {count}",
+            "compareWontFitHint": "Aceste fișiere depășesc limita de dimensiune documentată a furnizorului, sau numele ori calea lor este mai lungă decât acceptă. O sincronizare ar eșua pentru ele: redenumiți-le, mutați-le sau împărțiți-le înainte.",
+            "compareWontFitTooLarge": "{size}, limită {limit}",
+            "compareWontFitNameBytes": "nume de peste {count} octeți",
+            "compareWontFitNameChars": "nume de peste {count} caractere",
+            "compareWontFitPathBytes": "cale de peste {count} octeți",
+            "compareWontFitPathChars": "cale de peste {count} caractere",
             "compareUnavailable": "Deschide un al doilea panou sau o conexiune la distanță pentru a compara.",
             "planUnavailable": "Este necesar un rezultat de comparare înainte de a alege o presetare. Deschide mai întâi fila Compară.",
             "totalEntries": "Total intrări",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Oglindește de la dreapta la stânga",
             "directionLeftRight": "De la stânga la dreapta",
             "directionRightLeft": "De la dreapta la stânga",
+            "directionLocalToRemote": "Local → La distanță",
+            "directionRemoteToLocal": "La distanță → Local",
+            "directionBothWays": "În ambele sensuri",
+            "modeHeader": "Mod",
+            "preset": {
+                "mirror": {
+                    "name": "Oglindă",
+                    "tagline": "Face destinația identică cu sursa. Șterge fișierele în plus și suprascrie copiile mai noi."
+                },
+                "backup": {
+                    "name": "Copie de rezervă",
+                    "tagline": "Copiază fișierele lipsă și pe cele mai noi. Nu șterge niciodată și nu suprascrie niciodată o copie mai nouă din destinație."
+                },
+                "update": {
+                    "name": "Actualizare",
+                    "tagline": "Copiază fișierele lipsă și pe cele mai noi. Omite conflictele pentru a le rezolva manual."
+                },
+                "bisync": {
+                    "name": "Sincronizare bidirecțională",
+                    "tagline": "Propagă fișierele lipsă și pe cele mai noi în ambele sensuri. Omite conflictele."
+                }
+            },
             "conflictPolicy": "Politica conflictelor",
             "ignoredForMirror": "IGNORAT PENTRU OGLINDIRE",
             "versionedBackup": "Backup cu versiuni",

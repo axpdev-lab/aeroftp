@@ -564,6 +564,7 @@
                 "path_not_found": "Pot ni najdena",
                 "permission_denied": "Dovoljenje zavrnjeno",
                 "quota_exceeded": "Kvota prostora presežena",
+                "file_too_large": "Datoteka je prevelika za cilj",
                 "rate_limit": "Omejitev zahtev presežena",
                 "timeout": "Časovna omejitev povezave",
                 "file_locked": "Datoteka zaklenjena",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Ni najdeno",
                 "permission_denied": "Dovoljenje zavrnjeno",
                 "quota_exceeded": "Kvota presežena",
+                "file_too_large": "Datoteka je prevelika",
                 "rate_limit": "Omejitev hitrosti",
                 "timeout": "Timeout",
                 "file_locked": "Datoteka zaklenjena",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Dvojiško",
             "hashOutputLength": "Dolžina izhoda BLAKE3 (bajti)",
             "hashOutputLengthHint": "1-1024 · privzeto 32",
-            "hashDropHint": "Spustite datoteko na ta zavihek za izračun zgoščene vrednosti"
+            "hashDropHint": "Spustite datoteko na ta zavihek za izračun zgoščene vrednosti",
+            "hashBlake3Mode": "Način BLAKE3",
+            "hashBlake3ModeHash": "Zgoščena vrednost",
+            "hashBlake3ModeKeyed": "S ključem",
+            "hashBlake3ModeDerive": "Izpelji ključ",
+            "hashBlake3Key": "Ključ (32 bajtov šestnajstiško)",
+            "hashBlake3Context": "Kontekstni niz",
+            "hashBlake3ContextHint": "Fiksen in edinstven za eno aplikacijo. Besedilo ali datoteka, ki se zgoščuje, je material ključa.",
+            "hashRandom": "Naključno",
+            "argon2PasswordPlaceholder": "Geslo ali geslo-fraza...",
+            "argon2Salt": "Sol",
+            "argon2SaltHint": "Vsaj 8 bajtov, priporočeno 16",
+            "argon2Memory": "Pomnilnik (KiB)",
+            "argon2Iterations": "Ponovitve",
+            "argon2Parallelism": "Vzporednost",
+            "argon2OutputLength": "Dolžina (bajti)",
+            "argon2DefaultsHint": "Privzeto: druga priporočena možnost RFC 9106 za omejen pomnilnik (64 MiB, 3 ponovitve, 4 steze, 16-bajtna sol). Pomnilnik do 2 GiB.",
+            "argon2Derive": "Izpelji",
+            "argon2Phc": "Niz PHC"
         },
         "dialog": {
             "deleteFile": "Izbrisati \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Primerjaj",
             "tabPlan": "Načrt",
             "tabSync": "Sinhroniziraj",
+            "compareWontFitTitle": "Nad omejitvami {name}: {count}",
+            "compareWontFitHint": "Te datoteke presegajo dokumentirano omejitev velikosti ponudnika ali pa je njihovo ime ali pot daljša, kot jo sprejme. Sinhronizacija bi pri njih spodletela: najprej jih preimenujte, premaknite ali razdelite.",
+            "compareWontFitTooLarge": "{size}, omejitev {limit}",
+            "compareWontFitNameBytes": "ime nad {count} bajtov",
+            "compareWontFitNameChars": "ime nad {count} znakov",
+            "compareWontFitPathBytes": "pot nad {count} bajtov",
+            "compareWontFitPathChars": "pot nad {count} znakov",
             "compareUnavailable": "Odprite drugo ploščo ali oddaljeno povezavo za primerjavo.",
             "planUnavailable": "Pred izbiro prednastavitve je potreben rezultat primerjave. Najprej odprite zavihek Primerjaj.",
             "totalEntries": "Skupno število vnosov",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Zrcali z desne na levo",
             "directionLeftRight": "Z leve na desno",
             "directionRightLeft": "Z desne na levo",
+            "directionLocalToRemote": "Lokalno → Oddaljeno",
+            "directionRemoteToLocal": "Oddaljeno → Lokalno",
+            "directionBothWays": "V obe smeri",
+            "modeHeader": "Način",
+            "preset": {
+                "mirror": {
+                    "name": "Zrcaljenje",
+                    "tagline": "Naredi cilj enak izvoru. Izbriše odvečne datoteke in prepiše novejše kopije."
+                },
+                "backup": {
+                    "name": "Varnostna kopija",
+                    "tagline": "Kopira manjkajoče in novejše datoteke. Nikoli ne briše in nikoli ne prepiše novejše kopije na cilju."
+                },
+                "update": {
+                    "name": "Posodobitev",
+                    "tagline": "Kopira manjkajoče in novejše datoteke. Preskoči spore, da jih rešite ročno."
+                },
+                "bisync": {
+                    "name": "Dvosmerna sinhronizacija",
+                    "tagline": "Prenese manjkajoče in novejše datoteke v obe smeri. Preskoči spore."
+                }
+            },
             "conflictPolicy": "Pravilnik o konfliktih",
             "ignoredForMirror": "PREZRTO ZA ZRCALJENJE",
             "versionedBackup": "Različična varnostna kopija",

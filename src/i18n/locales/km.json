@@ -564,6 +564,7 @@
                 "path_not_found": "រកមិនឃើញផ្លូវ",
                 "permission_denied": "ការអនុញ្ញាតត្រូវបានបដិសេធ",
                 "quota_exceeded": "ទំហំផ្ទុកលើសកំណត់",
+                "file_too_large": "ឯកសារធំពេកសម្រាប់គោលដៅ",
                 "rate_limit": "លើសកម្រិតអត្រាស្នើសុំ",
                 "timeout": "អស់ពេលភ្ជាប់",
                 "file_locked": "ឯកសារត្រូវបានចាក់សោ",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "រកមិនឃើញ",
                 "permission_denied": "ការអនុញ្ញាតត្រូវបានបដិសេធ",
                 "quota_exceeded": "កូតាលើស",
+                "file_too_large": "ឯកសារធំពេក",
                 "rate_limit": "កំណត់អត្រា",
                 "timeout": "Timeout",
                 "file_locked": "ឯកសារត្រូវបានចាក់សោ",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "គោលពីរ",
             "hashOutputLength": "ប្រវែងលទ្ធផល BLAKE3 (បៃ)",
             "hashOutputLengthHint": "1-1024 · លំនាំដើម 32",
-            "hashDropHint": "ទម្លាក់ឯកសារលើផ្ទាំងនេះដើម្បីគណនា hash"
+            "hashDropHint": "ទម្លាក់ឯកសារលើផ្ទាំងនេះដើម្បីគណនា hash",
+            "hashBlake3Mode": "របៀប BLAKE3",
+            "hashBlake3ModeHash": "ហាស",
+            "hashBlake3ModeKeyed": "មានសោ",
+            "hashBlake3ModeDerive": "បង្កើតសោ",
+            "hashBlake3Key": "សោ (32 បៃ ជាគោលដប់ប្រាំមួយ)",
+            "hashBlake3Context": "ខ្សែអក្សរបរិបទ",
+            "hashBlake3ContextHint": "ថេរ និងមានតែមួយគត់សម្រាប់កម្មវិធីមួយ។ អត្ថបទ ឬឯកសារដែលកំពុងធ្វើហាស គឺជាសម្ភារៈសោ។",
+            "hashRandom": "ចៃដន្យ",
+            "argon2PasswordPlaceholder": "ពាក្យសម្ងាត់ ឬឃ្លាសម្ងាត់...",
+            "argon2Salt": "អំបិល",
+            "argon2SaltHint": "យ៉ាងហោចណាស់ 8 បៃ ណែនាំ 16",
+            "argon2Memory": "អង្គចងចាំ (KiB)",
+            "argon2Iterations": "ចំនួនដង",
+            "argon2Parallelism": "ភាពស្របគ្នា",
+            "argon2OutputLength": "ប្រវែង (បៃ)",
+            "argon2DefaultsHint": "លំនាំដើម៖ ជម្រើសណែនាំទីពីររបស់ RFC 9106 សម្រាប់អង្គចងចាំមានកំណត់ (64 MiB, 3 ដង, 4 ផ្លូវ, អំបិល 16 បៃ)។ អង្គចងចាំរហូតដល់ 2 GiB។",
+            "argon2Derive": "បង្កើត",
+            "argon2Phc": "ខ្សែអក្សរ PHC"
         },
         "dialog": {
             "deleteFile": "លុប \"{name}\"?",
@@ -5081,6 +5101,13 @@
             "tabCompare": "ប្រៀបធៀប",
             "tabPlan": "ផែនការ",
             "tabSync": "ធ្វើសមកាលកម្ម",
+            "compareWontFitTitle": "លើសដែនកំណត់របស់ {name}៖ {count}",
+            "compareWontFitHint": "ឯកសារទាំងនេះធំជាងដែនកំណត់ទំហំដែលអ្នកផ្ដល់សេវាបានកត់ត្រា ឬឈ្មោះ ឬផ្លូវរបស់វាវែងជាងអ្វីដែលវាទទួលយក។ ការធ្វើសមកាលកម្មនឹងបរាជ័យលើវា៖ ប្ដូរឈ្មោះ ផ្លាស់ទី ឬបំបែកវាជាមុនសិន។",
+            "compareWontFitTooLarge": "{size}, ដែនកំណត់ {limit}",
+            "compareWontFitNameBytes": "ឈ្មោះលើស {count} បៃ",
+            "compareWontFitNameChars": "ឈ្មោះលើស {count} តួអក្សរ",
+            "compareWontFitPathBytes": "ផ្លូវលើស {count} បៃ",
+            "compareWontFitPathChars": "ផ្លូវលើស {count} តួអក្សរ",
             "compareUnavailable": "បើកផ្ទាំងទីពីរ ឬការតភ្ជាប់ពីចម្ងាយដើម្បីប្រៀបធៀប។",
             "planUnavailable": "ត្រូវការលទ្ធផលប្រៀបធៀបមុនពេលជ្រើសរើសប្រេសិត។ បើកផ្ទាំងប្រៀបធៀបជាមុនសិន។",
             "totalEntries": "ធាតុសរុប",
@@ -5091,6 +5118,28 @@
             "mirrorRightToLeft": "កញ្ចក់ពីស្តាំទៅឆ្វេង",
             "directionLeftRight": "ឆ្វេងទៅស្តាំ",
             "directionRightLeft": "ស្តាំទៅឆ្វេង",
+            "directionLocalToRemote": "មូលដ្ឋាន → ពីចម្ងាយ",
+            "directionRemoteToLocal": "ពីចម្ងាយ → មូលដ្ឋាន",
+            "directionBothWays": "ទាំងពីរទិស",
+            "modeHeader": "របៀប",
+            "preset": {
+                "mirror": {
+                    "name": "ឆ្លុះ",
+                    "tagline": "ធ្វើឱ្យគោលដៅដូចប្រភពទាំងស្រុង។ លុបឯកសារលើស និងសរសេរជាន់លើច្បាប់ចម្លងថ្មីជាង។"
+                },
+                "backup": {
+                    "name": "បម្រុងទុក",
+                    "tagline": "ចម្លងឯកសារដែលខ្វះ និងថ្មីជាង។ មិនលុប និងមិនសរសេរជាន់លើច្បាប់ចម្លងថ្មីជាងនៅគោលដៅឡើយ។"
+                },
+                "update": {
+                    "name": "ធ្វើបច្ចុប្បន្នភាព",
+                    "tagline": "ចម្លងឯកសារដែលខ្វះ និងថ្មីជាង។ រំលងការប៉ះទង្គិច ដើម្បីឱ្យអ្នកដោះស្រាយដោយដៃ។"
+                },
+                "bisync": {
+                    "name": "សមកាលកម្មទ្វេទិស",
+                    "tagline": "ផ្សព្វផ្សាយឯកសារដែលខ្វះ និងថ្មីជាងទាំងពីរទិស។ រំលងការប៉ះទង្គិច។"
+                }
+            },
             "conflictPolicy": "គោលការណ៍ជម្លោះ",
             "ignoredForMirror": "មិនអើពើសម្រាប់កញ្ចក់",
             "versionedBackup": "ការបម្រុងទុកមានកំណែ",

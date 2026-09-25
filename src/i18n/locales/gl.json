@@ -564,6 +564,7 @@
                 "path_not_found": "Ruta non atopada",
                 "permission_denied": "Permiso denegado",
                 "quota_exceeded": "Cota de almacenamento excedida",
+                "file_too_large": "Ficheiro demasiado grande para o destino",
                 "rate_limit": "Límite de solicitudes excedido",
                 "timeout": "Tempo de conexión esgotado",
                 "file_locked": "Ficheiro bloqueado",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Non atopado",
                 "permission_denied": "Permiso denegado",
                 "quota_exceeded": "Cota excedida",
+                "file_too_large": "Ficheiro demasiado grande",
                 "rate_limit": "Límite de velocidade",
                 "timeout": "Timeout",
                 "file_locked": "Ficheiro bloqueado",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binario",
             "hashOutputLength": "Lonxitude de saída BLAKE3 (bytes)",
             "hashOutputLengthHint": "1-1024 · predeterminado 32",
-            "hashDropHint": "Solta un ficheiro nesta lapela para calcular o seu hash"
+            "hashDropHint": "Solta un ficheiro nesta lapela para calcular o seu hash",
+            "hashBlake3Mode": "Modo BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Con chave",
+            "hashBlake3ModeDerive": "Derivar chave",
+            "hashBlake3Key": "Chave (32 bytes en hexadecimal)",
+            "hashBlake3Context": "Cadea de contexto",
+            "hashBlake3ContextHint": "Fixa e única para unha aplicación. O texto ou ficheiro do que se calcula o hash é o material da chave.",
+            "hashRandom": "Aleatoria",
+            "argon2PasswordPlaceholder": "Contrasinal ou frase de paso...",
+            "argon2Salt": "Sal",
+            "argon2SaltHint": "Polo menos 8 bytes, recoméndanse 16",
+            "argon2Memory": "Memoria (KiB)",
+            "argon2Iterations": "Iteracións",
+            "argon2Parallelism": "Paralelismo",
+            "argon2OutputLength": "Lonxitude (bytes)",
+            "argon2DefaultsHint": "Valores predeterminados: a segunda opción recomendada pola RFC 9106, para memoria limitada (64 MiB, 3 iteracións, 4 carrís, sal de 16 bytes). Memoria ata 2 GiB.",
+            "argon2Derive": "Derivar",
+            "argon2Phc": "Cadea PHC"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",
@@ -5081,6 +5101,13 @@
             "tabCompare": "Comparar",
             "tabPlan": "Plan",
             "tabSync": "Sincronizar",
+            "compareWontFitTitle": "Por riba dos límites de {name}: {count}",
+            "compareWontFitHint": "Estes ficheiros superan o límite de tamaño documentado do provedor, ou o seu nome ou ruta é máis longo do que acepta. Unha sincronización fallaría con eles: renoméaos, móveos ou divídeos antes.",
+            "compareWontFitTooLarge": "{size}, límite {limit}",
+            "compareWontFitNameBytes": "nome de máis de {count} bytes",
+            "compareWontFitNameChars": "nome de máis de {count} caracteres",
+            "compareWontFitPathBytes": "ruta de máis de {count} bytes",
+            "compareWontFitPathChars": "ruta de máis de {count} caracteres",
             "compareUnavailable": "Abre un segundo panel ou unha conexión remota para comparar.",
             "planUnavailable": "Cómpre un resultado de comparación antes de escoller un preset. Abre primeiro a lapela Comparar.",
             "totalEntries": "Entradas totais",
@@ -5091,6 +5118,28 @@
             "mirrorRightToLeft": "Reflectir de dereita a esquerda",
             "directionLeftRight": "Esquerda a Dereita",
             "directionRightLeft": "Dereita a Esquerda",
+            "directionLocalToRemote": "Local → Remoto",
+            "directionRemoteToLocal": "Remoto → Local",
+            "directionBothWays": "Nos dous sentidos",
+            "modeHeader": "Modo",
+            "preset": {
+                "mirror": {
+                    "name": "Espello",
+                    "tagline": "Fai que o destino sexa idéntico á orixe. Elimina os ficheiros sobrantes e sobrescribe as copias máis recentes."
+                },
+                "backup": {
+                    "name": "Copia de seguridade",
+                    "tagline": "Copia os ficheiros que faltan e os máis recentes. Nunca elimina nin sobrescribe unha copia máis recente no destino."
+                },
+                "update": {
+                    "name": "Actualizar",
+                    "tagline": "Copia os ficheiros que faltan e os máis recentes. Omite os conflitos para que os resolvas manualmente."
+                },
+                "bisync": {
+                    "name": "Sincronización bidireccional",
+                    "tagline": "Propaga os ficheiros que faltan e os máis recentes nos dous sentidos. Omite os conflitos."
+                }
+            },
             "conflictPolicy": "Política de conflitos",
             "ignoredForMirror": "IGNORADO PARA ESPELLO",
             "versionedBackup": "Copia de seguranza versionada",

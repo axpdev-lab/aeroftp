@@ -1,0 +1,1 @@
+rsync --server --sender -logDtpre.iLsfxCIvu . /workspace/b0c0/src/p1/d

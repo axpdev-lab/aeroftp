@@ -564,6 +564,7 @@
                 "path_not_found": "Không tìm thấy đường dẫn",
                 "permission_denied": "Quyền truy cập bị từ chối",
                 "quota_exceeded": "Vượt quá hạn mức lưu trữ",
+                "file_too_large": "Tệp quá lớn đối với đích",
                 "rate_limit": "Vượt quá giới hạn yêu cầu",
                 "timeout": "Hết thời gian kết nối",
                 "file_locked": "Tệp bị khóa",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Không tìm thấy",
                 "permission_denied": "Từ chối quyền truy cập",
                 "quota_exceeded": "Vượt quá hạn mức",
+                "file_too_large": "Tệp quá lớn",
                 "rate_limit": "Giới hạn tốc độ",
                 "timeout": "Timeout",
                 "file_locked": "Tệp bị khóa",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Nhị phân",
             "hashOutputLength": "Độ dài đầu ra BLAKE3 (byte)",
             "hashOutputLengthHint": "1-1024 · mặc định 32",
-            "hashDropHint": "Thả tệp vào thẻ này để tính hash"
+            "hashDropHint": "Thả tệp vào thẻ này để tính hash",
+            "hashBlake3Mode": "Chế độ BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Có khóa",
+            "hashBlake3ModeDerive": "Dẫn xuất khóa",
+            "hashBlake3Key": "Khóa (32 byte dạng hex)",
+            "hashBlake3Context": "Chuỗi ngữ cảnh",
+            "hashBlake3ContextHint": "Cố định và duy nhất cho một ứng dụng. Văn bản hoặc tệp được băm là vật liệu khóa.",
+            "hashRandom": "Ngẫu nhiên",
+            "argon2PasswordPlaceholder": "Mật khẩu hoặc cụm mật khẩu...",
+            "argon2Salt": "Muối",
+            "argon2SaltHint": "Ít nhất 8 byte, khuyến nghị 16",
+            "argon2Memory": "Bộ nhớ (KiB)",
+            "argon2Iterations": "Số vòng lặp",
+            "argon2Parallelism": "Mức song song",
+            "argon2OutputLength": "Độ dài (byte)",
+            "argon2DefaultsHint": "Mặc định: tùy chọn khuyến nghị thứ hai của RFC 9106 cho bộ nhớ hạn chế (64 MiB, 3 vòng lặp, 4 làn, muối 16 byte). Bộ nhớ tối đa 2 GiB.",
+            "argon2Derive": "Dẫn xuất",
+            "argon2Phc": "Chuỗi PHC"
         },
         "dialog": {
             "deleteFile": "Xóa \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "So sánh",
             "tabPlan": "Kế hoạch",
             "tabSync": "Đồng bộ",
+            "compareWontFitTitle": "Vượt giới hạn của {name}: {count}",
+            "compareWontFitHint": "Các tệp này vượt quá giới hạn kích thước được nhà cung cấp công bố, hoặc tên hay đường dẫn của chúng dài hơn mức cho phép. Đồng bộ sẽ thất bại với chúng: hãy đổi tên, di chuyển hoặc chia nhỏ trước.",
+            "compareWontFitTooLarge": "{size}, giới hạn {limit}",
+            "compareWontFitNameBytes": "tên vượt {count} byte",
+            "compareWontFitNameChars": "tên vượt {count} ký tự",
+            "compareWontFitPathBytes": "đường dẫn vượt {count} byte",
+            "compareWontFitPathChars": "đường dẫn vượt {count} ký tự",
             "compareUnavailable": "Mở bảng thứ hai hoặc kết nối từ xa để so sánh.",
             "planUnavailable": "Cần có kết quả so sánh trước khi chọn cài đặt sẵn. Mở tab So sánh trước.",
             "totalEntries": "Tổng số mục",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Mirror từ phải sang trái",
             "directionLeftRight": "Trái sang Phải",
             "directionRightLeft": "Phải sang Trái",
+            "directionLocalToRemote": "Cục bộ → Từ xa",
+            "directionRemoteToLocal": "Từ xa → Cục bộ",
+            "directionBothWays": "Cả hai chiều",
+            "modeHeader": "Chế độ",
+            "preset": {
+                "mirror": {
+                    "name": "Nhân bản",
+                    "tagline": "Làm cho đích giống hệt nguồn. Xóa tệp thừa và ghi đè các bản sao mới hơn."
+                },
+                "backup": {
+                    "name": "Sao lưu",
+                    "tagline": "Sao chép tệp còn thiếu và mới hơn. Không bao giờ xóa và không bao giờ ghi đè bản sao mới hơn ở đích."
+                },
+                "update": {
+                    "name": "Cập nhật",
+                    "tagline": "Sao chép tệp còn thiếu và mới hơn. Bỏ qua xung đột để bạn tự giải quyết."
+                },
+                "bisync": {
+                    "name": "Đồng bộ hai chiều",
+                    "tagline": "Truyền tệp còn thiếu và mới hơn theo cả hai chiều. Bỏ qua xung đột."
+                }
+            },
             "conflictPolicy": "Chính sách xung đột",
             "ignoredForMirror": "BỎ QUA CHO MIRROR",
             "versionedBackup": "Sao lưu có phiên bản",

@@ -564,6 +564,7 @@
                 "path_not_found": "경로를 찾을 수 없음",
                 "permission_denied": "권한 거부됨",
                 "quota_exceeded": "저장 공간 할당량 초과",
+                "file_too_large": "대상에 비해 파일이 너무 큼",
                 "rate_limit": "요청 속도 제한 초과",
                 "timeout": "연결 시간 초과",
                 "file_locked": "파일 잠김",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "찾을 수 없음",
                 "permission_denied": "권한 거부",
                 "quota_exceeded": "할당량 초과",
+                "file_too_large": "파일이 너무 큼",
                 "rate_limit": "속도 제한",
                 "timeout": "타임아웃",
                 "file_locked": "파일 잠김",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "이진",
             "hashOutputLength": "BLAKE3 출력 길이(바이트)",
             "hashOutputLengthHint": "1-1024 · 기본값 32",
-            "hashDropHint": "이 탭에 파일을 끌어다 놓으면 해시를 계산합니다"
+            "hashDropHint": "이 탭에 파일을 끌어다 놓으면 해시를 계산합니다",
+            "hashBlake3Mode": "BLAKE3 모드",
+            "hashBlake3ModeHash": "해시",
+            "hashBlake3ModeKeyed": "키 사용",
+            "hashBlake3ModeDerive": "키 파생",
+            "hashBlake3Key": "키 (32바이트 16진수)",
+            "hashBlake3Context": "컨텍스트 문자열",
+            "hashBlake3ContextHint": "애플리케이션마다 고정되고 고유한 값입니다. 해시하는 텍스트나 파일이 키 재료입니다.",
+            "hashRandom": "무작위",
+            "argon2PasswordPlaceholder": "비밀번호 또는 암호 문구...",
+            "argon2Salt": "솔트",
+            "argon2SaltHint": "최소 8바이트, 16바이트 권장",
+            "argon2Memory": "메모리 (KiB)",
+            "argon2Iterations": "반복 횟수",
+            "argon2Parallelism": "병렬 처리",
+            "argon2OutputLength": "길이 (바이트)",
+            "argon2DefaultsHint": "기본값: 메모리가 제한된 환경을 위한 RFC 9106의 두 번째 권장 옵션 (64 MiB, 반복 3회, 레인 4개, 16바이트 솔트). 메모리 최대 2 GiB.",
+            "argon2Derive": "파생",
+            "argon2Phc": "PHC 문자열"
         },
         "dialog": {
             "deleteFile": "\"{name}\"을(를) 삭제하시겠습니까?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "비교",
             "tabPlan": "계획",
             "tabSync": "동기화",
+            "compareWontFitTitle": "{name} 한도 초과: {count}",
+            "compareWontFitHint": "이 파일들은 제공업체가 문서화한 크기 한도를 넘거나 이름 또는 경로가 허용 길이보다 깁니다. 동기화하면 실패합니다. 먼저 이름을 바꾸거나, 옮기거나, 나누세요.",
+            "compareWontFitTooLarge": "{size}, 한도 {limit}",
+            "compareWontFitNameBytes": "이름이 {count}바이트 초과",
+            "compareWontFitNameChars": "이름이 {count}자 초과",
+            "compareWontFitPathBytes": "경로가 {count}바이트 초과",
+            "compareWontFitPathChars": "경로가 {count}자 초과",
             "compareUnavailable": "비교하려면 두 번째 패널 또는 원격 연결을 여세요.",
             "planUnavailable": "프리셋을 선택하기 전에 비교 결과가 필요합니다. 먼저 비교 탭을 여세요.",
             "totalEntries": "총 항목",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "오른쪽에서 왼쪽으로 미러",
             "directionLeftRight": "왼쪽에서 오른쪽",
             "directionRightLeft": "오른쪽에서 왼쪽",
+            "directionLocalToRemote": "로컬 → 원격",
+            "directionRemoteToLocal": "원격 → 로컬",
+            "directionBothWays": "양방향",
+            "modeHeader": "모드",
+            "preset": {
+                "mirror": {
+                    "name": "미러",
+                    "tagline": "대상을 원본과 동일하게 만듭니다. 여분의 파일을 삭제하고 더 새로운 사본도 덮어씁니다."
+                },
+                "backup": {
+                    "name": "백업",
+                    "tagline": "없는 파일과 더 새로운 파일을 복사합니다. 삭제하지 않으며 대상의 더 새로운 사본을 덮어쓰지 않습니다."
+                },
+                "update": {
+                    "name": "업데이트",
+                    "tagline": "없는 파일과 더 새로운 파일을 복사합니다. 충돌은 건너뛰어 직접 해결할 수 있게 합니다."
+                },
+                "bisync": {
+                    "name": "양방향 동기화",
+                    "tagline": "없는 파일과 더 새로운 파일을 양방향으로 전파합니다. 충돌은 건너뜁니다."
+                }
+            },
             "conflictPolicy": "충돌 정책",
             "ignoredForMirror": "미러에서 무시됨",
             "versionedBackup": "버전 백업",

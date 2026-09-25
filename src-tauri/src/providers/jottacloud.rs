@@ -43,12 +43,12 @@ fn mask_credential(value: &str) -> String {
     if let Some(at) = value.find('@') {
         let local = &value[..at];
         let domain = &value[at..];
-        let visible = local.len().min(3);
+        let visible = local.floor_char_boundary(3);
         format!("{}***{}", &local[..visible], domain)
     } else if value.len() <= 3 {
         "***".to_string()
     } else {
-        format!("{}***", &value[..3])
+        format!("{}***", &value[..value.floor_char_boundary(3)])
     }
 }
 
@@ -824,7 +824,7 @@ impl JottacloudProvider {
                 jotta_log(&format!(
                     "Device discovery XML ({} bytes): {}",
                     xml.len(),
-                    &xml[..xml.len().min(500)]
+                    &xml[..xml.floor_char_boundary(500)]
                 ));
                 let devices = Self::parse_device_names(&xml);
                 jotta_log(&format!("Available devices: {:?}", devices));
@@ -850,7 +850,7 @@ impl JottacloudProvider {
                 jotta_log(&format!(
                     "Mountpoint discovery XML ({} bytes): {}",
                     xml.len(),
-                    &xml[..xml.len().min(500)]
+                    &xml[..xml.floor_char_boundary(500)]
                 ));
                 let mountpoints = Self::parse_mountpoint_names(&xml);
                 jotta_log(&format!(
@@ -1371,7 +1371,7 @@ impl StorageProvider for JottacloudProvider {
             "List XML for '{}' ({} bytes): {}",
             resolved,
             xml.len(),
-            &xml[..xml.len().min(2000)]
+            &xml[..xml.floor_char_boundary(2000)]
         ));
 
         let entries = Self::parse_folder_xml(&xml, &resolved);
@@ -1555,7 +1555,7 @@ impl StorageProvider for JottacloudProvider {
             let body = resp.text().await.unwrap_or_default();
             jotta_log(&format!(
                 "Upload error response: {}",
-                &body[..body.len().min(1000)]
+                &body[..body.floor_char_boundary(1000)]
             ));
             return Err(ProviderError::TransferFailed(format!(
                 "Upload failed ({}): {}",
@@ -1964,7 +1964,7 @@ impl JottacloudProvider {
         jotta_log(&format!(
             "Trash XML ({} bytes): {}",
             xml.len(),
-            &xml[..xml.len().min(2000)]
+            &xml[..xml.floor_char_boundary(2000)]
         ));
 
         // Parse trash listing: include ALL items (even "deleted" ones, since they ARE trash)
@@ -3133,6 +3133,22 @@ impl JottacloudProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A byte cut inside a multibyte character panics: masking must cut on a
+    /// character boundary (an email or a name is not always ASCII).
+    #[test]
+    fn mask_credential_never_splits_a_character() {
+        for value in [
+            "aaé@example.com",
+            "ééé@x.it",
+            "abécdef",
+            "日本語テスト",
+            "a😀b@x",
+        ] {
+            let masked = mask_credential(value);
+            assert!(masked.contains("***"), "{value} -> {masked}");
+        }
+    }
 
     fn test_provider() -> JottacloudProvider {
         let config = JottacloudConfig {

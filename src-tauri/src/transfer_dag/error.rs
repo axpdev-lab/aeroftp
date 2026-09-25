@@ -44,6 +44,9 @@ pub enum TransferErrorKind {
     PermissionDenied,
     /// Quota or hard storage limit.
     QuotaExceeded,
+    /// This file exceeds the destination's per-file size limit (HTTP 413, a
+    /// plan cap). Never retried, never congestion, and not about the account.
+    FileTooLarge,
     /// User or graph cancel.
     Cancelled,
     /// Local disk / IO failure.
@@ -174,7 +177,7 @@ impl TransferError {
             ProviderError::AuthenticationFailed(_) => TransferErrorKind::Auth,
             ProviderError::NotFound(_) => TransferErrorKind::NotFound,
             ProviderError::PermissionDenied(_) => TransferErrorKind::PermissionDenied,
-            ProviderError::FileTooLarge(_) => TransferErrorKind::QuotaExceeded,
+            ProviderError::FileTooLarge(_) => TransferErrorKind::FileTooLarge,
             ProviderError::RestrictedChar { .. } => TransferErrorKind::PermissionDenied,
             ProviderError::ReadOnly(_) => TransferErrorKind::PermissionDenied,
             ProviderError::InvalidPath(_) | ProviderError::InvalidConfig(_) => {
@@ -243,6 +246,7 @@ fn default_retry_for(kind: TransferErrorKind) -> RetryDirective {
         | TransferErrorKind::NotFound
         | TransferErrorKind::PermissionDenied
         | TransferErrorKind::QuotaExceeded
+        | TransferErrorKind::FileTooLarge
         | TransferErrorKind::ResourceAcquire => RetryDirective::Never,
         TransferErrorKind::RateLimited | TransferErrorKind::ServiceUnavailable => {
             RetryDirective::AfterHint
@@ -264,6 +268,7 @@ fn default_idempotent_for(kind: TransferErrorKind) -> bool {
         TransferErrorKind::Auth
             | TransferErrorKind::PermissionDenied
             | TransferErrorKind::QuotaExceeded
+            | TransferErrorKind::FileTooLarge
             | TransferErrorKind::NotFound
             | TransferErrorKind::Cancelled
     )
@@ -382,6 +387,7 @@ fn classify_raw_message(raw: &str) -> TransferErrorKind {
         crate::sync::SyncErrorKind::PathNotFound => TransferErrorKind::NotFound,
         crate::sync::SyncErrorKind::PermissionDenied => TransferErrorKind::PermissionDenied,
         crate::sync::SyncErrorKind::QuotaExceeded => TransferErrorKind::QuotaExceeded,
+        crate::sync::SyncErrorKind::FileTooLarge => TransferErrorKind::FileTooLarge,
         crate::sync::SyncErrorKind::FileLocked => TransferErrorKind::RemoteIo,
         crate::sync::SyncErrorKind::DiskError => TransferErrorKind::LocalIo,
         crate::sync::SyncErrorKind::Network => classify_network_message(raw),

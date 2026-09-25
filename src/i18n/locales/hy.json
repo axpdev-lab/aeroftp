@@ -564,6 +564,7 @@
                 "path_not_found": "Ուղին չի գտնվել",
                 "permission_denied": "Մուտքը մերժված է",
                 "quota_exceeded": "Պահեստավորման քվոտան գերազանցված է",
+                "file_too_large": "Ֆայլը չափազանց մեծ է նպատակակետի համար",
                 "rate_limit": "Հարցումների սահմանափակումը գերազանցված է",
                 "timeout": "Կապակցության ժամկետի սպառում",
                 "file_locked": "Ֆայլը կողպված է",
@@ -2138,6 +2139,7 @@
                 "path_not_found": "Չի գտնվել",
                 "permission_denied": "Մուտքը մերժված է",
                 "quota_exceeded": "Քվոտան գերազանցված է",
+                "file_too_large": "Ֆայլը չափազանց մեծ է",
                 "rate_limit": "Սահմանաչափ",
                 "timeout": "Timeout",
                 "file_locked": "Ֆայլը կողպված է",
@@ -4077,7 +4079,25 @@
             "hashEncodingBinary": "Երկուական",
             "hashOutputLength": "BLAKE3 ելքի երկարություն (բայթ)",
             "hashOutputLengthHint": "1-1024 · լռելյայն 32",
-            "hashDropHint": "Գցեք ֆայլն այս ներդիրի վրա՝ հեշը հաշվարկելու համար"
+            "hashDropHint": "Գցեք ֆայլն այս ներդիրի վրա՝ հեշը հաշվարկելու համար",
+            "hashBlake3Mode": "BLAKE3 ռեժիմ",
+            "hashBlake3ModeHash": "Հեշ",
+            "hashBlake3ModeKeyed": "Բանալիով",
+            "hashBlake3ModeDerive": "Ածանցել բանալի",
+            "hashBlake3Key": "Բանալի (32 բայթ տասնվեցական)",
+            "hashBlake3Context": "Համատեքստի տող",
+            "hashBlake3ContextHint": "Ֆիքսված և եզակի մեկ հավելվածի համար։ Հեշավորվող տեքստը կամ ֆայլը բանալու նյութն է։",
+            "hashRandom": "Պատահական",
+            "argon2PasswordPlaceholder": "Գաղտնաբառ կամ գաղտնի արտահայտություն...",
+            "argon2Salt": "Աղ",
+            "argon2SaltHint": "Առնվազն 8 բայթ, խորհուրդ է տրվում 16",
+            "argon2Memory": "Հիշողություն (KiB)",
+            "argon2Iterations": "Կրկնություններ",
+            "argon2Parallelism": "Զուգահեռություն",
+            "argon2OutputLength": "Երկարություն (բայթ)",
+            "argon2DefaultsHint": "Լռելյայն՝ RFC 9106-ի երկրորդ առաջարկվող տարբերակը սահմանափակ հիշողության համար (64 MiB, 3 կրկնություն, 4 ուղի, 16 բայթ աղ)։ Հիշողություն մինչև 2 GiB։",
+            "argon2Derive": "Ածանցել",
+            "argon2Phc": "PHC տող"
         },
         "dialog": {
             "deleteFile": "Ջնջե՞լ «{name}»-ը։",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Համեմատել",
             "tabPlan": "Պլան",
             "tabSync": "Համաժամեցնել",
+            "compareWontFitTitle": "{name}-ի սահմաններից դուրս՝ {count}",
+            "compareWontFitHint": "Այս ֆայլերը գերազանցում են մատակարարի փաստաթղթավորված չափի սահմանը, կամ դրանց անունը կամ ուղին ավելի երկար է, քան թույլատրվում է։ Համաժամեցումը դրանց համար կձախողվի․ նախ վերանվանեք, տեղափոխեք կամ բաժանեք դրանք։",
+            "compareWontFitTooLarge": "{size}, սահման {limit}",
+            "compareWontFitNameBytes": "անունը {count} բայթից ավելի է",
+            "compareWontFitNameChars": "անունը {count} նիշից ավելի է",
+            "compareWontFitPathBytes": "ուղին {count} բայթից ավելի է",
+            "compareWontFitPathChars": "ուղին {count} նիշից ավելի է",
             "compareUnavailable": "Բացեք երկրորդ վահանակ կամ հեռավոր կապ՝ համեմատելու համար։",
             "planUnavailable": "Կանխադրվածքը ընտրելուց առաջ անհրաժեշտ է համեմատման արդյունք։ Նախ բացեք Համեմատել ներդիրը։",
             "totalEntries": "Ընդհանուր գրառումներ",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Հայելել աջից ձախ",
             "directionLeftRight": "Ձախից աջ",
             "directionRightLeft": "Աջից ձախ",
+            "directionLocalToRemote": "Տեղային → Հեռավոր",
+            "directionRemoteToLocal": "Հեռավոր → Տեղային",
+            "directionBothWays": "Երկու ուղղությամբ",
+            "modeHeader": "Ռեժիմ",
+            "preset": {
+                "mirror": {
+                    "name": "Հայելի",
+                    "tagline": "Նպատակակետը դարձնում է աղբյուրին նույնական։ Ջնջում է ավելորդ ֆայլերը և վերագրում ավելի նոր պատճենները։"
+                },
+                "backup": {
+                    "name": "Պահուստ",
+                    "tagline": "Պատճենում է բացակայող և ավելի նոր ֆայլերը։ Երբեք չի ջնջում և երբեք չի վերագրում նպատակակետի ավելի նոր պատճենը։"
+                },
+                "update": {
+                    "name": "Թարմացում",
+                    "tagline": "Պատճենում է բացակայող և ավելի նոր ֆայլերը։ Բաց է թողնում հակասությունները, որ դրանք ձեռքով լուծեք։"
+                },
+                "bisync": {
+                    "name": "Երկկողմանի համաժամեցում",
+                    "tagline": "Փոխանցում է բացակայող և ավելի նոր ֆայլերը երկու ուղղությամբ։ Բաց է թողնում հակասությունները։"
+                }
+            },
             "conflictPolicy": "Հակամարտության կանոն",
             "ignoredForMirror": "ԱՆՏԵՍՎԱԾ Է ՀԱՅԵԼՄԱՆ ՀԱՄԱՐ",
             "versionedBackup": "Տարբերակային պահուստ",

@@ -24,9 +24,9 @@ import { RollbackDialog } from '../Sync/RollbackDialog';
 import { useTransferCapabilities } from '../Sync/useTransferCapabilities';
 import { TabStateStoreContext, createTabStateStore } from './tabStateStore';
 import { buildAeroSyncTabStatePatch, type ImportedSyncSettings } from '../../utils/syncTemplateApply';
-import type { AeroSyncDialogProps, AeroSyncTab } from './types';
-
-const TAB_ORDER: AeroSyncTab[] = ['compare', 'plan', 'sync'];
+import { aeroSyncTabsFor, effectiveAeroSyncTab, type AeroSyncDialogProps, type AeroSyncTab } from './types';
+import type { TransferOptimizationHints } from '../../types';
+import { limitsFromHints, type ProviderFileLimits } from '../../utils/providerFileLimits';
 
 export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     isOpen,
@@ -41,7 +41,8 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
-    const [activeTab, setActiveTab] = React.useState<AeroSyncTab>(initialTab);
+    const visibleTabs = aeroSyncTabsFor(context.pairKind);
+    const [selectedTab, setActiveTab] = React.useState<AeroSyncTab>(initialTab);
     const [showTemplates, setShowTemplates] = React.useState(false);
     const [showMultiPath, setShowMultiPath] = React.useState(false);
     const [showRollback, setShowRollback] = React.useState(false);
@@ -50,6 +51,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     // Lifted from the Sync tab so the close path can guard against losing an
     // in-progress local sync (issue #332).
     const [syncRunning, setSyncRunning] = React.useState(false);
+    const activeTab = effectiveAeroSyncTab(selectedTab, context.pairKind, syncRunning);
 
     const cancelSync = React.useCallback(() => {
         invoke('local_sync_cancel').catch(() => { /* no run in flight */ });
@@ -101,6 +103,21 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             transferCaps.max_chunk_slots ?? 1,
         );
     }, [transferCaps]);
+
+    // #347: the remote's documented file limits, for the Compare warning.
+    const [remoteLimits, setRemoteLimits] = React.useState<ProviderFileLimits | null>(null);
+    const hasRemote = context.pairKind === 'local-remote' || context.pairKind === 'remote-local';
+    React.useEffect(() => {
+        if (!isOpen || !hasRemote || !context.protocol) {
+            setRemoteLimits(null);
+            return;
+        }
+        let cancelled = false;
+        invoke<TransferOptimizationHints>('get_transfer_optimization_hints', { providerType: context.protocol })
+            .then((hints) => { if (!cancelled) setRemoteLimits(limitsFromHints(hints)); })
+            .catch(() => { if (!cancelled) setRemoteLimits(null); });
+        return () => { cancelled = true; };
+    }, [isOpen, hasRemote, context.protocol]);
 
     if (!isOpen) return null;
 
@@ -190,7 +207,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                 </div>
 
                 <div className="flex gap-1 px-4 pt-3 border-b border-gray-200 dark:border-gray-700">
-                    {TAB_ORDER.map((tab) => {
+                    {(visibleTabs.includes(activeTab) ? visibleTabs : [...visibleTabs, activeTab]).map((tab) => {
                         const active = activeTab === tab;
                         // While a local sync runs, lock the user onto the Sync
                         // tab: leaving it would unmount SyncTabContent and orphan
@@ -271,6 +288,8 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             canMirrorRightToLeft={canMirrorAny}
                             onApplyMirrorLeftToRight={onApplyMirrorLeftToRight}
                             onApplyMirrorRightToLeft={onApplyMirrorRightToLeft}
+                            remoteLimits={remoteLimits}
+                            remoteBasePath={context.initialDestination || ''}
                         />
                     )}
                     {activeTab === 'plan' && (

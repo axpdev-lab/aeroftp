@@ -564,6 +564,7 @@
                 "path_not_found": "Pfad nicht gefunden",
                 "permission_denied": "Zugriff verweigert",
                 "quota_exceeded": "Speicherkontingent überschritten",
+                "file_too_large": "Datei zu groß für das Ziel",
                 "rate_limit": "Anfragelimit überschritten",
                 "timeout": "Verbindungszeitlimit überschritten",
                 "file_locked": "Datei ist gesperrt",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Nicht gefunden",
                 "permission_denied": "Zugriff verweigert",
                 "quota_exceeded": "Kontingent überschritten",
+                "file_too_large": "Datei zu groß",
                 "rate_limit": "Ratenbegrenzung",
                 "timeout": "Timeout",
                 "file_locked": "Datei gesperrt",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binär",
             "hashOutputLength": "BLAKE3-Ausgabelänge (Bytes)",
             "hashOutputLengthHint": "1-1024 · Standard 32",
-            "hashDropHint": "Datei auf diesen Tab ziehen, um sie zu hashen"
+            "hashDropHint": "Datei auf diesen Tab ziehen, um sie zu hashen",
+            "hashBlake3Mode": "BLAKE3-Modus",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Mit Schlüssel",
+            "hashBlake3ModeDerive": "Schlüssel ableiten",
+            "hashBlake3Key": "Schlüssel (32 Bytes als Hex)",
+            "hashBlake3Context": "Kontext-String",
+            "hashBlake3ContextHint": "Fest und eindeutig für eine Anwendung. Der gehashte Text oder die gehashte Datei ist das Schlüsselmaterial.",
+            "hashRandom": "Zufällig",
+            "argon2PasswordPlaceholder": "Passwort oder Passphrase...",
+            "argon2Salt": "Salt",
+            "argon2SaltHint": "Mindestens 8 Bytes, 16 empfohlen",
+            "argon2Memory": "Speicher (KiB)",
+            "argon2Iterations": "Iterationen",
+            "argon2Parallelism": "Parallelität",
+            "argon2OutputLength": "Länge (Bytes)",
+            "argon2DefaultsHint": "Standardwerte: die zweite empfohlene Option von RFC 9106 für begrenzten Speicher (64 MiB, 3 Iterationen, 4 Lanes, 16-Byte-Salt). Speicher bis 2 GiB.",
+            "argon2Derive": "Ableiten",
+            "argon2Phc": "PHC-String"
         },
         "dialog": {
             "deleteFile": "\"{name}\" löschen?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Vergleichen",
             "tabPlan": "Plan",
             "tabSync": "Synchronisieren",
+            "compareWontFitTitle": "Über den Limits von {name}: {count}",
+            "compareWontFitHint": "Diese Dateien sind größer als das dokumentierte Limit des Anbieters, oder ihr Name oder Pfad ist länger als erlaubt. Eine Synchronisierung würde bei ihnen fehlschlagen: vorher umbenennen, verschieben oder aufteilen.",
+            "compareWontFitTooLarge": "{size}, Limit {limit}",
+            "compareWontFitNameBytes": "Name über {count} Bytes",
+            "compareWontFitNameChars": "Name über {count} Zeichen",
+            "compareWontFitPathBytes": "Pfad über {count} Bytes",
+            "compareWontFitPathChars": "Pfad über {count} Zeichen",
             "compareUnavailable": "Öffne ein zweites Panel oder eine Remoteverbindung zum Vergleichen.",
             "planUnavailable": "Ein Vergleichsergebnis ist erforderlich, bevor ein Preset gewählt werden kann. Öffne zuerst den Reiter Vergleichen.",
             "totalEntries": "Gesamteinträge",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Von rechts nach links spiegeln",
             "directionLeftRight": "Links nach Rechts",
             "directionRightLeft": "Rechts nach Links",
+            "directionLocalToRemote": "Lokal → Remote",
+            "directionRemoteToLocal": "Remote → Lokal",
+            "directionBothWays": "In beide Richtungen",
+            "modeHeader": "Modus",
+            "preset": {
+                "mirror": {
+                    "name": "Spiegeln",
+                    "tagline": "Macht das Ziel identisch mit der Quelle. Löscht überzählige Dateien und überschreibt neuere Kopien."
+                },
+                "backup": {
+                    "name": "Sicherung",
+                    "tagline": "Kopiert fehlende und neuere Dateien. Löscht nie und überschreibt nie eine neuere Kopie im Ziel."
+                },
+                "update": {
+                    "name": "Aktualisieren",
+                    "tagline": "Kopiert fehlende und neuere Dateien. Überspringt Konflikte, damit Sie sie manuell lösen können."
+                },
+                "bisync": {
+                    "name": "Zwei-Wege-Sync",
+                    "tagline": "Überträgt fehlende und neuere Dateien in beide Richtungen. Überspringt Konflikte."
+                }
+            },
             "conflictPolicy": "Konfliktrichtlinie",
             "ignoredForMirror": "FÜR MIRROR IGNORIERT",
             "versionedBackup": "Versioniertes Backup",

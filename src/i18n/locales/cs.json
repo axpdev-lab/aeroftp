@@ -564,6 +564,7 @@
                 "path_not_found": "Cesta nenalezena",
                 "permission_denied": "Přístup odepřen",
                 "quota_exceeded": "Kvóta úložiště překročena",
+                "file_too_large": "Soubor je pro cíl příliš velký",
                 "rate_limit": "Limit požadavků překročen",
                 "timeout": "Časový limit připojení vypršel",
                 "file_locked": "Soubor je uzamčen",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Nenalezeno",
                 "permission_denied": "Přístup odepřen",
                 "quota_exceeded": "Kvóta překročena",
+                "file_too_large": "Soubor je příliš velký",
                 "rate_limit": "Limit požadavků",
                 "timeout": "Timeout",
                 "file_locked": "Soubor zamknut",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binární",
             "hashOutputLength": "Délka výstupu BLAKE3 (bajty)",
             "hashOutputLengthHint": "1-1024 · výchozí 32",
-            "hashDropHint": "Přetáhněte sem soubor a vypočítá se jeho hash"
+            "hashDropHint": "Přetáhněte sem soubor a vypočítá se jeho hash",
+            "hashBlake3Mode": "Režim BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "S klíčem",
+            "hashBlake3ModeDerive": "Odvodit klíč",
+            "hashBlake3Key": "Klíč (32 bajtů hexadecimálně)",
+            "hashBlake3Context": "Kontextový řetězec",
+            "hashBlake3ContextHint": "Pevný a jedinečný pro jednu aplikaci. Hašovaný text nebo soubor je materiál klíče.",
+            "hashRandom": "Náhodný",
+            "argon2PasswordPlaceholder": "Heslo nebo přístupová fráze...",
+            "argon2Salt": "Sůl",
+            "argon2SaltHint": "Alespoň 8 bajtů, doporučeno 16",
+            "argon2Memory": "Paměť (KiB)",
+            "argon2Iterations": "Iterace",
+            "argon2Parallelism": "Paralelismus",
+            "argon2OutputLength": "Délka (bajty)",
+            "argon2DefaultsHint": "Výchozí hodnoty: druhá doporučená možnost RFC 9106 pro omezenou paměť (64 MiB, 3 iterace, 4 dráhy, 16bajtová sůl). Paměť až 2 GiB.",
+            "argon2Derive": "Odvodit",
+            "argon2Phc": "Řetězec PHC"
         },
         "dialog": {
             "deleteFile": "Odstranit \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Porovnat",
             "tabPlan": "Plán",
             "tabSync": "Synchronizovat",
+            "compareWontFitTitle": "Nad limity {name}: {count}",
+            "compareWontFitHint": "Tyto soubory překračují zdokumentovaný limit velikosti poskytovatele, nebo je jejich název či cesta delší, než přijímá. Synchronizace by u nich selhala: nejprve je přejmenujte, přesuňte nebo rozdělte.",
+            "compareWontFitTooLarge": "{size}, limit {limit}",
+            "compareWontFitNameBytes": "název nad {count} bajtů",
+            "compareWontFitNameChars": "název nad {count} znaků",
+            "compareWontFitPathBytes": "cesta nad {count} bajtů",
+            "compareWontFitPathChars": "cesta nad {count} znaků",
             "compareUnavailable": "Otevřete druhý panel nebo vzdálené připojení pro porovnání.",
             "planUnavailable": "Před výběrem předvolby je nutný výsledek porovnání. Nejprve otevřete kartu Porovnat.",
             "totalEntries": "Celkem položek",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Zrcadlit zprava doleva",
             "directionLeftRight": "Zleva doprava",
             "directionRightLeft": "Zprava doleva",
+            "directionLocalToRemote": "Místní → Vzdálené",
+            "directionRemoteToLocal": "Vzdálené → Místní",
+            "directionBothWays": "Oběma směry",
+            "modeHeader": "Režim",
+            "preset": {
+                "mirror": {
+                    "name": "Zrcadlo",
+                    "tagline": "Učiní cíl totožným se zdrojem. Smaže nadbytečné soubory a přepíše novější kopie."
+                },
+                "backup": {
+                    "name": "Záloha",
+                    "tagline": "Zkopíruje chybějící a novější soubory. Nikdy nemaže a nikdy nepřepíše novější kopii v cíli."
+                },
+                "update": {
+                    "name": "Aktualizace",
+                    "tagline": "Zkopíruje chybějící a novější soubory. Konflikty přeskočí, abyste je mohli vyřešit ručně."
+                },
+                "bisync": {
+                    "name": "Obousměrná synchronizace",
+                    "tagline": "Přenese chybějící a novější soubory oběma směry. Konflikty přeskočí."
+                }
+            },
             "conflictPolicy": "Zásady konfliktů",
             "ignoredForMirror": "IGNOROVÁNO PRO ZRCADLENÍ",
             "versionedBackup": "Verzovaná záloha",

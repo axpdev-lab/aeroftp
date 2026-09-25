@@ -564,6 +564,7 @@
                 "path_not_found": "Пътят не е намерен",
                 "permission_denied": "Достъпът е отказан",
                 "quota_exceeded": "Квотата за съхранение е надвишена",
+                "file_too_large": "Файлът е твърде голям за местоназначението",
                 "rate_limit": "Ограничението на заявките е надвишено",
                 "timeout": "Изтекло време на връзката",
                 "file_locked": "Файлът е заключен",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Не е намерено",
                 "permission_denied": "Достъпът е отказан",
                 "quota_exceeded": "Квотата е надвишена",
+                "file_too_large": "Файлът е твърде голям",
                 "rate_limit": "Ограничение на скоростта",
                 "timeout": "Timeout",
                 "file_locked": "Файлът е заключен",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Двоично",
             "hashOutputLength": "Дължина на BLAKE3 изхода (байтове)",
             "hashOutputLengthHint": "1-1024 · по подразбиране 32",
-            "hashDropHint": "Пуснете файл върху този раздел, за да го хеширате"
+            "hashDropHint": "Пуснете файл върху този раздел, за да го хеширате",
+            "hashBlake3Mode": "Режим BLAKE3",
+            "hashBlake3ModeHash": "Хеш",
+            "hashBlake3ModeKeyed": "С ключ",
+            "hashBlake3ModeDerive": "Извличане на ключ",
+            "hashBlake3Key": "Ключ (32 байта в шестнадесетичен вид)",
+            "hashBlake3Context": "Контекстен низ",
+            "hashBlake3ContextHint": "Фиксиран и уникален за едно приложение. Хешираният текст или файл е материалът на ключа.",
+            "hashRandom": "Случаен",
+            "argon2PasswordPlaceholder": "Парола или фраза за достъп...",
+            "argon2Salt": "Сол",
+            "argon2SaltHint": "Поне 8 байта, препоръчително 16",
+            "argon2Memory": "Памет (KiB)",
+            "argon2Iterations": "Итерации",
+            "argon2Parallelism": "Паралелизъм",
+            "argon2OutputLength": "Дължина (байтове)",
+            "argon2DefaultsHint": "По подразбиране: втората препоръчана опция на RFC 9106 за ограничена памет (64 MiB, 3 итерации, 4 ленти, сол от 16 байта). Памет до 2 GiB.",
+            "argon2Derive": "Извличане",
+            "argon2Phc": "PHC низ"
         },
         "dialog": {
             "deleteFile": "Изтрий \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Сравнение",
             "tabPlan": "План",
             "tabSync": "Синхронизация",
+            "compareWontFitTitle": "Над ограниченията на {name}: {count}",
+            "compareWontFitHint": "Тези файлове надвишават документирания лимит за размер на доставчика или името или пътят им е по-дълъг, отколкото приема. Синхронизацията би се провалила за тях: първо ги преименувайте, преместете или разделете.",
+            "compareWontFitTooLarge": "{size}, лимит {limit}",
+            "compareWontFitNameBytes": "име над {count} байта",
+            "compareWontFitNameChars": "име над {count} знака",
+            "compareWontFitPathBytes": "път над {count} байта",
+            "compareWontFitPathChars": "път над {count} знака",
             "compareUnavailable": "Отворете втори панел или отдалечена връзка за сравнение.",
             "planUnavailable": "Необходим е резултат от сравнение преди избор на пресет. Първо отворете раздела Сравнение.",
             "totalEntries": "Общо записи",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Огледало отдясно наляво",
             "directionLeftRight": "Отляво към Дясно",
             "directionRightLeft": "Отдясно към Ляво",
+            "directionLocalToRemote": "Локално → Отдалечено",
+            "directionRemoteToLocal": "Отдалечено → Локално",
+            "directionBothWays": "В двете посоки",
+            "modeHeader": "Режим",
+            "preset": {
+                "mirror": {
+                    "name": "Огледало",
+                    "tagline": "Прави местоназначението идентично с източника. Изтрива излишните файлове и презаписва по-новите копия."
+                },
+                "backup": {
+                    "name": "Резервно копие",
+                    "tagline": "Копира липсващите и по-новите файлове. Никога не изтрива и никога не презаписва по-ново копие в местоназначението."
+                },
+                "update": {
+                    "name": "Обновяване",
+                    "tagline": "Копира липсващите и по-новите файлове. Пропуска конфликтите, за да ги разрешите ръчно."
+                },
+                "bisync": {
+                    "name": "Двупосочна синхронизация",
+                    "tagline": "Пренася липсващите и по-новите файлове в двете посоки. Пропуска конфликтите."
+                }
+            },
             "conflictPolicy": "Политика за конфликти",
             "ignoredForMirror": "ИГНОРИРАНО ЗА ОГЛЕДАЛО",
             "versionedBackup": "Версионирано архивиране",

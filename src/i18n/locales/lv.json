@@ -564,6 +564,7 @@
                 "path_not_found": "Ceļš nav atrasts",
                 "permission_denied": "Piekļuve liegta",
                 "quota_exceeded": "Krātuves kvota pārsniegta",
+                "file_too_large": "Fails ir pārāk liels galamērķim",
                 "rate_limit": "Pieprasījumu limits pārsniegts",
                 "timeout": "Savienojuma noildze",
                 "file_locked": "Fails bloķēts",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Nav atrasts",
                 "permission_denied": "Piekļuve liegta",
                 "quota_exceeded": "Kvota pārsniegta",
+                "file_too_large": "Fails ir pārāk liels",
                 "rate_limit": "Ātruma ierobežojums",
                 "timeout": "Timeout",
                 "file_locked": "Fails bloķēts",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binārs",
             "hashOutputLength": "BLAKE3 izvades garums (baiti)",
             "hashOutputLengthHint": "1-1024 · noklusējums 32",
-            "hashDropHint": "Nometiet failu šajā cilnē, lai aprēķinātu tā jaucējkodu"
+            "hashDropHint": "Nometiet failu šajā cilnē, lai aprēķinātu tā jaucējkodu",
+            "hashBlake3Mode": "BLAKE3 režīms",
+            "hashBlake3ModeHash": "Jaucējkods",
+            "hashBlake3ModeKeyed": "Ar atslēgu",
+            "hashBlake3ModeDerive": "Atvasināt atslēgu",
+            "hashBlake3Key": "Atslēga (32 baiti heksadecimāli)",
+            "hashBlake3Context": "Konteksta virkne",
+            "hashBlake3ContextHint": "Fiksēta un unikāla vienai lietotnei. Jaucamais teksts vai fails ir atslēgas materiāls.",
+            "hashRandom": "Nejauša",
+            "argon2PasswordPlaceholder": "Parole vai paroles frāze...",
+            "argon2Salt": "Sāls",
+            "argon2SaltHint": "Vismaz 8 baiti, ieteicams 16",
+            "argon2Memory": "Atmiņa (KiB)",
+            "argon2Iterations": "Iterācijas",
+            "argon2Parallelism": "Paralēlisms",
+            "argon2OutputLength": "Garums (baiti)",
+            "argon2DefaultsHint": "Noklusējumi: RFC 9106 otrā ieteiktā iespēja ierobežotai atmiņai (64 MiB, 3 iterācijas, 4 joslas, 16 baitu sāls). Atmiņa līdz 2 GiB.",
+            "argon2Derive": "Atvasināt",
+            "argon2Phc": "PHC virkne"
         },
         "dialog": {
             "deleteFile": "Dzēst \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Salīdzināt",
             "tabPlan": "Plāns",
             "tabSync": "Sinhronizēt",
+            "compareWontFitTitle": "Pāri {name} ierobežojumiem: {count}",
+            "compareWontFitHint": "Šie faili pārsniedz pakalpojuma dokumentēto izmēra ierobežojumu, vai to nosaukums vai ceļš ir garāks, nekā tas pieļauj. Sinhronizācija ar tiem neizdotos: vispirms pārdēvējiet, pārvietojiet vai sadaliet tos.",
+            "compareWontFitTooLarge": "{size}, ierobežojums {limit}",
+            "compareWontFitNameBytes": "nosaukums virs {count} baitiem",
+            "compareWontFitNameChars": "nosaukums virs {count} rakstzīmēm",
+            "compareWontFitPathBytes": "ceļš virs {count} baitiem",
+            "compareWontFitPathChars": "ceļš virs {count} rakstzīmēm",
             "compareUnavailable": "Atveriet otru paneli vai attālu savienojumu, lai salīdzinātu.",
             "planUnavailable": "Pirms iepriekšējā iestatījuma izvēles ir nepieciešams salīdzināšanas rezultāts. Vispirms atveriet cilni Salīdzināt.",
             "totalEntries": "Kopā ierakstu",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Spogulot no labas uz kreiso",
             "directionLeftRight": "No kreisas uz labo",
             "directionRightLeft": "No labas uz kreiso",
+            "directionLocalToRemote": "Lokāls → Attāls",
+            "directionRemoteToLocal": "Attāls → Lokāls",
+            "directionBothWays": "Abos virzienos",
+            "modeHeader": "Režīms",
+            "preset": {
+                "mirror": {
+                    "name": "Spogulis",
+                    "tagline": "Padara galamērķi identisku avotam. Dzēš liekos failus un pārraksta jaunākas kopijas."
+                },
+                "backup": {
+                    "name": "Dublējums",
+                    "tagline": "Kopē trūkstošos un jaunākos failus. Nekad nedzēš un nekad nepārraksta jaunāku kopiju galamērķī."
+                },
+                "update": {
+                    "name": "Atjaunināt",
+                    "tagline": "Kopē trūkstošos un jaunākos failus. Izlaiž konfliktus, lai jūs tos atrisinātu manuāli."
+                },
+                "bisync": {
+                    "name": "Divvirzienu sinhronizācija",
+                    "tagline": "Pārnes trūkstošos un jaunākos failus abos virzienos. Izlaiž konfliktus."
+                }
+            },
             "conflictPolicy": "Konfliktu politika",
             "ignoredForMirror": "IGNORETS SPOGULOSANAI",
             "versionedBackup": "Versionēts dublējums",

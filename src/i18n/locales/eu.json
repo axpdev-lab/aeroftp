@@ -564,6 +564,7 @@
                 "path_not_found": "Bidea ez da aurkitu",
                 "permission_denied": "Baimena ukatua",
                 "quota_exceeded": "Biltegiratze-kuota gainditua",
+                "file_too_large": "Fitxategia handiegia da helmugarako",
                 "rate_limit": "Eskaera-muga gainditua",
                 "timeout": "Konexioaren denbora-muga gainditua",
                 "file_locked": "Fitxategia blokeatuta",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Ez da aurkitu",
                 "permission_denied": "Baimena ukatua",
                 "quota_exceeded": "Kuota gainditua",
+                "file_too_large": "Fitxategia handiegia da",
                 "rate_limit": "Tasa muga",
                 "timeout": "Timeout",
                 "file_locked": "Fitxategia blokeatuta",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Bitarra",
             "hashOutputLength": "BLAKE3 irteeraren luzera (byte)",
             "hashOutputLengthHint": "1-1024 · lehenetsia 32",
-            "hashDropHint": "Jaregin fitxategi bat fitxa honetan hash-a kalkulatzeko"
+            "hashDropHint": "Jaregin fitxategi bat fitxa honetan hash-a kalkulatzeko",
+            "hashBlake3Mode": "BLAKE3 modua",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Gakoarekin",
+            "hashBlake3ModeDerive": "Gakoa eratorri",
+            "hashBlake3Key": "Gakoa (32 byte hamaseitarrean)",
+            "hashBlake3Context": "Testuinguru-katea",
+            "hashBlake3ContextHint": "Finkoa eta aplikazio bakarrarentzat bakarra. Hash-a kalkulatzen zaion testua edo fitxategia da gakoaren materiala.",
+            "hashRandom": "Ausazkoa",
+            "argon2PasswordPlaceholder": "Pasahitza edo pasaesaldia...",
+            "argon2Salt": "Gatza",
+            "argon2SaltHint": "Gutxienez 8 byte, 16 gomendatzen dira",
+            "argon2Memory": "Memoria (KiB)",
+            "argon2Iterations": "Iterazioak",
+            "argon2Parallelism": "Paralelismoa",
+            "argon2OutputLength": "Luzera (byte)",
+            "argon2DefaultsHint": "Balio lehenetsiak: RFC 9106 arauaren bigarren aukera gomendatua, memoria mugatuetarako (64 MiB, 3 iterazio, 4 errei, 16 byteko gatza). Memoria 2 GiB arte.",
+            "argon2Derive": "Eratorri",
+            "argon2Phc": "PHC katea"
         },
         "dialog": {
             "deleteFile": "\"{name}\" ezabatu?",
@@ -5081,6 +5101,13 @@
             "tabCompare": "Konparatu",
             "tabPlan": "Plana",
             "tabSync": "Sinkronizatu",
+            "compareWontFitTitle": "{name} zerbitzuaren mugetatik gora: {count}",
+            "compareWontFitHint": "Fitxategi hauek hornitzaileak dokumentatutako tamaina-muga gainditzen dute, edo haien izena edo bidea onartzen duena baino luzeagoa da. Sinkronizazioak huts egingo luke haiekin: aldatu izena, mugitu edo zatitu lehenago.",
+            "compareWontFitTooLarge": "{size}, muga {limit}",
+            "compareWontFitNameBytes": "{count} byte baino gehiagoko izena",
+            "compareWontFitNameChars": "{count} karaktere baino gehiagoko izena",
+            "compareWontFitPathBytes": "{count} byte baino gehiagoko bidea",
+            "compareWontFitPathChars": "{count} karaktere baino gehiagoko bidea",
             "compareUnavailable": "Ireki bigarren panela edo urruneko konexioa konparatzeko.",
             "planUnavailable": "Konparaketa emaitza behar da aurrezarpena hautatu aurretik. Ireki lehenik Konparatu fitxa.",
             "totalEntries": "Sarrera guztiak",
@@ -5091,6 +5118,28 @@
             "mirrorRightToLeft": "Ispilatu eskuinetik ezkerrera",
             "directionLeftRight": "Ezkerretik Eskuinera",
             "directionRightLeft": "Eskuinetik Ezkerrera",
+            "directionLocalToRemote": "Lokala → Urrunekoa",
+            "directionRemoteToLocal": "Urrunekoa → Lokala",
+            "directionBothWays": "Bi norabideetan",
+            "modeHeader": "Modua",
+            "preset": {
+                "mirror": {
+                    "name": "Ispilua",
+                    "tagline": "Helburua jatorriaren berdina bihurtzen du. Soberako fitxategiak ezabatzen ditu eta kopia berriagoak gainidazten ditu."
+                },
+                "backup": {
+                    "name": "Babeskopia",
+                    "tagline": "Falta diren fitxategiak eta berriagoak kopiatzen ditu. Ez du inoiz ezabatzen eta ez du inoiz helburuko kopia berriagorik gainidazten."
+                },
+                "update": {
+                    "name": "Eguneratu",
+                    "tagline": "Falta diren fitxategiak eta berriagoak kopiatzen ditu. Gatazkak saltatzen ditu eskuz konpon ditzazun."
+                },
+                "bisync": {
+                    "name": "Bi norabideko sinkronizazioa",
+                    "tagline": "Falta diren fitxategiak eta berriagoak bi norabideetan zabaltzen ditu. Gatazkak saltatzen ditu."
+                }
+            },
             "conflictPolicy": "Gatazka politika",
             "ignoredForMirror": "ISPILUARENTZAT BAZTERTUA",
             "versionedBackup": "Bertsiodun babeskopia",

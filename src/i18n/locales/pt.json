@@ -564,6 +564,7 @@
                 "path_not_found": "Caminho não encontrado",
                 "permission_denied": "Permissão negada",
                 "quota_exceeded": "Cota de armazenamento excedida",
+                "file_too_large": "Arquivo grande demais para o destino",
                 "rate_limit": "Limite de requisições excedido",
                 "timeout": "Tempo limite de conexão esgotado",
                 "file_locked": "Arquivo bloqueado",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Não encontrado",
                 "permission_denied": "Permissão negada",
                 "quota_exceeded": "Cota excedida",
+                "file_too_large": "Arquivo grande demais",
                 "rate_limit": "Limite de taxa",
                 "timeout": "Timeout",
                 "file_locked": "Ficheiro bloqueado",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binário",
             "hashOutputLength": "Comprimento da saída BLAKE3 (bytes)",
             "hashOutputLengthHint": "1-1024 · padrão 32",
-            "hashDropHint": "Largue um ficheiro neste separador para calcular o seu hash"
+            "hashDropHint": "Largue um ficheiro neste separador para calcular o seu hash",
+            "hashBlake3Mode": "Modo BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Com chave",
+            "hashBlake3ModeDerive": "Derivar chave",
+            "hashBlake3Key": "Chave (32 bytes em hexadecimal)",
+            "hashBlake3Context": "String de contexto",
+            "hashBlake3ContextHint": "Fixa e única para uma aplicação. O texto ou arquivo em hash é o material da chave.",
+            "hashRandom": "Aleatória",
+            "argon2PasswordPlaceholder": "Senha ou frase secreta...",
+            "argon2Salt": "Sal",
+            "argon2SaltHint": "Pelo menos 8 bytes, 16 recomendados",
+            "argon2Memory": "Memória (KiB)",
+            "argon2Iterations": "Iterações",
+            "argon2Parallelism": "Paralelismo",
+            "argon2OutputLength": "Comprimento (bytes)",
+            "argon2DefaultsHint": "Padrões: a segunda opção recomendada pela RFC 9106, para memória limitada (64 MiB, 3 iterações, 4 faixas, sal de 16 bytes). Memória até 2 GiB.",
+            "argon2Derive": "Derivar",
+            "argon2Phc": "String PHC"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Comparar",
             "tabPlan": "Plano",
             "tabSync": "Sincronizar",
+            "compareWontFitTitle": "Acima dos limites de {name}: {count}",
+            "compareWontFitHint": "Estes arquivos excedem o limite de tamanho documentado do provedor, ou o nome ou caminho deles é mais longo do que ele aceita. Uma sincronização falharia neles: renomeie, mova ou divida-os antes.",
+            "compareWontFitTooLarge": "{size}, limite {limit}",
+            "compareWontFitNameBytes": "nome acima de {count} bytes",
+            "compareWontFitNameChars": "nome acima de {count} caracteres",
+            "compareWontFitPathBytes": "caminho acima de {count} bytes",
+            "compareWontFitPathChars": "caminho acima de {count} caracteres",
             "compareUnavailable": "Abra um segundo painel ou uma conexão remota para comparar.",
             "planUnavailable": "É necessário um resultado de comparação antes de escolher um preset. Abra primeiro a aba Comparar.",
             "totalEntries": "Total de entradas",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Espelhar da direita para a esquerda",
             "directionLeftRight": "Esquerda para Direita",
             "directionRightLeft": "Direita para Esquerda",
+            "directionLocalToRemote": "Local → Remoto",
+            "directionRemoteToLocal": "Remoto → Local",
+            "directionBothWays": "Nos dois sentidos",
+            "modeHeader": "Modo",
+            "preset": {
+                "mirror": {
+                    "name": "Espelho",
+                    "tagline": "Torna o destino idêntico à origem. Exclui arquivos excedentes e sobrescreve cópias mais recentes."
+                },
+                "backup": {
+                    "name": "Backup",
+                    "tagline": "Copia arquivos ausentes e mais recentes. Nunca exclui e nunca sobrescreve uma cópia mais recente no destino."
+                },
+                "update": {
+                    "name": "Atualizar",
+                    "tagline": "Copia arquivos ausentes e mais recentes. Ignora conflitos para que você os resolva manualmente."
+                },
+                "bisync": {
+                    "name": "Sincronização bidirecional",
+                    "tagline": "Propaga arquivos ausentes e mais recentes nos dois sentidos. Ignora conflitos."
+                }
+            },
             "conflictPolicy": "Política de conflitos",
             "ignoredForMirror": "IGNORADO PARA ESPELHO",
             "versionedBackup": "Backup versionado",

@@ -564,6 +564,7 @@
                 "path_not_found": "Polkua ei löydy",
                 "permission_denied": "Pääsy evätty",
                 "quota_exceeded": "Tallennustilan kiintiö ylitetty",
+                "file_too_large": "Tiedosto on liian suuri kohteelle",
                 "rate_limit": "Pyyntraja ylitetty",
                 "timeout": "Yhteyden aikakatkaisu",
                 "file_locked": "Tiedosto on lukittu",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Ei löytynyt",
                 "permission_denied": "Käyttö estetty",
                 "quota_exceeded": "Kiintiö ylitetty",
+                "file_too_large": "Tiedosto on liian suuri",
                 "rate_limit": "Nopeusrajoitus",
                 "timeout": "Timeout",
                 "file_locked": "Tiedosto lukittu",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binääri",
             "hashOutputLength": "BLAKE3-tulosteen pituus (tavua)",
             "hashOutputLengthHint": "1-1024 · oletus 32",
-            "hashDropHint": "Pudota tiedosto tälle välilehdelle laskeaksesi sen tiivisteen"
+            "hashDropHint": "Pudota tiedosto tälle välilehdelle laskeaksesi sen tiivisteen",
+            "hashBlake3Mode": "BLAKE3-tila",
+            "hashBlake3ModeHash": "Tiiviste",
+            "hashBlake3ModeKeyed": "Avaimella",
+            "hashBlake3ModeDerive": "Johda avain",
+            "hashBlake3Key": "Avain (32 tavua heksana)",
+            "hashBlake3Context": "Kontekstimerkkijono",
+            "hashBlake3ContextHint": "Kiinteä ja yksilöllinen yhdelle sovellukselle. Tiivistettävä teksti tai tiedosto on avainmateriaali.",
+            "hashRandom": "Satunnainen",
+            "argon2PasswordPlaceholder": "Salasana tai tunnuslause...",
+            "argon2Salt": "Suola",
+            "argon2SaltHint": "Vähintään 8 tavua, suositus 16",
+            "argon2Memory": "Muisti (KiB)",
+            "argon2Iterations": "Iteraatiot",
+            "argon2Parallelism": "Rinnakkaisuus",
+            "argon2OutputLength": "Pituus (tavua)",
+            "argon2DefaultsHint": "Oletukset: RFC 9106:n toinen suositeltu vaihtoehto rajalliselle muistille (64 MiB, 3 iteraatiota, 4 kaistaa, 16 tavun suola). Muistia enintään 2 GiB.",
+            "argon2Derive": "Johda",
+            "argon2Phc": "PHC-merkkijono"
         },
         "dialog": {
             "deleteFile": "Poista \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Vertaa",
             "tabPlan": "Suunnitelma",
             "tabSync": "Synkronoi",
+            "compareWontFitTitle": "Palvelun {name} rajojen yli: {count}",
+            "compareWontFitHint": "Nämä tiedostot ovat suurempia kuin palveluntarjoajan dokumentoitu raja, tai niiden nimi tai polku on pidempi kuin se sallii. Synkronointi epäonnistuisi niiden kohdalla: nimeä, siirrä tai jaa ne ensin.",
+            "compareWontFitTooLarge": "{size}, raja {limit}",
+            "compareWontFitNameBytes": "nimi yli {count} tavua",
+            "compareWontFitNameChars": "nimi yli {count} merkkiä",
+            "compareWontFitPathBytes": "polku yli {count} tavua",
+            "compareWontFitPathChars": "polku yli {count} merkkiä",
             "compareUnavailable": "Avaa toinen paneeli tai etäyhteys vertailua varten.",
             "planUnavailable": "Vertailutulos vaaditaan ennen esiasetuksen valintaa. Avaa ensin Vertaa-välilehti.",
             "totalEntries": "Merkintöjä yhteensä",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Peilaa oikealta vasemmalle",
             "directionLeftRight": "Vasemmalta Oikealle",
             "directionRightLeft": "Oikealta Vasemmalle",
+            "directionLocalToRemote": "Paikallinen → Etä",
+            "directionRemoteToLocal": "Etä → Paikallinen",
+            "directionBothWays": "Molempiin suuntiin",
+            "modeHeader": "Tila",
+            "preset": {
+                "mirror": {
+                    "name": "Peilaus",
+                    "tagline": "Tekee kohteesta identtisen lähteen kanssa. Poistaa ylimääräiset tiedostot ja korvaa uudemmat kopiot."
+                },
+                "backup": {
+                    "name": "Varmuuskopio",
+                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ei koskaan poista eikä koskaan korvaa kohteen uudempaa kopiota."
+                },
+                "update": {
+                    "name": "Päivitä",
+                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ohittaa ristiriidat, jotta voit ratkaista ne itse."
+                },
+                "bisync": {
+                    "name": "Kaksisuuntainen synkronointi",
+                    "tagline": "Siirtää puuttuvat ja uudemmat tiedostot molempiin suuntiin. Ohittaa ristiriidat."
+                }
+            },
             "conflictPolicy": "Ristiriitakäytäntö",
             "ignoredForMirror": "OHITETTU PEILAUKSELLE",
             "versionedBackup": "Versioitu varmuuskopio",

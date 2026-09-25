@@ -564,6 +564,7 @@
                 "path_not_found": "ბილიკი ვერ მოიძებნა",
                 "permission_denied": "წვდომა აკრძალულია",
                 "quota_exceeded": "საცავის კვოტა ამოიწურა",
+                "file_too_large": "ფაილი ძალიან დიდია დანიშნულების ადგილისთვის",
                 "rate_limit": "მოთხოვნების ლიმიტი გადაჭარბებულია",
                 "timeout": "კავშირის დრო ამოიწურა",
                 "file_locked": "ფაილი დაბლოკილია",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "ვერ მოიძებნა",
                 "permission_denied": "წვდომა უარყოფილია",
                 "quota_exceeded": "კვოტა გადაჭარბებულია",
+                "file_too_large": "ფაილი ძალიან დიდია",
                 "rate_limit": "სიჩქარის ლიმიტი",
                 "timeout": "Timeout",
                 "file_locked": "ფაილი დაბლოკილია",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "ორობითი",
             "hashOutputLength": "BLAKE3 გამოტანის სიგრძე (ბაიტი)",
             "hashOutputLengthHint": "1-1024 · ნაგულისხმევი 32",
-            "hashDropHint": "ჰეშის გამოსათვლელად ჩააგდეთ ფაილი ამ ჩანართზე"
+            "hashDropHint": "ჰეშის გამოსათვლელად ჩააგდეთ ფაილი ამ ჩანართზე",
+            "hashBlake3Mode": "BLAKE3 რეჟიმი",
+            "hashBlake3ModeHash": "ჰეში",
+            "hashBlake3ModeKeyed": "გასაღებით",
+            "hashBlake3ModeDerive": "გასაღების გამოყვანა",
+            "hashBlake3Key": "გასაღები (32 ბაიტი თექვსმეტობითში)",
+            "hashBlake3Context": "კონტექსტის სტრიქონი",
+            "hashBlake3ContextHint": "ფიქსირებული და უნიკალური ერთი აპლიკაციისთვის. ჰეშირებადი ტექსტი ან ფაილი გასაღების მასალაა.",
+            "hashRandom": "შემთხვევითი",
+            "argon2PasswordPlaceholder": "პაროლი ან საიდუმლო ფრაზა...",
+            "argon2Salt": "მარილი",
+            "argon2SaltHint": "მინიმუმ 8 ბაიტი, რეკომენდებულია 16",
+            "argon2Memory": "მეხსიერება (KiB)",
+            "argon2Iterations": "იტერაციები",
+            "argon2Parallelism": "პარალელიზმი",
+            "argon2OutputLength": "სიგრძე (ბაიტი)",
+            "argon2DefaultsHint": "ნაგულისხმევი: RFC 9106-ის მეორე რეკომენდებული ვარიანტი შეზღუდული მეხსიერებისთვის (64 MiB, 3 იტერაცია, 4 ზოლი, 16-ბაიტიანი მარილი). მეხსიერება 2 GiB-მდე.",
+            "argon2Derive": "გამოყვანა",
+            "argon2Phc": "PHC სტრიქონი"
         },
         "dialog": {
             "deleteFile": "წაიშალოს \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "შედარება",
             "tabPlan": "გეგმა",
             "tabSync": "სინქრონიზაცია",
+            "compareWontFitTitle": "{name}-ის ლიმიტებს ზემოთ: {count}",
+            "compareWontFitHint": "ეს ფაილები აჭარბებს პროვაიდერის დოკუმენტირებულ ზომის ლიმიტს, ან მათი სახელი ან გზა დასაშვებზე გრძელია. სინქრონიზაცია მათზე ჩავარდება: ჯერ გადაარქვით სახელი, გადაიტანეთ ან დაყავით.",
+            "compareWontFitTooLarge": "{size}, ლიმიტი {limit}",
+            "compareWontFitNameBytes": "სახელი {count} ბაიტზე მეტია",
+            "compareWontFitNameChars": "სახელი {count} სიმბოლოზე მეტია",
+            "compareWontFitPathBytes": "გზა {count} ბაიტზე მეტია",
+            "compareWontFitPathChars": "გზა {count} სიმბოლოზე მეტია",
             "compareUnavailable": "შესადარებლად გახსენით მეორე პანელი ან დისტანციური კავშირი.",
             "planUnavailable": "პრესეტის არჩევამდე საჭიროა შედარების შედეგი. ჯერ გახსენით შედარების ჩანართი.",
             "totalEntries": "სულ ჩანაწერი",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "სარკე მარჯვნიდან მარცხნივ",
             "directionLeftRight": "მარცხნიდან მარჯვნივ",
             "directionRightLeft": "მარჯვნიდან მარცხნივ",
+            "directionLocalToRemote": "ლოკალური → დისტანციური",
+            "directionRemoteToLocal": "დისტანციური → ლოკალური",
+            "directionBothWays": "ორივე მიმართულებით",
+            "modeHeader": "რეჟიმი",
+            "preset": {
+                "mirror": {
+                    "name": "სარკე",
+                    "tagline": "დანიშნულებას წყაროს იდენტურს ხდის. შლის ზედმეტ ფაილებს და გადაწერს უფრო ახალ ასლებს."
+                },
+                "backup": {
+                    "name": "სარეზერვო ასლი",
+                    "tagline": "აკოპირებს გამოტოვებულ და უფრო ახალ ფაილებს. არასოდეს შლის და არასოდეს გადაწერს დანიშნულების უფრო ახალ ასლს."
+                },
+                "update": {
+                    "name": "განახლება",
+                    "tagline": "აკოპირებს გამოტოვებულ და უფრო ახალ ფაილებს. გამოტოვებს კონფლიქტებს, რომ ხელით გადაჭრათ."
+                },
+                "bisync": {
+                    "name": "ორმხრივი სინქრონიზაცია",
+                    "tagline": "ავრცელებს გამოტოვებულ და უფრო ახალ ფაილებს ორივე მიმართულებით. გამოტოვებს კონფლიქტებს."
+                }
+            },
             "conflictPolicy": "კონფლიქტის წესი",
             "ignoredForMirror": "უგულებელყოფილია სარკისთვის",
             "versionedBackup": "ვერსიული სარეზერვო ასლი",

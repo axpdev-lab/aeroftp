@@ -564,6 +564,7 @@
                 "path_not_found": "Sökvägen hittades inte",
                 "permission_denied": "Åtkomst nekad",
                 "quota_exceeded": "Lagringskvoten överskriden",
+                "file_too_large": "Filen är för stor för målet",
                 "rate_limit": "Begränsning av förfrågningar överskriden",
                 "timeout": "Anslutningstidsgräns överskriden",
                 "file_locked": "Filen är låst",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Hittades inte",
                 "permission_denied": "Åtkomst nekad",
                 "quota_exceeded": "Kvot överskriden",
+                "file_too_large": "Filen är för stor",
                 "rate_limit": "Hastighetsgräns",
                 "timeout": "Timeout",
                 "file_locked": "Fil låst",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binär",
             "hashOutputLength": "BLAKE3-utdatalängd (byte)",
             "hashOutputLengthHint": "1-1024 · standard 32",
-            "hashDropHint": "Släpp en fil på den här fliken för att hasha den"
+            "hashDropHint": "Släpp en fil på den här fliken för att hasha den",
+            "hashBlake3Mode": "BLAKE3-läge",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Med nyckel",
+            "hashBlake3ModeDerive": "Härled nyckel",
+            "hashBlake3Key": "Nyckel (32 byte som hex)",
+            "hashBlake3Context": "Kontextsträng",
+            "hashBlake3ContextHint": "Fast och unik för ett program. Texten eller filen som hashas är nyckelmaterialet.",
+            "hashRandom": "Slumpmässig",
+            "argon2PasswordPlaceholder": "Lösenord eller lösenfras...",
+            "argon2Salt": "Salt",
+            "argon2SaltHint": "Minst 8 byte, 16 rekommenderas",
+            "argon2Memory": "Minne (KiB)",
+            "argon2Iterations": "Iterationer",
+            "argon2Parallelism": "Parallellism",
+            "argon2OutputLength": "Längd (byte)",
+            "argon2DefaultsHint": "Standardvärden: det andra rekommenderade alternativet i RFC 9106, för begränsat minne (64 MiB, 3 iterationer, 4 banor, 16-byte salt). Minne upp till 2 GiB.",
+            "argon2Derive": "Härled",
+            "argon2Phc": "PHC-sträng"
         },
         "dialog": {
             "deleteFile": "Radera \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Jämför",
             "tabPlan": "Plan",
             "tabSync": "Synkronisera",
+            "compareWontFitTitle": "Över gränserna för {name}: {count}",
+            "compareWontFitHint": "Dessa filer är större än leverantörens dokumenterade gräns, eller så är deras namn eller sökväg längre än tillåtet. En synkronisering skulle misslyckas för dem: byt namn, flytta eller dela upp dem först.",
+            "compareWontFitTooLarge": "{size}, gräns {limit}",
+            "compareWontFitNameBytes": "namn över {count} byte",
+            "compareWontFitNameChars": "namn över {count} tecken",
+            "compareWontFitPathBytes": "sökväg över {count} byte",
+            "compareWontFitPathChars": "sökväg över {count} tecken",
             "compareUnavailable": "Öppna en andra panel eller en fjärranslutning för att jämföra.",
             "planUnavailable": "Ett jämförelseresultat krävs innan du väljer en förinställning. Öppna fliken Jämför först.",
             "totalEntries": "Totalt antal poster",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Spegla höger till vänster",
             "directionLeftRight": "Vänster till höger",
             "directionRightLeft": "Höger till vänster",
+            "directionLocalToRemote": "Lokal → Fjärr",
+            "directionRemoteToLocal": "Fjärr → Lokal",
+            "directionBothWays": "Åt båda hållen",
+            "modeHeader": "Läge",
+            "preset": {
+                "mirror": {
+                    "name": "Spegla",
+                    "tagline": "Gör målet identiskt med källan. Tar bort överflödiga filer och skriver över nyare kopior."
+                },
+                "backup": {
+                    "name": "Säkerhetskopia",
+                    "tagline": "Kopierar saknade och nyare filer. Tar aldrig bort och skriver aldrig över en nyare kopia i målet."
+                },
+                "update": {
+                    "name": "Uppdatera",
+                    "tagline": "Kopierar saknade och nyare filer. Hoppar över konflikter så att du kan lösa dem manuellt."
+                },
+                "bisync": {
+                    "name": "Tvåvägssynkronisering",
+                    "tagline": "För över saknade och nyare filer åt båda hållen. Hoppar över konflikter."
+                }
+            },
             "conflictPolicy": "Konfliktpolicy",
             "ignoredForMirror": "IGNORERAS FÖR SPEGLING",
             "versionedBackup": "Versionerad säkerhetskopia",

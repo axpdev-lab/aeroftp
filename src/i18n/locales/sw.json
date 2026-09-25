@@ -564,6 +564,7 @@
                 "path_not_found": "Njia haijapatikana",
                 "permission_denied": "Ruhusa imekataliwa",
                 "quota_exceeded": "Kiwango cha hifadhi kimezidi",
+                "file_too_large": "Faili ni kubwa mno kwa lengwa",
                 "rate_limit": "Kiwango cha maombi kimezidi",
                 "timeout": "Muda wa muunganisho umekwisha",
                 "file_locked": "Faili imefungwa",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Haijapatikana",
                 "permission_denied": "Ruhusa imekataliwa",
                 "quota_exceeded": "Kiwango kimezidi",
+                "file_too_large": "Faili ni kubwa mno",
                 "rate_limit": "Kikomo cha kasi",
                 "timeout": "Timeout",
                 "file_locked": "Faili imefungwa",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binari",
             "hashOutputLength": "Urefu wa matokeo ya BLAKE3 (baiti)",
             "hashOutputLengthHint": "1-1024 · chaguomsingi 32",
-            "hashDropHint": "Dondosha faili kwenye kichupo hiki ili kukokotoa hash yake"
+            "hashDropHint": "Dondosha faili kwenye kichupo hiki ili kukokotoa hash yake",
+            "hashBlake3Mode": "Hali ya BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Kwa ufunguo",
+            "hashBlake3ModeDerive": "Tokeza ufunguo",
+            "hashBlake3Key": "Ufunguo (baiti 32 kwa hex)",
+            "hashBlake3Context": "Mfuatano wa muktadha",
+            "hashBlake3ContextHint": "Thabiti na wa kipekee kwa programu moja. Maandishi au faili inayotiwa hash ndiyo nyenzo ya ufunguo.",
+            "hashRandom": "Nasibu",
+            "argon2PasswordPlaceholder": "Nenosiri au kaulisiri...",
+            "argon2Salt": "Chumvi",
+            "argon2SaltHint": "Angalau baiti 8, 16 inapendekezwa",
+            "argon2Memory": "Kumbukumbu (KiB)",
+            "argon2Iterations": "Marudio",
+            "argon2Parallelism": "Usambamba",
+            "argon2OutputLength": "Urefu (baiti)",
+            "argon2DefaultsHint": "Chaguo-msingi: chaguo la pili linalopendekezwa na RFC 9106 kwa kumbukumbu ndogo (64 MiB, marudio 3, njia 4, chumvi ya baiti 16). Kumbukumbu hadi 2 GiB.",
+            "argon2Derive": "Tokeza",
+            "argon2Phc": "Mfuatano wa PHC"
         },
         "dialog": {
             "deleteFile": "Futa \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Linganisha",
             "tabPlan": "Mpango",
             "tabSync": "Sawazisha",
+            "compareWontFitTitle": "Juu ya vikomo vya {name}: {count}",
+            "compareWontFitHint": "Faili hizi ni kubwa kuliko kikomo cha ukubwa kilichoandikwa na mtoa huduma, au jina au njia yake ni ndefu kuliko inavyokubali. Usawazishaji ungeshindwa kwa faili hizi: badilisha majina, hamisha au zigawe kwanza.",
+            "compareWontFitTooLarge": "{size}, kikomo {limit}",
+            "compareWontFitNameBytes": "jina linazidi baiti {count}",
+            "compareWontFitNameChars": "jina linazidi herufi {count}",
+            "compareWontFitPathBytes": "njia inazidi baiti {count}",
+            "compareWontFitPathChars": "njia inazidi herufi {count}",
             "compareUnavailable": "Fungua paneli ya pili au muunganisho wa mbali ili kulinganisha.",
             "planUnavailable": "Matokeo ya ulinganisho yanahitajika kabla ya kuchagua mpangilio. Fungua kichupo cha Linganisha kwanza.",
             "totalEntries": "Jumla ya maingizo",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Mirror kulia kwenda kushoto",
             "directionLeftRight": "Kushoto kwenda Kulia",
             "directionRightLeft": "Kulia kwenda Kushoto",
+            "directionLocalToRemote": "Ndani → Mbali",
+            "directionRemoteToLocal": "Mbali → Ndani",
+            "directionBothWays": "Pande zote mbili",
+            "modeHeader": "Hali",
+            "preset": {
+                "mirror": {
+                    "name": "Kioo",
+                    "tagline": "Hufanya lengwa lifanane kabisa na chanzo. Hufuta faili za ziada na kuandika juu ya nakala mpya zaidi."
+                },
+                "backup": {
+                    "name": "Hifadhi rudufu",
+                    "tagline": "Hunakili faili zinazokosekana na mpya zaidi. Kamwe haifuti na kamwe haiandiki juu ya nakala mpya zaidi kwenye lengwa."
+                },
+                "update": {
+                    "name": "Sasisha",
+                    "tagline": "Hunakili faili zinazokosekana na mpya zaidi. Huruka migongano ili uitatue mwenyewe."
+                },
+                "bisync": {
+                    "name": "Usawazishaji wa pande mbili",
+                    "tagline": "Husambaza faili zinazokosekana na mpya zaidi pande zote mbili. Huruka migongano."
+                }
+            },
             "conflictPolicy": "Sera ya migogoro",
             "ignoredForMirror": "IMEPUUZWA KWA MIRROR",
             "versionedBackup": "Hifadhi rudufu yenye matoleo",

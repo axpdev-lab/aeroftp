@@ -2491,7 +2491,7 @@ mod tests {
         assert!(
             text.contains("\"encrypted_payload\":\""),
             "encrypted_payload was not serialised as a base64 string: {}",
-            &text[..text.len().min(200)]
+            &text[..text.floor_char_boundary(200)]
         );
         let parsed: KeystoreExportFile = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(parsed.encrypted_payload.0, original);

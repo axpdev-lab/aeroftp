@@ -168,6 +168,7 @@ pub fn is_webdav_preset(provider_id: Option<&str>) -> bool {
                 | "seafile"
                 | "cloudme"
                 | "drivehq"
+                | "mailru-cloud"
                 | "jianguoyun"
                 | "filelu-webdav"
                 | "felicloud-webdav"
@@ -194,6 +195,7 @@ pub fn is_s3_preset(provider_id: Option<&str>) -> bool {
                 | "yandex-storage"
                 | "filelu-s3"
                 | "filebase"
+                | "ibm-cos"
         )
     )
 }
@@ -508,6 +510,33 @@ mod tests {
     }
 
     #[test]
+    fn is_webdav_preset_recognizes_presets_and_rejects_raw() {
+        for preset in [
+            "koofr-webdav",
+            "opendrive-webdav",
+            "pcloud-webdav",
+            "yandex-storage-webdav",
+            "infinicloud",
+            "nextcloud",
+            "seafile",
+            "cloudme",
+            "drivehq",
+            "mailru-cloud",
+            "jianguoyun",
+            "filelu-webdav",
+            "felicloud-webdav",
+        ] {
+            assert!(
+                is_webdav_preset(Some(preset)),
+                "{preset} must be a WebDAV preset"
+            );
+        }
+        assert!(!is_webdav_preset(Some("custom-webdav")));
+        assert!(!is_webdav_preset(Some("generic")));
+        assert!(!is_webdav_preset(None));
+    }
+
+    #[test]
     fn is_s3_preset_recognizes_presets_and_rejects_raw() {
         for preset in [
             "backblaze",
@@ -523,6 +552,7 @@ mod tests {
             "yandex-storage",
             "filelu-s3",
             "filebase",
+            "ibm-cos",
         ] {
             assert!(is_s3_preset(Some(preset)), "{preset} must be an S3 preset");
         }

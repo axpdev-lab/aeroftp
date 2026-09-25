@@ -973,6 +973,7 @@ export type SyncErrorKind =
   | "path_not_found"
   | "permission_denied"
   | "quota_exceeded"
+  | "file_too_large"
   | "rate_limit"
   | "timeout"
   | "file_locked"
@@ -1119,6 +1120,12 @@ export interface TransferOptimizationHints {
   delta_sync_eligible: boolean;
   delta_sync_active: boolean;
   delta_sync_note: string | null;
+  // #347: documented per-provider limits; null when the provider documents none.
+  max_file_size?: number | null;
+  max_name_bytes?: number | null;
+  max_name_chars?: number | null;
+  max_path_bytes?: number | null;
+  max_path_chars?: number | null;
 }
 
 // Transfer capability descriptor (mirrors Rust transfer_dag::TransferCapabilities)

@@ -564,6 +564,7 @@
                 "path_not_found": "Laluan tidak dijumpai",
                 "permission_denied": "Kebenaran ditolak",
                 "quota_exceeded": "Kuota storan melebihi had",
+                "file_too_large": "Fail terlalu besar untuk destinasi",
                 "rate_limit": "Had kadar melebihi",
                 "timeout": "Sambungan tamat masa",
                 "file_locked": "Fail dikunci",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Tidak ditemui",
                 "permission_denied": "Kebenaran ditolak",
                 "quota_exceeded": "Kuota melebihi",
+                "file_too_large": "Fail terlalu besar",
                 "rate_limit": "Had kadar",
                 "timeout": "Timeout",
                 "file_locked": "Fail dikunci",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binari",
             "hashOutputLength": "Panjang output BLAKE3 (bait)",
             "hashOutputLengthHint": "1-1024 · lalai 32",
-            "hashDropHint": "Lepaskan fail pada tab ini untuk mengira hashnya"
+            "hashDropHint": "Lepaskan fail pada tab ini untuk mengira hashnya",
+            "hashBlake3Mode": "Mod BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Berkunci",
+            "hashBlake3ModeDerive": "Terbitkan kunci",
+            "hashBlake3Key": "Kunci (32 bait dalam heks)",
+            "hashBlake3Context": "Rentetan konteks",
+            "hashBlake3ContextHint": "Tetap dan unik untuk satu aplikasi. Teks atau fail yang di-hash ialah bahan kunci.",
+            "hashRandom": "Rawak",
+            "argon2PasswordPlaceholder": "Kata laluan atau frasa laluan...",
+            "argon2Salt": "Garam",
+            "argon2SaltHint": "Sekurang-kurangnya 8 bait, 16 disyorkan",
+            "argon2Memory": "Memori (KiB)",
+            "argon2Iterations": "Lelaran",
+            "argon2Parallelism": "Keselarian",
+            "argon2OutputLength": "Panjang (bait)",
+            "argon2DefaultsHint": "Lalai: pilihan disyorkan kedua RFC 9106 untuk memori terhad (64 MiB, 3 lelaran, 4 lorong, garam 16 bait). Memori sehingga 2 GiB.",
+            "argon2Derive": "Terbitkan",
+            "argon2Phc": "Rentetan PHC"
         },
         "dialog": {
             "deleteFile": "Padam \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Bandingkan",
             "tabPlan": "Rancang",
             "tabSync": "Segerak",
+            "compareWontFitTitle": "Melebihi had {name}: {count}",
+            "compareWontFitHint": "Fail ini melebihi had saiz yang didokumenkan pembekal, atau nama atau laluannya lebih panjang daripada yang diterima. Penyegerakan akan gagal untuk fail ini: namakan semula, alihkan atau pecahkan dahulu.",
+            "compareWontFitTooLarge": "{size}, had {limit}",
+            "compareWontFitNameBytes": "nama melebihi {count} bait",
+            "compareWontFitNameChars": "nama melebihi {count} aksara",
+            "compareWontFitPathBytes": "laluan melebihi {count} bait",
+            "compareWontFitPathChars": "laluan melebihi {count} aksara",
             "compareUnavailable": "Buka panel kedua atau sambungan jauh untuk membandingkan.",
             "planUnavailable": "Keputusan perbandingan diperlukan sebelum memilih pratetap. Buka tab Bandingkan dahulu.",
             "totalEntries": "Jumlah entri",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Cermin kanan ke kiri",
             "directionLeftRight": "Kiri ke Kanan",
             "directionRightLeft": "Kanan ke Kiri",
+            "directionLocalToRemote": "Tempatan → Jauh",
+            "directionRemoteToLocal": "Jauh → Tempatan",
+            "directionBothWays": "Dua hala",
+            "modeHeader": "Mod",
+            "preset": {
+                "mirror": {
+                    "name": "Cermin",
+                    "tagline": "Menjadikan destinasi sama dengan sumber. Memadam fail berlebihan dan menulis ganti salinan yang lebih baharu."
+                },
+                "backup": {
+                    "name": "Sandaran",
+                    "tagline": "Menyalin fail yang tiada dan lebih baharu. Tidak pernah memadam dan tidak pernah menulis ganti salinan lebih baharu di destinasi."
+                },
+                "update": {
+                    "name": "Kemas kini",
+                    "tagline": "Menyalin fail yang tiada dan lebih baharu. Melangkau konflik supaya anda boleh menyelesaikannya secara manual."
+                },
+                "bisync": {
+                    "name": "Penyegerakan dua hala",
+                    "tagline": "Menyebarkan fail yang tiada dan lebih baharu ke dua hala. Melangkau konflik."
+                }
+            },
             "conflictPolicy": "Dasar konflik",
             "ignoredForMirror": "DIABAIKAN UNTUK CERMIN",
             "versionedBackup": "Sandaran berversi",

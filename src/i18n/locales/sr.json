@@ -564,6 +564,7 @@
                 "path_not_found": "Путања није пронађена",
                 "permission_denied": "Дозвола одбијена",
                 "quota_exceeded": "Квота складишта премашена",
+                "file_too_large": "Датотека је превелика за одредиште",
                 "rate_limit": "Ограничење захтева премашено",
                 "timeout": "Истек времена повезивања",
                 "file_locked": "Датотека закључана",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Није пронађено",
                 "permission_denied": "Приступ одбијен",
                 "quota_exceeded": "Квота премашена",
+                "file_too_large": "Датотека је превелика",
                 "rate_limit": "Ограничење брзине",
                 "timeout": "Прекорачење времена",
                 "file_locked": "Фајл закључан",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Бинарно",
             "hashOutputLength": "Дужина BLAKE3 излаза (бајтови)",
             "hashOutputLengthHint": "1-1024 · подразумевано 32",
-            "hashDropHint": "Пустите датотеку на ову картицу да израчунате хеш"
+            "hashDropHint": "Пустите датотеку на ову картицу да израчунате хеш",
+            "hashBlake3Mode": "BLAKE3 режим",
+            "hashBlake3ModeHash": "Хеш",
+            "hashBlake3ModeKeyed": "Са кључем",
+            "hashBlake3ModeDerive": "Изведи кључ",
+            "hashBlake3Key": "Кључ (32 бајта хексадецимално)",
+            "hashBlake3Context": "Низ контекста",
+            "hashBlake3ContextHint": "Фиксан и јединствен за једну апликацију. Текст или датотека која се хешира је материјал кључа.",
+            "hashRandom": "Насумично",
+            "argon2PasswordPlaceholder": "Лозинка или фраза лозинке...",
+            "argon2Salt": "Со",
+            "argon2SaltHint": "Најмање 8 бајтова, препоручено 16",
+            "argon2Memory": "Меморија (KiB)",
+            "argon2Iterations": "Итерације",
+            "argon2Parallelism": "Паралелизам",
+            "argon2OutputLength": "Дужина (бајтови)",
+            "argon2DefaultsHint": "Подразумевано: друга препоручена опција RFC 9106 за ограничену меморију (64 MiB, 3 итерације, 4 траке, со од 16 бајтова). Меморија до 2 GiB.",
+            "argon2Derive": "Изведи",
+            "argon2Phc": "PHC низ"
         },
         "dialog": {
             "deleteFile": "Обрисати \"{name}\"?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Упореди",
             "tabPlan": "План",
             "tabSync": "Синхронизуј",
+            "compareWontFitTitle": "Изнад ограничења {name}: {count}",
+            "compareWontFitHint": "Ове датотеке премашују документовано ограничење величине провајдера или је њихов назив или путања дужа него што прихвата. Синхронизација би за њих пропала: прво их преименујте, преместите или поделите.",
+            "compareWontFitTooLarge": "{size}, ограничење {limit}",
+            "compareWontFitNameBytes": "назив преко {count} бајтова",
+            "compareWontFitNameChars": "назив преко {count} знакова",
+            "compareWontFitPathBytes": "путања преко {count} бајтова",
+            "compareWontFitPathChars": "путања преко {count} знакова",
             "compareUnavailable": "Отворите други панел или удаљену везу за поређење.",
             "planUnavailable": "Пре избора пресета потребан је резултат поређења. Прво отворите картицу Упореди.",
             "totalEntries": "Укупно ставки",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Пресликај с десна на лево",
             "directionLeftRight": "С лева на десно",
             "directionRightLeft": "С десна на лево",
+            "directionLocalToRemote": "Локално → Удаљено",
+            "directionRemoteToLocal": "Удаљено → Локално",
+            "directionBothWays": "У оба смера",
+            "modeHeader": "Режим",
+            "preset": {
+                "mirror": {
+                    "name": "Огледало",
+                    "tagline": "Чини одредиште идентичним извору. Брише вишак датотека и преписује новије копије."
+                },
+                "backup": {
+                    "name": "Резервна копија",
+                    "tagline": "Копира датотеке које недостају и новије. Никада не брише и никада не преписује новију копију на одредишту."
+                },
+                "update": {
+                    "name": "Ажурирање",
+                    "tagline": "Копира датотеке које недостају и новије. Прескаче сукобе да бисте их решили ручно."
+                },
+                "bisync": {
+                    "name": "Двосмерна синхронизација",
+                    "tagline": "Преноси датотеке које недостају и новије у оба смера. Прескаче сукобе."
+                }
+            },
             "conflictPolicy": "Политика сукоба",
             "ignoredForMirror": "ИГНОРИСАНО ЗА ПРЕСЛИКАВАЊЕ",
             "versionedBackup": "Резервна копија са верзијама",

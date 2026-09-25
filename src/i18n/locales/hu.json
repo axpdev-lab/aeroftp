@@ -564,6 +564,7 @@
                 "path_not_found": "Útvonal nem található",
                 "permission_denied": "Hozzáférés megtagadva",
                 "quota_exceeded": "Tárhelykvóta túllépve",
+                "file_too_large": "A fájl túl nagy a célhelyhez",
                 "rate_limit": "Sebességkorlát túllépve",
                 "timeout": "Kapcsolat időtúllépés",
                 "file_locked": "Fájl zárolva",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Nem található",
                 "permission_denied": "Hozzáférés megtagadva",
                 "quota_exceeded": "Kvóta túllépve",
+                "file_too_large": "A fájl túl nagy",
                 "rate_limit": "Sebességkorlát",
                 "timeout": "Timeout",
                 "file_locked": "Fájl zárolva",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Bináris",
             "hashOutputLength": "BLAKE3 kimenet hossza (bájt)",
             "hashOutputLengthHint": "1-1024 · alapértelmezett 32",
-            "hashDropHint": "Húzzon ide egy fájlt a hash kiszámításához"
+            "hashDropHint": "Húzzon ide egy fájlt a hash kiszámításához",
+            "hashBlake3Mode": "BLAKE3 mód",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Kulccsal",
+            "hashBlake3ModeDerive": "Kulcs származtatása",
+            "hashBlake3Key": "Kulcs (32 bájt hexadecimálisan)",
+            "hashBlake3Context": "Kontextus-karakterlánc",
+            "hashBlake3ContextHint": "Rögzített és egyedi egy alkalmazáshoz. A hashelt szöveg vagy fájl a kulcsanyag.",
+            "hashRandom": "Véletlen",
+            "argon2PasswordPlaceholder": "Jelszó vagy jelmondat...",
+            "argon2Salt": "Só",
+            "argon2SaltHint": "Legalább 8 bájt, 16 ajánlott",
+            "argon2Memory": "Memória (KiB)",
+            "argon2Iterations": "Iterációk",
+            "argon2Parallelism": "Párhuzamosság",
+            "argon2OutputLength": "Hossz (bájt)",
+            "argon2DefaultsHint": "Alapértékek: az RFC 9106 második ajánlott beállítása korlátozott memóriához (64 MiB, 3 iteráció, 4 sáv, 16 bájtos só). Memória legfeljebb 2 GiB.",
+            "argon2Derive": "Származtatás",
+            "argon2Phc": "PHC karakterlánc"
         },
         "dialog": {
             "deleteFile": "Törli a \"{name}\" fájlt?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Összehasonlítás",
             "tabPlan": "Terv",
             "tabSync": "Szinkronizálás",
+            "compareWontFitTitle": "{name} korlátain felül: {count}",
+            "compareWontFitHint": "Ezek a fájlok nagyobbak a szolgáltató dokumentált méretkorlátjánál, vagy a nevük vagy útvonaluk hosszabb, mint amit elfogad. A szinkronizálás ezeknél hibára futna: előbb nevezze át, helyezze át vagy ossza fel őket.",
+            "compareWontFitTooLarge": "{size}, korlát {limit}",
+            "compareWontFitNameBytes": "{count} bájtnál hosszabb név",
+            "compareWontFitNameChars": "{count} karakternél hosszabb név",
+            "compareWontFitPathBytes": "{count} bájtnál hosszabb útvonal",
+            "compareWontFitPathChars": "{count} karakternél hosszabb útvonal",
             "compareUnavailable": "Nyiss meg egy második panelt vagy egy távoli kapcsolatot az összehasonlításhoz.",
             "planUnavailable": "Egy összehasonlítási eredményre van szükség a preset kiválasztása előtt. Először nyisd meg az Összehasonlítás fület.",
             "totalEntries": "Összes bejegyzés",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Tükrözés jobbról balra",
             "directionLeftRight": "Balról jobbra",
             "directionRightLeft": "Jobbról balra",
+            "directionLocalToRemote": "Helyi → Távoli",
+            "directionRemoteToLocal": "Távoli → Helyi",
+            "directionBothWays": "Mindkét irányba",
+            "modeHeader": "Mód",
+            "preset": {
+                "mirror": {
+                    "name": "Tükrözés",
+                    "tagline": "A célt a forrással azonossá teszi. Törli a felesleges fájlokat, és felülírja az újabb másolatokat."
+                },
+                "backup": {
+                    "name": "Biztonsági mentés",
+                    "tagline": "Átmásolja a hiányzó és újabb fájlokat. Soha nem töröl, és soha nem ír felül újabb másolatot a célhelyen."
+                },
+                "update": {
+                    "name": "Frissítés",
+                    "tagline": "Átmásolja a hiányzó és újabb fájlokat. Kihagyja az ütközéseket, hogy kézzel oldhassa meg őket."
+                },
+                "bisync": {
+                    "name": "Kétirányú szinkronizálás",
+                    "tagline": "A hiányzó és újabb fájlokat mindkét irányba átviszi. Kihagyja az ütközéseket."
+                }
+            },
             "conflictPolicy": "Utkozesi szabaly",
             "ignoredForMirror": "TUKROZESBOL KIHAGYVA",
             "versionedBackup": "Verziózott biztonsági mentés",

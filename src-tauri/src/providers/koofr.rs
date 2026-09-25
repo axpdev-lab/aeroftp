@@ -44,12 +44,12 @@ fn mask_credential(value: &str) -> String {
     if let Some(at) = value.find('@') {
         let local = &value[..at];
         let domain = &value[at..];
-        let visible = local.len().min(3);
+        let visible = local.floor_char_boundary(3);
         format!("{}***{}", &local[..visible], domain)
     } else if value.len() <= 3 {
         "***".to_string()
     } else {
-        format!("{}***", &value[..3])
+        format!("{}***", &value[..value.floor_char_boundary(3)])
     }
 }
 
@@ -592,14 +592,14 @@ impl StorageProvider for KoofrProvider {
 
         koofr_log(&format!(
             "User response: {}",
-            &user_body[..user_body.len().min(300)]
+            &user_body[..user_body.floor_char_boundary(300)]
         ));
 
         let user: KoofrUser = serde_json::from_str(&user_body).map_err(|e| {
             ProviderError::ConnectionFailed(format!(
                 "Failed to parse user: {}. Body: {}",
                 e,
-                &user_body[..user_body.len().min(200)]
+                &user_body[..user_body.floor_char_boundary(200)]
             ))
         })?;
 
@@ -620,7 +620,7 @@ impl StorageProvider for KoofrProvider {
         koofr_log(&format!(
             "Mounts response ({} bytes): {}",
             body.len(),
-            &body[..body.len().min(500)]
+            &body[..body.floor_char_boundary(500)]
         ));
 
         // Try parsing as bare array first, then as wrapped { "mounts": [...] }
@@ -630,7 +630,7 @@ impl StorageProvider for KoofrProvider {
                 ProviderError::ConnectionFailed(format!(
                     "Failed to parse mounts: {}. Body preview: {}",
                     e,
-                    &body[..body.len().min(200)]
+                    &body[..body.floor_char_boundary(200)]
                 ))
             })?;
 
@@ -655,7 +655,7 @@ impl StorageProvider for KoofrProvider {
                 let detail_body = resp.text().await.unwrap_or_default();
                 koofr_log(&format!(
                     "Mount detail response: {}",
-                    &detail_body[..detail_body.len().min(500)]
+                    &detail_body[..detail_body.floor_char_boundary(500)]
                 ));
 
                 // Try bare KoofrMount first, then raw Value extraction
@@ -1383,7 +1383,7 @@ impl StorageProvider for KoofrProvider {
         })?;
         koofr_log(&format!(
             "storage_info mount response: {}",
-            &body[..body.len().min(500)]
+            &body[..body.floor_char_boundary(500)]
         ));
 
         // Try typed parse first, then raw Value extraction
@@ -1396,7 +1396,7 @@ impl StorageProvider for KoofrProvider {
         } else {
             return Err(ProviderError::ServerError(format!(
                 "Failed to parse mount info. Body preview: {}",
-                &body[..body.len().min(200)]
+                &body[..body.floor_char_boundary(200)]
             )));
         }
 
@@ -1963,6 +1963,22 @@ pub async fn koofr_empty_trash(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A byte cut inside a multibyte character panics: masking must cut on a
+    /// character boundary (an email or a name is not always ASCII).
+    #[test]
+    fn mask_credential_never_splits_a_character() {
+        for value in [
+            "aaé@example.com",
+            "ééé@x.it",
+            "abécdef",
+            "日本語テスト",
+            "a😀b@x",
+        ] {
+            let masked = mask_credential(value);
+            assert!(masked.contains("***"), "{value} -> {masked}");
+        }
+    }
 
     #[test]
     fn multi_thread_cutoff_has_no_provider_floor() {

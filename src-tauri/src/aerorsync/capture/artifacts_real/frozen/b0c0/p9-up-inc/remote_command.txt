@@ -1,0 +1,1 @@
+rsync --server -logDtpre.iLsfxCIvu . /workspace/b0c0/up/p9-up-inc/

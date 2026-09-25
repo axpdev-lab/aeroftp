@@ -564,6 +564,7 @@
                 "path_not_found": "Yol bulunamadı",
                 "permission_denied": "Erişim reddedildi",
                 "quota_exceeded": "Depolama kotası aşıldı",
+                "file_too_large": "Dosya hedef için çok büyük",
                 "rate_limit": "İstek sınırı aşıldı",
                 "timeout": "Bağlantı zaman aşımı",
                 "file_locked": "Dosya kilitli",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Bulunamadı",
                 "permission_denied": "İzin reddedildi",
                 "quota_exceeded": "Kota aşıldı",
+                "file_too_large": "Dosya çok büyük",
                 "rate_limit": "Hız limiti",
                 "timeout": "Timeout",
                 "file_locked": "Dosya kilitli",
@@ -3005,7 +3007,7 @@
                 "unsupportedVersion": "Desteklenmeyen kasa sürümü",
                 "corrupted": "Kasa dosyası bozuk",
                 "fileNotFound": "Dosya bulunamadı",
-                "directoryTooLarge": "Dizin boyut sinirini asiyor",
+                "directoryTooLarge": "Dizin boyut sınırını aşıyor",
                 "invalidPath": "Geçersiz dosya yolu"
             },
             "extract": "Çıkar",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "İkili",
             "hashOutputLength": "BLAKE3 çıktı uzunluğu (bayt)",
             "hashOutputLengthHint": "1-1024 · varsayılan 32",
-            "hashDropHint": "Hash'ini hesaplamak için bu sekmeye bir dosya bırakın"
+            "hashDropHint": "Hash'ini hesaplamak için bu sekmeye bir dosya bırakın",
+            "hashBlake3Mode": "BLAKE3 modu",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Anahtarlı",
+            "hashBlake3ModeDerive": "Anahtar türet",
+            "hashBlake3Key": "Anahtar (onaltılık 32 bayt)",
+            "hashBlake3Context": "Bağlam dizesi",
+            "hashBlake3ContextHint": "Sabit ve tek bir uygulamaya özgü. Hash'lenen metin veya dosya anahtar malzemesidir.",
+            "hashRandom": "Rastgele",
+            "argon2PasswordPlaceholder": "Parola veya parola ifadesi...",
+            "argon2Salt": "Tuz",
+            "argon2SaltHint": "En az 8 bayt, 16 önerilir",
+            "argon2Memory": "Bellek (KiB)",
+            "argon2Iterations": "Yinelemeler",
+            "argon2Parallelism": "Paralellik",
+            "argon2OutputLength": "Uzunluk (bayt)",
+            "argon2DefaultsHint": "Varsayılanlar: sınırlı bellek için RFC 9106'nın ikinci önerilen seçeneği (64 MiB, 3 yineleme, 4 şerit, 16 baytlık tuz). Bellek en fazla 2 GiB.",
+            "argon2Derive": "Türet",
+            "argon2Phc": "PHC dizesi"
         },
         "dialog": {
             "deleteFile": "\"{name}\" silinsin mi?",
@@ -5062,6 +5082,13 @@
             "tabCompare": "Karşılaştır",
             "tabPlan": "Plan",
             "tabSync": "Senkronize Et",
+            "compareWontFitTitle": "{name} sınırlarının üstünde: {count}",
+            "compareWontFitHint": "Bu dosyalar sağlayıcının belgelenmiş boyut sınırını aşıyor ya da adları veya yolları kabul edilenden uzun. Eşitleme bunlarda başarısız olur: önce yeniden adlandırın, taşıyın veya bölün.",
+            "compareWontFitTooLarge": "{size}, sınır {limit}",
+            "compareWontFitNameBytes": "ad {count} baytı aşıyor",
+            "compareWontFitNameChars": "ad {count} karakteri aşıyor",
+            "compareWontFitPathBytes": "yol {count} baytı aşıyor",
+            "compareWontFitPathChars": "yol {count} karakteri aşıyor",
             "compareUnavailable": "Karşılaştırmak için ikinci bir panel veya uzak bağlantı açın.",
             "planUnavailable": "Bir önayar seçmeden önce karşılaştırma sonucu gerekir. Önce Karşılaştır sekmesini açın.",
             "totalEntries": "Toplam giriş",
@@ -5072,6 +5099,28 @@
             "mirrorRightToLeft": "Sağdan sola yansıt",
             "directionLeftRight": "Soldan Sağa",
             "directionRightLeft": "Sağdan Sola",
+            "directionLocalToRemote": "Yerel → Uzak",
+            "directionRemoteToLocal": "Uzak → Yerel",
+            "directionBothWays": "İki yönlü",
+            "modeHeader": "Mod",
+            "preset": {
+                "mirror": {
+                    "name": "Ayna",
+                    "tagline": "Hedefi kaynakla aynı yapar. Fazla dosyaları siler ve daha yeni kopyaların üzerine yazar."
+                },
+                "backup": {
+                    "name": "Yedekleme",
+                    "tagline": "Eksik ve daha yeni dosyaları kopyalar. Asla silmez ve hedefteki daha yeni bir kopyanın asla üzerine yazmaz."
+                },
+                "update": {
+                    "name": "Güncelle",
+                    "tagline": "Eksik ve daha yeni dosyaları kopyalar. Çakışmaları elle çözebilmeniz için atlar."
+                },
+                "bisync": {
+                    "name": "İki yönlü eşitleme",
+                    "tagline": "Eksik ve daha yeni dosyaları iki yönde aktarır. Çakışmaları atlar."
+                }
+            },
             "conflictPolicy": "Çakışma politikası",
             "ignoredForMirror": "YANSITMA İÇİN YOK SAYILDI",
             "versionedBackup": "Sürümlü yedekleme",

@@ -26057,7 +26057,9 @@ async fn create_and_connect_for_agent(
         extra.insert("provider_id".to_string(), pid.to_string());
     }
     if provider_type == ftp_client_gui_lib::providers::ProviderType::S3 {
-        if let Some(resolved_endpoint) = apply_s3_profile_defaults(&mut extra, provider_id_opt) {
+        if let Some(resolved_endpoint) =
+            apply_s3_profile_defaults(&mut extra, provider_id_opt, &host)
+        {
             if host.trim().is_empty() {
                 host = resolved_endpoint;
             }
@@ -27524,7 +27526,7 @@ fn profile_value_to_provider_config(
 
     if provider_type == ProviderType::S3 {
         let provider_id = profile.get("providerId").and_then(|v| v.as_str());
-        if let Some(resolved_endpoint) = apply_s3_profile_defaults(&mut extra, provider_id) {
+        if let Some(resolved_endpoint) = apply_s3_profile_defaults(&mut extra, provider_id, &host) {
             if host.trim().is_empty() {
                 host = resolved_endpoint;
             }
@@ -42345,7 +42347,7 @@ async fn cmd_speed_compare(
                 for e in report.results.iter() {
                     if let Some(r) = e.result.as_ref() {
                         let url_disp = if e.url.len() > 48 {
-                            format!("{}...", &e.url[..45])
+                            format!("{}...", &e.url[..e.url.floor_char_boundary(45)])
                         } else {
                             e.url.clone()
                         };
@@ -71742,7 +71744,7 @@ mod tests {
     fn test_apply_s3_profile_defaults_resolves_google_preset() {
         let mut extra = HashMap::new();
 
-        let endpoint = apply_s3_profile_defaults(&mut extra, Some("google-cloud-storage"));
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("google-cloud-storage"), "");
 
         assert_eq!(endpoint.as_deref(), Some("https://storage.googleapis.com"));
         assert_eq!(
@@ -71770,7 +71772,7 @@ mod tests {
         let mut extra = HashMap::new();
         extra.insert("region".to_string(), "eu-central-1".to_string());
 
-        let endpoint = apply_s3_profile_defaults(&mut extra, Some("wasabi"));
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("wasabi"), "");
 
         assert_eq!(
             endpoint.as_deref(),
@@ -71791,7 +71793,7 @@ mod tests {
             "https://gateway.storjshare.io".to_string(),
         );
 
-        let endpoint = apply_s3_profile_defaults(&mut extra, Some("storj"));
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("storj"), "");
 
         assert_eq!(endpoint.as_deref(), Some("https://gateway.storjshare.io"));
         assert_eq!(

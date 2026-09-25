@@ -2110,6 +2110,7 @@
       "stage_hash_drop",
       "discard_hash_drop",
       "compare_hashes",
+      "argon2id_hash",
       "crypto_encrypt_text",
       "crypto_decrypt_text",
       "generate_password",

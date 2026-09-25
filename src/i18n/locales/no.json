@@ -564,6 +564,7 @@
                 "path_not_found": "Bane ikke funnet",
                 "permission_denied": "Tilgang nektet",
                 "quota_exceeded": "Lagringskvote overskredet",
+                "file_too_large": "Filen er for stor for målet",
                 "rate_limit": "Hastighetsgrense overskredet",
                 "timeout": "Tilkobling tidsavbrudd",
                 "file_locked": "Fil låst",
@@ -2145,6 +2146,7 @@
                 "path_not_found": "Ikke funnet",
                 "permission_denied": "Tilgang nektet",
                 "quota_exceeded": "Kvote overskredet",
+                "file_too_large": "Filen er for stor",
                 "rate_limit": "Hastighetsgrense",
                 "timeout": "Timeout",
                 "file_locked": "Fil låst",
@@ -4084,7 +4086,25 @@
             "hashEncodingBinary": "Binær",
             "hashOutputLength": "BLAKE3-utdatalengde (byte)",
             "hashOutputLengthHint": "1-1024 · standard 32",
-            "hashDropHint": "Slipp en fil på denne fanen for å hashe den"
+            "hashDropHint": "Slipp en fil på denne fanen for å hashe den",
+            "hashBlake3Mode": "BLAKE3-modus",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Med nøkkel",
+            "hashBlake3ModeDerive": "Utled nøkkel",
+            "hashBlake3Key": "Nøkkel (32 byte som heks)",
+            "hashBlake3Context": "Kontekststreng",
+            "hashBlake3ContextHint": "Fast og unik for ett program. Teksten eller filen som hashes, er nøkkelmaterialet.",
+            "hashRandom": "Tilfeldig",
+            "argon2PasswordPlaceholder": "Passord eller passfrase...",
+            "argon2Salt": "Salt",
+            "argon2SaltHint": "Minst 8 byte, 16 anbefales",
+            "argon2Memory": "Minne (KiB)",
+            "argon2Iterations": "Iterasjoner",
+            "argon2Parallelism": "Parallellitet",
+            "argon2OutputLength": "Lengde (byte)",
+            "argon2DefaultsHint": "Standardverdier: det andre anbefalte alternativet i RFC 9106, for begrenset minne (64 MiB, 3 iterasjoner, 4 baner, 16-byte salt). Minne opptil 2 GiB.",
+            "argon2Derive": "Utled",
+            "argon2Phc": "PHC-streng"
         },
         "dialog": {
             "deleteFile": "Slett \"{name}\"?",
@@ -5081,6 +5101,13 @@
             "tabCompare": "Sammenlign",
             "tabPlan": "Plan",
             "tabSync": "Synkroniser",
+            "compareWontFitTitle": "Over grensene for {name}: {count}",
+            "compareWontFitHint": "Disse filene er større enn leverandørens dokumenterte grense, eller navnet eller banen deres er lengre enn tillatt. En synkronisering ville mislykkes for dem: gi dem nytt navn, flytt eller del dem opp først.",
+            "compareWontFitTooLarge": "{size}, grense {limit}",
+            "compareWontFitNameBytes": "navn over {count} byte",
+            "compareWontFitNameChars": "navn over {count} tegn",
+            "compareWontFitPathBytes": "bane over {count} byte",
+            "compareWontFitPathChars": "bane over {count} tegn",
             "compareUnavailable": "Åpne et andre panel eller en ekstern tilkobling for å sammenligne.",
             "planUnavailable": "Et sammenligningsresultat kreves før du velger en forhåndsinnstilling. Åpne Sammenlign-fanen først.",
             "totalEntries": "Totalt antall oppføringer",
@@ -5091,6 +5118,28 @@
             "mirrorRightToLeft": "Speil fra hoyre til venstre",
             "directionLeftRight": "Venstre til Hoyre",
             "directionRightLeft": "Hoyre til Venstre",
+            "directionLocalToRemote": "Lokal → Ekstern",
+            "directionRemoteToLocal": "Ekstern → Lokal",
+            "directionBothWays": "Begge veier",
+            "modeHeader": "Modus",
+            "preset": {
+                "mirror": {
+                    "name": "Speil",
+                    "tagline": "Gjør målet identisk med kilden. Sletter overflødige filer og overskriver nyere kopier."
+                },
+                "backup": {
+                    "name": "Sikkerhetskopi",
+                    "tagline": "Kopierer manglende og nyere filer. Sletter aldri og overskriver aldri en nyere kopi i målet."
+                },
+                "update": {
+                    "name": "Oppdater",
+                    "tagline": "Kopierer manglende og nyere filer. Hopper over konflikter så du kan løse dem manuelt."
+                },
+                "bisync": {
+                    "name": "Toveis synkronisering",
+                    "tagline": "Overfører manglende og nyere filer i begge retninger. Hopper over konflikter."
+                }
+            },
             "conflictPolicy": "Konfliktpolicy",
             "ignoredForMirror": "IGNORERT FOR MIRROR",
             "versionedBackup": "Versjonsbasert sikkerhetskopi",
