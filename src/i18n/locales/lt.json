@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Išsaugoti kaip preset",
             "aerosyncScriptAppliedToast": "Importuotas preset išsaugotas. Atidarykite AeroSync, kad jį naudotumėte.",
             "canaryDryRun": "Niekas neperkeliama: tai parodo, ką darytų visas sinchronizavimas, apskaičiuota iš imties. Tai komandos aeroftp-cli sync --dry-run (ir rclone --dry-run) grafinis atitikmuo.",
-            "templateImportPathPairs": "Naudotinų kelių porų šiame šablone: {count}. AeroFTP taiko lygiai vieną, todėl nieko neimportuota. Pataisykite šabloną taip, kad liktų viena pora, ir importuokite jį dar kartą.",
+            "templateImportPathPairs": "Naudotinos kelių poros (vietinis/nuotolinis) šiame šablone: {count}. AeroSync langas dirba su lygiai viena pora, todėl nieko neimportuota. Redaguokite šabloną taip, kad liktų tik viena pora, tada importuokite jį dar kartą.",
             "templateNamePlaceholder": "pvz. Naktinė atsarginė kopija į S3",
             "templateDescPlaceholder": "Kam skirtas šis šablonas (nebūtina)"
         },

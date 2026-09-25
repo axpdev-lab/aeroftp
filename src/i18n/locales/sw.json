@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Hifadhi kama preset",
             "aerosyncScriptAppliedToast": "Preset iliyoingizwa imehifadhiwa. Fungua AeroSync kuitumia.",
             "canaryDryRun": "Hakuna kinachohamishwa: hii inaonyesha kihakikisho cha kile ambacho ulandanishaji kamili ungefanya, kilichokokotolewa kutoka kwa sampuli. Ni mlinganisho wa GUI wa amri aeroftp-cli sync --dry-run (na --dry-run ya rclone).",
-            "templateImportPathPairs": "Idadi ya jozi za njia zinazoweza kutumika katika kiolezo hiki: {count}. AeroFTP hutumia moja tu haswa, kwa hivyo hakuna kilichoingizwa. Hariri kiolezo kibaki na jozi moja, kisha ukilete tena.",
+            "templateImportPathPairs": "Jozi za njia (ndani/mbali) zinazoweza kutumika katika kiolezo hiki: {count}. Dirisha la AeroSync hufanya kazi na jozi moja tu, kwa hivyo hakuna kilichoingizwa. Hariri kiolezo ili ibaki jozi moja tu, kisha ukilete tena.",
             "templateNamePlaceholder": "k.m. Nakala rudufu ya usiku hadi S3",
             "templateDescPlaceholder": "Kiolezo hiki ni cha nini (hiari)"
         },

@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Saglabāt kā preset",
             "aerosyncScriptAppliedToast": "Importētais preset saglabāts. Atveriet AeroSync, lai to izmantotu.",
             "canaryDryRun": "Nekas netiek pārsūtīts: tas parāda priekšskatījumu tam, ko darītu pilna sinhronizācija, aprēķinātu no izlases. Tas ir komandas aeroftp-cli sync --dry-run (un rclone --dry-run) grafiskais ekvivalents.",
-            "templateImportPathPairs": "Izmantojamo ceļu pāru skaits šajā veidnē: {count}. AeroFTP izmanto tieši vienu, tāpēc nekas netika importēts. Rediģējiet veidni tā, lai paliktu viens pāris, un importējiet to vēlreiz.",
+            "templateImportPathPairs": "Izmantojamie ceļu pāri (lokāls/attāls) šajā veidnē: {count}. AeroSync logs strādā ar tieši vienu pāri, tāpēc nekas netika importēts. Rediģējiet veidni tā, lai paliktu tikai viens pāris, un pēc tam importējiet to vēlreiz.",
             "templateNamePlaceholder": "piem. Nakts dublējums uz S3",
             "templateDescPlaceholder": "Kam paredzēta šī veidne (neobligāti)"
         },

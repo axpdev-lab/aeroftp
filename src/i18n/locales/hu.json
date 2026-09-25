@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Mentés presetként",
             "aerosyncScriptAppliedToast": "Importált preset elmentve. Nyisd meg az AeroSync-et a használatához.",
             "canaryDryRun": "Semmi sem kerül átvitelre: ez előnézetet ad arról, mit tenne egy teljes szinkronizálás, a mintából számítva. Ez a aeroftp-cli sync --dry-run parancs (és az rclone --dry-run) grafikus megfelelője.",
-            "templateImportPathPairs": "Ez a sablon {count} használható útvonalpárt határoz meg. Az AeroFTP pontosan egyet alkalmaz, ezért semmi sem lett importálva. Szerkessze a sablont úgy, hogy egyetlen útvonalpár maradjon, majd importálja újra.",
+            "templateImportPathPairs": "Használható helyi/távoli útvonalpárok ebben a sablonban: {count}. Egy AeroSync-ablak pontosan egy párral dolgozik, ezért semmi sem lett importálva. Szerkessze a sablont úgy, hogy csak egy pár maradjon, majd importálja újra.",
             "templateNamePlaceholder": "pl. Éjszakai mentés S3-ra",
             "templateDescPlaceholder": "Mire szolgál ez a sablon (nem kötelező)"
         },

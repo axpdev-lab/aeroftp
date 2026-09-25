@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Vista sem preset",
             "aerosyncScriptAppliedToast": "Innfluttur preset vistaður. Opnaðu AeroSync til að nota hann.",
             "canaryDryRun": "Ekkert er flutt: þetta sýnir forskoðun á því sem full samstilling myndi gera, reiknað út frá úrtakinu. Það er myndræna hliðstæðan við skipunina aeroftp-cli sync --dry-run (og --dry-run hjá rclone).",
-            "templateImportPathPairs": "Fjöldi nothæfra slóðapara í þessu sniðmáti: {count}. AeroFTP notar nákvæmlega eitt, svo ekkert var flutt inn. Breyttu sniðmátinu þannig að eitt slóðapar standi eftir og flyttu það svo inn aftur.",
+            "templateImportPathPairs": "Nothæf slóðapör (staðbundið/fjartengt) í þessu sniðmáti: {count}. AeroSync-gluggi vinnur með nákvæmlega eitt par, svo ekkert var flutt inn. Breyttu sniðmátinu þannig að aðeins eitt par standi eftir og flyttu það síðan inn aftur.",
             "templateNamePlaceholder": "t.d. Næturafritun í S3",
             "templateDescPlaceholder": "Til hvers þetta sniðmát er (valfrjálst)"
         },

@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Gorde preset gisa",
             "aerosyncScriptAppliedToast": "Inportatutako preset-a gordeta. Ireki AeroSync erabiltzeko.",
             "canaryDryRun": "Ez da ezer transferitzen: sinkronizazio osoak zer egingo lukeen aurreikusten du, laginetik kalkulatuta. aeroftp-cli sync --dry-run komandoaren (eta rclone-ren --dry-run) interfaze grafikoaren baliokidea da.",
-            "templateImportPathPairs": "Txantiloi honek {count} bide-bikote erabilgarri definitzen ditu. AeroFTPk bat bakarra aplikatzen du, beraz ez da ezer inportatu. Editatu txantiloia bikote bakarra uzteko, eta inportatu berriro.",
+            "templateImportPathPairs": "Txantiloi honetako bide-bikote erabilgarriak (lokala/urrunekoa): {count}. AeroSync leiho batek zehazki bikote batekin egiten du lan, beraz ez da ezer inportatu. Editatu txantiloia bikote bakarra gera dadin, eta inportatu berriro.",
             "templateNamePlaceholder": "adib. Gaueko babeskopia S3-ra",
             "templateDescPlaceholder": "Zertarako den txantiloi hau (aukerakoa)"
         },

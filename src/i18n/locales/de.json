@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Als preset speichern",
             "aerosyncScriptAppliedToast": "Importiertes preset gespeichert. Öffne AeroSync, um es zu verwenden.",
             "canaryDryRun": "Es wird nichts übertragen: Dies zeigt eine Vorschau, was eine vollständige Synchronisierung tun würde, berechnet aus der Stichprobe. Es ist das GUI-Gegenstück zum CLI-Befehl aeroftp-cli sync --dry-run (und zu --dry-run von rclone).",
-            "templateImportPathPairs": "Diese Vorlage definiert {count} verwendbare Pfadpaare. AeroFTP wendet genau eines an, daher wurde nichts importiert. Bearbeiten Sie die Vorlage so, dass nur ein Pfadpaar übrig bleibt, und importieren Sie sie erneut.",
+            "templateImportPathPairs": "Verwendbare Pfadpaare (lokal/Remote) in dieser Vorlage: {count}. Ein AeroSync-Fenster arbeitet mit genau einem Paar, daher wurde nichts importiert. Bearbeiten Sie die Vorlage so, dass nur ein Paar übrig bleibt, und importieren Sie sie dann erneut.",
             "templateNamePlaceholder": "z. B. Nächtliches Backup nach S3",
             "templateDescPlaceholder": "Wofür diese Vorlage gedacht ist (optional)"
         },

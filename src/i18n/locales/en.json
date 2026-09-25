@@ -3900,7 +3900,7 @@
             "templates": "Templates",
             "templateExportDesc": "Save current sync configuration as a reusable .aerosync template",
             "templateImportDesc": "Load a .aerosync template to apply its sync configuration",
-            "templateImportPathPairs": "This template defines {count} usable local/remote path pairs. AeroFTP applies exactly one, so nothing was imported. Edit the template to keep a single pair, then import it again.",
+            "templateImportPathPairs": "Usable local/remote path pairs in this template: {count}. An AeroSync window works on exactly one pair, so nothing was imported. Edit the template to keep a single pair, then import it again.",
             "templateFormat": "Format",
             "templateFormatAerosync": ".aerosync template",
             "templateFormatBash": "Bash script (.sh)",

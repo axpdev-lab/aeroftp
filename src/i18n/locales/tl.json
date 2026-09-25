@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "I-save bilang preset",
             "aerosyncScriptAppliedToast": "Na-save ang na-import na preset. Buksan ang AeroSync upang gamitin ito.",
             "canaryDryRun": "Walang inililipat: ipinapakita nito kung ano ang gagawin ng isang buong sync, kinakalkula mula sa sample. Ito ang katumbas na GUI ng utos na aeroftp-cli sync --dry-run (at ng --dry-run ng rclone).",
-            "templateImportPathPairs": "Nagtatakda ang template na ito ng {count} nagagamit na path pair. Isa lang eksakto ang inilalapat ng AeroFTP, kaya walang na-import. I-edit ang template para maiwan ang isang pares, pagkatapos ay i-import itong muli.",
+            "templateImportPathPairs": "Mga magagamit na lokal/remote na path pair sa template na ito: {count}. Gumagana ang isang AeroSync window sa eksaktong isang pares, kaya walang na-import. I-edit ang template para iisang pares na lang ang matira, pagkatapos ay i-import itong muli.",
             "templateNamePlaceholder": "hal. Backup tuwing gabi sa S3",
             "templateDescPlaceholder": "Para saan ang template na ito (opsyonal)"
         },

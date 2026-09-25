@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "preset 으로 저장",
             "aerosyncScriptAppliedToast": "가져온 preset 을 저장했습니다. AeroSync 를 열어 사용하세요.",
             "canaryDryRun": "아무것도 전송되지 않습니다. 이것은 샘플에서 계산하여 전체 동기화가 수행할 작업을 미리 봅니다. CLI 명령 aeroftp-cli sync --dry-run(및 rclone의 --dry-run)의 GUI 대응 기능입니다.",
-            "templateImportPathPairs": "이 템플릿에 정의된 사용 가능한 경로 쌍은 {count}개입니다. AeroFTP는 정확히 하나만 적용하므로 아무것도 가져오지 않았습니다. 템플릿을 편집해 경로 쌍을 하나만 남긴 뒤 다시 가져오세요.",
+            "templateImportPathPairs": "이 템플릿에서 사용 가능한 로컬/원격 경로 쌍: {count}. AeroSync 창은 정확히 한 쌍으로만 작동하므로 아무것도 가져오지 않았습니다. 템플릿을 편집해 한 쌍만 남긴 뒤 다시 가져오세요.",
             "templateNamePlaceholder": "예: S3로 야간 백업",
             "templateDescPlaceholder": "이 템플릿의 용도 (선택 사항)"
         },

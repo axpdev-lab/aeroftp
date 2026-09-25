@@ -2194,7 +2194,7 @@
             "aerosyncScriptApplyButton": "preset として保存",
             "aerosyncScriptAppliedToast": "インポートした preset を保存しました。AeroSync を開いて使用してください。",
             "canaryDryRun": "何も転送されません。これはサンプルから計算した、完全同期で行われる内容のプレビューです。CLI コマンド aeroftp-cli sync --dry-run（および rclone の --dry-run）の GUI 版です。",
-            "templateImportPathPairs": "このテンプレートには使用可能なパスペアが {count} 件定義されています。AeroFTP が適用するのはちょうど 1 件だけなので、何もインポートされませんでした。テンプレートを編集してパスペアを 1 件だけにしてから、もう一度インポートしてください。",
+            "templateImportPathPairs": "このテンプレート内の使用可能なローカル/リモートのパスペア: {count}。AeroSync のウィンドウはちょうど 1 つのペアで動作するため、何もインポートされませんでした。ペアが 1 つだけになるようにテンプレートを編集してから、もう一度インポートしてください。",
             "templateNamePlaceholder": "例: S3 への夜間バックアップ",
             "templateDescPlaceholder": "このテンプレートの用途 (任意)"
         },

@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Lưu làm preset",
             "aerosyncScriptAppliedToast": "Đã lưu preset được nhập. Mở AeroSync để sử dụng.",
             "canaryDryRun": "Không có gì được chuyển: thao tác này xem trước những gì một đồng bộ đầy đủ sẽ làm, được tính từ mẫu. Đây là phiên bản GUI tương đương của lệnh aeroftp-cli sync --dry-run (và --dry-run của rclone).",
-            "templateImportPathPairs": "Mẫu này định nghĩa {count} cặp đường dẫn dùng được. AeroFTP chỉ áp dụng đúng một cặp, nên không có gì được nhập. Hãy sửa mẫu để chỉ còn một cặp, rồi nhập lại.",
+            "templateImportPathPairs": "Các cặp đường dẫn cục bộ/từ xa dùng được trong mẫu này: {count}. Một cửa sổ AeroSync làm việc với đúng một cặp, nên không có gì được nhập. Hãy sửa mẫu để chỉ giữ lại một cặp, rồi nhập lại.",
             "templateNamePlaceholder": "ví dụ: Sao lưu hằng đêm lên S3",
             "templateDescPlaceholder": "Mẫu này dùng để làm gì (tùy chọn)"
         },

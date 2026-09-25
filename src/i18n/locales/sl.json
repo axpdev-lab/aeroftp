@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Shrani kot preset",
             "aerosyncScriptAppliedToast": "Uvozeni preset shranjen. Odpri AeroSync za uporabo.",
             "canaryDryRun": "Nič se ne prenese: to prikaže predogled tega, kar bi naredila polna sinhronizacija, izračunan iz vzorca. To je grafični ustreznik ukaza aeroftp-cli sync --dry-run (in --dry-run orodja rclone).",
-            "templateImportPathPairs": "Število uporabnih parov poti v tej predlogi: {count}. AeroFTP uporabi natanko enega, zato ni bilo uvoženo nič. Uredite predlogo tako, da ostane en sam par, in jo znova uvozite.",
+            "templateImportPathPairs": "Uporabni pari poti (lokalna/oddaljena) v tej predlogi: {count}. Okno AeroSync deluje z natanko enim parom, zato ni bilo uvoženo nič. Uredite predlogo tako, da ostane samo en par, nato jo znova uvozite.",
             "templateNamePlaceholder": "npr. Nočna varnostna kopija v S3",
             "templateDescPlaceholder": "Čemu je namenjena ta predloga (izbirno)"
         },

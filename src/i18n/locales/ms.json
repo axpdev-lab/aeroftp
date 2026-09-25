@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Simpan sebagai preset",
             "aerosyncScriptAppliedToast": "Preset yang diimport telah disimpan. Buka AeroSync untuk menggunakannya.",
             "canaryDryRun": "Tiada apa-apa dipindahkan: ini memaparkan pratonton perkara yang akan dilakukan oleh penyegerakan penuh, dikira daripada sampel. Ia adalah padanan GUI bagi perintah aeroftp-cli sync --dry-run (dan --dry-run rclone).",
-            "templateImportPathPairs": "Templat ini mentakrifkan {count} pasangan laluan yang boleh digunakan. AeroFTP menggunakan tepat satu sahaja, jadi tiada apa-apa yang diimport. Sunting templat supaya tinggal satu pasangan, kemudian import semula.",
+            "templateImportPathPairs": "Pasangan laluan tempatan/jauh yang boleh digunakan dalam templat ini: {count}. Tetingkap AeroSync berfungsi dengan tepat satu pasangan, jadi tiada apa-apa yang diimport. Sunting templat supaya tinggal satu pasangan sahaja, kemudian import semula.",
             "templateNamePlaceholder": "cth. Sandaran malam ke S3",
             "templateDescPlaceholder": "Untuk apa templat ini (pilihan)"
         },

@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Preset olarak kaydet",
             "aerosyncScriptAppliedToast": "İçe aktarılan preset kaydedildi. Kullanmak için AeroSync'i açın.",
             "canaryDryRun": "Hiçbir şey aktarılmaz: bu, tam bir eşitlemenin ne yapacağının örnekten hesaplanan bir önizlemesidir. CLI komutu aeroftp-cli sync --dry-run (ve rclone'un --dry-run) komutunun grafik karşılığıdır.",
-            "templateImportPathPairs": "Bu şablon {count} kullanılabilir yol çifti tanımlıyor. AeroFTP tam olarak bir tanesini uygular, bu yüzden hiçbir şey içe aktarılmadı. Şablonu tek bir yol çifti kalacak şekilde düzenleyin, sonra yeniden içe aktarın.",
+            "templateImportPathPairs": "Bu şablondaki kullanılabilir yerel/uzak yol çiftleri: {count}. Bir AeroSync penceresi tam olarak bir çiftle çalışır, bu yüzden hiçbir şey içe aktarılmadı. Şablonu tek bir çift kalacak şekilde düzenleyin, ardından yeniden içe aktarın.",
             "templateNamePlaceholder": "ör. S3'e gecelik yedekleme",
             "templateDescPlaceholder": "Bu şablonun ne için olduğu (isteğe bağlı)"
         },

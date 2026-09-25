@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Zapisz jako preset",
             "aerosyncScriptAppliedToast": "Zaimportowany preset zapisany. Otwórz AeroSync, aby go użyć.",
             "canaryDryRun": "Nic nie jest przesyłane: pokazuje podgląd tego, co zrobiłaby pełna synchronizacja, obliczony na podstawie próbki. To graficzny odpowiednik polecenia aeroftp-cli sync --dry-run (oraz --dry-run w rclone).",
-            "templateImportPathPairs": "Liczba użytecznych par ścieżek w tym szablonie: {count}. AeroFTP stosuje dokładnie jedną, więc nic nie zostało zaimportowane. Zostaw w szablonie jedną parę i zaimportuj go ponownie.",
+            "templateImportPathPairs": "Użyteczne pary ścieżek (lokalna/zdalna) w tym szablonie: {count}. Okno AeroSync działa na dokładnie jednej parze, więc nic nie zostało zaimportowane. Edytuj szablon tak, aby została w nim tylko jedna para, a następnie zaimportuj go ponownie.",
             "templateNamePlaceholder": "np. Nocna kopia zapasowa do S3",
             "templateDescPlaceholder": "Do czego służy ten szablon (opcjonalnie)"
         },

@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Uložit jako preset",
             "aerosyncScriptAppliedToast": "Importovaný preset uložen. Otevřete AeroSync pro jeho použití.",
             "canaryDryRun": "Nic se nepřenáší: zobrazí náhled toho, co by udělala úplná synchronizace, vypočtený ze vzorku. Je to grafický protějšek příkazu aeroftp-cli sync --dry-run (a --dry-run nástroje rclone).",
-            "templateImportPathPairs": "Počet použitelných dvojic cest v této šabloně: {count}. AeroFTP použije právě jednu, takže se nic neimportovalo. Ponechte v šabloně jedinou dvojici a importujte ji znovu.",
+            "templateImportPathPairs": "Použitelné dvojice cest (místní/vzdálená) v této šabloně: {count}. Okno AeroSync pracuje s právě jednou dvojicí, proto nebylo nic importováno. Upravte šablonu tak, aby v ní zůstala jediná dvojice, a poté ji importujte znovu.",
             "templateNamePlaceholder": "např. Noční záloha do S3",
             "templateDescPlaceholder": "K čemu tato šablona slouží (volitelné)"
         },

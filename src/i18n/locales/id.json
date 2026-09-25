@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Simpan sebagai preset",
             "aerosyncScriptAppliedToast": "Preset yang diimpor telah disimpan. Buka AeroSync untuk menggunakannya.",
             "canaryDryRun": "Tidak ada yang ditransfer: ini menampilkan pratinjau dari apa yang akan dilakukan sinkronisasi penuh, dihitung dari sampel. Ini adalah padanan GUI dari perintah aeroftp-cli sync --dry-run (dan --dry-run milik rclone).",
-            "templateImportPathPairs": "Templat ini mendefinisikan {count} pasangan path yang dapat digunakan. AeroFTP menerapkan tepat satu, jadi tidak ada yang diimpor. Edit templat agar tersisa satu pasangan saja, lalu impor lagi.",
+            "templateImportPathPairs": "Pasangan path lokal/remote yang dapat digunakan dalam template ini: {count}. Jendela AeroSync bekerja dengan tepat satu pasangan, jadi tidak ada yang diimpor. Edit template agar hanya tersisa satu pasangan, lalu impor lagi.",
             "templateNamePlaceholder": "mis. Cadangan malam ke S3",
             "templateDescPlaceholder": "Untuk apa templat ini (opsional)"
         },

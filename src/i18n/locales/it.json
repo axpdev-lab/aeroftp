@@ -2423,7 +2423,7 @@
             "aerosyncScriptUnmappedFields": "Campi metadata non riconosciuti",
             "aerosyncScriptApplyButton": "Salva come preset",
             "aerosyncScriptAppliedToast": "Preset importato salvato. Apri AeroSync per usarlo.",
-            "templateImportPathPairs": "Questo template definisce {count} coppie di percorsi utilizzabili. AeroFTP ne applica esattamente una, quindi non è stato importato nulla. Modifica il template lasciando una sola coppia, poi importalo di nuovo.",
+            "templateImportPathPairs": "Coppie di percorsi locale/remoto utilizzabili in questo template: {count}. Una finestra AeroSync lavora su una sola coppia, quindi non è stato importato nulla. Modifica il template lasciando una sola coppia, poi importalo di nuovo.",
             "templateNamePlaceholder": "es. Backup notturno su S3",
             "templateDescPlaceholder": "A cosa serve questo modello (facoltativo)"
         },

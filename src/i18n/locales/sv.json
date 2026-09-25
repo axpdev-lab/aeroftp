@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Spara som preset",
             "aerosyncScriptAppliedToast": "Importerad preset sparad. Öppna AeroSync för att använda den.",
             "canaryDryRun": "Inget överförs: detta förhandsvisar vad en fullständig synkronisering skulle göra, beräknat från urvalet. Det är den grafiska motsvarigheten till CLI-kommandot aeroftp-cli sync --dry-run (och rclones --dry-run).",
-            "templateImportPathPairs": "Antal användbara sökvägspar i den här mallen: {count}. AeroFTP tillämpar exakt ett, så ingenting importerades. Redigera mallen så att ett sökvägspar återstår och importera den igen.",
+            "templateImportPathPairs": "Användbara sökvägspar (lokal/fjärr) i den här mallen: {count}. Ett AeroSync-fönster arbetar med exakt ett par, så ingenting importerades. Redigera mallen så att bara ett par återstår och importera den sedan igen.",
             "templateNamePlaceholder": "t.ex. Nattlig säkerhetskopia till S3",
             "templateDescPlaceholder": "Vad den här mallen används till (valfritt)"
         },

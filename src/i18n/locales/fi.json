@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Tallenna presetinä",
             "aerosyncScriptAppliedToast": "Tuotu preset tallennettu. Avaa AeroSync käyttääksesi sitä.",
             "canaryDryRun": "Mitään ei siirretä: tämä esikatselee, mitä täysi synkronointi tekisi, laskettuna otoksesta. Se on CLI-komennon aeroftp-cli sync --dry-run (ja rclonen --dry-run) graafinen vastine.",
-            "templateImportPathPairs": "Käyttökelpoisia polkupareja tässä mallissa: {count}. AeroFTP käyttää tasan yhtä, joten mitään ei tuotu. Muokkaa mallia niin, että siihen jää yksi polkupari, ja tuo se uudelleen.",
+            "templateImportPathPairs": "Käyttökelpoiset polkuparit (paikallinen/etä) tässä mallissa: {count}. AeroSync-ikkuna käsittelee tasan yhtä paria, joten mitään ei tuotu. Muokkaa mallia niin, että siihen jää vain yksi pari, ja tuo se sitten uudelleen.",
             "templateNamePlaceholder": "esim. Yöllinen varmuuskopio S3:een",
             "templateDescPlaceholder": "Mihin tätä mallia käytetään (valinnainen)"
         },

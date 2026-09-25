@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Desa com a preset",
             "aerosyncScriptAppliedToast": "Preset importat desat. Obre AeroSync per utilitzar-lo.",
             "canaryDryRun": "No es transfereix res: mostra una vista prèvia del que faria una sincronització completa, calculada a partir de la mostra. És l'equivalent gràfic de l'ordre aeroftp-cli sync --dry-run (i de --dry-run de rclone).",
-            "templateImportPathPairs": "Aquesta plantilla defineix {count} parelles de rutes utilitzables. AeroFTP n'aplica exactament una, així que no s'ha importat res. Edita la plantilla perquè hi quedi una sola parella i torna a importar-la.",
+            "templateImportPathPairs": "Parelles de rutes (local/remota) utilitzables en aquesta plantilla: {count}. Una finestra d'AeroSync treballa amb exactament una parella, així que no s'ha importat res. Edita la plantilla perquè només hi quedi una parella i torna-la a importar.",
             "templateNamePlaceholder": "p. ex. Còpia de seguretat nocturna a S3",
             "templateDescPlaceholder": "Per a què serveix aquesta plantilla (opcional)"
         },

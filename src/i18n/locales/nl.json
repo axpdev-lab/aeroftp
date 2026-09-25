@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Opslaan als preset",
             "aerosyncScriptAppliedToast": "Geïmporteerde preset opgeslagen. Open AeroSync om het te gebruiken.",
             "canaryDryRun": "Er wordt niets overgedragen: dit toont een voorbeeld van wat een volledige synchronisatie zou doen, berekend op basis van de steekproef. Het is de grafische tegenhanger van het CLI-commando aeroftp-cli sync --dry-run (en --dry-run van rclone).",
-            "templateImportPathPairs": "Deze sjabloon definieert {count} bruikbare padparen. AeroFTP past er precies één toe, dus er is niets geïmporteerd. Bewerk de sjabloon zodat er één padpaar overblijft en importeer hem opnieuw.",
+            "templateImportPathPairs": "Bruikbare padparen (lokaal/extern) in deze sjabloon: {count}. Een AeroSync-venster werkt met precies één paar, dus er is niets geïmporteerd. Bewerk de sjabloon zodat er maar één paar overblijft en importeer hem daarna opnieuw.",
             "templateNamePlaceholder": "bijv. Nachtelijke back-up naar S3",
             "templateDescPlaceholder": "Waarvoor dit sjabloon dient (optioneel)"
         },

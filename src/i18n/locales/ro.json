@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Salvează ca preset",
             "aerosyncScriptAppliedToast": "Preset importat salvat. Deschide AeroSync pentru a-l folosi.",
             "canaryDryRun": "Nu se transferă nimic: aceasta previzualizează ce ar face o sincronizare completă, calculată din eșantion. Este echivalentul grafic al comenzii aeroftp-cli sync --dry-run (și al --dry-run din rclone).",
-            "templateImportPathPairs": "Numărul de perechi de căi utilizabile din acest șablon: {count}. AeroFTP aplică exact una, așa că nu s-a importat nimic. Editează șablonul astfel încât să rămână o singură pereche, apoi importă-l din nou.",
+            "templateImportPathPairs": "Perechi de căi (locală/la distanță) utilizabile în acest șablon: {count}. O fereastră AeroSync lucrează cu exact o pereche, așa că nu s-a importat nimic. Editează șablonul astfel încât să rămână o singură pereche, apoi importă-l din nou.",
             "templateNamePlaceholder": "de ex. Copie de rezervă nocturnă în S3",
             "templateDescPlaceholder": "La ce folosește acest șablon (opțional)"
         },

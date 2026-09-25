@@ -2229,7 +2229,7 @@
             "aerosyncScriptApplyButton": "Enregistrer comme preset",
             "aerosyncScriptAppliedToast": "Preset importé enregistré. Ouvre AeroSync pour l'utiliser.",
             "canaryDryRun": "Rien n'est transféré : ceci prévisualise ce que ferait une synchronisation complète, calculée à partir de l'échantillon. C'est l'équivalent graphique de la commande aeroftp-cli sync --dry-run (et de --dry-run de rclone).",
-            "templateImportPathPairs": "Nombre de paires de chemins utilisables dans ce modèle : {count}. AeroFTP en applique exactement une, rien n'a donc été importé. Modifiez le modèle pour n'en garder qu'une seule, puis importez-le de nouveau.",
+            "templateImportPathPairs": "Paires de chemins (local/distant) utilisables dans ce modèle : {count}. Une fenêtre AeroSync fonctionne avec exactement une paire, rien n'a donc été importé. Modifiez le modèle pour n'y garder qu'une seule paire, puis importez-le de nouveau.",
             "templateNamePlaceholder": "par ex. Sauvegarde nocturne vers S3",
             "templateDescPlaceholder": "À quoi sert ce modèle (facultatif)"
         },
