@@ -458,17 +458,18 @@ export const runRemoteSync = async (
     ): Promise<void> => {
         const backup = config.versionedBackup;
         if (!backup) return;
+        let kept: string | null | undefined;
         try {
             backupStamp ??= await invoke<string>('sync_backup_run_stamp');
             if (side === 'local' || config.isLocalLocal) {
-                await invoke('sync_backup_archive_local', {
+                kept = await invoke<string | null>('sync_backup_archive_local', {
                     root: side === 'local' ? localBase : remoteBase,
                     dir: backup.dir,
                     stamp: backupStamp,
                     rel: relativePath,
                 });
             } else {
-                await invoke('sync_backup_archive_remote', {
+                kept = await invoke<string | null>('sync_backup_archive_remote', {
                     useProvider: config.isProvider,
                     root: remoteBase,
                     dir: backup.dir,
@@ -478,6 +479,13 @@ export const runRemoteSync = async (
             }
         } catch (e) {
             throw new Error(`Backup failed for ${relativePath}: ${String(e)}`);
+        }
+        // Only files the compare saw on the destination reach this point, so
+        // "nothing to keep" means the backend could not find it: a server
+        // that answers "not there" for a file it holds. Writing anyway would
+        // lose the one copy the user asked to keep.
+        if (kept == null) {
+            throw new Error(`Backup failed for ${relativePath}: the destination copy was not found, so it was left as it is`);
         }
     };
     /** Record a file the backup step failed: its destination copy is untouched. */

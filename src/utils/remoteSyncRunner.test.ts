@@ -245,10 +245,17 @@ describe('remoteSyncRunner — orphan deletes', () => {
     });
 });
 
-describe('remoteSyncRunner — versioned backup', () => {
+describe('remoteSyncRunner: versioned backup', () => {
     const backup = { versionedBackup: { dir: '.aeroftp-versions' } };
+    const kept = (args: Record<string, unknown> | undefined) =>
+        `${String(args?.root)}/${String(args?.dir)}/${String(args?.stamp)}/${String(args?.rel)}`;
     const stampedInvoke = (handlers: Record<string, (args: Record<string, unknown> | undefined, idx: number) => unknown> = {}) =>
-        makeInvoke({ sync_backup_run_stamp: () => '20260925T070000Z', ...handlers });
+        makeInvoke({
+            sync_backup_run_stamp: () => '20260925T070000Z',
+            sync_backup_archive_local: kept,
+            sync_backup_archive_remote: kept,
+            ...handlers,
+        });
     const idx = (calls: { cmd: string }[], cmd: string) => calls.findIndex((c) => c.cmd === cmd);
 
     it('moves the remote copy aside before an upload overwrites it', async () => {
@@ -358,6 +365,21 @@ describe('remoteSyncRunner — versioned backup', () => {
         expect(uploads).toHaveLength(1);
         expect((uploads[0].args as { params: { remote_path: string } }).params.remote_path).toBe('/srv/data/fine.txt');
         expect(calls.some((c) => c.cmd === 'delete_remote_file')).toBe(false);
+    });
+
+    it('fails a file whose destination copy the backup cannot find, instead of writing over it', async () => {
+        const { invoke, calls } = stampedInvoke({ sync_backup_archive_remote: () => null });
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload', { overwritesExisting: true }), file('b.txt', 'delete-remote')],
+            noDirs,
+            baseConfig(backup),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.errors.map((e) => e.file_path)).toEqual(['a.txt', 'b.txt']);
+        expect(report.errors[0].message).toContain('was not found');
+        expect(calls.some((c) => c.cmd === 'upload_file' || c.cmd === 'delete_remote_file')).toBe(false);
+        expect(report.deleted).toBe(0);
     });
 
     it('archives the right-hand folder on the local disk for a local-local pair', async () => {
@@ -1030,7 +1052,7 @@ describe('remoteSyncRunner — GAP-9a maniac mode', () => {
     });
 });
 
-describe('remoteSyncRunner — speed mode reaches the transfer', () => {
+describe('remoteSyncRunner: speed mode reaches the transfer', () => {
     // The speed mode's only transfer-level effect is the delta flag
     // (SPEED_PRESETS); these pin that the flag reaches both transfer commands
     // on both routes, since the Plan tab no longer shows stream or

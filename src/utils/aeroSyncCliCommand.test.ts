@@ -103,7 +103,7 @@ describe('aeroftp-cli sync line for the Plan tab', () => {
 
     it('adds --error-correction to an upload only', () => {
         const up = buildCliSyncCommand({ ...mirrorUpload, errorCorrectionPct: 25 });
-        expect(up.kind === 'command' && up.argv.at(-1)).toBe('--error-correction=25');
+        expect(up.kind === 'command' && up.argv[up.argv.length - 1]).toBe('--error-correction=25');
         const down = buildCliSyncCommand({ ...mirrorUpload, direction: 'right-to-left', errorCorrectionPct: 25 });
         expect(down.kind === 'command' && down.argv.some((arg) => arg.startsWith('--error-correction'))).toBe(false);
         expect(down.kind === 'command' && down.argv[down.argv.indexOf('--direction') + 1]).toBe('download');

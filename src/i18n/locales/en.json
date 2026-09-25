@@ -5394,7 +5394,7 @@
             "ignoredForMirror": "IGNORED FOR MIRROR",
             "versionedBackup": "Versioned backup",
             "enable": "Enable",
-            "versionedBackupHint": "Capture the destination copy under this directory before each overwrite or delete.",
+            "versionedBackupHint": "Before a file is overwritten or deleted, its destination copy is moved into {dir}, in a folder named after the run's date and time.",
             "actionable": "Actionable",
             "reportCopiedRight": "Copied to right",
             "reportCopiedLeft": "Copied to left",
@@ -5517,9 +5517,7 @@
             "verifyPolicyHint": "Post-transfer integrity check applied to each file.",
             "exclude": {
                 "label": "Exclude patterns",
-                "hint": "Comma or newline separated, for example cache, *.tmp or build/output. Always excluded: {list}.",
-                "stale": "The comparison does not apply these patterns yet. Rescan before running.",
-                "rescan": "Rescan"
+                "hint": "Comma or newline separated, for example cache, *.tmp or build/output. Always excluded: {list}."
             },
             "cli": {
                 "title": "Same run from the command line",
@@ -5537,6 +5535,22 @@
                     "transferBudget": "when the budget runs out this plan stops, deletions included; the CLI limits transfers only and still deletes.",
                     "remotePath": "the CLI resolves the remote folder against the saved server's start folder and would reach a different one.",
                     "exclusions": "the CLI matches exclude patterns differently, so it would not skip everything this plan skips (node_modules, .git and the rest)."
+                }
+            },
+            "rescan": "Rescan",
+            "rescanNeeded": "The comparison was made with other exclusions or another backup folder. Rescan before running.",
+            "backup": {
+                "checking": "Checking how this server moves files...",
+                "serverCopy": "This server has no move: each kept copy is copied on the server and then deleted. That costs a full copy of every file kept, in two separate steps.",
+                "clientCopy": "This server has no move: each kept copy is downloaded, uploaded into the backup folder and then deleted. Every file kept travels through this computer twice, in separate steps.",
+                "unsupported": "This server cannot move files into another folder, so it cannot keep old copies. Turn versioned backup off to run.",
+                "checkFailed": "Could not ask the server how it moves files. Reconnect, or turn versioned backup off to run.",
+                "nested": "The backup folder is inside {folder}, which this sync writes to. Choose a folder outside it.",
+                "invalid": {
+                    "empty": "Enter a name for the backup folder.",
+                    "absolute": "Use a folder inside the destination, not an absolute path.",
+                    "parent": "The backup folder cannot contain '..'.",
+                    "name": "This backup folder name is not valid."
                 }
             }
         },

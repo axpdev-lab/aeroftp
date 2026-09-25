@@ -4765,8 +4765,12 @@ pub fn export_sync_template(
             compare_size: profile.compare_size,
             compare_checksum: profile.compare_checksum,
             delete_orphans: profile.delete_orphans,
-            parallel_streams: profile.parallel_streams,
-            compression_mode: profile.compression_mode.clone(),
+            // Written neutral: an AeroSync run transfers one file at a time
+            // and does not compress, so a template must not promise either.
+            // The fields stay for the versions that read them; an import
+            // accepts and ignores what an older export put there.
+            parallel_streams: 1,
+            compression_mode: crate::transfer_pool::CompressionMode::Off,
             verify_policy: Some(profile.verify_policy.clone()),
             canary: None,
         },
@@ -7207,26 +7211,6 @@ mod tests {
         assert!(!snapshot.id.is_empty());
     }
 
-    // TEMPORARY (fixture generation, removed before commit): prints what
-    // export_sync_template_cmd returns for the Mirror preset, with this tree's
-    // export code still byte-identical to v4.2.0.
-    #[test]
-    #[ignore]
-    fn tmp_print_aerosync_export_for_fixture() {
-        let profile = SyncProfile::mirror();
-        let t = export_sync_template(
-            "Site mirror",
-            "Nightly mirror of the site",
-            &profile,
-            "/home/u/site",
-            "/www/site",
-            &["*.tmp".to_string(), "cache/".to_string()],
-            None,
-        )
-        .unwrap();
-        println!("FIXTURE-BEGIN\n{}\nFIXTURE-END", serde_json::to_string_pretty(&t).unwrap());
-    }
-
     #[test]
     fn test_sync_template_export() {
         let profile = SyncProfile::mirror();
@@ -7247,6 +7231,44 @@ mod tests {
         assert!(template.created_by.contains("AeroFTP"));
         assert_eq!(template.profile.verify_policy, Some(profile.verify_policy));
         assert!(template.profile.canary.is_none());
+    }
+
+    /// Streams and compression are exported neutral whatever the preset
+    /// holds: no run reads them, so a template must not promise them.
+    #[test]
+    fn test_sync_template_export_writes_neutral_tuning() {
+        let mut profile = SyncProfile::mirror();
+        profile.parallel_streams = 6;
+        profile.compression_mode = crate::transfer_pool::CompressionMode::On;
+        let template =
+            export_sync_template("T", "", &profile, "/tmp/a", "/remote/a", &[], None).unwrap();
+        assert_eq!(template.profile.parallel_streams, 1);
+        assert_eq!(
+            template.profile.compression_mode,
+            crate::transfer_pool::CompressionMode::Off
+        );
+    }
+
+    /// A template written by AeroFTP 4.2.0 (Mirror, Plan in Turbo: 3 streams,
+    /// compression on, full checksum) still reads. The fixture is the output
+    /// of 4.2.0's own export path: `export_sync_template` of this tree, whose
+    /// code was identical to the v4.2.0 tag, then the v4.2.0 frontend overlay
+    /// taken from the tag.
+    #[test]
+    fn test_a_4_2_0_template_still_reads() {
+        let template: SyncTemplate = serde_json::from_str(include_str!(
+            "../tests/fixtures/aerosync/mirror-turbo-4.2.0.aerosync"
+        ))
+        .expect("a 4.2.0 export must still deserialize");
+        assert_eq!(template.schema_version, 1);
+        assert_eq!(template.created_by, "AeroFTP v4.2.0");
+        assert_eq!(template.profile.parallel_streams, 3);
+        assert_eq!(
+            template.profile.compression_mode,
+            crate::transfer_pool::CompressionMode::On
+        );
+        assert_eq!(template.profile.verify_policy, Some(VerifyPolicy::Full));
+        assert_eq!(template.exclude_patterns, vec!["*.tmp", "cache/"]);
     }
 
     #[test]
@@ -8302,7 +8324,10 @@ mod tests {
             ".aeroftp-versions/20260925T070000Z/b.txt".to_string(),
             mk_file_info("b.txt", 20, Some(now)),
         );
-        remote.insert(".aeroftp-versions".to_string(), mk_file_info(".aeroftp-versions", 0, Some(now)));
+        remote.insert(
+            ".aeroftp-versions".to_string(),
+            mk_file_info(".aeroftp-versions", 0, Some(now)),
+        );
         local.insert(
             "docs/.aeroftp-versions/keep.txt".to_string(),
             mk_file_info("keep.txt", 5, Some(now)),
@@ -8314,7 +8339,11 @@ mod tests {
             ..Default::default()
         };
         let report = classify_with_summary(local.clone(), remote.clone(), &opts, None);
-        let paths: Vec<&str> = report.differences.iter().map(|d| d.relative_path.as_str()).collect();
+        let paths: Vec<&str> = report
+            .differences
+            .iter()
+            .map(|d| d.relative_path.as_str())
+            .collect();
         assert_eq!(paths, vec!["docs/.aeroftp-versions/keep.txt"]);
 
         let flat = build_comparison_results(local, remote, &opts);
@@ -8329,14 +8358,24 @@ mod tests {
         let now = Utc::now();
         let local: HashMap<String, FileInfo> = HashMap::new();
         let mut remote: HashMap<String, FileInfo> = HashMap::new();
-        remote.insert("logs/app.log".to_string(), mk_file_info("app.log", 7, Some(now)));
-        remote.insert("keep.txt".to_string(), mk_file_info("keep.txt", 7, Some(now)));
+        remote.insert(
+            "logs/app.log".to_string(),
+            mk_file_info("app.log", 7, Some(now)),
+        );
+        remote.insert(
+            "keep.txt".to_string(),
+            mk_file_info("keep.txt", 7, Some(now)),
+        );
         let opts = CompareOptions {
             exclude_patterns: vec!["*.log".to_string()],
             ..Default::default()
         };
         let report = classify_with_summary(local, remote, &opts, None);
-        let paths: Vec<&str> = report.differences.iter().map(|d| d.relative_path.as_str()).collect();
+        let paths: Vec<&str> = report
+            .differences
+            .iter()
+            .map(|d| d.relative_path.as_str())
+            .collect();
         assert_eq!(paths, vec!["keep.txt"]);
     }
 
@@ -8347,6 +8386,9 @@ mod tests {
             ..Default::default()
         };
         assert!(opts.parsed_backup_dir().is_err());
-        assert!(CompareOptions::default().parsed_backup_dir().unwrap().is_none());
+        assert!(CompareOptions::default()
+            .parsed_backup_dir()
+            .unwrap()
+            .is_none());
     }
 }

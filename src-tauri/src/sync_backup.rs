@@ -124,7 +124,8 @@ pub fn run_stamp(now: DateTime<Utc>) -> String {
 pub fn is_backup_path(rel: &str, dir: &BackupDir) -> bool {
     let rel = rel.trim_start_matches("./").trim_start_matches('/');
     let dir = dir.as_str();
-    rel == dir || (rel.len() > dir.len() && rel.starts_with(dir) && rel.as_bytes()[dir.len()] == b'/')
+    rel == dir
+        || (rel.len() > dir.len() && rel.starts_with(dir) && rel.as_bytes()[dir.len()] == b'/')
 }
 
 /// Where the copy of `rel` from the run `stamp` goes, relative to the root,
@@ -218,34 +219,34 @@ pub fn remote_move_support(provider: ProviderType) -> RemoteMove {
     use ProviderType as P;
     use RemoteMove::*;
     match provider {
-        P::Ftp | P::Ftps => Native,   // RNFR/RNTO with full paths
-        P::Sftp => Native,            // SSH_FXP_RENAME
-        P::WebDav => Native,          // MOVE, Overwrite: F
-        P::GoogleDrive => Native,     // PATCH addParents/removeParents
-        P::Dropbox => Native,         // files/move_v2
-        P::OneDrive => Native,        // PATCH parentReference
-        P::Box => Native,             // PUT parent.id
-        P::PCloud => Native,          // renamefile topath
-        P::Mega => Native,            // native `m` / mega-mv
-        P::Proton => Native,          // CLI move, then rename
-        P::FourShared => Native,      // move, then rename
-        P::ZohoWorkdrive => Native,   // move, then rename
-        P::Internxt => Native,        // PATCH destinationFolder
-        P::KDrive => Native,          // POST move/{parent}
-        P::Jottacloud => Native,      // ?mv=
-        P::DrimeCloud => Native,      // move, then rename
-        P::FileLu => Native,          // set_folder, then rename
-        P::Koofr => Native,           // PUT files/move
-        P::OpenDrive => Native,       // move_copy move=true
-        P::YandexDisk => Native,      // resources/move
-        P::GitLab => Native,          // commit `move` action
-        P::ImageKit => Native,        // file move (folders are refused, files are what we move)
-        P::Cloudinary => Native,      // public_id rename
-        P::S3 => ServerCopyDelete,    // CopyObject (multipart copy above 5 GiB), then delete
-        P::Azure => ServerCopyDelete, // Copy Blob, then delete
-        P::Swift => ServerCopyDelete, // X-Copy-From, then delete
+        P::Ftp | P::Ftps => Native,       // RNFR/RNTO with full paths
+        P::Sftp => Native,                // SSH_FXP_RENAME
+        P::WebDav => Native,              // MOVE, Overwrite: F
+        P::GoogleDrive => Native,         // PATCH addParents/removeParents
+        P::Dropbox => Native,             // files/move_v2
+        P::OneDrive => Native,            // PATCH parentReference
+        P::Box => Native,                 // PUT parent.id
+        P::PCloud => Native,              // renamefile topath
+        P::Mega => Native,                // native `m` / mega-mv
+        P::Proton => Native,              // CLI move, then rename
+        P::FourShared => Native,          // move, then rename
+        P::ZohoWorkdrive => Native,       // move, then rename
+        P::Internxt => Native,            // PATCH destinationFolder
+        P::KDrive => Native,              // POST move/{parent}
+        P::Jottacloud => Native,          // ?mv=
+        P::DrimeCloud => Native,          // move, then rename
+        P::FileLu => Native,              // set_folder, then rename
+        P::Koofr => Native,               // PUT files/move
+        P::OpenDrive => Native,           // move_copy move=true
+        P::YandexDisk => Native,          // resources/move
+        P::GitLab => Native,              // commit `move` action
+        P::ImageKit => Native,            // file move (folders are refused, files are what we move)
+        P::Cloudinary => Native,          // public_id rename
+        P::S3 => ServerCopyDelete,        // CopyObject (multipart copy above 5 GiB), then delete
+        P::Azure => ServerCopyDelete,     // Copy Blob, then delete
+        P::Swift => ServerCopyDelete,     // X-Copy-From, then delete
         P::Backblaze => ServerCopyDelete, // b2_copy_file, then delete
-        P::GitHub => ClientCopyDelete, // download, commit, delete
+        P::GitHub => ClientCopyDelete,    // download, commit, delete
         // rename() keeps only the leaf name of the destination and renames in
         // place with Ok (filen/mod.rs, fn rename): a "move" would stay put.
         P::Filen => Unsupported("rename keeps the file in its folder"),
@@ -397,6 +398,12 @@ pub async fn archive_remote_on<R: ArchiveRemote + ?Sized>(
         return Ok(None);
     }
     let base = archive_rel_path(dir, stamp, rel);
+    // The folders first: some providers cannot answer "is this there?" for a
+    // path whose parent is missing (FTP lists the parent and gets a 550), so
+    // the free-name check below needs the parent to exist already.
+    if let Some(i) = base.rfind('/') {
+        mkdir_levels(remote, root, &base[..i]).await?;
+    }
     let mut target_rel = base.clone();
     let mut n = 0;
     while remote.path_exists(&join_remote(root, &target_rel)).await? {
@@ -408,9 +415,6 @@ pub async fn archive_remote_on<R: ArchiveRemote + ?Sized>(
             )));
         }
         target_rel = with_suffix(&base, n);
-    }
-    if let Some(i) = target_rel.rfind('/') {
-        mkdir_levels(remote, root, &target_rel[..i]).await?;
     }
     let target = join_remote(root, &target_rel);
     remote.move_path(&source, &target).await?;
@@ -443,15 +447,33 @@ mod tests {
         assert_eq!(BackupDir::parse(""), Err(BackupDirError::Empty));
         assert_eq!(BackupDir::parse("   "), Err(BackupDirError::Empty));
         assert_eq!(BackupDir::parse("/abs"), Err(BackupDirError::Absolute));
-        assert_eq!(BackupDir::parse("\\\\server\\share"), Err(BackupDirError::Absolute));
+        assert_eq!(
+            BackupDir::parse("\\\\server\\share"),
+            Err(BackupDirError::Absolute)
+        );
         assert_eq!(BackupDir::parse("C:\\x"), Err(BackupDirError::Absolute));
         assert_eq!(BackupDir::parse("c:x"), Err(BackupDirError::Absolute));
         assert_eq!(BackupDir::parse(".."), Err(BackupDirError::ParentSegment));
-        assert_eq!(BackupDir::parse("a/../b"), Err(BackupDirError::ParentSegment));
-        assert_eq!(BackupDir::parse("a\\..\\b"), Err(BackupDirError::ParentSegment));
-        assert!(matches!(BackupDir::parse("a//b"), Err(BackupDirError::InvalidSegment(_))));
-        assert!(matches!(BackupDir::parse("./a"), Err(BackupDirError::InvalidSegment(_))));
-        assert!(matches!(BackupDir::parse("a/file:stream"), Err(BackupDirError::InvalidSegment(_))));
+        assert_eq!(
+            BackupDir::parse("a/../b"),
+            Err(BackupDirError::ParentSegment)
+        );
+        assert_eq!(
+            BackupDir::parse("a\\..\\b"),
+            Err(BackupDirError::ParentSegment)
+        );
+        assert!(matches!(
+            BackupDir::parse("a//b"),
+            Err(BackupDirError::InvalidSegment(_))
+        ));
+        assert!(matches!(
+            BackupDir::parse("./a"),
+            Err(BackupDirError::InvalidSegment(_))
+        ));
+        assert!(matches!(
+            BackupDir::parse("a/file:stream"),
+            Err(BackupDirError::InvalidSegment(_))
+        ));
     }
 
     #[test]
@@ -470,7 +492,10 @@ mod tests {
     fn backup_path_is_the_folder_and_what_is_under_it_only() {
         let d = dir(".aeroftp-versions");
         assert!(is_backup_path(".aeroftp-versions", &d));
-        assert!(is_backup_path(".aeroftp-versions/20260925T070509Z/a.txt", &d));
+        assert!(is_backup_path(
+            ".aeroftp-versions/20260925T070509Z/a.txt",
+            &d
+        ));
         assert!(is_backup_path("/.aeroftp-versions/x", &d));
         assert!(is_backup_path("./.aeroftp-versions", &d));
         assert!(!is_backup_path(".aeroftp-versions-old/x", &d));
@@ -525,25 +550,53 @@ mod tests {
     fn every_provider_type_has_an_explicit_move_answer() {
         use ProviderType as P;
         let expected: &[(ProviderType, &str)] = &[
-            (P::Ftp, "native"), (P::Ftps, "native"), (P::Sftp, "native"), (P::WebDav, "native"),
-            (P::S3, "server-copy"), (P::AeroCloud, "unsupported"), (P::GoogleDrive, "native"),
-            (P::Dropbox, "native"), (P::OneDrive, "native"), (P::Mega, "native"),
-            (P::Proton, "native"), (P::Box, "native"), (P::PCloud, "native"),
-            (P::Azure, "server-copy"), (P::Filen, "unsupported"), (P::FourShared, "native"),
-            (P::ZohoWorkdrive, "native"), (P::Internxt, "native"), (P::KDrive, "native"),
-            (P::Jottacloud, "native"), (P::DrimeCloud, "native"), (P::FileLu, "native"),
-            (P::Koofr, "native"), (P::OpenDrive, "native"), (P::YandexDisk, "native"),
-            (P::GitHub, "client-copy"), (P::GitLab, "native"), (P::Swift, "server-copy"),
-            (P::GooglePhotos, "unsupported"), (P::Immich, "unsupported"),
-            (P::ImageKit, "native"), (P::Uploadcare, "unsupported"),
-            (P::Backblaze, "server-copy"), (P::Cloudinary, "native"),
-            (P::AeroVaultMount, "unsupported"), (P::Peer, "unsupported"), (P::Mtp, "unsupported"),
+            (P::Ftp, "native"),
+            (P::Ftps, "native"),
+            (P::Sftp, "native"),
+            (P::WebDav, "native"),
+            (P::S3, "server-copy"),
+            (P::AeroCloud, "unsupported"),
+            (P::GoogleDrive, "native"),
+            (P::Dropbox, "native"),
+            (P::OneDrive, "native"),
+            (P::Mega, "native"),
+            (P::Proton, "native"),
+            (P::Box, "native"),
+            (P::PCloud, "native"),
+            (P::Azure, "server-copy"),
+            (P::Filen, "unsupported"),
+            (P::FourShared, "native"),
+            (P::ZohoWorkdrive, "native"),
+            (P::Internxt, "native"),
+            (P::KDrive, "native"),
+            (P::Jottacloud, "native"),
+            (P::DrimeCloud, "native"),
+            (P::FileLu, "native"),
+            (P::Koofr, "native"),
+            (P::OpenDrive, "native"),
+            (P::YandexDisk, "native"),
+            (P::GitHub, "client-copy"),
+            (P::GitLab, "native"),
+            (P::Swift, "server-copy"),
+            (P::GooglePhotos, "unsupported"),
+            (P::Immich, "unsupported"),
+            (P::ImageKit, "native"),
+            (P::Uploadcare, "unsupported"),
+            (P::Backblaze, "server-copy"),
+            (P::Cloudinary, "native"),
+            (P::AeroVaultMount, "unsupported"),
+            (P::Peer, "unsupported"),
+            (P::Mtp, "unsupported"),
         ];
         // 37 variants today; the match in remote_move_support is what makes a
         // 38th fail to compile. This count makes it fail here too.
         assert_eq!(expected.len(), 37);
         let unique: BTreeSet<String> = expected.iter().map(|(p, _)| format!("{:?}", p)).collect();
-        assert_eq!(unique.len(), expected.len(), "a provider type is listed twice");
+        assert_eq!(
+            unique.len(),
+            expected.len(),
+            "a provider type is listed twice"
+        );
         for (p, class) in expected {
             let got = match remote_move_support(*p) {
                 RemoteMove::Native => "native",
@@ -649,7 +702,9 @@ mod tests {
             self.calls.push(format!("mkdir {}", p));
             if self.dirs.contains(p) {
                 // Like SFTP: a generic error for a folder that is there.
-                return Err(ProviderError::ServerError("Failed to create directory".into()));
+                return Err(ProviderError::ServerError(
+                    "Failed to create directory".into(),
+                ));
             }
             if !self.dirs.contains(&Self::parent(p)) {
                 return Err(ProviderError::NotFound(Self::parent(p)));
@@ -679,7 +734,9 @@ mod tests {
                 return Ok(());
             }
             if !self.dirs.contains(&Self::parent(to)) {
-                return Err(ProviderError::InvalidPath("destination parent does not exist".into()));
+                return Err(ProviderError::InvalidPath(
+                    "destination parent does not exist".into(),
+                ));
             }
             if self.files.contains(to) {
                 return Err(ProviderError::AlreadyExists(to.into()));
@@ -695,6 +752,11 @@ mod tests {
             Ok(0)
         }
         async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
+            // Like FTP, which answers by listing the parent: a missing parent
+            // is an error, not a "no".
+            if !self.dirs.contains(&Self::parent(p)) {
+                return Err(ProviderError::ServerError("550 file does not exist".into()));
+            }
             Ok(self.files.contains(p) || self.dirs.contains(p))
         }
         async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -709,7 +771,9 @@ mod tests {
     async fn archive_remote_creates_the_levels_and_moves() {
         let mut p = MemTree::new(ProviderType::Sftp, &["/r/docs/a.txt"]);
         let d = dir(".aeroftp-versions");
-        let got = archive_remote(&mut p, "/r", &d, "S", "docs/a.txt").await.unwrap();
+        let got = archive_remote(&mut p, "/r", &d, "S", "docs/a.txt")
+            .await
+            .unwrap();
         assert_eq!(got.as_deref(), Some("/r/.aeroftp-versions/S/docs/a.txt"));
         assert!(!p.files.contains("/r/docs/a.txt"));
         assert!(p.files.contains("/r/.aeroftp-versions/S/docs/a.txt"));
@@ -717,15 +781,22 @@ mod tests {
         // A second archive in the same run reuses the existing levels (whose
         // mkdir would fail with a generic error) and takes a suffix.
         p.files.insert("/r/docs/a.txt".into());
-        let again = archive_remote(&mut p, "/r", &d, "S", "docs/a.txt").await.unwrap();
-        assert_eq!(again.as_deref(), Some("/r/.aeroftp-versions/S/docs/a.1.txt"));
+        let again = archive_remote(&mut p, "/r", &d, "S", "docs/a.txt")
+            .await
+            .unwrap();
+        assert_eq!(
+            again.as_deref(),
+            Some("/r/.aeroftp-versions/S/docs/a.1.txt")
+        );
         assert!(p.files.contains("/r/.aeroftp-versions/S/docs/a.txt"));
     }
 
     #[tokio::test]
     async fn archive_remote_of_a_missing_file_is_none_and_creates_nothing() {
         let mut p = MemTree::new(ProviderType::Koofr, &[]);
-        let got = archive_remote(&mut p, "/r", &dir("v"), "S", "x.txt").await.unwrap();
+        let got = archive_remote(&mut p, "/r", &dir("v"), "S", "x.txt")
+            .await
+            .unwrap();
         assert_eq!(got, None);
         assert!(p.calls.is_empty(), "{:?}", p.calls);
     }
@@ -733,7 +804,9 @@ mod tests {
     #[tokio::test]
     async fn archive_remote_refuses_before_touching_an_unsupported_remote() {
         let mut p = MemTree::new(ProviderType::Filen, &["/r/a.txt"]);
-        let err = archive_remote(&mut p, "/r", &dir("v"), "S", "a.txt").await.unwrap_err();
+        let err = archive_remote(&mut p, "/r", &dir("v"), "S", "a.txt")
+            .await
+            .unwrap_err();
         assert!(matches!(err, ProviderError::NotSupported(_)), "{err:?}");
         assert!(p.calls.is_empty(), "{:?}", p.calls);
         assert!(p.files.contains("/r/a.txt"));
@@ -746,7 +819,9 @@ mod tests {
         // the caller must not overwrite.
         let mut p = MemTree::new(ProviderType::Sftp, &["/r/a.txt"]);
         p.leaf_only_rename = true;
-        let err = archive_remote(&mut p, "/r", &dir("v"), "S", "a.txt").await.unwrap_err();
+        let err = archive_remote(&mut p, "/r", &dir("v"), "S", "a.txt")
+            .await
+            .unwrap_err();
         assert!(matches!(err, ProviderError::Other(_)), "{err:?}");
     }
 
@@ -756,7 +831,9 @@ mod tests {
         p.dirs.insert("/".into());
         // mkdir of "/v" needs parent "/", which MemTree::parent gives as "".
         p.dirs.insert(String::new());
-        let got = archive_remote(&mut p, "/", &dir("v"), "S", "a.txt").await.unwrap();
+        let got = archive_remote(&mut p, "/", &dir("v"), "S", "a.txt")
+            .await
+            .unwrap();
         assert_eq!(got.as_deref(), Some("/v/S/a.txt"));
     }
 }

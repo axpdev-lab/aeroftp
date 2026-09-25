@@ -11,6 +11,7 @@ import {
 } from './syncTemplateApply';
 import { createTabStateStore } from '../components/AeroSync/tabStateStore';
 import type { AerosyncImportScriptResult, SyncScriptMeta, SyncTemplate } from '../types';
+import fixture420 from '../../src-tauri/tests/fixtures/aerosync/mirror-turbo-4.2.0.aerosync?raw';
 
 describe('AeroSync template import application', () => {
     it('exports the edited or cleared Sync exclusions, including after a tab switch', () => {
@@ -90,7 +91,7 @@ describe('AeroSync template import application', () => {
         expect(Object.keys(patch).filter((k) => /parallel|compression/i.test(k))).toEqual([]);
     });
 
-    it('keeps live verify and canary on an exported Mirror template (#514), with neutral tuning', () => {
+    it('keeps live verify and canary on an exported Mirror template (#514)', () => {
         const template: SyncTemplate = {
             schema_version: 1,
             name: 'Mirror',
@@ -109,14 +110,13 @@ describe('AeroSync template import application', () => {
             exclude_patterns: [],
             schedule: null,
         };
-        const overlaid = overlayLivePlanOnTemplate(
-            { ...template, profile: { ...template.profile, compression_mode: 'on' } },
-            { verifyPolicy: 'full_checksum', canary: { percent: 15, selection: 'newest' } },
-        );
-        // Written neutral whatever the preset said: the run transfers one file
-        // at a time with no compression, and older versions still find both
-        // fields.
-        expect(overlaid.profile.parallel_streams).toBe(1);
+        const overlaid = overlayLivePlanOnTemplate(template, {
+            verifyPolicy: 'full_checksum',
+            canary: { percent: 15, selection: 'newest' },
+        });
+        // Streams and compression are the backend's to write (neutral); the
+        // overlay leaves them as they came.
+        expect(overlaid.profile.parallel_streams).toBe(4);
         expect(overlaid.profile.compression_mode).toBe('off');
         expect(overlaid.profile.verify_policy).toBe('full');
         // The comparison triple follows the verify policy, not the preset:
@@ -192,6 +192,29 @@ describe('AeroSync template import application', () => {
             'plan.preset': 'bisync',
             'plan.direction': 'left-to-right',
         });
+    });
+});
+
+describe('a template written by AeroFTP 4.2.0', () => {
+    // The shared fixture is 4.2.0's own export of a Mirror in Turbo (3 streams,
+    // compression on, full checksum); see test_a_4_2_0_template_still_reads.
+    it('imports with its paths, direction and verify, and its tuning ignored', () => {
+        const template = JSON.parse(fixture420) as SyncTemplate;
+        expect(template.profile.parallel_streams).toBe(3);
+        expect(template.profile.compression_mode).toBe('on');
+        const imported = settingsFromTemplate(template);
+        expect(imported.ok).toBe(true);
+        if (!imported.ok) return;
+        const patch = buildAeroSyncTabStatePatch(imported.settings, 'local-remote');
+        expect(patch).toMatchObject({
+            'sync.source': '/home/u/site',
+            'sync.destination': '/www/site',
+            'sync.exclude': '*.tmp, cache/',
+            'plan.preset': 'mirror',
+            'plan.direction': 'left-to-right',
+            'plan.verifyPolicy': 'full_checksum',
+        });
+        expect(Object.keys(patch).filter((k) => /parallel|compression|stream/i.test(k))).toEqual([]);
     });
 });
 

@@ -515,7 +515,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         />
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
                             {t('aerosync.versionedBackupHint', { dir: validBackupDir ?? versionedBackup.backupDir ?? AEROSYNC_DEFAULT_BACKUP_DIR })
-                                || `Before a file is overwritten or deleted, its destination copy is moved to ${validBackupDir ?? versionedBackup.backupDir}/<run time>/ in the destination folder.`}
+                                || `Before a file is overwritten or deleted, its destination copy is moved into ${validBackupDir ?? versionedBackup.backupDir}, in a folder named after the run's date and time.`}
                         </p>
                         {versionedBackup.enabled && writesRemote && (remoteMove === 'server_copy' || remoteMove === 'client_copy') && (
                             <p className="mt-1 text-[10px] leading-snug text-amber-700 dark:text-amber-300">

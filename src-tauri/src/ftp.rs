@@ -345,12 +345,13 @@ impl FtpManager {
 
     /// Whether a file or folder is at `path`.
     ///
-    /// SIZE answers for a file (it works on dotfiles a LIST may hide); a 550
-    /// there means "not a file", and CWD then answers for a folder, after
-    /// which the working directory is restored. Only a 550 reads as "no":
-    /// any other reply is returned as an error, so a caller deciding whether
-    /// a file must be kept before it is overwritten never takes a lost
-    /// connection or an unsupported command for "nothing there".
+    /// SIZE answers for a file (it works on dotfiles a LIST may hide). A "not
+    /// there" reply to it (550, or 450 as rclone's server sends) sends the
+    /// question to CWD, which answers for a folder and is then undone. A
+    /// server without SIZE (500, 502) is asked through a name listing of the
+    /// parent. Anything else is returned as an error, never as "no": a caller
+    /// deciding whether a file must be kept before it is overwritten must not
+    /// take a lost connection for "nothing there".
     pub async fn exists(&mut self, path: &str) -> Result<bool> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
         match tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
@@ -358,7 +359,16 @@ impl FtpManager {
             .context("SIZE timeout")?
         {
             Ok(_) => return Ok(true),
-            Err(FtpError::UnexpectedResponse(r)) if r.status == Status::FileUnavailable => {}
+            Err(FtpError::UnexpectedResponse(r))
+                if matches!(
+                    r.status,
+                    Status::FileUnavailable | Status::RequestFileActionIgnored
+                ) => {}
+            Err(FtpError::UnexpectedResponse(r))
+                if matches!(r.status, Status::BadCommand | Status::NotImplemented) =>
+            {
+                return self.exists_in_parent_listing(path).await;
+            }
             Err(e) => return Err(FtpManagerError::OperationFailed(e.to_string()).into()),
         }
         match tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
@@ -377,6 +387,29 @@ impl FtpManager {
             .context("CWD timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
         Ok(true)
+    }
+
+    /// `exists` for a server without SIZE: is the name in its parent's NLST?
+    async fn exists_in_parent_listing(&mut self, path: &str) -> Result<bool> {
+        let trimmed = path.trim_end_matches('/');
+        let (parent, name) = match trimmed.rfind('/') {
+            Some(0) => ("/", &trimmed[1..]),
+            Some(i) => (&trimmed[..i], &trimmed[i + 1..]),
+            None => (".", trimmed),
+        };
+        let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
+        match tokio::time::timeout(self.timeouts.list_timeout, stream.nlst(Some(parent)))
+            .await
+            .context("NLST timeout")?
+        {
+            Ok(names) => Ok(names
+                .iter()
+                .any(|n| n.trim_end_matches('/').rsplit('/').next() == Some(name))),
+            Err(FtpError::UnexpectedResponse(r)) if r.status == Status::FileUnavailable => {
+                Ok(false)
+            }
+            Err(e) => Err(FtpManagerError::OperationFailed(e.to_string()).into()),
+        }
     }
 
     /// Get file size

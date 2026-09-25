@@ -47605,10 +47605,6 @@ fn plan_sync_orphan_deletes<'a>(
     Ok(orphans)
 }
 
-// `use_aerorsync_batch` is only consumed inside an `aerorsync`-gated
-// block below; tolerate the dead argument when the feature is off.
-#[cfg_attr(not(feature = "aerorsync"), allow(unused_variables))]
-#[allow(clippy::too_many_arguments)]
 /// With `--profile`, `sync LOCAL REMOTE` puts the paths in the first two
 /// positional slots (the URL slot and the local one). They move one slot
 /// along unless the first is a real URL or the `_` placeholder. The AeroSync
@@ -47618,6 +47614,10 @@ fn profile_shifts_positionals(has_profile: bool, url: &str) -> bool {
     has_profile && !url.contains("://") && url != "_"
 }
 
+// `use_aerorsync_batch` is only consumed inside an `aerorsync`-gated
+// block below; tolerate the dead argument when the feature is off.
+#[cfg_attr(not(feature = "aerorsync"), allow(unused_variables))]
+#[allow(clippy::too_many_arguments)]
 async fn cmd_sync(
     url: &str,
     local: &str,
@@ -78818,8 +78818,24 @@ mod tests {
 mod aerosync_plan_cli_line_tests {
     use super::*;
 
+    /// Parsing the full `Cli` needs more stack than a test thread has, as for
+    /// the other parse tests in this file. A panic inside is re-raised as is.
+    fn on_big_stack(body: impl FnOnce() + Send + 'static) {
+        let handle = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(body)
+            .unwrap();
+        if let Err(panic) = handle.join() {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
     #[test]
     fn every_fixture_command_parses_into_the_run_the_plan_meant() {
+        on_big_stack(every_fixture_command_parses);
+    }
+
+    fn every_fixture_command_parses() {
         let cases: serde_json::Value = serde_json::from_str(include_str!(
             "../../tests/fixtures/aerosync/cli-commands.json"
         ))
@@ -78837,7 +78853,11 @@ mod aerosync_plan_cli_line_tests {
                 .collect();
             let cli = Cli::try_parse_from(&argv)
                 .unwrap_or_else(|e| panic!("{name}: clap refused the Plan's command: {e}"));
-            assert_eq!(cli.profile.as_deref(), input["profileName"].as_str(), "{name}");
+            assert_eq!(
+                cli.profile.as_deref(),
+                input["profileName"].as_str(),
+                "{name}"
+            );
             let Commands::Sync {
                 url,
                 local,
@@ -78858,8 +78878,16 @@ mod aerosync_plan_cli_line_tests {
             } else {
                 (local.as_str(), remote.as_str())
             };
-            assert_eq!(l, input["localPath"].as_str().unwrap(), "{name}: local path");
-            assert_eq!(r, input["remotePath"].as_str().unwrap(), "{name}: remote path");
+            assert_eq!(
+                l,
+                input["localPath"].as_str().unwrap(),
+                "{name}: local path"
+            );
+            assert_eq!(
+                r,
+                input["remotePath"].as_str().unwrap(),
+                "{name}: remote path"
+            );
             let local_is_left = input["pairKind"] == "local-remote";
             let towards_right = input["direction"] == "left-to-right";
             let expected_direction = if towards_right == local_is_left {
@@ -78898,11 +78926,27 @@ mod aerosync_plan_cli_line_tests {
     /// `--error-correction=15` as one word.
     #[test]
     fn error_correction_needs_the_equals_sign() {
+        on_big_stack(error_correction_spaced);
+    }
+
+    fn error_correction_spaced() {
         let spaced = Cli::try_parse_from([
-            "aeroftp-cli", "--profile", "S", "sync", "/l", "/r", "--error-correction", "15",
+            "aeroftp-cli",
+            "--profile",
+            "S",
+            "sync",
+            "/l",
+            "/r",
+            "--error-correction",
+            "15",
         ])
         .unwrap();
-        let Commands::Sync { remote, error_correction, .. } = &spaced.command else {
+        let Commands::Sync {
+            remote,
+            error_correction,
+            ..
+        } = &spaced.command
+        else {
             panic!("not a sync command");
         };
         assert_eq!(error_correction.as_deref(), Some("medium"));

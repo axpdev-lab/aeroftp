@@ -121,11 +121,8 @@ function compareFieldsForVerify(verify: VerifyPolicy): Partial<SyncTemplate['pro
  * The backend serialises the named preset (no canary, no verify_policy).
  * Without this overlay those knobs round-trip as defaults (#514).
  *
- * `parallel_streams` and `compression_mode` are written neutral (one stream,
- * no compression): an AeroSync run transfers one file at a time with no
- * compression, so a template must not promise tuning the app does not do.
- * The fields stay in the file so older AeroFTP versions still read it, and
- * an import accepts and ignores whatever an older export put there.
+ * Streams and compression are not the Plan's to set: the backend writes them
+ * neutral (`export_sync_template`), and an import ignores them.
  */
 export function overlayLivePlanOnTemplate(template: SyncTemplate, live: LivePlanExport): SyncTemplate {
     const verify = toTemplateVerify(live.verifyPolicy);
@@ -133,8 +130,6 @@ export function overlayLivePlanOnTemplate(template: SyncTemplate, live: LivePlan
         ...template,
         profile: {
             ...template.profile,
-            parallel_streams: 1,
-            compression_mode: 'off',
             ...(verify ? { verify_policy: verify, ...compareFieldsForVerify(verify) } : {}),
             ...(live.canary
                 ? { canary: { percent: live.canary.percent, selection: live.canary.selection } }

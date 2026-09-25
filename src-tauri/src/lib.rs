@@ -15068,8 +15068,14 @@ fn versions_disk_usage_blocking() -> u64 {
 enum SyncBackupDirCheck {
     /// The folder as it will be created, and the folders it sits in: the Plan
     /// refuses a backup folder inside a folder the sync writes.
-    Valid { dir: String, ancestors: Vec<String> },
-    Invalid { code: String, message: String },
+    Valid {
+        dir: String,
+        ancestors: Vec<String>,
+    },
+    Invalid {
+        code: String,
+        message: String,
+    },
 }
 
 /// Validate a versioned-backup folder with the rules the CLI applies too.
