@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 854
+    "tauri_commands": 855
   },
   "mcp": {
     "count": 77,
@@ -951,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 481,
+    "name_matched_count": 482,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -2189,6 +2189,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 854
+    "count": 855
   }
 }
