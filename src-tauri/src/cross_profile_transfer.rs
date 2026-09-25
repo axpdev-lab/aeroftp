@@ -541,7 +541,9 @@ fn preserve_temp_mtime(path: &Path, source_modified: Option<&str>) {
         return;
     };
 
-    let Some(file_time) = parse_file_time(source_modified) else {
+    let Some(file_time) = crate::parse_remote_mtime(source_modified)
+        .map(|secs| FileTime::from_unix_time(secs, 0))
+    else {
         tracing::debug!(
             "cross-profile: unsupported mtime format '{}'",
             source_modified
@@ -552,25 +554,6 @@ fn preserve_temp_mtime(path: &Path, source_modified: Option<&str>) {
     if let Err(err) = filetime::set_file_mtime(path, file_time) {
         tracing::debug!("cross-profile: failed to preserve temp-file mtime: {}", err);
     }
-}
-
-fn parse_file_time(value: &str) -> Option<FileTime> {
-    if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(value) {
-        return Some(FileTime::from_unix_time(
-            ts.timestamp(),
-            ts.timestamp_subsec_nanos(),
-        ));
-    }
-    if let Ok(ts) = chrono::DateTime::parse_from_rfc2822(value) {
-        return Some(FileTime::from_unix_time(
-            ts.timestamp(),
-            ts.timestamp_subsec_nanos(),
-        ));
-    }
-    if let Ok(ts) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%SZ") {
-        return Some(FileTime::from_unix_time(ts.and_utc().timestamp(), 0));
-    }
-    None
 }
 
 /// Map a source file path to its corresponding destination path.
@@ -725,20 +708,5 @@ mod tests {
         let roots = source_root_candidates("cli_test/copilot", "/home/ftp/cli_test/copilot");
         let dest = map_dest_path(&roots, "/home/ftp/cli_test/copilot/sub/file.txt", "/backup");
         assert_eq!(dest, "/backup/sub/file.txt");
-    }
-
-    #[test]
-    fn parse_file_time_supports_rfc3339() {
-        assert!(parse_file_time("2026-04-09T19:00:08Z").is_some());
-    }
-
-    #[test]
-    fn parse_file_time_supports_rfc2822() {
-        assert!(parse_file_time("Thu, 09 Apr 2026 19:00:08 GMT").is_some());
-    }
-
-    #[test]
-    fn parse_file_time_supports_legacy_utc() {
-        assert!(parse_file_time("2026-04-09 19:00:08Z").is_some());
     }
 }

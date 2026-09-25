@@ -17,6 +17,7 @@ use crate::providers::{ProviderError, ProviderTransferExecutorKind, StorageProvi
 use crate::sync_core::scan::{
     scan_local_tree_checked, scan_remote_tree_checked, ScanCompleteness, ScanOptions,
 };
+use crate::sync_core::mtime::ModifyWindow;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -38,10 +39,6 @@ static MULTI_PATH_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> =
 /// destination from two simultaneous renames.
 static ATOMIC_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> =
     std::sync::LazyLock::new(|| Mutex::new(()));
-
-/// Tolerance for timestamp comparison (seconds)
-/// Accounts for filesystem and timezone differences
-const TIMESTAMP_TOLERANCE_SECS: i64 = 30;
 
 /// Status of a file comparison
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -124,6 +121,9 @@ pub struct CompareSummary {
 pub struct CompareReport {
     pub differences: Vec<FileComparison>,
     pub summary: CompareSummary,
+    /// How modification times were compared: within a window, or not at all
+    /// (size only, with the reason). The GUI states the size-only case.
+    pub modify_window: ModifyWindow,
 }
 
 fn default_error_correction_pct() -> u32 {
@@ -249,6 +249,11 @@ pub struct CompareOptions {
     /// Maximum file age in seconds (skip older files)
     #[serde(default)]
     pub max_age_secs: Option<u64>,
+    /// The same-instant window for this pair of stores, set by the compare
+    /// command from the two sides' precision
+    /// ([`ModifyWindow::resolve`]); never taken from the frontend.
+    #[serde(skip)]
+    pub modify_window: ModifyWindow,
 }
 
 impl CompareOptions {
@@ -288,6 +293,7 @@ impl Default for CompareOptions {
             max_size: None,
             min_age_secs: None,
             max_age_secs: None,
+            modify_window: ModifyWindow::default(),
         }
     }
 }
@@ -592,6 +598,9 @@ pub enum FileOutcome {
 /// Aggregated counters returned by [`sync_tree_core`].
 #[derive(Debug, Clone, Default)]
 pub struct SyncReport {
+    /// How modification times were compared on this run (see
+    /// [`ModifyWindow`]); size only is stated, never silent.
+    pub modify_window: ModifyWindow,
     pub uploaded: u32,
     pub downloaded: u32,
     pub deleted: u32,
@@ -859,35 +868,41 @@ fn should_filter(info: Option<&FileInfo>, options: &CompareOptions) -> bool {
     false
 }
 
-/// Compare two timestamps with tolerance.
-/// When both timestamps are absent, returns true (cannot distinguish: treat as equal).
-pub fn timestamps_equal(local: Option<DateTime<Utc>>, remote: Option<DateTime<Utc>>) -> bool {
+/// Whether two timestamps are the same instant under `window`. Both absent,
+/// or a size-only window, cannot tell them apart and reads as equal; one
+/// present and one absent is not equal.
+pub fn timestamps_equal(
+    local: Option<DateTime<Utc>>,
+    remote: Option<DateTime<Utc>>,
+    window: ModifyWindow,
+) -> bool {
+    if !window.compares_times() {
+        return true;
+    }
     match (local, remote) {
         (Some(l), Some(r)) => {
-            (l.signed_duration_since(r)).num_seconds().abs() <= TIMESTAMP_TOLERANCE_SECS
+            window.order(Some(l.timestamp()), Some(r.timestamp()))
+                == Some(std::cmp::Ordering::Equal)
         }
-        (None, None) => true, // Both absent: cannot distinguish, treat as equal
-        _ => false,           // One present, one absent: not equal
+        (None, None) => true,
+        _ => false,
     }
 }
 
-/// Determine which timestamp is newer
+/// Which timestamp is newer under `window`: `None` when they are the same
+/// instant, when either is missing, or when the window is size only.
 pub fn compare_timestamps(
     local: Option<DateTime<Utc>>,
     remote: Option<DateTime<Utc>>,
+    window: ModifyWindow,
 ) -> Option<SyncStatus> {
-    match (local, remote) {
-        (Some(l), Some(r)) => {
-            let diff = l.signed_duration_since(r).num_seconds();
-            if diff.abs() <= TIMESTAMP_TOLERANCE_SECS {
-                None // Equal within tolerance
-            } else if diff > 0 {
-                Some(SyncStatus::LocalNewer)
-            } else {
-                Some(SyncStatus::RemoteNewer)
-            }
-        }
-        _ => None, // Can't compare if timestamps missing
+    match window.order(
+        local.map(|t| t.timestamp()),
+        remote.map(|t| t.timestamp()),
+    )? {
+        std::cmp::Ordering::Greater => Some(SyncStatus::LocalNewer),
+        std::cmp::Ordering::Less => Some(SyncStatus::RemoteNewer),
+        std::cmp::Ordering::Equal => None,
     }
 }
 
@@ -921,8 +936,12 @@ pub fn compare_file_pair(
                         }
                         // Hashes differ - determine which is newer by timestamp
                         if options.compare_timestamp {
-                            return compare_timestamps(l.modified, r.modified)
-                                .unwrap_or(SyncStatus::Conflict);
+                            return compare_timestamps(
+                                l.modified,
+                                r.modified,
+                                options.modify_window,
+                            )
+                            .unwrap_or(SyncStatus::Conflict);
                         } else {
                             // No timestamp comparison, but hashes differ
                             return SyncStatus::Conflict;
@@ -948,17 +967,20 @@ pub fn compare_file_pair(
                 }
             }
 
-            // ──── Size-only fallback when timestamps absent ────
-            // Providers like FileLu may return modified=None for folders or files.
-            // When timestamps are unavailable, fall back to size-only comparison
-            // to avoid infinite re-sync loops.
-            let both_timestamps_present = l.modified.is_some() && r.modified.is_some();
+            // ──── Size-only when the times cannot be compared ────
+            // A missing timestamp (FileLu folders, GitHub listings) or a pair of
+            // stores whose times are not comparable (an FTP LIST listing, see
+            // `ModifyWindow::SizeOnly`) falls back to size only, which also
+            // avoids endless re-syncs.
+            let both_timestamps_present = options.modify_window.compares_times()
+                && l.modified.is_some()
+                && r.modified.is_some();
 
             // First check size if enabled
             if options.compare_size && l.size != r.size {
                 // Different sizes - determine which is newer
                 if options.compare_timestamp && both_timestamps_present {
-                    match compare_timestamps(l.modified, r.modified) {
+                    match compare_timestamps(l.modified, r.modified, options.modify_window) {
                         Some(status) => return status,
                         None => return SyncStatus::SizeMismatch,
                     }
@@ -973,10 +995,10 @@ pub fn compare_file_pair(
                     // One or both timestamps absent: size already matched (or not compared),
                     // treat as identical to avoid spurious re-syncs
                     SyncStatus::Identical
-                } else if timestamps_equal(l.modified, r.modified) {
+                } else if timestamps_equal(l.modified, r.modified, options.modify_window) {
                     SyncStatus::Identical
                 } else {
-                    match compare_timestamps(l.modified, r.modified) {
+                    match compare_timestamps(l.modified, r.modified, options.modify_window) {
                         Some(status) => status,
                         None => SyncStatus::Identical,
                     }
@@ -1390,12 +1412,14 @@ pub async fn sync_tree_core(
     );
 
     sink.on_phase(SyncPhase::Planning);
+    let modify_window = ModifyWindow::against_provider(None, &**provider);
     let mut report = SyncReport {
         dry_run: opts.dry_run,
         direction: Some(opts.direction),
         delta_policy: Some(opts.delta_policy),
         skipped_links: bound.reported_links(&local_boundaries),
         unseen_paths: bound.unseen().to_vec(),
+        modify_window,
         ..SyncReport::default()
     };
     // A scan that missed a part of the tree it cannot name leaves nothing to
@@ -1458,6 +1482,7 @@ pub async fn sync_tree_core(
                 remote_entry,
                 opts.delta_policy,
                 opts.conflict_mode,
+                modify_window,
             );
             match decision.action {
                 SyncTreeAction::Copy => {
@@ -1522,6 +1547,7 @@ pub async fn sync_tree_core(
                     .copied(),
                 opts.delta_policy,
                 opts.conflict_mode,
+                modify_window,
                 handled_by_upload,
             );
             match decision.action {
@@ -1679,6 +1705,7 @@ pub(crate) fn decide_upload(
     remote_entry: Option<&crate::sync_core::RemoteEntry>,
     policy: DeltaPolicy,
     mode: ConflictMode,
+    window: ModifyWindow,
 ) -> SyncTreeDecision {
     let Some(remote_entry) = remote_entry else {
         return SyncTreeDecision {
@@ -1696,6 +1723,7 @@ pub(crate) fn decide_upload(
             remote_entry.mtime.as_deref(),
             mode,
             policy,
+            window,
         ),
         DeltaPolicy::Hash | DeltaPolicy::Delta => decide_upload_by_hash(
             SyncFileMeta {
@@ -1710,6 +1738,7 @@ pub(crate) fn decide_upload(
             },
             mode,
             policy,
+            window,
         ),
     }
 }
@@ -1719,6 +1748,7 @@ pub(crate) fn decide_download(
     local_entry: Option<&crate::sync_core::LocalEntry>,
     policy: DeltaPolicy,
     mode: ConflictMode,
+    window: ModifyWindow,
     already_handled_by_upload: bool,
 ) -> SyncTreeDecision {
     if already_handled_by_upload {
@@ -1743,6 +1773,7 @@ pub(crate) fn decide_download(
             local_entry.mtime.as_deref(),
             mode,
             policy,
+            window,
         ),
         DeltaPolicy::Hash | DeltaPolicy::Delta => decide_download_by_hash(
             SyncFileMeta {
@@ -1757,6 +1788,7 @@ pub(crate) fn decide_download(
             },
             mode,
             policy,
+            window,
         ),
     }
 }
@@ -1822,8 +1854,9 @@ fn decide_upload_by_mtime(
     remote_mtime: Option<&str>,
     mode: ConflictMode,
     requested_policy: DeltaPolicy,
+    window: ModifyWindow,
 ) -> SyncTreeDecision {
-    if let Some(ordering) = compare_scan_mtimes(local_mtime, remote_mtime) {
+    if let Some(ordering) = window.order_text(local_mtime, remote_mtime) {
         let action = match ordering {
             std::cmp::Ordering::Greater => SyncTreeAction::Copy,
             std::cmp::Ordering::Less => SyncTreeAction::Skip("remote is newer".to_string()),
@@ -1854,8 +1887,9 @@ fn decide_download_by_mtime(
     local_mtime: Option<&str>,
     mode: ConflictMode,
     requested_policy: DeltaPolicy,
+    window: ModifyWindow,
 ) -> SyncTreeDecision {
-    if let Some(ordering) = compare_scan_mtimes(remote_mtime, local_mtime) {
+    if let Some(ordering) = window.order_text(remote_mtime, local_mtime) {
         let action = match ordering {
             std::cmp::Ordering::Greater => SyncTreeAction::Copy,
             std::cmp::Ordering::Less => SyncTreeAction::Skip("local is newer".to_string()),
@@ -1884,6 +1918,7 @@ fn decide_upload_by_hash(
     remote: SyncFileMeta<'_>,
     mode: ConflictMode,
     requested_policy: DeltaPolicy,
+    window: ModifyWindow,
 ) -> SyncTreeDecision {
     if let (Some(local_hash), Some(remote_hash)) = (local.hash, remote.hash) {
         if local_hash.eq_ignore_ascii_case(remote_hash) {
@@ -1901,6 +1936,7 @@ fn decide_upload_by_hash(
         remote.mtime,
         mode,
         requested_policy,
+        window,
     )
 }
 
@@ -1909,6 +1945,7 @@ fn decide_download_by_hash(
     local: SyncFileMeta<'_>,
     mode: ConflictMode,
     requested_policy: DeltaPolicy,
+    window: ModifyWindow,
 ) -> SyncTreeDecision {
     if let (Some(remote_hash), Some(local_hash)) = (remote.hash, local.hash) {
         if remote_hash.eq_ignore_ascii_case(local_hash) {
@@ -1926,28 +1963,10 @@ fn decide_download_by_hash(
         local.mtime,
         mode,
         requested_policy,
+        window,
     )
 }
 
-fn compare_scan_mtimes(left: Option<&str>, right: Option<&str>) -> Option<std::cmp::Ordering> {
-    let left = left.and_then(parse_scan_mtime)?;
-    let right = right.and_then(parse_scan_mtime)?;
-    Some(left.cmp(&right))
-}
-
-fn parse_scan_mtime(raw: &str) -> Option<chrono::DateTime<Utc>> {
-    chrono::DateTime::parse_from_rfc3339(raw)
-        .map(|dt| dt.with_timezone(&Utc))
-        .ok()
-        .or_else(|| {
-            let trimmed = raw.strip_suffix('Z').unwrap_or(raw);
-            chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%dT%H:%M:%S")
-                .or_else(|_| chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S"))
-                .or_else(|_| chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M"))
-                .ok()
-                .map(|naive| chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
-        })
-}
 
 fn remote_sha256_hex(entry: &crate::sync_core::RemoteEntry) -> Option<&str> {
     match (entry.checksum_alg.as_deref(), entry.checksum_hex.as_deref()) {
@@ -3257,11 +3276,11 @@ pub fn classify_with_summary(
                 let local_changed = (options.compare_size && l.size != cached.size)
                     || (l.modified.is_some()
                         && cached.modified.is_some()
-                        && !timestamps_equal(l.modified, cached.modified));
+                        && !timestamps_equal(l.modified, cached.modified, options.modify_window));
                 let remote_changed = (options.compare_size && r.size != cached.size)
                     || (r.modified.is_some()
                         && cached.modified.is_some()
-                        && !timestamps_equal(r.modified, cached.modified));
+                        && !timestamps_equal(r.modified, cached.modified, options.modify_window));
 
                 if local_changed && remote_changed {
                     // Both sides changed since last sync → true conflict
@@ -3319,6 +3338,7 @@ pub fn classify_with_summary(
     CompareReport {
         differences: results,
         summary,
+        modify_window: options.modify_window,
     }
 }
 
@@ -3966,7 +3986,7 @@ pub fn verify_local_file(
         if let (Some(meta), Some(expected)) = (&metadata, expected_mtime) {
             meta.modified().ok().map(|t| {
                 let actual: DateTime<Utc> = t.into();
-                timestamps_equal(Some(actual), Some(expected))
+                timestamps_equal(Some(actual), Some(expected), ModifyWindow::default())
             })
         } else {
             None

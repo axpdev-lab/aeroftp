@@ -2061,6 +2061,14 @@ impl StorageProvider for FtpProvider {
         self.hash_supported.is_some()
     }
 
+    /// MLSD dates are UTC to the second (RFC 3659). A session that lists with
+    /// `LIST` (no MLSD, or MLSD that broke, which never comes back) reads the
+    /// server's local time with no zone, so its dates are not comparable.
+    fn mtime_precision(&self) -> Option<std::time::Duration> {
+        self.mlsd_supported
+            .then_some(std::time::Duration::from_secs(1))
+    }
+
     /// Narrowed to what THIS server advertised in FEAT, which is the whole
     /// point on FTP: the matrix lists the four algorithms the protocol can
     /// carry, but a server offering only `XCRC` can produce CRC32 and nothing
@@ -4208,9 +4216,13 @@ mod tests {
 
     fn charac_table() -> String {
         let p = charac_provider();
+        // The present a year-less Unix date is read against, fixed so the
+        // baseline does not age.
+        let charac_now =
+            chrono::NaiveDateTime::parse_from_str("2026-09-25 12:00", "%Y-%m-%d %H:%M").unwrap();
         let mut out = String::new();
         for (line, base) in CHARAC_LIST_ROWS {
-            let rendered = match super::super::ftp_listing::parse_listing(line, base) {
+            let rendered = match super::super::ftp_listing::parse_listing_at(line, base, charac_now) {
                 None => "<none>".to_string(),
                 Some(e) => format!(
                     "name={:?} path={:?} dir={} size={} sym={} link={:?} perms={:?} owner={:?} group={:?} mod={:?}",
@@ -4245,23 +4257,23 @@ mod tests {
     }
 
     const CHARAC_BASELINE: &str = r#"LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects" @ "/"
-  name="projects" path="/projects" dir=true size=4096 sym=false link=None perms=Some("drwxr-xr-x") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="projects" path="/projects" dir=true size=4096 sym=false link=None perms=Some("drwxr-xr-x") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt" @ "/"
-  name="notes.txt" path="/notes.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="notes.txt" path="/notes.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt" @ "/"
-  name="my report.txt" path="/my report.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="my report.txt" path="/my report.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt" @ "/"
-  name="a  b.txt" path="/a  b.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="a  b.txt" path="/a  b.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "01-23-24  10:30AM  12345  my  file.txt" @ "/"
-  name="my  file.txt" path="/my  file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="my  file.txt" path="/my  file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM  ????  odd.txt" @ "/"
-  name="odd.txt" path="/odd.txt" dir=false size=0 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="odd.txt" path="/odd.txt" dir=false size=0 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target" @ "/"
-  name="link" path="/link" dir=false size=7 sym=true link=Some("target") perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="link" path="/link" dir=false size=7 sym=true link=Some("target") perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling" @ "/"
-  name="dangling" path="/dangling" dir=false size=7 sym=true link=None perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="dangling" path="/dangling" dir=false size=7 sym=true link=None perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt" @ "/"
-  name="odd.txt" path="/odd.txt" dir=false size=0 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="odd.txt" path="/odd.txt" dir=false size=0 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r-- 1 user group 123 Jan 20 10:00" @ "/"
   <none>
 LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ." @ "/"
@@ -4269,23 +4281,23 @@ LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ." @ "/"
 LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .." @ "/"
   <none>
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 f.txt" @ "/scope"
-  name="f.txt" path="/scope/f.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="f.txt" path="/scope/f.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 f.txt" @ "/scope/"
-  name="f.txt" path="/scope/f.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="f.txt" path="/scope/f.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "" @ "/"
   <none>
 LIST "total 12" @ "/"
   <none>
 LIST "01-23-24  10:30AM       <DIR>          folder" @ "/"
-  name="folder" path="/folder" dir=true size=0 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="folder" path="/folder" dir=true size=0 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM           12345      file.txt" @ "/"
-  name="file.txt" path="/file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="file.txt" path="/file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "01-23-2024  10:30AM         12345      file.txt" @ "/"
-  name="file.txt" path="/file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-2024 10:30AM")
+  name="file.txt" path="/file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM           12345      my file.txt" @ "/"
-  name="my file.txt" path="/my file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="my file.txt" path="/my file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24 10:30AM 12345 a b c d e f" @ "/"
-  name="a b c d e f" path="/a b c d e f" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="a b c d e f" path="/a b c d e f" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "not-a-date 10:30AM <DIR> folder" @ "/"
   <none>
 LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ." @ "/"
@@ -4310,7 +4322,12 @@ MLSD "no-facts-here" @ "/"
     #[test]
     fn test_parse_unix_listing() {
         let line = "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects";
-        let entry = super::super::ftp_listing::parse_unix_listing(line, "/").unwrap();
+        let entry = super::super::ftp_listing::parse_unix_listing(
+            line,
+            "/",
+            chrono::Utc::now().naive_utc(),
+        )
+        .unwrap();
 
         assert_eq!(entry.name, "projects");
         assert!(entry.is_dir);

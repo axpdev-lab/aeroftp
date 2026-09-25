@@ -30383,16 +30383,13 @@ mod serve_ftp_backend {
             Ok(AeroFtpMeta {
                 size: entry.size,
                 is_dir: entry.is_dir,
-                modified: entry.modified.as_deref().and_then(|s| {
-                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                        .ok()
-                        .map(|dt| {
-                            std::time::UNIX_EPOCH
-                                + std::time::Duration::from_secs(
-                                    dt.and_utc().timestamp().max(0) as u64
-                                )
-                        })
-                }),
+                modified: entry
+                    .modified
+                    .as_deref()
+                    .and_then(ftp_client_gui_lib::parse_remote_mtime)
+                    .map(|secs| {
+                        std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs.max(0) as u64)
+                    }),
             })
         }
 
@@ -30411,16 +30408,13 @@ mod serve_ftp_backend {
                     metadata: AeroFtpMeta {
                         size: e.size,
                         is_dir: e.is_dir,
-                        modified: e.modified.as_deref().and_then(|s| {
-                            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                                .ok()
-                                .map(|dt| {
-                                    std::time::UNIX_EPOCH
-                                        + std::time::Duration::from_secs(
-                                            dt.and_utc().timestamp().max(0) as u64,
-                                        )
-                                })
-                        }),
+                        modified: e
+                    .modified
+                    .as_deref()
+                    .and_then(ftp_client_gui_lib::parse_remote_mtime)
+                    .map(|secs| {
+                        std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs.max(0) as u64)
+                    }),
                     },
                 })
                 .collect())
@@ -34291,7 +34285,7 @@ impl RmFilter {
     fn matches_file(&self, name: &str, path: &str, size: u64, modified: Option<&str>) -> bool {
         if let Some(ref predicate) = self.predicate {
             let mtime = modified
-                .and_then(parse_iso8601_to_unix)
+                .and_then(ftp_client_gui_lib::parse_remote_mtime)
                 .and_then(|ts| u64::try_from(ts).ok());
             if !predicate(name, size, mtime) {
                 return false;
@@ -48593,10 +48587,8 @@ async fn cmd_sync(
     // Option<mtime_string>) for every candidate; ModtimeAsc/Desc parse
     // the mtime as RFC 3339; entries without a parseable timestamp are
     // sorted to the end via OrderBy::sort_in_place.
-    let mtime_to_epoch = |raw: Option<&str>| -> Option<i64> {
-        raw.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-            .map(|d| d.timestamp())
-    };
+    let mtime_to_epoch =
+        |raw: Option<&str>| -> Option<i64> { raw.and_then(ftp_client_gui_lib::parse_remote_mtime) };
     cli.order_by.sort_in_place(
         &mut to_upload,
         |p| *p,
@@ -60599,19 +60591,6 @@ fn quota_pct(used: u64, total: u64) -> Option<f64> {
     }
 }
 
-/// Parse an ISO 8601 / RFC 3339 timestamp into UNIX seconds. Falls back to
-/// `None` for unparseable input.
-fn parse_iso8601_to_unix(s: &str) -> Option<i64> {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|dt| dt.timestamp())
-        .or_else(|| {
-            // Tolerate trailing space or Z-less variants used by some providers.
-            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                .ok()
-                .map(|ndt| ndt.and_utc().timestamp())
-        })
-}
 
 /// Convert UNIX seconds to RFC 3339 string for inclusion in audit details.
 fn unix_to_rfc3339(ts: i64) -> Option<String> {
@@ -60881,7 +60860,7 @@ async fn run_audit_backup_freshness(
                         let mut newest_unix: Option<i64> = None;
                         let mut newest_name: Option<String> = None;
                         for e in &filtered {
-                            if let Some(m) = e.modified.as_deref().and_then(parse_iso8601_to_unix) {
+                            if let Some(m) = e.modified.as_deref().and_then(ftp_client_gui_lib::parse_remote_mtime) {
                                 if newest_unix.is_none_or(|cur| m > cur) {
                                     newest_unix = Some(m);
                                     newest_name = Some(e.name.clone());
@@ -75004,20 +74983,6 @@ mod tests {
         assert!(parse_audit_min_size("not-a-size").is_err());
     }
 
-    #[test]
-    fn parse_iso8601_to_unix_handles_rfc3339_and_naive() {
-        // Z-suffix RFC 3339
-        let ts = parse_iso8601_to_unix("2025-01-01T00:00:00Z").unwrap();
-        assert_eq!(ts, 1735689600);
-        // With timezone offset
-        let ts = parse_iso8601_to_unix("2025-01-01T01:00:00+01:00").unwrap();
-        assert_eq!(ts, 1735689600);
-        // Naive variant (no tz, no Z)
-        let ts = parse_iso8601_to_unix("2025-01-01T00:00:00").unwrap();
-        assert_eq!(ts, 1735689600);
-        // Garbage returns None
-        assert!(parse_iso8601_to_unix("not-a-date").is_none());
-    }
 
     #[test]
     fn audit_report_serializes_status_lowercase_and_flattens_details() {

@@ -74,6 +74,7 @@ use crate::sync::{
     DeltaPolicy, FileOutcome, SyncDirection, SyncError, SyncOptions, SyncPhase, SyncProgressSink,
     SyncReport, SyncTransferSpec, SyncTreeAction,
 };
+use crate::sync_core::mtime::ModifyWindow;
 use crate::sync_core::scan::{
     scan_local_tree_checked, scan_remote_tree_checked, LocalEntry, RemoteEntry, ScanCompleteness,
 };
@@ -156,6 +157,7 @@ fn plan_sync_dag(
     locals: &[LocalEntry],
     remotes: &[RemoteEntry],
     opts: &SyncOptions,
+    window: ModifyWindow,
 ) -> SyncDagPlan {
     use std::collections::{HashMap as Map, HashSet};
 
@@ -188,6 +190,7 @@ fn plan_sync_dag(
                 remote_entry,
                 opts.delta_policy,
                 opts.conflict_mode,
+                window,
             );
             match decision.action {
                 SyncTreeAction::Copy => {
@@ -229,6 +232,7 @@ fn plan_sync_dag(
                 local_by_path.get(remote_entry.rel_path.as_str()).copied(),
                 opts.delta_policy,
                 opts.conflict_mode,
+                window,
                 handled_by_upload,
             );
             match decision.action {
@@ -1091,12 +1095,14 @@ pub async fn execute_sync_dag(
     // snapshots, so resolving the whole plan up front is decision-equivalent
     // to the legacy interleaved decide/perform loop.
     sink.on_phase(SyncPhase::Planning);
+    let modify_window = ModifyWindow::against_provider(None, &**provider);
     let mut report = SyncReport {
         dry_run: opts.dry_run,
         direction: Some(opts.direction),
         delta_policy: Some(opts.delta_policy),
         skipped_links: bound.reported_links(&local_boundaries),
         unseen_paths: bound.unseen().to_vec(),
+        modify_window,
         ..SyncReport::default()
     };
     if let Some(msg) = local_scan_panic {
@@ -1160,7 +1166,7 @@ pub async fn execute_sync_dag(
     } else {
         opts
     };
-    let plan = plan_sync_dag(&locals, &remotes, plan_opts);
+    let plan = plan_sync_dag(&locals, &remotes, plan_opts, modify_window);
 
     // Phase 3: Executing.
     sink.on_phase(SyncPhase::Executing);
@@ -1877,7 +1883,7 @@ mod tests {
     fn plan_uploads_new_file_and_skips_identical() {
         let locals = vec![local("new.txt", 10), local("same.txt", 20)];
         let remotes = vec![remote("same.txt", 20)];
-        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Upload));
+        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Upload), ModifyWindow::default());
 
         assert_eq!(plan.transfers.len(), 1);
         assert_eq!(plan.transfers[0].rel, "new.txt");
@@ -1893,7 +1899,7 @@ mod tests {
     fn plan_downloads_new_remote_file_only() {
         let locals = vec![local("here.txt", 5)];
         let remotes = vec![remote("here.txt", 5), remote("only-remote.txt", 99)];
-        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Download));
+        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Download), ModifyWindow::default());
 
         assert_eq!(plan.transfers.len(), 1);
         assert_eq!(plan.transfers[0].rel, "only-remote.txt");
@@ -1909,7 +1915,7 @@ mod tests {
         // download pass then skips it as already handled.
         let locals = vec![local("conflict.txt", 100)];
         let remotes = vec![remote("conflict.txt", 50)];
-        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both));
+        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both), ModifyWindow::default());
 
         assert_eq!(plan.transfers.len(), 1);
         assert_eq!(plan.transfers[0].op, "upload");
@@ -1925,7 +1931,7 @@ mod tests {
         // on upload and skip on download even when the remote was larger.
         let locals = vec![local("conflict.txt", 50)];
         let remotes = vec![remote("conflict.txt", 100)];
-        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both));
+        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both), ModifyWindow::default());
 
         assert_eq!(plan.transfers.len(), 1);
         assert_eq!(plan.transfers[0].op, "download");
@@ -1944,7 +1950,7 @@ mod tests {
     fn plan_keeps_uploads_before_downloads_in_plan_order() {
         let locals = vec![local("up-only.txt", 1)];
         let remotes = vec![remote("down-only.txt", 2)];
-        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both));
+        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both), ModifyWindow::default());
 
         assert_eq!(plan.transfers.len(), 2);
         assert_eq!(plan.transfers[0].op, "upload");
@@ -1958,14 +1964,14 @@ mod tests {
 
         let mut upload = opts(SyncDirection::Upload);
         upload.delete_orphans = true;
-        let plan = plan_sync_dag(&locals, &remotes, &upload);
+        let plan = plan_sync_dag(&locals, &remotes, &upload, ModifyWindow::default());
         assert_eq!(plan.deletes.len(), 1);
         assert_eq!(plan.deletes[0].rel, "remote-orphan.txt");
         assert_eq!(plan.deletes[0].op, "delete_remote");
 
         let mut download = opts(SyncDirection::Download);
         download.delete_orphans = true;
-        let plan = plan_sync_dag(&locals, &remotes, &download);
+        let plan = plan_sync_dag(&locals, &remotes, &download, ModifyWindow::default());
         assert_eq!(plan.deletes.len(), 1);
         assert_eq!(plan.deletes[0].rel, "local-orphan.txt");
         assert_eq!(plan.deletes[0].op, "delete_local");
@@ -1973,14 +1979,14 @@ mod tests {
         // Bidirectional sync resolves orphans as transfers, never deletes.
         let mut both = opts(SyncDirection::Both);
         both.delete_orphans = true;
-        let plan = plan_sync_dag(&locals, &remotes, &both);
+        let plan = plan_sync_dag(&locals, &remotes, &both, ModifyWindow::default());
         assert!(plan.deletes.is_empty());
     }
 
     #[test]
     fn plan_deduplicates_repeated_scan_entries() {
         let locals = vec![local("dup.txt", 7), local("dup.txt", 7)];
-        let plan = plan_sync_dag(&locals, &[], &opts(SyncDirection::Upload));
+        let plan = plan_sync_dag(&locals, &[], &opts(SyncDirection::Upload), ModifyWindow::default());
         assert_eq!(
             plan.transfers.len(),
             1,
