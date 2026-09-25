@@ -305,7 +305,9 @@ fn pattern_matches(
     let starts_at_a_root = |i: usize| {
         i == 0 || {
             let start = bounds[i].0;
-            start >= 2 && &path[start - 2..start] == "//"
+            // Bytes, not a `str` slice: `start - 2` can fall inside a
+            // multi-byte character (`İ/x`), and slicing there panics.
+            start >= 2 && &path.as_bytes()[start - 2..start] == b"//"
         }
     };
     for i in 0..bounds.len() {
@@ -768,6 +770,16 @@ mod tests {
             ExcludeMatcher::new(&["\\"]).is_err(),
             "a lone backslash is a dangling escape off Windows, as before"
         );
+    }
+
+    /// An anchored pattern looks two bytes back for an empty segment; before
+    /// a multi-byte character that used to slice inside it and panic (found on
+    /// the Windows runner with `İb/ΣA/\\`).
+    #[test]
+    fn an_anchored_pattern_after_a_multibyte_character_does_not_panic() {
+        assert!(!new("İ/x", &["/x"]));
+        assert!(!new("aİ/Σ/x", &["/x"]));
+        assert!(new("İ//x", &["/x"]));
     }
 
     /// The class the Windows runner found twice (`\\` then `/` against a
