@@ -7917,7 +7917,6 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
     /// A `!` in `.aeroignore` that re-includes a path the configured list
     /// excludes survived AeroCloud's scans and was then dropped by the
     /// compare, which read the configured list alone.
@@ -7951,6 +7950,7 @@ mod tests {
         assert_eq!(paths, vec!["build/keep.txt"]);
     }
 
+    #[allow(dead_code)]
     fn mk_dir_info(name: &str) -> FileInfo {
         FileInfo {
             name: name.to_string(),
