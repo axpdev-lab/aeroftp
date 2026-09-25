@@ -77,6 +77,27 @@ impl ZohoWorkdriveConfig {
         }
     }
 
+    /// Upload server of the stream upload API for this region, as the Upload
+    /// Large File API page lists them:
+    /// https://www.zoho.com/workdrive/developer/docs/api/v1/upload-large-file-250mb.html
+    /// The page lists no server for the UK data centre, so that region keeps
+    /// the single-request upload (and its 250 MB limit) rather than a guessed
+    /// host.
+    fn upload_domain(&self) -> Option<&'static str> {
+        match self.region.as_str() {
+            "eu" => Some("upload.zoho.eu"),
+            "in" => Some("upload.zoho.in"),
+            "au" => Some("upload.zoho.com.au"),
+            "jp" => Some("upload.zoho.jp"),
+            "cn" => Some("upload.zoho.com.cn"),
+            "ae" => Some("files.zoho.ae"),
+            "ca" => Some("upload.zohocloud.ca"),
+            "sa" => Some("files.zoho.sa"),
+            "uk" => None,
+            _ => Some("upload.zoho.com"), // US default, as api_domain
+        }
+    }
+
     /// API base URL for this region: www.zohoapis.{ext}/workdrive/api/v1
     /// Used for metadata operations (list, mkdir, delete, rename).
     pub fn api_base(&self) -> String {
@@ -187,6 +208,47 @@ fn parse_byte_amount(raw: &str) -> Result<u64, String> {
         _ => return Err(format!("unknown byte unit '{}'", unit)),
     };
     Ok((number * multiplier).round() as u64)
+}
+
+/// Largest file the single-request `POST /upload` accepts: "This API will
+/// only upload files of size up to 250MB", and it answers 413 above that.
+/// Read as decimal megabytes, the smaller reading, so a file either reading
+/// would refuse takes the stream upload instead.
+/// https://www.zoho.com/workdrive/developer/docs/api/v1/upload-file.html
+const ZOHO_SINGLE_UPLOAD_MAX_BYTES: u64 = 250 * 1000 * 1000;
+
+/// The upload server to use for a file of `size`, or `None` for the
+/// single-request upload: at or below its documented limit, or in a region
+/// whose upload server is not documented.
+fn large_upload_host(config: &ZohoWorkdriveConfig, size: u64) -> Option<&'static str> {
+    if size <= ZOHO_SINGLE_UPLOAD_MAX_BYTES {
+        return None;
+    }
+    config.upload_domain()
+}
+
+/// Whether a stream upload response reports `file_name` as stored. The API
+/// answers with the files it stored, `{"data":[{"attributes":{"file_name":
+/// ...}}]}` (observed live on 2026-09-24), and leaves failed ones out, so an
+/// absent name is a failure even under a success status.
+fn stream_upload_stored(response: &str, file_name: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(response)
+        .ok()
+        .and_then(|v| v.get("data").and_then(|d| d.as_array()).cloned())
+        .map(|entries| {
+            entries.iter().any(|e| {
+                e.pointer("/attributes/file_name").and_then(|n| n.as_str()) == Some(file_name)
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// The first `max` bytes of a response for a log line, cut on a character
+/// boundary: slicing at a raw byte index panics when a multibyte character
+/// (a file name in a Zoho response, for one) straddles it, and that panic
+/// would fail an upload that had already been stored.
+fn log_preview(text: &str, max: usize) -> &str {
+    &text[..text.floor_char_boundary(max)]
 }
 
 const ZOHO_WORKDRIVE_FALLBACK_QUOTA_BYTES: u64 = 5 * 1024 * 1024 * 1024;
@@ -665,6 +727,60 @@ impl ZohoWorkdriveProvider {
         self.config.api_base()
     }
 
+    /// Upload through the stream API of the upload server (Upload Large File
+    /// API): the file is the raw request body, and name, folder and mode go in
+    /// headers. The response lists only the files that were stored, so a
+    /// success status with no file in it is a failure, not an upload.
+    /// https://www.zoho.com/workdrive/developer/docs/api/v1/upload-large-file-250mb.html
+    async fn stream_upload(
+        &self,
+        host: &str,
+        parent_id: &str,
+        file_name: &str,
+        total_size: u64,
+        body: reqwest::Body,
+    ) -> Result<(), ProviderError> {
+        let url = format!("https://{host}/workdrive-api/v1/stream/upload");
+        let resp = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(ACCEPT, HeaderValue::from_static("application/json"))
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header(reqwest::header::CONTENT_LENGTH, total_size)
+            // "The name of the file should be URL encoded with UTF-8 Charset."
+            .header("x-filename", urlencoding::encode(file_name).into_owned())
+            .header("x-parent_id", parent_id)
+            .header("upload-id", uuid::Uuid::new_v4().to_string())
+            .header("x-streammode", "1")
+            .header("x-override-name-exist", "true")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(ProviderError::Other(format!(
+                "Upload failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
+            )));
+        }
+        debug!(
+            "Zoho WorkDrive stream upload response ({}): {}",
+            status,
+            log_preview(&text, 300)
+        );
+        if !stream_upload_stored(&text, file_name) {
+            return Err(ProviderError::Other(format!(
+                "Upload failed: Zoho WorkDrive accepted the stream upload of {file_name} but did not report it as stored"
+            )));
+        }
+        Ok(())
+    }
+
     // ── Zoho-specific trash management ─────────────────────────────────
 
     /// Helper: PATCH a single file/folder status (1=active, 51=trash, 61=delete)
@@ -924,7 +1040,7 @@ impl ZohoWorkdriveProvider {
 
         debug!(
             "Zoho WorkDrive team labels response: {}",
-            &body[..body.len().min(500)]
+            log_preview(&body, 500)
         );
         let parsed: JsonApiListResponse<ZohoLabel> = serde_json::from_str(&body)
             .map_err(|e| ProviderError::ParseError(format!("Parse labels: {}", e)))?;
@@ -963,7 +1079,7 @@ impl ZohoWorkdriveProvider {
 
         debug!(
             "Zoho WorkDrive file metadata response: {}",
-            &body[..body.len().min(500)]
+            log_preview(&body, 500)
         );
 
         // Parse the labels array from file attributes
@@ -1103,7 +1219,7 @@ impl ZohoWorkdriveProvider {
 
         debug!(
             "Zoho WorkDrive create label response: {}",
-            &resp_body[..resp_body.len().min(500)]
+            log_preview(&resp_body, 500)
         );
         let parsed: JsonApiResponse<ZohoLabel> = serde_json::from_str(&resp_body)
             .map_err(|e| ProviderError::ParseError(format!("Parse create label: {}", e)))?;
@@ -1462,7 +1578,7 @@ impl ZohoWorkdriveProvider {
             let body = resp.text().await.unwrap_or_default();
             debug!(
                 "Zoho WorkDrive /teams response: {}",
-                &body[..body.len().min(500)]
+                log_preview(&body, 500)
             );
             match serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body) {
                 Ok(teams) if !teams.data.is_empty() => teams.data.into_iter().next(),
@@ -1483,7 +1599,7 @@ impl ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive /teams failed ({}): {}",
                 status,
-                &text[..text.len().min(500)]
+                log_preview(&text, 500)
             );
             None
         };
@@ -1507,7 +1623,7 @@ impl ZohoWorkdriveProvider {
                 debug!(
                     "Zoho WorkDrive /users/{}/teams response: {}",
                     uid,
-                    &body[..body.len().min(500)]
+                    log_preview(&body, 500)
                 );
                 match serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body) {
                     Ok(teams) => teams.data.into_iter().next(),
@@ -1523,7 +1639,7 @@ impl ZohoWorkdriveProvider {
                     "Zoho WorkDrive /users/{}/teams failed ({}): {}",
                     uid,
                     status,
-                    &text[..text.len().min(500)]
+                    log_preview(&text, 500)
                 );
                 None
             }
@@ -1580,7 +1696,7 @@ impl ZohoWorkdriveProvider {
             let body_text = resp.text().await.unwrap_or_default();
             debug!(
                 "Zoho WorkDrive /currentuser response: {}",
-                &body_text[..body_text.len().min(500)]
+                log_preview(&body_text, 500)
             );
             match serde_json::from_str::<JsonApiResponse<TeamCurrentUserResource>>(&body_text) {
                 Ok(cu) => {
@@ -1598,7 +1714,7 @@ impl ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive /currentuser failed ({}): {}",
                 status,
-                &text[..text.len().min(300)]
+                log_preview(&text, 300)
             );
             None
         };
@@ -1647,7 +1763,7 @@ impl ZohoWorkdriveProvider {
                 "Zoho WorkDrive /users/{}/privatespace failed ({}): {}",
                 user_id,
                 status,
-                &text[..text.len().min(300)]
+                log_preview(&text, 300)
             );
             return Ok(false);
         }
@@ -1655,7 +1771,7 @@ impl ZohoWorkdriveProvider {
         let body_text = resp.text().await.unwrap_or_default();
         debug!(
             "Zoho WorkDrive privatespace response: {}",
-            &body_text[..body_text.len().min(500)]
+            log_preview(&body_text, 500)
         );
 
         match parse_privatespace_id(&body_text) {
@@ -1756,7 +1872,7 @@ impl ZohoWorkdriveProvider {
             let body = resp.text().await.unwrap_or_default();
             debug!(
                 "Zoho WorkDrive teamfolders response: {}",
-                &body[..body.len().min(500)]
+                log_preview(&body, 500)
             );
 
             if let Ok(tfs) = serde_json::from_str::<JsonApiListResponse<TeamFolderResource>>(&body)
@@ -1784,7 +1900,7 @@ impl ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive teamfolders failed ({}): {}",
                 status,
-                &text[..text.len().min(300)]
+                log_preview(&text, 300)
             );
         }
 
@@ -1820,7 +1936,7 @@ impl ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive workspaces failed ({}): {}",
                 status,
-                &text[..text.len().min(300)]
+                log_preview(&text, 300)
             );
             return;
         }
@@ -1828,7 +1944,7 @@ impl ZohoWorkdriveProvider {
         let body = resp.text().await.unwrap_or_default();
         debug!(
             "Zoho WorkDrive workspaces response: {}",
-            &body[..body.len().min(500)]
+            log_preview(&body, 500)
         );
 
         if let Ok(ws_list) =
@@ -1903,7 +2019,7 @@ impl ZohoWorkdriveProvider {
                 debug!(
                     "Zoho WorkDrive list error ({}): {}",
                     status,
-                    &body_text[..body_text.len().min(300)]
+                    log_preview(&body_text, 300)
                 );
                 return Err(ProviderError::Other(format!(
                     "List files error {} (folder_id={}): {}",
@@ -1916,7 +2032,7 @@ impl ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive list response ({} bytes): {}",
                 body_text.len(),
-                &body_text[..body_text.len().min(500)]
+                log_preview(&body_text, 500)
             );
 
             let list: JsonApiListResponse<FileResource> = serde_json::from_str(&body_text)
@@ -2369,7 +2485,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             let text = resp.text().await.unwrap_or_default();
             debug!(
                 "Zoho WorkDrive download error body: {}",
-                &text[..text.len().min(1000)]
+                log_preview(&text, 1000)
             );
             return Err(ProviderError::Other(format!(
                 "Download failed ({}): {}",
@@ -2518,7 +2634,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             debug!(
                 "Zoho WorkDrive download_to_bytes error: {}: {}",
                 status,
-                &text[..text.len().min(500)]
+                log_preview(&text, 500)
             );
             return Err(ProviderError::Other(format!(
                 "Download failed ({}): {}",
@@ -2569,6 +2685,21 @@ impl StorageProvider for ZohoWorkdriveProvider {
             crate::transfer_dag::governor::TransferDirection::Upload,
         ));
 
+        // #347: above 250 MB the single-request endpoint answers 413, so a
+        // large file goes to the upload server's stream API instead.
+        if let Some(host) = large_upload_host(&self.config, total_size) {
+            self.stream_upload(host, &parent_id, file_name, total_size, body)
+                .await?;
+            if let Some(cb) = on_progress {
+                cb(total_size, total_size);
+            }
+            info!(
+                "Uploaded {} to {} via stream upload (parent_id={})",
+                local_path, remote_path, parent_id
+            );
+            return Ok(());
+        }
+
         // Zoho WorkDrive upload uses multipart/form-data
         // parent_id and override-name-exist go in the form body (per Zoho docs)
         let url = format!("{}/upload", self.api_base());
@@ -2609,7 +2740,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         debug!(
             "Zoho WorkDrive upload response ({}): {}",
             status,
-            &resp_text[..resp_text.len().min(300)]
+            log_preview(&resp_text, 300)
         );
 
         if let Some(cb) = on_progress {
@@ -3348,7 +3479,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         debug!(
             "Zoho WorkDrive find response ({} bytes): {}",
             body.len(),
-            &body[..body.len().min(500)]
+            log_preview(&body, 500)
         );
 
         let list: JsonApiListResponse<FileResource> = serde_json::from_str(&body).map_err(|e| {
@@ -3404,7 +3535,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         debug!(
             "Zoho WorkDrive versions response ({} bytes): {}",
             body.len(),
-            &body[..body.len().min(500)]
+            log_preview(&body, 500)
         );
 
         let parsed: JsonApiListResponse<VersionResource> =
@@ -3559,22 +3690,13 @@ impl StorageProvider for ZohoWorkdriveProvider {
         // Shaped-graph multipart trait (S3-T09): intentionally NotSupported
         // by design on Zoho WorkDrive.
         //
-        // The documented Zoho WorkDrive upload endpoint
-        // (`POST /api/v1/upload?filename=…&parent_id=…`) is a single-shot
-        // multipart-form POST that accepts the complete file body in one
-        // request. The API does not document a chunked append/commit
-        // endpoint, a resumable session URL, or per-chunk offset writes,
-        // so there is no native primitive a per-part trait could map
-        // onto. The legacy upload() path already streams the body via
-        // `tokio_util::io::ReaderStream` so large files do not pin RAM
-        // - what is missing is per-chunk retry, and a fake-multipart
-        // wrapper that buffered chunks in memory would defeat the
-        // streaming property without adding real resumability.
-        //
-        // If Zoho exposes a chunked upload endpoint in a future API
-        // revision this is the place to re-evaluate. Until then we leave
-        // `supports_multipart=false` and let the runner pick the legacy
-        // single-stream path.
+        // `upload()` streams the whole file in one request: `POST /upload` up
+        // to 250 MB, and the upload server's stream API above that (#347).
+        // Zoho also documents a Chunk File Upload API, recommended above
+        // 1 GB, built on upload sessions; it is not wired here, so there is
+        // no per-part primitive to advertise, and a fake multipart wrapper
+        // would buffer chunks in memory without adding real resumability.
+        // Wiring the chunk API is the place to re-evaluate this.
         super::TransferOptimizationHints {
             supports_resume_download: true,
             ..Default::default()
@@ -3588,6 +3710,85 @@ mod tests {
 
     fn config(region: &str) -> ZohoWorkdriveConfig {
         ZohoWorkdriveConfig::new("cid", "csec", region)
+    }
+
+    /// #347: above the documented 250 MB of `POST /upload` (which answered a
+    /// 287 MB file with 413), a file goes to the region's upload server.
+    #[test]
+    fn a_file_over_250_mb_takes_the_stream_upload() {
+        let us = config("us");
+        assert_eq!(large_upload_host(&us, 250 * 1000 * 1000), None);
+        assert_eq!(
+            large_upload_host(&us, 250 * 1000 * 1000 + 1),
+            Some("upload.zoho.com")
+        );
+        assert_eq!(
+            large_upload_host(&us, 287 * 1024 * 1024),
+            Some("upload.zoho.com")
+        );
+        assert_eq!(large_upload_host(&us, 1024), None);
+    }
+
+    #[test]
+    fn a_log_preview_never_splits_a_character() {
+        // "è" is two bytes; put its first byte at index 299 of a 300-byte cut.
+        let text = format!("{}è rest", "a".repeat(299));
+        assert_eq!(log_preview(&text, 300), "a".repeat(299));
+        assert_eq!(log_preview("short", 300), "short");
+    }
+
+    /// A 200 that does not list the file is not an upload: the API leaves
+    /// failed files out of its answer.
+    #[test]
+    fn a_stream_upload_counts_only_when_the_file_is_listed() {
+        let stored =
+            r#"{"data":[{"attributes":{"file_name":"big.bin","parent_id":"p1"},"type":"files"}]}"#;
+        assert!(stream_upload_stored(stored, "big.bin"));
+        assert!(!stream_upload_stored(stored, "other.bin"));
+        assert!(!stream_upload_stored(r#"{"data":[]}"#, "big.bin"));
+        assert!(!stream_upload_stored("<html>", "big.bin"));
+    }
+
+    /// The GUI reaches `upload()` through the DAG engine (`provider_upload_file`
+    /// -> `run_dag_upload_leaf`, and `upload_files_batch`): the stream route is
+    /// only taken if the graph for a large Zoho file is ONE whole-file node,
+    /// whose executor calls `upload()`. A multipart fan-out would bypass it.
+    #[test]
+    fn the_gui_dag_sends_a_large_file_to_upload_whole() {
+        use crate::providers::StorageProvider;
+        let provider = ZohoWorkdriveProvider::new(config("eu"));
+        let caps = provider.transfer_capabilities();
+        let built = crate::transfer_dag::TransferDagBuilder::shaped_file(
+            crate::transfer_dag::TransferDirection::Upload,
+            &caps,
+            300 * 1024 * 1024,
+        );
+        assert_eq!(built.transfer.len(), 1, "one whole-file node");
+        assert_eq!(
+            built.profile.upload_parts, 1,
+            "one UploadFile, no UploadPart fan-out"
+        );
+    }
+
+    /// The hosts the Upload Large File API page lists; the UK data centre has
+    /// none there, so it keeps the single request rather than a guessed host.
+    #[test]
+    fn upload_server_per_region_is_the_documented_one() {
+        for (region, host) in [
+            ("us", Some("upload.zoho.com")),
+            ("eu", Some("upload.zoho.eu")),
+            ("in", Some("upload.zoho.in")),
+            ("au", Some("upload.zoho.com.au")),
+            ("jp", Some("upload.zoho.jp")),
+            ("cn", Some("upload.zoho.com.cn")),
+            ("ae", Some("files.zoho.ae")),
+            ("ca", Some("upload.zohocloud.ca")),
+            ("sa", Some("files.zoho.sa")),
+            ("uk", None),
+        ] {
+            assert_eq!(config(region).upload_domain(), host, "{region}");
+        }
+        assert_eq!(large_upload_host(&config("uk"), 1 << 30), None);
     }
 
     #[test]
