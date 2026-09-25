@@ -2749,7 +2749,7 @@ pub fn suggest_sync_command(
     remote_dir: &str,
     flags: &str,
 ) -> String {
-    let quote = |s: &str| s.replace('"', "\\\"");
+    let quote = crate::shell_quote::double_quote_body;
     let profile = if server.is_empty() {
         "NAME".to_string()
     } else {
@@ -2770,6 +2770,16 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     let remote_dir = get_str(args, "remote_dir")?;
     validate_remote_path(&remote_dir, "remote_dir")?;
     let direction = get_str_opt(args, "direction").unwrap_or_else(|| "both".to_string());
+    // A fixed set: the value is written into the suggested command line.
+    if !matches!(direction.as_str(), "upload" | "download" | "both") {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_sync_doctor".to_string(),
+            reason: format!(
+                "direction must be upload, download or both, got '{}'",
+                direction
+            ),
+        });
+    }
     let delete = get_bool_opt(args, "delete").unwrap_or(false);
     let track_renames = get_bool_opt(args, "track_renames").unwrap_or(false);
     let checksum = get_bool_opt(args, "checksum").unwrap_or(false);
@@ -2902,7 +2912,10 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         flags.push_str(" --track-renames");
     }
     for pattern in &exclude {
-        flags.push_str(&format!(" --exclude \"{}\"", pattern.replace('"', "\\\"")));
+        flags.push_str(&format!(
+            " --exclude \"{}\"",
+            crate::shell_quote::double_quote_body(pattern)
+        ));
     }
     let suggested_next_command = suggest_sync_command(&server, &local_dir, &remote_dir, &flags);
 
@@ -4068,6 +4081,54 @@ mod tests {
         .unwrap_err();
         assert!(format!("{err:?}").contains("remote provider unavailable"));
         assert!(fake.remote_files.lock().unwrap().is_empty());
+    }
+
+    /// The suggested `sync` line carries values the caller chose: a hostile
+    /// profile name, local path or exclude pattern must stay text (every `$`
+    /// and backtick escaped), and a direction outside the fixed set is refused
+    /// before it can reach the line.
+    #[tokio::test]
+    async fn sync_doctor_suggestion_keeps_hostile_values_as_text() {
+        let fake = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&fake));
+        let tmp = tempfile::tempdir().expect("temp dir");
+        let local_dir = tmp.path().join("$(touch pwned)");
+        std::fs::create_dir(&local_dir).expect("local dir");
+        let out = sync_doctor(
+            &ctx,
+            &json!({
+                "server": "`id`",
+                "local_dir": local_dir.to_string_lossy(),
+                "remote_dir": "/root",
+                "direction": "download",
+                "exclude": ["$(rm -rf ~)"],
+            }),
+        )
+        .await
+        .expect("doctor runs");
+        let line = out["suggested_next_command"]
+            .as_str()
+            .expect("a suggestion");
+        let chars: Vec<char> = line.chars().collect();
+        for (i, c) in chars.iter().enumerate() {
+            if matches!(c, '$' | '`') {
+                assert!(i > 0 && chars[i - 1] == '\\', "unescaped {c:?} in {line}");
+            }
+        }
+        assert!(line.contains("--profile \"\\`id\\`\""), "{line}");
+
+        let err = sync_doctor(
+            &ctx,
+            &json!({
+                "server": "s",
+                "local_dir": local_dir.to_string_lossy(),
+                "remote_dir": "/root",
+                "direction": "both; rm -rf ~",
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:?}").contains("direction must be upload, download or both"));
     }
 
     /// Parent creation must reject a new restricted component before mkdir.

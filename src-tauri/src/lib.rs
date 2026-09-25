@@ -235,6 +235,7 @@ pub mod restic_import;
 pub mod restricted_chars;
 mod session_commands;
 mod session_manager;
+pub mod shell_quote;
 #[cfg(all(not(target_os = "macos"), feature = "local-stt"))]
 mod speech;
 pub mod ssh_config_import;

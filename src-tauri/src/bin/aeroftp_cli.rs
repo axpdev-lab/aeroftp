@@ -85,6 +85,7 @@ use ftp_client_gui_lib::providers::{
     ShareLinkOptions, StorageProvider, TrashEntry, MAX_DOWNLOAD_TO_BYTES,
 };
 use ftp_client_gui_lib::sftp_download_tuning::SftpDownloadPreset;
+use ftp_client_gui_lib::shell_quote::double_quote_body as shell_double_quote;
 use ftp_client_gui_lib::user_partitions;
 use ftp_client_gui_lib::util::shutdown_signal;
 use futures_util::StreamExt;
@@ -26472,10 +26473,6 @@ async fn cmd_agent_connect(cli: &Cli, query: &str) -> i32 {
     } else {
         1
     }
-}
-
-fn shell_double_quote(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn profile_or_placeholder(cli: &Cli) -> String {
@@ -76995,9 +76992,6 @@ mod tests {
         (code, deleted)
     }
 
-    /// The real `cmd_sync` with `--delete` against `remote`, as a dry run or
-    /// not. A run that is not dry reaches the scan guards (TX-01) and the
-    /// deletes themselves, which the remote records and refuses.
     /// The Mirror preset exported and run by the batch, unattended: its `SYNC`
     /// line goes through the batch parser and `dispatch_sync`, as a script
     /// does. With the source in place it deletes only the orphan; with the
@@ -77063,6 +77057,9 @@ mod tests {
         });
     }
 
+    /// The real `cmd_sync` with `--delete` against `remote`, as a dry run or
+    /// not. A run that is not dry reaches the scan guards (TX-01) and the
+    /// deletes themselves, which the remote records and refuses.
     fn run_sync_with_delete(
         remote: MemTreeProvider,
         local: &str,

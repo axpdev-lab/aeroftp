@@ -442,6 +442,19 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
     let sync_args = sync_args.ok_or(ParseError::MissingSync)?;
     let expanded_sync = expand_variables(&sync_args, &variables, sync_line)?;
     let parsed_sync = parse_sync(&expanded_sync, sync_line)?;
+    // The template keeps no delete cap: an export always writes
+    // UNATTENDED_MAX_DELETE. Say so when the script carries another value,
+    // so a round trip through the GUI never widens (or narrows) it silently.
+    if let Some(cap) = parsed_sync
+        .max_delete
+        .as_deref()
+        .filter(|cap| *cap != UNATTENDED_MAX_DELETE)
+    {
+        warnings.push(format!(
+            "line {}: --max-delete {} is not kept by the template; a new export writes --max-delete {}. Edit the exported script to keep {}.",
+            sync_line, cap, UNATTENDED_MAX_DELETE, cap
+        ));
+    }
 
     // Build the SyncProfile from metadata + sync line. Metadata is
     // authoritative for header-only fields; SYNC flags are
@@ -832,6 +845,9 @@ struct ParsedSyncLine {
     watch: bool,
     conflict_mode: Option<String>,
     exclude_patterns: Vec<String>,
+    /// `--max-delete` as written, so an edited cap is reported on import
+    /// instead of being replaced in silence by the next export.
+    max_delete: Option<String>,
 }
 
 fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
@@ -847,6 +863,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
     let mut watch = false;
     let mut conflict_mode: Option<String> = None;
     let mut exclude_patterns: Vec<String> = Vec::new();
+    let mut max_delete: Option<String> = None;
     let mut it = tokens.into_iter().peekable();
     while let Some(tok) = it.next() {
         match tok.as_str() {
@@ -881,6 +898,13 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
                     });
                 }
                 conflict_mode = Some(v);
+            }
+            "--max-delete" => {
+                let v = it.next().ok_or_else(|| ParseError::MalformedSync {
+                    line,
+                    message: "--max-delete expects a value".to_string(),
+                })?;
+                max_delete = Some(v);
             }
             "--exclude" | "-e" => {
                 let v = it.next().ok_or_else(|| ParseError::MalformedSync {
@@ -928,6 +952,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
         watch,
         conflict_mode,
         exclude_patterns,
+        max_delete,
     })
 }
 
@@ -1231,6 +1256,42 @@ mod tests {
         let content = "# @aerosync:1\nCONNECT --profile \"x\"\nSYNC /a /b --direction both\n";
         let target = detect_wrapper_target(&wrapper_path, content);
         assert!(target.is_none());
+    }
+
+    #[test]
+    fn an_edited_delete_cap_is_reported_on_import_not_replaced_silently() {
+        let mut exported = sample(SyncProfile::mirror());
+        assert!(exported.profile.delete_orphans, "Mirror deletes orphans");
+        let script = generate_script(&exported, "test");
+        // The exported cap round-trips without a word.
+        let parsed = parse_script(&script).expect("parses");
+        assert!(
+            !parsed.warnings.iter().any(|w| w.contains("--max-delete")),
+            "{:?}",
+            parsed.warnings
+        );
+        // An owner-edited cap is named, with what the next export will write.
+        let edited = script.replace(
+            &format!("--max-delete {}", UNATTENDED_MAX_DELETE),
+            "--max-delete 10%",
+        );
+        assert_ne!(edited, script, "the export carries the cap");
+        let parsed = parse_script(&edited).expect("parses");
+        assert!(
+            parsed
+                .warnings
+                .iter()
+                .any(|w| w.contains("--max-delete 10% is not kept")
+                    && w.contains(&format!("writes --max-delete {}", UNATTENDED_MAX_DELETE))),
+            "{:?}",
+            parsed.warnings
+        );
+        exported.profile.delete_orphans = false;
+        let no_delete = generate_script(&exported, "test");
+        assert!(
+            !no_delete.contains("--max-delete"),
+            "no cap without --delete"
+        );
     }
 
     #[test]
