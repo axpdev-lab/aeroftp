@@ -288,6 +288,10 @@ pub struct KoofrProvider {
     /// Files at or above this size use the concurrent-Range path when
     /// `multi_thread_streams >= 2`.
     multi_thread_cutoff: u64,
+    /// Test-only content API base (`http://127.0.0.1:port`) for local HTTP
+    /// fixtures. Production paths never set it.
+    #[cfg(test)]
+    content_base_override: Option<String>,
 }
 
 /// Provider-specific hard cap on concurrent Range streams (mirrors S3's 16).
@@ -317,7 +321,18 @@ impl KoofrProvider {
             account_email: None,
             multi_thread_streams: 1,
             multi_thread_cutoff: 8 * 1024 * 1024,
+            #[cfg(test)]
+            content_base_override: None,
         }
+    }
+
+    /// Base of the content API (uploads and downloads).
+    fn content_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(base) = &self.content_base_override {
+            return base.as_str();
+        }
+        CONTENT_BASE
     }
 
     /// Build Basic Auth header: base64(email:password)
@@ -842,7 +857,7 @@ impl StorageProvider for KoofrProvider {
         let resolved = self.resolve_path(remote_path);
         let url = format!(
             "{}/mounts/{}/files/get?path={}",
-            CONTENT_BASE,
+            self.content_base(),
             self.mount_id,
             urlencoding::encode(&resolved)
         );
@@ -926,7 +941,7 @@ impl StorageProvider for KoofrProvider {
         let resolved = self.resolve_path(remote_path);
         let url = format!(
             "{}/mounts/{}/files/get?path={}",
-            CONTENT_BASE,
+            self.content_base(),
             self.mount_id,
             urlencoding::encode(&resolved)
         );
@@ -958,9 +973,10 @@ impl StorageProvider for KoofrProvider {
             .map_err(|e| ProviderError::TransferFailed(format!("Cannot read file: {}", e)))?;
         let file_size = file_meta.len();
 
-        if let Some(ref cb) = on_progress {
-            cb(0, file_size);
-        }
+        // The body reports the bytes as they go out; 100 percent waits for
+        // Koofr's answer (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
+        progress.start();
 
         // Preserve modification time
         let modified_ms = std::fs::metadata(local_path)
@@ -972,7 +988,7 @@ impl StorageProvider for KoofrProvider {
 
         let url = format!(
             "{}/mounts/{}/files/put?path={}&filename={}&autorename=true&overwrite=true&info=true{}",
-            CONTENT_BASE,
+            self.content_base(),
             self.mount_id,
             urlencoding::encode(parent),
             urlencoding::encode(filename),
@@ -987,11 +1003,7 @@ impl StorageProvider for KoofrProvider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Open file failed: {}", e)))?;
-        let stream = tokio_util::io::ReaderStream::new(file);
-        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
-            stream,
-            crate::transfer_dag::governor::TransferDirection::Upload,
-        ));
+        let body = progress.file_body(file);
 
         let resp = self
             .client
@@ -1007,9 +1019,7 @@ impl StorageProvider for KoofrProvider {
             return Err(Self::parse_error(resp).await);
         }
 
-        if let Some(ref cb) = on_progress {
-            cb(file_size, file_size);
-        }
+        progress.complete();
 
         Ok(())
     }
@@ -1491,7 +1501,7 @@ impl StorageProvider for KoofrProvider {
         let resolved = self.resolve_path(remote_path);
         let url = format!(
             "{}/mounts/{}/files/get?path={}",
-            CONTENT_BASE,
+            self.content_base(),
             self.mount_id,
             urlencoding::encode(&resolved)
         );
@@ -1616,7 +1626,7 @@ impl StorageProvider for KoofrProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/mounts/{}/files/get?path={}&version={}",
-            CONTENT_BASE,
+            self.content_base(),
             self.mount_id,
             urlencoding::encode(&resolved),
             urlencoding::encode(version_id)
@@ -1700,7 +1710,7 @@ impl StorageProvider for KoofrProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/mounts/{}/files/get?path={}",
-            CONTENT_BASE,
+            self.content_base(),
             self.mount_id,
             urlencoding::encode(&resolved)
         );
@@ -1978,6 +1988,54 @@ mod tests {
             let masked = mask_credential(value);
             assert!(masked.contains("***"), "{value} -> {masked}");
         }
+    }
+
+    /// Upload a 300 KB file through `files/put` to a local fixture answering
+    /// `status`; returns the outcome and the progress updates.
+    async fn upload_against_fixture(status: u16) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![Route::post(
+            "/mounts/m1/files/put",
+            status,
+            r#"{"name":"f.bin","size":307200}"#,
+        )])
+        .await;
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "user@example.com".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+        });
+        provider.content_base_override = Some(base);
+        provider.mount_id = "m1".to_string();
+        provider.connected = true;
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// `files/put` streams the file: the bar follows the bytes going out and
+    /// reaches 100 only on Koofr's success answer. It used to report 0, then
+    /// the total after the response.
+    #[tokio::test]
+    async fn upload_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = upload_against_fixture(200).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = upload_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     #[test]
