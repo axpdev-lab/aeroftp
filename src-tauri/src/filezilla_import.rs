@@ -49,12 +49,17 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
     let mut current_fields: HashMap<String, String> = HashMap::new();
     let mut current_name = String::new();
     let mut current_tag = String::new();
-    let mut current_text = String::new();
     let mut pass_encoding = String::new();
     let mut capped = false;
+    // Text since the last tag. quick-xml hands it over in pieces: a character
+    // or entity reference is its own `GeneralRef` event between two `Text`
+    // fragments, and a CDATA section is a `CData` event. The pieces are joined
+    // here and the whole run is trimmed once, at the next tag, so the spaces
+    // around a reference (`R &amp; D`) survive.
+    let mut text = String::new();
 
     let mut reader = Reader::from_str(content);
-    reader.config_mut().trim_text(true);
+    reader.config_mut().trim_text(false);
     let mut buf = Vec::new();
 
     // Malformed XML ends iteration while preserving every server parsed
@@ -62,7 +67,26 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
     while let Ok(event) = reader.read_event_into(&mut buf) {
         match event {
             Event::Eof => break,
+            Event::Text(e) => text.push_str(&e.xml_content(quick_xml::XmlVersion::Implicit1_0)),
+            Event::CData(e) => text.push_str(&e.xml_content(quick_xml::XmlVersion::Implicit1_0)),
+            Event::GeneralRef(e) => {
+                match crate::providers::xml_text::xml_entity_to_str(&e) {
+                    Some(expansion) => text.push_str(&expansion),
+                    // An unknown reference stays as written, as FileZilla's
+                    // own reader leaves it, instead of vanishing from a name
+                    // or a password.
+                    None => {
+                        text.push('&');
+                        text.push_str(&e);
+                        text.push(';');
+                    }
+                }
+            }
             Event::Start(e) => {
+                let run = std::mem::take(&mut text);
+                if !in_server {
+                    note_folder_text(&mut folder_stack, run.trim());
+                }
                 let tag = e.name().as_ref().to_string();
                 match tag.as_str() {
                     "Folder" if !in_server => {
@@ -78,7 +102,6 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                         current_name.clear();
                         pass_encoding.clear();
                         current_tag.clear();
-                        current_text.clear();
                     }
                     _ if in_server => {
                         if tag == "Pass" {
@@ -90,14 +113,15 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                                 .unwrap_or_default();
                         }
                         current_tag = tag;
-                        current_text.clear();
                     }
                     _ => {}
                 }
             }
             // Self-closing element, e.g. <Name/>: an empty value.
             Event::Empty(e) => {
+                let run = std::mem::take(&mut text);
                 if !in_server {
+                    note_folder_text(&mut folder_stack, run.trim());
                     continue;
                 }
                 let tag = e.name().as_ref().to_string();
@@ -116,31 +140,9 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                     current_fields.insert(tag, String::new());
                 }
             }
-            Event::Text(e) => {
-                // quick-xml 0.42 returns the unescaped text directly.
-                let text = e
-                    .xml_content(quick_xml::XmlVersion::Implicit1_0)
-                    .into_owned();
-                if text.is_empty() {
-                    continue;
-                }
-                if in_server {
-                    if current_tag.is_empty() {
-                        continue;
-                    }
-                    if !current_text.is_empty() {
-                        current_text.push(' ');
-                    }
-                    current_text.push_str(&text);
-                } else if let Some((name, _)) = folder_stack.last_mut() {
-                    // FileZilla writes the folder name as a text node after the
-                    // folder's children; the first one wins.
-                    if name.is_empty() {
-                        *name = text;
-                    }
-                }
-            }
             Event::End(e) => {
+                let run = std::mem::take(&mut text);
+                let run = run.trim();
                 let tag = e.name().as_ref().to_string();
                 if in_server && tag == "Server" {
                     let display_name = if current_name.is_empty() {
@@ -157,8 +159,8 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                     });
                     in_server = false;
                     current_tag.clear();
-                    current_text.clear();
                 } else if !in_server && tag == "Folder" {
+                    note_folder_text(&mut folder_stack, run);
                     // The name is known only now: stamp it on every server this
                     // folder contains. Inner folders closed first, so prepending
                     // builds the path outermost-last.
@@ -175,15 +177,14 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                     }
                 } else if in_server && tag == current_tag {
                     if current_tag == "Name" {
-                        current_name = current_text.clone();
+                        current_name = run.to_string();
                     } else {
-                        current_fields.insert(current_tag.clone(), current_text.clone());
+                        current_fields.insert(current_tag.clone(), run.to_string());
                     }
                     if current_tag == "Pass" {
                         current_fields.insert("_pass_encoding".to_string(), pass_encoding.clone());
                     }
                     current_tag.clear();
-                    current_text.clear();
                 }
             }
             _ => {}
@@ -197,15 +198,15 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
     servers
 }
 
-/// Basic XML entity unescaping. Production text now comes from quick-xml's
-/// `xml_content`, which already unescapes. The helper stays for its unit test.
-#[cfg(test)]
-fn xml_unescape(s: &str) -> String {
-    s.replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
+/// Text found directly inside a `<Folder>`, outside its servers, is the
+/// folder's name. FileZilla writes it after the folder's children; the first
+/// non-empty run wins.
+fn note_folder_text(folder_stack: &mut [(String, usize)], run: &str) {
+    if let Some((name, _)) = folder_stack.last_mut() {
+        if name.is_empty() && !run.is_empty() {
+            *name = run.to_string();
+        }
+    }
 }
 
 // ============ Password Decoding ============
@@ -766,12 +767,6 @@ mod tests {
     }
 
     #[test]
-    fn test_xml_unescape() {
-        assert_eq!(xml_unescape("foo &amp; bar"), "foo & bar");
-        assert_eq!(xml_unescape("a &lt; b &gt; c"), "a < b > c");
-    }
-
-    #[test]
     fn test_multiple_servers() {
         let xml = r#"<?xml version="1.0"?>
 <FileZilla3>
@@ -881,6 +876,98 @@ mod tests {
         let servers = parse_sitemanager_xml(xml);
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].name, "good");
+    }
+
+    /// quick-xml hands an entity reference over as its own event between two
+    /// text fragments. The parser dropped the reference and joined the
+    /// fragments with a space, so `R&amp;D` imported as "R D" and a plain-text
+    /// password `p&amp;ss` as "p ss": a wrong password, with no warning.
+    #[test]
+    fn entity_references_survive_in_values_names_and_folders() {
+        let xml = concat!(
+            r#"<?xml version="1.0"?><FileZilla3><Servers>"#,
+            r#"<Folder expanded="1"><Server><Host>h1</Host><User>a&amp;b</User>"#,
+            r#"<Pass>p&amp;ss</Pass><Name>R&amp;D</Name></Server>"#,
+            r#"A&amp;B</Folder>"#,
+            r#"<Server><Host>h2</Host><Pass>it&#39;s &lt;ok&gt;</Pass>"#,
+            r#"<Name>R &amp; D</Name></Server>"#,
+            r#"<Server><Host>h3</Host><Name>a&nbsp;b</Name></Server>"#,
+            r#"</Servers></FileZilla3>"#,
+        );
+        let servers = parse_sitemanager_xml(xml);
+        assert_eq!(servers.len(), 3);
+        assert_eq!(servers[0].name, "R&D");
+        assert_eq!(
+            servers[0].fields.get("User").map(String::as_str),
+            Some("a&b")
+        );
+        assert_eq!(
+            servers[0].fields.get("Pass").map(String::as_str),
+            Some("p&ss")
+        );
+        assert_eq!(
+            servers[0].fields.get("_folder").map(String::as_str),
+            Some("A&B")
+        );
+        assert_eq!(servers[1].name, "R & D", "spaces around a reference stay");
+        assert_eq!(
+            servers[1].fields.get("Pass").map(String::as_str),
+            Some("it's <ok>")
+        );
+        assert_eq!(
+            servers[2].name, "a&nbsp;b",
+            "an unknown reference is kept as written, as FileZilla reads it"
+        );
+    }
+
+    /// A CDATA section is element content like any other text, and a value
+    /// spread over several lines is trimmed as a whole.
+    #[test]
+    fn cdata_and_indented_values_are_read() {
+        let xml = concat!(
+            "<?xml version=\"1.0\"?><FileZilla3><Servers><Server>",
+            "<Host>h1</Host><Pass encoding=\"base64\">\n      QUJD\n    </Pass>",
+            "<Name><![CDATA[a<b & c]]></Name></Server></Servers></FileZilla3>",
+        );
+        let servers = parse_sitemanager_xml(xml);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "a<b & c");
+        assert_eq!(
+            servers[0].fields.get("Pass").map(String::as_str),
+            Some("QUJD")
+        );
+    }
+
+    /// What `export_filezilla` escapes, the importer reads back unchanged.
+    #[test]
+    fn exported_names_and_users_round_trip() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sitemanager.xml");
+        let servers = [FileZillaExportServer {
+            name: "R&D <\"prod\"> it's".to_string(),
+            host: "ftp.example.com".to_string(),
+            port: 21,
+            username: "a&b".to_string(),
+            protocol: Some("sftp".to_string()),
+            options: None,
+            initial_path: None,
+        }];
+        let passwords = HashMap::from([(servers[0].name.clone(), "p&ss".to_string())]);
+        assert_eq!(export_filezilla(&servers, &passwords, &path), Ok(1));
+        let written = std::fs::read_to_string(&path).expect("read export");
+        let imported = parse_sitemanager_xml(&written);
+        assert_eq!(imported.len(), 1);
+        assert_eq!(imported[0].name, "R&D <\"prod\"> it's");
+        assert_eq!(
+            imported[0].fields.get("User").map(String::as_str),
+            Some("a&b")
+        );
+        let pass = imported[0].fields.get("Pass").expect("Pass");
+        let encoding = imported[0].fields.get("_pass_encoding").expect("encoding");
+        assert_eq!(
+            decode_filezilla_password(pass, encoding).as_deref(),
+            Some("p&ss")
+        );
     }
 }
 
