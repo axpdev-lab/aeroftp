@@ -1,0 +1,1 @@
+rsync --server -nlogDtpre.iLsfxCIvu . /workspace/b0c0/up/c12-up-dryrun/

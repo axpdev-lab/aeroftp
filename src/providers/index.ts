@@ -25,6 +25,8 @@ export {
     getAllProviders,
     getStableProviders,
     resolveS3Endpoint,
+    resolveProfileS3Location,
+    presetDefaultS3Region,
     jurisdictionSegment,
     s3TemplateParams,
     endpointNeedsCleartextConsent,

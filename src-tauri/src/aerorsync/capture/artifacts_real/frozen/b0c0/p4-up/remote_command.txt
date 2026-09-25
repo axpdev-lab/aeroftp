@@ -1,0 +1,1 @@
+rsync --server -logDtpAre.iLsfxCIvu . /workspace/b0c0/up/p4-up/

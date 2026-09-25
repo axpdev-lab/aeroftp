@@ -1,0 +1,1 @@
+rsync --server --sender -logDtpRe.LsfxCIvu --files-from=- --from0 . /workspace/b0c0/src/c/fl/

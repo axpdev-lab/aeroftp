@@ -4,14 +4,14 @@
   "counts": {
     "transport_protocols": 7,
     "native_integrations": 25,
-    "presets": 45,
-    "presets_over_transport": 41,
-    "connection_forms": 50,
+    "presets": 47,
+    "presets_over_transport": 43,
+    "connection_forms": 52,
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
-    "providers": 53,
-    "connection_methods": 67,
-    "catalog_services": 74
+    "providers": 55,
+    "connection_methods": 69,
+    "catalog_services": 76
   },
   "transport_protocols": [
     "ftp",
@@ -74,6 +74,7 @@
       "filelu-s3",
       "filen-desktop-s3",
       "google-cloud-storage",
+      "ibm-cos",
       "idrive-e2",
       "mega-s4",
       "minio",
@@ -98,6 +99,7 @@
       "infinicloud",
       "jianguoyun",
       "koofr",
+      "mailru-cloud",
       "megacmd-webdav",
       "nextcloud",
       "opendrive-webdav",
@@ -119,8 +121,8 @@
   ],
   "catalog_categories": {
     "protocols": 7,
-    "object-storage": 21,
-    "webdav": 18,
+    "object-storage": 22,
+    "webdav": 19,
     "cloud-storage": 19,
     "media-services": 5,
     "developer": 3
@@ -272,6 +274,12 @@
       ]
     },
     {
+      "id": "ibm-cos",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
       "id": "idrive-e2",
       "protocols": [
         "s3"
@@ -323,6 +331,12 @@
       "id": "koofr",
       "protocols": [
         "koofr",
+        "webdav"
+      ]
+    },
+    {
+      "id": "mailru-cloud",
+      "protocols": [
         "webdav"
       ]
     },
