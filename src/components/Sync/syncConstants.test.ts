@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 //
-// GAP-9b — locks the SPEED_PRESETS / MANIAC_OVERRIDES mapping. The unified
-// Plan tab seeds its parallel-streams + compression controls from these
-// presets and threads them into RemoteSyncConfig, so a silent drift here
-// would silently change the migrated SyncPanel behaviour.
+// Locks the SPEED_PRESETS / MANIAC_OVERRIDES mapping. The run reads the delta
+// flag from this table (App.tsx, `runConnectedRemoteSync`), so a silent drift
+// here would silently change which transfers go through the delta path.
 
 import { describe, expect, it } from 'vitest';
 import { SPEED_PRESETS, MANIAC_OVERRIDES, type SpeedMode } from './syncConstants';
@@ -16,30 +15,20 @@ describe('syncConstants — SPEED_PRESETS', () => {
         );
     });
 
-    it('maps each mode to the legacy parallel-stream count', () => {
-        const streams: Record<SpeedMode, number> = {
-            normal: 1,
-            fast: 3,
-            turbo: 6,
-            extreme: 8,
-            maniac: 8,
-        };
-        for (const [mode, count] of Object.entries(streams)) {
-            expect(SPEED_PRESETS[mode as SpeedMode].parallelStreams).toBe(count);
+    it('carries only the delta flag: no stream count, no compression', () => {
+        // The run transfers one file at a time and never compressed, so the
+        // table no longer offers knobs the run does not read.
+        for (const mode of Object.keys(SPEED_PRESETS) as SpeedMode[]) {
+            expect(Object.keys(SPEED_PRESETS[mode])).toEqual(['deltaSyncEnabled']);
         }
     });
 
-    it('maps each mode to the legacy compression mode', () => {
-        expect(SPEED_PRESETS.normal.compressionMode).toBe('off');
-        expect(SPEED_PRESETS.fast.compressionMode).toBe('auto');
-        expect(SPEED_PRESETS.turbo.compressionMode).toBe('on');
-        expect(SPEED_PRESETS.extreme.compressionMode).toBe('on');
-        expect(SPEED_PRESETS.maniac.compressionMode).toBe('on');
-    });
-
-    it('enables delta sync only from turbo upward', () => {
+    it('enables delta sync from fast upward, as the run always did', () => {
+        // The table used to say `fast: false` while the run enabled delta for
+        // every mode but normal (`speedMode !== 'normal'`). The run is what
+        // users got, so the table now says that and the run reads the table.
         expect(SPEED_PRESETS.normal.deltaSyncEnabled).toBe(false);
-        expect(SPEED_PRESETS.fast.deltaSyncEnabled).toBe(false);
+        expect(SPEED_PRESETS.fast.deltaSyncEnabled).toBe(true);
         expect(SPEED_PRESETS.turbo.deltaSyncEnabled).toBe(true);
         expect(SPEED_PRESETS.extreme.deltaSyncEnabled).toBe(true);
         expect(SPEED_PRESETS.maniac.deltaSyncEnabled).toBe(true);

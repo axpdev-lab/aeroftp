@@ -82,8 +82,9 @@ export type ConflictPolicy =
  * the destination copy under `backupDir/<timestamp>/<relative-path>`.
  *
  * The helper flags the BucketPlan (and totals) with the predicted cost;
- * the runner archives the destination copy via `archive_before_sync_delete`
- * when `versioningStrategy` is set.
+ * the runner moves the destination copy there through
+ * `sync_backup_archive_local` / `sync_backup_archive_remote` (the Rust
+ * `sync_backup` module the CLI shares) when `versionedBackup` is set.
  */
 export interface VersionedBackupConfig {
     enabled: boolean;

@@ -6944,6 +6944,8 @@ pub async fn provider_compare_directories(
 
     let mut options = options.unwrap_or_default();
     crate::sync::apply_error_correction_excludes(&mut options);
+    // A backup folder the archive would refuse must not quietly be compared.
+    options.parsed_backup_dir().map_err(|e| e.to_string())?;
     let crypt_vault_id = crypt_vault_id
         .map(|id| id.trim().to_string())
         .filter(|id| !id.is_empty());

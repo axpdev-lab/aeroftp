@@ -50,9 +50,10 @@ describe('AeroSync template import application', () => {
             'plan.direction': 'right-to-left',
             'plan.conflictPolicy': 'rename',
             'plan.verifyPolicy': 'full_checksum',
-            'plan.parallelStreams': 7,
-            'plan.compressionMode': 'on',
         });
+        // An older export's tuning is accepted and ignored: nothing in the
+        // Plan tab reads it any more.
+        expect(Object.keys(patch).filter((k) => /parallel|compression/i.test(k))).toEqual([]);
     });
 
     it('maps an .aerosync template into live paths and comparison settings', () => {
@@ -85,12 +86,11 @@ describe('AeroSync template import application', () => {
             'plan.preset': 'backup',
             'plan.direction': 'right-to-left',
             'plan.verifyPolicy': 'size_only',
-            'plan.parallelStreams': 3,
-            'plan.compressionMode': 'auto',
         });
+        expect(Object.keys(patch).filter((k) => /parallel|compression/i.test(k))).toEqual([]);
     });
 
-    it('keeps live verify, compression and canary on an exported Mirror template (#514)', () => {
+    it('keeps live verify and canary on an exported Mirror template (#514), with neutral tuning', () => {
         const template: SyncTemplate = {
             schema_version: 1,
             name: 'Mirror',
@@ -109,12 +109,15 @@ describe('AeroSync template import application', () => {
             exclude_patterns: [],
             schedule: null,
         };
-        const overlaid = overlayLivePlanOnTemplate(template, {
-            compressionMode: 'auto',
-            verifyPolicy: 'full_checksum',
-            canary: { percent: 15, selection: 'newest' },
-        });
-        expect(overlaid.profile.compression_mode).toBe('auto');
+        const overlaid = overlayLivePlanOnTemplate(
+            { ...template, profile: { ...template.profile, compression_mode: 'on' } },
+            { verifyPolicy: 'full_checksum', canary: { percent: 15, selection: 'newest' } },
+        );
+        // Written neutral whatever the preset said: the run transfers one file
+        // at a time with no compression, and older versions still find both
+        // fields.
+        expect(overlaid.profile.parallel_streams).toBe(1);
+        expect(overlaid.profile.compression_mode).toBe('off');
         expect(overlaid.profile.verify_policy).toBe('full');
         // The comparison triple follows the verify policy, not the preset:
         // the preset says true / true / false, full checksum says compare
@@ -127,7 +130,6 @@ describe('AeroSync template import application', () => {
         expect(imported.ok).toBe(true);
         if (!imported.ok) return;
         const patch = buildAeroSyncTabStatePatch(imported.settings, 'local-remote');
-        expect(patch['plan.compressionMode']).toBe('auto');
         expect(patch['plan.verifyPolicy']).toBe('full_checksum');
         expect(patch['plan.canaryMode']).toBe(true);
         expect(patch['plan.canaryPercent']).toBe(15);

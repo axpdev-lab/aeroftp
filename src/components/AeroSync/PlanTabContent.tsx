@@ -2,19 +2,21 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
     AlertTriangle,
     ArrowRight,
     CheckCircle2,
+    Copy,
+    RefreshCw,
+    Terminal,
     FlaskConical,
     Gauge,
     Loader2,
-    Shrink,
     ShieldAlert,
     ShieldCheck,
     Skull,
     Trash2,
-    Zap,
 } from 'lucide-react';
 import type { CompareResult } from '../../utils/compareEndpoints';
 import {
@@ -40,10 +42,18 @@ import {
     resolveLabel,
 } from '../../utils/syncDirectionLabels';
 import { retryPolicyForSpeed } from '../../utils/remoteSyncRunner';
-import { isCyberTheme, SPEED_PRESETS } from '../Sync/syncConstants';
+import { isCyberTheme } from '../Sync/syncConstants';
 import { useTranslation } from '../../i18n';
 import { useStickyState, useSkipSeedOnRestore } from './tabStateStore';
-import type { CompressionMode } from '../../types';
+import {
+    AEROSYNC_DEFAULT_BACKUP_DIR,
+    AEROSYNC_DEFAULT_EXCLUDES,
+    compareExcludePatterns,
+    sameExcludePatterns,
+} from '../../utils/aeroSyncExcludes';
+import { buildCliSyncCommand, type CliNoEquivalentReason } from '../../utils/aeroSyncCliCommand';
+import { parseSyncExcludePatterns } from '../../utils/syncTemplateApply';
+import { copyText } from '../../utils/clipboard';
 import type {
     AeroSyncCanarySelection,
     AeroSyncPairKind,
@@ -58,14 +68,44 @@ interface PlanTabContentProps {
     loading?: boolean;
     pairKind?: string | null;
     canExecute: boolean;
-    /**
-     * GAP-9b: real backend stream ceiling for the connected provider, from
-     * `get_transfer_capabilities`. Clamps the parallel-streams selector so it
-     * never advertises concurrency the backend cannot honor. Defaults to 8.
-     */
-    streamCap?: number;
     onExecute: (plan: PresetPlan, runtime: AeroSyncRuntime) => void;
+    /** The user's exclude patterns the current compare applied. */
+    compareExcludes?: string[];
+    /** The backup folder the current compare left out; undefined if none was. */
+    compareBackupDir?: string;
+    /** Re-run the compare with the exclude field and the backup folder. */
+    onRescan?: (args: { userExcludes: string[]; backupDir: string }) => void;
+    /** True when the remote goes through the provider API rather than the FTP session. */
+    isProvider?: boolean;
+    /** What the command line under the plan needs to name the same run. */
+    cli?: {
+        /** Saved server name; absent when the connection is not a saved server. */
+        profileName?: string | null;
+        profileInitialPath?: string | null;
+        localPath: string;
+        remotePath: string;
+    };
 }
+
+/** `sync_backup_validate`: the folder as it will be created, or why not. */
+type BackupDirCheck =
+    | { status: 'valid'; dir: string; ancestors: string[] }
+    | { status: 'invalid'; code: string; message: string };
+
+/** `sync_backup_remote_move`: how this remote moves a file into another folder. */
+type RemoteMoveSupport = 'native' | 'server_copy' | 'client_copy' | 'unsupported';
+
+const CLI_REASON_KEYS: Record<CliNoEquivalentReason, string> = {
+    'local-pair': 'aerosync.cli.reason.localPair',
+    'unsaved-server': 'aerosync.cli.reason.unsavedServer',
+    'overwrites-newer': 'aerosync.cli.reason.overwritesNewer',
+    'two-way': 'aerosync.cli.reason.twoWay',
+    canary: 'aerosync.cli.reason.canary',
+    'versioned-backup': 'aerosync.cli.reason.versionedBackup',
+    'transfer-budget': 'aerosync.cli.reason.transferBudget',
+    'remote-path': 'aerosync.cli.reason.remotePath',
+    exclusions: 'aerosync.cli.reason.exclusions',
+};
 
 const PRESET_ORDER: SyncPreset[] = ['backup', 'update', 'mirror', 'bisync'];
 
@@ -137,8 +177,6 @@ const BASE_SPEED_MODES: AeroSyncSpeedMode[] = ['normal', 'fast', 'turbo', 'extre
 const VERIFY_POLICIES: AeroSyncVerifyPolicy[] = ['none', 'size_only', 'size_and_mtime', 'full_checksum'];
 // GAP-9b: stream counts the legacy SyncPanel offered, filtered by the real
 // provider capability at render time.
-const STREAM_OPTIONS = [1, 2, 3, 4, 6, 8];
-const COMPRESSION_MODES: CompressionMode[] = ['off', 'auto', 'on'];
 const CANARY_PERCENTS = [5, 10, 25, 50];
 const CANARY_SELECTIONS: AeroSyncCanarySelection[] = ['random', 'newest', 'largest'];
 
@@ -147,17 +185,31 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     loading,
     pairKind,
     canExecute,
-    streamCap = 8,
     onExecute,
+    compareExcludes = [],
+    compareBackupDir,
+    onRescan,
+    isProvider,
+    cli,
 }) => {
     const t = useTranslation();
+    // One exclude list per pair, shared with the Local mirror tab and the
+    // template import and export (the same store key).
+    const [excludeText, setExcludeText] = useStickyState('sync.exclude', '');
+    // Which command text the last copy was for, so a changed plan never
+    // shows "Copied" for a command that was not.
+    const [copyResult, setCopyResult] = React.useState<{ text: string; ok: boolean } | null>(null);
     const [preset, setPreset] = useStickyState<SyncPreset>('plan.preset', 'backup');
     const [direction, setDirection] = useStickyState<PresetDirection>('plan.direction', 'left-to-right');
     const [conflictPolicy, setConflictPolicy] = useStickyState<ConflictPolicy>('plan.conflictPolicy', 'skip');
     const [versionedBackup, setVersionedBackup] = useStickyState<VersionedBackupConfig>('plan.versionedBackup', {
         enabled: false,
-        backupDir: '.aeroftp-versions',
+        backupDir: AEROSYNC_DEFAULT_BACKUP_DIR,
     });
+    // What the backend says about the backup folder, and about moving files on
+    // this remote, asked before the run so the Plan says it up front.
+    const [backupCheck, setBackupCheck] = React.useState<BackupDirCheck | null>(null);
+    const [remoteMove, setRemoteMove] = React.useState<RemoteMoveSupport | 'error' | null>(null);
     const [confirmedDestructive, setConfirmedDestructive] = React.useState(false);
     // CO-1: Speed mode + verify policy are now lifted into the
     // `onExecute(plan, runtime)` callback so App.tsx can forward them
@@ -175,18 +227,6 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // GAP-9a: Maniac is the Cyber-theme-gated 5th speed mode. Selecting it
     // arms a warning card; Execute stays blocked until the user confirms.
     const [maniacConfirmed, setManiacConfirmed] = React.useState(false);
-    // GAP-9b: parallel-streams + compression preset migrated from the legacy
-    // SyncPanel. The speed mode seeds them; the explicit selectors below
-    // override. Threaded into RemoteSyncConfig; concurrent execution is
-    // owned by APPENDIX-DAG-ENGINE Fase 2.
-    const [parallelStreams, setParallelStreams] = useStickyState(
-        'plan.parallelStreams',
-        SPEED_PRESETS.normal.parallelStreams,
-    );
-    const [compressionMode, setCompressionMode] = useStickyState<CompressionMode>(
-        'plan.compressionMode',
-        SPEED_PRESETS.normal.compressionMode,
-    );
     // P3: Error Correction (AeroSync EC slice). Reuses the exact preset+slider+input
     // trio + clamp from VaultCreate.tsx:183-227 (vault.recoveryLevel* i18n).
     // Default: only 'backup' preset (Backup-class) gets enabled=true + pct=15 (Medium);
@@ -194,19 +234,30 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     const [ecEnabled, setEcEnabled] = useStickyState('plan.ecEnabled', true);
     const [ecPct, setEcPct] = useStickyState('plan.ecPct', 15);
     const isConnectedRemote = pairKind === 'local-remote' || pairKind === 'remote-local';
+    React.useEffect(() => {
+        let cancelled = false;
+        invoke<BackupDirCheck>('sync_backup_validate', { dir: versionedBackup.backupDir ?? '' })
+            .then((check) => { if (!cancelled) setBackupCheck(check); })
+            .catch((e) => { if (!cancelled) setBackupCheck({ status: 'invalid', code: 'error', message: String(e) }); });
+        return () => { cancelled = true; };
+    }, [versionedBackup.backupDir]);
+    React.useEffect(() => {
+        if (!versionedBackup.enabled || !isConnectedRemote) {
+            setRemoteMove(null);
+            return;
+        }
+        let cancelled = false;
+        invoke<RemoteMoveSupport>('sync_backup_remote_move', { useProvider: isProvider === true })
+            .then((support) => { if (!cancelled) setRemoteMove(support); })
+            .catch(() => { if (!cancelled) setRemoteMove('error'); });
+        return () => { cancelled = true; };
+    }, [versionedBackup.enabled, isConnectedRemote, isProvider]);
     const showManiac = isCyberTheme();
     const speedModes: AeroSyncSpeedMode[] = showManiac
         ? [...BASE_SPEED_MODES, 'maniac']
         : BASE_SPEED_MODES;
     const maniacArmed = speedMode === 'maniac';
     const maniacBlocked = maniacArmed && !maniacConfirmed;
-    // GAP-9b: clamp the parallel-streams selector to the real provider cap.
-    const effectiveStreamCap = Math.max(1, streamCap);
-    const effectiveParallelStreams = Math.max(
-        1,
-        Math.min(parallelStreams, effectiveStreamCap),
-    );
-    const streamChoices = STREAM_OPTIONS.filter((v) => v <= effectiveStreamCap);
 
     React.useEffect(() => {
         setConfirmedDestructive(false);
@@ -218,21 +269,6 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         if (speedMode !== 'maniac') setManiacConfirmed(false);
     }, [speedMode]);
 
-    // GAP-9b: selecting a speed mode seeds the parallel-streams + compression
-    // controls from its preset, mirroring the legacy SyncPanel
-    // handleSpeedModeChange. The explicit selectors can still override after.
-    // Skipped on the first run after a tab switch: the store has just restored
-    // the streams/compression the user picked, and re-seeding would undo them.
-    const skipStreamSeed = useSkipSeedOnRestore('plan.parallelStreams', 'plan.compressionMode', 'plan.speedMode');
-    React.useEffect(() => {
-        if (skipStreamSeed.current) {
-            skipStreamSeed.current = false;
-            return;
-        }
-        const preset = SPEED_PRESETS[speedMode];
-        setParallelStreams(preset.parallelStreams);
-        setCompressionMode(preset.compressionMode);
-    }, [speedMode]);
 
     // P3 EC profile defaults (handoff §2c): Backup preset → ON/Medium(15%).
     // Other presets (mirror, update, bisync) → OFF. Effect resets on preset
@@ -271,6 +307,66 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
 
     const plan = derivePresetPlan(result, { preset, direction, conflictPolicy, versionedBackup });
     const bisyncMode = preset === 'bisync';
+    const userExcludes = parseSyncExcludePatterns(excludeText);
+    // The compare has to have applied the patterns the field shows before the
+    // plan built from it may run.
+    const excludesStale = !sameExcludePatterns(userExcludes, compareExcludes);
+    // Versioned backup, settled before the run: the folder must be valid, not
+    // inside a folder this plan writes, left out of the compare that built
+    // the plan, and movable into on every side the plan writes.
+    const validBackupDir = backupCheck?.status === 'valid' ? backupCheck.dir : null;
+    const backupStale = validBackupDir !== null && validBackupDir !== compareBackupDir;
+    const compareStale = excludesStale || backupStale;
+    const localIsLeft = pairKind !== 'remote-local';
+    const writesRemote = isConnectedRemote
+        && (bisyncMode || (direction === 'left-to-right') === localIsLeft);
+    const writtenAncestor = backupCheck?.status === 'valid'
+        ? backupCheck.ancestors.find((folder) => plan.bucketPlans.some((bp) =>
+            bp.action !== 'skip' && bp.action !== 'conflict-skip'
+            && bp.entries.some((entry) => {
+                const path = entry.relativePath ?? entry.name;
+                return path === folder || path.startsWith(`${folder}/`);
+            })))
+        : undefined;
+    let backupBlock: string | null = null;
+    if (versionedBackup.enabled) {
+        if (backupCheck?.status === 'invalid') {
+            const code = ({ empty: 'empty', absolute: 'absolute', parent: 'parent' } as Record<string, string>)[backupCheck.code] ?? 'name';
+            backupBlock = t(`aerosync.backup.invalid.${code}`) || backupCheck.message;
+        } else if (writtenAncestor) {
+            backupBlock = t('aerosync.backup.nested', { folder: writtenAncestor })
+                || `The backup folder is inside ${writtenAncestor}, which this sync writes to.`;
+        } else if (writesRemote && remoteMove === 'unsupported') {
+            backupBlock = t('aerosync.backup.unsupported')
+                || 'This server cannot move files into another folder, so it cannot keep old copies.';
+        } else if (writesRemote && remoteMove === 'error') {
+            backupBlock = t('aerosync.backup.checkFailed')
+                || 'Could not ask the server how it moves files.';
+        } else if (backupCheck === null || (writesRemote && remoteMove === null)) {
+            backupBlock = t('aerosync.backup.checking') || 'Checking how this server moves files...';
+        }
+    }
+    const cliLine = buildCliSyncCommand({
+        pairKind: (pairKind ?? null) as AeroSyncPairKind | null,
+        preset,
+        direction,
+        profileName: cli?.profileName,
+        profileInitialPath: cli?.profileInitialPath,
+        localPath: cli?.localPath ?? '',
+        remotePath: cli?.remotePath ?? '',
+        excludes: compareExcludePatterns(userExcludes),
+        canary: canaryMode,
+        transferBudgetBytes: transferBudgetMb > 0 ? transferBudgetMb * 1024 * 1024 : 0,
+        errorCorrectionPct: ecEnabled ? ecPct : null,
+        versionedBackup: versionedBackup.enabled,
+        shell: typeof navigator !== 'undefined' && navigator.platform.startsWith('Win') ? 'powershell' : 'posix',
+    });
+    const copyCli = (text: string) => {
+        copyText(text).then(
+            () => setCopyResult({ text, ok: true }),
+            () => setCopyResult({ text, ok: false }),
+        );
+    };
 
     const executable = canExecute && plan.totals.actionable > 0;
     const needsConfirm = plan.hasDestructive;
@@ -281,7 +377,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     const canFireExecute =
         executable
         && (canaryMode || !needsConfirm || confirmedDestructive)
-        && !maniacBlocked;
+        && !maniacBlocked
+        && !compareStale
+        && !backupBlock;
 
     return (
         <div className="flex flex-col">
@@ -308,6 +406,11 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         <div className="flex items-center gap-2">
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                             {t('syncPanel.direction') || 'Direction'}
+                            {/* The CLI flag names the same choice only against a
+                                remote: its local-to-local mode ignores it. */}
+                            {isConnectedRemote && (
+                                <span className="ml-1 font-mono normal-case tracking-normal">(--direction)</span>
+                            )}
                         </span>
                         <div className="inline-flex overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
                             <button
@@ -336,6 +439,24 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         </div>
                     )}
                 </div>
+            </div>
+
+            <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    {t('aerosync.exclude.label') || 'Exclude patterns'}
+                </label>
+                <textarea
+                    value={excludeText}
+                    onChange={(event) => setExcludeText(event.target.value)}
+                    rows={2}
+                    spellCheck={false}
+                    placeholder="cache, *.tmp, build/output"
+                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-[12px] text-gray-800 focus:border-blue-400 focus:outline-none dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
+                />
+                <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                    {t('aerosync.exclude.hint', { list: AEROSYNC_DEFAULT_EXCLUDES.join(', ') })
+                        || `Comma or newline separated, for example cache, *.tmp or build/output. Always excluded: ${AEROSYNC_DEFAULT_EXCLUDES.join(', ')}.`}
+                </p>
             </div>
 
             <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
@@ -393,8 +514,21 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-gray-800 focus:border-blue-400 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
                         />
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
-                            {t('aerosync.versionedBackupHint') || 'Capture the destination copy under this directory before each overwrite or delete.'}
+                            {t('aerosync.versionedBackupHint', { dir: validBackupDir ?? versionedBackup.backupDir ?? AEROSYNC_DEFAULT_BACKUP_DIR })
+                                || `Before a file is overwritten or deleted, its destination copy is moved to ${validBackupDir ?? versionedBackup.backupDir}/<run time>/ in the destination folder.`}
                         </p>
+                        {versionedBackup.enabled && writesRemote && (remoteMove === 'server_copy' || remoteMove === 'client_copy') && (
+                            <p className="mt-1 text-[10px] leading-snug text-amber-700 dark:text-amber-300">
+                                {remoteMove === 'server_copy'
+                                    ? (t('aerosync.backup.serverCopy') || 'This server has no move: each kept copy is copied on the server and then deleted.')
+                                    : (t('aerosync.backup.clientCopy') || 'This server has no move: each kept copy is downloaded, uploaded to the backup folder and then deleted.')}
+                            </p>
+                        )}
+                        {backupBlock && (
+                            <p className="mt-1 text-[10px] leading-snug text-rose-600 dark:text-rose-300">
+                                {backupBlock}
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -436,7 +570,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             })}
                         </div>
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
-                            {t('aerosync.speedModeHint') || 'Parallel streams + compression preset applied to the run.'}
+                            {t('aerosync.speedModeHint') || 'Sets the retry policy. From Fast up, changed files are sent as deltas where the server supports it (SFTP with rsync).'}
                         </p>
                     </div>
                     <div>
@@ -458,7 +592,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         </select>
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
                             {maniacArmed
-                                ? (t('syncPanel.maniacWarningBody') || 'Maniac mode runs with verification off; a full sweep runs after sync completes.')
+                                ? (t('syncPanel.maniacWarningBody') || 'No journal and no verification during the run, bandwidth limits are ignored, and a failed file gets only 2 quick retries. After the run, downloaded files are verified; uploaded files are not.')
                                 : (t('aerosync.verifyPolicyHint') || 'Post-transfer integrity check applied to each file.')}
                         </p>
                     </div>
@@ -584,60 +718,6 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                     </div>
                 )}
 
-                {/* GAP-9b: transfer tuning — parallel streams + compression,
-                    connected-remote only. The speed mode seeds both; these
-                    selectors override. Threaded into RemoteSyncConfig; the
-                    concurrent execution is owned by APPENDIX-DAG-ENGINE
-                    Fase 2, so today the run stays sequential. */}
-                {isConnectedRemote && (
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        <div>
-                            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                <Zap size={11} className="mr-1 inline align-text-bottom text-amber-500" />
-                                {t('syncPanel.parallelStreams') || 'Streams'}
-                            </label>
-                            <select
-                                value={effectiveParallelStreams}
-                                onChange={(event) => setParallelStreams(Number(event.target.value))}
-                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
-                            >
-                                {streamChoices.map((v) => (
-                                    <option key={v} value={v}>
-                                        {v === 1
-                                            ? (t('syncPanel.parallelSequential') || 'Sequential')
-                                            : `${v} ${t('syncPanel.parallelStreamLabel') || 'streams'}`}
-                                    </option>
-                                ))}
-                            </select>
-                            <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
-                                {effectiveStreamCap <= 1
-                                    ? (t('syncPanel.parallelSequential') || 'Sequential')
-                                    : (t('syncPanel.speedStreams', { count: effectiveParallelStreams })
-                                        || `${effectiveParallelStreams} streams`)}
-                            </p>
-                        </div>
-                        <div>
-                            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                <Shrink size={11} className="mr-1 inline align-text-bottom text-teal-500" />
-                                {t('syncPanel.compression') || 'Compression'}
-                            </label>
-                            <select
-                                value={compressionMode}
-                                onChange={(event) => setCompressionMode(event.target.value as CompressionMode)}
-                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
-                            >
-                                {COMPRESSION_MODES.map((mode) => (
-                                    <option key={mode} value={mode}>
-                                        {t(`syncPanel.compression${mode.charAt(0).toUpperCase()}${mode.slice(1)}`) || mode}
-                                    </option>
-                                ))}
-                            </select>
-                            <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
-                                {t('syncPanel.compressionHint') || 'Compresses data on the wire to speed up the transfer; it does not store compressed files at the destination. Auto skips formats that are already compressed (zip, jpg, mp4, and similar).'}
-                            </p>
-                        </div>
-                    </div>
-                )}
 
                 {/* GAP-8: transfer budget — connected-remote only. Retry
                     policy derives from the speed mode; versioned backup
@@ -813,6 +893,60 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                 </div>
             )}
 
+            {compareStale && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                    <AlertTriangle size={12} className="shrink-0" />
+                    <span className="flex-1">
+                        {t('aerosync.rescanNeeded') || 'The comparison was made with other exclusions or another backup folder. Rescan before running.'}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => onRescan?.({
+                            userExcludes,
+                            backupDir: validBackupDir ?? compareBackupDir ?? AEROSYNC_DEFAULT_BACKUP_DIR,
+                        })}
+                        disabled={!onRescan}
+                        className="inline-flex items-center gap-1 rounded border border-amber-400 px-2 py-0.5 font-medium hover:bg-amber-100 disabled:opacity-40 dark:hover:bg-amber-900/50"
+                    >
+                        <RefreshCw size={11} />
+                        {t('aerosync.rescan') || 'Rescan'}
+                    </button>
+                </div>
+            )}
+
+            <div className="border-t border-gray-200 px-4 py-2 dark:border-gray-700">
+                <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    <Terminal size={11} />
+                    {t('aerosync.cli.title') || 'Same run from the command line'}
+                </div>
+                {cliLine.kind === 'command' ? (
+                    <div className="flex items-start gap-2">
+                        <code className="flex-1 break-all rounded bg-gray-100 px-2 py-1 font-mono text-[11px] text-gray-800 dark:bg-gray-900/60 dark:text-gray-100">
+                            {cliLine.text}
+                        </code>
+                        <button
+                            type="button"
+                            onClick={() => copyCli(cliLine.text)}
+                            className="inline-flex shrink-0 items-center gap-1 rounded border border-gray-300 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                        >
+                            {copyResult?.text === cliLine.text && copyResult.ok
+                                ? <CheckCircle2 size={11} className="text-emerald-500" />
+                                : <Copy size={11} />}
+                            {copyResult?.text !== cliLine.text
+                                ? (t('aerosync.cli.copy') || 'Copy')
+                                : copyResult.ok
+                                    ? (t('aerosync.cli.copied') || 'Copied')
+                                    : (t('aerosync.cli.copyFailed') || 'Copy failed')}
+                        </button>
+                    </div>
+                ) : (
+                    <p className="text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+                        {t('aerosync.cli.none', { reason: t(CLI_REASON_KEYS[cliLine.reason]) || cliLine.reason })
+                            || `No exact CLI equivalent: ${cliLine.reason}`}
+                    </p>
+                )}
+            </div>
+
             <div className="flex flex-col gap-2 border-t border-gray-200 px-4 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
                     {canExecute
@@ -835,9 +969,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             transferBudget: transferBudgetMb > 0
                                 ? transferBudgetMb * 1024 * 1024
                                 : 0,
-                            versioningStrategy: versionedBackup.enabled ? 'trash_can' : null,
-                            parallelStreams: effectiveParallelStreams,
-                            compressionMode,
+                            versionedBackup: versionedBackup.enabled && validBackupDir ? { dir: validBackupDir } : null,
                             // P3: pass EC control (typed in AeroSyncRuntime, reaches
                             // RemoteSyncConfig.errorCorrection; runner already handles).
                             errorCorrection: ecEnabled ? { enabled: true, pct: ecPct } : undefined,
@@ -851,6 +983,10 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         title={
                             !executable
                                 ? (t('aerosync.executeNothing') || 'Nothing to do or execution path not available')
+                                : backupBlock
+                                    ? backupBlock
+                                : compareStale
+                                    ? (t('aerosync.rescanNeeded') || 'The comparison was made with other exclusions or another backup folder. Rescan before running.')
                                 : !canaryMode && needsConfirm && !confirmedDestructive
                                     ? (t('aerosync.executeConfirm') || 'Confirm destructive actions to enable Execute')
                                     : (t('aerosync.executePreset') || 'Execute preset')

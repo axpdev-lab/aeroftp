@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use suppaftp::tokio::AsyncFtpStream;
 use suppaftp::types::FileType;
+use suppaftp::{FtpError, Status};
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, info, warn};
@@ -340,6 +341,42 @@ impl FtpManager {
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
 
         Ok(path)
+    }
+
+    /// Whether a file or folder is at `path`.
+    ///
+    /// SIZE answers for a file (it works on dotfiles a LIST may hide); a 550
+    /// there means "not a file", and CWD then answers for a folder, after
+    /// which the working directory is restored. Only a 550 reads as "no":
+    /// any other reply is returned as an error, so a caller deciding whether
+    /// a file must be kept before it is overwritten never takes a lost
+    /// connection or an unsupported command for "nothing there".
+    pub async fn exists(&mut self, path: &str) -> Result<bool> {
+        let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
+        match tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
+            .await
+            .context("SIZE timeout")?
+        {
+            Ok(_) => return Ok(true),
+            Err(FtpError::UnexpectedResponse(r)) if r.status == Status::FileUnavailable => {}
+            Err(e) => return Err(FtpManagerError::OperationFailed(e.to_string()).into()),
+        }
+        match tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
+            .await
+            .context("CWD timeout")?
+        {
+            Ok(()) => {}
+            Err(FtpError::UnexpectedResponse(r)) if r.status == Status::FileUnavailable => {
+                return Ok(false)
+            }
+            Err(e) => return Err(FtpManagerError::OperationFailed(e.to_string()).into()),
+        }
+        let previous = self.current_path.clone();
+        tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(&previous))
+            .await
+            .context("CWD timeout")?
+            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        Ok(true)
     }
 
     /// Get file size
