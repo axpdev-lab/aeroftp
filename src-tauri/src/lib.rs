@@ -58,6 +58,8 @@ mod archive_browse;
 #[cfg(target_os = "linux")]
 mod localhost_security;
 mod openai_responses;
+#[cfg(target_os = "linux")]
+mod ui_server;
 
 /// Registered Tauri (GUI) command names, generated at build time from the
 /// `tauri::generate_handler!` block in this file. Consumed by `aeroftp-cli
@@ -18119,7 +18121,8 @@ pub fn run() {
     //   - Another local account can reserve the fixed port before this app starts
     //   - Tauri IPC commands are available to the UI, so server ownership is verified
     //     before any webview loads this origin
-    //   - tauri-plugin-localhost is explicitly bound to 127.0.0.1
+    //   - `ui_server` binds 127.0.0.1 only and answers only a `Host` naming this
+    //     origin, so a DNS-rebound page cannot read it
     // This cannot be changed to HTTPS without a local TLS certificate infrastructure that
     // would add complexity with minimal security benefit for localhost-only traffic.
     //
@@ -18133,19 +18136,6 @@ pub fn run() {
     let localhost_nonce = uuid::Uuid::new_v4().to_string();
 
     let mut builder = tauri::Builder::default();
-
-    #[cfg(target_os = "linux")]
-    {
-        let response_nonce = localhost_nonce.clone();
-        builder = builder.plugin(
-            tauri_plugin_localhost::Builder::new(port)
-                .host("127.0.0.1")
-                .on_request(move |_, response| {
-                    response.add_header("X-AeroFTP-UI-Nonce", response_nonce.as_str());
-                })
-                .build(),
-        );
-    }
 
     builder = builder
         .plugin(tauri_plugin_fs::init())
@@ -18329,11 +18319,27 @@ pub fn run() {
             // frontend events without threading a handle through every call.
             crate::app_events::register_app_handle(app.handle().clone());
 
-            // The plugin binds on a background thread. A plain TCP connect
-            // would also accept another user's server that reserved the fixed
-            // port first. Verify a fresh response nonce before creating any
-            // webview, including the cold-start extract window. Our listener
-            // then keeps the unchanged origin reserved while the app runs.
+            // Serve the frontend on the fixed loopback origin. `ui_server`
+            // replaced tauri-plugin-localhost, whose tiny_http core could leave
+            // a cold-start request unread until another connection closed (a
+            // blank main window); the module doc has the measurement.
+            #[cfg(target_os = "linux")]
+            if let Err(error) = ui_server::start(
+                app.asset_resolver(),
+                std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+                localhost_nonce.clone(),
+                ui_server::Limits::APP,
+            ) {
+                // Not fatal here: the ownership check below names the problem
+                // to the user (usually another process holding the port).
+                log::error!("AeroFTP UI server could not bind 127.0.0.1:{port}: {error}");
+            }
+
+            // A plain TCP connect would also accept another user's server that
+            // reserved the fixed port first. Verify a fresh response nonce
+            // before creating any webview, including the cold-start extract
+            // window. Our listener then keeps the unchanged origin reserved
+            // while the app runs.
             #[cfg(target_os = "linux")]
             if !cfg!(dev) {
                 if let Err(reason) =
@@ -18511,9 +18517,9 @@ pub fn run() {
 
             // === Main window ===
             // Built programmatically (not via tauri.conf.json) so the URL can
-            // be platform-specific and the window is created AFTER the
-            // tauri-plugin-localhost bind wait, with the final URL up-front
-            // and no post-creation navigation.
+            // be platform-specific and the window is created AFTER the UI
+            // server ownership check, with the final URL up-front and no
+            // post-creation navigation.
             //
             // On Linux production we load directly from the localhost server
             // because WebKitGTK has historically had rendering issues with
