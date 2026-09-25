@@ -1805,7 +1805,7 @@ pub async fn hash_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     if !p.is_file() {
         return Err(ToolError::Exec(format!("Path is not a file: {path}")));
     }
-    let hash = crate::cyber_tools::hash_file(path.clone(), algorithm.clone(), None)
+    let hash = crate::cyber_tools::hash_file(path.clone(), algorithm.clone(), None, None, None)
         .await
         .map_err(map_str_err)?;
     Ok(json!({
