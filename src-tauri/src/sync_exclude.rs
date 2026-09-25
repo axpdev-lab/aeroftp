@@ -104,8 +104,17 @@ impl ExcludeMatcher {
             let raw = raw.as_ref();
             let written = pattern_separators(raw, cfg!(windows));
             let without_dir_slash = strip_dir_slashes(&written);
-            let anchored = without_dir_slash.starts_with('/');
-            let body = without_dir_slash.trim_start_matches('/');
+            let mut anchored = without_dir_slash.starts_with('/');
+            let mut body = without_dir_slash.trim_start_matches('/');
+            if body.is_empty() && raw.contains('\\') {
+                // Only separators once a Windows `\\` is read as one (`\\`,
+                // `/\\`): nothing is left to name a path, yet globset still
+                // matches the pattern as written against a name that is a lone
+                // backslash (a remote file), as the CLI did. Kept as written.
+                // Elsewhere this is a dangling escape, refused as before.
+                body = raw;
+                anchored = false;
+            }
             if body.is_empty() {
                 continue;
             }
@@ -726,7 +735,15 @@ mod tests {
         {
             assert!(new("src/build/output/x.o", &["build\\output"]));
             assert!(new("web/node_modules/x.js", &["node_modules\\"]));
+            // A pattern of backslashes only still names a remote file called
+            // `\\`, as the former CLI read it (found by the property test).
+            assert!(new(" A_/\\", &["\\"]));
         }
+        #[cfg(not(windows))]
+        assert!(
+            ExcludeMatcher::new(&["\\"]).is_err(),
+            "a lone backslash is a dangling escape off Windows, as before"
+        );
     }
 
     /// A name holding a `/` (Google Drive) is matched as the entry's own name,
