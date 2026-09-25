@@ -1822,6 +1822,16 @@ impl StorageProvider for GoogleDriveProvider {
             .parent_folder_id(to_path_is_absolute, to_parent_path)
             .await?;
 
+        // The trait promises no overwrite, and Drive keeps two files with one
+        // name side by side: a move onto an existing name left both (found
+        // live on 2026-09-25). The source itself is no conflict, which is
+        // what a rename that only changes the letter case finds.
+        if let Some(existing) = self.find_by_name(new_name, &to_parent_id).await? {
+            if existing.id != file.id {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+        }
+
         // Determine if this is a cross-folder move or a simple rename
         let is_move = from_parent_id != to_parent_id;
 
