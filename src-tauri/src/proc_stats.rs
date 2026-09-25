@@ -294,11 +294,17 @@ mod tests {
         }
         let delta = guard.finish().expect("finish captures");
         std::hint::black_box(&buf);
-        // RSS growth from touched pages is reliable, but allocators may
-        // already own the heap; assert the contract (populated fields,
-        // end not below start) rather than an exact byte count.
+        // RSS is process-global like the fd counts below: sibling tests on
+        // parallel threads free memory between the two samples, so end can
+        // read below start. What the bracket does guarantee is that the end
+        // sample sees the touched buffer, which is still alive and resident.
         assert!(delta.rss_start_bytes > 0);
-        assert!(delta.rss_end_bytes >= delta.rss_start_bytes);
+        assert!(
+            delta.rss_end_bytes >= buf.len() as u64,
+            "end RSS {} must include the {} touched bytes",
+            delta.rss_end_bytes,
+            buf.len()
+        );
         // fd counts are process-global while `cargo test` runs sibling tests
         // on parallel threads that open/close their own fds, so an ordering
         // assertion between start and end would be racy. Assert population
