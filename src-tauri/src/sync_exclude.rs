@@ -1,5 +1,6 @@
 //! One exclude matcher for every sync surface (GUI compare, plan and local
-//! mirror, AeroCloud, CLI `sync`).
+//! mirror, AeroCloud, CLI `sync`, `sync --watch`, `sync-doctor`, `reconcile`,
+//! and the AeroAgent / MCP sync tools).
 //!
 //! Until this module the GUI and the CLI read the same exclude list with two
 //! different engines, and each left paths uncovered that the other excluded:
@@ -10,25 +11,29 @@
 //! interior `/` as a literal fragment.
 //!
 //! The rule here excludes a SUPERSET of what either engine excluded, so no path
-//! an exclude protected before becomes eligible for a copy or a `--delete` now:
+//! an exclude protected before becomes eligible for a copy or a `--delete` now.
+//! A deterministic property test pins that promise against verbatim copies of
+//! both former engines (kept in the tests only, as an oracle).
 //!
-//! - matching is case-insensitive, on `/`-separated relative paths (`\` is
-//!   read as `/`); a trailing `/` on a pattern is dropped;
-//! - a pattern without `/` is a glob against EVERY segment of the path, file or
-//!   directory, so an excluded directory excludes its whole subtree; it is also
-//!   tried against the whole relative path, where `*` crosses `/` (the CLI's
-//!   former reading);
-//! - a pattern with `/` is a glob against the relative path and against every
-//!   contiguous run of its segments, so `build/output` excludes
-//!   `a/build/output/x.o` and `**/cache/*` works anywhere; a leading `/`
-//!   anchors it at the sync root;
-//! - every pattern also matches its own literal text (a name that contains
-//!   glob metacharacters), and a pattern that starts with `*` also matches any
-//!   path ending with the rest taken literally (the GUI's former reading).
+//! - Paths are `/`-separated and relative (`\` in a path is read as `/`).
+//!   A pattern is taken as written: only a trailing `/` is dropped, spaces are
+//!   significant, and `\` escapes the next character where globset does so
+//!   (as the CLI always read it).
+//! - A glob matches as written, and also case-insensitively (globset's own
+//!   option, so character classes keep their meaning).
+//! - A pattern without `/` is tried against EVERY segment of the path, file or
+//!   directory, so an excluded directory excludes its whole subtree, and against
+//!   the whole relative path, where `*` crosses `/`.
+//! - A pattern with `/` is tried against every contiguous run of segments, so
+//!   `build/output` excludes `a/build/output/x.o` and `**/cache/*` works
+//!   anywhere; a leading `/` anchors it at the sync root.
+//! - A pattern also matches its own text case-insensitively (a segment, or a
+//!   run of segments, spelled exactly like it), and a pattern `*X` also matches
+//!   any path ending with `X` taken literally.
 //!
-//! An invalid pattern is an error returned to the caller, never dropped.
-//! `.aeroignore` keeps its own gitignore engine (`sync_ignore`), which consults
-//! this matcher only for the configured exclude list.
+//! A pattern that is not a valid glob is an error returned to the caller, never
+//! dropped. `.aeroignore` keeps its own gitignore engine (`sync_ignore`), which
+//! consults this matcher only for the configured exclude list.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -56,37 +61,50 @@ impl std::error::Error for ExcludePatternError {}
 
 #[derive(Debug, Clone)]
 struct CompiledPattern {
-    glob: GlobMatcher,
-    /// Lowercased pattern without the trailing `/` and the leading anchor.
+    /// The glob as written (case-sensitive).
+    exact: GlobMatcher,
+    /// The same glob with globset's case-insensitive option; `None` when it
+    /// only compiles case-sensitively.
+    folded: Option<GlobMatcher>,
+    /// Lowercased text of the pattern, without the trailing `/` or the anchor.
     literal: String,
     has_slash: bool,
     anchored: bool,
+}
+
+impl CompiledPattern {
+    fn glob_matches(&self, candidate: &str) -> bool {
+        self.exact.is_match(candidate) || self.folded.as_ref().is_some_and(|f| f.is_match(candidate))
+    }
+
+    fn text_matches(&self, candidate: &str) -> bool {
+        candidate
+            .chars()
+            .flat_map(char::to_lowercase)
+            .eq(self.literal.chars())
+    }
 }
 
 /// The compiled exclude list. Build it once per operation.
 #[derive(Debug, Clone, Default)]
 pub struct ExcludeMatcher {
     patterns: Vec<CompiledPattern>,
+    everything: bool,
 }
 
 impl ExcludeMatcher {
-    /// Compile `patterns`; blank entries are ignored, an invalid glob is an error.
+    /// Compile `patterns`; empty entries are ignored, an invalid glob is an error.
     pub fn new<S: AsRef<str>>(patterns: &[S]) -> Result<Self, ExcludePatternError> {
         let mut compiled = Vec::with_capacity(patterns.len());
         for raw in patterns {
             let raw = raw.as_ref();
-            let trimmed = raw.trim().trim_end_matches(['/', '\\']);
-            if trimmed.is_empty() {
-                continue;
-            }
-            let normalized = trimmed.replace('\\', "/").to_lowercase();
-            let anchored = normalized.starts_with('/');
-            let body = normalized.trim_start_matches('/').to_string();
+            let without_dir_slash = raw.trim_end_matches('/');
+            let anchored = without_dir_slash.starts_with('/');
+            let body = without_dir_slash.trim_start_matches('/');
             if body.is_empty() {
                 continue;
             }
-            let glob = GlobBuilder::new(&body)
-                .case_insensitive(true)
+            let exact = GlobBuilder::new(body)
                 .literal_separator(false)
                 .build()
                 .map_err(|e| ExcludePatternError {
@@ -94,57 +112,98 @@ impl ExcludeMatcher {
                     reason: e.kind().to_string(),
                 })?
                 .compile_matcher();
+            let folded = GlobBuilder::new(body)
+                .literal_separator(false)
+                .case_insensitive(true)
+                .build()
+                .ok()
+                .map(|g| g.compile_matcher());
             compiled.push(CompiledPattern {
-                glob,
+                exact,
+                folded,
+                literal: body.to_lowercase(),
                 has_slash: anchored || body.contains('/'),
-                literal: body,
                 anchored,
             });
         }
-        Ok(Self { patterns: compiled })
+        Ok(Self {
+            patterns: compiled,
+            everything: false,
+        })
+    }
+
+    /// A matcher that excludes every path: the fail-closed stand-in for a list
+    /// that could not be compiled where no error can be returned.
+    pub fn everything() -> Self {
+        Self {
+            patterns: Vec::new(),
+            everything: true,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.patterns.is_empty()
+        self.patterns.is_empty() && !self.everything
+    }
+
+    /// Whether this matcher excludes everything (see [`Self::everything`]).
+    pub fn excludes_everything(&self) -> bool {
+        self.everything
     }
 
     /// Whether the file or directory at `rel_path` (relative to the sync root)
     /// is excluded. A path under an excluded directory is excluded too.
     pub fn is_excluded(&self, rel_path: &str) -> bool {
+        if self.everything {
+            return true;
+        }
         if self.patterns.is_empty() {
             return false;
         }
-        let norm = rel_path.replace('\\', "/").to_lowercase();
-        let norm = norm.trim_matches('/');
-        if norm.is_empty() {
+        let normalized = rel_path.replace('\\', "/");
+        let mut bounds: Vec<(usize, usize)> = Vec::new();
+        let mut start = 0;
+        for (i, ch) in normalized.char_indices() {
+            if ch == '/' {
+                if i > start {
+                    bounds.push((start, i));
+                }
+                start = i + 1;
+            }
+        }
+        if normalized.len() > start {
+            bounds.push((start, normalized.len()));
+        }
+        if bounds.is_empty() {
             return false;
         }
-        let segments: Vec<&str> = norm.split('/').filter(|s| !s.is_empty()).collect();
+        let whole = &normalized[bounds[0].0..bounds[bounds.len() - 1].1];
+        let lower = whole.to_lowercase();
         self.patterns
             .iter()
-            .any(|p| pattern_matches(p, norm, &segments))
+            .any(|p| pattern_matches(p, whole, &lower, &bounds))
     }
 }
 
-fn pattern_matches(p: &CompiledPattern, norm: &str, segments: &[&str]) -> bool {
+fn pattern_matches(p: &CompiledPattern, whole: &str, lower: &str, bounds: &[(usize, usize)]) -> bool {
     if let Some(rest) = p.literal.strip_prefix('*') {
-        if !rest.is_empty() && norm.ends_with(rest) {
+        if lower.ends_with(rest) {
             return true;
         }
     }
+    // `bounds` index the original path, `whole` starts at bounds[0].0.
+    let base = bounds[0].0;
+    let slice = |i: usize, j: usize| &whole[bounds[i].0 - base..bounds[j].1 - base];
     if !p.has_slash {
-        return segments
-            .iter()
-            .any(|seg| *seg == p.literal || p.glob.is_match(seg))
-            || p.glob.is_match(norm);
+        return (0..bounds.len()).any(|i| {
+            let seg = slice(i, i);
+            p.glob_matches(seg) || p.text_matches(seg)
+        }) || p.glob_matches(whole);
     }
-    let starts: &[usize] = if p.anchored { &[0] } else { &[] };
-    let all_starts: Vec<usize> = (0..segments.len()).collect();
-    let starts = if p.anchored { starts } else { &all_starts[..] };
-    for &i in starts {
-        for j in (i + 1)..=segments.len() {
-            let window = segments[i..j].join("/");
-            if window == p.literal || p.glob.is_match(&window) {
+    let last_start = if p.anchored { 0 } else { bounds.len() - 1 };
+    for i in 0..=last_start {
+        for j in i..bounds.len() {
+            let window = slice(i, j);
+            if p.glob_matches(window) || p.text_matches(window) {
                 return true;
             }
         }
@@ -250,6 +309,18 @@ mod tests {
         ("build/output", "build/other/x.o", false, false, false),
         ("*.tmp", "tmp/readme.md", false, false, false),
         ("target", "src/targets.rs", false, false, false),
+        // Spaces are significant (review of #939: a trim dropped these).
+        ("node_modules ", "node_modules /a.js", true, true, false),
+        ("*.tmp ", "a.tmp ", true, true, true),
+        (" build", " build/x", true, true, false),
+        // Backslash escapes, as the CLI read it.
+        ("a\\*", "a*", true, false, true),
+        ("file\\[1\\].jpg", "photos/file[1].jpg", true, false, true),
+        // Character classes keep their case-sensitive meaning too.
+        ("[!a-z]*", "README", true, false, true),
+        ("[!A-Z]*", "readme.md", true, false, true),
+        ("*[!a-z0-9.]*", "Notes.txt", true, false, true),
+        ("[Z-a]*", "_x", true, false, true),
     ];
 
     #[test]
@@ -365,7 +436,89 @@ mod tests {
         let err = ExcludeMatcher::new(&["ok", "a[b"]).unwrap_err();
         assert_eq!(err.pattern, "a[b");
         assert!(err.to_string().contains("invalid exclude pattern 'a[b'"));
-        assert!(ExcludeMatcher::new(&["", "  ", "/"]).unwrap().is_empty());
+        assert!(ExcludeMatcher::new(&["", "/", "//"]).unwrap().is_empty());
+        // A pattern that compiled for the former CLI still compiles.
+        assert!(ExcludeMatcher::new(&["[Z-a]*"]).is_ok());
+    }
+
+    /// Deterministic generator (fixed seed): patterns and paths over an alphabet
+    /// that holds the characters the three former-engine gaps turned on
+    /// (spaces, `\`, classes with `!` and ranges, both cases, `/`, `*`, `?`).
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            self.0 >> 33
+        }
+        fn pick<'a>(&mut self, items: &'a [&'a str]) -> &'a str {
+            items[(self.next() as usize) % items.len()]
+        }
+        fn upto(&mut self, max: u64) -> usize {
+            (1 + self.next() % max) as usize
+        }
+    }
+
+    const PATTERN_ATOMS: &[&str] = &[
+        "a", "b", "A", "B", "z", "Z", "_", ".", " ", "*", "?", "**", "/", "\\", "[a-z]", "[!a-z]",
+        "[A-Z]", "[!A-Z]", "[Z-a]", "[ab]", "{a,b}", "node_modules", "tmp",
+    ];
+    const SEGMENT_ATOMS: &[&str] = &[
+        "a", "b", "A", "B", "z", "Z", "_", ".", " ", "*", "[", "]", "node_modules", "tmp",
+    ];
+
+    fn random_pattern(rng: &mut Lcg) -> String {
+        (0..rng.upto(4)).map(|_| rng.pick(PATTERN_ATOMS)).collect()
+    }
+
+    fn random_path(rng: &mut Lcg) -> String {
+        (0..rng.upto(3))
+            .map(|_| (0..rng.upto(3)).map(|_| rng.pick(SEGMENT_ATOMS)).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    #[test]
+    fn property_every_path_either_former_engine_excluded_stays_excluded() {
+        let mut rng = Lcg(0x5eed_a3f7_2026_0925);
+        let mut checked = 0usize;
+        for _ in 0..4000 {
+            let pattern = random_pattern(&mut rng);
+            let matcher = match ExcludeMatcher::new(&[pattern.as_str()]) {
+                Ok(m) => m,
+                Err(_) => {
+                    // Refusing a pattern is allowed only where the former CLI
+                    // could not compile it either.
+                    assert!(
+                        globset::Glob::new(&pattern).is_err(),
+                        "{pattern:?} compiled before and is refused now"
+                    );
+                    continue;
+                }
+            };
+            for _ in 0..24 {
+                let path = random_path(&mut rng);
+                if old_gui(&path, &[pattern.as_str()]) || old_cli(&path, &[pattern.as_str()]) {
+                    assert!(
+                        matcher.is_excluded(&path),
+                        "{pattern:?} excluded {path:?} before and not now"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        // The generator must actually exercise the promise.
+        assert!(checked > 5_000, "only {checked} former exclusions generated");
+    }
+
+    #[test]
+    fn everything_excludes_every_path_and_is_not_empty() {
+        let all = ExcludeMatcher::everything();
+        assert!(all.excludes_everything());
+        assert!(!all.is_empty());
+        assert!(all.is_excluded("src/main.rs"));
     }
 
     #[test]
