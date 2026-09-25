@@ -344,9 +344,6 @@ mod tests {
         ("node_modules ", "node_modules /a.js", true, true, false),
         ("*.tmp ", "a.tmp ", true, true, true),
         (" build", " build/x", true, true, false),
-        // Backslash escapes, as the CLI read it.
-        ("a\\*", "a*", true, false, true),
-        ("file\\[1\\].jpg", "photos/file[1].jpg", true, false, true),
         // Character classes keep their case-sensitive meaning too.
         ("[!a-z]*", "README", true, false, true),
         ("[!A-Z]*", "readme.md", true, false, true),
@@ -354,9 +351,24 @@ mod tests {
         ("[Z-a]*", "_x", true, false, true),
     ];
 
+    /// Backslash escapes, as the CLI read it. globset escapes with `\` only
+    /// off Windows (its platform default, which the former CLI shared), so on
+    /// Windows these patterns hold a literal backslash for both engines.
+    #[cfg(not(windows))]
+    const ESCAPES: &[(&str, &str, bool, bool, bool)] = &[
+        ("a\\*", "a*", true, false, true),
+        ("file\\[1\\].jpg", "photos/file[1].jpg", true, false, true),
+    ];
+    #[cfg(windows)]
+    const ESCAPES: &[(&str, &str, bool, bool, bool)] = &[];
+
+    fn all_rows() -> impl Iterator<Item = &'static (&'static str, &'static str, bool, bool, bool)> {
+        TABLE.iter().chain(ESCAPES.iter())
+    }
+
     #[test]
     fn table_of_cases_against_the_new_and_both_old_engines() {
-        for (pattern, path, now, gui, cli) in TABLE {
+        for (pattern, path, now, gui, cli) in all_rows() {
             assert_eq!(new(path, &[pattern]), *now, "new: {pattern} vs {path}");
             assert_eq!(
                 old_gui(path, &[pattern]),
@@ -455,7 +467,7 @@ mod tests {
 
     #[test]
     fn every_table_row_is_a_superset_of_both_old_engines() {
-        for (pattern, path, now, gui, cli) in TABLE {
+        for (pattern, path, now, gui, cli) in all_rows() {
             if *gui || *cli {
                 assert!(*now, "{pattern} vs {path} was excluded before");
             }

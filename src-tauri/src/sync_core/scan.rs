@@ -996,6 +996,17 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
 ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
+    if opts.excludes_or_everything().excludes_everything() {
+        // An invalid exclude list: nothing is listed, and the scan says it did
+        // not see the tree, so an orphan delete refuses instead of trusting it.
+        // Checked here, before the fast path and the locked or pooled walk, so
+        // every branch answers the same way.
+        let completeness = ScanCompleteness {
+            truncated: true,
+            ..Default::default()
+        };
+        return (Vec::new(), completeness, ScanBoundaries::default());
+    }
     let mut completeness = ScanCompleteness::default();
 
     // GAP-9f: provider-native single-shot recursive listing fast-path,
@@ -1201,15 +1212,6 @@ async fn scan_remote_tree_locked(
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
 ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
-    if opts.excludes_or_everything().excludes_everything() {
-        // An invalid exclude list: nothing is listed, and the scan says it did
-        // not see the tree, so an orphan delete refuses instead of trusting it.
-        let completeness = ScanCompleteness {
-            truncated: true,
-            ..Default::default()
-        };
-        return (Vec::new(), completeness, ScanBoundaries::default());
-    }
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let want_remote_checksum = {
@@ -3202,6 +3204,33 @@ pub(crate) mod tests {
                 boundaries.unbounded,
                 Some("list_error"),
                 "an unlisted root is a gap with no name (pool={pool})"
+            );
+        }
+    }
+
+    /// An invalid exclude list reaching a remote scan excludes everything and
+    /// says so on BOTH walks: the pooled walk used to skip every entry and
+    /// report the empty result as a complete scan, which reads every
+    /// destination file as an orphan to delete.
+    #[tokio::test]
+    async fn an_invalid_exclude_reaching_a_remote_scan_fails_closed_on_both_walks() {
+        for pool in [false, true] {
+            let tree = WalkTreeProvider::new(
+                std::collections::HashMap::from([(
+                    "/root".to_string(),
+                    vec![provider_file("a.txt", "/root/a.txt", 1)],
+                )]),
+                pool,
+            );
+            let opts = ScanOptions {
+                exclude_patterns: vec!["a[b".to_string()],
+                ..ScanOptions::default()
+            };
+            let (rows, completeness, _) = walk_tree_with(tree, opts, None).await;
+            assert!(rows.is_empty(), "(pool={pool})");
+            assert!(
+                !completeness.is_complete(),
+                "an orphan delete must not trust it (pool={pool})"
             );
         }
     }
