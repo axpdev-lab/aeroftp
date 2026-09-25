@@ -2585,12 +2585,19 @@ enum Commands {
         /// Consume a reconcile JSON file instead of re-scanning local and remote trees
         #[arg(long)]
         from_reconcile: Option<String>,
-        /// Conflict resolution for --direction both: newer, older, larger, smaller, rename, skip (default: newer)
-        #[arg(long, default_value = "newer")]
-        conflict_mode: String,
-        /// Trust size-only matches and skip transfers even when mtimes differ
+        /// What to do with a file that differs on both sides and neither copy is clearly newer.
+        /// --direction both: newer (default), older, larger, smaller, rename, skip.
+        /// --direction upload|download: source (default, the source copy wins) or skip (leave the destination alone).
         #[arg(long)]
+        conflict_mode: Option<String>,
+        /// Trust size-only matches and skip transfers even when mtimes differ
+        #[arg(long, alias = "size-only")]
         skip_matching: bool,
+        /// One-way sync: never overwrite a destination copy that is newer than the source
+        /// (beyond the 2-second window), like rsync --update. The GUI Backup and Update presets
+        /// sync this way.
+        #[arg(long)]
+        update: bool,
         /// Discard previous bisync snapshot and rebuild from scratch
         #[arg(long)]
         resync: bool,
@@ -46790,21 +46797,122 @@ fn destination_is_current(src_mtime: Option<&str>, dst_mtime: Option<&str>) -> b
     }
 }
 
+/// Order two mtimes. A date that is missing or cannot be read is unknown, and
+/// an unknown date orders as equal: it used to fall back to comparing the raw
+/// strings, so an FTP `LIST` date (`Sep 24 19:41`) ranked against an ISO one by
+/// its first letter and a conflict was settled at random.
 fn compare_mtime(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
-    match (a, b) {
-        (Some(a), Some(b)) => {
-            match (
-                ftp_client_gui_lib::parse_remote_mtime(a),
-                ftp_client_gui_lib::parse_remote_mtime(b),
-            ) {
-                (Some(ta), Some(tb)) => ta.cmp(&tb),
-                _ => a.cmp(b), // fallback to lexicographic
+    match (
+        a.and_then(ftp_client_gui_lib::parse_remote_mtime),
+        b.and_then(ftp_client_gui_lib::parse_remote_mtime),
+    ) {
+        (Some(ta), Some(tb)) => ta.cmp(&tb),
+        _ => std::cmp::Ordering::Equal,
+    }
+}
+
+/// The conflict policy `sync` runs with: `newer` by default in `--direction
+/// both`, `source` (the source copy wins, what one-way sync always did) in
+/// `upload` / `download`. A value a direction cannot honour is a usage error.
+fn resolve_sync_conflict_mode(requested: Option<&str>, direction: &str) -> Result<String, String> {
+    let one_way = direction == "upload" || direction == "download";
+    match (requested, one_way) {
+        (None, false) => Ok("newer".to_string()),
+        (None, true) => Ok("source".to_string()),
+        (Some(mode @ ("source" | "skip")), true) => Ok(mode.to_string()),
+        (Some(mode), true) => Err(format!(
+            "--conflict-mode {mode} needs --direction both; one-way sync accepts source or skip"
+        )),
+        (Some("source"), false) => {
+            Err("--conflict-mode source needs --direction upload or download".to_string())
+        }
+        (Some(mode), false) => Ok(mode.to_string()),
+    }
+}
+
+/// What a one-way sync does with a file present on both sides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OneWayPair {
+    Skip,
+    Transfer,
+}
+
+/// The one-way decision, the CLI form of the GUI Mirror / Backup / Update
+/// buckets. Same size and a destination at least as new: current (skipped).
+/// Source newer beyond the window: transferred. Destination newer beyond the
+/// window: skipped with `--update`, transferred otherwise (Mirror: the source
+/// wins). Anything else (a size that differs inside the window, or a date that
+/// is unknown) is a conflict: `--conflict-mode skip` leaves it, `source`
+/// transfers it.
+fn plan_one_way_pair(
+    src_size: u64,
+    src_mtime: Option<&str>,
+    dst_size: u64,
+    dst_mtime: Option<&str>,
+    skip_matching: bool,
+    update: bool,
+    conflict_mode: &str,
+) -> OneWayPair {
+    if src_size == dst_size && (skip_matching || destination_is_current(src_mtime, dst_mtime)) {
+        return OneWayPair::Skip;
+    }
+    let src = src_mtime.and_then(ftp_client_gui_lib::parse_remote_mtime);
+    let dst = dst_mtime.and_then(ftp_client_gui_lib::parse_remote_mtime);
+    match (src, dst) {
+        (Some(s), Some(d)) if s > d + SYNC_MTIME_TOLERANCE_SECS => OneWayPair::Transfer,
+        (Some(s), Some(d)) if d > s + SYNC_MTIME_TOLERANCE_SECS => {
+            if update {
+                OneWayPair::Skip
+            } else {
+                OneWayPair::Transfer
             }
         }
-        (Some(_), None) => std::cmp::Ordering::Greater,
-        (None, Some(_)) => std::cmp::Ordering::Less,
-        (None, None) => std::cmp::Ordering::Equal,
+        _ if conflict_mode == "skip" => OneWayPair::Skip,
+        _ => OneWayPair::Transfer,
     }
+}
+
+/// The local-to-local flags `sync --local` would otherwise ignore.
+struct LocalToLocalFlags<'a> {
+    direction: &'a str,
+    delete: bool,
+    track_renames: bool,
+    max_delete: bool,
+    backup_dir: bool,
+    compare_dest: bool,
+    copy_dest: bool,
+    from_reconcile: bool,
+    conflict_mode: bool,
+    skip_matching: bool,
+    update: bool,
+    resync: bool,
+    watch: bool,
+}
+
+fn local_to_local_ignored_flags(f: &LocalToLocalFlags) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if f.direction != "both" {
+        out.push("--direction");
+    }
+    for (set, name) in [
+        (f.delete, "--delete"),
+        (f.track_renames, "--track-renames"),
+        (f.max_delete, "--max-delete"),
+        (f.backup_dir, "--backup-dir"),
+        (f.compare_dest, "--compare-dest"),
+        (f.copy_dest, "--copy-dest"),
+        (f.from_reconcile, "--from-reconcile"),
+        (f.conflict_mode, "--conflict-mode"),
+        (f.skip_matching, "--skip-matching"),
+        (f.update, "--update"),
+        (f.resync, "--resync"),
+        (f.watch, "--watch"),
+    ] {
+        if set {
+            out.push(name);
+        }
+    }
+    out
 }
 
 /// Resolve a conflict between local and remote file for --direction both.
@@ -47659,6 +47767,7 @@ async fn cmd_sync(
     from_reconcile: Option<&str>,
     conflict_mode: &str,
     skip_matching: bool,
+    update: bool,
     resync: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -48076,21 +48185,31 @@ async fn cmd_sync(
             if let Some((rsize, rmtime)) = remote_map.get(path) {
                 let lm = apply_default_time(*mtime, default_time_ref);
                 let rm = apply_default_time(*rmtime, default_time_ref);
-                // One-way upload: the remote copy is current when it is at
-                // least as new as the local file (it was written after the
-                // local file last changed). Exact equality is impossible on
-                // backends that do not preserve mtime (S3 reports the upload
-                // time), and demanding it re-uploaded every file on every run.
+                // One-way upload: `plan_one_way_pair` (a remote copy at least as
+                // new as the local file is current, since exact equality is
+                // impossible on backends that do not preserve mtime; --update
+                // and --conflict-mode skip leave the destination alone).
+                if direction == "upload" {
+                    match plan_one_way_pair(
+                        *size,
+                        lm,
+                        *rsize,
+                        rm,
+                        skip_matching,
+                        update,
+                        conflict_mode,
+                    ) {
+                        OneWayPair::Skip => skipped += 1,
+                        OneWayPair::Transfer => to_upload.push(path),
+                    }
+                    continue;
+                }
                 // Bidirectional sync keeps exact equality: a difference there
                 // is a conflict to resolve, not a copy to skip.
-                let current = if direction == "upload" {
-                    skip_matching || destination_is_current(lm, rm)
-                } else {
-                    skip_matching || compare_mtime(lm, rm) == std::cmp::Ordering::Equal
-                };
+                let current = skip_matching || compare_mtime(lm, rm) == std::cmp::Ordering::Equal;
                 if size == rsize && current {
                     skipped += 1;
-                } else if direction == "both" {
+                } else {
                     // Conflict: file exists on both sides with different content
                     let action = resolve_conflict(conflict_mode, *size, lm, *rsize, rm);
                     match action {
@@ -48119,9 +48238,6 @@ async fn cmd_sync(
                             conflicts_resolved += 1;
                         }
                     }
-                } else {
-                    // upload-only: local always wins
-                    to_upload.push(path);
                 }
             } else {
                 // File only on local side
@@ -48151,22 +48267,22 @@ async fn cmd_sync(
             if let Some((lsize, lmtime)) = local_map.get(path) {
                 let rm = apply_default_time(*mtime, default_time_ref);
                 let lm = apply_default_time(*lmtime, default_time_ref);
-                // Mirror of the upload rule: in one-way download the local copy
-                // is current when it is at least as new as the remote file.
-                let current = if direction == "download" {
-                    skip_matching || destination_is_current(rm, lm)
-                } else {
-                    skip_matching || compare_mtime(rm, lm) == std::cmp::Ordering::Equal
-                };
-                if size == lsize && current {
-                    if direction == "download" {
-                        skipped += 1;
+                // Mirror of the upload rule, with the remote file as the source.
+                // In "both" mode the pair was already decided in the upload pass.
+                if direction == "download" {
+                    match plan_one_way_pair(
+                        *size,
+                        rm,
+                        *lsize,
+                        lm,
+                        skip_matching,
+                        update,
+                        conflict_mode,
+                    ) {
+                        OneWayPair::Skip => skipped += 1,
+                        OneWayPair::Transfer => to_download.push(path),
                     }
-                    // In "both" mode, already handled above
-                } else if direction == "download" {
-                    to_download.push(path);
                 }
-                // In "both" mode, conflicts already resolved in upload pass
             } else {
                 // File only on remote side
                 if direction == "both" {
@@ -56834,6 +56950,7 @@ async fn cmd_sync_watch(
     from_reconcile: Option<&str>,
     conflict_mode: &str,
     skip_matching: bool,
+    update: bool,
     resync: bool,
     watch_mode: &str,
     watch_debounce_ms: u64,
@@ -56955,6 +57072,7 @@ async fn cmd_sync_watch(
                 from_reconcile,
                 conflict_mode,
                 skip_matching,
+                update,
                 resync && cycle == 1, // resync only on first cycle
                 cli,
                 format,
@@ -61545,6 +61663,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     None,
                     "newer",
                     false,
+                    false, // update
                     false,
                     cli,
                     format,
@@ -65568,6 +65687,7 @@ async fn main() {
             from_reconcile,
             conflict_mode,
             skip_matching,
+            update,
             resync,
             watch,
             watch_mode,
@@ -65578,7 +65698,7 @@ async fn main() {
             local_only,
             no_local_delta,
             delta,
-        } => {
+        } => 'sync: {
             // Z.2.2: local-to-local fast path. With `--local` the positional
             // args become `<SRC> <DST>` (url=SRC, local=DST). Without
             // `--local` the legacy 3-arg shape `<URL> <LOCAL> <REMOTE>`
@@ -65606,6 +65726,35 @@ async fn main() {
             }
 
             if local_to_local_match {
+                // The local-to-local copier does not plan: it copies every file.
+                // A flag it cannot honour is refused instead of ignored, so a
+                // `--delete` or a conflict policy never reads as applied.
+                let ignored = local_to_local_ignored_flags(&LocalToLocalFlags {
+                    direction,
+                    delete: *delete,
+                    track_renames: *track_renames,
+                    max_delete: max_delete.is_some(),
+                    backup_dir: backup_dir.is_some(),
+                    compare_dest: compare_dest.is_some(),
+                    copy_dest: copy_dest.is_some(),
+                    from_reconcile: from_reconcile.is_some(),
+                    conflict_mode: conflict_mode.is_some(),
+                    skip_matching: *skip_matching,
+                    update: *update,
+                    resync: *resync,
+                    watch: *watch,
+                });
+                if !ignored.is_empty() {
+                    print_error(
+                        format,
+                        &format!(
+                            "local-to-local sync copies every file and does not support: {}",
+                            ignored.join(", ")
+                        ),
+                        5,
+                    );
+                    break 'sync 5;
+                }
                 if error_correction.is_some() && !cli.quiet {
                     eprintln!("Warning: --error-correction is ignored for local-to-local sync");
                 }
@@ -65622,6 +65771,14 @@ async fn main() {
                 .await;
                 stats.exit_code
             } else {
+                let conflict_mode =
+                    match resolve_sync_conflict_mode(conflict_mode.as_deref(), direction) {
+                        Ok(mode) => mode,
+                        Err(err) => {
+                            print_error(format, &err, 5);
+                            break 'sync 5;
+                        }
+                    };
                 match parse_sync_error_correction_level_pct(error_correction.as_deref()) {
                     Err(err) => {
                         print_error(format, &err, 5);
@@ -65654,8 +65811,9 @@ async fn main() {
                                 compare_dest.as_deref(),
                                 copy_dest.as_deref(),
                                 from_reconcile.as_deref(),
-                                conflict_mode,
+                                &conflict_mode,
                                 *skip_matching,
+                                *update,
                                 *resync,
                                 watch_mode,
                                 *watch_debounce_ms,
@@ -65691,8 +65849,9 @@ async fn main() {
                                     compare_dest.as_deref(),
                                     copy_dest.as_deref(),
                                     from_reconcile.as_deref(),
-                                    conflict_mode,
+                                    &conflict_mode,
                                     *skip_matching,
+                                    *update,
                                     *resync,
                                     &cli,
                                     format,
@@ -76388,6 +76547,7 @@ mod tests {
                 from_reconcile,
                 "newer",
                 false,
+                false, // update
                 false,
                 cli,
                 OutputFormat::Json,
@@ -78427,6 +78587,7 @@ mod tests {
                 None,
                 "newer",
                 false,
+                false, // update
                 false,
                 cli,
                 OutputFormat::Json,
