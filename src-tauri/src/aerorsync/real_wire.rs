@@ -549,11 +549,14 @@ impl MuxHeader {
     }
 }
 
-/// Decode the 4-byte protocol version prefix. Accepts 30..=40: this is
-/// intentionally permissive, covering the current 31/32 range plus a
-/// small forward-compat envelope. Anything else is flagged, because an
-/// unexpected protocol version at offset 0 usually means we are reading
-/// the wrong channel.
+/// Decode the 4-byte protocol version prefix. Accepts 20..=40, rsync's own
+/// `MIN_PROTOCOL_VERSION` and `MAX_PROTOCOL_VERSION` (`rsync.h`): every
+/// value in that range is a real rsync, and whether this module speaks its
+/// protocol is the driver's gate to decide, as a refusal that falls back.
+/// Until 2026-09-25 the floor was 30, so rsync 2.6.x (protocols 27 to 29)
+/// came out as a corrupt frame, a hard error with no fallback. A value
+/// outside the range means the stream is not rsync talking (shell noise on
+/// the channel, the wrong channel), and is flagged here.
 pub fn decode_protocol_version(buf: &[u8]) -> Result<(u32, usize), RealWireError> {
     if buf.len() < PROTOCOL_VERSION_LEN {
         return Err(RealWireError::TruncatedBuffer {
@@ -565,11 +568,17 @@ pub fn decode_protocol_version(buf: &[u8]) -> Result<(u32, usize), RealWireError
     let mut arr = [0u8; PROTOCOL_VERSION_LEN];
     arr.copy_from_slice(&buf[..PROTOCOL_VERSION_LEN]);
     let version = u32::from_le_bytes(arr);
-    if !(30..=40).contains(&version) {
+    if !(RSYNC_MIN_PROTOCOL_VERSION..=RSYNC_MAX_PROTOCOL_VERSION).contains(&version) {
         return Err(RealWireError::InvalidProtocolVersion { value: version });
     }
     Ok((version, PROTOCOL_VERSION_LEN))
 }
+
+/// rsync's `MIN_PROTOCOL_VERSION` (`rsync.h`), the oldest protocol any rsync
+/// still speaks.
+pub const RSYNC_MIN_PROTOCOL_VERSION: u32 = 20;
+/// rsync's `MAX_PROTOCOL_VERSION` (`rsync.h`).
+pub const RSYNC_MAX_PROTOCOL_VERSION: u32 = 40;
 
 /// Encode the 4-byte LE protocol version.
 pub fn encode_protocol_version(version: u32) -> [u8; PROTOCOL_VERSION_LEN] {
@@ -624,26 +633,112 @@ fn read_u8_len_prefixed_ascii(
     Ok((out, end - offset))
 }
 
-/// Parse the server-side preamble from the start of `buf`. Returns a
-/// `ServerPreamble` whose `consumed` field gives the byte cursor at which
-/// the multiplex stream begins.
-pub fn decode_server_preamble(buf: &[u8]) -> Result<ServerPreamble, RealWireError> {
-    let (version, mut cursor) = decode_protocol_version(buf)?;
+/// `CF_VARINT_FLIST_FLAGS` from rsync `compat.c`. It means more than the
+/// file-list flag width: a server sets it only for a client that advertised
+/// `v` in its capability string AND that it can negotiate with, and from
+/// that point `negotiate_the_strings` runs. Without it (rsync 3.0.x and
+/// 3.1.x) no algorithm list travels in either direction, the checksum is
+/// the protocol default (MD5 for protocol 30 and later) and the file-list
+/// flags are the classic one or two bytes.
+pub const CF_VARINT_FLIST_FLAGS: i32 = 1 << 7;
 
+/// Whether a compression list follows the checksum list in the negotiated
+/// strings. `compat.c::negotiate_the_strings` sends it only when
+/// compression is on and its choice was not already fixed on the command
+/// line: a client that passes `--new-compress` (zlibx) gets a checksum
+/// list alone from a 3.2+ server, measured on 2026-09-24 against rsync
+/// 3.2.7 (`-e.LsfxCIvu --new-compress` in the server argv, then
+/// `23 "xxh128 xxh3 xxh64 md5 md4 sha1 none"` and the seed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreambleCompression {
+    /// `-z` in the argv, choice left to negotiation: both lists travel.
+    Negotiated,
+    /// Choice fixed in the argv (`--new-compress`), or compression off:
+    /// only the checksum list travels.
+    FixedOrOff,
+}
+
+/// The first two fields of the server preamble: protocol version and
+/// compat flags. The client needs them before it may send anything else,
+/// because they decide whether the negotiated strings exist at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServerHello {
+    pub protocol_version: u32,
+    pub compat_flags: i32,
+    pub consumed: usize,
+}
+
+impl ServerHello {
+    /// True when the negotiated strings run in this session.
+    pub fn negotiates_strings(&self) -> bool {
+        self.compat_flags & CF_VARINT_FLIST_FLAGS != 0
+    }
+}
+
+/// Parse the protocol version and compat flags at the start of `buf`.
+pub fn decode_server_hello(buf: &[u8]) -> Result<ServerHello, RealWireError> {
+    let (protocol_version, mut cursor) = decode_protocol_version(buf)?;
+    // Compat flags exist from protocol 30 on (`compat.c::setup_protocol`).
+    // An older peer sends none: waiting for them would read its checksum
+    // seed, or hang on a peer that sends nothing more before reading.
+    if protocol_version < 30 {
+        return Ok(ServerHello {
+            protocol_version,
+            compat_flags: 0,
+            consumed: cursor,
+        });
+    }
     // compat_flags is a rsync varint written by `compat.c`. Width depends
     // on which CF_* bits are set: values up to 0x7F take one byte,
     // larger ones take two or more.
     let (compat_raw, consumed_cf) = decode_varint(&buf[cursor..])?;
-    let compat_flags = compat_raw as i32;
     cursor += consumed_cf;
+    Ok(ServerHello {
+        protocol_version,
+        compat_flags: compat_raw as i32,
+        consumed: cursor,
+    })
+}
 
-    let (checksum_algos, consumed_ck) =
-        read_u8_len_prefixed_ascii(buf, cursor, "server_checksum_algos")?;
-    cursor += consumed_ck;
+/// Parse the server-side preamble from the start of `buf`, for a session
+/// whose argv left compression to negotiation (`-z`, the product and
+/// capture profiles). See [`decode_server_preamble_with`].
+pub fn decode_server_preamble(buf: &[u8]) -> Result<ServerPreamble, RealWireError> {
+    decode_server_preamble_with(buf, PreambleCompression::Negotiated)
+}
 
-    let (compression_algos, consumed_cmp) =
-        read_u8_len_prefixed_ascii(buf, cursor, "server_compression_algos")?;
-    cursor += consumed_cmp;
+/// Parse the server-side preamble from the start of `buf`. Returns a
+/// `ServerPreamble` whose `consumed` field gives the byte cursor at which
+/// the multiplex stream begins.
+///
+/// The algorithm lists are present only when the compat flags carry
+/// [`CF_VARINT_FLIST_FLAGS`]; the compression list only when
+/// `compression` is [`PreambleCompression::Negotiated`]. An absent list
+/// decodes as an empty string. Before 2026-09-24 both lists were read
+/// unconditionally, so against rsync 3.1.3 (protocol 31, compat `0x3e`,
+/// no strings) the seed and the first multiplexed bytes were taken for
+/// algorithm names.
+pub fn decode_server_preamble_with(
+    buf: &[u8],
+    compression: PreambleCompression,
+) -> Result<ServerPreamble, RealWireError> {
+    let hello = decode_server_hello(buf)?;
+    let mut cursor = hello.consumed;
+
+    let mut checksum_algos = String::new();
+    let mut compression_algos = String::new();
+    if hello.negotiates_strings() {
+        let (algos, consumed_ck) =
+            read_u8_len_prefixed_ascii(buf, cursor, "server_checksum_algos")?;
+        checksum_algos = algos;
+        cursor += consumed_ck;
+        if compression == PreambleCompression::Negotiated {
+            let (algos, consumed_cmp) =
+                read_u8_len_prefixed_ascii(buf, cursor, "server_compression_algos")?;
+            compression_algos = algos;
+            cursor += consumed_cmp;
+        }
+    }
 
     if buf.len() < cursor + CHECKSUM_SEED_LEN {
         return Err(RealWireError::TruncatedBuffer {
@@ -658,8 +753,8 @@ pub fn decode_server_preamble(buf: &[u8]) -> Result<ServerPreamble, RealWireErro
     cursor += CHECKSUM_SEED_LEN;
 
     Ok(ServerPreamble {
-        protocol_version: version,
-        compat_flags,
+        protocol_version: hello.protocol_version,
+        compat_flags: hello.compat_flags,
         checksum_algos,
         compression_algos,
         checksum_seed,
@@ -716,35 +811,83 @@ fn write_u8_len_prefixed_ascii(out: &mut Vec<u8>, algos: &str, section: &'static
     out.extend_from_slice(bytes);
 }
 
+/// Encode the server-side preamble for a session whose compression is left
+/// to negotiation. See [`encode_server_preamble_with`].
+pub fn encode_server_preamble(preamble: &ServerPreamble) -> Vec<u8> {
+    encode_server_preamble_with(preamble, PreambleCompression::Negotiated)
+}
+
 /// Encode the server-side preamble. Output is byte-identical to what
-/// rsync 3.2.7 writes in `compat.c::setup_protocol`.
+/// rsync writes in `compat.c::setup_protocol`: the algorithm lists only
+/// when the compat flags carry [`CF_VARINT_FLIST_FLAGS`], the compression
+/// list only when `compression` is negotiated. A list handed in for a
+/// shape that does not carry it is a caller bug and panics, because the
+/// peer would read it as the seed.
 ///
 /// `consumed` on the input is ignored (the encoder produces fresh
 /// bytes; the round-trip path sets `consumed` from the decoder).
-pub fn encode_server_preamble(preamble: &ServerPreamble) -> Vec<u8> {
+pub fn encode_server_preamble_with(
+    preamble: &ServerPreamble,
+    compression: PreambleCompression,
+) -> Vec<u8> {
     let mut out = Vec::with_capacity(preamble.consumed.max(64));
     out.extend_from_slice(&encode_protocol_version(preamble.protocol_version));
     out.extend_from_slice(&encode_varint(preamble.compat_flags));
-    write_u8_len_prefixed_ascii(&mut out, &preamble.checksum_algos, "server_checksum_algos");
-    write_u8_len_prefixed_ascii(
-        &mut out,
-        &preamble.compression_algos,
-        "server_compression_algos",
-    );
+    let strings = preamble.compat_flags & CF_VARINT_FLIST_FLAGS != 0;
+    if strings {
+        write_u8_len_prefixed_ascii(&mut out, &preamble.checksum_algos, "server_checksum_algos");
+    } else {
+        assert!(
+            preamble.checksum_algos.is_empty(),
+            "a server without CF_VARINT_FLIST_FLAGS sends no checksum list"
+        );
+    }
+    if strings && compression == PreambleCompression::Negotiated {
+        write_u8_len_prefixed_ascii(
+            &mut out,
+            &preamble.compression_algos,
+            "server_compression_algos",
+        );
+    } else {
+        assert!(
+            preamble.compression_algos.is_empty(),
+            "no compression list travels for this preamble shape"
+        );
+    }
     out.extend_from_slice(&preamble.checksum_seed.to_le_bytes());
     out
 }
 
-/// Encode the client-side preamble (no `compat_flags`, no seed).
+/// Encode the client-side preamble as one block: protocol version and
+/// both algorithm lists. This is what a client writes to a server that
+/// negotiates strings with compression left open; the driver writes the
+/// same bytes in two steps ([`encode_protocol_version`], then
+/// [`encode_client_negotiated_strings`] once the server's compat flags
+/// have been read).
 pub fn encode_client_preamble(preamble: &ClientPreamble) -> Vec<u8> {
     let mut out = Vec::with_capacity(preamble.consumed.max(48));
     out.extend_from_slice(&encode_protocol_version(preamble.protocol_version));
-    write_u8_len_prefixed_ascii(&mut out, &preamble.checksum_algos, "client_checksum_algos");
-    write_u8_len_prefixed_ascii(
-        &mut out,
-        &preamble.compression_algos,
-        "client_compression_algos",
-    );
+    out.extend_from_slice(&encode_client_negotiated_strings(
+        &preamble.checksum_algos,
+        Some(&preamble.compression_algos),
+    ));
+    out
+}
+
+/// The client's negotiated strings: the checksum list, then the
+/// compression list when compression is left to negotiation. Sent only
+/// after the server's compat flags show [`CF_VARINT_FLIST_FLAGS`]: a
+/// server without it (rsync 3.1.3, measured 2026-09-24) reads these bytes
+/// as multiplexed data and exits with code 12.
+pub fn encode_client_negotiated_strings(
+    checksum_algos: &str,
+    compression_algos: Option<&str>,
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(48);
+    write_u8_len_prefixed_ascii(&mut out, checksum_algos, "client_checksum_algos");
+    if let Some(algos) = compression_algos {
+        write_u8_len_prefixed_ascii(&mut out, algos, "client_compression_algos");
+    }
     out
 }
 
@@ -2211,8 +2354,13 @@ pub fn decode_file_list_entry(
     // calls on the happy path). For classic mode a
     // `XMIT_EXTENDED_FLAGS | XMIT_IO_ERROR_ENDLIST` pairing carries the
     // same info.
-    if flags == 0 {
-        let io_error = if options.xfer_flags_as_varint {
+    // Classic flags end a list that met an I/O error with the short
+    // XMIT_EXTENDED_FLAGS | XMIT_IO_ERROR_ENDLIST followed by the error as
+    // a varint (`flist.c::write_end_of_flist`, protocol 30+).
+    let classic_io_error_end =
+        !options.xfer_flags_as_varint && flags == XMIT_EXTENDED_FLAGS | XMIT_IO_ERROR_ENDLIST;
+    if flags == 0 || classic_io_error_end {
+        let io_error = if options.xfer_flags_as_varint || classic_io_error_end {
             let (raw, consumed) = decode_varint(&buf[cursor..])?;
             cursor += consumed;
             raw as i32
@@ -2770,13 +2918,39 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
     if options.xfer_flags_as_varint {
         out.extend_from_slice(&encode_varint(entry.flags as i32));
     } else {
-        let lo = (entry.flags & 0xFF) as u8;
-        let needs_ext = (entry.flags & XMIT_EXTENDED_FLAGS) != 0;
-        if needs_ext {
-            out.push(lo);
-            out.push(((entry.flags >> 8) & 0xFF) as u8);
+        // `flist.c::send_file_entry`, protocol 28+ without varint flags: a
+        // zero value would read as end of list, so a non-directory gets
+        // XMIT_TOP_DIR; any bit in the high byte, or a value still zero,
+        // turns on XMIT_EXTENDED_FLAGS and goes out as a little-endian
+        // short. Until 2026-09-24 the high byte was dropped unless the
+        // caller had set XMIT_EXTENDED_FLAGS itself: the product entry
+        // (XMIT_MOD_NSEC, 0x2000) went out as the single byte 0x00, and
+        // rsync 3.1.3 read the upload's file list as empty.
+        // Classic flags are at most a short; protocol 31 defines no bit
+        // above 14. A wider value would be truncated on the wire without a
+        // trace, so it is a caller bug like the encoder's other asserts
+        // (an assert, not a debug_assert: release builds must not ship the
+        // truncation either).
+        assert!(
+            entry.flags <= 0xFFFF,
+            "entry {:?} has flags {:#x}, wider than the classic two-byte encoding",
+            entry.path,
+            entry.flags
+        );
+        let mut xflags = entry.flags;
+        if xflags == 0 && !is_directory_mode(entry.mode) {
+            xflags |= XMIT_TOP_DIR;
+        }
+        // XMIT_EXTENDED_FLAGS already set also means two bytes: an entry
+        // decoded from `04 00` (a directory with no other flag) carries
+        // 0x0004, and as the single byte `04` the peer would read the next
+        // byte as the high half. rsync's sender never has the bit set at
+        // this point, so its bytes are unchanged (found by the B1 lane).
+        if xflags & 0xFF00 != 0 || xflags == 0 || xflags & XMIT_EXTENDED_FLAGS != 0 {
+            xflags |= XMIT_EXTENDED_FLAGS;
+            out.extend_from_slice(&(xflags as u16).to_le_bytes());
         } else {
-            out.push(lo);
+            out.push(xflags as u8);
         }
     }
 
@@ -4507,9 +4681,34 @@ mod tests {
 
     #[test]
     fn protocol_version_rejects_out_of_range() {
-        let bytes = encode_protocol_version(999);
-        let err = decode_protocol_version(&bytes).unwrap_err();
-        assert!(matches!(err, RealWireError::InvalidProtocolVersion { .. }));
+        for version in [999, 41, 19, 0] {
+            let bytes = encode_protocol_version(version);
+            let err = decode_protocol_version(&bytes).unwrap_err();
+            assert!(
+                matches!(err, RealWireError::InvalidProtocolVersion { .. }),
+                "{version}: {err:?}"
+            );
+        }
+    }
+
+    /// Every protocol a real rsync speaks decodes; refusing the ones this
+    /// module does not implement is the driver's gate, not a corrupt frame.
+    #[test]
+    fn protocol_version_accepts_every_rsync_protocol() {
+        for version in [20, 27, 29, 30, 31, 40] {
+            let (decoded, _) = decode_protocol_version(&encode_protocol_version(version))
+                .unwrap_or_else(|e| panic!("{version}: {e:?}"));
+            assert_eq!(decoded, version);
+        }
+    }
+
+    #[test]
+    fn a_server_hello_below_protocol_30_carries_no_compat_flags() {
+        let hello = decode_server_hello(&encode_protocol_version(29)).expect("hello");
+        assert_eq!(
+            (hello.protocol_version, hello.compat_flags, hello.consumed),
+            (29, 0, 4)
+        );
     }
 
     #[test]
@@ -4743,10 +4942,10 @@ mod tests {
     fn server_preamble_rejects_non_ascii_algo_byte() {
         // Length 3 with a NUL in the middle: should be surfaced with
         // offset so the caller can point at the offending byte. The
-        // compat_flags varint is the single byte 0x00.
+        // compat flags carry CF_VARINT_FLIST_FLAGS, so the lists travel.
         let mut buf = Vec::new();
         buf.extend_from_slice(&encode_protocol_version(32));
-        buf.push(0x00); // varint(0)
+        buf.extend_from_slice(&encode_varint(CF_VARINT_FLIST_FLAGS));
         buf.push(3);
         buf.extend_from_slice(&[b'a', 0x00, b'b']);
         // compression_algos section (len 0) + 4-byte seed: even though the
@@ -4761,27 +4960,309 @@ mod tests {
         );
     }
 
+    /// A frozen legacy-peer capture (`capture/artifacts_real/frozen/legacy-peer`,
+    /// see its PROVENANCE.md). A missing file fails the test, never skips it.
+    fn legacy_peer_capture(rel: &str) -> Vec<u8> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(crate::aerorsync::fixtures::REAL_RSYNC_FROZEN_TRANSCRIPT_REL)
+            .join("legacy-peer")
+            .join(rel);
+        std::fs::read(&path).unwrap_or_else(|e| {
+            panic!("frozen legacy-peer capture {} missing: {e}", path.display())
+        })
+    }
+
+    #[test]
+    fn rsync_313_server_preamble_carries_no_algorithm_lists() {
+        // Stock rsync 3.2.7 client against rsync 3.1.3: version 31, compat
+        // 0x3e (no CF_VARINT_FLIST_FLAGS), seed, then multiplexing.
+        let out = legacy_peer_capture("313-stock-download-z/capture_out.first64.bin");
+        let hello = decode_server_hello(&out).unwrap();
+        assert_eq!((hello.protocol_version, hello.compat_flags), (31, 0x3e));
+        assert!(!hello.negotiates_strings());
+        let p = decode_server_preamble(&out).unwrap();
+        assert_eq!(p.checksum_algos, "");
+        assert_eq!(p.compression_algos, "");
+        assert_eq!(
+            p.checksum_seed,
+            u32::from_le_bytes(out[5..9].try_into().unwrap())
+        );
+        assert_eq!(p.consumed, 9);
+        // The next four bytes are a multiplex header, not a list length.
+        let mux = MuxHeader::decode(out[9..13].try_into().unwrap()).unwrap();
+        assert_eq!(mux.tag, MuxTag::Data);
+    }
+
+    #[test]
+    fn rsync_313_stock_client_sends_no_algorithm_lists() {
+        // The same session, client side: the protocol version and then
+        // straight to multiplexed data. A stock client reads the compat
+        // flags before deciding whether lists exist.
+        let inbound = legacy_peer_capture("313-stock-download-z/capture_in.first64.bin");
+        assert_eq!(inbound[..4], encode_protocol_version(31));
+        let mux = MuxHeader::decode(inbound[4..8].try_into().unwrap()).unwrap();
+        assert_eq!(mux.tag, MuxTag::Data);
+    }
+
+    #[test]
+    fn the_client_preamble_that_killed_rsync_313() {
+        // Before 2026-09-24 the native client wrote its version and both
+        // lists in one go (46 bytes); rsync 3.1.3 answered its own 9-byte
+        // preamble and exited with code 12. The fixed client writes only
+        // the first four of those bytes to such a peer.
+        let sent = legacy_peer_capture("313-native-download-before-fix/capture_in.bin");
+        assert_eq!(
+            sent,
+            encode_client_preamble(&ClientPreamble {
+                protocol_version: 31,
+                checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
+                compression_algos: "zstd zlibx none".to_string(),
+                consumed: 0,
+            })
+        );
+        let answer = legacy_peer_capture("313-native-download-before-fix/capture_out.bin");
+        let p = decode_server_preamble(&answer).unwrap();
+        assert_eq!(
+            (p.protocol_version, p.compat_flags, p.consumed),
+            (31, 0x3f, 9)
+        );
+        assert!(p.checksum_algos.is_empty() && p.compression_algos.is_empty());
+    }
+
+    #[test]
+    fn negotiating_server_with_fixed_compression_sends_the_checksum_list_alone() {
+        // Stock rsync 3.2.7 client with `-z --new-compress` against rsync
+        // 3.2.7: the compression choice is on the argv, so only the
+        // checksum list travels before the seed.
+        let out = legacy_peer_capture("327-stock-download-new-compress/capture_out.first64.bin");
+        let p = decode_server_preamble_with(&out, PreambleCompression::FixedOrOff).unwrap();
+        assert!(p.compat_flags & CF_VARINT_FLIST_FLAGS != 0);
+        assert_eq!(p.checksum_algos, "xxh128 xxh3 xxh64 md5 md4 sha1 none");
+        assert_eq!(p.compression_algos, "");
+        assert_eq!(p.consumed, 4 + 2 + 1 + 35 + 4);
+        let mux = MuxHeader::decode(out[p.consumed..p.consumed + 4].try_into().unwrap()).unwrap();
+        assert_eq!(mux.tag, MuxTag::Data);
+        // Read as if compression were negotiated, the seed becomes a list
+        // length and the parse lands somewhere else: the shape parameter is
+        // not decoration.
+        let wrong = decode_server_preamble(&out);
+        assert!(wrong.map(|w| w.consumed != p.consumed).unwrap_or(true));
+    }
+
+    #[test]
+    fn classic_flags_entry_from_a_stock_client_decodes_and_reencodes() {
+        // Stock rsync 3.2.7 uploading to rsync 3.1.3: classic flags
+        // 0x1c 0x20 = EXTENDED | SAME_UID | SAME_GID | MOD_NSEC.
+        let raw = legacy_peer_capture("313-stock-upload-new-compress/capture_in.first64.bin");
+        let flist = &raw[8..8 + 31]; // after the version and the MSG_DATA header
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: false,
+            always_checksum: false,
+            csum_len: 16,
+            preserve_uid: false,
+            preserve_gid: false,
+            preserve_acls: false,
+            preserve_xattrs: false,
+            previous_name: None,
+        };
+        let (outcome, consumed) = decode_file_list_entry(flist, &opts).unwrap();
+        let FileListDecodeOutcome::Entry(entry) = outcome else {
+            panic!("expected an entry, got {outcome:?}");
+        };
+        assert_eq!(entry.flags, 0x201c);
+        assert_eq!(entry.path, "local.bin");
+        assert_eq!(entry.size, 256 * 1024);
+        assert_eq!(entry.mode, 0o100664); // b4 81 00 00 on the wire
+        assert_eq!(encode_file_list_entry(&entry, &opts), flist[..consumed]);
+        let (end, _) = decode_file_list_entry(&flist[consumed..], &opts).unwrap();
+        assert_eq!(end, FileListDecodeOutcome::EndOfList { io_error: 0 });
+    }
+
+    #[test]
+    fn classic_flags_encoder_sets_extended_for_a_high_bit_or_zero() {
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: false,
+            always_checksum: false,
+            csum_len: 16,
+            preserve_uid: false,
+            preserve_gid: false,
+            preserve_acls: false,
+            preserve_xattrs: false,
+            previous_name: None,
+        };
+        let entry = |flags: u32, mode: u32| FileListEntry {
+            flags,
+            path: "f".to_string(),
+            size: 0,
+            mtime: 0,
+            mtime_nsec: (flags & XMIT_MOD_NSEC != 0).then_some(1),
+            mode,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: Vec::new(),
+            symlink_target: None,
+            xattrs: None,
+            acls: None,
+        };
+        // The product entry: MOD_NSEC only. Must not collapse to 0x00.
+        let bytes = encode_file_list_entry(&entry(XMIT_MOD_NSEC, 0o100644), &opts);
+        assert_eq!(bytes[..2], [0x04, 0x20]);
+        let (decoded, _) = decode_file_list_entry(&bytes, &opts).unwrap();
+        assert!(matches!(decoded, FileListDecodeOutcome::Entry(e) if e.flags == 0x2004));
+        // Zero flags: XMIT_TOP_DIR for a file, the extended zero for a directory.
+        assert_eq!(encode_file_list_entry(&entry(0, 0o100644), &opts)[0], 0x01);
+        assert_eq!(
+            encode_file_list_entry(&entry(0, 0o040755), &opts)[..2],
+            [0x04, 0x00]
+        );
+        // That directory decodes to flags 0x0004 and must go back out as
+        // the same two bytes, not as the lone `04`.
+        let dir = encode_file_list_entry(&entry(0, 0o040755), &opts);
+        let (decoded, _) = decode_file_list_entry(&dir, &opts).unwrap();
+        let FileListDecodeOutcome::Entry(dir_entry) = decoded else {
+            panic!("expected the directory entry back, got {decoded:?}");
+        };
+        assert_eq!(dir_entry.flags, XMIT_EXTENDED_FLAGS);
+        assert_eq!(encode_file_list_entry(&dir_entry, &opts), dir);
+    }
+
+    #[test]
+    #[should_panic(expected = "wider than the classic two-byte encoding")]
+    fn classic_flags_wider_than_a_short_are_refused() {
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: false,
+            always_checksum: false,
+            csum_len: 16,
+            preserve_uid: false,
+            preserve_gid: false,
+            preserve_acls: false,
+            preserve_xattrs: false,
+            previous_name: None,
+        };
+        encode_file_list_entry(
+            &FileListEntry {
+                flags: 0x1_0000 | XMIT_MOD_NSEC,
+                path: "f".to_string(),
+                size: 0,
+                mtime: 0,
+                mtime_nsec: Some(1),
+                mode: 0o100644,
+                uid: None,
+                uid_name: None,
+                gid: None,
+                gid_name: None,
+                checksum: Vec::new(),
+                symlink_target: None,
+                xattrs: None,
+                acls: None,
+            },
+            &opts,
+        );
+    }
+
+    #[test]
+    fn classic_flags_list_ending_with_an_io_error_is_the_end_of_the_list() {
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: false,
+            always_checksum: false,
+            csum_len: 16,
+            preserve_uid: false,
+            preserve_gid: false,
+            preserve_acls: false,
+            preserve_xattrs: false,
+            previous_name: None,
+        };
+        let (outcome, consumed) = decode_file_list_entry(&[0x04, 0x10, 0x17], &opts).unwrap();
+        assert_eq!(outcome, FileListDecodeOutcome::EndOfList { io_error: 23 });
+        assert_eq!(consumed, 3);
+    }
+
+    #[test]
+    fn server_preamble_round_trips_in_every_shape() {
+        let negotiating = ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x1ff,
+            checksum_algos: "xxh128 md5".to_string(),
+            compression_algos: String::new(),
+            checksum_seed: 7,
+            consumed: 0,
+        };
+        let bytes = encode_server_preamble_with(&negotiating, PreambleCompression::FixedOrOff);
+        let back = decode_server_preamble_with(&bytes, PreambleCompression::FixedOrOff).unwrap();
+        assert_eq!(
+            (back.checksum_algos.as_str(), back.consumed),
+            ("xxh128 md5", bytes.len())
+        );
+
+        let legacy = ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x3f,
+            checksum_algos: String::new(),
+            compression_algos: String::new(),
+            checksum_seed: 9,
+            consumed: 0,
+        };
+        for shape in [
+            PreambleCompression::Negotiated,
+            PreambleCompression::FixedOrOff,
+        ] {
+            let bytes = encode_server_preamble_with(&legacy, shape);
+            assert_eq!(bytes.len(), 9);
+            let back = decode_server_preamble_with(&bytes, shape).unwrap();
+            assert_eq!((back.checksum_seed, back.consumed), (9, 9));
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "sends no checksum list")]
+    fn encoding_lists_for_a_server_that_negotiates_nothing_panics() {
+        encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x3f,
+            checksum_algos: "md5".to_string(),
+            compression_algos: String::new(),
+            checksum_seed: 0,
+            consumed: 0,
+        });
+    }
+
+    #[test]
+    fn client_negotiated_strings_omit_the_compression_list_when_fixed() {
+        let both = encode_client_negotiated_strings("xxh128 md5", Some("zstd none"));
+        let checksum_only = encode_client_negotiated_strings("xxh128 md5", None);
+        assert_eq!(checksum_only, [&[10u8][..], b"xxh128 md5"].concat());
+        assert_eq!(both[..checksum_only.len()], checksum_only[..]);
+        assert_eq!(
+            both[checksum_only.len()..],
+            [&[9u8][..], b"zstd none"].concat()
+        );
+    }
+
     #[test]
     fn server_preamble_reads_one_byte_varint_compat_flags() {
-        // A simpler handshake where only CF_INC_RECURSE is set: varint
-        // fits in a single byte (0x01), so the preamble is 70 bytes
-        // instead of 71. Locks the S8d fix: S8b would have read the
-        // first byte of the checksum_algos length as compat_flags' high
-        // byte, corrupting the rest of the parse.
+        // A compat value below 0x80 is one varint byte, and it can never
+        // carry CF_VARINT_FLIST_FLAGS (0x80): such a server negotiates no
+        // strings, so the seed follows the compat byte directly. Locks the
+        // S8d fix (the byte after a one-byte compat is not its high byte)
+        // in the shape rsync 3.1.x actually sends. Until 2026-09-24 this
+        // test put algorithm lists after a one-byte compat, a preamble no
+        // rsync emits, and the decoder read them unconditionally.
         let mut buf = Vec::new();
-        buf.extend_from_slice(&encode_protocol_version(32));
-        buf.push(0x01); // varint(1) = CF_INC_RECURSE
-        buf.push(5);
-        buf.extend_from_slice(b"xxh64");
-        buf.push(4);
-        buf.extend_from_slice(b"zstd");
+        buf.extend_from_slice(&encode_protocol_version(31));
+        buf.push(0x3e); // varint(0x3e), rsync 3.1.3 without -r
         buf.extend_from_slice(&0x1234_5678u32.to_le_bytes());
-        assert_eq!(buf.len(), 4 + 1 + 1 + 5 + 1 + 4 + 4);
+        assert_eq!(buf.len(), 4 + 1 + 4);
 
         let preamble = decode_server_preamble(&buf).unwrap();
-        assert_eq!(preamble.compat_flags, 0x01);
-        assert_eq!(preamble.checksum_algos, "xxh64");
-        assert_eq!(preamble.compression_algos, "zstd");
+        assert_eq!(preamble.compat_flags, 0x3e);
+        assert_eq!(preamble.checksum_algos, "");
+        assert_eq!(preamble.compression_algos, "");
         assert_eq!(preamble.checksum_seed, 0x1234_5678);
         assert_eq!(preamble.consumed, buf.len());
     }
@@ -6649,7 +7130,7 @@ mod tests {
     fn server_preamble_round_trip_typical_proto31_profile() {
         let original = ServerPreamble {
             protocol_version: 31,
-            compat_flags: 0x07,
+            compat_flags: 0x87,
             checksum_algos: "xxh128 xxh3 xxh64 md5 md4 sha1 none".to_string(),
             compression_algos: "zstd lz4 zlibx zlib none".to_string(),
             checksum_seed: 0xDEAD_BEEF,
@@ -6668,16 +7149,18 @@ mod tests {
     #[test]
     fn server_preamble_round_trip_minimal_compat_flags() {
         // Single-byte compat_flags varint (0x00): pin the boundary
-        // where varint encoder emits exactly one byte.
+        // where varint encoder emits exactly one byte. Without
+        // CF_VARINT_FLIST_FLAGS no list travels: version, compat, seed.
         let original = ServerPreamble {
             protocol_version: 30,
             compat_flags: 0,
-            checksum_algos: "md5".to_string(),
-            compression_algos: "none".to_string(),
+            checksum_algos: String::new(),
+            compression_algos: String::new(),
             checksum_seed: 0,
             consumed: 0,
         };
         let bytes = encode_server_preamble(&original);
+        assert_eq!(bytes.len(), 4 + 1 + 4);
         let decoded = decode_server_preamble(&bytes).unwrap();
         assert_eq!(decoded.consumed, bytes.len());
         assert_eq!(decoded.compat_flags, 0);
