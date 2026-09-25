@@ -398,8 +398,9 @@ pub struct ScanBoundaries {
     /// failed to list, an entry whose metadata could not be read.
     pub unseen: Vec<UnseenPath>,
     /// Set when the scan missed a part of the tree it cannot name (it did not
-    /// see its root, was cancelled, cut off at the entry cap, or lost its
-    /// session), so no run can be bounded around it.
+    /// see its root, was cancelled, cut off at the entry cap, lost its
+    /// session, or was handed an exclude list that does not compile), so no
+    /// run can be bounded around it.
     pub unbounded: Option<&'static str>,
     /// The scan root does not exist. That is an empty tree on the side a run
     /// writes to, so a sync into a new directory runs, and a missing source on
@@ -718,7 +719,11 @@ pub fn scan_local_tree_checked(
             truncated: true,
             ..Default::default()
         };
-        return (Vec::new(), completeness, ScanBoundaries::default());
+        let boundaries = ScanBoundaries {
+            unbounded: Some("invalid_exclude"),
+            ..Default::default()
+        };
+        return (Vec::new(), completeness, boundaries);
     }
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
@@ -996,7 +1001,9 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
 ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
-    if opts.excludes_or_everything().excludes_everything() {
+    // Compiled once for the whole walk; every directory reads this one.
+    let excludes = opts.excludes_or_everything();
+    if excludes.excludes_everything() {
         // An invalid exclude list: nothing is listed, and the scan says it did
         // not see the tree, so an orphan delete refuses instead of trusting it.
         // Checked here, before the fast path and the locked or pooled walk, so
@@ -1005,7 +1012,11 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
             truncated: true,
             ..Default::default()
         };
-        return (Vec::new(), completeness, ScanBoundaries::default());
+        let boundaries = ScanBoundaries {
+            unbounded: Some("invalid_exclude"),
+            ..Default::default()
+        };
+        return (Vec::new(), completeness, boundaries);
     }
     let mut completeness = ScanCompleteness::default();
 
@@ -1030,9 +1041,18 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     }
 
     if !list_model.is_clone_pool() {
-        return scan_remote_tree_locked(provider, remote_root, opts, list_model, cancel, observer)
-            .await;
+        return scan_remote_tree_locked(
+            provider,
+            remote_root,
+            opts,
+            &excludes,
+            list_model,
+            cancel,
+            observer,
+        )
+        .await;
     }
+    let excludes = Arc::new(excludes);
 
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
@@ -1103,6 +1123,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 warm_workers.clone(),
                 dir,
                 opts.clone(),
+                Arc::clone(&excludes),
                 want_remote_checksum,
                 cancel.clone(),
                 cap.saturating_sub(results.len() + boundaries.len()),
@@ -1208,6 +1229,7 @@ async fn scan_remote_tree_locked(
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     remote_root: &str,
     opts: &ScanOptions,
+    excludes: &crate::sync_exclude::ExcludeMatcher,
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
@@ -1292,6 +1314,7 @@ async fn scan_remote_tree_locked(
                 provider,
                 &dir,
                 opts,
+                excludes,
                 want_remote_checksum,
                 &cancel,
                 link_budget,
@@ -1445,6 +1468,7 @@ fn spawn_remote_scan_task(
     warm_workers: WarmScanWorkers,
     dir: RemoteScanDir,
     opts: ScanOptions,
+    excludes: Arc<crate::sync_exclude::ExcludeMatcher>,
     want_remote_checksum: bool,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     link_budget: usize,
@@ -1488,6 +1512,7 @@ fn spawn_remote_scan_task(
             &mut worker,
             &dir,
             &opts,
+            &excludes,
             want_remote_checksum,
             &cancel,
             link_budget,
@@ -1554,15 +1579,18 @@ fn scan_cancelled(cancel: &Option<Arc<std::sync::atomic::AtomicBool>>) -> bool {
         .unwrap_or(false)
 }
 
+/// List one directory of a remote walk. `excludes` is the walk's list,
+/// compiled once for the whole walk rather than once per directory.
+#[allow(clippy::too_many_arguments)]
 async fn scan_remote_dir(
     provider: &mut Box<dyn StorageProvider>,
     dir: &RemoteScanDir,
     opts: &ScanOptions,
+    excludes: &crate::sync_exclude::ExcludeMatcher,
     want_remote_checksum: bool,
     cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
     link_budget: usize,
 ) -> Result<RemoteScanBatch, RemoteScanFailure> {
-    let excludes = opts.excludes_or_everything();
     let entries = match list_with_transport_retry(provider, &dir.abs_dir).await {
         Ok(entries) => entries,
         Err(error) => {
@@ -1605,7 +1633,8 @@ async fn scan_remote_dir(
             continue;
         }
         // An excluded directory is not walked: its whole subtree is excluded.
-        if excludes.is_excluded(&entry_rel) {
+        // The provider's own name is matched too: it may hold a `/`.
+        if excludes.is_excluded_entry(&entry_rel, &entry.name) {
             continue;
         }
         if entry.is_dir {
@@ -1998,12 +2027,14 @@ pub(crate) mod tests {
             exclude_patterns: vec!["a[b".to_string()],
             ..Default::default()
         };
-        let (entries, completeness, _) = scan_local_tree_checked(root.to_str().unwrap(), &opts);
+        let (entries, completeness, boundaries) =
+            scan_local_tree_checked(root.to_str().unwrap(), &opts);
         assert!(entries.is_empty());
         assert!(
             !completeness.is_complete(),
             "an orphan delete must not trust it"
         );
+        assert_eq!(boundaries.unbounded, Some("invalid_exclude"));
     }
 
     #[test]
@@ -3226,11 +3257,16 @@ pub(crate) mod tests {
                 exclude_patterns: vec!["a[b".to_string()],
                 ..ScanOptions::default()
             };
-            let (rows, completeness, _) = walk_tree_with(tree, opts, None).await;
+            let (rows, completeness, boundaries) = walk_tree_with(tree, opts, None).await;
             assert!(rows.is_empty(), "(pool={pool})");
             assert!(
                 !completeness.is_complete(),
                 "an orphan delete must not trust it (pool={pool})"
+            );
+            assert_eq!(
+                boundaries.unbounded,
+                Some("invalid_exclude"),
+                "(pool={pool})"
             );
         }
     }
@@ -3563,6 +3599,7 @@ pub(crate) mod tests {
             &mut provider,
             &dir,
             &ScanOptions::default(),
+            &crate::sync_exclude::ExcludeMatcher::default(),
             false,
             &None,
             2,

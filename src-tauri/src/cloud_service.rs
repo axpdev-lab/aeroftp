@@ -525,6 +525,9 @@ impl CloudService {
             compare_checksum: false,
             exclude_patterns: config.exclude_patterns.clone(),
             direction: config.sync_direction,
+            // The scans read `.aeroignore`; the compare reads the same rule.
+            aeroignore: crate::sync_ignore::AeroIgnore::load(&config.local_folder)
+                .map(std::sync::Arc::new),
             ..Default::default()
         };
 
@@ -777,6 +780,9 @@ impl CloudService {
             compare_checksum: has_checksums,
             exclude_patterns: config.exclude_patterns.clone(),
             direction: config.sync_direction,
+            // The scans read `.aeroignore`; the compare reads the same rule.
+            aeroignore: crate::sync_ignore::AeroIgnore::load(&config.local_folder)
+                .map(std::sync::Arc::new),
             ..Default::default()
         };
 

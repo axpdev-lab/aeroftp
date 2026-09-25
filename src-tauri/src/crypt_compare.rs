@@ -157,22 +157,41 @@ impl CryptCompareKeys {
     }
 }
 
+/// A remote tree read through a crypt overlay.
+pub struct NormalizedRemote {
+    /// The decrypted rows the compare reads, the exclude list applied.
+    pub entries: Vec<crate::sync_core::RemoteEntry>,
+    /// How many rows decrypted, before the exclude list: what
+    /// [`CryptCompareKeys::wrong_key_suspected`] reads, so a tree that is all
+    /// excluded is not taken for a wrong password.
+    pub decrypted: usize,
+}
+
 /// Normalize a scanned remote tree for a crypt-overlay Compare.
 ///
 /// Decrypts each `rel_path`, maps the size, drops foreign / undecryptable rows,
 /// and clears any server-side checksum (the remote hash is over ciphertext and
-/// would false-conflict against the plaintext local hash). Shared by the CLI
-/// `check` / `reconcile` and MCP `check_tree`, which all feed the result into
+/// would false-conflict against the plaintext local hash). Then applies
+/// `excludes` to the plaintext paths: the scan could only match the list
+/// against the ciphertext names, which no pattern names, so without this an
+/// excluded file reappeared in the compare. Shared by the CLI `check` /
+/// `reconcile` and MCP `check_tree`, which all feed the result into
 /// `sync_core::compare_trees`.
 pub fn normalize_remote_entries(
     entries: Vec<crate::sync_core::RemoteEntry>,
     keys: &CryptCompareKeys,
-) -> Vec<crate::sync_core::RemoteEntry> {
+    excludes: &crate::sync_exclude::ExcludeMatcher,
+) -> NormalizedRemote {
     let mut out = Vec::with_capacity(entries.len());
+    let mut decrypted = 0usize;
     for mut entry in entries {
         let Some(plain) = keys.decrypt_rel(&entry.rel_path) else {
             continue;
         };
+        decrypted += 1;
+        if excludes.is_excluded(&plain) {
+            continue;
+        }
         entry.size = keys.decrypted_size(entry.size);
         entry.rel_path = plain;
         // Never compare a ciphertext checksum against the plaintext local hash.
@@ -180,7 +199,10 @@ pub fn normalize_remote_entries(
         entry.checksum_hex = None;
         out.push(entry);
     }
-    out
+    NormalizedRemote {
+        entries: out,
+        decrypted,
+    }
 }
 
 /// Overlay binding fields the CLI / MCP need to unlock crypt-compare keys
@@ -410,8 +432,12 @@ mod tests {
             entry("not-base32-!!!", 999),
         ];
 
-        let normalized =
-            normalize_remote_entries(entries, &CryptCompareKeys::Rclone(rclone_keys(true)));
+        let normalized = normalize_remote_entries(
+            entries,
+            &CryptCompareKeys::Rclone(rclone_keys(true)),
+            &Default::default(),
+        )
+        .entries;
 
         assert_eq!(normalized.len(), 1);
         assert_eq!(normalized[0].rel_path, "report.txt");
@@ -420,6 +446,49 @@ mod tests {
         assert_eq!(normalized[0].checksum_hex, None);
         // `keys` kept alive only to build the fixtures above.
         drop(keys);
+    }
+
+    /// The scan matched the exclude list against ciphertext names, which no
+    /// pattern names, so an excluded file came back in a crypt compare. The
+    /// list is read on the plaintext path, and a tree that is all excluded
+    /// still counts as decrypted (not a wrong password).
+    #[test]
+    fn normalize_remote_entries_applies_the_exclude_list_to_plaintext_paths() {
+        let keys = rclone_keys(true);
+        let encrypted = |plain: &str| {
+            plain
+                .split('/')
+                .map(|segment| encrypt_name(&keys.name_key, &keys.name_tweak, segment).unwrap())
+                .collect::<Vec<_>>()
+                .join("/")
+        };
+        let entries = vec![
+            entry(&encrypted("node_modules/a.js"), 40),
+            entry(&encrypted("keep.txt"), 40),
+        ];
+        let excludes = crate::sync_exclude::ExcludeMatcher::new(&["node_modules"]).unwrap();
+        let normalized = normalize_remote_entries(
+            entries,
+            &CryptCompareKeys::Rclone(rclone_keys(true)),
+            &excludes,
+        );
+        let paths: Vec<_> = normalized
+            .entries
+            .iter()
+            .map(|e| e.rel_path.as_str())
+            .collect();
+        assert_eq!(paths, vec!["keep.txt"]);
+        assert_eq!(normalized.decrypted, 2);
+
+        let all = crate::sync_exclude::ExcludeMatcher::new(&["*"]).unwrap();
+        let only_excluded = normalize_remote_entries(
+            vec![entry(&encrypted("keep.txt"), 40)],
+            &CryptCompareKeys::Rclone(rclone_keys(true)),
+            &all,
+        );
+        assert!(only_excluded.entries.is_empty());
+        assert!(!CryptCompareKeys::Rclone(rclone_keys(true))
+            .wrong_key_suspected(1, only_excluded.decrypted));
     }
 
     #[test]
@@ -463,7 +532,9 @@ mod tests {
                 master_key,
                 v3_objects: true,
             },
-        );
+            &Default::default(),
+        )
+        .entries;
 
         assert_eq!(normalized.len(), 1);
         assert_eq!(normalized[0].rel_path, "alpha/beta/report.txt");

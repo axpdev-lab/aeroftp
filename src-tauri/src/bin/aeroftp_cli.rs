@@ -7719,15 +7719,33 @@ fn sync_doctor_planned_upload_sizes(
         .collect()
 }
 
+/// Every exclude a sync-family command honours: its own `--exclude`, the
+/// global `--exclude-global`, the patterns of `--exclude-from`, and the EC
+/// sidecars when error correction is on. `sync` used to accept the two global
+/// flags and ignore them, so `sync --delete --exclude-from list.txt` protected
+/// nothing; and a `--exclude-from` file that cannot be read is a usage error
+/// (exit 5), never an empty list.
 fn sync_effective_exclude_patterns(
+    cli: &Cli,
     exclude: &[String],
     error_correction_enabled: bool,
-) -> Vec<String> {
+    format: OutputFormat,
+) -> Result<Vec<String>, i32> {
     let mut patterns = exclude.to_vec();
+    patterns.extend(cli.exclude_global.iter().cloned());
+    if let Some(path) = &cli.exclude_from {
+        match load_patterns_from_file(path) {
+            Ok(from_file) => patterns.extend(from_file),
+            Err(e) => {
+                print_error(format, &e, 5);
+                return Err(5);
+            }
+        }
+    }
     if error_correction_enabled {
         ftp_client_gui_lib::sync::ensure_error_correction_exclude_patterns(&mut patterns);
     }
-    patterns
+    Ok(patterns)
 }
 
 type SyncExcludes = ftp_client_gui_lib::sync_exclude::ExcludeMatcher;
@@ -9121,6 +9139,19 @@ fn scan_local_tree_with_progress(
     ftp_client_gui_lib::sync_core::ScanBoundaries,
 ) {
     let excludes = opts.excludes_or_everything();
+    if excludes.excludes_everything() {
+        // The same fail-closed answer as `scan_local_tree_checked`: an invalid
+        // list sees nothing and says so, so no orphan delete trusts the walk.
+        let completeness = ftp_client_gui_lib::sync_core::ScanCompleteness {
+            truncated: true,
+            ..Default::default()
+        };
+        let boundaries = ftp_client_gui_lib::sync_core::ScanBoundaries {
+            unbounded: Some("invalid_exclude"),
+            ..Default::default()
+        };
+        return (Vec::new(), completeness, boundaries);
+    }
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(MAX_SCAN_DEPTH);
     let mut last_update = Instant::now()
@@ -9420,6 +9451,7 @@ fn load_sync_plan_from_reconcile(
     direction: &str,
     delete: bool,
     listed: Option<&std::collections::HashSet<String>>,
+    excludes: &SyncExcludes,
 ) -> Result<ReconcileSyncPlan, ReconcilePlanError> {
     let raw = std::fs::read_to_string(path).map_err(|err| {
         ReconcilePlanError::Invalid(format!("Cannot read reconcile file '{}': {}", path, err))
@@ -9480,6 +9512,19 @@ fn load_sync_plan_from_reconcile(
             &mut groups.missing_local,
         ] {
             group.retain(|entry| listed.contains(&entry.path));
+        }
+    }
+    // `--exclude` bounds it the same way. A stored plan was made with its own
+    // list (or none), so a path excluded now must not be copied or deleted
+    // because an older plan named it.
+    if !excludes.is_empty() {
+        for group in [
+            &mut groups.matches,
+            &mut groups.differ,
+            &mut groups.missing_remote,
+            &mut groups.missing_local,
+        ] {
+            group.retain(|entry| !excludes.is_excluded(&entry.path));
         }
     }
 
@@ -47015,7 +47060,11 @@ async fn cmd_sync_local_to_local(
         }
     }
 
-    let exclude_matchers = match compile_sync_excludes(exclude, format) {
+    let effective_exclude = match sync_effective_exclude_patterns(cli, exclude, false, format) {
+        Ok(p) => p,
+        Err(code) => return code.into(),
+    };
+    let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
         Ok(m) => m,
         Err(code) => return code.into(),
     };
@@ -47282,6 +47331,11 @@ fn scan_sync_s3_listing(
         if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
             continue;
         }
+        // Excluded first: a key under an excluded directory is no boundary of
+        // the scan, however deep it sits (the walk never enters that directory).
+        if exclude_matchers.is_excluded_entry(&relative, &e.name) {
+            continue;
+        }
         if let Some(max_d) = max_depth {
             let components = relative.split('/').count();
             if components > max_d || (e.is_dir && components == max_d) {
@@ -47308,9 +47362,6 @@ fn scan_sync_s3_listing(
             }
         }
         if e.is_dir {
-            continue;
-        }
-        if exclude_matchers.is_excluded(&relative) {
             continue;
         }
         if files_from.is_some_and(|set| !set.contains(relative.as_str())) {
@@ -47708,7 +47759,11 @@ async fn cmd_sync(
     }
 
     // Pre-compile exclude matchers (avoids O(n*m) recompilation)
-    let effective_exclude = sync_effective_exclude_patterns(exclude, error_correction_enabled);
+    let effective_exclude =
+        match sync_effective_exclude_patterns(cli, exclude, error_correction_enabled, format) {
+            Ok(p) => p,
+            Err(code) => return code.into(),
+        };
     let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
         Ok(m) => m,
         Err(code) => return code.into(),
@@ -47734,6 +47789,7 @@ async fn cmd_sync(
                 direction,
                 delete,
                 files_from_set.as_ref(),
+                &exclude_matchers,
             ) {
                 Ok(plan) => {
                     let local_scan = SyncScan {
@@ -57017,7 +57073,11 @@ async fn cmd_sync_watch(
 
     // Pre-compile exclude matchers for incremental scan
     let effective_exclude =
-        sync_effective_exclude_patterns(exclude, error_correction_pct.is_some());
+        match sync_effective_exclude_patterns(cli, exclude, error_correction_pct.is_some(), format)
+        {
+            Ok(p) => p,
+            Err(code) => return code,
+        };
     let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
         Ok(m) => m,
         Err(code) => return code,
@@ -57231,7 +57291,7 @@ async fn scan_doctor_remote_tree(
                 .trim_start_matches('/')
                 .to_string();
             // An excluded directory is not walked, as the sync scan prunes it.
-            if !relative.is_empty() && exclude_matchers.is_excluded(&relative) {
+            if !relative.is_empty() && exclude_matchers.is_excluded_entry(&relative, &e.name) {
                 continue;
             }
             if e.is_dir {
@@ -57319,7 +57379,8 @@ async fn sync_doctor_report(
     }
 
     let error_correction_enabled = error_correction_pct.is_some();
-    let effective_exclude = sync_effective_exclude_patterns(exclude, error_correction_enabled);
+    let effective_exclude =
+        sync_effective_exclude_patterns(cli, exclude, error_correction_enabled, format)?;
     let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
         Ok(m) => m,
         Err(code) => return Err(code),
@@ -58611,9 +58672,17 @@ async fn check_report(
         return Err(4);
     }
     if let Some(keys) = &crypt_keys {
+        // The scan read the list on ciphertext names; it is read again on
+        // the plaintext ones.
+        let scan_excludes = scan_opts.excludes_or_everything();
         let raw_len = remotes.len();
-        remotes = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(remotes, keys);
-        if keys.wrong_key_suspected(raw_len, remotes.len()) {
+        let normalized = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(
+            remotes,
+            keys,
+            &scan_excludes,
+        );
+        remotes = normalized.entries;
+        if keys.wrong_key_suspected(raw_len, normalized.decrypted) {
             print_error(
                 format,
                 "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote.",
@@ -59249,15 +59318,15 @@ async fn cmd_reconcile(
         return 5;
     }
 
-    // Merge per-command excludes with global `--exclude-global` and any
-    // patterns loaded from `--exclude-from` file.
-    let mut all_exclude = exclude.to_vec();
-    all_exclude.extend(cli.exclude_global.clone());
-    if let Some(ref path) = cli.exclude_from {
-        if let Ok(patterns) = load_patterns_from_file(path) {
-            all_exclude.extend(patterns);
+    // Per-command excludes, `--exclude-global` and `--exclude-from`, the same
+    // list `sync` reads; an unreadable `--exclude-from` is an error.
+    let all_exclude = match sync_effective_exclude_patterns(cli, exclude, false, format) {
+        Ok(p) => p,
+        Err(code) => {
+            let _ = provider.disconnect().await;
+            return code;
         }
-    }
+    };
     if let Err(code) = compile_sync_excludes(&all_exclude, format) {
         return code;
     }
@@ -59306,9 +59375,17 @@ async fn cmd_reconcile(
         pb.finish_and_clear();
     }
     if let Some(keys) = &crypt_keys {
+        // The scan read the list on ciphertext names; it is read again on
+        // the plaintext ones.
+        let scan_excludes = scan_opts.excludes_or_everything();
         let raw_len = remotes.len();
-        remotes = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(remotes, keys);
-        if keys.wrong_key_suspected(raw_len, remotes.len()) {
+        let normalized = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(
+            remotes,
+            keys,
+            &scan_excludes,
+        );
+        remotes = normalized.entries;
+        if keys.wrong_key_suspected(raw_len, normalized.decrypted) {
             print_error(
                 format,
                 "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote.",
@@ -68823,6 +68900,23 @@ mod tests {
         assert!(!bound.covers("visible.txt"));
     }
 
+    /// An excluded directory deeper than `--max-depth` is no boundary: the
+    /// flat listing used to check the depth first and refused the run (exit 4)
+    /// over keys the walk would never have entered.
+    #[test]
+    fn s3_sync_an_excluded_directory_past_the_depth_limit_is_no_boundary() {
+        let entries = vec![
+            RemoteEntry::file("a.txt".into(), "/root/a.txt".into(), 1),
+            RemoteEntry::directory("node_modules".into(), "/root/web/node_modules".into()),
+            RemoteEntry::file("i.js".into(), "/root/web/node_modules/x/i.js".into(), 1),
+        ];
+        let excludes = SyncExcludes::new(&["node_modules"]).unwrap();
+        let scan = scan_sync_s3_listing((entries, false), "/root", Some(2), 10, &excludes, None);
+        assert_eq!(scan.entries, vec![("a.txt".to_string(), 1, None)]);
+        assert!(scan.completeness.is_complete(), "{:?}", scan.boundaries);
+        assert_eq!(scan.boundaries, Default::default());
+    }
+
     #[test]
     fn s3_sync_boundaries_report_a_root_depth_cut() {
         let scan = scan_sync_s3_listing(
@@ -73210,8 +73304,14 @@ mod tests {
         )
         .unwrap();
 
-        let plan =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", true, None).unwrap();
+        let plan = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "upload",
+            true,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap();
 
         assert_eq!(plan.skipped, 1);
         assert_eq!(plan.to_upload, vec!["changed.txt", "upload.txt"]);
@@ -73233,8 +73333,14 @@ mod tests {
         )
         .unwrap();
 
-        let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", false, None)
-            .unwrap_err();
+        let err = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "upload",
+            false,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap_err();
 
         assert!(err.message().contains("does not contain detailed groups"));
     }
@@ -73264,16 +73370,28 @@ mod tests {
         std::fs::write(&path, &body).unwrap();
 
         // --delete is refused on a partial reconcile.
-        let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None)
-            .unwrap_err();
+        let err = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "download",
+            true,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap_err();
         assert!(
             err.message().contains("incomplete remote scan"),
             "unexpected error: {err}"
         );
 
         // The same partial file is still usable for a non-delete transfer.
-        let plan =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", false, None).unwrap();
+        let plan = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "download",
+            false,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap();
         assert!(plan.to_delete_local.is_empty());
     }
 
@@ -73300,8 +73418,14 @@ mod tests {
         .to_string();
         std::fs::write(&path, &body).unwrap();
 
-        let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None)
-            .unwrap_err();
+        let err = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "download",
+            true,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap_err();
         assert!(
             err.message().contains("incomplete remote scan"),
             "unexpected error: {err}"
@@ -73331,9 +73455,102 @@ mod tests {
         .to_string();
         std::fs::write(&path, &body).unwrap();
 
-        let plan =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None).unwrap();
+        let plan = load_sync_plan_from_reconcile(
+            path.to_str().unwrap(),
+            "download",
+            true,
+            None,
+            &SyncExcludes::default(),
+        )
+        .unwrap();
         assert_eq!(plan.to_delete_local, vec!["orphan.txt"]);
+    }
+
+    /// `sync` accepted `--exclude-global` and `--exclude-from` and ignored
+    /// them, so `sync --delete --exclude-from list.txt` protected nothing; and
+    /// reconcile read an unreadable list as an empty one.
+    #[test]
+    fn sync_reads_the_global_exclude_flags_and_refuses_an_unreadable_list() {
+        // The derived parser is deep; parse on a thread with room for it,
+        // as the other `Cli` parse tests do.
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let dir = tempfile::tempdir().unwrap();
+                let list = dir.path().join("list.txt");
+                std::fs::write(&list, "node_modules\n# a comment\n*.tmp\n").unwrap();
+                let list = list.to_str().unwrap();
+                let cli = Cli::try_parse_from([
+                    "aeroftp",
+                    "--exclude-global",
+                    "*.log",
+                    "--exclude-from",
+                    list,
+                    "sync",
+                    "u",
+                    "l",
+                    "r",
+                ])
+                .unwrap();
+                let patterns = sync_effective_exclude_patterns(
+                    &cli,
+                    &["x".to_string()],
+                    false,
+                    OutputFormat::Json,
+                )
+                .unwrap();
+                assert_eq!(patterns, vec!["x", "*.log", "node_modules", "*.tmp"]);
+
+                let missing = dir.path().join("missing.txt");
+                let cli = Cli::try_parse_from([
+                    "aeroftp",
+                    "--exclude-from",
+                    missing.to_str().unwrap(),
+                    "sync",
+                    "u",
+                    "l",
+                    "r",
+                ])
+                .unwrap();
+                assert_eq!(
+                    sync_effective_exclude_patterns(&cli, &[], false, OutputFormat::Json),
+                    Err(5)
+                );
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    /// `sync --from-reconcile plan.json --exclude X --delete` used to delete
+    /// the plan's orphans under X: the stored plan was never filtered by the
+    /// exclude list the sync was given.
+    #[test]
+    fn from_reconcile_applies_the_exclude_list_to_the_stored_plan() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("reconcile.json");
+        std::fs::write(
+            &path,
+            serde_json::json!({
+                "groups": {
+                    "match": [],
+                    "differ": [{"path": "node_modules/b.js", "local_size": 2, "remote_size": 3}],
+                    "missing_remote": [{"path": "node_modules/a.js", "local_size": 1}],
+                    "missing_local": [
+                        {"path": "node_modules/x.js", "remote_size": 4},
+                        {"path": "remote-only.txt", "remote_size": 5}
+                    ]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let excludes = SyncExcludes::new(&["node_modules"]).unwrap();
+        let plan =
+            load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", true, None, &excludes)
+                .unwrap();
+        assert_eq!(plan.to_delete_remote, vec!["remote-only.txt"]);
+        assert!(plan.to_upload.is_empty(), "{:?}", plan.to_upload);
     }
 
     // -----------------------------------------------------------------------
@@ -76927,6 +77144,24 @@ mod tests {
         );
     }
 
+    /// An invalid exclude list reaching the reconcile walk sees nothing and
+    /// says why, the same answer as `scan_local_tree_checked`: it used to
+    /// exclude every file and report a complete, empty tree.
+    #[test]
+    fn reconcile_local_scan_fails_closed_on_an_invalid_exclude() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        std::fs::write(dir.path().join("a.txt"), b"a").expect("a.txt");
+        let opts = ftp_client_gui_lib::sync_core::ScanOptions {
+            exclude_patterns: vec!["a[b".to_string()],
+            ..Default::default()
+        };
+        let (entries, completeness, boundaries) =
+            scan_local_tree_with_progress(dir.path().to_str().expect("utf-8 root"), &opts, &None);
+        assert!(entries.is_empty());
+        assert!(!completeness.is_complete());
+        assert_eq!(boundaries.unbounded, Some("invalid_exclude"));
+    }
+
     /// `reconcile` walks the local tree with `scan_local_tree_with_progress`.
     /// A directory it cannot read must leave that scan incomplete: its files
     /// would otherwise be reported as missing locally.
@@ -77403,8 +77638,9 @@ mod tests {
             }),
         );
 
-        let loaded = load_sync_plan_from_reconcile(&plan, "upload", true, None)
-            .unwrap_or_else(|_| panic!("a summary in the earlier format must load"));
+        let loaded =
+            load_sync_plan_from_reconcile(&plan, "upload", true, None, &SyncExcludes::default())
+                .unwrap_or_else(|_| panic!("a summary in the earlier format must load"));
 
         assert_eq!(loaded.to_delete_remote, vec!["b.txt"]);
     }
