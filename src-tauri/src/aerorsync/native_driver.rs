@@ -48,7 +48,7 @@
 //! width of a supported [`FileChecksumKind`]; assuming 16 made downloads
 //! from `xxh64` and `xxh3` peers wait forever for eight bytes that were
 //! never coming. Named unsupported winners (`none`, `sha256`, `sha512`,
-//! `xxhash`, unknown names) and a non-empty disjoint advertisement are
+//! `xxhash`, unknown names), a disjoint advertisement and an empty one are
 //! `NegotiationFailed` immediately after the preamble, before any
 //! file-list byte.
 
@@ -295,9 +295,10 @@ const RAW_READ_CHUNK: usize = 8192;
 /// `Refused` (protocol 30, rsync 3.0.x) turns every session to the endpoint
 /// away before it opens, so a sync batch, which runs no probe, pays one
 /// refused session per endpoint instead of one per file. It expires after
-/// [`REFUSAL_TTL`](peer_dialect::REFUSAL_TTL), the lifetime of the
-/// application's probe cache, so an upgraded server gets the native path
-/// back without a restart.
+/// [`REFUSAL_TTL`](peer_dialect::REFUSAL_TTL), thirty minutes, as long as
+/// the application's probe cache keeps a negative verdict (`CACHE_TTL_ERR`),
+/// so the two caches agree and an upgraded server gets the native path back
+/// without a restart.
 mod peer_dialect {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
@@ -306,7 +307,7 @@ mod peer_dialect {
     pub(super) type Endpoint = (String, u16, String);
 
     const MAX_ENDPOINTS: usize = 256;
-    pub(super) const REFUSAL_TTL: Duration = Duration::from_secs(300);
+    pub(super) const REFUSAL_TTL: Duration = Duration::from_secs(1800);
 
     #[derive(Clone, Copy)]
     enum Dialect {
@@ -374,9 +375,10 @@ mod peer_dialect {
     }
 }
 
-/// Whether a failed `--new-compress` session to an endpoint known as
-/// legacy is worth one retry with the original argv. A cancel, a rejected
-/// host key and a protocol refusal come back the same whatever the argv.
+/// Whether a `--new-compress` session to an endpoint known as legacy that
+/// opened and then failed is worth one retry with the original argv. A
+/// cancel, a rejected host key and a protocol refusal come back the same
+/// whatever the argv.
 fn failure_depends_on_argv(err: &AerorsyncError) -> bool {
     !matches!(
         err.kind,
@@ -1263,10 +1265,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// digest and the whole-file delta trailer for the negotiated winner.
     ///
     /// Width follows the resolved [`FileChecksumKind`]. Named unsupported
-    /// winners and a non-empty disjoint advertisement error instead of
-    /// inventing a width that the digest implementation cannot keep.
-    /// An empty peer advertisement keeps the historical 16-byte xxh128
-    /// compatibility.
+    /// winners, a disjoint advertisement and an empty one error instead of
+    /// inventing a width that the digest implementation cannot keep. Only a
+    /// driver whose preamble never ran keeps the historical 16-byte xxh128.
     pub(crate) fn negotiated_file_checksum_len(&self) -> Result<usize, AerorsyncError> {
         Ok(self.resolved_file_checksum_kind()?.wire_len())
     }
@@ -1835,12 +1836,15 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// fails the session like any other negotiation failure.
     ///
     /// [`peer_dialect`] shapes the first attempt. An endpoint that refused
-    /// the native path within the last five minutes is turned away before
+    /// the native path within the last thirty minutes is turned away before
     /// any exec. An endpoint known as legacy gets `--new-compress` at once;
-    /// if that session fails for a reason another argv could change, the
-    /// entry is dropped and the session retried with the original argv,
-    /// which then gets no `--new-compress` reopen of its own. Either way a
-    /// call opens at most two sessions.
+    /// if that session opened and then failed for a reason another argv
+    /// could change, the entry is dropped and the session retried with the
+    /// original argv, which then gets no `--new-compress` reopen of its own.
+    /// A session that never opened (connection, handshake, authentication,
+    /// channel) is not retried: the argv never reached the server, and on
+    /// the libssh2 leg every open authenticates again, so a retry would only
+    /// double a refused login. Either way a call opens at most two sessions.
     async fn open_and_negotiate(
         &mut self,
         command_spec: &RemoteCommandSpec,
@@ -1864,7 +1868,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             let forced = command_spec
                 .clone()
                 .with_compression(ArgvCompression::NewCompress);
-            match self.open_and_exchange(&forced).await {
+            if let Err(err) = self.open_session(&forced).await {
+                return self.remember_dialect(endpoint, Err(err));
+            }
+            match self.exchange_preamble().await {
                 Err(err) if failure_depends_on_argv(&err) => {
                     tracing::debug!(
                         "aerorsync: --new-compress to an endpoint known as pre-3.2 failed ({err}); \
@@ -1914,6 +1921,24 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         &mut self,
         command_spec: &RemoteCommandSpec,
     ) -> Result<(), AerorsyncError> {
+        self.open_session(command_spec).await?;
+        self.exchange_preamble().await
+    }
+
+    /// Open the server exec. A failure here happened before the argv
+    /// reached the server.
+    async fn open_session(
+        &mut self,
+        command_spec: &RemoteCommandSpec,
+    ) -> Result<(), AerorsyncError> {
+        // Verdicts of an earlier session must not outlive it: a session that
+        // fails before its preamble would otherwise report them as its own.
+        self.legacy_peer_rejected_z = false;
+        self.peer_protocol_refused = false;
+        self.open_raw_stream_internal(command_spec).await
+    }
+
+    async fn exchange_preamble(&mut self) -> Result<(), AerorsyncError> {
         // B.2: rsync wire protocol uses SPACE-separated algo lists in
         // priority-descending order. Using commas causes stock rsync
         // 3.4.1 to parse the whole list as a single unknown algorithm
@@ -1921,11 +1946,6 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // `capture/artifacts_real/frozen/upload/capture_in.bin` shape.
         let csum_algos = self.preamble_profile.checksum_algos.clone();
         let comp_algos = self.preamble_profile.compression_algos.clone();
-        // Verdicts of an earlier session must not outlive it: a session that
-        // fails before its preamble would otherwise report them as its own.
-        self.legacy_peer_rejected_z = false;
-        self.peer_protocol_refused = false;
-        self.open_raw_stream_internal(command_spec).await?;
         self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await
     }
@@ -6038,15 +6058,15 @@ mod tests {
 
     #[tokio::test]
     async fn a_call_opens_at_most_two_sessions_when_new_compress_fails() {
-        // Known legacy, `--new-compress` fails, the original argv meets a
-        // peer that negotiates nothing: no third session, and the error
-        // reported is the `--new-compress` one.
+        // Known legacy, the `--new-compress` session opens and the server
+        // drops it, the original argv meets a peer that negotiates nothing:
+        // no third session, and the error reported is the first one.
         let endpoint = dialect_endpoint("bound.dialect.invalid", "alice");
         peer_dialect::record_negotiation(endpoint.clone(), false);
         let (res, argvs) = negotiate_scripted(
             &endpoint,
             vec![
-                OpenRawStreamBehavior::Fail("new-compress refused".into()),
+                peer_sends(Vec::new()),
                 peer_sends(legacy_peer_capture(
                     "313-stock-download-z/capture_out.first64.bin",
                 )),
@@ -6055,7 +6075,8 @@ mod tests {
         .await;
         let err = res.unwrap_err();
         assert_eq!(argvs.len(), 2, "{argvs:?}");
-        assert!(err.detail.contains("new-compress refused"), "{err:?}");
+        assert_eq!(err.kind, AerorsyncErrorKind::TransportFailure, "{err:?}");
+        assert!(!err.detail.contains("negotiates no algorithms"), "{err:?}");
         assert!(!peer_dialect::is_known_legacy(&endpoint));
     }
 
@@ -6077,6 +6098,49 @@ mod tests {
             assert_eq!(argvs.len(), 1, "{kind:?}: {argvs:?}");
             assert!(peer_dialect::is_known_legacy(&endpoint), "{kind:?}");
         }
+    }
+
+    /// A session that never opened (TCP, handshake, authentication, channel)
+    /// never carried the argv, so another argv changes nothing. On the
+    /// libssh2 leg each open authenticates again: a retry would put a second
+    /// refused login on the server for a revoked key.
+    #[tokio::test]
+    async fn a_new_compress_session_that_never_opened_is_not_retried() {
+        let endpoint = dialect_endpoint("never-opened.dialect.invalid", "alice");
+        peer_dialect::record_negotiation(endpoint.clone(), false);
+        let (res, argvs) = negotiate_scripted(
+            &endpoint,
+            vec![
+                OpenRawStreamBehavior::Fail("authentication failed".into()),
+                peer_sends(canonical_server_preamble_bytes()),
+            ],
+        )
+        .await;
+        let err = res.unwrap_err();
+        assert!(err.detail.contains("authentication failed"), "{err:?}");
+        assert_eq!(argvs.len(), 1, "{argvs:?}");
+        assert!(peer_dialect::is_known_legacy(&endpoint));
+    }
+
+    #[tokio::test]
+    async fn a_protocol_refusal_under_new_compress_is_not_retried() {
+        let endpoint = dialect_endpoint("refused-forced.dialect.invalid", "alice");
+        peer_dialect::record_negotiation(endpoint.clone(), false);
+        let (res, argvs) = negotiate_scripted(
+            &endpoint,
+            vec![
+                peer_sends(protocol_30_hello()),
+                peer_sends(canonical_server_preamble_bytes()),
+            ],
+        )
+        .await;
+        assert_eq!(
+            res.unwrap_err().kind,
+            AerorsyncErrorKind::UnsupportedVersion
+        );
+        assert_eq!(argvs.len(), 1, "{argvs:?}");
+        assert!(asks_new_compress(&argvs[0]), "{argvs:?}");
+        assert!(peer_dialect::is_refused(&endpoint));
     }
 
     #[tokio::test]

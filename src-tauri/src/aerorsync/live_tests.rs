@@ -338,7 +338,7 @@ async fn live_real_rsync_native_delta_download_verifies_whole_file() {
         "report.total_size must equal reconstructed length"
     );
     eprintln!(
-        "live real-rsync native delta download (default/xxh128): total_size={} bytes_sent={} bytes_received={} speedup={:.2} duration_ms={}",
+        "live real-rsync native delta download (default profile): total_size={} bytes_sent={} bytes_received={} speedup={:.2} duration_ms={}",
         report.total_size,
         report.session.bytes_sent,
         report.session.bytes_received,

@@ -980,6 +980,19 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
+    #[test]
+    fn endpoint_keys_the_dialect_by_host_port_and_user() {
+        use crate::aerorsync::transport::RawRemoteShellTransport;
+        let mut config = crate::aerorsync::russh_session_transport::test_dummy_config();
+        config.port = 2222;
+        config.username = "alice".into();
+        let transport = super::SshRemoteShellTransport::new(config);
+        assert_eq!(
+            transport.endpoint(),
+            Some(("127.0.0.1".to_string(), 2222, "alice".to_string()))
+        );
+    }
+
     /// The libssh2 leg asks for its host-key algorithms with `method_pref`, and
     /// libssh2 silently drops the names its crypto backend cannot negotiate. A
     /// backend missing one of them therefore fails nowhere at configuration: it
@@ -995,19 +1008,6 @@ mod tests {
     /// CI runs Rust tests on Linux only, where libssh2 always uses OpenSSL, so
     /// there this passes with or without the Windows fix. It proves something
     /// only when run on Windows.
-    #[test]
-    fn endpoint_keys_the_dialect_by_host_port_and_user() {
-        use crate::aerorsync::transport::RawRemoteShellTransport;
-        let mut config = crate::aerorsync::russh_session_transport::test_dummy_config();
-        config.port = 2222;
-        config.username = "alice".into();
-        let transport = super::SshRemoteShellTransport::new(config);
-        assert_eq!(
-            transport.endpoint(),
-            Some(("127.0.0.1".to_string(), 2222, "alice".to_string()))
-        );
-    }
-
     #[test]
     fn libssh2_backend_negotiates_every_preferred_host_key_alg() {
         let session = ssh2::Session::new().expect("libssh2 session");
