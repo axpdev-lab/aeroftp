@@ -260,7 +260,7 @@ impl CompareOptions {
     pub fn excludes_or_everything(&self) -> crate::sync_exclude::ExcludeMatcher {
         compile_excludes(&self.exclude_patterns).unwrap_or_else(|e| {
             tracing::error!("{e}: the comparison excludes every path");
-            crate::sync_exclude::ExcludeMatcher::new(&["**"]).unwrap_or_default()
+            crate::sync_exclude::ExcludeMatcher::everything()
         })
     }
 }

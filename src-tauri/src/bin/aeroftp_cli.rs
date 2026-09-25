@@ -47021,9 +47021,15 @@ async fn cmd_sync_local_to_local(
     };
 
     let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(100);
+    // An excluded directory is not entered: nothing under it is counted as
+    // skipped, and no walk error inside it counts as a failure.
     let walker = walkdir::WalkDir::new(&local_root)
         .follow_links(false)
-        .max_depth(scan_depth);
+        .max_depth(scan_depth)
+        .into_iter()
+        .filter_entry(|e| {
+            e.depth() == 0 || !exclude_matchers.is_excluded(&sync_relative_path(e.path(), local))
+        });
 
     let mut stats = SyncCycleStats::default();
     let mut total_bytes_on_wire: u64 = 0;
@@ -47359,9 +47365,20 @@ fn sync_local_mtime(meta: &std::fs::Metadata) -> Option<String> {
 /// unseen, not absent.
 fn scan_sync_local(local: &str, filter: &SyncLocalFilter) -> SyncScan {
     let mut scan = SyncScan::default();
+    // An excluded directory is not entered: its subtree is excluded, so an
+    // unreadable folder or a dangling link inside it must not count against
+    // the completeness of the scan (a --delete would refuse over it) nor
+    // against the entry cap.
     let walker = walkdir::WalkDir::new(local)
         .follow_links(false)
-        .max_depth(filter.max_depth);
+        .max_depth(filter.max_depth)
+        .into_iter()
+        .filter_entry(|e| {
+            e.depth() == 0
+                || !filter
+                    .exclude
+                    .is_excluded(&sync_relative_path(e.path(), local))
+        });
     for entry in walker {
         if scan.entries.len() + scan.boundaries.links.len() + scan.boundaries.unseen.len()
             >= 500_000
@@ -57207,21 +57224,22 @@ async fn scan_doctor_remote_tree(
             }
         };
         for e in listed {
+            let relative = e
+                .path
+                .strip_prefix(remote)
+                .unwrap_or(&e.path)
+                .trim_start_matches('/')
+                .to_string();
+            // An excluded directory is not walked, as the sync scan prunes it.
+            if !relative.is_empty() && exclude_matchers.is_excluded(&relative) {
+                continue;
+            }
             if e.is_dir {
                 if e.is_walkable_dir() {
                     queue.push((e.path.clone(), depth + 1));
                 }
             } else {
-                let relative = e
-                    .path
-                    .strip_prefix(remote)
-                    .unwrap_or(&e.path)
-                    .trim_start_matches('/')
-                    .to_string();
                 if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                    continue;
-                }
-                if exclude_matchers.is_excluded(&relative) {
                     continue;
                 }
                 if entries_found.len() >= max_entries {
@@ -76757,6 +76775,27 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
         }
+    }
+
+    /// An unreadable folder inside an EXCLUDED one must not make the sync's
+    /// local scan incomplete: the walk does not enter an excluded directory, so
+    /// a `--delete` run is not refused over a folder the user excluded (review
+    /// of #939: the walk used to descend and count the failure).
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_folder_inside_an_excluded_one_keeps_the_scan_complete() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir_all(Path::new(&local).join("node_modules/locked"))
+            .expect("excluded tree");
+        fixture.local_file("a.txt", 1);
+        let _locked = UnreadableDir::lock(Path::new(&local).join("node_modules/locked"));
+        let excludes = SyncExcludes::new(&["node_modules"]).expect("valid exclude");
+        let scan = scan_sync_local(&local, &watch_test_filter(&excludes));
+        assert!(scan.completeness.is_complete(), "{:?}", scan.completeness);
+        assert!(scan.boundaries.unseen.is_empty());
+        let names: Vec<&str> = scan.entries.iter().map(|e| e.0.as_str()).collect();
+        assert_eq!(names, vec!["a.txt"]);
     }
 
     /// A local tree with `a.txt` and `locked/keep.txt`, both also on the

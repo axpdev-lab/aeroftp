@@ -89,11 +89,12 @@ impl ScanOptions {
     /// The compiled exclude list ([`crate::sync_exclude`], the matcher the GUI
     /// shares). The scans cannot return an error, so the CLI compiles the list
     /// before it scans and reports an invalid pattern; if one ever reaches a
-    /// scan it fails closed (every path excluded) instead of being dropped.
+    /// scan it fails closed: every path excluded, and the scan reported
+    /// incomplete so no orphan delete trusts the empty result.
     pub fn excludes_or_everything(&self) -> crate::sync_exclude::ExcludeMatcher {
         crate::sync::compile_excludes(&self.exclude_patterns).unwrap_or_else(|e| {
-            tracing::error!("{e}: the scan excludes every path");
-            crate::sync_exclude::ExcludeMatcher::new(&["**"]).unwrap_or_default()
+            tracing::error!("{e}: the scan excludes every path and reports itself incomplete");
+            crate::sync_exclude::ExcludeMatcher::everything()
         })
     }
 }
@@ -139,7 +140,19 @@ fn adapt_fastpath_entries(
     let mut skipped_links = Vec::new();
     let mut unseen: Vec<UnseenPath> = Vec::new();
     let mut stopped_at: HashSet<String> = HashSet::new();
+    if excludes.excludes_everything() {
+        // An invalid exclude list: let the BFS path report the scan incomplete.
+        return None;
+    }
     for entry in entries {
+        // An excluded path is dropped before anything else, as the BFS prunes
+        // it: it never becomes a depth-limit boundary or a skipped link.
+        if rel_from_abs(&entry.path, root)
+            .filter(|rel| !rel.is_empty())
+            .is_some_and(|rel| excludes.is_excluded(&rel))
+        {
+            continue;
+        }
         // The BFS lists a directory only while its depth is below the limit, so
         // an entry below that level sits under the directory the walk stops at.
         // Name that directory once, as the BFS does, and keep nothing under it:
@@ -219,9 +232,6 @@ fn adapt_fastpath_entries(
             continue;
         }
         if opts.skip_filenames.iter().any(|name| name == &entry.name) {
-            continue;
-        }
-        if excludes.is_excluded(&rel) {
             continue;
         }
         if let Some(ref set) = opts.files_from {
@@ -703,6 +713,13 @@ pub fn scan_local_tree_checked(
     opts: &ScanOptions,
 ) -> (Vec<LocalEntry>, ScanCompleteness, ScanBoundaries) {
     let excludes = opts.excludes_or_everything();
+    if excludes.excludes_everything() {
+        let completeness = ScanCompleteness {
+            truncated: true,
+            ..Default::default()
+        };
+        return (Vec::new(), completeness, ScanBoundaries::default());
+    }
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let relative_of = |path: &Path| {
@@ -1184,6 +1201,15 @@ async fn scan_remote_tree_locked(
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
 ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
+    if opts.excludes_or_everything().excludes_everything() {
+        // An invalid exclude list: nothing is listed, and the scan says it did
+        // not see the tree, so an orphan delete refuses instead of trusting it.
+        let completeness = ScanCompleteness {
+            truncated: true,
+            ..Default::default()
+        };
+        return (Vec::new(), completeness, ScanBoundaries::default());
+    }
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let want_remote_checksum = {
@@ -1970,7 +1996,12 @@ pub(crate) mod tests {
             exclude_patterns: vec!["a[b".to_string()],
             ..Default::default()
         };
-        assert!(scan_local_tree(root.to_str().unwrap(), &opts).is_empty());
+        let (entries, completeness, _) = scan_local_tree_checked(root.to_str().unwrap(), &opts);
+        assert!(entries.is_empty());
+        assert!(
+            !completeness.is_complete(),
+            "an orphan delete must not trust it"
+        );
     }
 
     #[test]
@@ -2181,6 +2212,36 @@ pub(crate) mod tests {
         paths.sort();
         // The directory entry is dropped; both files keep their nesting.
         assert_eq!(paths, vec!["a/b/c.txt".to_string(), "top.txt".to_string()]);
+    }
+
+    #[test]
+    fn adapt_fastpath_entries_drops_excluded_paths_before_the_depth_limit() {
+        // An excluded subtree past the depth limit used to be named as an
+        // unseen depth boundary, and an excluded link as a skipped link: both
+        // bound (or refuse) a run over paths the user excluded.
+        let mut link = provider_file("ln", "/root/node_modules/ln", 0);
+        link.is_symlink = true;
+        let entries = vec![
+            provider_file("keep.txt", "/root/keep.txt", 1),
+            provider_file("x.js", "/root/node_modules/a/b/x.js", 1),
+            link,
+        ];
+        let (rows, links, unseen) = adapt_fastpath_entries(
+            entries,
+            "/root",
+            &ScanOptions {
+                exclude_patterns: vec!["node_modules".to_string()],
+                max_depth: Some(2),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            rows.iter().map(|r| r.rel_path.as_str()).collect::<Vec<_>>(),
+            vec!["keep.txt"]
+        );
+        assert!(links.is_empty(), "{links:?}");
+        assert!(unseen.is_empty(), "{unseen:?}");
     }
 
     #[test]
