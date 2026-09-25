@@ -45,6 +45,14 @@ const CONFLICT_MODES: &[&str] = &["newer", "older", "larger", "smaller", "rename
 /// field is neither checked against a flag nor listed here.
 pub const SETTINGS_NOT_APPLIED_BY_CLI: &[&str] = &["compare", "retry", "verify"];
 
+/// Delete cap an exported script passes with `--delete`. A batch run is never
+/// interactive (cron, Task Scheduler, the wrappers), and `sync` refuses an
+/// unattended `--delete` without an explicit `--max-delete`, so without it
+/// every script from a deleting preset would fail. The GUI has no numeric cap
+/// to mirror (only the destructive-preset warning and the incomplete-scan
+/// refusal), so the value is the owner's choice for unattended runs.
+pub const UNATTENDED_MAX_DELETE: &str = "50%";
+
 /// The preset's value of one `SETTINGS_NOT_APPLIED_BY_CLI` entry, as the
 /// script comment shows it.
 fn not_applied_setting_value(profile: &SyncProfile, setting: &str) -> String {
@@ -213,12 +221,24 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
             ));
         }
     }
+    if profile.profile.delete_orphans {
+        out.push_str(&format!(
+            "# --max-delete {cap} is the safety cap for an unattended run: when the plan would\n\
+             # delete more than {cap} of the files on both sides combined (a source that lost\n\
+             # most of its files), sync stops before transferring or deleting anything and\n\
+             # exits 4. An empty or missing source is refused on its own. Raise or remove the\n\
+             # cap deliberately.\n",
+            cap = UNATTENDED_MAX_DELETE
+        ));
+    }
     out.push_str("SYNC ${LOCAL} ${REMOTE}");
     let direction_flag = direction_to_flag(profile.profile.direction);
     out.push_str(" \\\n  --direction ");
     out.push_str(direction_flag);
     if profile.profile.delete_orphans {
         out.push_str(" \\\n  --delete");
+        out.push_str(" \\\n  --max-delete ");
+        out.push_str(UNATTENDED_MAX_DELETE);
     }
     if profile.dry_run {
         out.push_str(" \\\n  --dry-run");

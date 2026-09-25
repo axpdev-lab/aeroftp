@@ -62245,7 +62245,7 @@ mod batch_script_tests {
     use ftp_client_gui_lib::sync::{CompareDirection, SyncProfile};
     use ftp_client_gui_lib::sync_script::{
         generate_script, ps1_wrapper, sh_wrapper, AerosyncScriptProfile,
-        SETTINGS_NOT_APPLIED_BY_CLI,
+        SETTINGS_NOT_APPLIED_BY_CLI, UNATTENDED_MAX_DELETE,
     };
 
     fn sync_of(line: &BatchLine) -> Commands {
@@ -62482,6 +62482,7 @@ DISCONNECT\n";
                     skip_matching,
                     resync,
                     watch,
+                    max_delete,
                     ..
                 } = sync_of(syncs[0])
                 else {
@@ -62496,6 +62497,13 @@ DISCONNECT\n";
                 };
                 assert_eq!(direction, want_direction, "{}", profile.id);
                 assert_eq!(delete, want_delete, "{}", profile.id);
+                // An unattended --delete needs a cap or sync refuses it.
+                assert_eq!(
+                    max_delete.as_deref(),
+                    want_delete.then_some(UNATTENDED_MAX_DELETE),
+                    "{}",
+                    profile.id
+                );
                 assert_eq!(exclude, want_exclude, "{}", profile.id);
                 assert_eq!(dry_run, want_dry_run);
                 assert_eq!(track_renames, want_track);
@@ -76926,6 +76934,107 @@ mod tests {
     /// The real `cmd_sync` with `--delete` against `remote`, as a dry run or
     /// not. A run that is not dry reaches the scan guards (TX-01) and the
     /// deletes themselves, which the remote records and refuses.
+    /// The Mirror preset exported and run by the batch, unattended: its `SYNC`
+    /// line goes through the batch parser and `dispatch_sync`, as a script
+    /// does. With the source in place it deletes only the orphan; with the
+    /// source nearly emptied the exported cap stops it before anything is deleted.
+    #[test]
+    fn exported_mirror_runs_unattended_and_stops_on_a_nearly_emptied_source() {
+        on_big_stack(|| {
+            use ftp_client_gui_lib::sync::SyncProfile;
+            use ftp_client_gui_lib::sync_script::{generate_script, AerosyncScriptProfile};
+
+            fn run_exported_mirror(
+                remote: MemTreeProvider,
+                local_files: &[(&str, usize)],
+            ) -> (i32, Vec<String>) {
+                let dir = tempfile::tempdir().expect("temp dir");
+                let local = dir.path().join("local");
+                std::fs::create_dir(&local).expect("local dir");
+                for (name, size) in local_files {
+                    let path = local.join(name);
+                    std::fs::write(&path, vec![b'x'; *size]).expect("write local file");
+                    std::fs::File::options()
+                        .write(true)
+                        .open(&path)
+                        .and_then(|file| {
+                            file.set_modified(
+                                std::time::UNIX_EPOCH
+                                    + std::time::Duration::from_secs(FIXTURE_MTIME_EPOCH_SECS),
+                            )
+                        })
+                        .expect("stamp the local mtime");
+                }
+                let script = generate_script(
+                    &AerosyncScriptProfile {
+                        profile: SyncProfile::mirror(),
+                        local_path: local.to_string_lossy().into_owned(),
+                        remote_path: "/root".into(),
+                        connect_profile: None,
+                        connect_url: Some("memory://".into()),
+                        dry_run: false,
+                        conflict_mode: None,
+                        track_renames: false,
+                        skip_matching: false,
+                        resync: false,
+                        watch: false,
+                    },
+                    "test",
+                );
+                let lines = read_batch_script(&script).expect("the exported script reads");
+                let sync = lines.iter().find(|l| l.cmd == "SYNC").expect("a SYNC line");
+                let command = parse_batch_sync("memory://", &sync.sync_args).expect("SYNC parses");
+                let deletes = Arc::clone(&remote.delete_attempts);
+                let cli = Cli {
+                    quiet: true,
+                    ..test_cli()
+                };
+                let code = run_against_remote(remote, move || async move {
+                    dispatch_sync(
+                        &command,
+                        &cli,
+                        OutputFormat::Json,
+                        Arc::new(AtomicBool::new(false)),
+                    )
+                    .await
+                });
+                let deleted = deletes.lock().expect("delete log").clone();
+                (code, deleted)
+            }
+
+            // Source in place: one orphan on the destination, deleted, run succeeds.
+            let (code, deleted) = run_exported_mirror(
+                MemTreeProvider::root_files(&[("a.txt", 3), ("b.txt", 4), ("orphan.txt", 5)]),
+                &[("a.txt", 3), ("b.txt", 4)],
+            );
+            // The run got past the unattended --delete refusal and the cap and
+            // tried exactly the orphan (the fixture refuses the delete itself,
+            // so the exit code is not the signal here).
+            assert_ne!(code, 5, "an unattended --delete must not be refused");
+            assert_eq!(deleted, vec!["/root/orphan.txt".to_string()]);
+
+            // Source that lost most of its files: four of the five destination
+            // files would go (4 > 50% of the 6 files on both sides). The cap stops
+            // the run before any delete, exit 4 "Safety abort". A source with no
+            // file at all is refused by a separate guard, so it cannot show the cap.
+            let (code, deleted) = run_exported_mirror(
+                MemTreeProvider::root_files(&[
+                    ("a.txt", 3),
+                    ("b.txt", 4),
+                    ("c.txt", 5),
+                    ("d.txt", 6),
+                    ("e.txt", 7),
+                ]),
+                &[("a.txt", 3)],
+            );
+            assert_eq!(
+                code, 4,
+                "the cap must stop a mirror whose source lost most files"
+            );
+            assert!(deleted.is_empty(), "nothing may be deleted: {deleted:?}");
+        });
+    }
+
     fn run_sync_with_delete(
         remote: MemTreeProvider,
         local: &str,
