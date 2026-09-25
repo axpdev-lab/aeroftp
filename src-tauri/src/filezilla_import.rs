@@ -63,7 +63,7 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
         match event {
             Event::Eof => break,
             Event::Start(e) => {
-                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag = e.name().as_ref().to_string();
                 match tag.as_str() {
                     "Folder" if !in_server => {
                         folder_stack.push((String::new(), servers.len()));
@@ -86,7 +86,7 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                                 .try_get_attribute("encoding")
                                 .ok()
                                 .flatten()
-                                .map(|a| String::from_utf8_lossy(&a.value).to_string())
+                                .map(|a| a.value.to_string())
                                 .unwrap_or_default();
                         }
                         current_tag = tag;
@@ -100,13 +100,13 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                 if !in_server {
                     continue;
                 }
-                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag = e.name().as_ref().to_string();
                 if tag == "Pass" {
                     let enc = e
                         .try_get_attribute("encoding")
                         .ok()
                         .flatten()
-                        .map(|a| String::from_utf8_lossy(&a.value).to_string())
+                        .map(|a| a.value.to_string())
                         .unwrap_or_default();
                     current_fields.insert("_pass_encoding".to_string(), enc);
                 }
@@ -117,12 +117,10 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                 }
             }
             Event::Text(e) => {
+                // quick-xml 0.42 returns the unescaped text directly.
                 let text = e
                     .xml_content(quick_xml::XmlVersion::Implicit1_0)
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|_| {
-                        xml_unescape(&String::from_utf8_lossy(e.into_inner().as_ref()))
-                    });
+                    .into_owned();
                 if text.is_empty() {
                     continue;
                 }
@@ -143,7 +141,7 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                 }
             }
             Event::End(e) => {
-                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag = e.name().as_ref().to_string();
                 if in_server && tag == "Server" {
                     let display_name = if current_name.is_empty() {
                         current_fields
@@ -199,7 +197,9 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
     servers
 }
 
-/// Basic XML entity unescaping.
+/// Basic XML entity unescaping. Production text now comes from quick-xml's
+/// `xml_content`, which already unescapes. The helper stays for its unit test.
+#[cfg(test)]
 fn xml_unescape(s: &str) -> String {
     s.replace("&amp;", "&")
         .replace("&lt;", "<")
@@ -881,5 +881,32 @@ mod tests {
         let servers = parse_sitemanager_xml(xml);
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].name, "good");
+    }
+}
+
+#[cfg(test)]
+mod recorded_sitemanager_fixture {
+    #[test]
+    fn parses_recorded_sitemanager() {
+        let xml = include_str!("providers/fixtures/quickxml/filezilla-sitemanager.xml");
+        let servers = super::parse_sitemanager_xml(xml);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "My FTP Server");
+        assert_eq!(
+            servers[0].fields.get("Host").map(String::as_str),
+            Some("ftp.example.com")
+        );
+        assert_eq!(
+            servers[0].fields.get("Protocol").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            servers[0].fields.get("_pass_encoding").map(String::as_str),
+            Some("base64")
+        );
+        assert_eq!(
+            servers[0].fields.get("_folder").map(String::as_str),
+            Some("Work")
+        );
     }
 }

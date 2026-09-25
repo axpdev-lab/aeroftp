@@ -434,14 +434,14 @@ fn parse_sts_error(xml: &str) -> (Option<String>, Option<String>) {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => match e.local_name().as_ref() {
-                b"Error" => in_error = true,
-                b"Code" if in_error => cur = Some("code"),
-                b"Message" if in_error => cur = Some("message"),
+                "Error" => in_error = true,
+                "Code" if in_error => cur = Some("code"),
+                "Message" if in_error => cur = Some("message"),
                 _ => {}
             },
             Ok(Event::Text(t)) => {
                 if let Some(field) = cur {
-                    let text = String::from_utf8_lossy(t.as_ref()).into_owned();
+                    let text = t.as_ref().to_string();
                     match field {
                         "code" => code.get_or_insert_with(String::new).push_str(&text),
                         "message" => message.get_or_insert_with(String::new).push_str(&text),
@@ -461,8 +461,8 @@ fn parse_sts_error(xml: &str) -> (Option<String>, Option<String>) {
                 }
             }
             Ok(Event::End(e)) => match e.local_name().as_ref() {
-                b"Error" => in_error = false,
-                b"Code" | b"Message" => cur = None,
+                "Error" => in_error = false,
+                "Code" | "Message" => cur = None,
                 _ => {}
             },
             Ok(Event::Eof) => break,
@@ -493,11 +493,11 @@ fn parse_assume_role_response(xml: &str) -> Result<TempCredentials, ProviderErro
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => match e.local_name().as_ref() {
-                b"Credentials" => in_credentials = true,
-                b"AccessKeyId" if in_credentials => cur = Some("akid"),
-                b"SecretAccessKey" if in_credentials => cur = Some("secret"),
-                b"SessionToken" if in_credentials => cur = Some("token"),
-                b"Expiration" if in_credentials => cur = Some("expiry"),
+                "Credentials" => in_credentials = true,
+                "AccessKeyId" if in_credentials => cur = Some("akid"),
+                "SecretAccessKey" if in_credentials => cur = Some("secret"),
+                "SessionToken" if in_credentials => cur = Some("token"),
+                "Expiration" if in_credentials => cur = Some("expiry"),
                 _ => {}
             },
             Ok(Event::Text(t)) => {
@@ -505,7 +505,7 @@ fn parse_assume_role_response(xml: &str) -> Result<TempCredentials, ProviderErro
                     // AWS credential values are base64 (no XML-special chars),
                     // so the raw bytes are byte-exact; matches the rest of the
                     // S3 XML parsing in this crate.
-                    let text = String::from_utf8_lossy(t.as_ref()).into_owned();
+                    let text = t.as_ref().to_string();
                     match field {
                         "akid" => access_key_id = Some(text),
                         "secret" => secret_access_key = Some(text),
@@ -516,8 +516,8 @@ fn parse_assume_role_response(xml: &str) -> Result<TempCredentials, ProviderErro
                 }
             }
             Ok(Event::End(e)) => match e.local_name().as_ref() {
-                b"Credentials" => in_credentials = false,
-                b"AccessKeyId" | b"SecretAccessKey" | b"SessionToken" | b"Expiration" => cur = None,
+                "Credentials" => in_credentials = false,
+                "AccessKeyId" | "SecretAccessKey" | "SessionToken" | "Expiration" => cur = None,
                 _ => {}
             },
             Ok(Event::Eof) => break,
@@ -839,5 +839,27 @@ mod tests {
         let body = build_assume_role_body(&req);
         assert!(body.contains("SerialNumber=arn%3Aaws%3Aiam%3A%3A123456789012%3Amfa%2Fuser"));
         assert!(body.contains("TokenCode=654321"));
+    }
+}
+
+#[cfg(test)]
+mod recorded_assume_role_fixture {
+    use chrono::{TimeZone, Utc};
+    use secrecy::ExposeSecret;
+
+    #[test]
+    fn parses_recorded_assume_role_response() {
+        let xml = include_str!("fixtures/quickxml/sts-assume-role.xml");
+        let creds = super::parse_assume_role_response(xml).expect("parse");
+        assert_eq!(creds.access_key_id, "ASIAEXAMPLE");
+        assert_eq!(creds.secret_access_key.expose_secret(), "secretkey/EXAMPLE");
+        assert_eq!(
+            creds.session_token.expose_secret(),
+            "FQoGZXIvYXdzEXAMPLETOKEN"
+        );
+        assert_eq!(
+            creds.expiration,
+            Some(Utc.with_ymd_and_hms(2026, 6, 3, 18, 30, 0).unwrap())
+        );
     }
 }

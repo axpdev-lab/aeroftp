@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FileZilla3 version="3.67.0" platform="unix">
+  <Servers>
+    <Folder expanded="1">
+      Work
+      <Server>
+        <Host>ftp.example.com</Host>
+        <Port>21</Port>
+        <Protocol>0</Protocol>
+        <Type>0</Type>
+        <User>admin</User>
+        <Pass encoding="base64">c2VjcmV0</Pass>
+        <Logontype>1</Logontype>
+        <PasvMode>MODE_DEFAULT</PasvMode>
+        <EncodingType>Auto</EncodingType>
+        <BypassProxy>0</BypassProxy>
+        <Name>My FTP Server</Name>
+        <Comments>Recorded sitemanager shape</Comments>
+        <LocalDir></LocalDir>
+        <RemoteDir></RemoteDir>
+        <SyncBrowsing>0</SyncBrowsing>
+      </Server>
+    </Folder>
+  </Servers>
+</FileZilla3>
