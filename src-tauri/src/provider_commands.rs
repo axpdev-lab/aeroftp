@@ -12988,6 +12988,8 @@ async fn walk_compare_remote_serially(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut remote_files: HashMap<String, crate::sync::FileInfo> = HashMap::new();
     let mut skipped_links = Vec::new();
     let mut dirs_to_process = vec![remote_path.to_string()];
@@ -13065,7 +13067,7 @@ async fn walk_compare_remote_serially(
                 }
             };
 
-            if crate::sync::should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 

@@ -85,15 +85,17 @@ pub struct ScanOptions {
     pub disable_recursive_fastpath: bool,
 }
 
-fn compile_matchers(patterns: &[String]) -> Vec<globset::GlobMatcher> {
-    patterns
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect()
-}
-
-fn matches_any(matchers: &[globset::GlobMatcher], rel: &str, name: &str) -> bool {
-    matchers.iter().any(|m| m.is_match(rel) || m.is_match(name))
+impl ScanOptions {
+    /// The compiled exclude list ([`crate::sync_exclude`], the matcher the GUI
+    /// shares). The scans cannot return an error, so the CLI compiles the list
+    /// before it scans and reports an invalid pattern; if one ever reaches a
+    /// scan it fails closed (every path excluded) instead of being dropped.
+    pub fn excludes_or_everything(&self) -> crate::sync_exclude::ExcludeMatcher {
+        crate::sync::compile_excludes(&self.exclude_patterns).unwrap_or_else(|e| {
+            tracing::error!("{e}: the scan excludes every path");
+            crate::sync_exclude::ExcludeMatcher::new(&["**"]).unwrap_or_default()
+        })
+    }
 }
 
 /// GAP-9f: derive a path relative to `root` from a provider-returned absolute
@@ -130,7 +132,7 @@ fn adapt_fastpath_entries(
     root: &str,
     opts: &ScanOptions,
 ) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>, Vec<UnseenPath>)> {
-    let matchers = compile_matchers(&opts.exclude_patterns);
+    let excludes = opts.excludes_or_everything();
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let mut results = Vec::new();
@@ -219,7 +221,7 @@ fn adapt_fastpath_entries(
         if opts.skip_filenames.iter().any(|name| name == &entry.name) {
             continue;
         }
-        if !matchers.is_empty() && matches_any(&matchers, &rel, &entry.name) {
+        if excludes.is_excluded(&rel) {
             continue;
         }
         if let Some(ref set) = opts.files_from {
@@ -700,7 +702,7 @@ pub fn scan_local_tree_checked(
     root: &str,
     opts: &ScanOptions,
 ) -> (Vec<LocalEntry>, ScanCompleteness, ScanBoundaries) {
-    let matchers = compile_matchers(&opts.exclude_patterns);
+    let excludes = opts.excludes_or_everything();
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let relative_of = |path: &Path| {
@@ -717,6 +719,8 @@ pub fn scan_local_tree_checked(
         .follow_links(false)
         .max_depth(depth)
         .into_iter()
+        // An excluded directory is not descended into: its subtree is excluded.
+        .filter_entry(|e| e.depth() == 0 || !excludes.is_excluded(&relative_of(e.path())))
     {
         let walk_entry = match result {
             Ok(e) => e,
@@ -839,7 +843,7 @@ pub fn scan_local_tree_checked(
         if opts.skip_filenames.iter().any(|n| n == &fname) {
             continue;
         }
-        if !matchers.is_empty() && matches_any(&matchers, &relative, &fname) {
+        if excludes.is_excluded(&relative) {
             continue;
         }
         if let Some(ref set) = opts.files_from {
@@ -1530,7 +1534,7 @@ async fn scan_remote_dir(
     cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
     link_budget: usize,
 ) -> Result<RemoteScanBatch, RemoteScanFailure> {
-    let matchers = compile_matchers(&opts.exclude_patterns);
+    let excludes = opts.excludes_or_everything();
     let entries = match list_with_transport_retry(provider, &dir.abs_dir).await {
         Ok(entries) => entries,
         Err(error) => {
@@ -1572,6 +1576,10 @@ async fn scan_remote_dir(
             );
             continue;
         }
+        // An excluded directory is not walked: its whole subtree is excluded.
+        if excludes.is_excluded(&entry_rel) {
+            continue;
+        }
         if entry.is_dir {
             // A symlink to a directory is never walked (GAP-A02): syncing
             // through one would duplicate the target's tree, and a link to
@@ -1605,9 +1613,6 @@ async fn scan_remote_dir(
             continue;
         }
         if opts.skip_filenames.iter().any(|name| name == &entry.name) {
-            continue;
-        }
-        if !matchers.is_empty() && matches_any(&matchers, &entry_rel, &entry.name) {
             continue;
         }
         if let Some(ref set) = opts.files_from {
@@ -1933,6 +1938,39 @@ pub(crate) mod tests {
         let entries = scan_local_tree(root.to_str().unwrap(), &opts);
         let paths: Vec<String> = entries.iter().map(|e| e.rel_path.clone()).collect();
         assert_eq!(paths, vec!["keep.log"]);
+    }
+
+    #[test]
+    fn scan_local_tree_prunes_an_excluded_directory_case_insensitively() {
+        // The CLI matched `--exclude node_modules` against the file path and
+        // the file name only, so node_modules/pkg/index.js stayed in the sync.
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("web/Node_Modules/pkg")).unwrap();
+        fs::write(root.join("web/Node_Modules/pkg/index.js"), b"x").unwrap();
+        fs::write(root.join("web/app.js"), b"x").unwrap();
+
+        let opts = ScanOptions {
+            exclude_patterns: vec!["node_modules".to_string()],
+            ..Default::default()
+        };
+        let entries = scan_local_tree(root.to_str().unwrap(), &opts);
+        let paths: Vec<String> = entries.iter().map(|e| e.rel_path.clone()).collect();
+        assert_eq!(paths, vec!["web/app.js"]);
+    }
+
+    #[test]
+    fn an_invalid_exclude_reaching_a_scan_fails_closed() {
+        // The CLI rejects an invalid pattern before it scans; a scan that is
+        // handed one anyway must exclude everything, never nothing.
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("a.txt"), b"x").unwrap();
+        let opts = ScanOptions {
+            exclude_patterns: vec!["a[b".to_string()],
+            ..Default::default()
+        };
+        assert!(scan_local_tree(root.to_str().unwrap(), &opts).is_empty());
     }
 
     #[test]

@@ -1157,6 +1157,8 @@ impl CloudService {
 
         // Load .aeroignore from sync root (if present)
         let aeroignore = crate::sync_ignore::AeroIgnore::load(base_path);
+        // An invalid configured exclude fails the cycle instead of being dropped.
+        let excludes = crate::sync::compile_excludes(&config.exclude_patterns)?;
 
         // Recursive scan with a completeness flag: unstattable entries used to
         // be `Err(_) => continue`, which made a baselined file that became
@@ -1167,7 +1169,7 @@ impl CloudService {
             current: &PathBuf,
             files: &mut HashMap<String, FileInfo>,
             complete: &mut bool,
-            exclude: &[String],
+            exclude: &crate::sync_exclude::ExcludeMatcher,
             excluded_folders: &[String],
             aeroignore: Option<&crate::sync_ignore::AeroIgnore>,
         ) -> Result<(), String> {
@@ -1238,7 +1240,7 @@ impl CloudService {
                 let excluded = if let Some(ai) = aeroignore {
                     ai.should_exclude(&relative, is_dir, exclude)
                 } else {
-                    crate::sync::should_exclude(&relative, exclude)
+                    exclude.is_excluded(&relative)
                 };
                 if excluded {
                     continue;
@@ -1302,7 +1304,7 @@ impl CloudService {
             base_path,
             &mut files,
             &mut complete,
-            &config.exclude_patterns,
+            &excludes,
             &config.excluded_folders,
             aeroignore.as_ref(),
         )?;
@@ -1323,6 +1325,7 @@ impl CloudService {
         let mut complete = true;
         let base_path = &config.remote_folder;
         let aeroignore = crate::sync_ignore::AeroIgnore::load(&config.local_folder);
+        let excludes = crate::sync::compile_excludes(&config.exclude_patterns)?;
 
         // Stack-based recursive scan with depth tracking
         // (base_path, relative_prefix, depth)
@@ -1364,9 +1367,9 @@ impl CloudService {
 
                 // Check exclusions: .aeroignore first, then config patterns
                 let excluded = if let Some(ref ai) = aeroignore {
-                    ai.should_exclude(&relative_path, entry.is_dir, &config.exclude_patterns)
+                    ai.should_exclude(&relative_path, entry.is_dir, &excludes)
                 } else {
-                    crate::sync::should_exclude(&relative_path, &config.exclude_patterns)
+                    excludes.is_excluded(&relative_path)
                 };
                 if excluded {
                     continue;
@@ -1620,6 +1623,7 @@ impl CloudService {
         let base_path = &config.remote_folder;
         // Load .aeroignore from local sync root (applies to remote paths too)
         let aeroignore = crate::sync_ignore::AeroIgnore::load(&config.local_folder);
+        let excludes = crate::sync::compile_excludes(&config.exclude_patterns)?;
 
         // Stack-based recursive scan with depth tracking
         // (base_path, relative_prefix, depth)
@@ -1661,9 +1665,9 @@ impl CloudService {
 
                 // Check exclusions: .aeroignore first, then config patterns
                 let excluded = if let Some(ref ai) = aeroignore {
-                    ai.should_exclude(&relative_path, entry.is_dir, &config.exclude_patterns)
+                    ai.should_exclude(&relative_path, entry.is_dir, &excludes)
                 } else {
-                    crate::sync::should_exclude(&relative_path, &config.exclude_patterns)
+                    excludes.is_excluded(&relative_path)
                 };
                 if excluded {
                     continue;

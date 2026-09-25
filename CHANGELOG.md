@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **One exclude rule for every sync, in the app and the CLI.** AeroSync (Compare, Plan and local mirror), AeroCloud and `aeroftp-cli sync` / `sync --watch` / `sync-doctor` / `reconcile` now read exclude patterns with the same matcher, which excludes everything either former reading excluded. For the CLI this means: a bare name such as `node_modules` now excludes the whole directory, not only files with that exact name; matching is case-insensitive; a pattern with a `/` also matches that run of folders anywhere in the tree (`build/output` excludes `a/build/output/x.o`) and a leading `/` anchors it at the sync root; and an invalid pattern is a usage error (exit code 5) instead of being dropped without a word. For the app: globs outside the `*.ext` form (`~*`, `src*`, `cache/**`, `*.{jpg,png}`) now match, and an invalid pattern is reported instead of matching nothing. `.aeroignore` keeps its own rules, including `!` re-includes.
+
 ## [4.2.0] - 2026-09-21
 
 ### Measured Against rclone, Read Commit by Commit

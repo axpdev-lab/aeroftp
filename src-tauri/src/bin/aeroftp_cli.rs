@@ -7730,6 +7730,18 @@ fn sync_effective_exclude_patterns(
     patterns
 }
 
+type SyncExcludes = ftp_client_gui_lib::sync_exclude::ExcludeMatcher;
+
+/// Compile a sync `--exclude` list with the matcher the GUI shares
+/// (`sync_exclude`). An invalid pattern is a usage error (exit 5): it used to be
+/// dropped in silence, which left the files it was meant to protect in scope.
+fn compile_sync_excludes(patterns: &[String], format: OutputFormat) -> Result<SyncExcludes, i32> {
+    SyncExcludes::new(patterns).map_err(|e| {
+        print_error(format, &e.to_string(), 5);
+        5
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn record_sync_ec_after_successful_upload(
     provider: &mut dyn StorageProvider,
@@ -9108,15 +9120,7 @@ fn scan_local_tree_with_progress(
     ftp_client_gui_lib::sync_core::ScanCompleteness,
     ftp_client_gui_lib::sync_core::ScanBoundaries,
 ) {
-    let matchers: Vec<globset::GlobMatcher> = opts
-        .exclude_patterns
-        .iter()
-        .filter_map(|pat| {
-            globset::Glob::new(pat)
-                .ok()
-                .map(|glob| glob.compile_matcher())
-        })
-        .collect();
+    let excludes = opts.excludes_or_everything();
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(MAX_SCAN_DEPTH);
     let mut last_update = Instant::now()
@@ -9129,6 +9133,18 @@ fn scan_local_tree_with_progress(
     for result in walkdir::WalkDir::new(root)
         .follow_links(false)
         .max_depth(depth)
+        .into_iter()
+        // An excluded directory is not descended into: its subtree is excluded.
+        .filter_entry(|e| {
+            e.depth() == 0
+                || !excludes.is_excluded(
+                    &e.path()
+                        .strip_prefix(root)
+                        .unwrap_or(e.path())
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                )
+        })
     {
         let walk_entry = match result {
             Ok(entry) => entry,
@@ -9196,10 +9212,7 @@ fn scan_local_tree_with_progress(
         if opts.skip_filenames.iter().any(|name| name == &fname) {
             continue;
         }
-        if matchers
-            .iter()
-            .any(|matcher| matcher.is_match(&relative) || matcher.is_match(&fname))
-        {
+        if excludes.is_excluded(&relative) {
             continue;
         }
         if let Some(ref set) = opts.files_from {
@@ -47002,10 +47015,10 @@ async fn cmd_sync_local_to_local(
         }
     }
 
-    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect();
+    let exclude_matchers = match compile_sync_excludes(exclude, format) {
+        Ok(m) => m,
+        Err(code) => return code.into(),
+    };
 
     let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(100);
     let walker = walkdir::WalkDir::new(&local_root)
@@ -47058,13 +47071,8 @@ async fn cmd_sync_local_to_local(
         if rel_str.is_empty() {
             continue;
         }
-        let fname = entry.file_name().to_string_lossy();
-        let fname_ref: &str = fname.as_ref();
         let rel_str_ref: &str = rel_str.as_ref();
-        if exclude_matchers
-            .iter()
-            .any(|m| m.is_match(rel_str_ref) || m.is_match(fname_ref))
-        {
+        if exclude_matchers.is_excluded(rel_str_ref) {
             stats.skipped += 1;
             continue;
         }
@@ -47247,7 +47255,7 @@ fn scan_sync_s3_listing(
     remote: &str,
     max_depth: Option<usize>,
     max_entries: usize,
-    exclude_matchers: &[globset::GlobMatcher],
+    exclude_matchers: &SyncExcludes,
     files_from: Option<&std::collections::HashSet<String>>,
 ) -> SyncScan {
     let (entries, listing_truncated) = listing;
@@ -47296,10 +47304,7 @@ fn scan_sync_s3_listing(
         if e.is_dir {
             continue;
         }
-        if exclude_matchers
-            .iter()
-            .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-        {
+        if exclude_matchers.is_excluded(&relative) {
             continue;
         }
         if files_from.is_some_and(|set| !set.contains(relative.as_str())) {
@@ -47320,7 +47325,7 @@ fn scan_sync_s3_listing(
 /// by the list, whatever produced it.
 struct SyncLocalFilter<'a> {
     max_depth: usize,
-    exclude: &'a [globset::GlobMatcher],
+    exclude: &'a SyncExcludes,
 }
 
 impl SyncLocalFilter<'_> {
@@ -47328,12 +47333,8 @@ impl SyncLocalFilter<'_> {
     /// slash) takes part in the sync. A walk bounded at `max_depth` yields
     /// files at most that many components deep; the depth check repeats that
     /// bound for paths that do not come from a walk.
-    fn keeps(&self, relative: &str, file_name: &str) -> bool {
-        relative.split('/').count() <= self.max_depth
-            && !self
-                .exclude
-                .iter()
-                .any(|m| m.is_match(relative) || m.is_match(file_name))
+    fn keeps(&self, relative: &str) -> bool {
+        relative.split('/').count() <= self.max_depth && !self.exclude.is_excluded(relative)
     }
 }
 
@@ -47452,7 +47453,7 @@ fn scan_sync_local(local: &str, filter: &SyncLocalFilter) -> SyncScan {
         if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
             continue;
         }
-        if !filter.keeps(&relative, &entry.file_name().to_string_lossy()) {
+        if !filter.keeps(&relative) {
             continue;
         }
 
@@ -47691,10 +47692,10 @@ async fn cmd_sync(
 
     // Pre-compile exclude matchers (avoids O(n*m) recompilation)
     let effective_exclude = sync_effective_exclude_patterns(exclude, error_correction_enabled);
-    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect();
+    let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
+        Ok(m) => m,
+        Err(code) => return code.into(),
+    };
 
     let files_from_set = load_files_from(cli);
     let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(100);
@@ -56654,11 +56655,7 @@ fn incremental_local_scan(
             continue;
         }
         // The same depth bound and excludes as the walk
-        let fname = changed
-            .file_name()
-            .map(|n| n.to_string_lossy())
-            .unwrap_or_default();
-        if !filter.keeps(&relative, &fname) {
+        if !filter.keeps(&relative) {
             result.remove(&relative);
             continue;
         }
@@ -57004,10 +57001,10 @@ async fn cmd_sync_watch(
     // Pre-compile exclude matchers for incremental scan
     let effective_exclude =
         sync_effective_exclude_patterns(exclude, error_correction_pct.is_some());
-    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect();
+    let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
+        Ok(m) => m,
+        Err(code) => return code,
+    };
 
     // Incremental scan is only safe when:
     // - direction is not download-only (local scan is irrelevant)
@@ -57185,7 +57182,7 @@ async fn cmd_sync_doctor(
 async fn scan_doctor_remote_tree(
     provider: &mut dyn StorageProvider,
     remote: &str,
-    exclude_matchers: &[globset::GlobMatcher],
+    exclude_matchers: &SyncExcludes,
     max_depth: usize,
     max_entries: usize,
 ) -> (
@@ -57224,10 +57221,7 @@ async fn scan_doctor_remote_tree(
                 if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
                     continue;
                 }
-                if exclude_matchers
-                    .iter()
-                    .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                {
+                if exclude_matchers.is_excluded(&relative) {
                     continue;
                 }
                 if entries_found.len() >= max_entries {
@@ -57308,10 +57302,10 @@ async fn sync_doctor_report(
 
     let error_correction_enabled = error_correction_pct.is_some();
     let effective_exclude = sync_effective_exclude_patterns(exclude, error_correction_enabled);
-    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect();
+    let exclude_matchers = match compile_sync_excludes(&effective_exclude, format) {
+        Ok(m) => m,
+        Err(code) => return Err(code),
+    };
 
     // The walk `sync` itself runs, so the report counts what it could not
     // read (a directory it cannot open, a file it cannot stat, the entry cap)
@@ -59245,6 +59239,9 @@ async fn cmd_reconcile(
         if let Ok(patterns) = load_patterns_from_file(path) {
             all_exclude.extend(patterns);
         }
+    }
+    if let Err(code) = compile_sync_excludes(&all_exclude, format) {
+        return code;
     }
 
     // Unlock the profile's crypt overlay (if any) before scanning so the remote
@@ -68705,7 +68702,14 @@ mod tests {
                 .into_iter()
                 .map(|name| RemoteEntry::file(name.to_string(), format!("/root/{name}"), 1))
                 .collect();
-            let scan = scan_sync_s3_listing((entries, provider_cut), "/root", None, cap, &[], None);
+            let scan = scan_sync_s3_listing(
+                (entries, provider_cut),
+                "/root",
+                None,
+                cap,
+                &SyncExcludes::default(),
+                None,
+            );
             assert!(scan.completeness.truncated);
             assert_eq!(scan.boundaries.unbounded, Some("entry_cap"));
             let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
@@ -68723,7 +68727,7 @@ mod tests {
     }
 
     fn assert_s3_sync_filtered_tail_does_not_refuse(
-        excludes: &[globset::GlobMatcher],
+        excludes: &SyncExcludes,
         files_from: Option<&std::collections::HashSet<String>>,
     ) {
         let entries = ["keep.txt", "ignored.tmp"]
@@ -68752,14 +68756,14 @@ mod tests {
 
     #[test]
     fn s3_sync_boundaries_ignore_excluded_tail_at_full_cap() {
-        let excludes = [globset::Glob::new("*.tmp").unwrap().compile_matcher()];
+        let excludes = SyncExcludes::new(&["*.tmp"]).unwrap();
         assert_s3_sync_filtered_tail_does_not_refuse(&excludes, None);
     }
 
     #[test]
     fn s3_sync_boundaries_ignore_unlisted_tail_at_full_cap() {
         let listed = std::collections::HashSet::from(["keep.txt".to_string()]);
-        assert_s3_sync_filtered_tail_does_not_refuse(&[], Some(&listed));
+        assert_s3_sync_filtered_tail_does_not_refuse(&SyncExcludes::default(), Some(&listed));
     }
 
     #[test]
@@ -68771,7 +68775,14 @@ mod tests {
             RemoteEntry::file("two.txt".into(), "/root/deep/two.txt".into(), 3),
         ];
         // A full retained-entry budget must still let depth cuts name their boundary.
-        let scan = scan_sync_s3_listing((entries, false), "/root", Some(1), 1, &[], None);
+        let scan = scan_sync_s3_listing(
+            (entries, false),
+            "/root",
+            Some(1),
+            1,
+            &SyncExcludes::default(),
+            None,
+        );
         assert_eq!(scan.entries.len(), 1);
         assert_eq!(
             scan.boundaries.unseen.len(),
@@ -68804,7 +68815,7 @@ mod tests {
             "/root",
             Some(0),
             10,
-            &[],
+            &SyncExcludes::default(),
             None,
         );
         assert!(scan.entries.is_empty());
@@ -68817,7 +68828,7 @@ mod tests {
             .into_iter()
             .map(|name| RemoteEntry::file(name.to_string(), format!("/root/{name}"), 1))
             .collect();
-        let excludes = [globset::Glob::new("*.tmp").unwrap().compile_matcher()];
+        let excludes = SyncExcludes::new(&["*.tmp"]).unwrap();
         let listed = std::collections::HashSet::from(["keep.txt".to_string()]);
         let scan = scan_sync_s3_listing(
             (entries, false),
@@ -73418,7 +73429,7 @@ mod tests {
             &dir,
             std::slice::from_ref(&file),
             &previous,
-            &watch_test_filter(&[]),
+            &watch_test_filter(&SyncExcludes::default()),
         )
         .entries;
 
@@ -73430,7 +73441,7 @@ mod tests {
     }
 
     /// The filter a watch loop builds with no `--max-depth`.
-    fn watch_test_filter(exclude: &[globset::GlobMatcher]) -> SyncLocalFilter<'_> {
+    fn watch_test_filter(exclude: &SyncExcludes) -> SyncLocalFilter<'_> {
         SyncLocalFilter {
             max_depth: 100,
             exclude,
@@ -73450,8 +73461,13 @@ mod tests {
 
         // File does not exist on disk
         let ghost = dir.join("gone.txt");
-        let result =
-            incremental_local_scan(&dir, &[ghost], &previous, &watch_test_filter(&[])).entries;
+        let result = incremental_local_scan(
+            &dir,
+            &[ghost],
+            &previous,
+            &watch_test_filter(&SyncExcludes::default()),
+        )
+        .entries;
 
         assert!(result.is_empty()); // deleted file removed from snapshot
 
@@ -73475,7 +73491,7 @@ mod tests {
             &dir,
             std::slice::from_ref(&file),
             &previous,
-            &watch_test_filter(&[]),
+            &watch_test_filter(&SyncExcludes::default()),
         )
         .entries;
 
@@ -73495,12 +73511,12 @@ mod tests {
         let file = dir.join("debug.log");
         std::fs::write(&file, "log data").unwrap();
 
-        let matcher = globset::Glob::new("*.log").unwrap().compile_matcher();
+        let matcher = SyncExcludes::new(&["*.log"]).unwrap();
         let result = incremental_local_scan(
             &dir,
             std::slice::from_ref(&file),
             &WatchLocalSnapshot::default(),
-            &watch_test_filter(std::slice::from_ref(&matcher)),
+            &watch_test_filter(&matcher),
         )
         .entries;
 
@@ -76677,7 +76693,7 @@ mod tests {
             },
         };
         let snapshot = WatchLocalSnapshot::from_scan(&scan);
-        let exclude: Vec<globset::GlobMatcher> = Vec::new();
+        let exclude = SyncExcludes::default();
         let filter = SyncLocalFilter {
             max_depth: 100,
             exclude: &exclude,
@@ -76768,7 +76784,8 @@ mod tests {
         let (fixture, remote) = watch_fixture();
         let local = fixture.local();
         let _locked = UnreadableDir::lock(Path::new(&local).join("locked"));
-        let filter = watch_test_filter(&[]);
+        let no_excludes = SyncExcludes::default();
+        let filter = watch_test_filter(&no_excludes);
         let snapshot = build_watch_local_snapshot(&local, &filter);
         let scan = incremental_local_scan(
             Path::new(&local),
@@ -76800,7 +76817,8 @@ mod tests {
     fn watch_cycle_does_not_take_a_file_it_cannot_stat_for_a_deleted_one() {
         let (fixture, remote) = watch_fixture();
         let local = fixture.local();
-        let filter = watch_test_filter(&[]);
+        let no_excludes = SyncExcludes::default();
+        let filter = watch_test_filter(&no_excludes);
         let snapshot = build_watch_local_snapshot(&local, &filter);
         let _locked = UnreadableDir::lock(Path::new(&local).join("locked"));
         let scan = incremental_local_scan(
@@ -76837,7 +76855,7 @@ mod tests {
         std::fs::write(root.join("secret.env"), b"s").expect("secret.env");
         std::fs::create_dir(root.join("d")).expect("d/");
         std::fs::write(root.join("d").join("deep.txt"), b"d").expect("d/deep.txt");
-        let exclude = [globset::Glob::new("*.env").expect("glob").compile_matcher()];
+        let exclude = SyncExcludes::new(&["*.env"]).expect("glob");
         let filter = SyncLocalFilter {
             max_depth: 1,
             exclude: &exclude,
@@ -77367,7 +77385,7 @@ mod tests {
 
         let snapshot = build_watch_local_snapshot(
             dir.path().to_str().expect("utf-8 root"),
-            &watch_test_filter(&[]),
+            &watch_test_filter(&SyncExcludes::default()),
         );
 
         assert!(
@@ -77906,7 +77924,8 @@ mod tests {
     async fn the_doctor_remote_walk_reports_the_entry_cap_it_hits() {
         let mut provider = MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1), ("c.txt", 1)]);
 
-        let (entries, scan) = scan_doctor_remote_tree(&mut provider, "/root", &[], 100, 2).await;
+        let (entries, scan) =
+            scan_doctor_remote_tree(&mut provider, "/root", &SyncExcludes::default(), 100, 2).await;
 
         assert!(
             entries.len() <= 2,
@@ -77924,7 +77943,9 @@ mod tests {
     async fn the_doctor_remote_walk_is_complete_under_its_cap() {
         let mut provider = MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1)]);
 
-        let (entries, scan) = scan_doctor_remote_tree(&mut provider, "/root", &[], 100, 10).await;
+        let (entries, scan) =
+            scan_doctor_remote_tree(&mut provider, "/root", &SyncExcludes::default(), 100, 10)
+                .await;
 
         assert_eq!(entries.len(), 2);
         assert!(scan.is_complete(), "nothing was cut here: {scan:?}");

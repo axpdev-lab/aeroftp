@@ -251,6 +251,20 @@ pub struct CompareOptions {
     pub max_age_secs: Option<u64>,
 }
 
+impl CompareOptions {
+    /// The compiled exclude list for a comparison builder, which cannot return
+    /// an error. Every entry point compiles the list first and reports an
+    /// invalid pattern, so the fallback is unreachable in practice; if it is
+    /// ever reached it fails closed (every path excluded, nothing copied or
+    /// deleted) instead of failing open.
+    pub fn excludes_or_everything(&self) -> crate::sync_exclude::ExcludeMatcher {
+        compile_excludes(&self.exclude_patterns).unwrap_or_else(|e| {
+            tracing::error!("{e}: the comparison excludes every path");
+            crate::sync_exclude::ExcludeMatcher::new(&["**"]).unwrap_or_default()
+        })
+    }
+}
+
 impl Default for CompareOptions {
     fn default() -> Self {
         Self {
@@ -803,51 +817,13 @@ pub fn validate_relative_path(relative_path: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Check if a path matches any exclude pattern
-pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
-    let path_lower = path.to_lowercase();
-    let path_segments: Vec<&str> = path_lower.split(&['/', '\\'][..]).collect();
-
-    for pattern in patterns {
-        let pattern_lower = pattern.to_lowercase();
-        // CLAUDE-AV-B3-09: a trailing '/' marks a directory pattern
-        // (`node_modules/`, the natural gitignore spelling the .aeroignore
-        // template teaches); strip it so it matches the `node_modules` segment
-        // instead of failing open. A pattern with an interior '/' (`build/output`)
-        // is a path fragment matched at a '/' boundary rather than never matching.
-        let pattern_clean = pattern_lower.trim_end_matches('/');
-        if pattern_clean.is_empty() {
-            continue;
-        }
-
-        // Simple glob matching
-        if let Some(ext) = pattern_clean.strip_prefix('*') {
-            // *.ext pattern
-            if path_lower.ends_with(ext) {
-                return true;
-            }
-        } else if pattern_clean.contains('/') {
-            // Multi-segment fragment: match anchored at a path boundary.
-            let norm = path_lower.replace('\\', "/");
-            if norm == pattern_clean
-                || norm.starts_with(&format!("{}/", pattern_clean))
-                || norm.contains(&format!("/{}/", pattern_clean))
-                || norm.ends_with(&format!("/{}", pattern_clean))
-            {
-                return true;
-            }
-        } else {
-            // Match against path segments (not just substring)
-            // This prevents false positives like "node" matching "node_modules"
-            for segment in &path_segments {
-                if segment == &pattern_clean {
-                    return true;
-                }
-            }
-        }
-    }
-
-    false
+/// Compile an exclude list with the one matcher every sync surface shares
+/// ([`crate::sync_exclude`]). An invalid pattern is returned as an error for the
+/// caller to report, never dropped.
+pub fn compile_excludes(
+    patterns: &[String],
+) -> Result<crate::sync_exclude::ExcludeMatcher, String> {
+    crate::sync_exclude::ExcludeMatcher::new(patterns).map_err(|e| e.to_string())
 }
 
 /// Check if a file should be filtered out by size/age constraints.
@@ -1142,6 +1118,7 @@ pub fn build_comparison_results(
     let mut results = Vec::new();
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
+    let excludes = options.excludes_or_everything();
 
     for path in all_paths {
         // Reject paths with traversal components
@@ -1151,7 +1128,7 @@ pub fn build_comparison_results(
         }
 
         // Skip excluded paths
-        if should_exclude(&path, &options.exclude_patterns) {
+        if excludes.is_excluded(&path) {
             continue;
         }
 
@@ -3227,6 +3204,7 @@ pub fn classify_with_summary(
     };
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
+    let excludes = options.excludes_or_everything();
 
     for path in all_paths {
         // Reject paths with traversal components
@@ -3235,7 +3213,7 @@ pub fn classify_with_summary(
             continue;
         }
 
-        if should_exclude(&path, &options.exclude_patterns) {
+        if excludes.is_excluded(&path) {
             continue;
         }
 
@@ -5902,6 +5880,8 @@ mod tests {
 
     #[test]
     fn test_should_exclude() {
+        let should_exclude =
+            |p: &str, pats: &[String]| compile_excludes(pats).unwrap().is_excluded(p);
         let patterns = vec!["node_modules".to_string(), "*.pyc".to_string()];
 
         assert!(should_exclude("node_modules/package/file.js", &patterns));
@@ -7476,6 +7456,8 @@ mod tests {
     /// Pre-fix they compared each path segment verbatim and never matched.
     #[test]
     fn should_exclude_matches_dir_and_multi_segment_patterns() {
+        let should_exclude =
+            |p: &str, pats: &[String]| compile_excludes(pats).unwrap().is_excluded(p);
         let patterns = vec![
             "node_modules/".to_string(),
             "build/output".to_string(),

@@ -247,6 +247,7 @@ mod sync_badge;
 #[cfg(test)]
 mod sync_command_audit;
 pub mod sync_core;
+pub mod sync_exclude;
 mod sync_ignore;
 mod sync_scheduler;
 pub mod sync_script;
@@ -11087,9 +11088,9 @@ use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use sync::{
     classify_sync_error, classify_with_summary, delete_sync_journal, journal_sig_filename,
     load_sync_index, load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample,
-    should_exclude, sign_journal, verify_local_file, CanaryResult, CanarySampleResult,
-    CanarySummary, CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus,
-    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+    sign_journal, verify_local_file, CanaryResult, CanarySampleResult, CanarySummary,
+    CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus, SyncErrorInfo, SyncIndex,
+    SyncJournal, VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -11717,6 +11718,8 @@ pub async fn get_local_files_recursive_checked(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut files = HashMap::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
     let base = PathBuf::from(base_path);
@@ -11809,7 +11812,7 @@ pub async fn get_local_files_recursive_checked(
                 .unwrap_or_else(|_| name.clone());
 
             // Skip excluded paths
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -11954,6 +11957,8 @@ pub async fn get_local_files_recursive_parallel(
     max_concurrent_hashes: usize,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<HashMap<String, FileInfo>, String> {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let base = PathBuf::from(base_path);
     if !base.exists() {
         return Ok(HashMap::new());
@@ -11990,7 +11995,7 @@ pub async fn get_local_files_recursive_parallel(
                 .map(|p| p.to_string_lossy().to_string().replace('\\', "/"))
                 .unwrap_or_else(|_| name.clone());
 
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -12145,6 +12150,8 @@ async fn get_remote_files_recursive_with_progress(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut files = HashMap::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
     // (absolute_path, depth): depth limit prevents infinite loops on servers
@@ -12216,7 +12223,7 @@ async fn get_remote_files_recursive_with_progress(
                 }
             };
 
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 

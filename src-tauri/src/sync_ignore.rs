@@ -187,7 +187,7 @@ impl AeroIgnore {
         &self,
         relative_path: &str,
         is_dir: bool,
-        config_patterns: &[String],
+        config_excludes: &crate::sync_exclude::ExcludeMatcher,
     ) -> bool {
         // First check .aeroignore (has negation support)
         let aeroignore_result = self.is_ignored(relative_path, is_dir);
@@ -217,8 +217,8 @@ impl AeroIgnore {
             return true;
         }
 
-        // Fall back to config exclude_patterns
-        crate::sync::should_exclude(relative_path, config_patterns)
+        // Fall back to the configured exclude list (the shared matcher)
+        config_excludes.is_excluded(relative_path)
     }
 }
 
