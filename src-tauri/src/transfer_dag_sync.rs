@@ -1883,7 +1883,12 @@ mod tests {
     fn plan_uploads_new_file_and_skips_identical() {
         let locals = vec![local("new.txt", 10), local("same.txt", 20)];
         let remotes = vec![remote("same.txt", 20)];
-        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Upload), ModifyWindow::default());
+        let plan = plan_sync_dag(
+            &locals,
+            &remotes,
+            &opts(SyncDirection::Upload),
+            ModifyWindow::default(),
+        );
 
         assert_eq!(plan.transfers.len(), 1);
         assert_eq!(plan.transfers[0].rel, "new.txt");
@@ -1899,7 +1904,12 @@ mod tests {
     fn plan_downloads_new_remote_file_only() {
         let locals = vec![local("here.txt", 5)];
         let remotes = vec![remote("here.txt", 5), remote("only-remote.txt", 99)];
-        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Download), ModifyWindow::default());
+        let plan = plan_sync_dag(
+            &locals,
+            &remotes,
+            &opts(SyncDirection::Download),
+            ModifyWindow::default(),
+        );
 
         assert_eq!(plan.transfers.len(), 1);
         assert_eq!(plan.transfers[0].rel, "only-remote.txt");
@@ -1915,7 +1925,12 @@ mod tests {
         // download pass then skips it as already handled.
         let locals = vec![local("conflict.txt", 100)];
         let remotes = vec![remote("conflict.txt", 50)];
-        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both), ModifyWindow::default());
+        let plan = plan_sync_dag(
+            &locals,
+            &remotes,
+            &opts(SyncDirection::Both),
+            ModifyWindow::default(),
+        );
 
         assert_eq!(plan.transfers.len(), 1);
         assert_eq!(plan.transfers[0].op, "upload");
@@ -1931,7 +1946,12 @@ mod tests {
         // on upload and skip on download even when the remote was larger.
         let locals = vec![local("conflict.txt", 50)];
         let remotes = vec![remote("conflict.txt", 100)];
-        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both), ModifyWindow::default());
+        let plan = plan_sync_dag(
+            &locals,
+            &remotes,
+            &opts(SyncDirection::Both),
+            ModifyWindow::default(),
+        );
 
         assert_eq!(plan.transfers.len(), 1);
         assert_eq!(plan.transfers[0].op, "download");
@@ -1950,7 +1970,12 @@ mod tests {
     fn plan_keeps_uploads_before_downloads_in_plan_order() {
         let locals = vec![local("up-only.txt", 1)];
         let remotes = vec![remote("down-only.txt", 2)];
-        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both), ModifyWindow::default());
+        let plan = plan_sync_dag(
+            &locals,
+            &remotes,
+            &opts(SyncDirection::Both),
+            ModifyWindow::default(),
+        );
 
         assert_eq!(plan.transfers.len(), 2);
         assert_eq!(plan.transfers[0].op, "upload");
@@ -1986,7 +2011,12 @@ mod tests {
     #[test]
     fn plan_deduplicates_repeated_scan_entries() {
         let locals = vec![local("dup.txt", 7), local("dup.txt", 7)];
-        let plan = plan_sync_dag(&locals, &[], &opts(SyncDirection::Upload), ModifyWindow::default());
+        let plan = plan_sync_dag(
+            &locals,
+            &[],
+            &opts(SyncDirection::Upload),
+            ModifyWindow::default(),
+        );
         assert_eq!(
             plan.transfers.len(),
             1,

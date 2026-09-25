@@ -1154,6 +1154,11 @@ pub async fn execute_tool(
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
+            // An invalid pattern is named here, before any scan: the scans fail
+            // closed on one, but without saying which.
+            if let Err(e) = crate::sync::compile_excludes(&exclude) {
+                return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
+            }
             let max_depth = args
                 .get("max_depth")
                 .and_then(|v| v.as_u64())
@@ -1286,9 +1291,17 @@ pub async fn execute_tool(
                         scan_remote_tree_checked(&mut p, &remote_dir, &opts).await;
                     let mut remotes = remote_rows;
                     if let Some(keys) = &crypt_keys {
+                        // The scan read the list on ciphertext names; it is read again on
+                        // the plaintext ones.
+                        let scan_excludes = opts.excludes_or_everything();
                         let raw_len = remotes.len();
-                        remotes = crate::crypt_compare::normalize_remote_entries(remotes, keys);
-                        if keys.wrong_key_suspected(raw_len, remotes.len()) {
+                        let normalized = crate::crypt_compare::normalize_remote_entries(
+                            remotes,
+                            keys,
+                            &scan_excludes,
+                        );
+                        remotes = normalized.entries;
+                        if keys.wrong_key_suspected(raw_len, normalized.decrypted) {
                             return finish(
                                 tool_name,
                                 Some(&server),
@@ -1530,6 +1543,11 @@ pub async fn execute_tool(
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
+            // An invalid pattern is named here, before any scan: the scans fail
+            // closed on one, but without saying which.
+            if let Err(e) = crate::sync::compile_excludes(&exclude) {
+                return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
+            }
             let max_depth = args
                 .get("max_depth")
                 .and_then(|v| v.as_u64())
@@ -2436,6 +2454,34 @@ mod tests {
             .and_then(|props| props.get("recursive"));
 
         assert!(recursive.is_some());
+    }
+
+    /// An invalid exclude pattern is named before any scan or connection. The
+    /// scans fail closed on one anyway, but an agent was told only that the
+    /// scan was incomplete, never which pattern to fix.
+    #[tokio::test]
+    async fn check_tree_and_sync_tree_name_an_invalid_exclude_pattern() {
+        let pool = std::sync::Arc::new(super::super::pool::ConnectionPool::new(
+            10,
+            std::time::Duration::from_secs(300),
+        ));
+        let limiter = super::security::RateLimiter::new();
+        let local = tempfile::tempdir().unwrap();
+        for tool in ["aeroftp_check_tree", "aeroftp_sync_tree"] {
+            let args = serde_json::json!({
+                "server": "no-such-profile",
+                "local_dir": local.path().to_string_lossy(),
+                "remote_dir": "/remote",
+                "direction": "upload",
+                "exclude": ["ok", "a[b"],
+            });
+            let (result, is_error) = super::execute_tool(tool, &args, &pool, &limiter, None).await;
+            assert!(is_error, "{tool}: {result}");
+            assert!(
+                result.to_string().contains("invalid exclude pattern 'a[b'"),
+                "{tool}: {result}"
+            );
+        }
     }
 
     #[test]

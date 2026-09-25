@@ -14,10 +14,10 @@ use crate::error_correction::{
     ERROR_CORRECTION_DEFAULT_PCT, ERROR_CORRECTION_MAX_PCT, ERROR_CORRECTION_MIN_PCT,
 };
 use crate::providers::{ProviderError, ProviderTransferExecutorKind, StorageProvider};
+use crate::sync_core::mtime::ModifyWindow;
 use crate::sync_core::scan::{
     scan_local_tree_checked, scan_remote_tree_checked, ScanCompleteness, ScanOptions,
 };
-use crate::sync_core::mtime::ModifyWindow;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -254,9 +254,28 @@ pub struct CompareOptions {
     /// ([`ModifyWindow::resolve`]); never taken from the frontend.
     #[serde(skip)]
     pub modify_window: ModifyWindow,
+    /// The sync root's `.aeroignore`, when the caller scanned with it
+    /// (AeroCloud). The compare reads the same rule the scan did, so a `!`
+    /// that re-includes a path the configured list excludes survives both.
+    #[serde(skip)]
+    pub aeroignore: Option<std::sync::Arc<crate::sync_ignore::AeroIgnore>>,
 }
 
 impl CompareOptions {
+    /// Whether the compare leaves `path` out: the `.aeroignore` rule with its
+    /// `!` overrides when there is one, the configured list otherwise.
+    fn excludes_path(
+        &self,
+        excludes: &crate::sync_exclude::ExcludeMatcher,
+        path: &str,
+        is_dir: bool,
+    ) -> bool {
+        match &self.aeroignore {
+            Some(rules) => rules.should_exclude(path, is_dir, excludes),
+            None => excludes.is_excluded(path),
+        }
+    }
+
     /// The compiled exclude list for a comparison builder, which cannot return
     /// an error. Every entry point compiles the list first and reports an
     /// invalid pattern, so the fallback is unreachable in practice; if it is
@@ -294,6 +313,7 @@ impl Default for CompareOptions {
             min_age_secs: None,
             max_age_secs: None,
             modify_window: ModifyWindow::default(),
+            aeroignore: None,
         }
     }
 }
@@ -896,10 +916,7 @@ pub fn compare_timestamps(
     remote: Option<DateTime<Utc>>,
     window: ModifyWindow,
 ) -> Option<SyncStatus> {
-    match window.order(
-        local.map(|t| t.timestamp()),
-        remote.map(|t| t.timestamp()),
-    )? {
+    match window.order(local.map(|t| t.timestamp()), remote.map(|t| t.timestamp()))? {
         std::cmp::Ordering::Greater => Some(SyncStatus::LocalNewer),
         std::cmp::Ordering::Less => Some(SyncStatus::RemoteNewer),
         std::cmp::Ordering::Equal => None,
@@ -1149,13 +1166,14 @@ pub fn build_comparison_results(
             continue;
         }
 
-        // Skip excluded paths
-        if excludes.is_excluded(&path) {
-            continue;
-        }
-
         let local = local_files.get(&path);
         let remote = remote_files.get(&path);
+
+        // Skip excluded paths
+        let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
+        if options.excludes_path(&excludes, &path, is_dir) {
+            continue;
+        }
 
         // Apply size/age filters
         if should_filter(local, options) || should_filter(remote, options) {
@@ -1966,7 +1984,6 @@ fn decide_download_by_hash(
         window,
     )
 }
-
 
 fn remote_sha256_hex(entry: &crate::sync_core::RemoteEntry) -> Option<&str> {
     match (entry.checksum_alg.as_deref(), entry.checksum_hex.as_deref()) {
@@ -3232,12 +3249,13 @@ pub fn classify_with_summary(
             continue;
         }
 
-        if excludes.is_excluded(&path) {
-            continue;
-        }
-
         let local = local_files.get(&path);
         let remote = remote_files.get(&path);
+
+        let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
+        if options.excludes_path(&excludes, &path, is_dir) {
+            continue;
+        }
 
         // Apply size/age filters
         if should_filter(local, options) || should_filter(remote, options) {
@@ -7916,6 +7934,39 @@ mod tests {
     }
 
     #[allow(dead_code)]
+    /// A `!` in `.aeroignore` that re-includes a path the configured list
+    /// excludes survived AeroCloud's scans and was then dropped by the
+    /// compare, which read the configured list alone.
+    #[test]
+    fn the_compare_reads_the_aeroignore_reinclusion_the_scan_read() {
+        let local = HashMap::from([
+            (
+                "build/keep.txt".to_string(),
+                mk_file_info("build/keep.txt", 1, None),
+            ),
+            (
+                "build/drop.txt".to_string(),
+                mk_file_info("build/drop.txt", 1, None),
+            ),
+        ]);
+        let rules = crate::sync_ignore::AeroIgnore::parse("!build/keep.txt").unwrap();
+        let opts = CompareOptions {
+            exclude_patterns: vec!["build".to_string()],
+            aeroignore: Some(std::sync::Arc::new(rules)),
+            ..Default::default()
+        };
+        let report = classify_with_summary(local.clone(), HashMap::new(), &opts, None);
+        let paths: Vec<_> = report
+            .differences
+            .iter()
+            .map(|c| c.relative_path.as_str())
+            .collect();
+        assert_eq!(paths, vec!["build/keep.txt"]);
+        let legacy = build_comparison_results(local, HashMap::new(), &opts);
+        let paths: Vec<_> = legacy.iter().map(|c| c.relative_path.as_str()).collect();
+        assert_eq!(paths, vec!["build/keep.txt"]);
+    }
+
     fn mk_dir_info(name: &str) -> FileInfo {
         FileInfo {
             name: name.to_string(),

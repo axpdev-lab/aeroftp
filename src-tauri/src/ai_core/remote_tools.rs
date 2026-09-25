@@ -2824,11 +2824,12 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
                 for e in entries {
                     if e.is_dir {
                         if e.is_walkable_dir()
-                            && !exclude_matchers.is_excluded(
+                            && !exclude_matchers.is_excluded_entry(
                                 e.path
                                     .strip_prefix(remote_dir.as_str())
                                     .unwrap_or(&e.path)
                                     .trim_start_matches('/'),
+                                &e.name,
                             )
                         {
                             queue.push((e.path.clone(), depth + 1));
@@ -2840,7 +2841,7 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
                             .unwrap_or(&e.path)
                             .trim_start_matches('/')
                             .to_string();
-                        if exclude_matchers.is_excluded(&relative) {
+                        if exclude_matchers.is_excluded_entry(&relative, &e.name) {
                             continue;
                         }
                         remote_files += 1;
@@ -3365,11 +3366,12 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         for e in entries {
             if e.is_dir {
                 if e.is_walkable_dir()
-                    && !exclude_matchers.is_excluded(
+                    && !exclude_matchers.is_excluded_entry(
                         e.path
                             .strip_prefix(remote_dir.as_str())
                             .unwrap_or(&e.path)
                             .trim_start_matches('/'),
+                        &e.name,
                     )
                 {
                     queue.push((e.path.clone(), depth + 1));
@@ -3384,7 +3386,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
                 if rel.is_empty() {
                     continue;
                 }
-                if exclude_matchers.is_excluded(&rel) {
+                if exclude_matchers.is_excluded_entry(&rel, &e.name) {
                     continue;
                 }
                 remote_map.insert(rel, (e.size, e.modified));

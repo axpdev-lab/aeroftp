@@ -541,8 +541,8 @@ fn preserve_temp_mtime(path: &Path, source_modified: Option<&str>) {
         return;
     };
 
-    let Some(file_time) = crate::parse_remote_mtime(source_modified)
-        .map(|secs| FileTime::from_unix_time(secs, 0))
+    let Some(file_time) =
+        crate::parse_remote_mtime(source_modified).map(|secs| FileTime::from_unix_time(secs, 0))
     else {
         tracing::debug!(
             "cross-profile: unsupported mtime format '{}'",

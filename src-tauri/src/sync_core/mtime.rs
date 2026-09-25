@@ -228,7 +228,10 @@ mod tests {
         assert_eq!(w.order(Some(100), Some(103)), Some(Ordering::Less));
         assert_eq!(w.order(None, Some(100)), None);
         assert_eq!(
-            w.order_text(Some("2026-09-24 19:41:46"), Some("Thu, 24 Sep 2026 19:41:47 GMT")),
+            w.order_text(
+                Some("2026-09-24 19:41:46"),
+                Some("Thu, 24 Sep 2026 19:41:47 GMT")
+            ),
             Some(Ordering::Equal)
         );
         // An FTP `LIST` date is not an instant, so it orders as unknown.

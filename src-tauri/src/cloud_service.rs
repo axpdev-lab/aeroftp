@@ -526,6 +526,9 @@ impl CloudService {
             exclude_patterns: config.exclude_patterns.clone(),
             direction: config.sync_direction,
             modify_window: crate::sync_core::mtime::ModifyWindow::LEGACY_FTP,
+            // The scans read `.aeroignore`; the compare reads the same rule.
+            aeroignore: crate::sync_ignore::AeroIgnore::load(&config.local_folder)
+                .map(std::sync::Arc::new),
             ..Default::default()
         };
 
@@ -779,9 +782,11 @@ impl CloudService {
             exclude_patterns: config.exclude_patterns.clone(),
             direction: config.sync_direction,
             modify_window: crate::sync_core::mtime::ModifyWindow::against_provider(
-                None,
-                &*provider,
+                None, &*provider,
             ),
+            // The scans read `.aeroignore`; the compare reads the same rule.
+            aeroignore: crate::sync_ignore::AeroIgnore::load(&config.local_folder)
+                .map(std::sync::Arc::new),
             ..Default::default()
         };
 
@@ -1394,7 +1399,10 @@ impl CloudService {
                         name: entry.name.clone(),
                         path: format!("{}/{}", current_path, entry.name),
                         size: entry.size.unwrap_or(0),
-                        modified: entry.modified.as_deref().and_then(crate::parse_remote_datetime),
+                        modified: entry
+                            .modified
+                            .as_deref()
+                            .and_then(crate::parse_remote_datetime),
                         is_dir: entry.is_dir,
                         checksum_alg: None,
                         checksum: None,
@@ -1674,7 +1682,10 @@ impl CloudService {
                         name: entry.name.clone(),
                         path: format!("{}/{}", current_path, entry.name),
                         size: entry.size,
-                        modified: entry.modified.as_deref().and_then(crate::parse_remote_datetime),
+                        modified: entry
+                            .modified
+                            .as_deref()
+                            .and_then(crate::parse_remote_datetime),
                         is_dir: entry.is_dir,
                         // Use provider-supplied content hash if available (e.g. FileLu).
                         // Enables hash-based comparison for providers that don't preserve mtime.

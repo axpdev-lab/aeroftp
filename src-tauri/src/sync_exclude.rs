@@ -15,10 +15,14 @@
 //! A deterministic property test pins that promise against verbatim copies of
 //! both former engines (kept in the tests only, as an oracle).
 //!
-//! - Paths are `/`-separated and relative (`\` in a path is read as `/`).
+//! - Paths are relative and read twice: split on `/` only (a `\` is part of
+//!   a remote name, as the CLI read it) and with `\` as a separator too (a
+//!   Windows path, as the GUI read it); excluded under either is excluded.
+//!   Where a walk knows the entry's own name (which may hold a `/`), it is
+//!   matched too ([`ExcludeMatcher::is_excluded_entry`]).
 //!   A pattern is taken as written: only a trailing `/` is dropped, spaces are
 //!   significant, and `\` escapes the next character where globset does so
-//!   (as the CLI always read it).
+//!   (as the CLI always read it; not on Windows, globset's platform default).
 //! - A glob matches as written, and also case-insensitively (globset's own
 //!   option, so character classes keep their meaning).
 //! - A pattern without `/` is tried against EVERY segment of the path, file or
@@ -79,10 +83,9 @@ impl CompiledPattern {
     }
 
     fn text_matches(&self, candidate: &str) -> bool {
-        candidate
-            .chars()
-            .flat_map(char::to_lowercase)
-            .eq(self.literal.chars())
+        // Whole-string lowercasing, as `literal` was made: per-character
+        // lowercasing misses context rules (a final `Σ` becomes `ς`).
+        candidate.to_lowercase() == self.literal
     }
 }
 
@@ -99,7 +102,8 @@ impl ExcludeMatcher {
         let mut compiled = Vec::with_capacity(patterns.len());
         for raw in patterns {
             let raw = raw.as_ref();
-            let without_dir_slash = strip_dir_slashes(raw);
+            let written = pattern_separators(raw, cfg!(windows));
+            let without_dir_slash = strip_dir_slashes(&written);
             let anchored = without_dir_slash.starts_with('/');
             let body = without_dir_slash.trim_start_matches('/');
             if body.is_empty() {
@@ -155,6 +159,12 @@ impl ExcludeMatcher {
 
     /// Whether the file or directory at `rel_path` (relative to the sync root)
     /// is excluded. A path under an excluded directory is excluded too.
+    ///
+    /// The path is read twice. As written, split on `/` only: on a remote a
+    /// `\` is a character of the name (`logs/app\2026.log` is a file named
+    /// `app\2026.log`), which is how the CLI always read it. And with `\` as
+    /// a separator too, which is how the GUI read a Windows path. Excluded
+    /// under either reading is excluded.
     pub fn is_excluded(&self, rel_path: &str) -> bool {
         if self.everything {
             return true;
@@ -162,10 +172,29 @@ impl ExcludeMatcher {
         if self.patterns.is_empty() {
             return false;
         }
-        let normalized = rel_path.replace('\\', "/");
+        self.matches_split(rel_path)
+            || (rel_path.contains('\\') && self.matches_split(&rel_path.replace('\\', "/")))
+    }
+
+    /// [`Self::is_excluded`] for an entry whose own name is known. A name can
+    /// hold a `/` (Google Drive allows it), and then the path's last segment
+    /// is not the name; the CLI matched the entry's real name, so it is
+    /// matched here as well.
+    pub fn is_excluded_entry(&self, rel_path: &str, name: &str) -> bool {
+        self.is_excluded(rel_path)
+            || (!self.patterns.is_empty()
+                && !name.is_empty()
+                && self
+                    .patterns
+                    .iter()
+                    .any(|p| !p.anchored && (p.glob_matches(name) || p.text_matches(name))))
+    }
+
+    /// Match `path` split on `/` only.
+    fn matches_split(&self, path: &str) -> bool {
         let mut bounds: Vec<(usize, usize)> = Vec::new();
         let mut start = 0;
-        for (i, ch) in normalized.char_indices() {
+        for (i, ch) in path.char_indices() {
             if ch == '/' {
                 if i > start {
                     bounds.push((start, i));
@@ -173,17 +202,31 @@ impl ExcludeMatcher {
                 start = i + 1;
             }
         }
-        if normalized.len() > start {
-            bounds.push((start, normalized.len()));
+        if path.len() > start {
+            bounds.push((start, path.len()));
         }
         if bounds.is_empty() {
             return false;
         }
-        let whole = &normalized[bounds[0].0..bounds[bounds.len() - 1].1];
+        let whole = &path[bounds[0].0..bounds[bounds.len() - 1].1];
         let lower = whole.to_lowercase();
         self.patterns
             .iter()
-            .any(|p| pattern_matches(p, whole, &lower, &bounds))
+            .any(|p| pattern_matches(p, path, whole, &lower, &bounds))
+    }
+}
+
+/// A pattern with its separators as the platform writes them. On Windows a
+/// `\\` is not an escape: globset itself turns it into `/` inside the glob.
+/// This makes the rest of the matcher agree (whether the pattern holds a
+/// separator, the trailing directory marker), so `build\\output` and
+/// `node_modules\\` are the paths they look like. Elsewhere a `\\` is left to
+/// globset, which reads it as an escape.
+fn pattern_separators(raw: &str, windows: bool) -> std::borrow::Cow<'_, str> {
+    if windows && raw.contains('\\') {
+        std::borrow::Cow::Owned(raw.replace('\\', "/"))
+    } else {
+        std::borrow::Cow::Borrowed(raw)
     }
 }
 
@@ -206,8 +249,10 @@ fn strip_dir_slashes(raw: &str) -> &str {
     &raw[..end]
 }
 
+/// `bounds` index `path`; `whole` is `path` from its first to its last segment.
 fn pattern_matches(
     p: &CompiledPattern,
+    path: &str,
     whole: &str,
     lower: &str,
     bounds: &[(usize, usize)],
@@ -230,8 +275,19 @@ fn pattern_matches(
             p.glob_matches(seg) || p.text_matches(seg)
         }) || p.glob_matches(whole);
     }
-    let last_start = if p.anchored { 0 } else { bounds.len() - 1 };
-    for i in 0..=last_start {
+    // An anchored pattern starts at the root, and also right after an empty
+    // segment (`a//b`, or `a\\/b` read with `\\` as a separator): the GUI
+    // matched `/b` as the text `/b` there, and that exclusion is kept.
+    let starts_at_a_root = |i: usize| {
+        i == 0 || {
+            let start = bounds[i].0;
+            start >= 2 && &path[start - 2..start] == "//"
+        }
+    };
+    for i in 0..bounds.len() {
+        if p.anchored && !starts_at_a_root(i) {
+            continue;
+        }
         for j in i..bounds.len() {
             let window = slice(i, j);
             if p.glob_matches(window) || p.text_matches(window) {
@@ -281,9 +337,8 @@ mod tests {
     }
 
     /// The CLI engine before this module (`sync_core::scan` matchers): default
-    /// globset options, the relative path or the file name, files only.
-    fn old_cli(path: &str, patterns: &[&str]) -> bool {
-        let name = path.rsplit('/').next().unwrap_or(path);
+    /// globset options, the relative path or the entry's own name, files only.
+    fn old_cli(path: &str, name: &str, patterns: &[&str]) -> bool {
         patterns.iter().any(|pat| {
             globset::Glob::new(pat)
                 .ok()
@@ -294,6 +349,12 @@ mod tests {
 
     fn new(path: &str, patterns: &[&str]) -> bool {
         ExcludeMatcher::new(patterns).unwrap().is_excluded(path)
+    }
+
+    /// The entry name a walk reports for `path` when the name holds no `/`:
+    /// the last `/`-separated component, a `\` included (a remote name).
+    fn last_name(path: &str) -> &str {
+        path.rsplit('/').next().unwrap_or(path)
     }
 
     // (pattern, path, excluded now, old GUI excluded, old CLI excluded)
@@ -349,6 +410,18 @@ mod tests {
         ("[!A-Z]*", "readme.md", true, false, true),
         ("*[!a-z0-9.]*", "Notes.txt", true, false, true),
         ("[Z-a]*", "_x", true, false, true),
+        // A `\` inside a remote name is a character of the name, which the CLI
+        // matched (review of #939: reading it as `/` turned the file into a
+        // path, and `--delete` removed it as an orphan).
+        ("app*.log", "logs/app\\2026.log", true, false, true),
+        ("app*.log", "app\\2026.log", true, false, true),
+        // A final sigma lowercases in context (`Σ` at the end is `ς`), so the
+        // literal name must be lowercased as a whole, as the GUI did.
+        ("ΑΣ[1]", "docs/ΑΣ[1]", true, true, false),
+        // A `\\` before a `/` reads as an empty segment with `\\` as a
+        // separator, and the GUI matched `/a` as the text `/a` after it (found
+        // by the property test).
+        ("/a", "z\\/a", true, true, false),
     ];
 
     /// Backslash escapes, as the CLI read it. globset escapes with `\` only
@@ -358,6 +431,8 @@ mod tests {
     const ESCAPES: &[(&str, &str, bool, bool, bool)] = &[
         ("a\\*", "a*", true, false, true),
         ("file\\[1\\].jpg", "photos/file[1].jpg", true, false, true),
+        ("a\\\\b", "x/a\\b", true, false, true),
+        ("*\\\\*", "x/a\\b", true, false, true),
     ];
     #[cfg(windows)]
     const ESCAPES: &[(&str, &str, bool, bool, bool)] = &[];
@@ -376,7 +451,7 @@ mod tests {
                 "old GUI: {pattern} vs {path}"
             );
             assert_eq!(
-                old_cli(path, &[pattern]),
+                old_cli(path, last_name(path), &[pattern]),
                 *cli,
                 "old CLI: {pattern} vs {path}"
             );
@@ -446,7 +521,8 @@ mod tests {
     fn preset_defaults_exclude_a_superset_of_both_old_engines() {
         let matcher = ExcludeMatcher::new(PRESET_DEFAULTS).unwrap();
         for path in PROBE_PATHS {
-            let before = old_gui(path, PRESET_DEFAULTS) || old_cli(path, PRESET_DEFAULTS);
+            let before =
+                old_gui(path, PRESET_DEFAULTS) || old_cli(path, last_name(path), PRESET_DEFAULTS);
             if before {
                 assert!(
                     matcher.is_excluded(path),
@@ -539,6 +615,9 @@ mod tests {
         "tmp",
     ];
     const SEGMENT_ATOMS: &[&str] = &[
+        "\\",
+        "Σ",
+        "İ",
         "a",
         "b",
         "A",
@@ -559,15 +638,21 @@ mod tests {
         (0..rng.upto(4)).map(|_| rng.pick(PATTERN_ATOMS)).collect()
     }
 
-    fn random_path(rng: &mut Lcg) -> String {
-        (0..rng.upto(3))
-            .map(|_| {
-                (0..rng.upto(3))
-                    .map(|_| rng.pick(SEGMENT_ATOMS))
-                    .collect::<String>()
-            })
-            .collect::<Vec<_>>()
-            .join("/")
+    fn random_segment(rng: &mut Lcg) -> String {
+        (0..rng.upto(3)).map(|_| rng.pick(SEGMENT_ATOMS)).collect()
+    }
+
+    /// A relative path and the name its walk reports: directories, then a
+    /// name that now and then holds a `/` (Google Drive allows one), in which
+    /// case the path's last segment is not the name.
+    fn random_entry(rng: &mut Lcg) -> (String, String) {
+        let mut name = random_segment(rng);
+        if rng.upto(5) == 0 {
+            name = format!("{name}/{}", random_segment(rng));
+        }
+        let mut parts: Vec<String> = (0..rng.upto(2)).map(|_| random_segment(rng)).collect();
+        parts.push(name.clone());
+        (parts.join("/"), name)
     }
 
     #[test]
@@ -594,16 +679,23 @@ mod tests {
                 .ok()
                 .map(|g| g.compile_matcher());
             for _ in 0..24 {
-                let path = random_path(&mut rng);
-                let name = path.rsplit('/').next().unwrap_or(&path);
+                let (path, name) = random_entry(&mut rng);
                 let cli_before = old_cli_glob
                     .as_ref()
-                    .is_some_and(|m| m.is_match(&path) || m.is_match(name));
+                    .is_some_and(|m| m.is_match(&path) || m.is_match(&name));
                 if old_gui(&path, &[pattern.as_str()]) || cli_before {
                     assert!(
-                        matcher.is_excluded(&path),
-                        "{pattern:?} excluded {path:?} before and not now"
+                        matcher.is_excluded_entry(&path, &name),
+                        "{pattern:?} excluded {path:?} (name {name:?}) before and not now"
                     );
+                    // A walk that knows only the path loses nothing either,
+                    // as long as the name holds no `/`.
+                    if !name.contains('/') {
+                        assert!(
+                            matcher.is_excluded(&path),
+                            "{pattern:?} excluded {path:?} before and not now (path only)"
+                        );
+                    }
                     checked += 1;
                 }
             }
@@ -621,6 +713,34 @@ mod tests {
         assert!(all.excludes_everything());
         assert!(!all.is_empty());
         assert!(all.is_excluded("src/main.rs"));
+    }
+
+    /// On Windows a `\\` in a pattern is a separator: it cannot be an escape
+    /// there, and `build\\output` used to match nothing at all.
+    #[test]
+    fn a_windows_pattern_reads_backslash_as_a_separator() {
+        assert_eq!(pattern_separators("build\\output", true), "build/output");
+        assert_eq!(pattern_separators("node_modules\\", true), "node_modules/");
+        assert_eq!(pattern_separators("a\\*", false), "a\\*");
+        #[cfg(windows)]
+        {
+            assert!(new("src/build/output/x.o", &["build\\output"]));
+            assert!(new("web/node_modules/x.js", &["node_modules\\"]));
+        }
+    }
+
+    /// A name holding a `/` (Google Drive) is matched as the entry's own name,
+    /// as the CLI did, where the path alone would split it.
+    #[test]
+    fn a_name_with_a_slash_is_matched_as_a_name() {
+        let m = ExcludeMatcher::new(&["x?y", "report*.pdf"]).unwrap();
+        assert!(!m.is_excluded("d/x/y"));
+        assert!(m.is_excluded_entry("d/x/y", "x/y"));
+        assert!(m.is_excluded_entry("d/report 1/2.pdf", "report 1/2.pdf"));
+        assert!(old_cli("d/x/y", "x/y", &["x?y"]));
+        // An anchored pattern names a root entry; the bare name is not one.
+        let anchored = ExcludeMatcher::new(&["/y"]).unwrap();
+        assert!(!anchored.is_excluded_entry("d/y", "y"));
     }
 
     #[test]
