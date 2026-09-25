@@ -1108,6 +1108,24 @@ impl S3Provider {
     /// and `continuation-token` with "BadRequest: Invalid prefix specified".
     /// HeadBucket returns 404 in some paths, multipart uploads aren't
     /// supported, ETags are UUIDs, and there are no presigned URLs.
+    /// AWS itself: no custom endpoint (the default is built from the region),
+    /// or an endpoint on `amazonaws.com`.
+    fn is_aws_endpoint(&self) -> bool {
+        let Some(endpoint) = self.config.endpoint.as_deref() else {
+            return true;
+        };
+        url::Url::parse(endpoint)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_ascii_lowercase))
+            // `amazonaws.com.cn` is AWS China (Beijing, Ningxia): same service.
+            .map(|host| {
+                host == "amazonaws.com"
+                    || host.ends_with(".amazonaws.com")
+                    || host.ends_with(".amazonaws.com.cn")
+            })
+            .unwrap_or(false)
+    }
+
     fn is_filen_s3_endpoint(&self) -> bool {
         self.config
             .endpoint
@@ -5725,6 +5743,13 @@ impl StorageProvider for S3Provider {
             preferred_checksum_algo: Some("ETag".to_string()),
             ..Default::default()
         }
+        .with_documented_limits(if self.is_aws_endpoint() {
+            super::AWS_S3_FILE_LIMITS
+        } else {
+            // S3-compatible services set their own limits, and most do not
+            // document them next to AWS's: no value, no warning (#347).
+            super::DocumentedFileLimits::default()
+        })
     }
 
     fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
@@ -11946,3 +11971,60 @@ mod tests {
 #[cfg(test)]
 #[path = "s3_delta_tests.rs"]
 mod delta_adapter_tests;
+
+#[cfg(test)]
+mod documented_limits_tests {
+    use super::*;
+
+    fn provider(endpoint: Option<&str>) -> S3Provider {
+        S3Provider::new(S3Config {
+            endpoint: endpoint.map(str::to_owned),
+            region: "eu-west-1".to_string(),
+            access_key_id: "AKIAEXAMPLE".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: "bucket".to_string(),
+            prefix: None,
+            path_style: false,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+            allow_cleartext_endpoint: false,
+        })
+        .expect("S3Provider")
+    }
+
+    /// The AWS limits hold for AWS only; an S3-compatible endpoint gets none
+    /// rather than limits it never documented (#347).
+    #[test]
+    fn only_an_aws_endpoint_carries_the_aws_limits() {
+        for aws in [
+            None,
+            Some("https://s3.eu-west-1.amazonaws.com"),
+            Some("https://s3.cn-north-1.amazonaws.com.cn"),
+        ] {
+            let hints = provider(aws).transfer_optimization_hints();
+            // 10,000 parts of 5 GiB, not 50 TiB.
+            assert_eq!(hints.max_file_size, Some(50_000 * (1 << 30)), "{aws:?}");
+            // The key limit includes the prefix: a path limit, not a name one.
+            assert_eq!(hints.max_path_bytes, Some(1024), "{aws:?}");
+            assert_eq!(hints.max_name_bytes, None, "{aws:?}");
+        }
+        for other in [
+            "https://minio.example.com:9000",
+            "https://amazonaws.com.evil.example",
+            "https://account.r2.cloudflarestorage.com",
+        ] {
+            let hints = provider(Some(other)).transfer_optimization_hints();
+            assert_eq!(hints.max_file_size, None, "{other}");
+            assert_eq!(hints.max_path_bytes, None, "{other}");
+        }
+    }
+}
