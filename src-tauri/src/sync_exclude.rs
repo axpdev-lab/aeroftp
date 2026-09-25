@@ -93,6 +93,13 @@ impl CompiledPattern {
 #[derive(Debug, Clone, Default)]
 pub struct ExcludeMatcher {
     patterns: Vec<CompiledPattern>,
+    /// Every pattern exactly as the former CLI compiled it (default globset
+    /// options, the pattern as written), tried on the path and the entry
+    /// name as the CLI did. This makes "never less than the CLI" hold by
+    /// construction, on every platform, including a pattern the readings
+    /// above reduce to nothing (on Windows `/` or `\\` still names a remote
+    /// file called `\\`).
+    as_written: Vec<GlobMatcher>,
     everything: bool,
 }
 
@@ -100,20 +107,17 @@ impl ExcludeMatcher {
     /// Compile `patterns`; empty entries are ignored, an invalid glob is an error.
     pub fn new<S: AsRef<str>>(patterns: &[S]) -> Result<Self, ExcludePatternError> {
         let mut compiled = Vec::with_capacity(patterns.len());
+        let mut as_written = Vec::with_capacity(patterns.len());
         for raw in patterns {
             let raw = raw.as_ref();
             let written = pattern_separators(raw, cfg!(windows));
             let without_dir_slash = strip_dir_slashes(&written);
-            let mut anchored = without_dir_slash.starts_with('/');
-            let mut body = without_dir_slash.trim_start_matches('/');
-            if body.is_empty() && raw.contains('\\') {
-                // Only separators once a Windows `\\` is read as one (`\\`,
-                // `/\\`): nothing is left to name a path, yet globset still
-                // matches the pattern as written against a name that is a lone
-                // backslash (a remote file), as the CLI did. Kept as written.
-                // Elsewhere this is a dangling escape, refused as before.
-                body = raw;
-                anchored = false;
+            let anchored = without_dir_slash.starts_with('/');
+            let body = without_dir_slash.trim_start_matches('/');
+            if !raw.is_empty() {
+                if let Ok(glob) = globset::Glob::new(raw) {
+                    as_written.push(glob.compile_matcher());
+                }
             }
             if body.is_empty() {
                 continue;
@@ -144,6 +148,7 @@ impl ExcludeMatcher {
         }
         Ok(Self {
             patterns: compiled,
+            as_written,
             everything: false,
         })
     }
@@ -153,12 +158,13 @@ impl ExcludeMatcher {
     pub fn everything() -> Self {
         Self {
             patterns: Vec::new(),
+            as_written: Vec::new(),
             everything: true,
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.patterns.is_empty() && !self.everything
+        self.patterns.is_empty() && self.as_written.is_empty() && !self.everything
     }
 
     /// Whether this matcher excludes everything (see [`Self::everything`]).
@@ -178,11 +184,19 @@ impl ExcludeMatcher {
         if self.everything {
             return true;
         }
-        if self.patterns.is_empty() {
+        if self.is_empty() {
             return false;
         }
+        let last = rel_path.rsplit('/').next().unwrap_or(rel_path);
         self.matches_split(rel_path)
             || (rel_path.contains('\\') && self.matches_split(&rel_path.replace('\\', "/")))
+            || self.matches_as_written(rel_path)
+            || self.matches_as_written(last)
+    }
+
+    /// The former CLI's own test: a pattern as written against `candidate`.
+    fn matches_as_written(&self, candidate: &str) -> bool {
+        !candidate.is_empty() && self.as_written.iter().any(|g| g.is_match(candidate))
     }
 
     /// [`Self::is_excluded`] for an entry whose own name is known. A name can
@@ -191,6 +205,7 @@ impl ExcludeMatcher {
     /// matched here as well.
     pub fn is_excluded_entry(&self, rel_path: &str, name: &str) -> bool {
         self.is_excluded(rel_path)
+            || self.matches_as_written(name)
             || (!self.patterns.is_empty()
                 && !name.is_empty()
                 && self
@@ -431,6 +446,9 @@ mod tests {
         // separator, and the GUI matched `/a` as the text `/a` after it (found
         // by the property test).
         ("/a", "z\\/a", true, true, false),
+        // What the CLI matched on the raw path is kept as it matched it: `?`
+        // covers a leading `/` for the CLI's glob, never for a segment.
+        ("?x", "/x", true, false, true),
     ];
 
     /// Backslash escapes, as the CLI read it. globset escapes with `\` only
@@ -564,7 +582,12 @@ mod tests {
         let err = ExcludeMatcher::new(&["ok", "a[b"]).unwrap_err();
         assert_eq!(err.pattern, "a[b");
         assert!(err.to_string().contains("invalid exclude pattern 'a[b'"));
-        assert!(ExcludeMatcher::new(&["", "/", "//"]).unwrap().is_empty());
+        // Separators alone name no path a walk produces (the former CLI's
+        // glob `/` only ever matched a lone separator).
+        let separators = ExcludeMatcher::new(&["", "/", "//"]).unwrap();
+        for path in ["a", "a/b", "dir/file.txt"] {
+            assert!(!separators.is_excluded(path), "{path}");
+        }
         // A pattern that compiled for the former CLI still compiles, including
         // one that ends with an escaped `/`.
         assert!(ExcludeMatcher::new(&["[Z-a]*"]).is_ok());
@@ -738,12 +761,55 @@ mod tests {
             // A pattern of backslashes only still names a remote file called
             // `\\`, as the former CLI read it (found by the property test).
             assert!(new(" A_/\\", &["\\"]));
+            assert!(new("İb/ΣA/\\", &["/"]));
         }
         #[cfg(not(windows))]
         assert!(
             ExcludeMatcher::new(&["\\"]).is_err(),
             "a lone backslash is a dangling escape off Windows, as before"
         );
+    }
+
+    /// The class the Windows runner found twice (`\\` then `/` against a
+    /// remote file named `\\`): separator-only patterns, names made only of
+    /// backslashes, a trailing backslash in a name. Whatever either former
+    /// engine excluded here stays excluded, on every platform; the cases only
+    /// bite on Windows, where globset reads `\\` as a separator.
+    #[test]
+    fn separator_and_backslash_variants_keep_every_former_exclusion() {
+        const PATTERNS: &[&str] = &["/", "\\", "//", "\\\\", "/\\", "a\\", "a/", "*\\", "\\*"];
+        const ENTRIES: &[(&str, &str)] = &[
+            ("İb/ΣA/\\", "\\"),
+            (" A_/\\", "\\"),
+            ("x/\\\\", "\\\\"),
+            ("x/a\\", "a\\"),
+            ("a\\", "a\\"),
+            ("\\", "\\"),
+            ("d/x\\y", "x\\y"),
+        ];
+        for pattern in PATTERNS {
+            let Ok(matcher) = ExcludeMatcher::new(&[*pattern]) else {
+                assert!(
+                    globset::Glob::new(pattern).is_err(),
+                    "{pattern:?} compiled before and is refused now"
+                );
+                continue;
+            };
+            for (path, name) in ENTRIES {
+                if old_cli(path, name, &[pattern]) || old_gui(path, &[pattern]) {
+                    assert!(
+                        matcher.is_excluded_entry(path, name),
+                        "{pattern:?} excluded {path:?} (name {name:?}) before and not now"
+                    );
+                }
+                if old_cli(path, last_name(path), &[pattern]) || old_gui(path, &[pattern]) {
+                    assert!(
+                        matcher.is_excluded(path),
+                        "{pattern:?} excluded {path:?} before and not now (path only)"
+                    );
+                }
+            }
+        }
     }
 
     /// A name holding a `/` (Google Drive) is matched as the entry's own name,
