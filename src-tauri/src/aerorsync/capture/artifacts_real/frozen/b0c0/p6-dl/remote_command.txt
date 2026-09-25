@@ -1,0 +1,1 @@
+rsync --server --sender -lHogDtpre.iLsfxCIvu . /workspace/b0c0/src/p6/h

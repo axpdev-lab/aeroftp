@@ -42,36 +42,56 @@ pub async fn hash_text(
     algorithm: String,
     output_len: Option<usize>,
     encoding: Option<String>,
+    blake3_key: Option<String>,
+    blake3_context: Option<String>,
 ) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || hash_text_blocking(text, algorithm, output_len, encoding))
-        .await
-        .unwrap_or_else(|err| Err(format!("Hash task failed: {err}")))
+    tokio::task::spawn_blocking(move || {
+        let mode = Blake3Mode::parse(&algorithm, blake3_key.as_deref(), blake3_context)?;
+        hash_text_blocking_with(text, algorithm, output_len, encoding, &mode)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("Hash task failed: {err}")))
 }
 
 /// The hashing itself. Named rather than inlined into the closure so the tests
 /// can drive it directly instead of standing up a runtime for each case; the
 /// command's asyncness has its own pin in `hash_forge_tests`.
+#[cfg(test)]
 fn hash_text_blocking(
     text: String,
     algorithm: String,
     output_len: Option<usize>,
     encoding: Option<String>,
 ) -> Result<String, String> {
+    hash_text_blocking_with(text, algorithm, output_len, encoding, &Blake3Mode::Plain)
+}
+
+fn hash_text_blocking_with(
+    text: String,
+    algorithm: String,
+    output_len: Option<usize>,
+    encoding: Option<String>,
+    blake3_mode: &Blake3Mode,
+) -> Result<String, String> {
     let enc = encoding.as_deref().unwrap_or("utf-8");
     let bytes = decode_text_input(&text, enc)?;
-    hash_bytes(&bytes, &algorithm, output_len)
+    hash_bytes(&bytes, &algorithm, output_len, blake3_mode)
 }
 
 /// Hash a local file with the specified algorithm (64KB streaming buffer).
 ///
-/// `output_len` is the optional BLAKE3 XOF length (same rules as `hash_text`).
+/// `output_len` is the optional BLAKE3 XOF length (same rules as `hash_text`),
+/// and `blake3_key` / `blake3_context` select the keyed or derive-key mode.
 #[tauri::command]
 pub async fn hash_file(
     path: String,
     algorithm: String,
     output_len: Option<usize>,
+    blake3_key: Option<String>,
+    blake3_context: Option<String>,
 ) -> Result<String, String> {
     validate_path(&path)?;
+    let blake3_mode = Blake3Mode::parse(&algorithm, blake3_key.as_deref(), blake3_context)?;
     use tokio::io::AsyncReadExt;
 
     let mut file = tokio::fs::File::open(&path)
@@ -138,7 +158,7 @@ pub async fn hash_file(
             Ok(hex::encode(hasher.finalize()))
         }
         "blake3" => {
-            let mut hasher = blake3::Hasher::new();
+            let mut hasher = blake3_mode.hasher();
             loop {
                 let n = file
                     .read(&mut buffer)
@@ -400,8 +420,216 @@ fn blake3_finalize_hex(
     }
 }
 
+/// The three BLAKE3 modes, as `b3sum` exposes them: the plain hash,
+/// `--keyed` (a MAC under a 32-byte key) and `--derive-key` (a KDF whose
+/// context string separates one application's keys from another's). The
+/// three produce unrelated outputs for the same input, so the mode is part of
+/// what the user has to reproduce elsewhere, not a display option.
+pub(crate) enum Blake3Mode {
+    Plain,
+    Keyed(zeroize::Zeroizing<[u8; blake3::KEY_LEN]>),
+    DeriveKey(String),
+}
+
+impl Blake3Mode {
+    /// Build the mode from the command arguments.
+    ///
+    /// - `key_hex`: the key as hex (whitespace tolerated), exactly 32 bytes,
+    ///   the same bytes `b3sum --keyed` reads from stdin.
+    /// - `context`: the derive-key context string, used verbatim.
+    ///
+    /// A key or context sent with another algorithm is refused rather than
+    /// ignored: a keyed MD5 does not exist, and a silently plain digest would
+    /// look like a MAC to whoever copies it.
+    pub(crate) fn parse(
+        algorithm: &str,
+        key_hex: Option<&str>,
+        context: Option<String>,
+    ) -> Result<Self, String> {
+        let is_blake3 = algorithm.eq_ignore_ascii_case("blake3");
+        match (key_hex, context) {
+            (None, None) => Ok(Self::Plain),
+            (Some(_), Some(_)) => {
+                Err("BLAKE3 keyed and derive-key modes cannot be combined".to_string())
+            }
+            _ if !is_blake3 => Err(format!(
+                "Keyed and derive-key modes are BLAKE3 only, not {algorithm}"
+            )),
+            (Some(key_hex), None) => {
+                let cleaned = zeroize::Zeroizing::new(
+                    key_hex
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect::<String>(),
+                );
+                let bytes = zeroize::Zeroizing::new(
+                    hex::decode(cleaned.as_str())
+                        .map_err(|e| format!("Invalid BLAKE3 key (hex expected): {e}"))?,
+                );
+                if bytes.len() != blake3::KEY_LEN {
+                    return Err(format!(
+                        "BLAKE3 key must be exactly {} bytes ({} hex characters), got {} bytes",
+                        blake3::KEY_LEN,
+                        blake3::KEY_LEN * 2,
+                        bytes.len()
+                    ));
+                }
+                let mut key = zeroize::Zeroizing::new([0u8; blake3::KEY_LEN]);
+                key.copy_from_slice(&bytes);
+                Ok(Self::Keyed(key))
+            }
+            (None, Some(context)) => Ok(Self::DeriveKey(context)),
+        }
+    }
+
+    pub(crate) fn hasher(&self) -> blake3::Hasher {
+        match self {
+            Self::Plain => blake3::Hasher::new(),
+            Self::Keyed(key) => blake3::Hasher::new_keyed(key),
+            Self::DeriveKey(context) => blake3::Hasher::new_derive_key(context),
+        }
+    }
+}
+
+// ─── Argon2id ───────────────────────────────────────────────────────────────
+
+/// Memory cap for the Argon2id tool, in KiB: 2 GiB, the first recommended
+/// option of RFC 9106 section 4 (t=1, p=4, m=2 GiB). Higher values are legal
+/// Argon2 but would let one text field allocate the machine's RAM.
+const ARGON2_MEMORY_KIB_MAX: u32 = 2 * 1024 * 1024;
+/// Pass cap. The cost is linear in `t * m`, and nothing interoperable needs
+/// more than a handful of passes.
+const ARGON2_ITERATIONS_MAX: u32 = 64;
+/// Lane cap. RFC 9106 allows up to 2^24-1, but the lanes change the output,
+/// not the security, beyond the core count of any real machine.
+const ARGON2_PARALLELISM_MAX: u32 = 255;
+/// Tag length bounds in bytes: RFC 9106 minimum 4, and the same ceiling as
+/// the BLAKE3 XOF output so the result stays readable.
+const ARGON2_OUTPUT_LEN_MIN: usize = 4;
+const ARGON2_OUTPUT_LEN_MAX: usize = 1024;
+
+/// Argon2id result: the raw tag in hex, and the PHC string that password
+/// verifiers (`argon2` CLI, libsodium, argon2-cffi) accept.
+#[derive(serde::Serialize, Debug, PartialEq, Eq)]
+pub struct Argon2idOutput {
+    pub hex: String,
+    pub phc: String,
+}
+
+/// One derivation at a time: each one allocates `memory_kib`, and the UI can
+/// ask again before the previous run ends.
+static ARGON2_RUNNING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Argon2id (RFC 9106, version 0x13) over a password and a salt.
+///
+/// `password_encoding` and `salt_encoding` take the same values as the Hash
+/// Forge text encodings (`utf-8`, `base64`, `hex`, `binary`). Nothing is
+/// stored or logged: the inputs live only for the duration of the call.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn argon2id_hash(
+    password: String,
+    password_encoding: Option<String>,
+    salt: String,
+    salt_encoding: Option<String>,
+    memory_kib: u32,
+    iterations: u32,
+    parallelism: u32,
+    output_len: usize,
+) -> Result<Argon2idOutput, String> {
+    let password = zeroize::Zeroizing::new(password);
+    tokio::task::spawn_blocking(move || {
+        argon2id_blocking(
+            &password,
+            password_encoding.as_deref().unwrap_or("utf-8"),
+            &salt,
+            salt_encoding.as_deref().unwrap_or("utf-8"),
+            memory_kib,
+            iterations,
+            parallelism,
+            output_len,
+        )
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("Argon2id task failed: {err}")))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn argon2id_blocking(
+    password: &str,
+    password_encoding: &str,
+    salt: &str,
+    salt_encoding: &str,
+    memory_kib: u32,
+    iterations: u32,
+    parallelism: u32,
+    output_len: usize,
+) -> Result<Argon2idOutput, String> {
+    if memory_kib > ARGON2_MEMORY_KIB_MAX {
+        return Err(format!(
+            "Argon2id memory is capped at {ARGON2_MEMORY_KIB_MAX} KiB (2 GiB)"
+        ));
+    }
+    if !(1..=ARGON2_ITERATIONS_MAX).contains(&iterations) {
+        return Err(format!(
+            "Argon2id iterations must be between 1 and {ARGON2_ITERATIONS_MAX}"
+        ));
+    }
+    if !(1..=ARGON2_PARALLELISM_MAX).contains(&parallelism) {
+        return Err(format!(
+            "Argon2id parallelism must be between 1 and {ARGON2_PARALLELISM_MAX}"
+        ));
+    }
+    if !(ARGON2_OUTPUT_LEN_MIN..=ARGON2_OUTPUT_LEN_MAX).contains(&output_len) {
+        return Err(format!(
+            "Argon2id output length must be between {ARGON2_OUTPUT_LEN_MIN} and {ARGON2_OUTPUT_LEN_MAX} bytes"
+        ));
+    }
+    let password = zeroize::Zeroizing::new(decode_text_input(password, password_encoding)?);
+    let salt = decode_text_input(salt, salt_encoding)?;
+    if salt.len() < argon2::MIN_SALT_LEN {
+        return Err(format!(
+            "Argon2id salt must be at least {} bytes (16 recommended), got {}",
+            argon2::MIN_SALT_LEN,
+            salt.len()
+        ));
+    }
+
+    // Params::new owns the remaining rule (m >= 8 * p) and reports it.
+    let params = argon2::Params::new(memory_kib, iterations, parallelism, Some(output_len))
+        .map_err(|e| format!("Argon2id parameters: {e}"))?;
+    let argon2 = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+
+    // Memory the machine cannot give comes back as `Error::OutOfMemory`, not
+    // as an abort: argon2 0.6 allocates the blocks with `alloc_zeroed` and
+    // checks the pointer (`block::Blocks::new`). The 0.5 line in the lock file
+    // (pulled by aerovault) used an infallible `vec!`; this module links 0.6.
+    let _running = ARGON2_RUNNING
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut out = zeroize::Zeroizing::new(vec![0u8; output_len]);
+    argon2
+        .hash_password_into(&password, &salt, &mut out)
+        .map_err(|e| format!("Argon2id: {e}"))?;
+
+    use base64::engine::general_purpose::STANDARD_NO_PAD;
+    Ok(Argon2idOutput {
+        hex: hex::encode(out.as_slice()),
+        phc: format!(
+            "$argon2id$v=19$m={memory_kib},t={iterations},p={parallelism}${}${}",
+            STANDARD_NO_PAD.encode(&salt),
+            STANDARD_NO_PAD.encode(out.as_slice())
+        ),
+    })
+}
+
 /// Hash in-memory bytes (shared helper).
-fn hash_bytes(data: &[u8], algorithm: &str, output_len: Option<usize>) -> Result<String, String> {
+fn hash_bytes(
+    data: &[u8],
+    algorithm: &str,
+    output_len: Option<usize>,
+    blake3_mode: &Blake3Mode,
+) -> Result<String, String> {
     match algorithm.to_lowercase().as_str() {
         "md5" => {
             let mut h = md5::Md5::new();
@@ -424,7 +652,7 @@ fn hash_bytes(data: &[u8], algorithm: &str, output_len: Option<usize>) -> Result
             Ok(hex::encode(h.finalize()))
         }
         "blake3" => {
-            let mut hasher = blake3::Hasher::new();
+            let mut hasher = blake3_mode.hasher();
             hasher.update(data);
             blake3_finalize_hex(&hasher, output_len)
         }
@@ -1038,7 +1266,14 @@ mod hash_forge_tests {
     fn hash_text_stays_off_the_main_thread() {
         let rt = tokio::runtime::Runtime::new().expect("test runtime");
         let from_command = rt
-            .block_on(hash_text("hello".into(), "blake3".into(), None, None))
+            .block_on(hash_text(
+                "hello".into(),
+                "blake3".into(),
+                None,
+                None,
+                None,
+                None,
+            ))
             .expect("blake3 of a short string");
         assert_eq!(
             from_command,
@@ -1143,6 +1378,206 @@ mod hash_forge_tests {
         assert!(
             hash_text_blocking("x".into(), "sha256".into(), None, Some("rot13".into())).is_err()
         );
+    }
+
+    // Official BLAKE3 test vectors (BLAKE3-team/BLAKE3, test_vectors.json):
+    // the input of length N is the bytes `i % 251` for i in 0..N, the key is
+    // the ASCII string below, and each expected value is the first 64 bytes
+    // of the extended output.
+    const B3_VECTOR_KEY_HEX: &str =
+        "77686174732074686520456c7669736820776f726420666f7220667269656e64";
+    const B3_VECTOR_CONTEXT: &str = "BLAKE3 2019-12-27 16:29:52 test vectors context";
+    const B3_KEYED_EMPTY_32: &str =
+        "92b2b75604ed3c761f9d6f62392c8a9227ad0ea3f09573e783f1498a4ed60d26";
+    const B3_DERIVE_EMPTY_32: &str =
+        "2cc39783c223154fea8dfb7c1b1660f2ac2dcbd1c1de8277b0b0dd39b7e50d7d";
+    const B3_KEYED_LEN3_64: &str = "39e67b76b5a007d4921969779fe666da67b5213b096084ab674742f0d5ec62b9b9142d0fab08e1b161efdbb28d18afc64d8f72160c958e53a950cdecf91c1a1b";
+    const B3_DERIVE_LEN3_64: &str = "440aba35cb006b61fc17c0529255de438efc06a8c9ebf3f2ddac3b5a86705797f27e2e914574f4d87ec04c379e12789eccbfbc15892626042707802dbe4e97c3";
+
+    fn b3(
+        text: &str,
+        encoding: &str,
+        output_len: Option<usize>,
+        key: Option<&str>,
+        context: Option<&str>,
+    ) -> Result<String, String> {
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+        rt.block_on(hash_text(
+            text.into(),
+            "blake3".into(),
+            output_len,
+            Some(encoding.into()),
+            key.map(str::to_owned),
+            context.map(str::to_owned),
+        ))
+    }
+
+    #[test]
+    fn blake3_keyed_matches_official_vectors() {
+        assert_eq!(
+            b3("", "hex", None, Some(B3_VECTOR_KEY_HEX), None).unwrap(),
+            B3_KEYED_EMPTY_32
+        );
+        assert_eq!(
+            b3("000102", "hex", Some(64), Some(B3_VECTOR_KEY_HEX), None).unwrap(),
+            B3_KEYED_LEN3_64
+        );
+    }
+
+    #[test]
+    fn blake3_derive_key_matches_official_vectors() {
+        assert_eq!(
+            b3("", "hex", None, None, Some(B3_VECTOR_CONTEXT)).unwrap(),
+            B3_DERIVE_EMPTY_32
+        );
+        assert_eq!(
+            b3("000102", "hex", Some(64), None, Some(B3_VECTOR_CONTEXT)).unwrap(),
+            B3_DERIVE_LEN3_64
+        );
+    }
+
+    #[test]
+    fn blake3_modes_differ_from_the_plain_hash() {
+        let plain = b3("", "hex", None, None, None).unwrap();
+        assert_eq!(plain, BLAKE3_EMPTY);
+        assert_ne!(plain, B3_KEYED_EMPTY_32);
+        assert_ne!(plain, B3_DERIVE_EMPTY_32);
+    }
+
+    #[test]
+    fn blake3_key_must_be_32_bytes_of_hex() {
+        let short = &B3_VECTOR_KEY_HEX[..62];
+        let err = b3("x", "utf-8", None, Some(short), None).unwrap_err();
+        assert!(err.contains("exactly 32 bytes"), "{err}");
+        let err = b3("x", "utf-8", None, Some("zz"), None).unwrap_err();
+        assert!(err.contains("hex expected"), "{err}");
+        // Whitespace inside the key is tolerated, as in the hex text input.
+        let spaced = format!("{} {}", &B3_VECTOR_KEY_HEX[..32], &B3_VECTOR_KEY_HEX[32..]);
+        assert_eq!(
+            b3("", "hex", None, Some(&spaced), None).unwrap(),
+            B3_KEYED_EMPTY_32
+        );
+    }
+
+    #[test]
+    fn blake3_mode_is_refused_when_ambiguous_or_not_blake3() {
+        let err = b3("x", "utf-8", None, Some(B3_VECTOR_KEY_HEX), Some("ctx")).unwrap_err();
+        assert!(err.contains("cannot be combined"), "{err}");
+
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+        for (key, context) in [(Some(B3_VECTOR_KEY_HEX), None), (None, Some("ctx"))] {
+            let err = rt
+                .block_on(hash_text(
+                    "x".into(),
+                    "sha256".into(),
+                    None,
+                    None,
+                    key.map(str::to_owned),
+                    context.map(str::to_owned),
+                ))
+                .unwrap_err();
+            assert!(err.contains("BLAKE3 only"), "{err}");
+        }
+    }
+
+    /// The file path streams through its own hasher: it must honour the mode
+    /// exactly like the text path, or a file MAC silently becomes a plain hash.
+    #[test]
+    fn hash_file_honours_the_blake3_mode() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("vector.bin");
+        std::fs::write(&path, [0u8, 1, 2]).unwrap();
+        let path = path.to_string_lossy().into_owned();
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+
+        let keyed = rt
+            .block_on(hash_file(
+                path.clone(),
+                "blake3".into(),
+                Some(64),
+                Some(B3_VECTOR_KEY_HEX.into()),
+                None,
+            ))
+            .unwrap();
+        assert_eq!(keyed, B3_KEYED_LEN3_64);
+
+        let derived = rt
+            .block_on(hash_file(
+                path,
+                "blake3".into(),
+                Some(64),
+                None,
+                Some(B3_VECTOR_CONTEXT.into()),
+            ))
+            .unwrap();
+        assert_eq!(derived, B3_DERIVE_LEN3_64);
+    }
+
+    /// Reference vector from the phc-winner-argon2 test suite (also in the
+    /// RustCrypto `argon2` crate's `tests/phc_strings.rs`).
+    #[test]
+    fn argon2id_matches_the_reference_phc_vector() {
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+        let out = rt
+            .block_on(argon2id_hash(
+                "password".into(),
+                None,
+                "somesalt".into(),
+                None,
+                65536,
+                2,
+                1,
+                32,
+            ))
+            .unwrap();
+        assert_eq!(
+            out.phc,
+            "$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQ$CTFhFdXPJO1aFaMaO6Mm5c8y7cJHAph8ArZWb2GRPPc"
+        );
+        assert_eq!(
+            out.hex,
+            "09316115d5cf24ed5a15a31a3ba326e5cf32edc24702987c02b6566f61913cf7"
+        );
+        // The salt encoding is honoured: hex("somesalt") is the same salt.
+        let from_hex = rt
+            .block_on(argon2id_hash(
+                "password".into(),
+                None,
+                "736f6d6573616c74".into(),
+                Some("hex".into()),
+                65536,
+                2,
+                1,
+                32,
+            ))
+            .unwrap();
+        assert_eq!(from_hex, out);
+    }
+
+    #[test]
+    fn argon2id_rejects_out_of_range_parameters() {
+        let run = |salt: &str, m: u32, t: u32, p: u32, len: usize| {
+            argon2id_blocking("pw", "utf-8", salt, "utf-8", m, t, p, len)
+        };
+        let salt = "0123456789abcdef";
+        assert!(run(salt, ARGON2_MEMORY_KIB_MAX + 1, 1, 1, 32)
+            .unwrap_err()
+            .contains("capped"));
+        assert!(run(salt, 64, 0, 1, 32).unwrap_err().contains("iterations"));
+        assert!(run(salt, 64, ARGON2_ITERATIONS_MAX + 1, 1, 32)
+            .unwrap_err()
+            .contains("iterations"));
+        assert!(run(salt, 64, 1, 0, 32).unwrap_err().contains("parallelism"));
+        assert!(run(salt, 64, 1, 1, 3)
+            .unwrap_err()
+            .contains("output length"));
+        assert!(run(salt, 64, 1, 1, 1025)
+            .unwrap_err()
+            .contains("output length"));
+        assert!(run("short", 64, 1, 1, 32).unwrap_err().contains("salt"));
+        // m below 8 * p is an Argon2 rule the crate enforces.
+        assert!(run(salt, 16, 1, 4, 32).unwrap_err().contains("parameters"));
+        assert!(run(salt, 64, 1, 1, 32).is_ok());
     }
 
     #[test]

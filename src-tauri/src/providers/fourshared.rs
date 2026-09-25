@@ -460,7 +460,7 @@ impl FourSharedProvider {
                 info!(
                     "resolve_folder_id children failed ({}): {}",
                     status,
-                    &body[..body.len().min(200)]
+                    &body[..body.floor_char_boundary(200)]
                 );
                 return Err(ProviderError::NotFound(path.to_string()));
             }
@@ -509,7 +509,7 @@ impl FourSharedProvider {
             info!(
                 "resolve_file_id files failed ({}): {}",
                 status,
-                &body[..body.len().min(200)]
+                &body[..body.floor_char_boundary(200)]
             );
             return Err(ProviderError::NotFound(path.to_string()));
         }
@@ -704,7 +704,7 @@ impl FourSharedProvider {
                             "4shared: skipping folder entry {}: {}: raw: {}",
                             i,
                             e,
-                            &raw[..raw.len().min(200)]
+                            &raw[..raw.floor_char_boundary(200)]
                         );
                     }
                 }
@@ -714,7 +714,7 @@ impl FourSharedProvider {
 
         debug!(
             "4shared: could not parse folder list body: {}",
-            &body[..body.len().min(300)]
+            &body[..body.floor_char_boundary(300)]
         );
         Vec::new()
     }
@@ -741,7 +741,7 @@ impl FourSharedProvider {
                             "4shared: skipping file entry {}: {}: raw: {}",
                             i,
                             e,
-                            &raw[..raw.len().min(200)]
+                            &raw[..raw.floor_char_boundary(200)]
                         );
                     }
                 }
@@ -751,7 +751,7 @@ impl FourSharedProvider {
 
         debug!(
             "4shared: could not parse file list body: {}",
-            &body[..body.len().min(300)]
+            &body[..body.floor_char_boundary(300)]
         );
         Vec::new()
     }
@@ -800,7 +800,7 @@ impl StorageProvider for FourSharedProvider {
             ProviderError::ParseError(format!(
                 "Failed to parse user info: {}. Body: {}",
                 e,
-                &body_text[..body_text.len().min(200)]
+                &body_text[..body_text.floor_char_boundary(200)]
             ))
         })?;
 
@@ -860,7 +860,7 @@ impl StorageProvider for FourSharedProvider {
                 tracing::debug!(
                     "[4shared] 4shared list children FAILED ({}): {}",
                     status,
-                    &body[..body.len().min(300)]
+                    &body[..body.floor_char_boundary(300)]
                 );
                 break;
             }
@@ -872,7 +872,7 @@ impl StorageProvider for FourSharedProvider {
             tracing::debug!(
                 "[4shared] 4shared folders response ({}B): {}",
                 body.len(),
-                &body[..body.len().min(500)]
+                &body[..body.floor_char_boundary(500)]
             );
             let folders = Self::parse_folder_list(&body);
             let page_count = folders.len() as u32;
@@ -938,7 +938,7 @@ impl StorageProvider for FourSharedProvider {
                 tracing::debug!(
                     "[4shared] 4shared list files FAILED ({}): {}",
                     fstatus,
-                    &body[..body.len().min(300)]
+                    &body[..body.floor_char_boundary(300)]
                 );
                 break;
             }
@@ -950,7 +950,7 @@ impl StorageProvider for FourSharedProvider {
             tracing::debug!(
                 "[4shared] 4shared files response ({}B): {}",
                 body.len(),
-                &body[..body.len().min(500)]
+                &body[..body.floor_char_boundary(500)]
             );
             let files = Self::parse_file_list(&body);
             let page_count = files.len() as u32;
@@ -1319,7 +1319,7 @@ impl StorageProvider for FourSharedProvider {
                     return Err(ProviderError::Other(format!(
                         "Move file failed ({}): {}",
                         status,
-                        &body[..body.len().min(300)]
+                        &body[..body.floor_char_boundary(300)]
                     )));
                 }
                 info!(
@@ -1380,7 +1380,7 @@ impl StorageProvider for FourSharedProvider {
                     return Err(ProviderError::Other(format!(
                         "Move folder failed ({}): {}",
                         status,
-                        &body[..body.len().min(300)]
+                        &body[..body.floor_char_boundary(300)]
                     )));
                 }
                 info!("4shared moved folder {} to {}", old_normalized, new_parent);
@@ -1568,7 +1568,7 @@ impl StorageProvider for FourSharedProvider {
             return Err(ProviderError::Other(format!(
                 "Search failed ({}): {}",
                 status,
-                &body[..body.len().min(300)]
+                &body[..body.floor_char_boundary(300)]
             )));
         }
 

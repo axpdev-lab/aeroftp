@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 853
+    "tauri_commands": 854
   },
   "mcp": {
     "count": 77,
@@ -951,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 480,
+    "name_matched_count": 481,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -2109,6 +2109,7 @@
       "stage_hash_drop",
       "discard_hash_drop",
       "compare_hashes",
+      "argon2id_hash",
       "crypto_encrypt_text",
       "crypto_decrypt_text",
       "generate_password",
@@ -2187,6 +2188,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 853
+    "count": 854
   }
 }

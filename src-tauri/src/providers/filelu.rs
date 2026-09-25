@@ -492,7 +492,7 @@ impl FileLuProvider {
             ProviderError::ParseError(format!(
                 "json: {}. Body: {}",
                 e,
-                &text[..text.len().min(200)]
+                &text[..text.floor_char_boundary(200)]
             ))
         })?;
 
@@ -554,7 +554,7 @@ impl FileLuProvider {
             ProviderError::ParseError(format!(
                 "json: {}. Body: {}",
                 e,
-                &text[..text.len().min(200)]
+                &text[..text.floor_char_boundary(200)]
             ))
         })?;
 
@@ -1082,7 +1082,7 @@ impl FileLuProvider {
             ProviderError::ParseError(format!(
                 "clone_file: {}. Body: {}",
                 e,
-                &body[..body.len().min(200)]
+                &body[..body.floor_char_boundary(200)]
             ))
         })?;
 
@@ -1535,7 +1535,7 @@ impl StorageProvider for FileLuProvider {
             ProviderError::ParseError(format!(
                 "Upload server JSON error: {}. Body: {}",
                 e,
-                &text[..text.len().min(200)]
+                &text[..text.floor_char_boundary(200)]
             ))
         })?;
         if let Some(s) = server_info.status {
@@ -1629,7 +1629,7 @@ impl StorageProvider for FileLuProvider {
                 ProviderError::ParseError(format!(
                     "Upload result JSON error: {}. Body: {}",
                     e,
-                    &upload_body[..upload_body.len().min(200)]
+                    &upload_body[..upload_body.floor_char_boundary(200)]
                 ))
             })?;
         let uploaded_file_code = upload_results

@@ -3896,7 +3896,7 @@ pub fn mask_credential(value: &str) -> String {
         if at_idx > 0 {
             let local = &trimmed[..at_idx];
             let domain = &trimmed[at_idx..];
-            let visible = std::cmp::min(3, local.len());
+            let visible = local.floor_char_boundary(3);
             return format!("{}***{}", &local[..visible], domain);
         }
     }
@@ -3907,7 +3907,7 @@ pub fn mask_credential(value: &str) -> String {
     }
 
     // Generic: first 3 + ***
-    format!("{}***", &trimmed[..3])
+    format!("{}***", &trimmed[..trimmed.floor_char_boundary(3)])
 }
 
 impl Default for AppState {
@@ -3919,6 +3919,22 @@ impl Default for AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A byte cut inside a multibyte character panics: masking must cut on a
+    /// character boundary (an email or a name is not always ASCII).
+    #[test]
+    fn mask_credential_never_splits_a_character() {
+        for value in [
+            "aaé@example.com",
+            "ééé@x.it",
+            "abécdef",
+            "日本語テスト",
+            "a😀b@x",
+        ] {
+            let masked = mask_credential(value);
+            assert!(masked.contains("***"), "{value} -> {masked}");
+        }
+    }
     use crate::cli_tui::session::TuiSessionPhase;
 
     fn sample_context() -> TuiContext {

@@ -716,7 +716,7 @@ fn create_provider_from_vault(
     let mut resolved_host = host.to_string();
     if provider_type == ProviderType::S3 {
         let provider_id = matched.get("providerId").and_then(|v| v.as_str());
-        if let Some(resolved_endpoint) = apply_s3_profile_defaults(&mut extra, provider_id) {
+        if let Some(resolved_endpoint) = apply_s3_profile_defaults(&mut extra, provider_id, host) {
             if resolved_host.trim().is_empty() {
                 resolved_host = resolved_endpoint;
             }

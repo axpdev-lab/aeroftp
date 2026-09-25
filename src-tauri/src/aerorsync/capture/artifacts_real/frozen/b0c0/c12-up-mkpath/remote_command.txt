@@ -1,0 +1,1 @@
+rsync --server -logDtpre.iLsfxCIvu --mkpath . /workspace/b0c0/up/c12-up-mkpath/new/deep/

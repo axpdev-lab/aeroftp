@@ -955,7 +955,7 @@ impl InternxtProvider {
             let body = access_resp.text().await.unwrap_or_default();
             internxt_log(&format!(
                 "[WEB AUTH FAIL] Body: {}",
-                &body[..body.len().min(200)]
+                &body[..body.floor_char_boundary(200)]
             ));
             return Err(ProviderError::AuthenticationFailed(format!(
                 "Authentication failed ({}): {}. Both CLI and web auth endpoints failed.",
@@ -1097,7 +1097,7 @@ impl StorageProvider for InternxtProvider {
 
         if !login_status.is_success() {
             let body = login_resp.text().await.unwrap_or_default();
-            tracing::debug!(target: "internxt", "[STEP 1 FAIL] Body: {}", &body[..body.len().min(200)]);
+            tracing::debug!(target: "internxt", "[STEP 1 FAIL] Body: {}", &body[..body.floor_char_boundary(200)]);
             return Err(ProviderError::AuthenticationFailed(format!(
                 "Login failed ({}): {}",
                 login_status,
@@ -1154,7 +1154,7 @@ impl StorageProvider for InternxtProvider {
 
         if !access_status.is_success() {
             let body = access_resp.text().await.unwrap_or_default();
-            tracing::debug!(target: "internxt", "[STEP 3 FAIL] Body: {}", &body[..body.len().min(200)]);
+            tracing::debug!(target: "internxt", "[STEP 3 FAIL] Body: {}", &body[..body.floor_char_boundary(200)]);
 
             // Check if this is the 402 free-tier block
             if access_status.as_u16() == 402 {
@@ -1303,7 +1303,7 @@ impl StorageProvider for InternxtProvider {
 
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                tracing::debug!(target: "internxt", "[LIST FOLDERS] Error body: {}", &body[..body.len().min(200)]);
+                tracing::debug!(target: "internxt", "[LIST FOLDERS] Error body: {}", &body[..body.floor_char_boundary(200)]);
                 return Err(ProviderError::ServerError(format!(
                     "List folders failed ({}): {}",
                     status,
@@ -1314,9 +1314,9 @@ impl StorageProvider for InternxtProvider {
             let raw_text = resp.text().await.map_err(|e| {
                 ProviderError::ServerError(format!("Failed to read folders response: {}", e))
             })?;
-            tracing::debug!(target: "internxt", "[LIST FOLDERS] Response ({} bytes): {}", raw_text.len(), &raw_text[..raw_text.len().min(200)]);
+            tracing::debug!(target: "internxt", "[LIST FOLDERS] Response ({} bytes): {}", raw_text.len(), &raw_text[..raw_text.floor_char_boundary(200)]);
             let wrapper: FoldersWrapper = serde_json::from_str(&raw_text).map_err(|e| {
-                tracing::debug!(target: "internxt", "[LIST FOLDERS] Parse error: {} | Response: {}", e, &raw_text[..raw_text.len().min(200)]);
+                tracing::debug!(target: "internxt", "[LIST FOLDERS] Parse error: {} | Response: {}", e, &raw_text[..raw_text.floor_char_boundary(200)]);
                 ProviderError::ServerError(format!("Failed to parse folders: {}", e))
             })?;
 
@@ -1389,7 +1389,7 @@ impl StorageProvider for InternxtProvider {
 
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                tracing::debug!(target: "internxt", "[LIST FILES] Error body: {}", &body[..body.len().min(200)]);
+                tracing::debug!(target: "internxt", "[LIST FILES] Error body: {}", &body[..body.floor_char_boundary(200)]);
                 return Err(ProviderError::ServerError(format!(
                     "List files failed ({}): {}",
                     status,
@@ -1400,9 +1400,9 @@ impl StorageProvider for InternxtProvider {
             let raw_text = resp.text().await.map_err(|e| {
                 ProviderError::ServerError(format!("Failed to read files response: {}", e))
             })?;
-            tracing::debug!(target: "internxt", "[LIST FILES] Response ({} bytes): {}", raw_text.len(), &raw_text[..raw_text.len().min(200)]);
+            tracing::debug!(target: "internxt", "[LIST FILES] Response ({} bytes): {}", raw_text.len(), &raw_text[..raw_text.floor_char_boundary(200)]);
             let wrapper: FilesWrapper = serde_json::from_str(&raw_text).map_err(|e| {
-                tracing::debug!(target: "internxt", "[LIST FILES] Parse error: {} | Response: {}", e, &raw_text[..raw_text.len().min(200)]);
+                tracing::debug!(target: "internxt", "[LIST FILES] Parse error: {} | Response: {}", e, &raw_text[..raw_text.floor_char_boundary(200)]);
                 ProviderError::ServerError(format!("Failed to parse files: {}", e))
             })?;
 
@@ -1744,7 +1744,7 @@ impl StorageProvider for InternxtProvider {
                 last_error = format!(
                     "Server error ({}): {}",
                     status,
-                    &body[..body.len().min(200)]
+                    &body[..body.floor_char_boundary(200)]
                 );
                 internxt_log(&format!(
                     "[UPLOAD] Attempt {} server error, retrying: {}",
@@ -1766,7 +1766,7 @@ impl StorageProvider for InternxtProvider {
             let raw = resp.text().await.map_err(|e| {
                 ProviderError::ServerError(format!("Failed to read start upload response: {}", e))
             })?;
-            tracing::debug!(target: "internxt", "[UPLOAD] Start response ({} bytes): {}", raw.len(), &raw[..raw.len().min(200)]);
+            tracing::debug!(target: "internxt", "[UPLOAD] Start response ({} bytes): {}", raw.len(), &raw[..raw.floor_char_boundary(200)]);
 
             match serde_json::from_str::<StartUploadResp>(&raw) {
                 Ok(data) => {
@@ -1777,7 +1777,7 @@ impl StorageProvider for InternxtProvider {
                     last_error = format!(
                         "Parse error: {} | Response: {}",
                         e,
-                        &raw[..raw.len().min(200)]
+                        &raw[..raw.floor_char_boundary(200)]
                     );
                     internxt_log(&format!("[UPLOAD] {}", last_error));
                     continue;

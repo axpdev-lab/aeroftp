@@ -1,0 +1,1 @@
+rsync --server -ltpre.iLsfxCIvu . /workspace/b0c0/up/p7-up-product/

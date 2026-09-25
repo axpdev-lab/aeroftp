@@ -349,7 +349,7 @@ pub async fn execute_plugin_tool(
             "Plugin '{}' failed (exit {}): {}",
             tool_name,
             output.status.code().unwrap_or(-1),
-            &stderr[..stderr.len().min(500)]
+            &stderr[..stderr.floor_char_boundary(500)]
         ));
     }
 
