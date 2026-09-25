@@ -1906,6 +1906,17 @@ impl StorageProvider for FileLuProvider {
         let entry = self.resolve_path_entry(&norm_from).await?;
         let old_name = norm_from.rsplit('/').next().unwrap_or("").to_string();
 
+        // The trait promises no overwrite, and FileLu puts a second item with
+        // the same name next to the first (found live on 2026-09-25: a file
+        // moved onto an existing name left two `a.txt` in the folder).
+        if norm_to != norm_from {
+            match self.resolve_path_entry(&norm_to).await {
+                Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
+                Err(ProviderError::NotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+
         // v2: path-based rename and move
         if from_parent == to_parent {
             // Pure rename: same directory
@@ -2268,15 +2279,23 @@ mod tests {
         use std::sync::{Arc, Mutex};
         let moves: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&moves);
-        let app = axum::Router::new().route(
-            "/api/folder/move",
-            axum::routing::get(move |uri: axum::http::Uri| {
-                seen.lock()
-                    .unwrap()
-                    .push(uri.query().unwrap_or("").to_string());
-                async move { move_body }
-            }),
-        );
+        let app = axum::Router::new()
+            .route(
+                "/api/folder/move",
+                axum::routing::get(move |uri: axum::http::Uri| {
+                    seen.lock()
+                        .unwrap()
+                        .push(uri.query().unwrap_or("").to_string());
+                    async move { move_body }
+                }),
+            )
+            .route(
+                // Every folder the test lists is empty.
+                "/apiv2/folder/list",
+                axum::routing::get(|| async {
+                    r#"{"status":200,"msg":"OK","result":{"files":[],"folders":[]}}"#
+                }),
+            );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.ok() });
@@ -2311,6 +2330,29 @@ mod tests {
         assert_eq!(moves.len(), 1);
         assert!(moves[0].contains("fld_id=11"), "{moves:?}");
         assert!(moves[0].contains("dest_fld_id=22"), "{moves:?}");
+    }
+
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination_before_moving() {
+        let (mut provider, moves) = provider_for_folder_move(r#"{"status":200,"msg":"OK"}"#).await;
+        provider.path_cache.insert(
+            "/dst/src".to_string(),
+            CacheEntry {
+                is_dir: true,
+                fld_id: 33,
+                fld_token: None,
+                file_code: String::new(),
+                size: 0,
+                modified: None,
+                hash: None,
+            },
+        );
+        let outcome = provider.rename("/src", "/dst/src").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(moves.lock().unwrap().is_empty());
     }
 
     /// FileLu answers HTTP 200 and puts the refusal in the body: reading

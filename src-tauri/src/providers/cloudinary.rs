@@ -571,6 +571,73 @@ impl CloudinaryProvider {
         }
     }
 
+    /// Move and/or rename a file on a dynamic-folder account. There the
+    /// folder is the asset's `asset_folder` and the name it shows is its
+    /// `display_name`, both independent of the public id: renaming the
+    /// public id, which is what a fixed-folder account needs, answered Ok and
+    /// left the asset in its folder under its old name. `PUT
+    /// /resources/{asset_id}` sets both (Admin API, "update details of an
+    /// existing resource by asset ID"); the public id, and with it every
+    /// delivery URL, stays as it was.
+    async fn update_asset_place(
+        &self,
+        entry: &RemoteEntry,
+        source: &str,
+        target: &str,
+    ) -> Result<(), ProviderError> {
+        let asset_id = entry.metadata.get("asset_id").ok_or_else(|| {
+            ProviderError::Other(format!(
+                "Cannot move {source}: Cloudinary listed it without an asset id"
+            ))
+        })?;
+        let mut form: Vec<(&str, String)> = Vec::new();
+        let to_folder = parent_segments(target);
+        if parent_segments(source) != to_folder {
+            form.push(("asset_folder", to_folder));
+        }
+        let to_name = basename(target);
+        if basename(source) != to_name {
+            // The listing appends `.{format}` to a display name without it.
+            let display_name = match entry.metadata.get("format") {
+                Some(format) if !format.is_empty() => to_name
+                    .strip_suffix(&format!(".{format}"))
+                    .unwrap_or(to_name),
+                _ => to_name,
+            };
+            form.push(("display_name", display_name.to_string()));
+        }
+        if form.is_empty() {
+            return Ok(());
+        }
+        let url = format!(
+            "{}/resources/{}",
+            self.api_base(),
+            urlencoding::encode(asset_id)
+        );
+        let body = {
+            let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+            for (key, value) in &form {
+                serializer.append_pair(key, value);
+            }
+            serializer.finish()
+        };
+        let resp = self
+            .auth(self.client.put(&url))
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(self.parse_error(resp).await)
+        }
+    }
+
     fn primary_resource_type(&self, item: &CloudinaryResource) -> String {
         if !item.resource_type.is_empty() {
             item.resource_type.clone()
@@ -1124,6 +1191,10 @@ impl StorageProvider for CloudinaryProvider {
         // before either branch runs.
         if source != target && self.exists(&target).await? {
             return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+        let dynamic_folders = self.dynamic_folder_mode.lock().ok().and_then(|m| *m) == Some(true);
+        if !entry.is_dir && dynamic_folders {
+            return self.update_asset_place(&entry, &source, &target).await;
         }
         if entry.is_dir {
             // PUT /folders/<from> with form to_folder=<to>
@@ -1707,46 +1778,106 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 mod tests {
     use super::*;
 
-    /// A Cloudinary double for renaming `/a.jpg` to `/b.jpg` at the root:
-    /// no subfolders, the image `a` and, when `occupied`, the image `b`.
-    /// Returns the provider and the query strings of the rename calls.
+    /// What a Cloudinary double received: rename queries and
+    /// `PUT /resources/{asset_id}` bodies.
+    type CloudinaryCalls = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
+
+    /// A Cloudinary double holding the image `a` (asset `AID`) at the root
+    /// and, when `occupied`, the image `b` too. On a fixed-folder account
+    /// (`dynamic` false) `by_asset_folder` answers 400 as a legacy account
+    /// does and the provider lists by prefix; on a dynamic-folder account it
+    /// lists by `asset_folder`. Returns the provider, the rename queries and
+    /// the asset updates.
     async fn provider_for_file_rename(
         occupied: bool,
-    ) -> (
-        CloudinaryProvider,
-        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
-    ) {
-        use std::sync::{Arc, Mutex};
-        let renames: Arc<Mutex<Vec<String>>> = Arc::default();
-        let seen = Arc::clone(&renames);
+        dynamic: bool,
+    ) -> (CloudinaryProvider, CloudinaryCalls, CloudinaryCalls) {
+        use std::sync::Arc;
+        let renames: CloudinaryCalls = Arc::default();
+        let updates: CloudinaryCalls = Arc::default();
+        let (seen_renames, seen_updates) = (Arc::clone(&renames), Arc::clone(&updates));
         let image = |id: &str| {
             serde_json::json!({
-                "public_id": id, "display_name": id, "format": "jpg", "bytes": 3,
-                "resource_type": "image", "type": "upload", "asset_folder": "",
+                "asset_id": format!("AID_{id}"), "public_id": id, "display_name": id,
+                "format": "jpg", "bytes": 3, "resource_type": "image", "type": "upload",
+                "asset_folder": "",
             })
         };
-        let mut resources = vec![image("a")];
+        let mut at_root = vec![image("a")];
         if occupied {
-            resources.push(image("b"));
+            at_root.push(image("b"));
         }
-        let listing = serde_json::json!({ "resources": resources }).to_string();
+        let root_listing = serde_json::json!({ "resources": at_root }).to_string();
         let app = axum::Router::new()
             .route(
                 "/image/rename",
                 axum::routing::post(move |uri: axum::http::Uri| {
-                    seen.lock()
+                    seen_renames
+                        .lock()
                         .unwrap()
                         .push(uri.query().unwrap_or("").to_string());
                     async { r#"{"public_id":"b"}"# }
                 }),
             )
             .route(
+                // GET is the prefix listing of a fixed-folder account
+                // (`/resources/image`), PUT the update of one asset.
+                "/resources/{asset_id}",
+                axum::routing::put(move |body: String| {
+                    seen_updates.lock().unwrap().push(body);
+                    async { r#"{"asset_id":"AID_a"}"# }
+                })
+                .get({
+                    let listing = root_listing.clone();
+                    move || {
+                        let listing = listing.clone();
+                        async move { listing }
+                    }
+                }),
+            )
+            .route(
                 "/folders",
                 axum::routing::get(|| async { r#"{"folders":[]}"# }),
             )
-            .fallback(move || {
-                let listing = listing.clone();
-                async move { listing }
+            .route(
+                "/folders/{*path}",
+                axum::routing::get(|| async { r#"{"folders":[]}"# }),
+            )
+            .route(
+                "/resources/by_asset_folder",
+                axum::routing::get(move |uri: axum::http::Uri| {
+                    let listing = root_listing.clone();
+                    async move {
+                        if !dynamic {
+                            return (
+                                axum::http::StatusCode::BAD_REQUEST,
+                                r#"{"error":{"message":"Unknown parameter asset_folder"}}"#
+                                    .to_string(),
+                            );
+                        }
+                        let at_root = uri.query().unwrap_or("").contains("asset_folder=&")
+                            || uri.query().unwrap_or("").ends_with("asset_folder=");
+                        let body = if at_root {
+                            listing
+                        } else {
+                            r#"{"resources":[]}"#.to_string()
+                        };
+                        (axum::http::StatusCode::OK, body)
+                    }
+                }),
+            )
+            .fallback({
+                let listing = serde_json::json!({ "resources": [image("a")] }).to_string();
+                let occupied_listing =
+                    serde_json::json!({ "resources": [image("a"), image("b")] }).to_string();
+                move || {
+                    let body = if occupied {
+                        occupied_listing.clone()
+                    } else {
+                        listing.clone()
+                    };
+                    async move { body }
+                }
             });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -1759,12 +1890,12 @@ mod tests {
         });
         provider.connected = true;
         provider.api_base_override = Some(format!("http://{addr}"));
-        (provider, renames)
+        (provider, renames, updates)
     }
 
     #[tokio::test]
     async fn file_rename_never_asks_for_overwrite() {
-        let (mut provider, renames) = provider_for_file_rename(false).await;
+        let (mut provider, renames, _) = provider_for_file_rename(false, false).await;
         provider.rename("/a.jpg", "/b.jpg").await.expect("rename");
         let renames = renames.lock().unwrap().clone();
         assert_eq!(renames.len(), 1, "{renames:?}");
@@ -1774,13 +1905,28 @@ mod tests {
 
     #[tokio::test]
     async fn file_rename_refuses_an_existing_destination() {
-        let (mut provider, renames) = provider_for_file_rename(true).await;
+        let (mut provider, renames, _) = provider_for_file_rename(true, false).await;
         let outcome = provider.rename("/a.jpg", "/b.jpg").await;
         assert!(
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
         assert!(renames.lock().unwrap().is_empty());
+    }
+
+    /// On a dynamic-folder account the folder is `asset_folder` and the
+    /// name is `display_name`: renaming the public id answered Ok and moved
+    /// nothing (found live, 2026-09-25).
+    #[tokio::test]
+    async fn dynamic_folder_move_updates_the_asset_folder_and_display_name() {
+        let (mut provider, renames, updates) = provider_for_file_rename(false, true).await;
+        provider.rename("/a.jpg", "/sub/b.jpg").await.expect("move");
+        assert!(
+            renames.lock().unwrap().is_empty(),
+            "the public id must not change"
+        );
+        let updates = updates.lock().unwrap().clone();
+        assert_eq!(updates, ["asset_folder=sub&display_name=b"], "{updates:?}");
     }
 
     #[tokio::test]
