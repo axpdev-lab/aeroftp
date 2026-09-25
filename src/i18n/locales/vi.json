@@ -564,6 +564,7 @@
                 "path_not_found": "Không tìm thấy đường dẫn",
                 "permission_denied": "Quyền truy cập bị từ chối",
                 "quota_exceeded": "Vượt quá hạn mức lưu trữ",
+                "file_too_large": "Tệp quá lớn đối với đích",
                 "rate_limit": "Vượt quá giới hạn yêu cầu",
                 "timeout": "Hết thời gian kết nối",
                 "file_locked": "Tệp bị khóa",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Không tìm thấy",
                 "permission_denied": "Từ chối quyền truy cập",
                 "quota_exceeded": "Vượt quá hạn mức",
+                "file_too_large": "Tệp quá lớn",
                 "rate_limit": "Giới hạn tốc độ",
                 "timeout": "Timeout",
                 "file_locked": "Tệp bị khóa",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Mirror từ phải sang trái",
             "directionLeftRight": "Trái sang Phải",
             "directionRightLeft": "Phải sang Trái",
+            "directionLocalToRemote": "Cục bộ → Từ xa",
+            "directionRemoteToLocal": "Từ xa → Cục bộ",
+            "directionBothWays": "Cả hai chiều",
+            "modeHeader": "Chế độ",
+            "preset": {
+                "mirror": {
+                    "name": "Nhân bản",
+                    "tagline": "Làm cho đích giống hệt nguồn. Xóa tệp thừa và ghi đè các bản sao mới hơn."
+                },
+                "backup": {
+                    "name": "Sao lưu",
+                    "tagline": "Sao chép tệp còn thiếu và mới hơn. Không bao giờ xóa và không bao giờ ghi đè bản sao mới hơn ở đích."
+                },
+                "update": {
+                    "name": "Cập nhật",
+                    "tagline": "Sao chép tệp còn thiếu và mới hơn. Bỏ qua xung đột để bạn tự giải quyết."
+                },
+                "bisync": {
+                    "name": "Đồng bộ hai chiều",
+                    "tagline": "Truyền tệp còn thiếu và mới hơn theo cả hai chiều. Bỏ qua xung đột."
+                }
+            },
             "conflictPolicy": "Chính sách xung đột",
             "ignoredForMirror": "BỎ QUA CHO MIRROR",
             "versionedBackup": "Sao lưu có phiên bản",

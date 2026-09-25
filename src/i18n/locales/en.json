@@ -3851,6 +3851,7 @@
                 "path_not_found": "Not found",
                 "permission_denied": "Permission denied",
                 "quota_exceeded": "Quota exceeded",
+                "file_too_large": "File too large",
                 "rate_limit": "Rate limit",
                 "timeout": "Timeout",
                 "file_locked": "File locked",
@@ -4183,6 +4184,7 @@
                 "path_not_found": "Path not found",
                 "permission_denied": "Permission denied",
                 "quota_exceeded": "Storage quota exceeded",
+                "file_too_large": "File too large for the destination",
                 "rate_limit": "Rate limit exceeded",
                 "timeout": "Connection timeout",
                 "file_locked": "File locked",
@@ -5296,6 +5298,28 @@
             "mirrorRightToLeft": "Mirror right to left",
             "directionLeftRight": "Left to Right",
             "directionRightLeft": "Right to Left",
+            "directionLocalToRemote": "Local → Remote",
+            "directionRemoteToLocal": "Remote → Local",
+            "directionBothWays": "Both ways",
+            "modeHeader": "Mode",
+            "preset": {
+                "mirror": {
+                    "name": "Mirror",
+                    "tagline": "Make the destination identical to the source. Deletes extras and overwrites newer copies."
+                },
+                "backup": {
+                    "name": "Backup",
+                    "tagline": "Copy missing and newer files. Never delete, never overwrite a newer destination copy."
+                },
+                "update": {
+                    "name": "Update",
+                    "tagline": "Copy missing and newer files. Skip conflicts so you can resolve them manually."
+                },
+                "bisync": {
+                    "name": "Two-way sync",
+                    "tagline": "Propagate missing and newer files in both directions. Skip conflicts."
+                }
+            },
             "conflictPolicy": "Conflict policy",
             "ignoredForMirror": "IGNORED FOR MIRROR",
             "versionedBackup": "Versioned backup",

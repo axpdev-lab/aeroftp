@@ -564,6 +564,7 @@
                 "path_not_found": "Ruta non atopada",
                 "permission_denied": "Permiso denegado",
                 "quota_exceeded": "Cota de almacenamento excedida",
+                "file_too_large": "Ficheiro demasiado grande para o destino",
                 "rate_limit": "Límite de solicitudes excedido",
                 "timeout": "Tempo de conexión esgotado",
                 "file_locked": "Ficheiro bloqueado",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Non atopado",
                 "permission_denied": "Permiso denegado",
                 "quota_exceeded": "Cota excedida",
+                "file_too_large": "Ficheiro demasiado grande",
                 "rate_limit": "Límite de velocidade",
                 "timeout": "Timeout",
                 "file_locked": "Ficheiro bloqueado",
@@ -5088,6 +5090,28 @@
             "mirrorRightToLeft": "Reflectir de dereita a esquerda",
             "directionLeftRight": "Esquerda a Dereita",
             "directionRightLeft": "Dereita a Esquerda",
+            "directionLocalToRemote": "Local → Remoto",
+            "directionRemoteToLocal": "Remoto → Local",
+            "directionBothWays": "Nos dous sentidos",
+            "modeHeader": "Modo",
+            "preset": {
+                "mirror": {
+                    "name": "Espello",
+                    "tagline": "Fai que o destino sexa idéntico á orixe. Elimina os ficheiros sobrantes e sobrescribe as copias máis recentes."
+                },
+                "backup": {
+                    "name": "Copia de seguridade",
+                    "tagline": "Copia os ficheiros que faltan e os máis recentes. Nunca elimina nin sobrescribe unha copia máis recente no destino."
+                },
+                "update": {
+                    "name": "Actualizar",
+                    "tagline": "Copia os ficheiros que faltan e os máis recentes. Omite os conflitos para que os resolvas manualmente."
+                },
+                "bisync": {
+                    "name": "Sincronización bidireccional",
+                    "tagline": "Propaga os ficheiros que faltan e os máis recentes nos dous sentidos. Omite os conflitos."
+                }
+            },
             "conflictPolicy": "Política de conflitos",
             "ignoredForMirror": "IGNORADO PARA ESPELLO",
             "versionedBackup": "Copia de seguranza versionada",

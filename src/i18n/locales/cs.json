@@ -564,6 +564,7 @@
                 "path_not_found": "Cesta nenalezena",
                 "permission_denied": "Přístup odepřen",
                 "quota_exceeded": "Kvóta úložiště překročena",
+                "file_too_large": "Soubor je pro cíl příliš velký",
                 "rate_limit": "Limit požadavků překročen",
                 "timeout": "Časový limit připojení vypršel",
                 "file_locked": "Soubor je uzamčen",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Nenalezeno",
                 "permission_denied": "Přístup odepřen",
                 "quota_exceeded": "Kvóta překročena",
+                "file_too_large": "Soubor je příliš velký",
                 "rate_limit": "Limit požadavků",
                 "timeout": "Timeout",
                 "file_locked": "Soubor zamknut",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Zrcadlit zprava doleva",
             "directionLeftRight": "Zleva doprava",
             "directionRightLeft": "Zprava doleva",
+            "directionLocalToRemote": "Místní → Vzdálené",
+            "directionRemoteToLocal": "Vzdálené → Místní",
+            "directionBothWays": "Oběma směry",
+            "modeHeader": "Režim",
+            "preset": {
+                "mirror": {
+                    "name": "Zrcadlo",
+                    "tagline": "Učiní cíl totožným se zdrojem. Smaže nadbytečné soubory a přepíše novější kopie."
+                },
+                "backup": {
+                    "name": "Záloha",
+                    "tagline": "Zkopíruje chybějící a novější soubory. Nikdy nemaže a nikdy nepřepíše novější kopii v cíli."
+                },
+                "update": {
+                    "name": "Aktualizace",
+                    "tagline": "Zkopíruje chybějící a novější soubory. Konflikty přeskočí, abyste je mohli vyřešit ručně."
+                },
+                "bisync": {
+                    "name": "Obousměrná synchronizace",
+                    "tagline": "Přenese chybějící a novější soubory oběma směry. Konflikty přeskočí."
+                }
+            },
             "conflictPolicy": "Zásady konfliktů",
             "ignoredForMirror": "IGNOROVÁNO PRO ZRCADLENÍ",
             "versionedBackup": "Verzovaná záloha",

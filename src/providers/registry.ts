@@ -867,6 +867,65 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://console.wasabisys.com/signup',
     },
     {
+        id: 'ibm-cos',
+        name: 'IBM Cloud Object Storage',
+        description: 'S3-compatible object storage (IBM Cloud free tier)',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Cloud',
+        color: '#0F62FE',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.accessKeyId, helpText: 'IBM Cloud Console → Object Storage → Service credentials (HMAC) → Access Key ID' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'IBM Cloud Console → Object Storage → Service credentials (HMAC) → Secret Access Key' },
+            { ...COMMON_FIELDS.bucket, helpText: 'IBM Cloud Console → Object Storage → Buckets → Bucket name' },
+            {
+                key: 'region',
+                label: 'Region',
+                type: 'select',
+                required: true,
+                options: [
+                    { value: 'eu-de', label: 'EU Germany (Frankfurt)' },
+                    { value: 'eu-gb', label: 'EU United Kingdom (London)' },
+                    { value: 'eu-es', label: 'EU Spain (Madrid)' },
+                    { value: 'us-south', label: 'US South (Dallas)' },
+                    { value: 'us-east', label: 'US East (Washington DC)' },
+                    { value: 'ca-tor', label: 'CA Toronto' },
+                    { value: 'ca-mon', label: 'CA Montreal' },
+                    { value: 'br-sao', label: 'BR São Paulo' },
+                    { value: 'au-syd', label: 'AU Sydney' },
+                    { value: 'jp-tok', label: 'JP Tokyo' },
+                    { value: 'jp-osa', label: 'JP Osaka' },
+                    { value: 'in-che', label: 'IN Chennai' },
+                    { value: 'in-mum', label: 'IN Mumbai' },
+                    { value: 'us', label: 'US Cross-Region' },
+                    { value: 'eu', label: 'EU Cross-Region' },
+                    { value: 'ap', label: 'AP Cross-Region' },
+                    // Single Data Center locations: same s3.{code} host template.
+                    { value: 'ams03', label: 'NL Amsterdam (Single Data Center)' },
+                    { value: 'par01', label: 'FR Paris (Single Data Center)' },
+                    { value: 'mon01', label: 'CA Montreal (Single Data Center)' },
+                    { value: 'sjc04', label: 'US San Jose (Single Data Center)' },
+                    { value: 'che01', label: 'IN Chennai (Single Data Center)' },
+                    { value: 'sng01', label: 'SG Singapore (Single Data Center)' },
+                ],
+                group: 'server',
+            },
+        ],
+        defaults: {
+            pathStyle: false,
+            region: 'eu-de',
+            endpointTemplate: 'https://s3.{region}.cloud-object-storage.appdomain.cloud',
+        },
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        healthCheckUrl: 'https://s3.eu-de.cloud-object-storage.appdomain.cloud',
+        helpUrl: 'https://cloud.ibm.com/docs/cloud-object-storage',
+        signupUrl: 'https://cloud.ibm.com/registration',
+    },
+    {
         id: 'storj',
         name: 'Storj',
         description: 'Decentralized S3-compatible cloud storage',
@@ -1405,6 +1464,42 @@ export const PROVIDERS: ProviderConfig[] = [
         healthCheckUrl: 'https://webdav.drivehq.com',
         helpUrl: 'https://www.drivehq.com/help/',
         signupUrl: 'https://www.drivehq.com/secure/SignUp.aspx',
+    },
+    {
+        id: 'mailru-cloud',
+        name: 'Mail.ru Cloud',
+        description: 'Russian cloud storage with WebDAV (8 GB free)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#005FF9',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'name@mail.ru' },
+            {
+                ...COMMON_FIELDS.password,
+                label: 'App Password',
+                helpText: 'Account Settings, Security, Passwords for external applications (not your mailbox password)',
+            },
+        ],
+        defaults: {
+            server: 'https://webdav.cloud.mail.ru',
+            port: 443,
+            basePath: '/',
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'https://webdav.cloud.mail.ru',
+        passwordGenUrl: 'https://account.mail.ru/user/2-step-auth/passwords/',
+        helpUrl: 'https://help.mail.ru/cloud/desktop/webdav/',
+        signupUrl: 'https://cloud.mail.ru',
+        setupInstructions: [
+            'Use your full mailbox address as the username (name@mail.ru, also inbox.ru, list.ru, bk.ru, internet.ru)',
+            'Generate an app password at account.mail.ru, Security, Passwords for external applications (mailbox password rejected since 2022)',
+            'If the app password does not work, recreate it with Full access to Mail, Cloud and Calendar (Cloud-only scope is known to fail with third-party clients)',
+        ],
     },
     {
         id: 'koofr',
@@ -2297,4 +2392,83 @@ export const resolveS3Endpoint = (providerId: string | undefined, region?: strin
     // If still has unreplaced placeholders, return null
     if (result.includes('{')) return null;
     return result;
+};
+
+/**
+ * A saved S3 profile's host is its explicit endpoint unless it is empty or an
+ * AWS host. Importers (Cyberduck, restic) and older profiles carry the endpoint
+ * only there. Mirrors `apply_s3_profile_defaults` in
+ * src-tauri/src/profile_loader.rs, where the same host wins over the preset
+ * template for the CLI, MCP and AeroCloud paths.
+ */
+const isExplicitS3Host = (host?: string | null): boolean => {
+    const h = host?.trim().toLowerCase() ?? '';
+    return h !== '' && !h.includes('amazonaws.com');
+};
+
+/**
+ * Region a preset uses when the profile stores none: its default region, else,
+ * for a template preset, the first option of its region select (what the form
+ * preselects). Undefined for presets that need neither.
+ */
+export const presetDefaultS3Region = (providerId?: string): string | undefined => {
+    const provider = providerId ? getProviderById(providerId) : undefined;
+    if (!provider) return undefined;
+    if (provider.defaults?.region) return provider.defaults.region;
+    if (!provider.defaults?.endpointTemplate) return undefined;
+    const field = provider.fields?.find(f => f.key === 'region');
+    return field?.type === 'select' ? field.options?.[0]?.value : undefined;
+};
+
+/**
+ * Region an explicit endpoint names, read back through the preset's
+ * `{region}` template (`s3.us-south.cloud-object-storage.appdomain.cloud`
+ * gives `us-south` for `ibm-cos`). Undefined for a preset without such a
+ * template, a template with other placeholders, or a host the template does not
+ * produce (a virtual-hosted `bucket.` host, another provider). Mirrors
+ * `s3_region_from_endpoint` in src-tauri/src/profile_loader.rs.
+ */
+const regionFromS3Endpoint = (providerId: string | undefined, endpoint: string): string | undefined => {
+    const template = providerId ? getProviderById(providerId)?.defaults?.endpointTemplate : undefined;
+    if (!template) return undefined;
+    const withoutScheme = (v: string) => v.replace(/^https?:\/\//i, '');
+    const [prefix, suffix, ...rest] = withoutScheme(template).split('{region}');
+    if (suffix === undefined || rest.length || prefix.includes('{') || suffix.includes('{')) return undefined;
+    const host = withoutScheme(endpoint.trim()).split(/[/?#]/)[0].split(':')[0].toLowerCase();
+    if (!host.startsWith(prefix) || !host.endsWith(suffix)) return undefined;
+    const region = host.slice(prefix.length, host.length - suffix.length);
+    return /^[a-z0-9-]+$/.test(region) ? region : undefined;
+};
+
+/**
+ * Endpoint and region a saved S3 profile connects with: the stored endpoint
+ * option, then an explicit host, then the preset (static endpoint, or template
+ * expanded with the stored or default region). With an explicit endpoint and no
+ * stored region, `region` is the one the endpoint names, else the preset's
+ * `defaults.region`, the same order as `apply_s3_profile_defaults` in Rust.
+ * `signingRegion` is what a connection sends: that region, else `us-east-1`.
+ * The single rule the connect, AeroCloud, speed-test and edit paths share, so
+ * no caller re-derives the fallback.
+ */
+export const resolveProfileS3Location = (
+    providerId: string | undefined,
+    options: { endpoint?: unknown; region?: unknown; accountId?: unknown; jurisdiction?: unknown } | null | undefined,
+    host?: string | null,
+): { endpoint: string | null; region?: string; signingRegion: string } => {
+    const storedRegion = typeof options?.region === 'string' && options.region.trim() ? options.region.trim() : undefined;
+    const storedEndpoint = typeof options?.endpoint === 'string' ? options.endpoint.trim() : '';
+    const signing = (region?: string) => region || 'us-east-1';
+    // An explicit endpoint without a stored region signs with the region the
+    // endpoint names (SigV4 credential scope), else the preset's declared
+    // default, as the Rust loader does (s3_profile_default_region).
+    const explicit = (endpoint: string) => {
+        const region = storedRegion
+            || regionFromS3Endpoint(providerId, endpoint)
+            || (providerId ? getProviderById(providerId)?.defaults?.region : undefined);
+        return { endpoint, region, signingRegion: signing(region) };
+    };
+    if (storedEndpoint) return explicit(storedEndpoint);
+    if (isExplicitS3Host(host)) return explicit(host!.trim());
+    const region = storedRegion || presetDefaultS3Region(providerId);
+    return { endpoint: resolveS3Endpoint(providerId, region, s3TemplateParams(options)), region, signingRegion: signing(region) };
 };

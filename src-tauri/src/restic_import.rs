@@ -619,7 +619,7 @@ mod tests {
 
     #[test]
     fn import_s3_without_creds_skips_with_reason() {
-        let env = |_: &str| None;
+        let env = |_: &str| -> Option<String> { None };
         let r = import_restic_repo_url("s3:s3.amazonaws.com/bucket", &env).expect("import");
         assert_eq!(r.servers.len(), 1, "backend still reusable");
         let s = &r.servers[0];
@@ -649,7 +649,7 @@ mod tests {
 
     #[test]
     fn import_sftp_has_no_credential_no_secret_skip() {
-        let env = |_: &str| None;
+        let env = |_: &str| -> Option<String> { None };
         let r =
             import_restic_repo_url("sftp:u@host.example.com:/srv/restic", &env).expect("import");
         let s = &r.servers[0];
@@ -665,7 +665,7 @@ mod tests {
 
     #[test]
     fn import_rclone_url_is_skipped_with_chain_hint() {
-        let env = |_: &str| None;
+        let env = |_: &str| -> Option<String> { None };
         let r = import_restic_repo_url("rclone:myremote:bucket/restic", &env).expect("import");
         assert!(r.servers.is_empty());
         assert_eq!(r.skipped.len(), 1);
@@ -674,11 +674,38 @@ mod tests {
 
     #[test]
     fn import_empty_url_is_error() {
-        let env = |_: &str| None;
+        let env = |_: &str| -> Option<String> { None };
         assert!(import_restic_repo_url("   ", &env).is_err());
     }
 
     // ---- round-trip: build -> export -> re-parse RESTIC_REPOSITORY ----
+
+    #[test]
+    fn import_s3_host_endpoint_survives_preset_resolution() {
+        // `s3:<endpoint>/<bucket>` keeps the endpoint only in the host; the
+        // inferred `ibm-cos` preset must not swap it for its eu-de default.
+        let env = |_: &str| -> Option<String> { None };
+        let result = import_restic_repo_url(
+            "s3:s3.us-south.cloud-object-storage.appdomain.cloud/bucket/restic",
+            &env,
+        )
+        .expect("import");
+        let s = &result.servers[0];
+        assert_eq!(s.provider_id.as_deref(), Some("ibm-cos"));
+        let profile = serde_json::json!({ "providerId": s.provider_id, "options": s.options });
+        let mut extra = HashMap::new();
+        crate::profile_loader::apply_profile_options(&mut extra, &profile);
+        let endpoint = crate::profile_loader::apply_s3_profile_defaults(
+            &mut extra,
+            s.provider_id.as_deref(),
+            &s.host,
+        );
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("s3.us-south.cloud-object-storage.appdomain.cloud")
+        );
+        assert!(!extra.contains_key("endpoint"));
+    }
 
     #[test]
     fn round_trip_export_then_reparse_is_idempotent() {
@@ -825,7 +852,7 @@ mod tests {
 
     #[test]
     fn import_from_env_errors_when_nothing_set() {
-        let env = |_: &str| None;
+        let env = |_: &str| -> Option<String> { None };
         assert!(import_restic_from_env(&env).is_err());
     }
 }

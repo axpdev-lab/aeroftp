@@ -564,6 +564,7 @@
                 "path_not_found": "Sti ikke fundet",
                 "permission_denied": "Adgang nægtet",
                 "quota_exceeded": "Lagerkvote overskredet",
+                "file_too_large": "Filen er for stor til destinationen",
                 "rate_limit": "Anmodningsgrænse overskredet",
                 "timeout": "Forbindelsestimeout",
                 "file_locked": "Filen er låst",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Ikke fundet",
                 "permission_denied": "Adgang nægtet",
                 "quota_exceeded": "Kvote overskredet",
+                "file_too_large": "Filen er for stor",
                 "rate_limit": "Hastighedsgrænse",
                 "timeout": "Timeout",
                 "file_locked": "Fil låst",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Spejl højre til venstre",
             "directionLeftRight": "Venstre til Højre",
             "directionRightLeft": "Højre til Venstre",
+            "directionLocalToRemote": "Lokal → Fjern",
+            "directionRemoteToLocal": "Fjern → Lokal",
+            "directionBothWays": "Begge veje",
+            "modeHeader": "Tilstand",
+            "preset": {
+                "mirror": {
+                    "name": "Spejl",
+                    "tagline": "Gør destinationen identisk med kilden. Sletter overskydende filer og overskriver nyere kopier."
+                },
+                "backup": {
+                    "name": "Sikkerhedskopi",
+                    "tagline": "Kopierer manglende og nyere filer. Sletter aldrig og overskriver aldrig en nyere kopi i destinationen."
+                },
+                "update": {
+                    "name": "Opdatér",
+                    "tagline": "Kopierer manglende og nyere filer. Springer konflikter over, så du kan løse dem manuelt."
+                },
+                "bisync": {
+                    "name": "Tovejssynkronisering",
+                    "tagline": "Overfører manglende og nyere filer i begge retninger. Springer konflikter over."
+                }
+            },
             "conflictPolicy": "Konfliktpolitik",
             "ignoredForMirror": "IGNORERET FOR SPEJL",
             "versionedBackup": "Versioneret sikkerhedskopi",

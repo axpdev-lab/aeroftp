@@ -564,6 +564,7 @@
                 "path_not_found": "Polkua ei löydy",
                 "permission_denied": "Pääsy evätty",
                 "quota_exceeded": "Tallennustilan kiintiö ylitetty",
+                "file_too_large": "Tiedosto on liian suuri kohteelle",
                 "rate_limit": "Pyyntraja ylitetty",
                 "timeout": "Yhteyden aikakatkaisu",
                 "file_locked": "Tiedosto on lukittu",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Ei löytynyt",
                 "permission_denied": "Käyttö estetty",
                 "quota_exceeded": "Kiintiö ylitetty",
+                "file_too_large": "Tiedosto on liian suuri",
                 "rate_limit": "Nopeusrajoitus",
                 "timeout": "Timeout",
                 "file_locked": "Tiedosto lukittu",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Peilaa oikealta vasemmalle",
             "directionLeftRight": "Vasemmalta Oikealle",
             "directionRightLeft": "Oikealta Vasemmalle",
+            "directionLocalToRemote": "Paikallinen → Etä",
+            "directionRemoteToLocal": "Etä → Paikallinen",
+            "directionBothWays": "Molempiin suuntiin",
+            "modeHeader": "Tila",
+            "preset": {
+                "mirror": {
+                    "name": "Peilaus",
+                    "tagline": "Tekee kohteesta identtisen lähteen kanssa. Poistaa ylimääräiset tiedostot ja korvaa uudemmat kopiot."
+                },
+                "backup": {
+                    "name": "Varmuuskopio",
+                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ei koskaan poista eikä koskaan korvaa kohteen uudempaa kopiota."
+                },
+                "update": {
+                    "name": "Päivitä",
+                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ohittaa ristiriidat, jotta voit ratkaista ne itse."
+                },
+                "bisync": {
+                    "name": "Kaksisuuntainen synkronointi",
+                    "tagline": "Siirtää puuttuvat ja uudemmat tiedostot molempiin suuntiin. Ohittaa ristiriidat."
+                }
+            },
             "conflictPolicy": "Ristiriitakäytäntö",
             "ignoredForMirror": "OHITETTU PEILAUKSELLE",
             "versionedBackup": "Versioitu varmuuskopio",

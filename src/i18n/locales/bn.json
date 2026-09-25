@@ -564,6 +564,7 @@
                 "path_not_found": "পাথ পাওয়া যায়নি",
                 "permission_denied": "অনুমতি প্রত্যাখ্যান",
                 "quota_exceeded": "স্টোরেজ কোটা ছাড়িয়ে গেছে",
+                "file_too_large": "গন্তব্যের জন্য ফাইল খুব বড়",
                 "rate_limit": "অনুরোধের সীমা ছাড়িয়ে গেছে",
                 "timeout": "সংযোগের সময়সীমা শেষ",
                 "file_locked": "ফাইল লক করা আছে",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "পাওয়া যায়নি",
                 "permission_denied": "অনুমতি প্রত্যাখ্যাত",
                 "quota_exceeded": "কোটা অতিক্রম",
+                "file_too_large": "ফাইল খুব বড়",
                 "rate_limit": "হার সীমা",
                 "timeout": "Timeout",
                 "file_locked": "ফাইল লক করা",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "ডান থেকে বামে মিরর করুন",
             "directionLeftRight": "বাম থেকে ডানে",
             "directionRightLeft": "ডান থেকে বামে",
+            "directionLocalToRemote": "স্থানীয় → রিমোট",
+            "directionRemoteToLocal": "রিমোট → স্থানীয়",
+            "directionBothWays": "উভয় দিকে",
+            "modeHeader": "মোড",
+            "preset": {
+                "mirror": {
+                    "name": "মিরর",
+                    "tagline": "গন্তব্যকে উৎসের মতো হুবহু করে। অতিরিক্ত ফাইল মুছে দেয় এবং নতুন কপি ওভাররাইট করে।"
+                },
+                "backup": {
+                    "name": "ব্যাকআপ",
+                    "tagline": "অনুপস্থিত ও নতুন ফাইল কপি করে। কখনো মোছে না, গন্তব্যের নতুন কপি কখনো ওভাররাইট করে না।"
+                },
+                "update": {
+                    "name": "আপডেট",
+                    "tagline": "অনুপস্থিত ও নতুন ফাইল কপি করে। দ্বন্দ্ব এড়িয়ে যায় যাতে আপনি নিজে সমাধান করতে পারেন।"
+                },
+                "bisync": {
+                    "name": "দ্বিমুখী সিঙ্ক",
+                    "tagline": "উভয় দিকে অনুপস্থিত ও নতুন ফাইল পাঠায়। দ্বন্দ্ব এড়িয়ে যায়।"
+                }
+            },
             "conflictPolicy": "দ্বন্দ্ব নীতি",
             "ignoredForMirror": "মিররের জন্য উপেক্ষিত",
             "versionedBackup": "সংস্করণযুক্ত ব্যাকআপ",

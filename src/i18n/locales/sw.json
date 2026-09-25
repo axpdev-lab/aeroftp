@@ -564,6 +564,7 @@
                 "path_not_found": "Njia haijapatikana",
                 "permission_denied": "Ruhusa imekataliwa",
                 "quota_exceeded": "Kiwango cha hifadhi kimezidi",
+                "file_too_large": "Faili ni kubwa mno kwa lengwa",
                 "rate_limit": "Kiwango cha maombi kimezidi",
                 "timeout": "Muda wa muunganisho umekwisha",
                 "file_locked": "Faili imefungwa",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Haijapatikana",
                 "permission_denied": "Ruhusa imekataliwa",
                 "quota_exceeded": "Kiwango kimezidi",
+                "file_too_large": "Faili ni kubwa mno",
                 "rate_limit": "Kikomo cha kasi",
                 "timeout": "Timeout",
                 "file_locked": "Faili imefungwa",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Mirror kulia kwenda kushoto",
             "directionLeftRight": "Kushoto kwenda Kulia",
             "directionRightLeft": "Kulia kwenda Kushoto",
+            "directionLocalToRemote": "Ndani → Mbali",
+            "directionRemoteToLocal": "Mbali → Ndani",
+            "directionBothWays": "Pande zote mbili",
+            "modeHeader": "Hali",
+            "preset": {
+                "mirror": {
+                    "name": "Kioo",
+                    "tagline": "Hufanya lengwa lifanane kabisa na chanzo. Hufuta faili za ziada na kuandika juu ya nakala mpya zaidi."
+                },
+                "backup": {
+                    "name": "Hifadhi rudufu",
+                    "tagline": "Hunakili faili zinazokosekana na mpya zaidi. Kamwe haifuti na kamwe haiandiki juu ya nakala mpya zaidi kwenye lengwa."
+                },
+                "update": {
+                    "name": "Sasisha",
+                    "tagline": "Hunakili faili zinazokosekana na mpya zaidi. Huruka migongano ili uitatue mwenyewe."
+                },
+                "bisync": {
+                    "name": "Usawazishaji wa pande mbili",
+                    "tagline": "Husambaza faili zinazokosekana na mpya zaidi pande zote mbili. Huruka migongano."
+                }
+            },
             "conflictPolicy": "Sera ya migogoro",
             "ignoredForMirror": "IMEPUUZWA KWA MIRROR",
             "versionedBackup": "Hifadhi rudufu yenye matoleo",

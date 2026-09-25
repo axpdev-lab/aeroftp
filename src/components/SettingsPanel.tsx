@@ -3697,10 +3697,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                                                         // Reload server profiles from the imported keystore into the
                                                                         // active user's vault partition + state. The keystore import
-                                                                        // restores the legacy `config_server_profiles` blob shared
-                                                                        // across users; storeSavedServerProfiles routes the same data
-                                                                        // through the partition layer so it lands under the active
-                                                                        // user id. P2 reworks the wizard end-to-end.
+                                                                        // leaves the legacy `config_server_profiles` blob equal to the
+                                                                        // restored partition when that partition is readable here, and
+                                                                        // to the backup's own list when it is not (a vault-only backup,
+                                                                        // another machine without a transport key); #736.
+                                                                        // storeSavedServerProfiles routes that list through the
+                                                                        // partition layer so it lands under the active user id.
                                                                         try {
                                                                             const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
                                                                             if (profilesJson) {

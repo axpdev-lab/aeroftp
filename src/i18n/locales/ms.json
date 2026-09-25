@@ -564,6 +564,7 @@
                 "path_not_found": "Laluan tidak dijumpai",
                 "permission_denied": "Kebenaran ditolak",
                 "quota_exceeded": "Kuota storan melebihi had",
+                "file_too_large": "Fail terlalu besar untuk destinasi",
                 "rate_limit": "Had kadar melebihi",
                 "timeout": "Sambungan tamat masa",
                 "file_locked": "Fail dikunci",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Tidak ditemui",
                 "permission_denied": "Kebenaran ditolak",
                 "quota_exceeded": "Kuota melebihi",
+                "file_too_large": "Fail terlalu besar",
                 "rate_limit": "Had kadar",
                 "timeout": "Timeout",
                 "file_locked": "Fail dikunci",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Cermin kanan ke kiri",
             "directionLeftRight": "Kiri ke Kanan",
             "directionRightLeft": "Kanan ke Kiri",
+            "directionLocalToRemote": "Tempatan → Jauh",
+            "directionRemoteToLocal": "Jauh → Tempatan",
+            "directionBothWays": "Dua hala",
+            "modeHeader": "Mod",
+            "preset": {
+                "mirror": {
+                    "name": "Cermin",
+                    "tagline": "Menjadikan destinasi sama dengan sumber. Memadam fail berlebihan dan menulis ganti salinan yang lebih baharu."
+                },
+                "backup": {
+                    "name": "Sandaran",
+                    "tagline": "Menyalin fail yang tiada dan lebih baharu. Tidak pernah memadam dan tidak pernah menulis ganti salinan lebih baharu di destinasi."
+                },
+                "update": {
+                    "name": "Kemas kini",
+                    "tagline": "Menyalin fail yang tiada dan lebih baharu. Melangkau konflik supaya anda boleh menyelesaikannya secara manual."
+                },
+                "bisync": {
+                    "name": "Penyegerakan dua hala",
+                    "tagline": "Menyebarkan fail yang tiada dan lebih baharu ke dua hala. Melangkau konflik."
+                }
+            },
             "conflictPolicy": "Dasar konflik",
             "ignoredForMirror": "DIABAIKAN UNTUK CERMIN",
             "versionedBackup": "Sandaran berversi",

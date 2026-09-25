@@ -564,6 +564,7 @@
                 "path_not_found": "पथ नहीं मिला",
                 "permission_denied": "अनुमति अस्वीकृत",
                 "quota_exceeded": "संग्रहण कोटा पार हो गया",
+                "file_too_large": "गंतव्य के लिए फ़ाइल बहुत बड़ी है",
                 "rate_limit": "अनुरोध सीमा पार हो गई",
                 "timeout": "कनेक्शन समय सीमा समाप्त",
                 "file_locked": "फ़ाइल लॉक है",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "नहीं मिला",
                 "permission_denied": "अनुमति अस्वीकृत",
                 "quota_exceeded": "कोटा पार",
+                "file_too_large": "फ़ाइल बहुत बड़ी है",
                 "rate_limit": "दर सीमा",
                 "timeout": "Timeout",
                 "file_locked": "फ़ाइल लॉक",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "दाएं से बाएं मिरर करें",
             "directionLeftRight": "बाएं से दाएं",
             "directionRightLeft": "दाएं से बाएं",
+            "directionLocalToRemote": "स्थानीय → रिमोट",
+            "directionRemoteToLocal": "रिमोट → स्थानीय",
+            "directionBothWays": "दोनों दिशाओं में",
+            "modeHeader": "मोड",
+            "preset": {
+                "mirror": {
+                    "name": "मिरर",
+                    "tagline": "गंतव्य को स्रोत के बिल्कुल समान बनाता है। अतिरिक्त फ़ाइलें हटाता है और नई प्रतियाँ अधिलेखित करता है।"
+                },
+                "backup": {
+                    "name": "बैकअप",
+                    "tagline": "गायब और नई फ़ाइलें कॉपी करता है। कभी हटाता नहीं, गंतव्य की नई प्रति कभी अधिलेखित नहीं करता।"
+                },
+                "update": {
+                    "name": "अपडेट",
+                    "tagline": "गायब और नई फ़ाइलें कॉपी करता है। विरोधों को छोड़ देता है ताकि आप उन्हें स्वयं सुलझा सकें।"
+                },
+                "bisync": {
+                    "name": "दो-तरफ़ा सिंक",
+                    "tagline": "गायब और नई फ़ाइलें दोनों दिशाओं में भेजता है। विरोधों को छोड़ देता है।"
+                }
+            },
             "conflictPolicy": "संघर्ष नीति",
             "ignoredForMirror": "मिरर के लिए अनदेखा",
             "versionedBackup": "संस्करण बैकअप",

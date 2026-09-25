@@ -564,6 +564,7 @@
                 "path_not_found": "Ceļš nav atrasts",
                 "permission_denied": "Piekļuve liegta",
                 "quota_exceeded": "Krātuves kvota pārsniegta",
+                "file_too_large": "Fails ir pārāk liels galamērķim",
                 "rate_limit": "Pieprasījumu limits pārsniegts",
                 "timeout": "Savienojuma noildze",
                 "file_locked": "Fails bloķēts",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Nav atrasts",
                 "permission_denied": "Piekļuve liegta",
                 "quota_exceeded": "Kvota pārsniegta",
+                "file_too_large": "Fails ir pārāk liels",
                 "rate_limit": "Ātruma ierobežojums",
                 "timeout": "Timeout",
                 "file_locked": "Fails bloķēts",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Spogulot no labas uz kreiso",
             "directionLeftRight": "No kreisas uz labo",
             "directionRightLeft": "No labas uz kreiso",
+            "directionLocalToRemote": "Lokāls → Attāls",
+            "directionRemoteToLocal": "Attāls → Lokāls",
+            "directionBothWays": "Abos virzienos",
+            "modeHeader": "Režīms",
+            "preset": {
+                "mirror": {
+                    "name": "Spogulis",
+                    "tagline": "Padara galamērķi identisku avotam. Dzēš liekos failus un pārraksta jaunākas kopijas."
+                },
+                "backup": {
+                    "name": "Dublējums",
+                    "tagline": "Kopē trūkstošos un jaunākos failus. Nekad nedzēš un nekad nepārraksta jaunāku kopiju galamērķī."
+                },
+                "update": {
+                    "name": "Atjaunināt",
+                    "tagline": "Kopē trūkstošos un jaunākos failus. Izlaiž konfliktus, lai jūs tos atrisinātu manuāli."
+                },
+                "bisync": {
+                    "name": "Divvirzienu sinhronizācija",
+                    "tagline": "Pārnes trūkstošos un jaunākos failus abos virzienos. Izlaiž konfliktus."
+                }
+            },
             "conflictPolicy": "Konfliktu politika",
             "ignoredForMirror": "IGNORETS SPOGULOSANAI",
             "versionedBackup": "Versionēts dublējums",

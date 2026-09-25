@@ -564,6 +564,7 @@
                 "path_not_found": "Sökvägen hittades inte",
                 "permission_denied": "Åtkomst nekad",
                 "quota_exceeded": "Lagringskvoten överskriden",
+                "file_too_large": "Filen är för stor för målet",
                 "rate_limit": "Begränsning av förfrågningar överskriden",
                 "timeout": "Anslutningstidsgräns överskriden",
                 "file_locked": "Filen är låst",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Hittades inte",
                 "permission_denied": "Åtkomst nekad",
                 "quota_exceeded": "Kvot överskriden",
+                "file_too_large": "Filen är för stor",
                 "rate_limit": "Hastighetsgräns",
                 "timeout": "Timeout",
                 "file_locked": "Fil låst",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Spegla höger till vänster",
             "directionLeftRight": "Vänster till höger",
             "directionRightLeft": "Höger till vänster",
+            "directionLocalToRemote": "Lokal → Fjärr",
+            "directionRemoteToLocal": "Fjärr → Lokal",
+            "directionBothWays": "Åt båda hållen",
+            "modeHeader": "Läge",
+            "preset": {
+                "mirror": {
+                    "name": "Spegla",
+                    "tagline": "Gör målet identiskt med källan. Tar bort överflödiga filer och skriver över nyare kopior."
+                },
+                "backup": {
+                    "name": "Säkerhetskopia",
+                    "tagline": "Kopierar saknade och nyare filer. Tar aldrig bort och skriver aldrig över en nyare kopia i målet."
+                },
+                "update": {
+                    "name": "Uppdatera",
+                    "tagline": "Kopierar saknade och nyare filer. Hoppar över konflikter så att du kan lösa dem manuellt."
+                },
+                "bisync": {
+                    "name": "Tvåvägssynkronisering",
+                    "tagline": "För över saknade och nyare filer åt båda hållen. Hoppar över konflikter."
+                }
+            },
             "conflictPolicy": "Konfliktpolicy",
             "ignoredForMirror": "IGNORERAS FÖR SPEGLING",
             "versionedBackup": "Versionerad säkerhetskopia",

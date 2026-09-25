@@ -221,6 +221,9 @@ pub fn apply_local_bridge_credential_defaults(
     }
 }
 
+/// Region a preset signs with when the profile stores none. Mirrors every
+/// `defaults.region` of an S3 preset in `src/providers/registry.ts`; the
+/// vitest `s3PresetRegionParity.test.ts` fails when the two drift.
 fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
     match provider_id {
         "backblaze" => Some("auto"),
@@ -234,13 +237,18 @@ fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
         "oracle-cloud" => Some("us-east-1"),
         "minio" => Some("us-east-1"),
         "quotaless-s3" => Some("us-east-1"),
+        "ibm-cos" => Some("eu-de"),
+        "filen-desktop-s3" => Some("filen"),
+        "s3drive" => Some("us-east-1"),
         _ => None,
     }
 }
 
+/// Addressing style a preset is known to need. `custom-s3` is deliberately
+/// absent: it is not a preset, and `S3Config` already defaults a custom
+/// endpoint to path-style, which is what self-hosted MinIO/Garage/Ceph need.
 fn s3_profile_default_path_style(provider_id: &str) -> Option<bool> {
     match provider_id {
-        "custom-s3" => Some(false),
         "backblaze" => Some(true),
         "mega-s4" => Some(false),
         "cloudflare-r2" => Some(true),
@@ -257,6 +265,7 @@ fn s3_profile_default_path_style(provider_id: &str) -> Option<bool> {
         "oracle-cloud" => Some(true),
         "minio" => Some(true),
         "quotaless-s3" => Some(true),
+        "ibm-cos" => Some(false),
         _ => None,
     }
 }
@@ -269,6 +278,38 @@ fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
         "quotaless-s3" => Some("https://io.quotaless.cloud:8000"),
         _ => None,
     }
+}
+
+/// Region an explicit endpoint names, read back through the preset's
+/// `{region}` template (`s3.us-south.cloud-object-storage.appdomain.cloud`
+/// gives `us-south` for `ibm-cos`). `None` for a preset without such a
+/// template, a template with other placeholders, or a host the template does
+/// not produce (a virtual-hosted `bucket.` host, another provider). Mirrors
+/// `regionFromS3Endpoint` in `src/providers/registry.ts`.
+pub fn s3_region_from_endpoint(provider_id: &str, endpoint: &str) -> Option<String> {
+    fn without_scheme(value: &str) -> &str {
+        value
+            .strip_prefix("https://")
+            .or_else(|| value.strip_prefix("http://"))
+            .unwrap_or(value)
+    }
+    let template = without_scheme(s3_profile_endpoint_template(provider_id)?);
+    let (prefix, suffix) = template.split_once("{region}")?;
+    if prefix.contains('{') || suffix.contains('{') {
+        return None;
+    }
+    let host = without_scheme(endpoint.trim())
+        .split(['/', '?', '#'])
+        .next()?
+        .split(':')
+        .next()?
+        .to_ascii_lowercase();
+    let region = host.strip_prefix(prefix)?.strip_suffix(suffix)?;
+    (!region.is_empty()
+        && region
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+    .then(|| region.to_string())
 }
 
 /// Endpoint host segment for a Cloudflare R2 jurisdiction code.
@@ -296,6 +337,7 @@ fn s3_profile_endpoint_template(provider_id: &str) -> Option<&'static str> {
         "alibaba-oss" => Some("https://oss-{region}.aliyuncs.com"),
         "tencent-cos" => Some("https://cos.{region}.myqcloud.com"),
         "digitalocean-spaces" => Some("https://{region}.digitaloceanspaces.com"),
+        "ibm-cos" => Some("https://s3.{region}.cloud-object-storage.appdomain.cloud"),
         _ => None,
     }
 }
@@ -303,27 +345,52 @@ fn s3_profile_endpoint_template(provider_id: &str) -> Option<&'static str> {
 /// Resolve S3 preset defaults (region, path_style, endpoint) from the provider
 /// id. Values already present in `extra` take precedence. Returns the resolved
 /// endpoint string so callers can use it as fallback host.
+///
+/// `host` is the profile's own host. Several importers (Cyberduck, restic)
+/// and older profiles carry the endpoint there and nowhere else; when it names
+/// a non-AWS endpoint it is the profile's explicit endpoint and wins over the
+/// preset template, exactly like `extra["endpoint"]`. Without this the template
+/// wrote `extra["endpoint"]`, which `S3Config` reads before the host, so a
+/// Wasabi or IBM COS profile in one region was silently pointed at another.
 pub fn apply_s3_profile_defaults(
     extra: &mut HashMap<String, String>,
     provider_id: Option<&str>,
+    host: &str,
 ) -> Option<String> {
     let provider_id = provider_id?;
     extra.insert(S3_PROVIDER_ID_META_KEY.to_string(), provider_id.to_string());
 
-    let region_from_profile = extra.contains_key("region");
-    if !region_from_profile {
+    // The explicit endpoint, if any: the stored option first, then a non-AWS
+    // host (see below). A region it names is the one to sign with: SigV4
+    // puts the region in the credential scope, and a regional endpoint
+    // (IBM COS, Wasabi, ...) expects its own, not the preset default.
+    let explicit_endpoint = extra
+        .get("endpoint")
+        .map(|endpoint| endpoint.trim().to_string())
+        .filter(|endpoint| !endpoint.is_empty())
+        .or_else(|| {
+            let host = host.trim();
+            (crate::bridge_shared::map_s3_provider_from_endpoint(host) != "amazon-s3")
+                .then(|| host.to_string())
+        });
+
+    let region_source = if extra.contains_key("region") {
+        "profile"
+    } else if let Some(region) = explicit_endpoint
+        .as_deref()
+        .and_then(|endpoint| s3_region_from_endpoint(provider_id, endpoint))
+    {
+        extra.insert("region".to_string(), region);
+        "endpoint"
+    } else {
         if let Some(default_region) = s3_profile_default_region(provider_id) {
             extra.insert("region".to_string(), default_region.to_string());
         }
-    }
+        "preset"
+    };
     extra.insert(
         S3_REGION_SOURCE_META_KEY.to_string(),
-        if region_from_profile {
-            "profile"
-        } else {
-            "preset"
-        }
-        .to_string(),
+        region_source.to_string(),
     );
 
     let path_style_from_profile = extra.contains_key("path_style");
@@ -359,6 +426,15 @@ pub fn apply_s3_profile_defaults(
             "profile".to_string(),
         );
         return Some(existing_endpoint);
+    }
+
+    let host = host.trim();
+    if crate::bridge_shared::map_s3_provider_from_endpoint(host) != "amazon-s3" {
+        extra.insert(
+            S3_ENDPOINT_SOURCE_META_KEY.to_string(),
+            "profile".to_string(),
+        );
+        return Some(host.to_string());
     }
 
     let resolved_endpoint = if let Some(endpoint) = s3_profile_static_endpoint(provider_id) {
@@ -522,6 +598,192 @@ mod tests {
     }
 
     #[test]
+    fn ibm_cos_preset_resolves_region_path_style_and_endpoint() {
+        // IBM Cloud Object Storage (free tier): regional public endpoint
+        // `s3.{region}.cloud-object-storage.appdomain.cloud`, virtual-hosted
+        // addressing, EU default. Explicit profile values must win over the
+        // preset (same precedence contract as the wasabi preset).
+        let mut extra = HashMap::new();
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("ibm-cos"), "");
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://s3.eu-de.cloud-object-storage.appdomain.cloud")
+        );
+        assert_eq!(extra.get("region").map(String::as_str), Some("eu-de"));
+        assert_eq!(extra.get("path_style").map(String::as_str), Some("false"));
+
+        let mut explicit = HashMap::new();
+        explicit.insert("region".to_string(), "us-south".to_string());
+        explicit.insert("path_style".to_string(), "true".to_string());
+        let endpoint = apply_s3_profile_defaults(&mut explicit, Some("ibm-cos"), "");
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://s3.us-south.cloud-object-storage.appdomain.cloud")
+        );
+        assert_eq!(explicit.get("path_style").map(String::as_str), Some("true"));
+    }
+
+    #[test]
+    fn s3_endpoint_carried_in_host_wins_over_the_preset_template() {
+        // Cyberduck and restic imports (and older profiles) carry the endpoint
+        // only in the profile host. The template used to write
+        // `extra["endpoint"]`, which S3Config reads before the host, so an IBM
+        // COS bucket in us-south without a region was sent to eu-de, and a
+        // Wasabi bucket in eu-central-2 to the region default.
+        for (preset, host) in [
+            (
+                "ibm-cos",
+                "s3.us-south.cloud-object-storage.appdomain.cloud",
+            ),
+            ("wasabi", "s3.eu-central-2.wasabisys.com"),
+            (
+                "ibm-cos",
+                "https://s3.jp-tok.cloud-object-storage.appdomain.cloud",
+            ),
+        ] {
+            let mut extra = HashMap::new();
+            let endpoint = apply_s3_profile_defaults(&mut extra, Some(preset), host);
+            assert_eq!(endpoint.as_deref(), Some(host), "{preset}");
+            assert!(
+                !extra.contains_key("endpoint"),
+                "{preset}: host must stay the endpoint"
+            );
+            assert_eq!(
+                extra.get(S3_ENDPOINT_SOURCE_META_KEY).map(String::as_str),
+                Some("profile")
+            );
+        }
+        // An explicit endpoint option still wins over the host.
+        let mut extra = HashMap::new();
+        extra.insert(
+            "endpoint".to_string(),
+            "https://s3.eu-gb.cloud-object-storage.appdomain.cloud".to_string(),
+        );
+        let endpoint = apply_s3_profile_defaults(
+            &mut extra,
+            Some("ibm-cos"),
+            "s3.us-south.cloud-object-storage.appdomain.cloud",
+        );
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://s3.eu-gb.cloud-object-storage.appdomain.cloud")
+        );
+        // An AWS host is not an explicit endpoint: the preset still resolves.
+        let mut extra = HashMap::new();
+        extra.insert("region".to_string(), "eu-central-1".to_string());
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("wasabi"), "s3.amazonaws.com");
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://s3.eu-central-1.wasabisys.com")
+        );
+    }
+
+    #[test]
+    fn s3_region_is_read_back_from_a_regional_endpoint() {
+        // Same case table as src/providers/s3ProfileLocation.test.ts.
+        for (preset, endpoint, region) in [
+            (
+                "ibm-cos",
+                "s3.us-south.cloud-object-storage.appdomain.cloud",
+                Some("us-south"),
+            ),
+            (
+                "ibm-cos",
+                "https://s3.eu-gb.cloud-object-storage.appdomain.cloud/bucket",
+                Some("eu-gb"),
+            ),
+            (
+                "ibm-cos",
+                "https://S3.JP-OSA.cloud-object-storage.appdomain.cloud:443",
+                Some("jp-osa"),
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-2.wasabisys.com",
+                Some("eu-central-2"),
+            ),
+            ("wasabi", "s3.wasabisys.com", None),
+            (
+                "mega-s4",
+                "s3.eu-central-2.s4.mega.io",
+                Some("eu-central-2"),
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-eu-central-1.aliyuncs.com",
+                Some("eu-central-1"),
+            ),
+            (
+                "tencent-cos",
+                "https://cos.eu-frankfurt.myqcloud.com",
+                Some("eu-frankfurt"),
+            ),
+            (
+                "digitalocean-spaces",
+                "https://fra1.digitaloceanspaces.com",
+                Some("fra1"),
+            ),
+            (
+                "digitalocean-spaces",
+                "https://bucket.fra1.digitaloceanspaces.com",
+                None,
+            ),
+            (
+                "cloudflare-r2",
+                "https://abc.r2.cloudflarestorage.com",
+                None,
+            ),
+            ("backblaze", "s3.eu-central-003.backblazeb2.com", None),
+        ] {
+            assert_eq!(
+                s3_region_from_endpoint(preset, endpoint).as_deref(),
+                region,
+                "{preset} {endpoint}"
+            );
+        }
+    }
+
+    #[test]
+    fn s3_signing_region_follows_an_explicit_endpoint_without_a_stored_region() {
+        // An imported IBM profile in us-south must not sign with the eu-de
+        // preset default (SigV4 credential scope, CodeRabbit on PR #923).
+        let mut extra = HashMap::new();
+        apply_s3_profile_defaults(
+            &mut extra,
+            Some("ibm-cos"),
+            "s3.us-south.cloud-object-storage.appdomain.cloud",
+        );
+        assert_eq!(extra.get("region").map(String::as_str), Some("us-south"));
+        assert_eq!(
+            extra.get(S3_REGION_SOURCE_META_KEY).map(String::as_str),
+            Some("endpoint")
+        );
+        // Stored endpoint option, same rule.
+        let mut extra = HashMap::new();
+        extra.insert(
+            "endpoint".to_string(),
+            "https://s3.eu-central-2.wasabisys.com".to_string(),
+        );
+        apply_s3_profile_defaults(&mut extra, Some("wasabi"), "");
+        assert_eq!(
+            extra.get("region").map(String::as_str),
+            Some("eu-central-2")
+        );
+        // A stored region always wins; an unreadable host keeps the default.
+        let mut extra = HashMap::new();
+        extra.insert("region".to_string(), "eu-gb".to_string());
+        apply_s3_profile_defaults(
+            &mut extra,
+            Some("ibm-cos"),
+            "s3.us-south.cloud-object-storage.appdomain.cloud",
+        );
+        assert_eq!(extra.get("region").map(String::as_str), Some("eu-gb"));
+        let mut extra = HashMap::new();
+        apply_s3_profile_defaults(&mut extra, Some("ibm-cos"), "cos.example.internal");
+        assert_eq!(extra.get("region").map(String::as_str), Some("eu-de"));
+    }
+
+    #[test]
     fn webdav_local_bridge_https_profile_maps_to_tls_mode() {
         // Reproduces the Filen Desktop (local WebDAV) profile shape saved by
         // the GUI when the user picks HTTPS in the bridge toggle. Before this
@@ -580,7 +842,7 @@ mod tests {
         });
         let mut extra = HashMap::new();
         apply_profile_options(&mut extra, &profile);
-        let endpoint = apply_s3_profile_defaults(&mut extra, Some("filen-desktop-s3"));
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("filen-desktop-s3"), "");
         assert_eq!(endpoint.as_deref(), Some("https://local.s3.filen.io:1800"));
         assert_eq!(extra.get("region").map(String::as_str), Some("filen"));
         assert_eq!(extra.get("bucket").map(String::as_str), Some("filen"));
@@ -634,7 +896,7 @@ mod tests {
         });
         let mut extra = HashMap::new();
         apply_profile_options(&mut extra, &profile);
-        let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"));
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"), "");
         assert_eq!(
             endpoint.as_deref(),
             Some("a1b2c3d4e5f6.r2.cloudflarestorage.com")
@@ -664,7 +926,7 @@ mod tests {
             });
             let mut extra = HashMap::new();
             apply_profile_options(&mut extra, &profile);
-            let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"));
+            let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"), "");
             assert_eq!(
                 endpoint.as_deref(),
                 Some(expected),
@@ -690,7 +952,7 @@ mod tests {
         });
         let mut extra = HashMap::new();
         apply_profile_options(&mut extra, &profile);
-        let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"));
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"), "");
         assert_eq!(endpoint.as_deref(), Some("https://r2.example.test"));
     }
 

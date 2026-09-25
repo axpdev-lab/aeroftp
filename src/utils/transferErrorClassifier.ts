@@ -17,6 +17,14 @@ import { SyncErrorKind } from '../types';
 export function classifyErrorFast(rawError: string): { kind: SyncErrorKind; retryable: boolean } {
   const lower = rawError.toLowerCase();
 
+  // One file over the destination's per-file limit (HTTP 413, a plan cap): NOT
+  // retryable, and NOT fatal to the batch: the other files still fit. Checked
+  // before quota because an OpenDrive "file size limit" reply is about this file.
+  if (lower.includes('file too large') || lower.includes('file size limit')
+    || lower.includes('maximum allowed file size') || lower.includes('payload too large')
+    || lower.includes('request entity too large')) {
+    return { kind: 'file_too_large', retryable: false };
+  }
   // Quota / storage full (FTP 552): NOT retryable
   if (lower.includes('quota') || lower.includes('storage full') || lower.includes('insufficient storage') || lower.includes('552 ')) {
     return { kind: 'quota_exceeded', retryable: false };
@@ -79,6 +87,7 @@ export const PER_FILE_ERROR_KINDS: Set<SyncErrorKind> = new Set([
   'path_not_found',
   'permission_denied',
   'file_locked',
+  'file_too_large',
 ]);
 
 /**

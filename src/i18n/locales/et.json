@@ -564,6 +564,7 @@
                 "path_not_found": "Teed ei leitud",
                 "permission_denied": "Juurdepääs keelatud",
                 "quota_exceeded": "Salvestusmaht ületatud",
+                "file_too_large": "Fail on sihtkoha jaoks liiga suur",
                 "rate_limit": "Päringute limiit ületatud",
                 "timeout": "Ühenduse ajalimit ületatud",
                 "file_locked": "Fail on lukustatud",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Ei leitud",
                 "permission_denied": "Ligipääs keelatud",
                 "quota_exceeded": "Kvoot ületatud",
+                "file_too_large": "Fail on liiga suur",
                 "rate_limit": "Kiiruspiirang",
                 "timeout": "Timeout",
                 "file_locked": "Fail lukustatud",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Peegelda paremalt vasakule",
             "directionLeftRight": "Vasakult Paremale",
             "directionRightLeft": "Paremalt Vasakule",
+            "directionLocalToRemote": "Kohalik → Kaug",
+            "directionRemoteToLocal": "Kaug → Kohalik",
+            "directionBothWays": "Mõlemas suunas",
+            "modeHeader": "Režiim",
+            "preset": {
+                "mirror": {
+                    "name": "Peegeldus",
+                    "tagline": "Muudab sihtkoha allikaga identseks. Kustutab üleliigsed failid ja kirjutab uuemad koopiad üle."
+                },
+                "backup": {
+                    "name": "Varukoopia",
+                    "tagline": "Kopeerib puuduvad ja uuemad failid. Ei kustuta kunagi ega kirjuta kunagi üle sihtkoha uuemat koopiat."
+                },
+                "update": {
+                    "name": "Uuenda",
+                    "tagline": "Kopeerib puuduvad ja uuemad failid. Jätab konfliktid vahele, et saaksite need käsitsi lahendada."
+                },
+                "bisync": {
+                    "name": "Kahesuunaline sünkroonimine",
+                    "tagline": "Kannab puuduvad ja uuemad failid üle mõlemas suunas. Jätab konfliktid vahele."
+                }
+            },
             "conflictPolicy": "Konfliktipoliitika",
             "ignoredForMirror": "PEEGLI JAOKS IGNOREERITUD",
             "versionedBackup": "Versioonidega varundus",

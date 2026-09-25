@@ -564,6 +564,7 @@
                 "path_not_found": "Útvonal nem található",
                 "permission_denied": "Hozzáférés megtagadva",
                 "quota_exceeded": "Tárhelykvóta túllépve",
+                "file_too_large": "A fájl túl nagy a célhelyhez",
                 "rate_limit": "Sebességkorlát túllépve",
                 "timeout": "Kapcsolat időtúllépés",
                 "file_locked": "Fájl zárolva",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Nem található",
                 "permission_denied": "Hozzáférés megtagadva",
                 "quota_exceeded": "Kvóta túllépve",
+                "file_too_large": "A fájl túl nagy",
                 "rate_limit": "Sebességkorlát",
                 "timeout": "Timeout",
                 "file_locked": "Fájl zárolva",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Tükrözés jobbról balra",
             "directionLeftRight": "Balról jobbra",
             "directionRightLeft": "Jobbról balra",
+            "directionLocalToRemote": "Helyi → Távoli",
+            "directionRemoteToLocal": "Távoli → Helyi",
+            "directionBothWays": "Mindkét irányba",
+            "modeHeader": "Mód",
+            "preset": {
+                "mirror": {
+                    "name": "Tükrözés",
+                    "tagline": "A célt a forrással azonossá teszi. Törli a felesleges fájlokat, és felülírja az újabb másolatokat."
+                },
+                "backup": {
+                    "name": "Biztonsági mentés",
+                    "tagline": "Átmásolja a hiányzó és újabb fájlokat. Soha nem töröl, és soha nem ír felül újabb másolatot a célhelyen."
+                },
+                "update": {
+                    "name": "Frissítés",
+                    "tagline": "Átmásolja a hiányzó és újabb fájlokat. Kihagyja az ütközéseket, hogy kézzel oldhassa meg őket."
+                },
+                "bisync": {
+                    "name": "Kétirányú szinkronizálás",
+                    "tagline": "A hiányzó és újabb fájlokat mindkét irányba átviszi. Kihagyja az ütközéseket."
+                }
+            },
             "conflictPolicy": "Utkozesi szabaly",
             "ignoredForMirror": "TUKROZESBOL KIHAGYVA",
             "versionedBackup": "Verziózott biztonsági mentés",

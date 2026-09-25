@@ -564,6 +564,7 @@
                 "path_not_found": "Hindi nahanap ang path",
                 "permission_denied": "Tinanggihan ang pahintulot",
                 "quota_exceeded": "Lumagpas na sa storage quota",
+                "file_too_large": "Masyadong malaki ang file para sa destinasyon",
                 "rate_limit": "Lumagpas na sa rate limit",
                 "timeout": "Nag-timeout ang koneksyon",
                 "file_locked": "Naka-lock ang file",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Hindi natagpuan",
                 "permission_denied": "Tinanggihan ang pahintulot",
                 "quota_exceeded": "Lumampas sa quota",
+                "file_too_large": "Masyadong malaki ang file",
                 "rate_limit": "Limitasyon sa bilis",
                 "timeout": "Timeout",
                 "file_locked": "Naka-lock ang file",
@@ -5088,6 +5090,28 @@
             "mirrorRightToLeft": "I-mirror mula kanan hanggang kaliwa",
             "directionLeftRight": "Kaliwa Papuntang Kanan",
             "directionRightLeft": "Kanan Papuntang Kaliwa",
+            "directionLocalToRemote": "Lokal → Remote",
+            "directionRemoteToLocal": "Remote → Lokal",
+            "directionBothWays": "Parehong direksyon",
+            "modeHeader": "Mode",
+            "preset": {
+                "mirror": {
+                    "name": "Mirror",
+                    "tagline": "Ginagawang kapareho ng pinagmulan ang destinasyon. Binubura ang mga sobrang file at ino-overwrite ang mas bagong kopya."
+                },
+                "backup": {
+                    "name": "Backup",
+                    "tagline": "Kinokopya ang mga nawawala at mas bagong file. Hindi kailanman nagbubura at hindi kailanman nag-o-overwrite ng mas bagong kopya sa destinasyon."
+                },
+                "update": {
+                    "name": "I-update",
+                    "tagline": "Kinokopya ang mga nawawala at mas bagong file. Nilalaktawan ang mga conflict para malutas mo nang mano-mano."
+                },
+                "bisync": {
+                    "name": "Two-way na sync",
+                    "tagline": "Ipinapasa ang mga nawawala at mas bagong file sa parehong direksyon. Nilalaktawan ang mga conflict."
+                }
+            },
             "conflictPolicy": "Patakaran sa salungatan",
             "ignoredForMirror": "BINALEWALA PARA SA MIRROR",
             "versionedBackup": "Naka-version na backup",

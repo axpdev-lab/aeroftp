@@ -564,6 +564,7 @@
                 "path_not_found": "Chemin introuvable",
                 "permission_denied": "Permission refusée",
                 "quota_exceeded": "Quota de stockage dépassé",
+                "file_too_large": "Fichier trop volumineux pour la destination",
                 "rate_limit": "Limite de requêtes dépassée",
                 "timeout": "Délai de connexion dépassé",
                 "file_locked": "Fichier verrouillé",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Non trouvé",
                 "permission_denied": "Permission refusée",
                 "quota_exceeded": "Quota dépassé",
+                "file_too_large": "Fichier trop volumineux",
                 "rate_limit": "Limite de débit",
                 "timeout": "Timeout",
                 "file_locked": "Fichier verrouillé",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "Miroir de droite à gauche",
             "directionLeftRight": "Gauche vers Droite",
             "directionRightLeft": "Droite vers Gauche",
+            "directionLocalToRemote": "Local → Distant",
+            "directionRemoteToLocal": "Distant → Local",
+            "directionBothWays": "Dans les deux sens",
+            "modeHeader": "Mode",
+            "preset": {
+                "mirror": {
+                    "name": "Miroir",
+                    "tagline": "Rend la destination identique à la source. Supprime les fichiers en trop et écrase les copies plus récentes."
+                },
+                "backup": {
+                    "name": "Sauvegarde",
+                    "tagline": "Copie les fichiers manquants et plus récents. Ne supprime jamais et n'écrase jamais une copie plus récente dans la destination."
+                },
+                "update": {
+                    "name": "Mise à jour",
+                    "tagline": "Copie les fichiers manquants et plus récents. Ignore les conflits pour que vous les résolviez manuellement."
+                },
+                "bisync": {
+                    "name": "Synchronisation bidirectionnelle",
+                    "tagline": "Propage les fichiers manquants et plus récents dans les deux sens. Ignore les conflits."
+                }
+            },
             "conflictPolicy": "Politique de conflit",
             "ignoredForMirror": "IGNORÉ POUR MIROIR",
             "versionedBackup": "Sauvegarde versionnée",

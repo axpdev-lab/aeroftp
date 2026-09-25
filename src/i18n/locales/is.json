@@ -564,6 +564,7 @@
                 "path_not_found": "Slóð fannst ekki",
                 "permission_denied": "Heimild hafnað",
                 "quota_exceeded": "Geymslumörk náð",
+                "file_too_large": "Skráin er of stór fyrir áfangastaðinn",
                 "rate_limit": "Hraðamörk náð",
                 "timeout": "Tenging rann út á tíma",
                 "file_locked": "Skrá læst",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "Fannst ekki",
                 "permission_denied": "Heimild hafnað",
                 "quota_exceeded": "Kvóti farinn yfir",
+                "file_too_large": "Skrá of stór",
                 "rate_limit": "Hraðatakmörkun",
                 "timeout": "Timeout",
                 "file_locked": "Skrá læst",
@@ -5088,6 +5090,28 @@
             "mirrorRightToLeft": "Spegla frá hægri til vinstri",
             "directionLeftRight": "Vinstri til hægri",
             "directionRightLeft": "Hægri til vinstri",
+            "directionLocalToRemote": "Staðbundið → Fjartengt",
+            "directionRemoteToLocal": "Fjartengt → Staðbundið",
+            "directionBothWays": "Í báðar áttir",
+            "modeHeader": "Hamur",
+            "preset": {
+                "mirror": {
+                    "name": "Spegla",
+                    "tagline": "Gerir áfangastaðinn eins og upprunann. Eyðir aukaskrám og skrifar yfir nýrri afrit."
+                },
+                "backup": {
+                    "name": "Afrit",
+                    "tagline": "Afritar skrár sem vantar og nýrri skrár. Eyðir aldrei og skrifar aldrei yfir nýrra afrit á áfangastað."
+                },
+                "update": {
+                    "name": "Uppfæra",
+                    "tagline": "Afritar skrár sem vantar og nýrri skrár. Sleppir árekstrum svo þú getir leyst þá handvirkt."
+                },
+                "bisync": {
+                    "name": "Tvíátta samstilling",
+                    "tagline": "Flytur skrár sem vantar og nýrri skrár í báðar áttir. Sleppir árekstrum."
+                }
+            },
             "conflictPolicy": "Stefna við árekstra",
             "ignoredForMirror": "HUNSAÐ FYRIR SPEGLUN",
             "versionedBackup": "Útgáfustýrt öryggisafrit",

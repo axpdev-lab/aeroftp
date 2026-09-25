@@ -564,6 +564,7 @@
                 "path_not_found": "パスが見つかりません",
                 "permission_denied": "アクセスが拒否されました",
                 "quota_exceeded": "ストレージ容量の上限を超えました",
+                "file_too_large": "転送先に対してファイルが大きすぎます",
                 "rate_limit": "レート制限を超えました",
                 "timeout": "接続がタイムアウトしました",
                 "file_locked": "ファイルがロックされています",
@@ -2089,6 +2090,7 @@
                 "path_not_found": "見つかりません",
                 "permission_denied": "権限が拒否されました",
                 "quota_exceeded": "容量超過",
+                "file_too_large": "ファイルが大きすぎます",
                 "rate_limit": "レート制限",
                 "timeout": "タイムアウト",
                 "file_locked": "ファイルがロック中",
@@ -5069,6 +5071,28 @@
             "mirrorRightToLeft": "右から左へミラー",
             "directionLeftRight": "左から右",
             "directionRightLeft": "右から左",
+            "directionLocalToRemote": "ローカル → リモート",
+            "directionRemoteToLocal": "リモート → ローカル",
+            "directionBothWays": "双方向",
+            "modeHeader": "モード",
+            "preset": {
+                "mirror": {
+                    "name": "ミラー",
+                    "tagline": "転送先を転送元と同一にします。余分なファイルを削除し、新しいコピーも上書きします。"
+                },
+                "backup": {
+                    "name": "バックアップ",
+                    "tagline": "不足しているファイルと新しいファイルをコピーします。削除せず、転送先の新しいコピーを上書きしません。"
+                },
+                "update": {
+                    "name": "更新",
+                    "tagline": "不足しているファイルと新しいファイルをコピーします。競合はスキップし、手動で解決できるようにします。"
+                },
+                "bisync": {
+                    "name": "双方向同期",
+                    "tagline": "不足しているファイルと新しいファイルを双方向に反映します。競合はスキップします。"
+                }
+            },
             "conflictPolicy": "競合ポリシー",
             "ignoredForMirror": "ミラー対象外",
             "versionedBackup": "バージョン付きバックアップ",

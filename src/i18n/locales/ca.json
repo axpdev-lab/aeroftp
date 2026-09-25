@@ -564,6 +564,7 @@
                 "path_not_found": "Camí no trobat",
                 "permission_denied": "Permís denegat",
                 "quota_exceeded": "Quota d'emmagatzematge superada",
+                "file_too_large": "Fitxer massa gran per a la destinació",
                 "rate_limit": "Límit de peticions superat",
                 "timeout": "Temps d'espera de connexió esgotat",
                 "file_locked": "Fitxer bloquejat",
@@ -2124,6 +2125,7 @@
                 "path_not_found": "No trobat",
                 "permission_denied": "Permís denegat",
                 "quota_exceeded": "Quota superada",
+                "file_too_large": "Fitxer massa gran",
                 "rate_limit": "Límit de velocitat",
                 "timeout": "Timeout",
                 "file_locked": "Fitxer bloquejat",
@@ -5088,6 +5090,28 @@
             "mirrorRightToLeft": "Reflectir de dreta a esquerra",
             "directionLeftRight": "Esquerra a Dreta",
             "directionRightLeft": "Dreta a Esquerra",
+            "directionLocalToRemote": "Local → Remot",
+            "directionRemoteToLocal": "Remot → Local",
+            "directionBothWays": "En tots dos sentits",
+            "modeHeader": "Mode",
+            "preset": {
+                "mirror": {
+                    "name": "Mirall",
+                    "tagline": "Fa que la destinació sigui idèntica a l'origen. Elimina els fitxers sobrants i sobreescriu les còpies més noves."
+                },
+                "backup": {
+                    "name": "Còpia de seguretat",
+                    "tagline": "Copia els fitxers que falten i els més nous. No elimina mai ni sobreescriu mai una còpia més nova a la destinació."
+                },
+                "update": {
+                    "name": "Actualitza",
+                    "tagline": "Copia els fitxers que falten i els més nous. Omet els conflictes perquè els resolguis manualment."
+                },
+                "bisync": {
+                    "name": "Sincronització bidireccional",
+                    "tagline": "Propaga els fitxers que falten i els més nous en tots dos sentits. Omet els conflictes."
+                }
+            },
             "conflictPolicy": "Política de conflictes",
             "ignoredForMirror": "IGNORAT PER MIRALL",
             "versionedBackup": "Còpia de seguretat amb versions",

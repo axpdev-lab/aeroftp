@@ -976,6 +976,7 @@
                 "path_not_found": "Percorso non trovato",
                 "permission_denied": "Permesso negato",
                 "quota_exceeded": "Quota di archiviazione superata",
+                "file_too_large": "File troppo grande per la destinazione",
                 "rate_limit": "Limite richieste superato",
                 "timeout": "Timeout connessione",
                 "file_locked": "File bloccato",
@@ -2318,6 +2319,7 @@
                 "path_not_found": "Non trovato",
                 "permission_denied": "Permesso negato",
                 "quota_exceeded": "Quota superata",
+                "file_too_large": "File troppo grande",
                 "rate_limit": "Limite richieste",
                 "timeout": "Timeout",
                 "file_locked": "File bloccato",
@@ -5284,6 +5286,28 @@
             "mirrorRightToLeft": "Mirror da destra a sinistra",
             "directionLeftRight": "Sinistra a Destra",
             "directionRightLeft": "Destra a Sinistra",
+            "directionLocalToRemote": "Locale → Remoto",
+            "directionRemoteToLocal": "Remoto → Locale",
+            "directionBothWays": "In entrambi i sensi",
+            "modeHeader": "Modalità",
+            "preset": {
+                "mirror": {
+                    "name": "Mirror",
+                    "tagline": "Rende la destinazione identica all'origine. Elimina i file in più e sovrascrive le copie più recenti."
+                },
+                "backup": {
+                    "name": "Backup",
+                    "tagline": "Copia i file mancanti e più recenti. Non elimina mai e non sovrascrive mai una copia più recente nella destinazione."
+                },
+                "update": {
+                    "name": "Aggiorna",
+                    "tagline": "Copia i file mancanti e più recenti. Salta i conflitti per risolverli a mano."
+                },
+                "bisync": {
+                    "name": "Sync bidirezionale",
+                    "tagline": "Propaga i file mancanti e più recenti in entrambe le direzioni. Salta i conflitti."
+                }
+            },
             "conflictPolicy": "Politica conflitti",
             "ignoredForMirror": "IGNORATO PER MIRROR",
             "versionedBackup": "Backup con versioni",

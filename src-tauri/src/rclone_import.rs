@@ -1884,6 +1884,7 @@ pub fn export_rclone(
                     "backblaze" | "backblaze-b2" => "Other",
                     "linode-object-storage" => "Linode",
                     "scaleway" => "Scaleway",
+                    "ibm-cos" => "IBMCOS",
                     "storj" => "Storj",
                     "idrive-e2" => "IDrive",
                     "minio" => "Minio",
@@ -1962,9 +1963,11 @@ pub fn export_rclone(
                                 crate::profile_loader::insert_profile_option(&mut probe, k, v);
                             }
                         }
+                        // Host already tried above: resolve the preset only.
                         crate::profile_loader::apply_s3_profile_defaults(
                             &mut probe,
                             Some(provider_id),
+                            "",
                         )
                     });
 

@@ -106,5 +106,13 @@ describe('Cloudflare R2 jurisdiction', () => {
     it('leaves presets without a jurisdiction placeholder untouched', () => {
         expect(resolveS3Endpoint('wasabi', 'eu-central-1'))
             .toBe('https://s3.eu-central-1.wasabisys.com');
+        expect(resolveS3Endpoint('ibm-cos', 'eu-de'))
+            .toBe('https://s3.eu-de.cloud-object-storage.appdomain.cloud');
+        expect(resolveS3Endpoint('ibm-cos', 'us-south'))
+            .toBe('https://s3.us-south.cloud-object-storage.appdomain.cloud');
+        // Like wasabi, {region} is not a recoverable template param: parse
+        // only reads back {accountId}/{jurisdiction}, so this is {} by design.
+        expect(parseS3EndpointParams('ibm-cos', 'https://s3.eu-de.cloud-object-storage.appdomain.cloud/my-bucket'))
+            .toEqual({});
     });
 });
