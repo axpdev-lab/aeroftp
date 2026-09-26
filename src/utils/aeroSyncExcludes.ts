@@ -61,3 +61,21 @@ export function aeroSyncCompareOptions(userPatterns: readonly string[], backupDi
         backup_dir: backupDir,
     };
 }
+
+/**
+ * The patterns and backup folder a compare can say it applied, recorded on
+ * the AeroSync context so the Plan can refuse to run on a stale compare. A
+ * recursive backend scan applies both. The flat classify of the two panel
+ * listings applies neither, so it reports nothing applied: the Plan then
+ * blocks Execute until a rescan works, rather than let Mirror act on files
+ * the compare never hid.
+ */
+export function appliedCompareFilters(
+    scan: 'recursive' | 'flat',
+    userPatterns: string[],
+    backupDir: string,
+): { compareExcludes: string[]; compareBackupDir: string | undefined } {
+    return scan === 'recursive'
+        ? { compareExcludes: userPatterns, compareBackupDir: backupDir }
+        : { compareExcludes: [], compareBackupDir: undefined };
+}

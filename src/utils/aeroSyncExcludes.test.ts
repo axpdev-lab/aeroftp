@@ -7,6 +7,7 @@ import {
     aeroSyncCompareOptions,
     compareExcludePatterns,
     sameExcludePatterns,
+    appliedCompareFilters,
 } from './aeroSyncExcludes';
 
 describe('AeroSync compare exclusions', () => {
@@ -35,5 +36,18 @@ describe('AeroSync compare exclusions', () => {
         expect(sameExcludePatterns(['a'], [])).toBe(false);
         expect(sameExcludePatterns([], ['a'])).toBe(false);
         expect(sameExcludePatterns(['a', 'b'], ['a', 'c'])).toBe(false);
+    });
+
+    it('reports a flat classify as applying neither the patterns nor the backup folder', () => {
+        // The flat classify of the two panel listings filters nothing. Reported
+        // as filtered, the Plan saw its own fields matched and let Mirror act on
+        // files, and on the backup folder, the compare never hid.
+        const flat = appliedCompareFilters('flat', ['*.log'], AEROSYNC_DEFAULT_BACKUP_DIR);
+        expect(flat).toEqual({ compareExcludes: [], compareBackupDir: undefined });
+        expect(sameExcludePatterns(['*.log'], flat.compareExcludes)).toBe(false);
+        expect(appliedCompareFilters('recursive', ['*.log'], 'old')).toEqual({
+            compareExcludes: ['*.log'],
+            compareBackupDir: 'old',
+        });
     });
 });

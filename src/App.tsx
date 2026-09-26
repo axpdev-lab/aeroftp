@@ -233,7 +233,7 @@ import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components
 import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
 import { CanaryResultDialog, type CanaryResult } from './components/Sync/CanaryResultDialog';
 import { SPEED_PRESETS } from './components/Sync/syncConstants';
-import { AEROSYNC_DEFAULT_BACKUP_DIR, aeroSyncCompareOptions } from './utils/aeroSyncExcludes';
+import { AEROSYNC_DEFAULT_BACKUP_DIR, aeroSyncCompareOptions, appliedCompareFilters } from './utils/aeroSyncExcludes';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -10855,8 +10855,7 @@ const App: React.FC = () => {
           pairKind: 'local-local',
           initialSource: leftPath,
           initialDestination: rightPath,
-          compareExcludes: userExcludes,
-          compareBackupDir: backupDir,
+          ...appliedCompareFilters(canRecurse ? 'recursive' : 'flat', userExcludes, backupDir),
         },
       });
 
@@ -10867,8 +10866,7 @@ const App: React.FC = () => {
           // exclusions and no backup folder, so it must not be reported as
           // having applied them: the Plan then blocks Execute until a rescan
           // works, rather than let Mirror delete what the compare never hid.
-          let appliedExcludes = userExcludes;
-          let appliedBackupDir: string | undefined = backupDir;
+          let applied = appliedCompareFilters('recursive', userExcludes, backupDir);
           try {
             const report = await invoke<CompareReport>('compare_local_directories', {
               leftPath,
@@ -10890,8 +10888,7 @@ const App: React.FC = () => {
               notify.error(t('aerosync.title') || 'AeroSync', describeScanIncompleteError(err));
             } else {
               // Recursive scan failed: fall back to the flat top-level classify.
-              appliedExcludes = [];
-              appliedBackupDir = undefined;
+              applied = appliedCompareFilters('flat', userExcludes, backupDir);
               resolved = compareEntries(
                 localFiles.map(toCompareEntry),
                 localFiles2.map(toCompareEntry),
@@ -10902,7 +10899,7 @@ const App: React.FC = () => {
           if (aeroSyncCompareSeqRef.current !== mySeq) return;
           setAeroSync((prev) =>
             prev
-              ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, compareExcludes: appliedExcludes, compareBackupDir: appliedBackupDir } }
+              ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, ...applied } }
               : prev,
           );
         })();
@@ -10979,8 +10976,7 @@ const App: React.FC = () => {
       void (async () => {
         let resolved: CompareResult;
         // See the local-local branch: the flat fallback applies no exclusions.
-        let appliedExcludes = userExcludes;
-        let appliedBackupDir: string | undefined = backupDir;
+        let applied = appliedCompareFilters('recursive', userExcludes, backupDir);
         try {
           const compareArgs: Record<string, unknown> = {
             localPath: currentLocalPath,
@@ -11020,8 +11016,7 @@ const App: React.FC = () => {
           } else {
             // Recursive scan failed: fall back to the flat top-level
             // classify so the Compare tab still shows something actionable.
-            appliedExcludes = [];
-            appliedBackupDir = undefined;
+            applied = appliedCompareFilters('flat', userExcludes, backupDir);
             const localEntries = localFiles.map(toCompareEntry);
             const remoteEntries = remoteFiles.map(toCompareEntry);
             resolved = leftLocal
@@ -11034,7 +11029,7 @@ const App: React.FC = () => {
         if (aeroSyncCompareSeqRef.current !== mySeq) return;
         setAeroSync((prev) =>
           prev
-            ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, compareExcludes: appliedExcludes, compareBackupDir: appliedBackupDir } }
+            ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, ...applied } }
             : prev,
         );
       })();
