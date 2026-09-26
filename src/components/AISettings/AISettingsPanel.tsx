@@ -719,7 +719,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const getProviderModels = (providerId: string) => settings.models.filter((m) => m.providerId === providerId);
 
     // Get unused presets
-    const unusedPresets = PROVIDER_PRESETS.filter((preset) => !settings.providers.some((p) => p.type === preset.type));
+    const unusedPresets = PROVIDER_PRESETS.filter((preset) => preset.type === 'custom' || !settings.providers.some((p) => p.type === preset.type));
 
     if (!isOpen) return null;
 
