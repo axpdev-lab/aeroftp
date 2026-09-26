@@ -2264,14 +2264,22 @@ impl StorageProvider for FtpProvider {
             total_read += n;
         }
         let data_stream = channel.finish()?;
+        let stopped_before_the_end = total_read == len as usize;
         buf.truncate(total_read);
 
         // Bounded FTP reads intentionally stop before EOF. Some servers will report an
         // error while finalizing that partial RETR; when that happens we proactively
         // disconnect so the disposable chunk connection cannot be reused in a bad state.
-        let finalize_result = data_stream.finish().await;
-        if finalize_result.is_err() {
+        // A read that ended SHORT of the range is another matter: a file that ends
+        // inside the range is confirmed with `226`, and an error after a short read is
+        // the server cutting the transfer, so those bytes are not the range.
+        if let Err(err) = data_stream.finish().await {
             let _ = self.disconnect().await;
+            if !stopped_before_the_end {
+                return Err(ProviderError::TransferFailed(format!(
+                    "reading a range of {path}: the server ended the transfer after {total_read} of {len} bytes: {err}"
+                )));
+            }
         }
 
         Ok(buf)
@@ -3577,34 +3585,44 @@ impl FtpProvider {
         let mut chunk = [0u8; 65536];
         let mut total_written: u64 = 0;
 
-        loop {
-            let n = file
-                .read(&mut chunk)
-                .await
-                .map_err(ProviderError::IoError)?;
+        // Every way out before the end aborts the transfer. Dropping the data
+        // connection instead closes it cleanly, and the server reads that as
+        // the end of the file: it stores the part it received as the whole
+        // file and confirms it with `226`, which suppaftp then drains unseen
+        // before the next command. ABOR makes the server record the transfer
+        // as aborted, and reads its verdict under a budget.
+        let sent: Result<(), ProviderError> = loop {
+            let n = match file.read(&mut chunk).await {
+                Ok(n) => n,
+                Err(e) => break Err(ProviderError::IoError(e)),
+            };
             if n == 0 {
-                break;
+                // Flush all (TLS) buffers to the wire
+                break data_stream
+                    .flush()
+                    .await
+                    .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)));
             }
             crate::transfer_dag::throttle::charge(
                 crate::transfer_dag::governor::TransferDirection::Upload,
                 n as u64,
             )
             .await;
-            data_stream
-                .write_all(&chunk[..n])
-                .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Data write error: {}", e)))?;
+            if let Err(e) = data_stream.write_all(&chunk[..n]).await {
+                break Err(ProviderError::TransferFailed(format!(
+                    "Data write error: {}",
+                    e
+                )));
+            }
             total_written += n as u64;
             if let Some(ref progress) = on_progress {
                 progress(total_written, total_size);
             }
+        };
+        if let Err(err) = sent {
+            let _ = self.abandon_transfer(data_stream).await;
+            return Err(err);
         }
-
-        // Flush all (TLS) buffers to the wire
-        data_stream
-            .flush()
-            .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
 
         // End of data. `finish` sends our close_notify and FIN after the last
         // byte, closes the socket and reads the 226: the server writes the
