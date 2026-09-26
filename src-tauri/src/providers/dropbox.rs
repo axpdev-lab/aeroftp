@@ -1448,15 +1448,33 @@ impl StorageProvider for DropboxProvider {
             self.normalize_path(&format!("{}/{}", self.current_path, to))
         };
 
+        if from_path == to_path {
+            return Ok(());
+        }
+
         let body = serde_json::json!({
             "from_path": from_path,
             "to_path": to_path
         });
 
-        let _: serde_json::Value = self.rpc_call("files/move_v2", &body).await?;
+        // Dropbox refuses a taken destination itself (409 `to/conflict`):
+        // that is the AlreadyExists sync and `mkdir -p` handle.
+        let _: serde_json::Value = match self.rpc_call("files/move_v2", &body).await {
+            Err(ProviderError::Other(message)) if message.contains("to/conflict") => {
+                return Err(ProviderError::AlreadyExists(to.to_string()))
+            }
+            other => other?,
+        };
 
         info!("Renamed {} to {}", from, to);
         Ok(())
+    }
+
+    /// No: `files/move_v2` never overwrites (it offers only `autorename`),
+    /// so there is no one-step replace, and the callers that need one refuse
+    /// before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2881,6 +2899,70 @@ mod tests {
 
     fn demo_cfg() -> DropboxConfig {
         DropboxConfig::new("app-key", "app-secret")
+    }
+
+    /// A Dropbox double whose `files/move_v2` answers 409 `to/conflict`, as
+    /// Dropbox does for a taken destination, and records every call.
+    async fn provider_refusing_moves() -> (
+        DropboxProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::post(
+            move |uri: axum::http::Uri| {
+                seen.lock().unwrap().push(uri.path().to_string());
+                async {
+                    (
+                        axum::http::StatusCode::CONFLICT,
+                        r#"{"error_summary":"to/conflict/file/..","error":{".tag":"to","to":{".tag":"conflict","conflict":{".tag":"file"}}}}"#,
+                    )
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        (provider, calls)
+    }
+
+    /// Dropbox refuses a move onto a taken name with 409 `to/conflict`,
+    /// which reached the caller as a generic error (CLI exit 99, live on
+    /// 2026-09-26) instead of AlreadyExists (exit 9).
+    #[tokio::test]
+    async fn a_move_dropbox_refuses_for_a_taken_name_is_already_exists() {
+        let (mut provider, _) = provider_refusing_moves().await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// A move onto its own path is a no-op everywhere else; Dropbox refused
+    /// it (live on 2026-09-26). Nothing is sent.
+    #[tokio::test]
+    async fn a_rename_onto_its_own_path_sends_nothing() {
+        let (mut provider, calls) = provider_refusing_moves().await;
+        provider.rename("/a.txt", "/a.txt").await.expect("no-op");
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// Dropbox moves never overwrite (`move_v2` has only `autorename`), so a
+    /// replace cannot be done in one step and the callers that need one must
+    /// refuse before writing: `edit` uploaded its temporary and failed with
+    /// 409 (live on 2026-09-26).
+    #[tokio::test]
+    async fn dropbox_does_not_claim_an_atomic_replace() {
+        let mut provider = fixture_connected();
+        assert!(!provider.supports_atomic_replace().await.unwrap());
     }
 
     fn fixture_connected() -> DropboxProvider {
