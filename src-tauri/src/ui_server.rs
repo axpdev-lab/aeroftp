@@ -36,7 +36,7 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -54,11 +54,17 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
 use tokio::sync::{oneshot, Notify, OwnedSemaphorePermit, Semaphore};
-use tokio::time::Sleep;
+use tokio::time::{MissedTickBehavior, Sleep};
 
 /// The header `localhost_security::wait_for_owned_server` looks for (it
 /// compares names case-insensitively, as HTTP does).
 const NONCE_HEADER: HeaderName = HeaderName::from_static("x-aeroftp-ui-nonce");
+
+/// How often, at most, the connections closed at the cap and the failed
+/// accepts are logged. Every log line is also an event sent to the webview, so
+/// a line per connection would let any local client flood the log and push
+/// the useful lines out of it; they are counted and summed up instead.
+const SUMMARY_PERIOD: Duration = Duration::from_secs(10);
 
 /// One embedded asset, as the resolver hands it over. Cloning shares the bytes.
 #[derive(Clone)]
@@ -213,6 +219,61 @@ struct Site {
     frontend: Frontend,
     nonce: String,
     allowed_hosts: [String; 2],
+    stats: Stats,
+}
+
+/// Running totals behind the summary line.
+#[derive(Default)]
+struct Stats {
+    /// Closed at accept: at the cap, with no connection idle.
+    refused: AtomicU64,
+    /// Idle connections closed to make room for a newcomer.
+    evicted: AtomicU64,
+    /// Accepts that failed, usually for want of file descriptors.
+    failed_accepts: AtomicU64,
+    /// Connections served to their end.
+    ended: AtomicU64,
+}
+
+impl Stats {
+    fn totals(&self) -> [u64; 4] {
+        [
+            &self.refused,
+            &self.evicted,
+            &self.failed_accepts,
+            &self.ended,
+        ]
+        .map(|total| total.load(Ordering::Relaxed))
+    }
+}
+
+/// What the accept loop has already reported.
+struct Summary {
+    reported: [u64; 4],
+    accept_error: Option<io::Error>,
+}
+
+impl Summary {
+    fn log(&mut self, stats: &Stats, cap: usize) {
+        let totals = stats.totals();
+        let [refused, evicted, failed, ended] =
+            std::array::from_fn(|i| totals[i] - self.reported[i]);
+        self.reported = totals;
+        if refused + evicted + failed == 0 {
+            return;
+        }
+        let accept_error = self
+            .accept_error
+            .take()
+            .map(|error| format!(" (last: {error})"))
+            .unwrap_or_default();
+        log::warn!(
+            "UI server, last {}s: {refused} connections closed at the cap of {cap} with none idle, \
+             {evicted} idle ones closed to make room, {failed} failed accepts{accept_error}, \
+             {ended} connections ended",
+            SUMMARY_PERIOD.as_secs()
+        );
+    }
 }
 
 /// Bind `addr` and serve `source` from it until the process exits. The bind is
@@ -237,6 +298,7 @@ pub(crate) fn start(
         frontend,
         nonce,
         allowed_hosts: [format!("127.0.0.1:{port}"), format!("localhost:{port}")],
+        stats: Stats::default(),
     });
     tauri::async_runtime::spawn(accept_loop(listener, site, limits));
     Ok(local)
@@ -253,12 +315,26 @@ async fn accept_loop(listener: std::net::TcpListener, site: Arc<Site>, limits: L
     let slots = Arc::new(Semaphore::new(limits.max_connections));
     let occupants = Arc::new(Occupants::default());
     let mut accepted: u64 = 0;
+    let mut summary = Summary {
+        reported: site.stats.totals(),
+        accept_error: None,
+    };
+    let mut report = tokio::time::interval(SUMMARY_PERIOD);
+    report.set_missed_tick_behavior(MissedTickBehavior::Delay);
     loop {
-        let stream = match listener.accept().await {
+        let incoming = tokio::select! {
+            incoming = listener.accept() => incoming,
+            _ = report.tick() => {
+                summary.log(&site.stats, limits.max_connections);
+                continue;
+            }
+        };
+        let stream = match incoming {
             Ok((stream, _)) => stream,
             Err(error) => {
                 // EMFILE and friends: back off instead of spinning on accept.
-                log::warn!("UI server accept failed: {error}");
+                site.stats.failed_accepts.fetch_add(1, Ordering::Relaxed);
+                summary.accept_error = Some(error);
                 tokio::time::sleep(Duration::from_millis(50)).await;
                 continue;
             }
@@ -270,12 +346,12 @@ async fn accept_loop(listener: std::net::TcpListener, site: Arc<Site>, limits: L
             // being refused, so holding every slot takes that many requests in
             // flight, not that many open sockets.
             Err(_) => match occupants.evict_oldest_idle() {
-                Some(handover) => Admission::After(handover),
+                Some(handover) => {
+                    site.stats.evicted.fetch_add(1, Ordering::Relaxed);
+                    Admission::After(handover)
+                }
                 None => {
-                    log::warn!(
-                        "UI server at {} connections, closing a new one",
-                        limits.max_connections
-                    );
+                    site.stats.refused.fetch_add(1, Ordering::Relaxed);
                     continue;
                 }
             },
@@ -316,7 +392,7 @@ async fn serve(
     let tenancy = Tenancy::admit(occupants, slot, accepted);
     let occupant = tenancy.occupant.clone();
     let service = {
-        let occupant = occupant.clone();
+        let (site, occupant) = (site.clone(), occupant.clone());
         service_fn(move |request| {
             occupant.answering.store(true, Ordering::Relaxed);
             let answered = Answered(occupant.clone());
@@ -362,8 +438,35 @@ async fn serve(
     // A client that went away, was too slow, or stayed too long: its own
     // connection ends, nothing else does.
     if let Err(error) = served {
-        log::debug!("UI server connection ended: {error}");
+        if !ordinary_end(&error) {
+            log::trace!("UI server connection ended: {error}");
+        }
     }
+    site.stats.ended.fetch_add(1, Ordering::Relaxed);
+}
+
+/// How a client ends a connection on its own: it went quiet, left, reset,
+/// stopped reading, or sent something that is not a request. hyper answered
+/// what it could; a log line for each would let any local client write the log.
+fn ordinary_end(error: &hyper::Error) -> bool {
+    if error.is_timeout() || error.is_incomplete_message() || error.is_parse() {
+        return true;
+    }
+    let mut cause = std::error::Error::source(error);
+    while let Some(inner) = cause {
+        if let Some(io_error) = inner.downcast_ref::<io::Error>() {
+            return matches!(
+                io_error.kind(),
+                io::ErrorKind::ConnectionReset
+                    | io::ErrorKind::ConnectionAborted
+                    | io::ErrorKind::BrokenPipe
+                    | io::ErrorKind::TimedOut
+                    | io::ErrorKind::UnexpectedEof
+            );
+        }
+        cause = inner.source();
+    }
+    false
 }
 
 /// A connection holding a slot, as the accept loop sees it.
