@@ -7264,6 +7264,16 @@ fn warning_line(format: OutputFormat, warning: &str) -> String {
     }
 }
 
+/// The format `serve` was started with: its handlers have no `Cli`, and
+/// `--json` sets the process-wide flag.
+fn served_output_format() -> OutputFormat {
+    if JSON_MODE.load(Ordering::Relaxed) {
+        OutputFormat::Json
+    } else {
+        OutputFormat::Text
+    }
+}
+
 /// Show on stderr the warnings the library reported since the last call.
 /// A closed stderr is no reason to panic: the line is dropped.
 fn render_pending_warnings(format: OutputFormat) {
@@ -30259,7 +30269,7 @@ async fn webdav_dispatch(
             };
             // A replace that left its set-aside copy behind says so here: the
             // server runs until stopped, and the log is off by default.
-            render_pending_warnings(OutputFormat::Text);
+            render_pending_warnings(served_output_format());
             match outcome {
                 Ok(()) => {
                     let mut response = Response::new(Body::empty());
@@ -66224,6 +66234,7 @@ async fn main() {
 
     if matches!(&cli.command, Commands::Tui) {
         let exit_code = cmd_tui(&mut cli, format).await;
+        render_pending_warnings(format);
         std::process::exit(exit_code);
     }
 
@@ -80064,6 +80075,9 @@ mod tests {
         atomic_replace: bool,
         /// When set, `stat` fails with this instead of answering.
         stat_fails_with: Option<String>,
+        /// When set, a replace that succeeds leaves this warning, as a
+        /// set-aside replace does when it cannot delete the old copy.
+        replace_leaves_warning: Option<String>,
     }
 
     impl CliEditFakeProvider {
@@ -80079,6 +80093,7 @@ mod tests {
                 replace_refuses_as_existing: false,
                 atomic_replace: true,
                 stat_fails_with: None,
+                replace_leaves_warning: None,
             }
         }
     }
@@ -80209,6 +80224,9 @@ mod tests {
                 .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
             self.remote_files.insert(to.to_string(), data);
             self.replaces.push((from.to_string(), to.to_string()));
+            if let Some(warning) = &self.replace_leaves_warning {
+                ftp_client_gui_lib::providers::report_warning(warning.clone());
+            }
             Ok(())
         }
 
@@ -80398,6 +80416,22 @@ mod tests {
         assert_eq!(
             fake.remote_files.get("/b.txt").map(Vec::as_slice),
             Some(&b"old"[..])
+        );
+    }
+
+    /// `serve webdav` runs until stopped: a warning a MOVE's replace left
+    /// (its set-aside copy not deleted) is shown when the MOVE ends, not
+    /// kept until the process exits.
+    #[tokio::test]
+    async fn served_webdav_move_shows_the_warning_its_replace_left() {
+        let warning = format!("left a copy {}", uuid::Uuid::new_v4());
+        let mut fake = CliEditFakeProvider::new();
+        fake.replace_leaves_warning = Some(warning.clone());
+        let (status, _) = served_move_onto_an_existing_file_with(Some("T"), fake).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        assert!(
+            !ftp_client_gui_lib::providers::take_warnings().contains(&warning),
+            "the MOVE did not take its warning"
         );
     }
 

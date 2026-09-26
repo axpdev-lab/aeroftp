@@ -34,6 +34,20 @@ const SHUTDOWN_DRAIN_SECS: u64 = 10;
 /// pool slot indefinitely. Override with `AEROFTP_MCP_TOOL_TIMEOUT_SECS`.
 const MCP_TOOL_TIMEOUT_DEFAULT_SECS: u64 = 600;
 
+/// The content of a tool result: its JSON as text, then, when the call
+/// left warnings the user should see (a replace that could not delete the
+/// copy it set aside), one more text block listing them. A warning reported
+/// by a call running at the same time lands in whichever result drains the
+/// queue first.
+fn tool_content(text: String, warnings: Vec<String>) -> serde_json::Value {
+    let mut content = vec![json!({ "type": "text", "text": text })];
+    if !warnings.is_empty() {
+        let listed: Vec<String> = warnings.iter().map(|w| format!("warning: {w}")).collect();
+        content.push(json!({ "type": "text", "text": listed.join("\n") }));
+    }
+    serde_json::Value::Array(content)
+}
+
 fn mcp_tool_timeout() -> Duration {
     let secs = std::env::var("AEROFTP_MCP_TOOL_TIMEOUT_SECS")
         .ok()
@@ -475,10 +489,7 @@ async fn process_request(
                 };
 
             let text = serde_json::to_string_pretty(&result).unwrap_or_default();
-            let content = json!([{
-                "type": "text",
-                "text": text
-            }]);
+            let content = tool_content(text, crate::providers::take_warnings());
 
             Some(if is_error {
                 json!({
@@ -795,6 +806,31 @@ mod tests {
         assert!(deploy_text.contains("aeroftp_list_servers"));
         assert!(deploy_text.contains("aeroftp_upload_file"));
         assert!(deploy_text.contains("/var/www"));
+    }
+
+    /// A warning a call left for the user (a replace that could not delete
+    /// the copy it set aside) reached only the process's stderr at exit, and
+    /// an MCP client never saw it: it now comes back with the tool result.
+    #[tokio::test]
+    async fn a_warning_left_by_a_tool_call_comes_back_in_its_result() {
+        crate::providers::report_warning("left /d/.a.txt.aeroftp-replaced-1".to_string());
+        let reply = dispatch(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "tools/call",
+                "params": { "name": "aeroftp_list_servers", "arguments": {} }
+            }),
+            vec![],
+        )
+        .await;
+        let content = reply["result"]["content"].as_array().expect("content");
+        assert_eq!(content.len(), 2, "{reply}");
+        assert_eq!(
+            content[1]["text"],
+            json!("warning: left /d/.a.txt.aeroftp-replaced-1")
+        );
+        assert!(crate::providers::take_warnings().is_empty(), "drained");
     }
 
     #[tokio::test]

@@ -1752,28 +1752,71 @@ pub(crate) fn report_set_aside_leftover(to: &str, aside: &str, error: &ProviderE
          {error}; delete it by hand"
     );
     tracing::warn!("{message}");
-    if let Ok(mut pending) = PENDING_WARNINGS.lock() {
-        // A front end that never asks (the GUI, which has the log) must not
-        // grow this without end.
-        if pending.len() < MAX_PENDING_WARNINGS {
-            pending.push(message);
-        }
-    }
+    report_warning(message);
 }
 
-/// Warnings the user should see that a successful call cannot return, kept
-/// until a front end takes them.
-static PENDING_WARNINGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-const MAX_PENDING_WARNINGS: usize = 64;
+/// Keep `message` for the front end to show ([`take_warnings`]): a warning
+/// the user should see that a successful call cannot return. When the
+/// front end never asks (the GUI, which has the log), the oldest go first
+/// and are counted, so the queue stays bounded and the newest survive.
+pub fn report_warning(message: String) {
+    with_pending_warnings(|pending| {
+        if pending.messages.len() == MAX_PENDING_WARNINGS {
+            pending.messages.pop_front();
+            pending.dropped += 1;
+        }
+        pending.messages.push_back(message);
+    });
+}
 
 /// Take the warnings reported since the last call, oldest first, for the
 /// front end to show in its own format (the CLI: a line on stderr, or a JSON
-/// object there with `--json`).
+/// object there with `--json`; MCP: a text block of the tool result). When
+/// some were dropped to keep the queue bounded, the first says how many.
 pub fn take_warnings() -> Vec<String> {
-    PENDING_WARNINGS
+    with_pending_warnings(|pending| {
+        let mut taken = Vec::with_capacity(pending.messages.len() + 1);
+        if pending.dropped > 0 {
+            taken.push(format!(
+                "{} earlier warnings were dropped before anyone read them",
+                pending.dropped
+            ));
+            pending.dropped = 0;
+        }
+        taken.extend(pending.messages.drain(..));
+        taken
+    })
+}
+
+#[derive(Default)]
+struct PendingWarnings {
+    messages: std::collections::VecDeque<String>,
+    dropped: usize,
+}
+
+const MAX_PENDING_WARNINGS: usize = 64;
+
+/// The queue of [`report_warning`]: one for the process, and one per thread
+/// in this crate's tests, so a test reads only the warnings it caused.
+#[cfg(not(test))]
+fn with_pending_warnings<R>(f: impl FnOnce(&mut PendingWarnings) -> R) -> R {
+    static PENDING: std::sync::Mutex<PendingWarnings> = std::sync::Mutex::new(PendingWarnings {
+        messages: std::collections::VecDeque::new(),
+        dropped: 0,
+    });
+    let mut pending = PENDING
         .lock()
-        .map(|mut pending| std::mem::take(&mut *pending))
-        .unwrap_or_default()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    f(&mut pending)
+}
+
+#[cfg(test)]
+fn with_pending_warnings<R>(f: impl FnOnce(&mut PendingWarnings) -> R) -> R {
+    thread_local! {
+        static PENDING: std::cell::RefCell<PendingWarnings> =
+            std::cell::RefCell::new(PendingWarnings::default());
+    }
+    PENDING.with(|pending| f(&mut pending.borrow_mut()))
 }
 
 /// Refuse `rename(from, to)` when `to` is taken, on a backend whose own move
@@ -2340,6 +2383,27 @@ mod tests {
         );
         assert!(out.contains("[REDACTED]"));
         assert!(!out.contains("stack trace"), "only the first line is kept");
+    }
+
+    /// A queue no front end reads keeps the newest warnings and counts the
+    /// ones it dropped: it kept the oldest and dropped the newest silently.
+    #[test]
+    fn the_warning_queue_keeps_the_newest_and_counts_the_dropped() {
+        for i in 0..MAX_PENDING_WARNINGS + 3 {
+            report_warning(format!("w{i}"));
+        }
+        let taken = take_warnings();
+        assert_eq!(taken.len(), MAX_PENDING_WARNINGS + 1, "{taken:?}");
+        assert!(
+            taken[0].starts_with("3 earlier warnings were dropped"),
+            "{taken:?}"
+        );
+        assert_eq!(taken[1], "w3");
+        assert_eq!(
+            taken.last().unwrap(),
+            &format!("w{}", MAX_PENDING_WARNINGS + 2)
+        );
+        assert!(take_warnings().is_empty());
     }
 
     /// The shared look before a rename, on a local folder: a file or a folder
