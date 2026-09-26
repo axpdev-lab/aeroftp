@@ -1170,9 +1170,19 @@ impl StorageProvider for KoofrProvider {
         Ok(())
     }
 
-    /// No: Koofr's rename and move refuse a taken name and offer no
-    /// overwrite, so there is no one-step replace, and the callers that need
-    /// one refuse before they write anything.
+    /// Koofr's rename and move refuse a taken name and offer no overwrite, so a
+    /// replace sets the item at `to` aside, renames `from` in, and then deletes
+    /// the one set aside, which Koofr keeps in its trash: see
+    /// [`super::replace_by_setting_aside`].
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let (from, to) = (self.resolve_path(from), self.resolve_path(to));
+        super::replace_by_setting_aside(self, &from, &to).await
+    }
+
+    /// No: a replace sets the old item aside, so the name is empty for a
+    /// moment. The callers that need atomicity (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write
+    /// anything.
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
         Ok(false)
     }
@@ -2160,10 +2170,130 @@ mod tests {
         );
     }
 
-    /// Koofr's rename and move refuse a taken name and have no overwrite,
-    /// so there is no one-step replace: `edit` uploaded its temporary and
-    /// failed with 409 (live on 2026-09-26). The callers that need one must
-    /// refuse before writing.
+    /// A Koofr double that keeps `items` (path, content, is a folder) in
+    /// memory: `info` finds them, `rename` and `move` move one (409
+    /// `AlreadyExists` onto a taken path), `remove` deletes one. Returns a
+    /// provider on it, the items, and every change as `rename FROM TO` or
+    /// `remove PATH`.
+    #[allow(clippy::type_complexity)]
+    async fn provider_on_koofr_items(
+        items: &[(&str, &str, bool)],
+    ) -> (
+        KoofrProvider,
+        std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, (String, bool)>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let store: Arc<Mutex<std::collections::BTreeMap<String, (String, bool)>>> =
+            Arc::new(Mutex::new(
+                items
+                    .iter()
+                    .map(|(path, content, dir)| (path.to_string(), (content.to_string(), *dir)))
+                    .collect(),
+            ));
+        let changes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (items, seen) = (Arc::clone(&store), Arc::clone(&changes));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |uri: axum::http::Uri, body: String| {
+                let (items, seen) = (Arc::clone(&items), Arc::clone(&seen));
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    let path = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "path")
+                        .map(|(_, v)| v.to_string())
+                        .unwrap_or_default();
+                    let args: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                    let refused = |status: u16, code: &str| {
+                        (
+                            axum::http::StatusCode::from_u16(status).unwrap(),
+                            format!(r#"{{"error":{{"code":"{code}","message":"{code}"}}}}"#),
+                        )
+                            .into_response()
+                    };
+                    let mut items = items.lock().unwrap();
+                    let parent = |p: &str| p.rsplit_once('/').map(|(a, _)| a.to_string()).unwrap();
+                    let target = match uri.path() {
+                        "/mounts/M/files/info" => {
+                            return match items.get(&path) {
+                                Some((_, dir)) => axum::Json(serde_json::json!({
+                                    "name": path.rsplit('/').next().unwrap(),
+                                    "type": if *dir { "dir" } else { "file" },
+                                }))
+                                .into_response(),
+                                None => refused(404, "NotFound"),
+                            };
+                        }
+                        "/mounts/M/files/remove" => {
+                            items.remove(&path);
+                            seen.lock().unwrap().push(format!("remove {path}"));
+                            return axum::Json(serde_json::json!({})).into_response();
+                        }
+                        "/mounts/M/files/rename" => {
+                            format!("{}/{}", parent(&path), args["name"].as_str().unwrap_or(""))
+                        }
+                        "/mounts/M/files/move" => args["toPath"].as_str().unwrap_or("").to_string(),
+                        other => return refused(400, other),
+                    };
+                    if items.contains_key(&target) {
+                        return refused(409, "AlreadyExists");
+                    }
+                    let Some(item) = items.remove(&path) else {
+                        return refused(404, "NotFound");
+                    };
+                    items.insert(target.clone(), item);
+                    seen.lock().unwrap().push(format!("rename {path} {target}"));
+                    axum::Json(serde_json::json!({})).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, store, changes)
+    }
+
+    /// Koofr's rename and move never overwrite, so the replace behind CLI
+    /// `edit` and the served WebDAV MOVE with `Overwrite: T` was the rename,
+    /// which Koofr refuses onto the file it is meant to replace (409, live on
+    /// 2026-09-26). It now sets the old file aside, renames the new one in
+    /// and removes the one set aside.
+    #[tokio::test]
+    async fn a_replace_sets_the_old_file_aside_renames_the_new_one_in_then_removes_it() {
+        let (mut provider, store, changes) =
+            provider_on_koofr_items(&[("/d/a.txt", "A", false), ("/d/b.txt", "B", false)]).await;
+        provider
+            .replace("/d/a.txt", "/d/b.txt")
+            .await
+            .expect("replace");
+        let changes = changes.lock().unwrap().clone();
+        assert_eq!(changes.len(), 3, "{changes:?}");
+        assert!(
+            changes[0].starts_with("rename /d/b.txt /d/.b.txt.aeroftp-replaced-"),
+            "{changes:?}"
+        );
+        assert_eq!(changes[1], "rename /d/a.txt /d/b.txt");
+        assert!(
+            changes[2].starts_with("remove /d/.b.txt.aeroftp-replaced-"),
+            "{changes:?}"
+        );
+        let store = store.lock().unwrap().clone();
+        assert_eq!(store.len(), 1, "{store:?}");
+        assert_eq!(store["/d/b.txt"].0, "A");
+    }
+
+    /// The replace sets the old item aside, so the name is empty for a
+    /// moment: no atomic replace is claimed, and the callers that need one
+    /// refuse before they write.
     #[tokio::test]
     async fn koofr_does_not_claim_an_atomic_replace() {
         let (mut provider, _) = provider_on_refusing_koofr().await;

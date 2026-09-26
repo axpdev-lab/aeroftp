@@ -1608,8 +1608,17 @@ impl StorageProvider for DrimeCloudProvider {
         Ok(())
     }
 
-    /// No: Drime's rename and move never overwrite, so there is no one-step
-    /// replace, and the callers that need one refuse before they write
+    /// Drime's rename and move never overwrite, so a replace sets the item at
+    /// `to` aside, renames `from` in, and then deletes the one set aside, which
+    /// Drime moves to its trash: see [`super::replace_by_setting_aside`].
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let (from, to) = (self.resolve_path(from), self.resolve_path(to));
+        super::replace_by_setting_aside(self, &from, &to).await
+    }
+
+    /// No: a replace sets the old item aside, so the name is empty for a
+    /// moment. The callers that need atomicity (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write
     /// anything.
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
         Ok(false)
@@ -2739,9 +2748,130 @@ mod tests {
         );
     }
 
-    /// Drime renames and moves never overwrite, so there is no one-step
-    /// replace: the edit failed after uploading its temporary (live on
-    /// 2026-09-26). The callers that need one must refuse before writing.
+    /// A Drime double that keeps `entries` (id, name, parent id, kind; the
+    /// root is the parent `""`) in memory: listings by `parentIds`, a rename
+    /// (`PUT /file-entries/{id}`, 400 onto a name taken in its folder), a
+    /// move and a delete. Returns a provider on it, the entries, and every
+    /// change as `rename ID NAME` or `delete ID`.
+    #[allow(clippy::type_complexity)]
+    async fn provider_on_drime_entries(
+        entries: &[(u64, &str, &str, &str)],
+    ) -> (
+        DrimeCloudProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<(u64, String, String, String)>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let store: Arc<Mutex<Vec<(u64, String, String, String)>>> = Arc::new(Mutex::new(
+            entries
+                .iter()
+                .map(|(id, name, parent, kind)| {
+                    (*id, name.to_string(), parent.to_string(), kind.to_string())
+                })
+                .collect(),
+        ));
+        let changes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (items, seen) = (Arc::clone(&store), Arc::clone(&changes));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (items, seen) = (Arc::clone(&items), Arc::clone(&seen));
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                        .await
+                        .unwrap();
+                    let args: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+                    let mut items = items.lock().unwrap();
+                    let ok =
+                        || axum::Json(serde_json::json!({ "status": "success" })).into_response();
+                    if method == "GET" {
+                        let parent = query
+                            .split('&')
+                            .find_map(|pair| pair.strip_prefix("parentIds="))
+                            .unwrap_or("");
+                        let data: Vec<serde_json::Value> = items
+                            .iter()
+                            .filter(|(_, _, p, _)| p == parent)
+                            .map(|(id, name, _, kind)| {
+                                serde_json::json!({ "id": id, "name": name, "type": kind })
+                            })
+                            .collect();
+                        return axum::Json(serde_json::json!({ "data": data, "last_page": 1 }))
+                            .into_response();
+                    }
+                    match (method.as_str(), path.as_str()) {
+                        ("PUT", p) if p.starts_with("/file-entries/") => {
+                            let id: u64 = p.trim_start_matches("/file-entries/").parse().unwrap();
+                            let name = args["name"].as_str().unwrap_or("").to_string();
+                            let parent = items.iter().find(|e| e.0 == id).unwrap().2.clone();
+                            if items.iter().any(|e| e.2 == parent && e.1 == name) {
+                                return (
+                                    axum::http::StatusCode::BAD_REQUEST,
+                                    r#"{"message":"An item with this name already exists."}"#,
+                                )
+                                    .into_response();
+                            }
+                            items.iter_mut().find(|e| e.0 == id).unwrap().1 = name.clone();
+                            seen.lock().unwrap().push(format!("rename {id} {name}"));
+                            ok()
+                        }
+                        ("POST", "/file-entries/delete") => {
+                            for id in args["entryIds"].as_array().unwrap() {
+                                let id = id.as_u64().unwrap();
+                                items.retain(|e| e.0 != id);
+                                seen.lock().unwrap().push(format!("delete {id}"));
+                            }
+                            ok()
+                        }
+                        _ => (axum::http::StatusCode::BAD_REQUEST, "unexpected").into_response(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        TEST_API_BASE.with(|base| *base.borrow_mut() = Some(format!("http://{addr}")));
+        let mut provider = test_provider();
+        provider.connected = true;
+        (provider, store, changes)
+    }
+
+    /// Drime's rename and move never overwrite, so the replace behind CLI
+    /// `edit` and the served WebDAV MOVE with `Overwrite: T` was the rename,
+    /// refused onto the file it is meant to replace (400, live on
+    /// 2026-09-26). It now renames the old file aside, renames the new one
+    /// in and deletes the one set aside; no name is ever taken twice, so the
+    /// 400 Drime gives a taken name is never met.
+    #[tokio::test]
+    async fn a_replace_sets_the_old_file_aside_renames_the_new_one_in_then_deletes_it() {
+        let (mut provider, store, changes) = provider_on_drime_entries(&[
+            (1, "d", "", "folder"),
+            (11, "a.txt", "1", "file"),
+            (12, "b.txt", "1", "file"),
+        ])
+        .await;
+        provider
+            .replace("/d/a.txt", "/d/b.txt")
+            .await
+            .expect("replace");
+        let changes = changes.lock().unwrap().clone();
+        assert_eq!(changes.len(), 3, "{changes:?}");
+        assert!(
+            changes[0].starts_with("rename 12 .b.txt.aeroftp-replaced-"),
+            "{changes:?}"
+        );
+        assert_eq!(changes[1], "rename 11 b.txt");
+        assert_eq!(changes[2], "delete 12");
+        let names: Vec<String> = store.lock().unwrap().iter().map(|e| e.1.clone()).collect();
+        assert_eq!(names, ["d", "b.txt"]);
+    }
+
+    /// The replace sets the old item aside, so the name is empty for a
+    /// moment: no atomic replace is claimed, and the callers that need one
+    /// refuse before they write.
     #[tokio::test]
     async fn drime_does_not_claim_an_atomic_replace() {
         let mut provider = test_provider();

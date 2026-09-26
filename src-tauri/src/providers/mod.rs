@@ -813,9 +813,9 @@ pub trait StorageProvider: Send + Sync {
     /// the MTP folder overwrite in one server step, MEGAcmd and Jottacloud
     /// send their move without the look their rename makes, OneDrive
     /// replaces in the request that moves, Google Drive uploads the new
-    /// content as a revision of the file there, and MEGA, Filen and FileLu,
-    /// which have neither, set the old item aside first (see
-    /// [`set_aside_name`]). A backend with none of these keeps the default,
+    /// content as a revision of the file there, and MEGA, Filen, FileLu,
+    /// Dropbox, Koofr and Drime, which have neither, set the old item aside
+    /// first (see [`set_aside_name`]). A backend with none of these keeps the default,
     /// whose refusal is the answer, and says so through
     /// [`StorageProvider::supports_atomic_replace`].
     ///
@@ -839,7 +839,7 @@ pub trait StorageProvider: Send + Sync {
     /// backend that has actually measured its own ground says otherwise:
     /// `SftpProvider`, which asks the server whether it offers
     /// `posix-rename@openssh.com`; the backends whose replace sets the old
-    /// item aside (MEGA, Filen, FileLu); those whose move over a file is not
+    /// item aside (MEGA, Filen, FileLu, Dropbox, Koofr, Drime); those whose move over a file is not
     /// documented as one step (MEGAcmd, Jottacloud); those with no replace
     /// at all, whose rename refuses a taken name or who have no rename (each
     /// says why on its own answer); and ImageKit and OpenDrive, which
@@ -1641,7 +1641,8 @@ pub async fn ensure_atomic_replace(
 
 /// The name an item displaced by a replace takes until it is deleted, on a
 /// backend that can neither overwrite on a move nor swap two items in one
-/// call (MEGA, Filen, FileLu, Google Drive). Their `replace` renames the item
+/// call (MEGA, Filen, FileLu, Google Drive for folders, and through
+/// [`replace_by_setting_aside`] Dropbox, Koofr and Drime). Their `replace` renames the item
 /// at the destination to this, moves the new one in, and only then deletes
 /// it: no step can lose either item, and the name is hidden and unique so it
 /// never meets another. The destination is empty between the first two
@@ -1709,6 +1710,54 @@ pub(crate) async fn refuse_occupied_destination(
         Err(ProviderError::NotFound(_)) => Ok(()),
         Err(e) => Err(e),
     }
+}
+
+/// Put `from` in place of `to` on a backend whose rename refuses a taken
+/// name and which has no call that overwrites: the item at `to` is renamed
+/// aside under [`set_aside_name`], `from` is renamed in, and only then is
+/// the one set aside deleted. If the rename in fails, the item set aside
+/// gets its name back (see [`set_aside_move_failed`]); if the final delete
+/// fails, the replace is done and the leftover is reported (see
+/// [`report_set_aside_leftover`]). Onto a free name, or onto the source
+/// itself under another letter case, it is the rename; across file and
+/// folder it is refused before anything changes. `to` is empty between the
+/// first two steps, so a backend that uses this answers `false` to
+/// [`StorageProvider::supports_atomic_replace`].
+///
+/// `from` and `to` are the backend's resolved absolute paths.
+pub(crate) async fn replace_by_setting_aside(
+    provider: &mut dyn StorageProvider,
+    from: &str,
+    to: &str,
+) -> Result<(), ProviderError> {
+    let (from, to) = (from.trim_end_matches('/'), to.trim_end_matches('/'));
+    if from == to {
+        return Ok(());
+    }
+    let occupant = match provider.stat(to).await {
+        Ok(found) if !is_the_source_under_another_case(from, to, &found.name) => found,
+        Ok(_) | Err(ProviderError::NotFound(_)) => return provider.rename(from, to).await,
+        Err(e) => return Err(e),
+    };
+    let source = provider.stat(from).await?;
+    refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?;
+    let (parent, name) = to.rsplit_once('/').unwrap_or(("", to));
+    let aside = format!("{parent}/{}", set_aside_name(name));
+
+    provider.rename(to, &aside).await?;
+    if let Err(e) = provider.rename(from, to).await {
+        let restored = provider.rename(&aside, to).await;
+        return Err(set_aside_move_failed(to, &aside, e, restored));
+    }
+    let removed = if occupant.is_dir {
+        provider.rmdir_recursive(&aside).await
+    } else {
+        provider.delete(&aside).await
+    };
+    if let Err(e) = removed {
+        report_set_aside_leftover(to, &aside, &e);
+    }
+    Ok(())
 }
 
 /// Whether the item `stat(to)` found, named `found_name`, is the source of a
