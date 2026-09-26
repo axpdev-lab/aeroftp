@@ -723,6 +723,24 @@ impl CloudinaryProvider {
                         .and_then(|pid| self.cached_resource_type(pid))
                 })
                 .unwrap_or_else(|| "image".to_string());
+            // Public ids are unique per resource type, and a rename moves an
+            // asset within its own. An image replaced onto the video `v`
+            // (`v.mp4`) took the public id `v` among the images with
+            // overwrite=true: it overwrote an image `v` (`v.png`) nobody
+            // named, or with none there replaced nothing, and the video
+            // stayed. A replace onto an asset of another type is refused.
+            if let Some(occupant) = displaced.as_ref().filter(|occupant| !occupant.is_dir) {
+                let occupant_kind = occupant
+                    .metadata
+                    .get("resource_type")
+                    .map_or("image", String::as_str);
+                if occupant_kind != kind {
+                    return Err(ProviderError::AlreadyExists(format!(
+                        "{to} is a Cloudinary {occupant_kind} asset and {from} a {kind} one: \
+                         public ids are kept per resource type, so a rename cannot replace it"
+                    )));
+                }
+            }
             let from_pid = entry
                 .metadata
                 .get("public_id")
@@ -790,6 +808,11 @@ impl CloudinaryProvider {
             );
             let replaces_the_occupant = displaced.as_ref().is_some_and(|occupant| {
                 !occupant.is_dir
+                    && occupant
+                        .metadata
+                        .get("resource_type")
+                        .map_or("image", String::as_str)
+                        == kind
                     && occupant.metadata.get("public_id").map(String::as_str)
                         == Some(to_pid.as_str())
             });
@@ -1430,7 +1453,7 @@ impl StorageProvider for CloudinaryProvider {
         }
 
         // Treat as file: list parent files and look for it.
-        let files = self.list_files(&parent).await?;
+        let mut files = self.list_files(&parent).await?;
         for f in &files {
             self.cache_resource_type(&f.public_id, &f.resource_type);
         }
@@ -1441,10 +1464,16 @@ impl StorageProvider for CloudinaryProvider {
         // the old name kept resolving to the renamed asset (found live on
         // 2026-09-26), so it could be read under both names and a new file
         // could not take the old one.
+        // The name `list` shows comes first: with a raw `b` and an image
+        // `b.png` (public id `b`), `/b` is the raw asset, whatever the order
+        // of the listing.
         let dynamic = self.dynamic_folders();
-        let entry = files
-            .into_iter()
-            .find(|f| resource_name(f, dynamic) == name || (!dynamic && f.public_id == trimmed));
+        let entry = match files.iter().position(|f| resource_name(f, dynamic) == name) {
+            Some(at) => Some(files.swap_remove(at)),
+            None => files
+                .into_iter()
+                .find(|f| !dynamic && f.public_id == trimmed),
+        };
         match entry {
             Some(f) => Ok(resource_to_entry(&f, &parent, dynamic)),
             None => Err(ProviderError::NotFound(format!("/{}", trimmed))),
@@ -2362,11 +2391,15 @@ mod tests {
                         .iter()
                         .filter(|(_, _, resource_type)| *resource_type == kind)
                         .map(|(public_id, format, resource_type)| {
-                            serde_json::json!({
+                            let mut resource = serde_json::json!({
                                 "asset_id": format!("AID_{public_id}"), "public_id": public_id,
-                                "format": format, "bytes": 3, "resource_type": resource_type,
-                                "type": "upload",
-                            })
+                                "bytes": 3, "resource_type": resource_type, "type": "upload",
+                            });
+                            // A raw asset may come without a format.
+                            if !format.is_empty() {
+                                resource["format"] = serde_json::json!(format);
+                            }
+                            resource
                         })
                         .collect();
                     axum::Json(serde_json::json!({ "resources": listed })).into_response()
@@ -2409,20 +2442,46 @@ mod tests {
         );
     }
 
-    /// A replace onto a free name asks for no overwrite: there is nothing to
-    /// replace, and an overwrite would take whatever holds the public id.
+    /// Public ids are kept per resource type. An image replaced onto the
+    /// video `v.mp4` took the public id `v` among the images with
+    /// overwrite=true: the image `v.png`, which nobody named, was overwritten
+    /// and the video stayed. It is refused before any call.
     #[tokio::test]
-    async fn a_replace_onto_a_free_name_asks_for_no_overwrite() {
-        let (mut provider, renames) =
-            provider_on_fixed_folders(&[("a", "jpg", "image")], &[]).await;
-        provider.replace("/a.jpg", "/c.jpg").await.expect("replace");
-        let renames = renames.lock().unwrap().clone();
-        assert_eq!(renames.len(), 1, "{renames:?}");
-        assert_eq!(
-            query_value(&renames[0], "to_public_id").as_deref(),
-            Some("c")
+    async fn a_replace_onto_an_asset_of_another_type_is_refused() {
+        let (mut provider, renames) = provider_on_fixed_folders(
+            &[
+                ("a", "jpg", "image"),
+                ("v", "png", "image"),
+                ("v", "mp4", "video"),
+            ],
+            &[],
+        )
+        .await;
+        let outcome = provider.replace("/a.jpg", "/v.mp4").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(ref m)) if m.contains("video")),
+            "{outcome:?}"
         );
-        assert_eq!(query_value(&renames[0], "overwrite"), None, "{renames:?}");
+        assert!(
+            renames.lock().unwrap().is_empty(),
+            "{:?}",
+            renames.lock().unwrap()
+        );
+    }
+
+    /// A path names the asset `list` shows under that name first: with a
+    /// raw `b` and an image `b.png` (public id `b`), `/b` resolved to the
+    /// image, listed first, while `ls` shows the raw asset as `b`.
+    #[tokio::test]
+    async fn a_path_resolves_to_the_listed_name_before_a_public_id() {
+        let (mut provider, _) =
+            provider_on_fixed_folders(&[("b", "png", "image"), ("b", "", "raw")], &[]).await;
+        let found = provider.stat("/b").await.expect("stat");
+        assert_eq!(
+            found.metadata.get("resource_type").map(String::as_str),
+            Some("raw"),
+            "{found:?}"
+        );
     }
 
     /// Public ids are unique per resource type: with a video `b` (`b.mp4`),
