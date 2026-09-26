@@ -2142,9 +2142,6 @@
                 "disk_error": "Error de disc",
                 "unknown": "Desconegut"
             },
-            "parallelStreams": "Fluxos",
-            "parallelSequential": "Seqüencial",
-            "parallelStreamLabel": "fluxos",
             "schedulerTitle": "Programador de sincronització",
             "schedulerEnabled": "Activa el programador",
             "schedulerResume": "Reprendre",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Recompte alt de directoris - pot superar el límit inotify",
             "watcherPolling": "Utilitzant mode poll (més lent però universal)",
-            "compressionToggle": "Compressió",
-            "compressionAuto": "Automàtic",
-            "compressionOn": "Activat",
-            "compressionOff": "Desactivat",
             "multiPathAdd": "Afegeix parella de rutes",
             "multiPathEmpty": "No hi ha parelles de rutes configurades",
             "templateExport": "Exporta plantilla",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Restaura",
             "rollbackEmpty": "No hi ha instantànies disponibles",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 fluxos + TOTA la seguretat desactivada - sense registre, sense verificació, sense reintent",
+            "speedManiacTooltip": "Sense registre, sense verificació durant l'execució, límits d'ample de banda ignorats, 2 reintents ràpids. Els fitxers descarregats es verifiquen després de l'execució.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Sense registre. Sense verificació. Sense reintent. Velocitat màxima. Si alguna cosa falla, s'ha perdut. S'executarà una verificació completa després que es completi la sincronització.",
+            "maniacWarningBody": "Sense registre ni verificació durant l'execució, els límits d'ample de banda s'ignoren i un fitxer fallit només té 2 reintents ràpids. Després de l'execució, els fitxers descarregats es verifiquen; els pujats no.",
             "maniacConfirm": "Ho entenc, continua",
             "maniacPostSyncReport": "Verificació post-sincronització: {ok} OK, {mismatches} desajustaments, {failed} fallits",
             "rollback": "Revertir",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Desa la configuració de sincronització actual com a plantilla .aerosync reutilitzable",
             "templateImportDesc": "Carrega una plantilla .aerosync per aplicar la seva configuració de sincronització",
             "maniacActive": "Actiu",
-            "speedStreams": "{count} fluxos",
             "actionUploaded": "Pujat",
             "actionDownloaded": "Descarregat",
             "actionDeleted": "Eliminat",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Camps metadata no reconeguts",
             "aerosyncScriptApplyButton": "Desa com a preset",
             "aerosyncScriptAppliedToast": "Preset importat desat. Obre AeroSync per utilitzar-lo.",
-            "compressionHint": "Comprimeix les dades durant el trànsit per accelerar la transferència; no desa fitxers comprimits a la destinació. Auto omet els formats que ja estan comprimits (zip, jpg, mp4 i similars).",
             "canaryDryRun": "No es transfereix res: mostra una vista prèvia del que faria una sincronització completa, calculada a partir de la mostra. És l'equivalent gràfic de l'ordre aeroftp-cli sync --dry-run (i de --dry-run de rclone).",
-            "templateImportPathPairs": "Aquesta plantilla defineix {count} parelles de rutes utilitzables. AeroFTP n'aplica exactament una, així que no s'ha importat res. Edita la plantilla perquè hi quedi una sola parella i torna a importar-la.",
+            "templateImportPathPairs": "Parelles de rutes (local/remota) utilitzables en aquesta plantilla: {count}. Una finestra d'AeroSync treballa amb exactament una parella, així que no s'ha importat res. Edita la plantilla perquè només hi quedi una parella i torna-la a importar.",
             "templateNamePlaceholder": "p. ex. Còpia de seguretat nocturna a S3",
             "templateDescPlaceholder": "Per a què serveix aquesta plantilla (opcional)"
         },
@@ -5089,7 +5080,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Comparar",
             "tabPlan": "Pla",
-            "tabSync": "Sincronitzar",
+            "tabSync": "Mirall local",
             "compareWontFitTitle": "Per sobre dels límits de {name}: {count}",
             "compareWontFitHint": "Aquests fitxers superen el límit de mida documentat del proveïdor, o el seu nom o camí és més llarg del que accepta. Una sincronització hi fallaria: canvia'ls el nom, mou-los o divideix-los abans.",
             "compareWontFitTooLarge": "{size}, límit {limit}",
@@ -5097,6 +5088,78 @@
             "compareWontFitNameChars": "nom de més de {count} caràcters",
             "compareWontFitPathBytes": "camí de més de {count} bytes",
             "compareWontFitPathChars": "camí de més de {count} caràcters",
+            "presetDefault": "Per defecte",
+            "actionLabel": {
+                "skip": "Omet",
+                "copy-to-right": "Copia → dreta",
+                "copy-to-left": "Copia ← esquerra",
+                "overwrite-right": "Sobreescriu a la dreta",
+                "overwrite-left": "Sobreescriu a l'esquerra",
+                "delete-right": "Elimina a la dreta",
+                "delete-left": "Elimina a l'esquerra",
+                "rename-to-right": "Conserva tots dos → dreta",
+                "rename-to-left": "Conserva tots dos ← esquerra",
+                "conflict-skip": "Conflicte (omet)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Omet",
+                    "tagline": "Deixa els conflictes intactes als dos costats."
+                },
+                "rename": {
+                    "label": "Conserva tots dos",
+                    "tagline": "Copia la versió d'origen amb un sufix de data i hora."
+                },
+                "newer-wins": {
+                    "label": "Guanya el més recent",
+                    "tagline": "El costat amb la data de modificació més recent sobreescriu l'altre."
+                },
+                "older-wins": {
+                    "label": "Guanya el més antic",
+                    "tagline": "El costat més antic sobreescriu el més recent (per a arxivament)."
+                },
+                "larger-wins": {
+                    "label": "Guanya el més gran",
+                    "tagline": "El costat amb la mida més gran sobreescriu el més petit."
+                },
+                "smaller-wins": {
+                    "label": "Guanya el més petit",
+                    "tagline": "El costat més petit sobreescriu el més gran."
+                }
+            },
+            "bucketName": {
+                "only-left": "Només a l'esquerra",
+                "newer-left": "Més recent a l'esquerra",
+                "only-right": "Només a la dreta",
+                "newer-right": "Més recent a la dreta",
+                "conflict": "Conflicte",
+                "same": "Iguals"
+            },
+            "bucketDescription": {
+                "only-left": "Present al tauler d'origen, absent a la destinació.",
+                "newer-left": "Present als dos costats, la còpia d'origen té la marca de temps més recent.",
+                "only-right": "Present a la destinació, absent al tauler d'origen.",
+                "newer-right": "Present als dos costats, la còpia de destinació té la marca de temps més recent.",
+                "conflict": "Els dos costats tenen l'entrada, però la mida no coincideix amb marques de temps comparables.",
+                "same": "Les entrades coincideixen segons el criteri de comparació actiu."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Només mida",
+                "mtimeOnly": "Només marca de temps",
+                "sizeAndMtime": "Mida + marca de temps"
+            },
+            "compareTable": {
+                "name": "Nom",
+                "leftSize": "Mida a l'esquerra",
+                "rightSize": "Mida a la dreta",
+                "leftModified": "Modificat a l'esquerra",
+                "rightModified": "Modificat a la dreta",
+                "folder": "carpeta",
+                "noEntries": "Cap entrada.",
+                "countedNotListed": "Comptats però no llistats: l'escaneig informa dels fitxers idèntics com un total en lloc d'una fila per a cadascun, de manera que els arbres grans continuen sent ràpids.",
+                "shown": "Mostrats: {shown} de {total}",
+                "moreNotListed": "Comptats però no llistats: {count}"
+            },
             "compareUnavailable": "Obre un segon tauler o una connexió remota per comparar.",
             "planUnavailable": "Cal un resultat de comparació abans d'escollir un preset. Obre primer la pestanya Comparar.",
             "totalEntries": "Entrades totals",
@@ -5133,7 +5196,7 @@
             "ignoredForMirror": "IGNORAT PER MIRALL",
             "versionedBackup": "Còpia de seguretat amb versions",
             "enable": "Habilitar",
-            "versionedBackupHint": "Captura la còpia de destinació en aquest directori abans de cada sobreescriptura o eliminació.",
+            "versionedBackupHint": "Abans que un fitxer se sobreescrigui o s'elimini, la seva còpia de destinació es mou a {dir}, en una carpeta amb el nom de la data i l'hora de l'execució.",
             "actionable": "Accionable",
             "reportCopiedRight": "Copiats a la dreta",
             "reportCopiedLeft": "Copiats a l'esquerra",
@@ -5155,7 +5218,6 @@
             "executePreset": "Executar preset",
             "execute": "Executar",
             "sync": {
-                "title": "AeroSync: de local a local",
                 "description": "Reflecteix una carpeta d'origen local a una destinació local. Els fitxers ≥ 1 MiB utilitzen el motor delta intern; els fitxers més petits utilitzen la còpia directa.",
                 "source": "Origen",
                 "destination": "Destinació",
@@ -5211,7 +5273,7 @@
             "speedMode_fast": "Ràpid",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extrem",
-            "speedModeHint": "Fluxos paral·lels + preset de compressió aplicat a l'execució.",
+            "speedModeHint": "Defineix la política de reintents. A partir de Ràpid, els fitxers modificats s'envien com a deltes on el servidor ho admet (SFTP amb rsync).",
             "verifyPolicy": "Política de verificació",
             "verifyPolicy_none": "Cap",
             "verifyPolicy_size_only": "Només mida",
@@ -5256,7 +5318,45 @@
             "errorCorrection": "Correcció d'errors",
             "errorCorrectionHint": "Desa un petit fitxer de paritat .aerocorrect al costat de cada fitxer de còpia de seguretat, de manera que una còpia remota malmesa per bit-rot es pugui reparar en el següent pull, sense l'original.",
             "outOfSyncItemsPct": "Elements sense sincronitzar",
-            "outOfSyncBytesPct": "Bytes sense sincronitzar"
+            "outOfSyncBytesPct": "Bytes sense sincronitzar",
+            "exclude": {
+                "label": "Patrons d'exclusió",
+                "hint": "Separats per coma o salt de línia, per exemple cache, *.tmp o build/output. Sempre exclosos: {list}."
+            },
+            "cli": {
+                "title": "La mateixa execució des de la línia d'ordres",
+                "copy": "Copiar",
+                "copied": "Copiat",
+                "copyFailed": "No s'ha pogut copiar",
+                "none": "No hi ha cap equivalent exacte a la CLI: {reason}",
+                "reason": {
+                    "localPair": "per a dues carpetes locals la CLI executa el seu propi mirall, que ignora la direcció, l'eliminació i la configuració de conflictes.",
+                    "unsavedServer": "aquesta connexió no és un servidor desat, i la CLI en necessita un per indicar-lo amb --profile.",
+                    "overwritesNewer": "la CLI sobreescriu una còpia de destinació de mida diferent encara que sigui més recent, cosa que aquest preset no fa mai.",
+                    "twoWay": "la CLI considera conflicte dues còpies de la mateixa mida amb hores diferents i sobreescriu la més antiga; aquest pla les compta com a iguals dins de 30 segons.",
+                    "canary": "la CLI no té mode de prova.",
+                    "versionedBackup": "la CLI encara no desa les còpies de seguretat amb la mateixa estructura.",
+                    "transferBudget": "quan s'esgota el pressupost aquest pla s'atura, eliminacions incloses; la CLI només limita les transferències i continua eliminant.",
+                    "remotePath": "la CLI resol la carpeta remota a partir de la carpeta inicial del servidor desat i arribaria a una altra.",
+                    "exclusions": "la CLI aplica els patrons d'exclusió d'una altra manera, així que no ometria tot el que omet aquest pla (node_modules, .git i la resta)."
+                }
+            },
+            "rescan": "Tornar a analitzar",
+            "rescanNeeded": "La comparació es va fer amb altres exclusions o una altra carpeta de còpia de seguretat. Torna a analitzar abans d'executar.",
+            "backup": {
+                "checking": "Comprovant com mou els fitxers aquest servidor...",
+                "serverCopy": "Aquest servidor no pot moure: cada còpia conservada es copia al servidor i després s'elimina. Això costa una còpia completa de cada fitxer conservat, en dos passos separats.",
+                "clientCopy": "Aquest servidor no pot moure: cada còpia conservada es descarrega, es puja a la carpeta de còpia de seguretat i després s'elimina. Cada fitxer conservat passa dues vegades per aquest ordinador, en passos separats.",
+                "unsupported": "Aquest servidor no pot moure fitxers a una altra carpeta, així que no pot conservar còpies antigues. Desactiva la còpia de seguretat amb versions per executar.",
+                "checkFailed": "No s'ha pogut preguntar al servidor com mou els fitxers. Torna a connectar o desactiva la còpia de seguretat amb versions per executar.",
+                "nested": "La carpeta de còpia de seguretat és dins de {folder}, on escriu aquesta sincronització. Tria una carpeta fora d'aquesta.",
+                "invalid": {
+                    "empty": "Introdueix un nom per a la carpeta de còpia de seguretat.",
+                    "absolute": "Fes servir una carpeta dins de la destinació, no un camí absolut.",
+                    "parent": "La carpeta de còpia de seguretat no pot contenir '..'.",
+                    "name": "Aquest nom de carpeta de còpia de seguretat no és vàlid."
+                }
+            }
         },
         "accountLock": {
             "title": "Trieu un compte",

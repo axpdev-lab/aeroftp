@@ -4,6 +4,13 @@
 import { describe, expect, it } from 'vitest';
 import en from '../i18n/locales/en.json';
 import {
+    actionLabel,
+    bucketDescriptionLabel,
+    bucketNameLabel,
+    comparePolicyLabel,
+    conflictPolicyLabel,
+    conflictPolicyTagline,
+    PLAN_COMPARE_LABEL_KEYS,
     planDirectionLabel,
     presetForTemplate,
     presetNameLabel,
@@ -12,7 +19,8 @@ import {
     templateDirectionLabel,
     type LabelRef,
 } from './syncDirectionLabels';
-import type { SyncPreset } from './syncPresets';
+import { CONFLICT_POLICIES, type BucketAction, type SyncPreset } from './syncPresets';
+import type { CompareBucket } from './compareEndpoints';
 
 const lookup = (key: string): string => {
     const value = key.split('.').reduce<unknown>(
@@ -60,5 +68,40 @@ describe('one vocabulary for sync directions', () => {
     it('falls back to English when `t` answers with the key itself', () => {
         expect(resolveLabel((k) => k, presetNameLabel('bisync'))).toBe('Two-way sync');
         expect(say(templateDirectionLabel('sideways'))).toBe('sideways');
+    });
+});
+
+describe('Plan and Compare labels come from the locale', () => {
+    const inLocale = (key: string): boolean => lookup(key) !== key;
+
+    // A label whose key is missing silently shows its English fallback in
+    // every language: the class #347 asked to remove from these two tabs.
+    it('has a locale entry for every action, policy, bucket and compare policy', () => {
+        const missing = PLAN_COMPARE_LABEL_KEYS.filter((key) => !inLocale(key));
+        expect(missing).toEqual([]);
+        expect(PLAN_COMPARE_LABEL_KEYS).toHaveLength(10 + 12 + 12 + 3);
+    });
+
+    it('keeps the English locale text equal to the fallback in code', () => {
+        const actions: BucketAction[] = ['skip', 'copy-to-right', 'copy-to-left', 'overwrite-right', 'overwrite-left', 'delete-right', 'delete-left', 'rename-to-right', 'rename-to-left', 'conflict-skip'];
+        for (const a of actions) expect(lookup(actionLabel(a).key)).toBe(actionLabel(a).fallback);
+        for (const p of CONFLICT_POLICIES) {
+            expect(lookup(conflictPolicyLabel(p).key)).toBe(conflictPolicyLabel(p).fallback);
+            expect(lookup(conflictPolicyTagline(p).key)).toBe(conflictPolicyTagline(p).fallback);
+        }
+        const buckets: CompareBucket[] = ['only-left', 'newer-left', 'only-right', 'newer-right', 'conflict', 'same'];
+        for (const b of buckets) {
+            expect(lookup(bucketNameLabel(b).key)).toBe(bucketNameLabel(b).fallback);
+            expect(lookup(bucketDescriptionLabel(b).key)).toBe(bucketDescriptionLabel(b).fallback);
+        }
+        expect(say(comparePolicyLabel(undefined))).toBe('Size + timestamp');
+        expect(say(comparePolicyLabel('mtime-only'))).toBe('Timestamp only');
+    });
+
+    it('has the Compare table strings and the preset badge', () => {
+        for (const key of ['name', 'leftSize', 'rightSize', 'leftModified', 'rightModified', 'folder', 'noEntries', 'countedNotListed', 'shown', 'moreNotListed']) {
+            expect(inLocale(`aerosync.compareTable.${key}`), key).toBe(true);
+        }
+        expect(inLocale('aerosync.presetDefault')).toBe(true);
     });
 });

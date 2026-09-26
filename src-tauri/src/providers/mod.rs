@@ -488,7 +488,45 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
             max_name_chars: Some(255),
             ..Default::default()
         },
-        _ => DocumentedFileLimits::default(),
+        // No limit to warn about, each for a stated reason. The match has no
+        // wildcard on purpose: a new provider type does not compile until
+        // someone answers for it.
+        //
+        // Set by the provider itself, on AWS endpoints only (AWS_S3_FILE_LIMITS).
+        ProviderType::S3 => DocumentedFileLimits::default(),
+        // Decided by each server or by the operator, not by a service.
+        ProviderType::Ftp
+        | ProviderType::Ftps
+        | ProviderType::Sftp
+        | ProviderType::WebDav
+        | ProviderType::Swift
+        | ProviderType::GitLab
+        | ProviderType::Immich => DocumentedFileLimits::default(),
+        // Documented as unlimited, or unlimited on the highest plan.
+        ProviderType::Mega | ProviderType::Filen | ProviderType::FileLu => {
+            DocumentedFileLimits::default()
+        }
+        // No official number found (marketing page only, site not readable,
+        // or custom plans without a stated ceiling).
+        ProviderType::PCloud
+        | ProviderType::Jottacloud
+        | ProviderType::DrimeCloud
+        | ProviderType::OpenDrive
+        | ProviderType::ImageKit
+        | ProviderType::Uploadcare
+        | ProviderType::Twake => DocumentedFileLimits::default(),
+        // Two write paths with two limits: a repository file goes through the
+        // Contents API (100 MB, refused by the provider itself before the
+        // upload, github/mod.rs MAX_CONTENT_SIZE), a release asset has 2 GiB.
+        // One number per provider type would warn wrongly on one of them.
+        // https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents
+        // https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
+        ProviderType::GitHub => DocumentedFileLimits::default(),
+        // Not a remote a sync uploads to through this path.
+        ProviderType::AeroCloud
+        | ProviderType::AeroVaultMount
+        | ProviderType::Peer
+        | ProviderType::Mtp => DocumentedFileLimits::default(),
     }
 }
 
@@ -1351,6 +1389,23 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("checksum".to_string()))
     }
 
+    /// [`checksum`](Self::checksum) for a caller that wants one algorithm,
+    /// named by its canonical key (`md5`, `sha1`, `sha256`, ...).
+    ///
+    /// A backend that answers from digests it already stores returns what it
+    /// has, so the default ignores the hint and the caller looks its key up in
+    /// the map. A backend that computes the digest on request and lets the
+    /// client choose the algorithm overrides it: FTP selects it with
+    /// `OPTS HASH` before `HASH`, and would otherwise hash with whatever the
+    /// server has selected.
+    async fn checksum_for(
+        &mut self,
+        path: &str,
+        _algorithm: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        self.checksum(path).await
+    }
+
     /// Which digests this backend can produce without downloading the file.
     ///
     /// Describes the backend for a surface that has to decide what to offer;
@@ -1388,6 +1443,17 @@ pub trait StorageProvider: Send + Sync {
         path: &str,
     ) -> Result<HashMap<String, String>, ProviderError> {
         self.checksum(path).await
+    }
+
+    /// [`stored_checksum`](Self::stored_checksum) with the algorithm hint of
+    /// [`checksum_for`](Self::checksum_for). A wrapper that overrides
+    /// `stored_checksum` overrides this too, or the hint stops at the wrapper.
+    async fn stored_checksum_for(
+        &mut self,
+        path: &str,
+        algorithm: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        self.checksum_for(path, algorithm).await
     }
 
     /// Whether this provider supports remote/URL upload (server fetches a URL)

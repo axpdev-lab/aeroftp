@@ -2738,12 +2738,49 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     }))
 }
 
+/// A runnable `aeroftp-cli sync` line for a tool result. The profile goes
+/// first (`sync LOCAL REMOTE` alone reads LOCAL as the URL, and the command
+/// fails), and only flags `sync` really has follow. Every value is one quoted
+/// shell argument (`shell_quote::shell_arg`). `server` empty means the GUI's
+/// active connection, which has no name to put here, so the line carries the
+/// `NAME` placeholder the CLI `sync-doctor` uses.
+pub fn suggest_sync_command(
+    server: &str,
+    local_dir: &str,
+    remote_dir: &str,
+    flags: &str,
+) -> String {
+    use crate::shell_quote::shell_arg;
+    let profile = if server.is_empty() {
+        "NAME".to_string()
+    } else {
+        shell_arg(server)
+    };
+    format!(
+        "aeroftp-cli sync --profile {} {} {}{}",
+        profile,
+        shell_arg(local_dir),
+        shell_arg(remote_dir),
+        flags
+    )
+}
+
 async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
     let local_dir = get_str(args, "local_dir")?;
     let remote_dir = get_str(args, "remote_dir")?;
     validate_remote_path(&remote_dir, "remote_dir")?;
     let direction = get_str_opt(args, "direction").unwrap_or_else(|| "both".to_string());
+    // A fixed set: the value is written into the suggested command line.
+    if !matches!(direction.as_str(), "upload" | "download" | "both") {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_sync_doctor".to_string(),
+            reason: format!(
+                "direction must be upload, download or both, got '{}'",
+                direction
+            ),
+        });
+    }
     let delete = get_bool_opt(args, "delete").unwrap_or(false);
     let track_renames = get_bool_opt(args, "track_renames").unwrap_or(false);
     let checksum = get_bool_opt(args, "checksum").unwrap_or(false);
@@ -2868,7 +2905,12 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         risks.push("track-renames is disabled; moved files may be recopied".to_string());
     }
     if checksum {
-        risks.push("checksum is enabled; verification will be slower but stricter".to_string());
+        // `sync` compares size and mtime and has no --checksum; content
+        // verification is `check --checksum`, run after the sync.
+        risks.push(
+            "checksum requested: sync compares size and mtime; verify contents afterwards with `aeroftp-cli check --checksum`"
+                .to_string(),
+        );
     }
     if !remote_root_ok {
         risks.push("remote path could not be listed".to_string());
@@ -2877,19 +2919,20 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         risks.push("both sides are empty; sync will be a no-op".to_string());
     }
 
-    let suggested_next_command = format!(
-        "aeroftp-cli sync \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}",
-        local_dir.replace('"', "\\\""),
-        remote_dir.replace('"', "\\\""),
-        direction,
-        if delete { " --delete" } else { "" },
-        if track_renames {
-            " --track-renames"
-        } else {
-            ""
-        },
-        if checksum { " --checksum" } else { "" },
-    );
+    let mut flags = format!(" --direction {} --dry-run --json", direction);
+    if delete {
+        flags.push_str(" --delete");
+    }
+    if track_renames {
+        flags.push_str(" --track-renames");
+    }
+    for pattern in &exclude {
+        flags.push_str(&format!(
+            " --exclude {}",
+            crate::shell_quote::shell_arg(pattern)
+        ));
+    }
+    let suggested_next_command = suggest_sync_command(&server, &local_dir, &remote_dir, &flags);
 
     Ok(json!({
         "server": server,
@@ -3495,11 +3538,8 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     }
 
     let elapsed = started.elapsed().as_secs_f64();
-    let suggested_next_command = format!(
-        "aeroftp-cli sync \"{}\" \"{}\" --dry-run --json",
-        local_dir.replace('"', "\\\""),
-        remote_dir.replace('"', "\\\""),
-    );
+    let suggested_next_command =
+        suggest_sync_command(&server, &local_dir, &remote_dir, " --dry-run --json");
 
     let status = if differ_g.is_empty() && missing_remote_g.is_empty() && missing_local_g.is_empty()
     {
@@ -4070,6 +4110,84 @@ mod tests {
         .unwrap_err();
         assert!(format!("{err:?}").contains("remote provider unavailable"));
         assert!(fake.remote_files.lock().unwrap().is_empty());
+    }
+
+    /// Split a command line the way `sh` does, by having `sh` print each
+    /// argument NUL-terminated.
+    #[cfg(unix)]
+    fn shell_split(line: &str) -> Vec<String> {
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("printf '%s\\0' {line}"))
+            .output()
+            .expect("run sh");
+        String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|a| !a.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// The suggested `sync` line carries values the caller chose. A real shell
+    /// splits it: a hostile profile name, local path and exclude pattern each
+    /// come back as one argument, byte for byte, and nothing runs. A direction
+    /// outside the fixed set is refused before it can reach the line.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn sync_doctor_suggestion_keeps_hostile_values_as_text() {
+        let fake = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&fake));
+        let tmp = tempfile::tempdir().expect("temp dir");
+        let marker = tmp.path().join("pwned");
+        let local_dir = tmp.path().join(format!("$(touch {})", marker.display()));
+        std::fs::create_dir_all(&local_dir).expect("local dir");
+        let out = sync_doctor(
+            &ctx,
+            &json!({
+                "server": "`touch pwned` it's!",
+                "local_dir": local_dir.to_string_lossy(),
+                "remote_dir": "/root",
+                "direction": "download",
+                "exclude": ["$(rm -rf ~)"],
+            }),
+        )
+        .await
+        .expect("doctor runs");
+        let line = out["suggested_next_command"]
+            .as_str()
+            .expect("a suggestion");
+        let args = shell_split(line);
+        assert!(!marker.exists(), "a substitution ran: {line}");
+        assert_eq!(
+            args[..6],
+            [
+                "aeroftp-cli".to_string(),
+                "sync".to_string(),
+                "--profile".to_string(),
+                "`touch pwned` it's!".to_string(),
+                local_dir.to_string_lossy().into_owned(),
+                "/root".to_string(),
+            ],
+            "{line}"
+        );
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "--exclude" && w[1] == "$(rm -rf ~)"),
+            "{args:?}"
+        );
+
+        let err = sync_doctor(
+            &ctx,
+            &json!({
+                "server": "s",
+                "local_dir": local_dir.to_string_lossy(),
+                "remote_dir": "/root",
+                "direction": "both; rm -rf ~",
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:?}").contains("direction must be upload, download or both"));
     }
 
     /// Parent creation must reject a new restricted component before mkdir.

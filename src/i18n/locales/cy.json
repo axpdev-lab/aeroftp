@@ -2142,9 +2142,6 @@
                 "disk_error": "Gwall disg",
                 "unknown": "Anhysbys"
             },
-            "parallelStreams": "Ffrydiau",
-            "parallelSequential": "Dilynol",
-            "parallelStreamLabel": "ffrydiau",
             "schedulerTitle": "Amserlenydd Cydweddu",
             "schedulerEnabled": "Galluogi Amserlenydd",
             "schedulerResume": "Ailddechrau",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Cyfrif cyfeiriadur uchel - gall fynd dros derfyn inotify",
             "watcherPolling": "Defnyddio modd poll (arafach ond cyffredinol)",
-            "compressionToggle": "Cywasgu",
-            "compressionAuto": "Awtomatig",
-            "compressionOn": "Ymlaen",
-            "compressionOff": "I ffwrdd",
             "multiPathAdd": "Ychwanegu pâr llwybr",
             "multiPathEmpty": "Dim parau llwybr wedi'u ffurfweddu",
             "templateExport": "Allforio Templed",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Adfer",
             "rollbackEmpty": "Dim cipluniau ar gael",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 ffrwd + POB diogelwch wedi'i analluogi - dim dyddlyfr, dim gwirio, dim ailgynnig",
+            "speedManiacTooltip": "Dim dyddlyfr, dim gwirio yn ystod y rhediad, anwybyddir terfynau lled band, 2 ailgynnig cyflym. Caiff ffeiliau a lawrlwythwyd eu gwirio ar ôl y rhediad.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Dim dyddlyfr. Dim gwirio. Dim ailgynnig. Cyflymder mwyaf. Os bydd rhywbeth yn methu, mae wedi mynd. Bydd sgan gwirio llawn yn rhedeg ar ôl cwblhau cydweddu.",
+            "maniacWarningBody": "Dim dyddlyfr a dim gwirio yn ystod y rhediad, anwybyddir terfynau lled band, a dim ond 2 ailgynnig cyflym a gaiff ffeil sy'n methu. Ar ôl y rhediad, caiff ffeiliau a lawrlwythwyd eu gwirio; ni chaiff ffeiliau a uwchlwythwyd.",
             "maniacConfirm": "Rwy'n deall, parhau",
             "maniacPostSyncReport": "Gwirio ôl-gydweddu: {ok} Iawn, {mismatches} anghysonderau, {failed} wedi methu",
             "rollback": "Troi yn ôl",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Cadw ffurfweddiad cydweddu presennol fel templed .aerosync ailddefnyddiadwy",
             "templateImportDesc": "Llwytho templed .aerosync i gymhwyso ei ffurfweddiad cydweddu",
             "maniacActive": "Gweithredol",
-            "speedStreams": "{count} ffrydiau",
             "actionUploaded": "Wedi uwchlwytho",
             "actionDownloaded": "Wedi lawrlwytho",
             "actionDeleted": "Wedi dileu",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Meysydd metadata heb eu hadnabod",
             "aerosyncScriptApplyButton": "Cadw fel preset",
             "aerosyncScriptAppliedToast": "Preset wedi'i fewnforio wedi'i gadw. Agorwch AeroSync i'w ddefnyddio.",
-            "compressionHint": "Yn cywasgu data wrth ei drosglwyddo i gyflymu'r trosglwyddiad; nid yw'n storio ffeiliau wedi'u cywasgu yn y cyrchfan. Mae Auto yn hepgor fformatau sydd eisoes wedi'u cywasgu (zip, jpg, mp4 a rhai tebyg).",
             "canaryDryRun": "Ni throsglwyddir dim: mae hyn yn rhagolwg o'r hyn y byddai cydweddu llawn yn ei wneud, wedi'i gyfrifo o'r sampl. Dyma gyfwerth GUI y gorchymyn aeroftp-cli sync --dry-run (a --dry-run rclone).",
-            "templateImportPathPairs": "Mae'r templed hwn yn diffinio {count} pâr llwybr defnyddiadwy. Dim ond un yn union y mae AeroFTP yn ei gymhwyso, felly ni fewnforiwyd dim. Golygwch y templed i gadw un pâr, ac yna ei fewnforio eto.",
+            "templateImportPathPairs": "Parau llwybr lleol/pell defnyddiadwy yn y templed hwn: {count}. Mae ffenestr AeroSync yn gweithio ar un pâr yn union, felly ni fewnforiwyd dim. Golygwch y templed i gadw un pâr yn unig, ac yna ei fewnforio eto.",
             "templateNamePlaceholder": "e.e. Copi wrth gefn nosol i S3",
             "templateDescPlaceholder": "At beth mae'r templed hwn (dewisol)"
         },
@@ -5089,7 +5080,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Cymharu",
             "tabPlan": "Cynllun",
-            "tabSync": "Cysoni",
+            "tabSync": "Drych lleol",
             "compareWontFitTitle": "Dros derfynau {name}: {count}",
             "compareWontFitHint": "Mae'r ffeiliau hyn yn fwy na therfyn maint dogfennedig y darparwr, neu mae eu henw neu eu llwybr yn hirach nag y mae'n ei dderbyn. Byddai cysoni'n methu arnyn nhw: ailenwch, symudwch neu rhannwch nhw yn gyntaf.",
             "compareWontFitTooLarge": "{size}, terfyn {limit}",
@@ -5097,6 +5088,78 @@
             "compareWontFitNameChars": "enw dros {count} nod",
             "compareWontFitPathBytes": "llwybr dros {count} beit",
             "compareWontFitPathChars": "llwybr dros {count} nod",
+            "presetDefault": "Diofyn",
+            "actionLabel": {
+                "skip": "Hepgor",
+                "copy-to-right": "Copïo → i'r dde",
+                "copy-to-left": "Copïo ← i'r chwith",
+                "overwrite-right": "Trosysgrifo ar y dde",
+                "overwrite-left": "Trosysgrifo ar y chwith",
+                "delete-right": "Dileu ar y dde",
+                "delete-left": "Dileu ar y chwith",
+                "rename-to-right": "Cadw'r ddau → i'r dde",
+                "rename-to-left": "Cadw'r ddau ← i'r chwith",
+                "conflict-skip": "Gwrthdaro (hepgor)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Hepgor",
+                    "tagline": "Gadael pob gwrthdaro heb ei newid ar y ddwy ochr."
+                },
+                "rename": {
+                    "label": "Cadw'r ddau",
+                    "tagline": "Copïo fersiwn y ffynhonnell gydag ôl-ddodiad dyddiad ac amser."
+                },
+                "newer-wins": {
+                    "label": "Y mwyaf newydd sy'n ennill",
+                    "tagline": "Mae'r ochr â'r amser addasu mwyaf diweddar yn trosysgrifo'r llall."
+                },
+                "older-wins": {
+                    "label": "Yr hynaf sy'n ennill",
+                    "tagline": "Mae'r ochr hynaf yn trosysgrifo'r un fwyaf newydd (ar gyfer archifo)."
+                },
+                "larger-wins": {
+                    "label": "Y mwyaf sy'n ennill",
+                    "tagline": "Mae'r ochr â'r maint mwyaf yn trosysgrifo'r un leiaf."
+                },
+                "smaller-wins": {
+                    "label": "Y lleiaf sy'n ennill",
+                    "tagline": "Mae'r ochr leiaf yn trosysgrifo'r un fwyaf."
+                }
+            },
+            "bucketName": {
+                "only-left": "Ar y chwith yn unig",
+                "newer-left": "Mwy newydd ar y chwith",
+                "only-right": "Ar y dde yn unig",
+                "newer-right": "Mwy newydd ar y dde",
+                "conflict": "Gwrthdaro",
+                "same": "Yr un fath"
+            },
+            "bucketDescription": {
+                "only-left": "Yn bresennol ar banel y ffynhonnell, ar goll o'r gyrchfan.",
+                "newer-left": "Yn bresennol ar y ddwy ochr, mae gan gopi'r ffynhonnell y stamp amser mwyaf diweddar.",
+                "only-right": "Yn bresennol yn y gyrchfan, ar goll o banel y ffynhonnell.",
+                "newer-right": "Yn bresennol ar y ddwy ochr, mae gan gopi'r gyrchfan y stamp amser mwyaf diweddar.",
+                "conflict": "Mae'r cofnod ar y ddwy ochr ond mae'r maint yn wahanol er bod y stampiau amser yn debyg.",
+                "same": "Mae'r cofnodion yn cyfateb yn ôl y polisi cymharu gweithredol."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Maint yn unig",
+                "mtimeOnly": "Stamp amser yn unig",
+                "sizeAndMtime": "Maint + stamp amser"
+            },
+            "compareTable": {
+                "name": "Enw",
+                "leftSize": "Maint ar y chwith",
+                "rightSize": "Maint ar y dde",
+                "leftModified": "Addaswyd ar y chwith",
+                "rightModified": "Addaswyd ar y dde",
+                "folder": "ffolder",
+                "noEntries": "Dim cofnodion.",
+                "countedNotListed": "Wedi'u cyfrif ond heb eu rhestru: mae'r sgan yn adrodd ffeiliau union yr un fath fel cyfanswm yn lle un rhes yr un, felly mae coed mawr yn aros yn gyflym.",
+                "shown": "Dangosir: {shown} o {total}",
+                "moreNotListed": "Wedi'u cyfrif ond heb eu rhestru: {count}"
+            },
             "compareUnavailable": "Agor ail banel neu gysylltiad pell i gymharu.",
             "planUnavailable": "Mae angen canlyniad cymharu cyn dewis rhagosod. Agor y tab Cymharu yn gyntaf.",
             "totalEntries": "Cyfanswm cofnodion",
@@ -5133,7 +5196,7 @@
             "ignoredForMirror": "ANWYBYDDIR AR GYFER DRYCH",
             "versionedBackup": "Wrth gefn fersiynol",
             "enable": "Galluogi",
-            "versionedBackupHint": "Yn dal y copi cyrchfan o dan y cyfeiriadur hwn cyn pob trosysgrifo neu ddileu.",
+            "versionedBackupHint": "Cyn i ffeil gael ei throsysgrifo neu ei dileu, symudir ei chopi cyrchfan i {dir}, mewn ffolder a enwir ar ôl dyddiad ac amser y rhediad.",
             "actionable": "Gweithredadwy",
             "reportCopiedRight": "Copïwyd i'r dde",
             "reportCopiedLeft": "Copïwyd i'r chwith",
@@ -5155,7 +5218,6 @@
             "executePreset": "Gweithredu rhagosod",
             "execute": "Gweithredu",
             "sync": {
-                "title": "AeroSync: o leol i leol",
                 "description": "Drycha gyfeiriadur ffynhonnell leol i gyfeiriadur cyrchfan lleol. Mae ffeiliau ≥ 1 MiB yn defnyddio'r peiriant delta mewnol; mae ffeiliau llai yn defnyddio copi uniongyrchol.",
                 "source": "Ffynhonnell",
                 "destination": "Cyrchfan",
@@ -5211,7 +5273,7 @@
             "speedMode_fast": "Cyflym",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Eithafol",
-            "speedModeHint": "Ffrydiau cyfochrog + rhagosodiad cywasgu wedi'u cymhwyso i'r rhediad.",
+            "speedModeHint": "Yn gosod y polisi ailgynnig. O'r modd Cyflym i fyny, anfonir ffeiliau sydd wedi newid fel deltâu lle mae'r gweinydd yn ei gefnogi (SFTP gyda rsync).",
             "verifyPolicy": "Polisi dilysu",
             "verifyPolicy_none": "Dim",
             "verifyPolicy_size_only": "Maint yn unig",
@@ -5256,7 +5318,45 @@
             "errorCorrection": "Cywiro Gwallau",
             "errorCorrectionHint": "Yn cadw ffeil baredd .aerocorrect fach wrth ymyl pob ffeil wrth gefn, fel y gellir trwsio copi pell sydd wedi pydru-did ar y pull nesaf, heb y gwreiddiol.",
             "outOfSyncItemsPct": "Eitemau heb eu cydweddu",
-            "outOfSyncBytesPct": "Beitiau heb eu cydweddu"
+            "outOfSyncBytesPct": "Beitiau heb eu cydweddu",
+            "exclude": {
+                "label": "Patrymau eithrio",
+                "hint": "Wedi'u gwahanu gan goma neu linell newydd, er enghraifft cache, *.tmp neu build/output. Wedi'u heithrio bob amser: {list}."
+            },
+            "cli": {
+                "title": "Yr un rhediad o'r llinell orchymyn",
+                "copy": "Copïo",
+                "copied": "Wedi copïo",
+                "copyFailed": "Methodd y copïo",
+                "none": "Dim cyfwerth union yn y CLI: {reason}",
+                "reason": {
+                    "localPair": "ar gyfer dwy ffolder leol mae'r CLI yn rhedeg ei ddrych ei hun, sy'n anwybyddu gosodiadau cyfeiriad, dileu a gwrthdaro.",
+                    "unsavedServer": "nid yw'r cysylltiad hwn yn weinydd wedi'i gadw, ac mae angen un ar y CLI i'w enwi gyda --profile.",
+                    "overwritesNewer": "mae'r CLI yn trosysgrifo copi cyrchfan o faint gwahanol hyd yn oed pan fo'n fwy newydd, rhywbeth nad yw'r rhagosod hwn byth yn ei wneud.",
+                    "twoWay": "mae'r CLI yn trin dau gopi o'r un maint ag amseroedd gwahanol fel gwrthdaro ac yn trosysgrifo'r hynaf; mae'r cynllun hwn yn eu cyfrif yr un fath o fewn 30 eiliad.",
+                    "canary": "nid oes gan y CLI rediad prawf.",
+                    "versionedBackup": "nid yw'r CLI yn cadw copïau wrth gefn yn yr un drefn eto.",
+                    "transferBudget": "pan ddaw'r gyllideb i ben mae'r cynllun hwn yn stopio, gan gynnwys dileadau; dim ond trosglwyddiadau y mae'r CLI yn eu cyfyngu ac mae'n dal i ddileu.",
+                    "remotePath": "mae'r CLI yn datrys y ffolder bell yn erbyn ffolder gychwyn y gweinydd wedi'i gadw a byddai'n cyrraedd un wahanol.",
+                    "exclusions": "mae'r CLI yn cyfateb patrymau eithrio yn wahanol, felly ni fyddai'n hepgor popeth y mae'r cynllun hwn yn ei hepgor (node_modules, .git a'r gweddill)."
+                }
+            },
+            "rescan": "Ailsganio",
+            "rescanNeeded": "Gwnaed y gymhariaeth gydag eithriadau eraill neu ffolder wrth gefn arall. Ailsganiwch cyn rhedeg.",
+            "backup": {
+                "checking": "Yn gwirio sut mae'r gweinydd hwn yn symud ffeiliau...",
+                "serverCopy": "Ni all y gweinydd hwn symud: mae pob copi a gedwir yn cael ei gopïo ar y gweinydd ac yna'i ddileu. Mae hynny'n costio copi llawn o bob ffeil a gedwir, mewn dau gam ar wahân.",
+                "clientCopy": "Ni all y gweinydd hwn symud: mae pob copi a gedwir yn cael ei lawrlwytho, ei uwchlwytho i'r ffolder wrth gefn ac yna'i ddileu. Mae pob ffeil a gedwir yn teithio drwy'r cyfrifiadur hwn ddwywaith, mewn camau ar wahân.",
+                "unsupported": "Ni all y gweinydd hwn symud ffeiliau i ffolder arall, felly ni all gadw hen gopïau. Diffoddwch wrth gefn fersiynol i redeg.",
+                "checkFailed": "Methu gofyn i'r gweinydd sut mae'n symud ffeiliau. Ailgysylltwch, neu diffoddwch wrth gefn fersiynol i redeg.",
+                "nested": "Mae'r ffolder wrth gefn y tu mewn i {folder}, y mae'r cysoni hwn yn ysgrifennu iddo. Dewiswch ffolder y tu allan iddo.",
+                "invalid": {
+                    "empty": "Rhowch enw ar gyfer y ffolder wrth gefn.",
+                    "absolute": "Defnyddiwch ffolder y tu mewn i'r cyrchfan, nid llwybr absoliwt.",
+                    "parent": "Ni all y ffolder wrth gefn gynnwys '..'.",
+                    "name": "Nid yw enw'r ffolder wrth gefn hwn yn ddilys."
+                }
+            }
         },
         "accountLock": {
             "title": "Dewiswch gyfrif",

@@ -2142,9 +2142,6 @@
                 "disk_error": "Lỗi đĩa",
                 "unknown": "Không xác định"
             },
-            "parallelStreams": "Luồng",
-            "parallelSequential": "Tuần tự",
-            "parallelStreamLabel": "luồng",
             "schedulerTitle": "Lập lịch đồng bộ",
             "schedulerEnabled": "Bật bộ lập lịch",
             "schedulerResume": "Tiếp tục",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Số lượng thư mục cao - có thể vượt quá giới hạn inotify",
             "watcherPolling": "Sử dụng chế độ thăm dò (chậm hơn nhưng phổ quát)",
-            "compressionToggle": "Nén",
-            "compressionAuto": "Tự động",
-            "compressionOn": "Bật",
-            "compressionOff": "Tắt",
             "multiPathAdd": "Thêm cặp đường dẫn",
             "multiPathEmpty": "Không có cặp đường dẫn được cấu hình",
             "templateExport": "Xuất mẫu",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Khôi phục",
             "rollbackEmpty": "Không có ảnh chụp nào",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 luồng + TẤT CẢ bảo mật bị tắt - không nhật ký, không xác minh, không thử lại",
+            "speedManiacTooltip": "Không nhật ký, không xác minh trong khi chạy, bỏ qua giới hạn băng thông, 2 lần thử lại nhanh. Tệp đã tải xuống được xác minh sau khi chạy.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Không có nhật ký. Không có xác minh. Không thử lại. Tốc độ tối đa. Nếu có gì thất bại, nó sẽ mất. Một quá trình quét xác minh đầy đủ sẽ chạy sau khi đồng bộ hoàn tất.",
+            "maniacWarningBody": "Không có nhật ký và không xác minh trong khi chạy, giới hạn băng thông bị bỏ qua, và tệp bị lỗi chỉ được 2 lần thử lại nhanh. Sau khi chạy, tệp đã tải xuống được xác minh; tệp đã tải lên thì không.",
             "maniacConfirm": "Tôi hiểu, tiếp tục",
             "maniacPostSyncReport": "Xác minh sau đồng bộ: {ok} OK, {mismatches} không khớp, {failed} thất bại",
             "rollback": "Hoàn tác",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Lưu cấu hình đồng bộ hiện tại dưới dạng mẫu .aerosync có thể tái sử dụng",
             "templateImportDesc": "Tải mẫu .aerosync để áp dụng cấu hình đồng bộ của nó",
             "maniacActive": "Đang hoạt động",
-            "speedStreams": "{count} luồng",
             "actionUploaded": "Đã tải lên",
             "actionDownloaded": "Đã tải xuống",
             "actionDeleted": "Đã xóa",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Các trường metadata không nhận diện",
             "aerosyncScriptApplyButton": "Lưu làm preset",
             "aerosyncScriptAppliedToast": "Đã lưu preset được nhập. Mở AeroSync để sử dụng.",
-            "compressionHint": "Nén dữ liệu trong quá trình truyền để tăng tốc độ truyền; không lưu trữ các tệp đã nén tại đích. Auto bỏ qua các định dạng đã được nén sẵn (zip, jpg, mp4 và tương tự).",
             "canaryDryRun": "Không có gì được chuyển: thao tác này xem trước những gì một đồng bộ đầy đủ sẽ làm, được tính từ mẫu. Đây là phiên bản GUI tương đương của lệnh aeroftp-cli sync --dry-run (và --dry-run của rclone).",
-            "templateImportPathPairs": "Mẫu này định nghĩa {count} cặp đường dẫn dùng được. AeroFTP chỉ áp dụng đúng một cặp, nên không có gì được nhập. Hãy sửa mẫu để chỉ còn một cặp, rồi nhập lại.",
+            "templateImportPathPairs": "Các cặp đường dẫn cục bộ/từ xa dùng được trong mẫu này: {count}. Một cửa sổ AeroSync làm việc với đúng một cặp, nên không có gì được nhập. Hãy sửa mẫu để chỉ giữ lại một cặp, rồi nhập lại.",
             "templateNamePlaceholder": "ví dụ: Sao lưu hằng đêm lên S3",
             "templateDescPlaceholder": "Mẫu này dùng để làm gì (tùy chọn)"
         },
@@ -5070,7 +5061,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "So sánh",
             "tabPlan": "Kế hoạch",
-            "tabSync": "Đồng bộ",
+            "tabSync": "Nhân bản cục bộ",
             "compareWontFitTitle": "Vượt giới hạn của {name}: {count}",
             "compareWontFitHint": "Các tệp này vượt quá giới hạn kích thước được nhà cung cấp công bố, hoặc tên hay đường dẫn của chúng dài hơn mức cho phép. Đồng bộ sẽ thất bại với chúng: hãy đổi tên, di chuyển hoặc chia nhỏ trước.",
             "compareWontFitTooLarge": "{size}, giới hạn {limit}",
@@ -5078,6 +5069,78 @@
             "compareWontFitNameChars": "tên vượt {count} ký tự",
             "compareWontFitPathBytes": "đường dẫn vượt {count} byte",
             "compareWontFitPathChars": "đường dẫn vượt {count} ký tự",
+            "presetDefault": "Mặc định",
+            "actionLabel": {
+                "skip": "Bỏ qua",
+                "copy-to-right": "Sao chép → phải",
+                "copy-to-left": "Sao chép ← trái",
+                "overwrite-right": "Ghi đè bên phải",
+                "overwrite-left": "Ghi đè bên trái",
+                "delete-right": "Xóa bên phải",
+                "delete-left": "Xóa bên trái",
+                "rename-to-right": "Giữ cả hai → phải",
+                "rename-to-left": "Giữ cả hai ← trái",
+                "conflict-skip": "Xung đột (bỏ qua)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Bỏ qua",
+                    "tagline": "Giữ nguyên các xung đột ở cả hai bên."
+                },
+                "rename": {
+                    "label": "Giữ cả hai",
+                    "tagline": "Sao chép phiên bản ở nguồn với hậu tố ngày giờ."
+                },
+                "newer-wins": {
+                    "label": "Mới hơn thắng",
+                    "tagline": "Bên có thời gian sửa đổi gần đây hơn sẽ ghi đè bên còn lại."
+                },
+                "older-wins": {
+                    "label": "Cũ hơn thắng",
+                    "tagline": "Bên cũ hơn ghi đè bên mới hơn (dùng để lưu trữ)."
+                },
+                "larger-wins": {
+                    "label": "Lớn hơn thắng",
+                    "tagline": "Bên có kích thước lớn hơn ghi đè bên nhỏ hơn."
+                },
+                "smaller-wins": {
+                    "label": "Nhỏ hơn thắng",
+                    "tagline": "Bên nhỏ hơn ghi đè bên lớn hơn."
+                }
+            },
+            "bucketName": {
+                "only-left": "Chỉ có bên trái",
+                "newer-left": "Mới hơn bên trái",
+                "only-right": "Chỉ có bên phải",
+                "newer-right": "Mới hơn bên phải",
+                "conflict": "Xung đột",
+                "same": "Giống nhau"
+            },
+            "bucketDescription": {
+                "only-left": "Có trong bảng nguồn, không có ở đích.",
+                "newer-left": "Có ở cả hai bên, bản sao ở nguồn có dấu thời gian mới hơn.",
+                "only-right": "Có ở đích, không có trong bảng nguồn.",
+                "newer-right": "Có ở cả hai bên, bản sao ở đích có dấu thời gian mới hơn.",
+                "conflict": "Cả hai bên đều có mục này nhưng kích thước khác nhau dù dấu thời gian tương đương.",
+                "same": "Các mục khớp nhau theo chính sách so sánh đang dùng."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Chỉ kích thước",
+                "mtimeOnly": "Chỉ dấu thời gian",
+                "sizeAndMtime": "Kích thước + dấu thời gian"
+            },
+            "compareTable": {
+                "name": "Tên",
+                "leftSize": "Kích thước bên trái",
+                "rightSize": "Kích thước bên phải",
+                "leftModified": "Sửa đổi bên trái",
+                "rightModified": "Sửa đổi bên phải",
+                "folder": "thư mục",
+                "noEntries": "Không có mục nào.",
+                "countedNotListed": "Đã đếm nhưng không liệt kê: quá trình quét báo cáo các tệp giống hệt nhau dưới dạng tổng số thay vì mỗi tệp một dòng, để các cây thư mục lớn vẫn nhanh.",
+                "shown": "Đang hiển thị: {shown} trên {total}",
+                "moreNotListed": "Đã đếm nhưng không liệt kê: {count}"
+            },
             "compareUnavailable": "Mở bảng thứ hai hoặc kết nối từ xa để so sánh.",
             "planUnavailable": "Cần có kết quả so sánh trước khi chọn cài đặt sẵn. Mở tab So sánh trước.",
             "totalEntries": "Tổng số mục",
@@ -5114,7 +5177,7 @@
             "ignoredForMirror": "BỎ QUA CHO MIRROR",
             "versionedBackup": "Sao lưu có phiên bản",
             "enable": "Bật",
-            "versionedBackupHint": "Lưu bản sao đích trong thư mục này trước mỗi lần ghi đè hoặc xóa.",
+            "versionedBackupHint": "Trước khi một tệp bị ghi đè hoặc xóa, bản sao của nó ở đích được chuyển vào {dir}, trong một thư mục đặt tên theo ngày và giờ của lần chạy.",
             "actionable": "Có thể thực hiện",
             "reportCopiedRight": "Đã sao chép sang phải",
             "reportCopiedLeft": "Đã sao chép sang trái",
@@ -5136,7 +5199,6 @@
             "executePreset": "Thực thi cài đặt sẵn",
             "execute": "Thực thi",
             "sync": {
-                "title": "AeroSync: cục bộ tới cục bộ",
                 "description": "Phản chiếu thư mục nguồn cục bộ tới đích cục bộ. Tệp ≥ 1 MiB sử dụng công cụ delta tích hợp; tệp nhỏ hơn sử dụng sao chép trực tiếp.",
                 "source": "Nguồn",
                 "destination": "Đích",
@@ -5192,7 +5254,7 @@
             "speedMode_fast": "Nhanh",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Cực đại",
-            "speedModeHint": "Luồng song song + cài đặt nén được áp dụng cho lần chạy.",
+            "speedModeHint": "Đặt chính sách thử lại. Từ Nhanh trở lên, các tệp đã thay đổi được gửi dưới dạng delta khi máy chủ hỗ trợ (SFTP với rsync).",
             "verifyPolicy": "Chính sách xác minh",
             "verifyPolicy_none": "Không",
             "verifyPolicy_size_only": "Chỉ kích thước",
@@ -5237,7 +5299,45 @@
             "errorCorrection": "Sửa lỗi",
             "errorCorrectionHint": "Lưu một tệp chẵn lẻ .aerocorrect nhỏ bên cạnh mỗi tệp sao lưu, để một bản sao từ xa bị hỏng do bit-rot có thể được sửa chữa ở lần pull tiếp theo mà không cần bản gốc.",
             "outOfSyncItemsPct": "Mục chưa đồng bộ",
-            "outOfSyncBytesPct": "Byte chưa đồng bộ"
+            "outOfSyncBytesPct": "Byte chưa đồng bộ",
+            "exclude": {
+                "label": "Mẫu loại trừ",
+                "hint": "Phân tách bằng dấu phẩy hoặc dòng mới, ví dụ cache, *.tmp hoặc build/output. Luôn loại trừ: {list}."
+            },
+            "cli": {
+                "title": "Cùng lần chạy từ dòng lệnh",
+                "copy": "Sao chép",
+                "copied": "Đã sao chép",
+                "copyFailed": "Sao chép thất bại",
+                "none": "Không có lệnh CLI tương đương chính xác: {reason}",
+                "reason": {
+                    "localPair": "với hai thư mục cục bộ, CLI chạy chế độ nhân bản riêng, bỏ qua các cài đặt hướng, xóa và xung đột.",
+                    "unsavedServer": "kết nối này không phải máy chủ đã lưu, và CLI cần một máy chủ đã lưu để chỉ định bằng --profile.",
+                    "overwritesNewer": "CLI ghi đè bản sao ở đích có kích thước khác ngay cả khi bản đó mới hơn, điều mà cài đặt sẵn này không bao giờ làm.",
+                    "twoWay": "CLI coi hai bản sao cùng kích thước nhưng khác thời gian là xung đột và ghi đè bản cũ hơn; kế hoạch này coi chúng là giống nhau nếu chênh lệch trong vòng 30 giây.",
+                    "canary": "CLI không có chạy thử Canary.",
+                    "versionedBackup": "CLI chưa lưu các bản sao lưu theo cùng cấu trúc.",
+                    "transferBudget": "khi hết ngân sách, kế hoạch này dừng lại, kể cả việc xóa; CLI chỉ giới hạn truyền tải và vẫn xóa.",
+                    "remotePath": "CLI xác định thư mục từ xa dựa trên thư mục khởi đầu của máy chủ đã lưu và sẽ đến một thư mục khác.",
+                    "exclusions": "CLI so khớp mẫu loại trừ theo cách khác, nên sẽ không bỏ qua mọi thứ mà kế hoạch này bỏ qua (node_modules, .git và các mục khác)."
+                }
+            },
+            "rescan": "Quét lại",
+            "rescanNeeded": "Việc so sánh được thực hiện với các loại trừ khác hoặc thư mục sao lưu khác. Hãy quét lại trước khi chạy.",
+            "backup": {
+                "checking": "Đang kiểm tra cách máy chủ này di chuyển tệp...",
+                "serverCopy": "Máy chủ này không thể di chuyển: mỗi bản sao được giữ lại sẽ được sao chép trên máy chủ rồi xóa. Việc đó tốn một bản sao đầy đủ của mỗi tệp được giữ lại, qua hai bước riêng biệt.",
+                "clientCopy": "Máy chủ này không thể di chuyển: mỗi bản sao được giữ lại sẽ được tải xuống, tải lên thư mục sao lưu rồi xóa. Mỗi tệp được giữ lại đi qua máy tính này hai lần, qua các bước riêng biệt.",
+                "unsupported": "Máy chủ này không thể di chuyển tệp sang thư mục khác, nên không thể giữ các bản sao cũ. Hãy tắt sao lưu có phiên bản để chạy.",
+                "checkFailed": "Không thể hỏi máy chủ cách nó di chuyển tệp. Hãy kết nối lại, hoặc tắt sao lưu có phiên bản để chạy.",
+                "nested": "Thư mục sao lưu nằm trong {folder}, nơi lần đồng bộ này ghi vào. Hãy chọn một thư mục bên ngoài.",
+                "invalid": {
+                    "empty": "Nhập tên cho thư mục sao lưu.",
+                    "absolute": "Dùng một thư mục bên trong đích, không phải đường dẫn tuyệt đối.",
+                    "parent": "Thư mục sao lưu không được chứa '..'.",
+                    "name": "Tên thư mục sao lưu này không hợp lệ."
+                }
+            }
         },
         "accountLock": {
             "title": "Chọn tài khoản",

@@ -2,7 +2,6 @@
 
 import type {
     AerosyncImportScriptResult,
-    CompressionMode,
     SyncDirection,
     SyncScriptMeta,
     SyncTemplate,
@@ -26,8 +25,6 @@ export interface ImportedSyncSettings {
     direction: SyncDirection;
     deleteOrphans: boolean;
     excludePatterns: string[];
-    parallelStreams?: number;
-    compressionMode?: CompressionMode;
     verifyPolicy?: VerifyPolicy;
     dryRun?: boolean;
     conflictMode?: string | null;
@@ -38,7 +35,6 @@ export interface ImportedSyncSettings {
 
 /** Plan-tab knobs the .aerosync export must keep (#514). */
 export interface LivePlanExport {
-    compressionMode?: CompressionMode;
     verifyPolicy?: VerifyPolicy | AeroSyncVerifyPolicy;
     canary?: { percent: number; selection: string } | null;
 }
@@ -78,8 +74,6 @@ export function settingsFromTemplate(template: SyncTemplate): TemplateImportResu
         direction: template.profile.direction,
         deleteOrphans: template.profile.delete_orphans,
         excludePatterns: template.exclude_patterns,
-        parallelStreams: template.profile.parallel_streams,
-        compressionMode: template.profile.compression_mode,
         verifyPolicy: template.profile.verify_policy
             ?? (template.profile.compare_checksum
                 ? 'full'
@@ -124,9 +118,11 @@ function compareFieldsForVerify(verify: VerifyPolicy): Partial<SyncTemplate['pro
 
 /**
  * Stamp the live Plan-tab values onto an exported .aerosync document.
- * The backend serialises the named preset (Mirror → compression off, no
- * canary, no verify_policy). Without this overlay those knobs round-trip
- * as defaults (#514).
+ * The backend serialises the named preset (no canary, no verify_policy).
+ * Without this overlay those knobs round-trip as defaults (#514).
+ *
+ * Streams and compression are not the Plan's to set: the backend writes them
+ * neutral (`export_sync_template`), and an import ignores them.
  */
 export function overlayLivePlanOnTemplate(template: SyncTemplate, live: LivePlanExport): SyncTemplate {
     const verify = toTemplateVerify(live.verifyPolicy);
@@ -134,7 +130,6 @@ export function overlayLivePlanOnTemplate(template: SyncTemplate, live: LivePlan
         ...template,
         profile: {
             ...template.profile,
-            ...(live.compressionMode ? { compression_mode: live.compressionMode } : {}),
             ...(verify ? { verify_policy: verify, ...compareFieldsForVerify(verify) } : {}),
             ...(live.canary
                 ? { canary: { percent: live.canary.percent, selection: live.canary.selection } }
@@ -161,8 +156,6 @@ export function settingsFromAerosyncScript(script: AerosyncImportScriptResult): 
         direction: imported.profile.direction,
         deleteOrphans: imported.profile.delete_orphans,
         excludePatterns: imported.profile.exclude_patterns,
-        parallelStreams: imported.profile.parallel_streams,
-        compressionMode: imported.profile.compression_mode,
         verifyPolicy: imported.profile.verify_policy,
         dryRun: imported.dry_run,
         conflictMode: imported.conflict_mode,
@@ -208,8 +201,6 @@ export function buildAeroSyncTabStatePatch(
         'plan.preset': planPreset(settings),
         'plan.direction': planDirection(settings.direction, pairKind),
     };
-    if (settings.parallelStreams != null) patch['plan.parallelStreams'] = settings.parallelStreams;
-    if (settings.compressionMode != null) patch['plan.compressionMode'] = settings.compressionMode;
     const verify = planVerify(settings.verifyPolicy);
     if (verify) patch['plan.verifyPolicy'] = verify;
     if (settings.dryRun != null) patch['sync.dryRun'] = settings.dryRun;

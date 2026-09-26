@@ -2142,9 +2142,6 @@
                 "disk_error": "Diskavilla",
                 "unknown": "Óþekkt"
             },
-            "parallelStreams": "Straumar",
-            "parallelSequential": "Raðbundið",
-            "parallelStreamLabel": "straumar",
             "schedulerTitle": "Samstillingaráætlun",
             "schedulerEnabled": "Virkja áætlun",
             "schedulerResume": "Halda áfram",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Bakendi",
             "watcherInotifyWarning": "Hátt möppufjöldi - gæti farið yfir inotify mörk",
             "watcherPolling": "Nota könnunarstillingu (hægari en alhliða)",
-            "compressionToggle": "Þjöppun",
-            "compressionAuto": "Sjálfvirkt",
-            "compressionOn": "Kveikt",
-            "compressionOff": "Slökkt",
             "multiPathAdd": "Bæta við slóðapari",
             "multiPathEmpty": "Engin slóðapör stillt",
             "templateExport": "Flytja út sniðmát",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Endurheimta",
             "rollbackEmpty": "Engar skyndimyndir tiltækar",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 straumar + ALLT öryggi óvirkt - engin færslubók, engin staðfesting, engin endurtekning",
+            "speedManiacTooltip": "Engin færslubók, engin staðfesting meðan á keyrslu stendur, bandvíddarmörk hunsuð, 2 hraðar endurtekningar. Sóttar skrár eru staðfestar eftir keyrsluna.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Engin færslubók. Engin staðfesting. Engin endurtekning. Hámarkshraði. Ef eitthvað mistekst er það horfið. Full staðfestingarskönnun keyrir eftir að samstilling lýkur.",
+            "maniacWarningBody": "Engin færslubók og engin staðfesting meðan á keyrslu stendur, bandvíddarmörk eru hunsuð og skrá sem mistekst fær aðeins 2 hraðar endurtekningar. Eftir keyrsluna eru sóttar skrár staðfestar; skrár sem hlaðið var upp ekki.",
             "maniacConfirm": "Ég skil, halda áfram",
             "maniacPostSyncReport": "Staðfesting eftir samstillingu: {ok} í lagi, {mismatches} misræmi, {failed} mistókst",
             "rollback": "Afturköllun",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Vista núverandi samstillingarstillingar sem endurnýtanlegt .aerosync sniðmát",
             "templateImportDesc": "Hlaða .aerosync sniðmáti til að beita stillingum þess",
             "maniacActive": "Virkt",
-            "speedStreams": "{count} straumar",
             "actionUploaded": "Hlaðið upp",
             "actionDownloaded": "Sótt",
             "actionDeleted": "Eytt",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Óþekkt metadata svæði",
             "aerosyncScriptApplyButton": "Vista sem preset",
             "aerosyncScriptAppliedToast": "Innfluttur preset vistaður. Opnaðu AeroSync til að nota hann.",
-            "compressionHint": "Þjappar gögnum við flutning til að flýta fyrir flutningnum; geymir ekki þjappaðar skrár á áfangastað. Auto sleppir sniðum sem eru þegar þjöppuð (zip, jpg, mp4 og álíka).",
             "canaryDryRun": "Ekkert er flutt: þetta sýnir forskoðun á því sem full samstilling myndi gera, reiknað út frá úrtakinu. Það er myndræna hliðstæðan við skipunina aeroftp-cli sync --dry-run (og --dry-run hjá rclone).",
-            "templateImportPathPairs": "Fjöldi nothæfra slóðapara í þessu sniðmáti: {count}. AeroFTP notar nákvæmlega eitt, svo ekkert var flutt inn. Breyttu sniðmátinu þannig að eitt slóðapar standi eftir og flyttu það svo inn aftur.",
+            "templateImportPathPairs": "Nothæf slóðapör (staðbundið/fjartengt) í þessu sniðmáti: {count}. AeroSync-gluggi vinnur með nákvæmlega eitt par, svo ekkert var flutt inn. Breyttu sniðmátinu þannig að aðeins eitt par standi eftir og flyttu það síðan inn aftur.",
             "templateNamePlaceholder": "t.d. Næturafritun í S3",
             "templateDescPlaceholder": "Til hvers þetta sniðmát er (valfrjálst)"
         },
@@ -5089,7 +5080,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Bera saman",
             "tabPlan": "Áætlun",
-            "tabSync": "Samstilla",
+            "tabSync": "Staðbundinn spegill",
             "compareWontFitTitle": "Yfir mörkum {name}: {count}",
             "compareWontFitHint": "Þessar skrár eru stærri en skjalfest mörk þjónustunnar, eða nafn þeirra eða slóð er lengri en hún leyfir. Samstilling myndi mistakast á þeim: endurnefndu, færðu eða skiptu þeim fyrst.",
             "compareWontFitTooLarge": "{size}, mörk {limit}",
@@ -5097,6 +5088,78 @@
             "compareWontFitNameChars": "nafn yfir {count} stafi",
             "compareWontFitPathBytes": "slóð yfir {count} bæti",
             "compareWontFitPathChars": "slóð yfir {count} stafi",
+            "presetDefault": "Sjálfgefið",
+            "actionLabel": {
+                "skip": "Sleppa",
+                "copy-to-right": "Afrita → til hægri",
+                "copy-to-left": "Afrita ← til vinstri",
+                "overwrite-right": "Yfirskrifa hægra megin",
+                "overwrite-left": "Yfirskrifa vinstra megin",
+                "delete-right": "Eyða hægra megin",
+                "delete-left": "Eyða vinstra megin",
+                "rename-to-right": "Halda báðum → til hægri",
+                "rename-to-left": "Halda báðum ← til vinstri",
+                "conflict-skip": "Árekstur (sleppa)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Sleppa",
+                    "tagline": "Lætur árekstra ósnerta báðum megin."
+                },
+                "rename": {
+                    "label": "Halda báðum",
+                    "tagline": "Afritar útgáfu upprunans með viðskeyti sem inniheldur dagsetningu og tíma."
+                },
+                "newer-wins": {
+                    "label": "Nýrra vinnur",
+                    "tagline": "Hliðin með nýrri breytingartíma skrifar yfir hina."
+                },
+                "older-wins": {
+                    "label": "Eldra vinnur",
+                    "tagline": "Eldri hliðin skrifar yfir þá nýrri (til geymslu)."
+                },
+                "larger-wins": {
+                    "label": "Stærra vinnur",
+                    "tagline": "Hliðin með stærri skráarstærð skrifar yfir þá minni."
+                },
+                "smaller-wins": {
+                    "label": "Minna vinnur",
+                    "tagline": "Minni hliðin skrifar yfir þá stærri."
+                }
+            },
+            "bucketName": {
+                "only-left": "Aðeins vinstra megin",
+                "newer-left": "Nýrra vinstra megin",
+                "only-right": "Aðeins hægra megin",
+                "newer-right": "Nýrra hægra megin",
+                "conflict": "Árekstur",
+                "same": "Eins"
+            },
+            "bucketDescription": {
+                "only-left": "Til staðar í upprunaspjaldinu, vantar á áfangastað.",
+                "newer-left": "Til staðar báðum megin, afrit upprunans hefur nýrri tímastimpil.",
+                "only-right": "Til staðar á áfangastað, vantar í upprunaspjaldið.",
+                "newer-right": "Til staðar báðum megin, afrit áfangastaðarins hefur nýrri tímastimpil.",
+                "conflict": "Færslan er báðum megin en stærðin er ólík þótt tímastimplar séu sambærilegir.",
+                "same": "Færslurnar passa saman samkvæmt virku samanburðarreglunni."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Aðeins stærð",
+                "mtimeOnly": "Aðeins tímastimpill",
+                "sizeAndMtime": "Stærð + tímastimpill"
+            },
+            "compareTable": {
+                "name": "Nafn",
+                "leftSize": "Stærð vinstra megin",
+                "rightSize": "Stærð hægra megin",
+                "leftModified": "Breytt vinstra megin",
+                "rightModified": "Breytt hægra megin",
+                "folder": "mappa",
+                "noEntries": "Engar færslur.",
+                "countedNotListed": "Talið en ekki listað: skönnunin tilgreinir eins skrár sem heildartölu í stað einnar línu fyrir hverja, svo stór tré haldist hröð.",
+                "shown": "Sýnt: {shown} af {total}",
+                "moreNotListed": "Talið en ekki listað: {count}"
+            },
             "compareUnavailable": "Opnaðu annað spjald eða fjartengingu til að bera saman.",
             "planUnavailable": "Niðurstaða úr samanburði er nauðsynleg áður en forstilling er valin. Opnaðu flipann Bera saman fyrst.",
             "totalEntries": "Heildarfærslur",
@@ -5133,7 +5196,7 @@
             "ignoredForMirror": "HUNSAÐ FYRIR SPEGLUN",
             "versionedBackup": "Útgáfustýrt öryggisafrit",
             "enable": "Virkja",
-            "versionedBackupHint": "Vista afrit áfangastaðarins í þessari möppu fyrir hverja yfirskrift eða eyðingu.",
+            "versionedBackupHint": "Áður en skrá er yfirskrifuð eða eytt er afrit hennar á áfangastaðnum fært í {dir}, í möppu sem nefnd er eftir dagsetningu og tíma keyrslunnar.",
             "actionable": "Framkvæmanlegt",
             "reportCopiedRight": "Afritað til hægri",
             "reportCopiedLeft": "Afritað til vinstri",
@@ -5155,7 +5218,6 @@
             "executePreset": "Framkvæma forstillingu",
             "execute": "Framkvæma",
             "sync": {
-                "title": "AeroSync: staðbundið í staðbundið",
                 "description": "Speglar staðbundna upprunamöppu í staðbundna áfangastað. Skrár ≥ 1 MiB nota innbyggða delta-vélina; minni skrár nota beina afritun.",
                 "source": "Uppruni",
                 "destination": "Áfangastaður",
@@ -5211,7 +5273,7 @@
             "speedMode_fast": "Hratt",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Öfgakennt",
-            "speedModeHint": "Samhliða straumar + þjöppunarforstilling beitt á keyrsluna.",
+            "speedModeHint": "Stillir reglu um endurtekningar. Frá Hratt og upp eru breyttar skrár sendar sem delta þar sem þjónninn styður það (SFTP með rsync).",
             "verifyPolicy": "Sannprófunarstefna",
             "verifyPolicy_none": "Ekkert",
             "verifyPolicy_size_only": "Aðeins stærð",
@@ -5256,7 +5318,45 @@
             "errorCorrection": "Villuleiðrétting",
             "errorCorrectionHint": "Vistar litla .aerocorrect jöfnunarskrá við hlið hverrar afritsskrár, svo hægt sé að gera við fjarafrit sem skemmst hefur af bit-rot við næsta sækjun, án frumritsins.",
             "outOfSyncItemsPct": "Ósamstillt atriði",
-            "outOfSyncBytesPct": "Ósamstillt bæti"
+            "outOfSyncBytesPct": "Ósamstillt bæti",
+            "exclude": {
+                "label": "Útilokunarmynstur",
+                "hint": "Aðskilin með kommu eða nýrri línu, til dæmis cache, *.tmp eða build/output. Alltaf útilokað: {list}."
+            },
+            "cli": {
+                "title": "Sama keyrsla af skipanalínu",
+                "copy": "Afrita",
+                "copied": "Afritað",
+                "copyFailed": "Afritun mistókst",
+                "none": "Engin nákvæm samsvörun í CLI: {reason}",
+                "reason": {
+                    "localPair": "fyrir tvær staðbundnar möppur keyrir CLI eigin speglun, sem hunsar stillingar fyrir stefnu, eyðingu og árekstra.",
+                    "unsavedServer": "þessi tenging er ekki vistaður þjónn, og CLI þarf slíkan til að vísa í hann með --profile.",
+                    "overwritesNewer": "CLI skrifar yfir afrit á áfangastað af annarri stærð jafnvel þótt það sé nýrra, sem þessi forstilling gerir aldrei.",
+                    "twoWay": "CLI lítur á tvö jafnstór afrit með ólíkan tíma sem árekstur og skrifar yfir það eldra; þessi áætlun telur þau eins innan 30 sekúndna.",
+                    "canary": "CLI er ekki með prófunarkeyrslu.",
+                    "versionedBackup": "CLI geymir öryggisafrit ekki enn með sömu uppbyggingu.",
+                    "transferBudget": "þegar flutningskvótinn klárast stöðvast þessi áætlun, eyðingar meðtaldar; CLI takmarkar aðeins flutninga og eyðir samt.",
+                    "remotePath": "CLI túlkar fjartengdu möppuna miðað við upphafsmöppu vistaða þjónsins og myndi lenda í annarri.",
+                    "exclusions": "CLI beitir útilokunarmynstrum á annan hátt, svo það myndi ekki sleppa öllu sem þessi áætlun sleppir (node_modules, .git og restinni)."
+                }
+            },
+            "rescan": "Skanna aftur",
+            "rescanNeeded": "Samanburðurinn var gerður með öðrum útilokunum eða annarri afritunarmöppu. Skannaðu aftur áður en þú keyrir.",
+            "backup": {
+                "checking": "Athuga hvernig þessi þjónn færir skrár...",
+                "serverCopy": "Þessi þjónn getur ekki fært: hvert varðveitt afrit er afritað á þjóninum og síðan eytt. Það kostar fullt afrit af hverri varðveittri skrá, í tveimur aðskildum skrefum.",
+                "clientCopy": "Þessi þjónn getur ekki fært: hvert varðveitt afrit er sótt, því hlaðið upp í öryggisafritsmöppuna og síðan eytt. Hver varðveitt skrá fer tvisvar í gegnum þessa tölvu, í aðskildum skrefum.",
+                "unsupported": "Þessi þjónn getur ekki fært skrár í aðra möppu og getur því ekki varðveitt gömul afrit. Slökktu á útgáfustýrðu öryggisafriti til að keyra.",
+                "checkFailed": "Ekki tókst að spyrja þjóninn hvernig hann færir skrár. Tengstu aftur eða slökktu á útgáfustýrðu öryggisafriti til að keyra.",
+                "nested": "Öryggisafritsmappan er innan {folder}, sem þessi samstilling skrifar í. Veldu möppu utan hennar.",
+                "invalid": {
+                    "empty": "Sláðu inn heiti á öryggisafritsmöppuna.",
+                    "absolute": "Notaðu möppu innan áfangastaðarins, ekki algilda slóð.",
+                    "parent": "Öryggisafritsmappan má ekki innihalda '..'.",
+                    "name": "Þetta heiti á öryggisafritsmöppu er ekki gilt."
+                }
+            }
         },
         "accountLock": {
             "title": "Veldu reikning",

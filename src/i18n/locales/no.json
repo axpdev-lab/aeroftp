@@ -2142,9 +2142,6 @@
                 "disk_error": "Diskfeil",
                 "unknown": "Ukjent"
             },
-            "parallelStreams": "Strømmer",
-            "parallelSequential": "Sekvensielt",
-            "parallelStreamLabel": "strømmer",
             "schedulerTitle": "Synkroniseringsplanlegger",
             "schedulerEnabled": "Aktiver planlegger",
             "schedulerResume": "Gjenoppta",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Høyt antall mapper - kan overstige inotify-grense",
             "watcherPolling": "Bruker poll-modus (tregere men universell)",
-            "compressionToggle": "Komprimering",
-            "compressionAuto": "Auto",
-            "compressionOn": "På",
-            "compressionOff": "Av",
             "multiPathAdd": "Legg til sti-par",
             "multiPathEmpty": "Ingen sti-par konfigurert",
             "templateExport": "Eksporter mal",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Gjenopprett",
             "rollbackEmpty": "Ingen øyeblikksbilder tilgjengelig",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 strømmer + ALL sikkerhet deaktivert - ingen journal, ingen verifisering, ingen nytt forsøk",
+            "speedManiacTooltip": "Ingen journal, ingen verifisering under kjøringen, båndbreddegrenser ignoreres, 2 raske nye forsøk. Nedlastede filer verifiseres etter kjøringen.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Ingen journal. Ingen verifisering. Ingen nytt forsøk. Maksimal rå hastighet. Hvis noe mislykkes, er det borte. En fullstendig verifiseringsskanning vil kjøre etter synkronisering er fullført.",
+            "maniacWarningBody": "Ingen journal og ingen verifisering under kjøringen, båndbreddegrenser ignoreres, og en mislykket fil får bare 2 raske nye forsøk. Etter kjøringen verifiseres nedlastede filer; opplastede filer gjør ikke det.",
             "maniacConfirm": "Jeg forstår, fortsett",
             "maniacPostSyncReport": "Verifisering etter synkronisering: {ok} OK, {mismatches} uoverensstemmelser, {failed} mislyktes",
             "rollback": "Tilbakestill",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Lagre gjeldende synkroniseringskonfigurasjon som gjenbrukbar .aerosync-mal",
             "templateImportDesc": "Last inn en .aerosync-mal for å bruke synkroniseringskonfigurasjonen",
             "maniacActive": "Aktiv",
-            "speedStreams": "{count} strømmer",
             "actionUploaded": "Lastet opp",
             "actionDownloaded": "Lastet ned",
             "actionDeleted": "Slettet",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Ukjente metadata-felter",
             "aerosyncScriptApplyButton": "Lagre som preset",
             "aerosyncScriptAppliedToast": "Importert preset lagret. Åpne AeroSync for å bruke det.",
-            "compressionHint": "Komprimerer data under overføringen for å gjøre den raskere; den lagrer ikke komprimerte filer på destinasjonen. Auto hopper over formater som allerede er komprimert (zip, jpg, mp4 og lignende).",
             "canaryDryRun": "Ingenting overføres: dette viser hva en full synkronisering ville gjort, beregnet fra utvalget. Det er den grafiske motparten til CLI-kommandoen aeroftp-cli sync --dry-run (og rclones --dry-run).",
-            "templateImportPathPairs": "Antall brukbare sti-par i denne malen: {count}. AeroFTP bruker nøyaktig ett, så ingenting ble importert. Rediger malen slik at det står igjen ett sti-par, og importer den på nytt.",
+            "templateImportPathPairs": "Brukbare sti-par (lokal/ekstern) i denne malen: {count}. Et AeroSync-vindu arbeider med nøyaktig ett par, så ingenting ble importert. Rediger malen slik at det bare står igjen ett par, og importer den deretter på nytt.",
             "templateNamePlaceholder": "f.eks. Nattlig sikkerhetskopi til S3",
             "templateDescPlaceholder": "Hva denne malen brukes til (valgfritt)"
         },
@@ -5089,7 +5080,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Sammenlign",
             "tabPlan": "Plan",
-            "tabSync": "Synkroniser",
+            "tabSync": "Lokalt speil",
             "compareWontFitTitle": "Over grensene for {name}: {count}",
             "compareWontFitHint": "Disse filene er større enn leverandørens dokumenterte grense, eller navnet eller banen deres er lengre enn tillatt. En synkronisering ville mislykkes for dem: gi dem nytt navn, flytt eller del dem opp først.",
             "compareWontFitTooLarge": "{size}, grense {limit}",
@@ -5097,16 +5088,88 @@
             "compareWontFitNameChars": "navn over {count} tegn",
             "compareWontFitPathBytes": "bane over {count} byte",
             "compareWontFitPathChars": "bane over {count} tegn",
+            "presetDefault": "Standard",
+            "actionLabel": {
+                "skip": "Hopp over",
+                "copy-to-right": "Kopier → høyre",
+                "copy-to-left": "Kopier ← venstre",
+                "overwrite-right": "Overskriv på høyre side",
+                "overwrite-left": "Overskriv på venstre side",
+                "delete-right": "Slett på høyre side",
+                "delete-left": "Slett på venstre side",
+                "rename-to-right": "Behold begge → høyre",
+                "rename-to-left": "Behold begge ← venstre",
+                "conflict-skip": "Konflikt (hopp over)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Hopp over",
+                    "tagline": "Lar konflikter være urørt på begge sider."
+                },
+                "rename": {
+                    "label": "Behold begge",
+                    "tagline": "Kopierer kildens versjon med et suffiks med dato og klokkeslett."
+                },
+                "newer-wins": {
+                    "label": "Nyeste vinner",
+                    "tagline": "Siden med det nyeste endringstidspunktet overskriver den andre."
+                },
+                "older-wins": {
+                    "label": "Eldste vinner",
+                    "tagline": "Den eldste siden overskriver den nyeste (for arkivering)."
+                },
+                "larger-wins": {
+                    "label": "Største vinner",
+                    "tagline": "Siden med størst filstørrelse overskriver den minste."
+                },
+                "smaller-wins": {
+                    "label": "Minste vinner",
+                    "tagline": "Den minste siden overskriver den største."
+                }
+            },
+            "bucketName": {
+                "only-left": "Bare til venstre",
+                "newer-left": "Nyere til venstre",
+                "only-right": "Bare til høyre",
+                "newer-right": "Nyere til høyre",
+                "conflict": "Konflikt",
+                "same": "Like"
+            },
+            "bucketDescription": {
+                "only-left": "Finnes i kildepanelet, mangler i destinasjonen.",
+                "newer-left": "Finnes på begge sider, kildens kopi har det nyeste tidsstempelet.",
+                "only-right": "Finnes i destinasjonen, mangler i kildepanelet.",
+                "newer-right": "Finnes på begge sider, destinasjonens kopi har det nyeste tidsstempelet.",
+                "conflict": "Begge sider har oppføringen, men størrelsen er ulik ved sammenlignbare tidsstempler.",
+                "same": "Oppføringene samsvarer etter den aktive sammenligningspolicyen."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Bare størrelse",
+                "mtimeOnly": "Bare tidsstempel",
+                "sizeAndMtime": "Størrelse + tidsstempel"
+            },
+            "compareTable": {
+                "name": "Navn",
+                "leftSize": "Størrelse venstre",
+                "rightSize": "Størrelse høyre",
+                "leftModified": "Endret venstre",
+                "rightModified": "Endret høyre",
+                "folder": "mappe",
+                "noEntries": "Ingen oppføringer.",
+                "countedNotListed": "Telt, men ikke oppført: skanningen rapporterer identiske filer som et samlet antall i stedet for én rad per fil, slik at store trær forblir raske.",
+                "shown": "Vist: {shown} av {total}",
+                "moreNotListed": "Telt, men ikke oppført: {count}"
+            },
             "compareUnavailable": "Åpne et andre panel eller en ekstern tilkobling for å sammenligne.",
             "planUnavailable": "Et sammenligningsresultat kreves før du velger en forhåndsinnstilling. Åpne Sammenlign-fanen først.",
             "totalEntries": "Totalt antall oppføringer",
             "differences": "Forskjeller",
             "totalBytes": "Totalt antall byte",
             "mirrorHint": "Mirror-knappene klargjør matchende oppføringer i den samlede overføringsplanleggeren for gjennomgang.",
-            "mirrorLeftToRight": "Speil fra venstre til hoyre",
-            "mirrorRightToLeft": "Speil fra hoyre til venstre",
-            "directionLeftRight": "Venstre til Hoyre",
-            "directionRightLeft": "Hoyre til Venstre",
+            "mirrorLeftToRight": "Speil fra venstre til høyre",
+            "mirrorRightToLeft": "Speil fra høyre til venstre",
+            "directionLeftRight": "Venstre til Høyre",
+            "directionRightLeft": "Høyre til Venstre",
             "directionLocalToRemote": "Lokal → Ekstern",
             "directionRemoteToLocal": "Ekstern → Lokal",
             "directionBothWays": "Begge veier",
@@ -5133,7 +5196,7 @@
             "ignoredForMirror": "IGNORERT FOR MIRROR",
             "versionedBackup": "Versjonsbasert sikkerhetskopi",
             "enable": "Aktiver",
-            "versionedBackupHint": "Lagre destinasjonskopien i denne mappen for hver overskriving eller sletting.",
+            "versionedBackupHint": "Før en fil overskrives eller slettes, flyttes kopien på destinasjonen til {dir}, i en mappe navngitt etter kjøringens dato og klokkeslett.",
             "actionable": "Handlingsbar",
             "reportCopiedRight": "Kopiert til høyre",
             "reportCopiedLeft": "Kopiert til venstre",
@@ -5155,7 +5218,6 @@
             "executePreset": "Utfør forhåndsinnstilling",
             "execute": "Utfor",
             "sync": {
-                "title": "AeroSync: lokal til lokal",
                 "description": "Speiler en lokal kildemappe til en lokal destinasjon. Filer ≥ 1 MiB bruker den innebygde delta-motoren; mindre filer bruker direkte kopiering.",
                 "source": "Kilde",
                 "destination": "Destinasjon",
@@ -5211,7 +5273,7 @@
             "speedMode_fast": "Rask",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Ekstrem",
-            "speedModeHint": "Parallelle strømmer + komprimeringsforhåndsinnstilling brukt på kjøringen.",
+            "speedModeHint": "Angir policyen for nye forsøk. Fra Rask og oppover sendes endrede filer som delta der serveren støtter det (SFTP med rsync).",
             "verifyPolicy": "Verifiseringspolicy",
             "verifyPolicy_none": "Ingen",
             "verifyPolicy_size_only": "Bare størrelse",
@@ -5256,7 +5318,45 @@
             "errorCorrection": "Feilkorreksjon",
             "errorCorrectionHint": "Lagrer en liten .aerocorrect-paritetsfil ved siden av hver sikkerhetskopiert fil, slik at en fjernkopi ødelagt av bit-rot kan repareres ved neste pull, uten originalen.",
             "outOfSyncItemsPct": "Usynkroniserte elementer",
-            "outOfSyncBytesPct": "Usynkroniserte byte"
+            "outOfSyncBytesPct": "Usynkroniserte byte",
+            "exclude": {
+                "label": "Eksklusjonsmønstre",
+                "hint": "Atskilt med komma eller linjeskift, for eksempel cache, *.tmp eller build/output. Alltid ekskludert: {list}."
+            },
+            "cli": {
+                "title": "Samme kjøring fra kommandolinjen",
+                "copy": "Kopier",
+                "copied": "Kopiert",
+                "copyFailed": "Kopiering mislyktes",
+                "none": "Ingen nøyaktig CLI-ekvivalent: {reason}",
+                "reason": {
+                    "localPair": "for to lokale mapper kjører CLI-en sin egen speiling, som ignorerer innstillinger for retning, sletting og konflikter.",
+                    "unsavedServer": "denne tilkoblingen er ikke en lagret server, og CLI-en trenger en for å angi den med --profile.",
+                    "overwritesNewer": "CLI-en overskriver en målkopi med annen størrelse selv når den er nyere, noe denne forhåndsinnstillingen aldri gjør.",
+                    "twoWay": "CLI-en behandler to kopier av samme størrelse med ulike tidspunkter som en konflikt og overskriver den eldste; denne planen regner dem som like innenfor 30 sekunder.",
+                    "canary": "CLI-en har ingen Canary-prøvekjøring.",
+                    "versionedBackup": "CLI-en lagrer ennå ikke sikkerhetskopier i samme struktur.",
+                    "transferBudget": "når budsjettet er brukt opp, stopper denne planen, slettinger inkludert; CLI-en begrenser bare overføringer og sletter likevel.",
+                    "remotePath": "CLI-en tolker den eksterne mappen ut fra den lagrede serverens startmappe og ville havne i en annen.",
+                    "exclusions": "CLI-en matcher eksklusjonsmønstre annerledes, så den ville ikke hoppe over alt denne planen hopper over (node_modules, .git og resten)."
+                }
+            },
+            "rescan": "Skann på nytt",
+            "rescanNeeded": "Sammenligningen ble gjort med andre ekskluderinger eller en annen sikkerhetskopimappe. Skann på nytt før kjøring.",
+            "backup": {
+                "checking": "Sjekker hvordan denne serveren flytter filer...",
+                "serverCopy": "Denne serveren kan ikke flytte: hver bevarte kopi kopieres på serveren og slettes deretter. Det koster en full kopi av hver bevarte fil, i to separate trinn.",
+                "clientCopy": "Denne serveren kan ikke flytte: hver bevarte kopi lastes ned, lastes opp til sikkerhetskopimappen og slettes deretter. Hver bevarte fil går gjennom denne datamaskinen to ganger, i separate trinn.",
+                "unsupported": "Denne serveren kan ikke flytte filer til en annen mappe, så den kan ikke bevare gamle kopier. Slå av versjonsbasert sikkerhetskopi for å kjøre.",
+                "checkFailed": "Kunne ikke spørre serveren hvordan den flytter filer. Koble til på nytt, eller slå av versjonsbasert sikkerhetskopi for å kjøre.",
+                "nested": "Sikkerhetskopimappen ligger i {folder}, som denne synkroniseringen skriver til. Velg en mappe utenfor den.",
+                "invalid": {
+                    "empty": "Skriv inn et navn på sikkerhetskopimappen.",
+                    "absolute": "Bruk en mappe inne i destinasjonen, ikke en absolutt sti.",
+                    "parent": "Sikkerhetskopimappen kan ikke inneholde '..'.",
+                    "name": "Dette navnet på sikkerhetskopimappen er ikke gyldig."
+                }
+            }
         },
         "accountLock": {
             "title": "Velg en konto",

@@ -82,8 +82,9 @@ export type ConflictPolicy =
  * the destination copy under `backupDir/<timestamp>/<relative-path>`.
  *
  * The helper flags the BucketPlan (and totals) with the predicted cost;
- * the runner archives the destination copy via `archive_before_sync_delete`
- * when `versioningStrategy` is set.
+ * the runner moves the destination copy there through
+ * `sync_backup_archive_local` / `sync_backup_archive_remote` (the Rust
+ * `sync_backup` module the CLI shares) when `versionedBackup` is set.
  */
 export interface VersionedBackupConfig {
     enabled: boolean;
@@ -598,52 +599,6 @@ export const describePreset = (preset: SyncPreset): { name: string; tagline: str
             };
         default:
             return { name: 'Unknown', tagline: 'Unrecognised preset.', safe: false };
-    }
-};
-
-export const describeAction = (action: BucketAction): string => {
-    switch (action) {
-        case 'skip':
-            return 'Skip';
-        case 'copy-to-right':
-            return 'Copy → right';
-        case 'copy-to-left':
-            return 'Copy ← left';
-        case 'overwrite-right':
-            return 'Overwrite right';
-        case 'overwrite-left':
-            return 'Overwrite left';
-        case 'delete-right':
-            return 'Delete on right';
-        case 'delete-left':
-            return 'Delete on left';
-        case 'rename-to-right':
-            return 'Keep both → right';
-        case 'rename-to-left':
-            return 'Keep both ← left';
-        case 'conflict-skip':
-            return 'Conflict (skip)';
-        default:
-            return 'Unknown';
-    }
-};
-
-export const describeConflictPolicy = (policy: ConflictPolicy): { label: string; tagline: string } => {
-    switch (policy) {
-        case 'skip':
-            return { label: 'Skip', tagline: 'Leave conflicts untouched on both sides.' };
-        case 'rename':
-            return { label: 'Keep both', tagline: 'Copy the source-side copy under a timestamped suffix.' };
-        case 'newer-wins':
-            return { label: 'Newer wins', tagline: 'The side with the more recent mtime overwrites the other.' };
-        case 'older-wins':
-            return { label: 'Older wins', tagline: 'The older side overwrites the newer (archive use case).' };
-        case 'larger-wins':
-            return { label: 'Larger wins', tagline: 'The side with the larger size overwrites the smaller.' };
-        case 'smaller-wins':
-            return { label: 'Smaller wins', tagline: 'The smaller side overwrites the larger.' };
-        default:
-            return { label: 'Unknown', tagline: 'Unrecognised policy.' };
     }
 };
 

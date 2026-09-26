@@ -3,7 +3,7 @@
 
 import type { CompareResult, CompareResultEntry } from '../../utils/compareEndpoints';
 import type { PresetPlan } from '../../utils/syncPresets';
-import type { CompressionMode, ProviderType, RetryPolicy, SyncJournal } from '../../types';
+import type { ProviderType, RetryPolicy, SyncJournal } from '../../types';
 
 export type AeroSyncTab = 'compare' | 'plan' | 'sync';
 
@@ -67,22 +67,14 @@ export interface AeroSyncRuntime {
     /**
      * GAP-8: Plan-tab parity controls threaded into the connected-remote
      * runner. `retryPolicy` is derived from the speed mode; `transferBudget`
-     * caps the bytes moved (0 = unlimited); `versioningStrategy` enables
-     * archive-before-mutation when the versioned-backup toggle is on.
+     * caps the bytes moved (0 = unlimited); `versionedBackup` moves each
+     * destination copy into the backup folder before it is overwritten or
+     * deleted (the folder already validated, the remote already known to
+     * support the move).
      */
     retryPolicy?: RetryPolicy;
     transferBudget?: number;
-    versioningStrategy?: string | null;
-    /**
-     * GAP-9b: parallel-streams + compression preset migrated from the legacy
-     * SyncPanel. Sourced from the speed mode (and an explicit Plan-tab
-     * selector). Threaded through to `RemoteSyncConfig` as first-class
-     * config; the concurrent execution that consumes them is owned by
-     * `APPENDIX-DAG-ENGINE` Fase 2. Until then the run stays sequential,
-     * matching the legacy SyncPanel whose `handleSync` never wired the pool.
-     */
-    parallelStreams?: number;
-    compressionMode?: CompressionMode;
+    versionedBackup?: { dir: string } | null;
     /**
      * P3 (AeroSync EC): Error Correction toggle + pct from Plan tab.
      * Wired only for Backup-class presets (default ON/Medium 15%).
@@ -132,9 +124,25 @@ export interface AeroSyncContext {
     isProvider?: boolean;
     excludePatterns?: string[];
     /**
-     * GAP-9b: the connected remote's protocol, used by the Plan tab to clamp
-     * the parallel-streams selector to the provider's real transfer
-     * capability (`get_transfer_capabilities`). Undefined for local-only
+     * The user's exclude patterns `compareResult` was computed with (the
+     * defaults in AEROSYNC_DEFAULT_EXCLUDES always apply on top). The Plan
+     * tab blocks Execute while its exclude field says something else, so a
+     * plan never runs on a compare that did not apply the patterns shown.
+     */
+    compareExcludes?: string[];
+    /** The backup folder `compareResult` left out on both sides. */
+    compareBackupDir?: string;
+    /**
+     * Start folder of the saved server. The CLI resolves a remote path that
+     * does not begin with it under it, so the Plan's command line needs it.
+     */
+    activeProfileInitialPath?: string;
+    /** True when the connection came from a saved server `--profile` can name. */
+    activeProfileSaved?: boolean;
+    /**
+     * The connected remote's protocol. The Plan tab asks the backend with it
+     * whether versioned backup can move a destination copy into the backup
+     * folder on this remote, before the run starts. Undefined for local-only
      * sessions.
      */
     protocol?: ProviderType;
@@ -152,4 +160,6 @@ export interface AeroSyncDialogProps {
     onResumeJournal: (journal: SyncJournal) => void;
     /** GAP-6: discard the interrupted journal and clear the banner. */
     onDismissJournal: () => void;
+    /** Re-run the compare with the Plan tab's exclude patterns and backup folder. */
+    onRescan?: (args: { userExcludes: string[]; backupDir: string }) => void;
 }

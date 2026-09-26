@@ -21,7 +21,6 @@ import { SyncSchedulerDialog } from './SyncSchedulerDialog';
 import { SyncTemplateDialog } from '../Sync/SyncTemplateDialog';
 import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import { RollbackDialog } from '../Sync/RollbackDialog';
-import { useTransferCapabilities } from '../Sync/useTransferCapabilities';
 import { TabStateStoreContext, createTabStateStore } from './tabStateStore';
 import { buildAeroSyncTabStatePatch, type ImportedSyncSettings } from '../../utils/syncTemplateApply';
 import { aeroSyncTabsFor, effectiveAeroSyncTab, type AeroSyncDialogProps, type AeroSyncTab } from './types';
@@ -38,6 +37,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     onExecutePreset,
     onResumeJournal,
     onDismissJournal,
+    onRescan,
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
@@ -90,19 +90,6 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         if (isOpen) setActiveTab(initialTab);
     }, [isOpen, initialTab]);
 
-    // GAP-9b: resolve the provider's real transfer capability so the Plan
-    // tab clamps the parallel-streams selector honestly. The hook is mounted
-    // for the modal's whole lifetime (the Plan tab itself unmounts on tab
-    // switch), so the lookup runs once per open instead of per tab visit.
-    const { caps: transferCaps } = useTransferCapabilities(context.protocol, isOpen);
-    const streamCap = React.useMemo(() => {
-        if (!transferCaps) return 8;
-        return Math.max(
-            1,
-            transferCaps.max_file_slots ?? 1,
-            transferCaps.max_chunk_slots ?? 1,
-        );
-    }, [transferCaps]);
 
     // #347: the remote's documented file limits, for the Compare warning.
     const [remoteLimits, setRemoteLimits] = React.useState<ProviderFileLimits | null>(null);
@@ -140,7 +127,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     const tabLabels: Record<AeroSyncTab, string> = {
         compare: t('aerosync.tabCompare') || 'Compare',
         plan: t('aerosync.tabPlan') || 'Plan',
-        sync: t('aerosync.tabSync') || 'Sync',
+        sync: t('aerosync.tabSync') || 'Local mirror',
     };
 
     return (
@@ -298,8 +285,17 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             loading={context.compareLoading}
                             pairKind={context.pairKind}
                             canExecute={canExecutePlan}
-                            streamCap={streamCap}
                             onExecute={onExecutePreset}
+                            compareExcludes={context.compareExcludes ?? []}
+                            compareBackupDir={context.compareBackupDir}
+                            onRescan={onRescan}
+                            isProvider={context.isProvider}
+                            cli={{
+                                profileName: context.activeProfileSaved ? context.activeProfileName : null,
+                                profileInitialPath: context.activeProfileInitialPath,
+                                localPath: context.initialSource ?? '',
+                                remotePath: context.initialDestination ?? '',
+                            }}
                         />
                     )}
                     {activeTab === 'sync' && (

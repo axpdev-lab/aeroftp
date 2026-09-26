@@ -2142,9 +2142,6 @@
                 "disk_error": "Schijffout",
                 "unknown": "Onbekend"
             },
-            "parallelStreams": "Streams",
-            "parallelSequential": "Sequentieel",
-            "parallelStreamLabel": "streams",
             "schedulerTitle": "Synchronisatieplanner",
             "schedulerEnabled": "Planner inschakelen",
             "schedulerResume": "Hervatten",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Hoog aantal mappen - kan inotify-limiet overschrijden",
             "watcherPolling": "Poll-modus wordt gebruikt (langzamer maar universeel)",
-            "compressionToggle": "Compressie",
-            "compressionAuto": "Auto",
-            "compressionOn": "Aan",
-            "compressionOff": "Uit",
             "multiPathAdd": "Padpaar toevoegen",
             "multiPathEmpty": "Geen padparen geconfigureerd",
             "templateExport": "Sjabloon exporteren",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Herstellen",
             "rollbackEmpty": "Geen snapshots beschikbaar",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 streams + ALLE beveiliging uitgeschakeld - geen journaal, geen verificatie, geen nieuwe poging",
+            "speedManiacTooltip": "Geen journaal, geen verificatie tijdens de uitvoering, bandbreedtelimieten genegeerd, 2 snelle nieuwe pogingen. Gedownloade bestanden worden na de uitvoering geverifieerd.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Geen journaal. Geen verificatie. Geen nieuwe poging. Maximale pure snelheid. Als iets mislukt, is het weg. Een volledige verificatiescan wordt uitgevoerd nadat de synchronisatie is voltooid.",
+            "maniacWarningBody": "Geen journaal en geen verificatie tijdens de uitvoering, bandbreedtelimieten worden genegeerd en een mislukt bestand krijgt maar 2 snelle nieuwe pogingen. Na de uitvoering worden gedownloade bestanden geverifieerd; geüploade bestanden niet.",
             "maniacConfirm": "Ik begrijp het, doorgaan",
             "maniacPostSyncReport": "Verificatie na synchronisatie: {ok} OK, {mismatches} niet overeenkomend, {failed} mislukt",
             "rollback": "Terugdraaien",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Huidige synchronisatieconfiguratie opslaan als herbruikbaar .aerosync-sjabloon",
             "templateImportDesc": "Laad een .aerosync-sjabloon om de synchronisatieconfiguratie toe te passen",
             "maniacActive": "Actief",
-            "speedStreams": "{count} streams",
             "actionUploaded": "Geüpload",
             "actionDownloaded": "Gedownload",
             "actionDeleted": "Verwijderd",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Niet-herkende metadata-velden",
             "aerosyncScriptApplyButton": "Opslaan als preset",
             "aerosyncScriptAppliedToast": "Geïmporteerde preset opgeslagen. Open AeroSync om het te gebruiken.",
-            "compressionHint": "Comprimeert gegevens tijdens het verzenden om de overdracht te versnellen; het slaat geen gecomprimeerde bestanden op de bestemming op. Auto slaat formaten over die al gecomprimeerd zijn (zip, jpg, mp4 en dergelijke).",
             "canaryDryRun": "Er wordt niets overgedragen: dit toont een voorbeeld van wat een volledige synchronisatie zou doen, berekend op basis van de steekproef. Het is de grafische tegenhanger van het CLI-commando aeroftp-cli sync --dry-run (en --dry-run van rclone).",
-            "templateImportPathPairs": "Deze sjabloon definieert {count} bruikbare padparen. AeroFTP past er precies één toe, dus er is niets geïmporteerd. Bewerk de sjabloon zodat er één padpaar overblijft en importeer hem opnieuw.",
+            "templateImportPathPairs": "Bruikbare padparen (lokaal/extern) in deze sjabloon: {count}. Een AeroSync-venster werkt met precies één paar, dus er is niets geïmporteerd. Bewerk de sjabloon zodat er maar één paar overblijft en importeer hem daarna opnieuw.",
             "templateNamePlaceholder": "bijv. Nachtelijke back-up naar S3",
             "templateDescPlaceholder": "Waarvoor dit sjabloon dient (optioneel)"
         },
@@ -5070,7 +5061,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Vergelijken",
             "tabPlan": "Plan",
-            "tabSync": "Synchroniseren",
+            "tabSync": "Lokale spiegel",
             "compareWontFitTitle": "Boven de limieten van {name}: {count}",
             "compareWontFitHint": "Deze bestanden zijn groter dan de gedocumenteerde limiet van de provider, of hun naam of pad is langer dan toegestaan. Een synchronisatie zou hierop mislukken: hernoem, verplaats of splits ze eerst.",
             "compareWontFitTooLarge": "{size}, limiet {limit}",
@@ -5078,6 +5069,78 @@
             "compareWontFitNameChars": "naam boven {count} tekens",
             "compareWontFitPathBytes": "pad boven {count} bytes",
             "compareWontFitPathChars": "pad boven {count} tekens",
+            "presetDefault": "Standaard",
+            "actionLabel": {
+                "skip": "Overslaan",
+                "copy-to-right": "Kopiëren → rechts",
+                "copy-to-left": "Kopiëren ← links",
+                "overwrite-right": "Rechts overschrijven",
+                "overwrite-left": "Links overschrijven",
+                "delete-right": "Rechts verwijderen",
+                "delete-left": "Links verwijderen",
+                "rename-to-right": "Beide behouden → rechts",
+                "rename-to-left": "Beide behouden ← links",
+                "conflict-skip": "Conflict (overslaan)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Overslaan",
+                    "tagline": "Laat conflicten aan beide kanten ongewijzigd."
+                },
+                "rename": {
+                    "label": "Beide behouden",
+                    "tagline": "Kopieert de bronversie met een achtervoegsel met datum en tijd."
+                },
+                "newer-wins": {
+                    "label": "Nieuwste wint",
+                    "tagline": "De kant met de recentste wijzigingstijd overschrijft de andere."
+                },
+                "older-wins": {
+                    "label": "Oudste wint",
+                    "tagline": "De oudere kant overschrijft de nieuwere (voor archivering)."
+                },
+                "larger-wins": {
+                    "label": "Grootste wint",
+                    "tagline": "De kant met de grootste bestandsgrootte overschrijft de kleinere."
+                },
+                "smaller-wins": {
+                    "label": "Kleinste wint",
+                    "tagline": "De kleinere kant overschrijft de grotere."
+                }
+            },
+            "bucketName": {
+                "only-left": "Alleen links",
+                "newer-left": "Nieuwer links",
+                "only-right": "Alleen rechts",
+                "newer-right": "Nieuwer rechts",
+                "conflict": "Conflict",
+                "same": "Gelijk"
+            },
+            "bucketDescription": {
+                "only-left": "Aanwezig in het bronpaneel, ontbreekt in de bestemming.",
+                "newer-left": "Aanwezig aan beide kanten, de bronkopie heeft de recentere tijdstempel.",
+                "only-right": "Aanwezig in de bestemming, ontbreekt in het bronpaneel.",
+                "newer-right": "Aanwezig aan beide kanten, de kopie in de bestemming heeft de recentere tijdstempel.",
+                "conflict": "Beide kanten hebben het item, maar de grootte verschilt bij vergelijkbare tijdstempels.",
+                "same": "De items komen overeen volgens het actieve vergelijkingsbeleid."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Alleen grootte",
+                "mtimeOnly": "Alleen tijdstempel",
+                "sizeAndMtime": "Grootte + tijdstempel"
+            },
+            "compareTable": {
+                "name": "Naam",
+                "leftSize": "Grootte links",
+                "rightSize": "Grootte rechts",
+                "leftModified": "Gewijzigd links",
+                "rightModified": "Gewijzigd rechts",
+                "folder": "map",
+                "noEntries": "Geen items.",
+                "countedNotListed": "Geteld maar niet vermeld: de scan rapporteert identieke bestanden als totaal in plaats van één rij per bestand, zodat grote mappenstructuren snel blijven.",
+                "shown": "Weergegeven: {shown} van {total}",
+                "moreNotListed": "Geteld maar niet vermeld: {count}"
+            },
             "compareUnavailable": "Open een tweede paneel of een externe verbinding om te vergelijken.",
             "planUnavailable": "Een vergelijkingsresultaat is vereist voordat u een preset kiest. Open eerst het tabblad Vergelijken.",
             "totalEntries": "Totaal items",
@@ -5114,7 +5177,7 @@
             "ignoredForMirror": "GENEGEERD VOOR MIRROR",
             "versionedBackup": "Versiebeheer back-up",
             "enable": "Inschakelen",
-            "versionedBackupHint": "Maak een kopie van de bestemming in deze map voor elke overschrijving of verwijdering.",
+            "versionedBackupHint": "Voordat een bestand wordt overschreven of verwijderd, wordt de kopie op de bestemming verplaatst naar {dir}, in een map genoemd naar de datum en tijd van de uitvoering.",
             "actionable": "Uitvoerbaar",
             "reportCopiedRight": "Naar rechts gekopieerd",
             "reportCopiedLeft": "Naar links gekopieerd",
@@ -5136,7 +5199,6 @@
             "executePreset": "Preset uitvoeren",
             "execute": "Uitvoeren",
             "sync": {
-                "title": "AeroSync: lokaal naar lokaal",
                 "description": "Spiegelt een lokale bronmap naar een lokale bestemming. Bestanden ≥ 1 MiB gebruiken de ingebouwde delta-engine; kleinere bestanden gebruiken directe kopie.",
                 "source": "Bron",
                 "destination": "Bestemming",
@@ -5192,7 +5254,7 @@
             "speedMode_fast": "Snel",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extreem",
-            "speedModeHint": "Parallelle streams + compressie-preset toegepast op de uitvoering.",
+            "speedModeHint": "Stelt het beleid voor nieuwe pogingen in. Vanaf Snel worden gewijzigde bestanden als delta verzonden waar de server dit ondersteunt (SFTP met rsync).",
             "verifyPolicy": "Verificatiebeleid",
             "verifyPolicy_none": "Geen",
             "verifyPolicy_size_only": "Alleen grootte",
@@ -5237,7 +5299,45 @@
             "errorCorrection": "Foutcorrectie",
             "errorCorrectionHint": "Slaat een klein .aerocorrect-pariteitsbestand op naast elk back-upbestand, zodat een door bit-rot beschadigde externe kopie bij de volgende pull kan worden hersteld, zonder het origineel.",
             "outOfSyncItemsPct": "Niet-gesynchroniseerde items",
-            "outOfSyncBytesPct": "Niet-gesynchroniseerde bytes"
+            "outOfSyncBytesPct": "Niet-gesynchroniseerde bytes",
+            "exclude": {
+                "label": "Uitsluitingspatronen",
+                "hint": "Gescheiden door komma of nieuwe regel, bijvoorbeeld cache, *.tmp of build/output. Altijd uitgesloten: {list}."
+            },
+            "cli": {
+                "title": "Dezelfde run vanaf de opdrachtregel",
+                "copy": "Kopiëren",
+                "copied": "Gekopieerd",
+                "copyFailed": "Kopiëren mislukt",
+                "none": "Geen exact CLI-equivalent: {reason}",
+                "reason": {
+                    "localPair": "voor twee lokale mappen voert de CLI een eigen spiegeling uit, die richting, verwijderen en conflictinstellingen negeert.",
+                    "unsavedServer": "deze verbinding is geen opgeslagen server, en de CLI heeft er een nodig om met --profile te benoemen.",
+                    "overwritesNewer": "de CLI overschrijft een doelkopie van een andere grootte, ook als die nieuwer is, wat deze preset nooit doet.",
+                    "twoWay": "de CLI behandelt twee kopieën van dezelfde grootte met verschillende tijden als conflict en overschrijft de oudste; dit plan telt ze binnen 30 seconden als gelijk.",
+                    "canary": "de CLI heeft geen Canary-proefrun.",
+                    "versionedBackup": "de CLI bewaart back-ups nog niet in dezelfde structuur.",
+                    "transferBudget": "als het budget op is, stopt dit plan, verwijderingen inbegrepen; de CLI beperkt alleen overdrachten en verwijdert toch.",
+                    "remotePath": "de CLI bepaalt de externe map ten opzichte van de startmap van de opgeslagen server en zou een andere map bereiken.",
+                    "exclusions": "de CLI past uitsluitingspatronen anders toe, dus zou niet alles overslaan wat dit plan overslaat (node_modules, .git en de rest)."
+                }
+            },
+            "rescan": "Opnieuw scannen",
+            "rescanNeeded": "De vergelijking is gemaakt met andere uitsluitingen of een andere back-upmap. Scan opnieuw voordat u uitvoert.",
+            "backup": {
+                "checking": "Controleren hoe deze server bestanden verplaatst...",
+                "serverCopy": "Deze server kan niet verplaatsen: elke bewaarde kopie wordt op de server gekopieerd en daarna verwijderd. Dat kost een volledige kopie van elk bewaard bestand, in twee aparte stappen.",
+                "clientCopy": "Deze server kan niet verplaatsen: elke bewaarde kopie wordt gedownload, geüpload naar de back-upmap en daarna verwijderd. Elk bewaard bestand gaat twee keer door deze computer, in aparte stappen.",
+                "unsupported": "Deze server kan geen bestanden naar een andere map verplaatsen en kan dus geen oude kopieën bewaren. Schakel versiebeheer back-up uit om uit te voeren.",
+                "checkFailed": "Kon de server niet vragen hoe hij bestanden verplaatst. Maak opnieuw verbinding of schakel versiebeheer back-up uit om uit te voeren.",
+                "nested": "De back-upmap staat in {folder}, waarnaar deze synchronisatie schrijft. Kies een map daarbuiten.",
+                "invalid": {
+                    "empty": "Voer een naam in voor de back-upmap.",
+                    "absolute": "Gebruik een map binnen de bestemming, geen absoluut pad.",
+                    "parent": "De back-upmap mag geen '..' bevatten.",
+                    "name": "Deze naam voor de back-upmap is niet geldig."
+                }
+            }
         },
         "accountLock": {
             "title": "Kies een account",

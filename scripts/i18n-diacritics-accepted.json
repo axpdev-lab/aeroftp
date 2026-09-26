@@ -319,6 +319,62 @@
       "folded": "raktu",
       "twin": "raktų",
       "reason": "'Su raktu' is the instrumental singular ('with a key'); 'raktų' is the genitive plural and would be wrong here."
+    },
+    "vi\u001fsettings.general\u001fChung": {
+      "locale": "vi",
+      "key": "settings.general",
+      "folded": "chung",
+      "twin": "chúng",
+      "reason": "\"Chung\" is Vietnamese for \"General\"; \"chúng\" means \"they\". The item 5 strings added more \"chúng\" to vi.json and tipped the frequency count."
+    },
+    "vi\u001fshortcuts.general\u001fChung": {
+      "locale": "vi",
+      "key": "shortcuts.general",
+      "folded": "chung",
+      "twin": "chúng",
+      "reason": "\"Chung\" is Vietnamese for \"General\"; \"chúng\" means \"they\"."
+    },
+    "vi\u001fai.settings.general\u001fChung": {
+      "locale": "vi",
+      "key": "ai.settings.general",
+      "folded": "chung",
+      "twin": "chúng",
+      "reason": "\"Chung\" is Vietnamese for \"General\"; \"chúng\" means \"they\"."
+    },
+    "vi\u001fai.templates.general\u001fChung": {
+      "locale": "vi",
+      "key": "ai.templates.general",
+      "folded": "chung",
+      "twin": "chúng",
+      "reason": "\"Chung\" is Vietnamese for \"General\"; \"chúng\" means \"they\"."
+    },
+    "vi\u001fproperties.general\u001fChung": {
+      "locale": "vi",
+      "key": "properties.general",
+      "folded": "chung",
+      "twin": "chúng",
+      "reason": "\"Chung\" is Vietnamese for \"General\"; \"chúng\" means \"they\"."
+    },
+    "gl\u001ftransfer.resumeProfileMissing\u001fNon se atopou o servidor gardado desta transferencia (pode que se eliminase).": {
+      "locale": "gl",
+      "key": "transfer.resumeProfileMissing",
+      "folded": "eliminase",
+      "twin": "elimínase",
+      "reason": "\"pode que se eliminase\" is the imperfect subjunctive, which has no accent; \"elimínase\" is the present with an enclitic pronoun."
+    },
+    "cs\u001fprotocol.megaS4Desc\u001fMEGA S4 Object Storage (Pro plan, 4 regions)": {
+      "locale": "cs",
+      "key": "protocol.megaS4Desc",
+      "folded": "plan",
+      "twin": "plán",
+      "reason": "The description is MEGA's English product text (\"Pro plan\"); \"plan\" is the English word, not a stripped Czech \"plán\"."
+    },
+    "sk\u001fprotocol.megaS4Desc\u001fMEGA S4 Object Storage (Pro plan, 4 regions)": {
+      "locale": "sk",
+      "key": "protocol.megaS4Desc",
+      "folded": "plan",
+      "twin": "plán",
+      "reason": "The description is MEGA's English product text (\"Pro plan\"); \"plan\" is the English word, not a stripped Slovak \"plán\"."
     }
   }
 }
