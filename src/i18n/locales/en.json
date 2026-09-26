@@ -1455,7 +1455,14 @@
             "mtpNotAttachedTitle": "Device not connected",
             "mtpNotAttached": "Plug in the device and enable File Transfer mode, then try again.",
             "swiftAuthUrl": "Keystone auth URL",
-            "swiftAllowCleartextStorage": "This deployment serves object storage over plain HTTP. Accept it for this profile: the access token and every file cross the network unencrypted."
+            "swiftAllowCleartextStorage": "This deployment serves object storage over plain HTTP. Accept it for this profile: the access token and every file cross the network unencrypted.",
+            "twakeInstance": "Twake address",
+            "twakeInstanceHelp": "Your own address, for example yourname.twake.app. You can also paste any Twake page address from your browser.",
+            "twakeSignIn": "Sign in with Twake",
+            "twakeSignInAgain": "Sign in again",
+            "twakeSignedIn": "Signed in",
+            "twakeWaitingBrowser": "Finish signing in in your browser...",
+            "twakeSignInHelp": "AeroFTP opens Twake in your browser and asks for access to your files only. If Twake shows an error the first time, log in to Twake in the browser and sign in again. You can revoke access anytime in Twake Settings, Connected devices."
         },
         "twoFactor": {
             "title": "Two-Factor Authentication Required",
@@ -3009,7 +3016,10 @@
             "s3RoleMfaTokenCode": "MFA Token Code",
             "s3RoleMfaTokenCodePlaceholder": "123456",
             "s3RoleMfaTokenCodeHint": "One-time code from your MFA device, required only if the role enforces MFA. Used once at connect time and never saved.",
-            "peerDesc": "Share folders directly with friends over an encrypted peer-to-peer channel, with no server in the middle."
+            "peerDesc": "Share folders directly with friends over an encrypted peer-to-peer channel, with no server in the middle.",
+            "twakeDesc": "Twake Drive (5 GB free)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, French open-source cloud (Cozy Cloud is now part of it) with 5 GB free",
+            "discoverTwake": "Open-source European cloud by Linagora, now home of Cozy Cloud (5 GB free)"
         },
         "quickLook": {
             "noPreview": "No preview available",

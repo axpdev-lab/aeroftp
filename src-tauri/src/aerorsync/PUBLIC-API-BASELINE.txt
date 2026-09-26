@@ -24,7 +24,7 @@
 # facade is designed, every legitimate change would redden the lane and the file
 # would be updated without anyone reading the diff, which is worse than no gate.
 #
-# Items: 2643. Emitted from module state at 237e6b913.
+# Items: 2727. Emitted from module state at 327159e8.
 #
 pub mod aerorsync
 pub mod aerorsync::aerorsync
@@ -841,6 +841,7 @@ pub const aerorsync::aerorsync::local_transport::LOCAL_TRANSPORT_NAME: &str
 pub mod aerorsync::aerorsync::mock
 pub enum aerorsync::aerorsync::mock::OpenRawStreamBehavior
 pub aerorsync::aerorsync::mock::OpenRawStreamBehavior::Fail(alloc::string::String)
+pub aerorsync::aerorsync::mock::OpenRawStreamBehavior::FailWith(aerorsync::aerorsync::types::AerorsyncError)
 pub aerorsync::aerorsync::mock::OpenRawStreamBehavior::Success
 pub aerorsync::aerorsync::mock::OpenRawStreamBehavior::Success::inbound: alloc::vec::Vec<u8>
 impl core::clone::Clone for aerorsync::aerorsync::mock::OpenRawStreamBehavior
@@ -906,6 +907,7 @@ pub aerorsync::aerorsync::mock::MockRemoteShellTransport::last_outbound: alloc::
 pub aerorsync::aerorsync::mock::MockRemoteShellTransport::last_raw_outbound: alloc::sync::Arc<std::sync::poison::mutex::Mutex<core::option::Option<aerorsync::aerorsync::mock::RawOutboundBuffer>>>
 pub aerorsync::aerorsync::mock::MockRemoteShellTransport::last_raw_shutdown: alloc::sync::Arc<std::sync::poison::mutex::Mutex<core::option::Option<aerorsync::aerorsync::mock::ShutdownFlag>>>
 pub aerorsync::aerorsync::mock::MockRemoteShellTransport::last_shutdown: alloc::sync::Arc<std::sync::poison::mutex::Mutex<core::option::Option<aerorsync::aerorsync::mock::ShutdownFlag>>>
+pub aerorsync::aerorsync::mock::MockRemoteShellTransport::raw_exec_history: alloc::sync::Arc<std::sync::poison::mutex::Mutex<alloc::vec::Vec<aerorsync::aerorsync::transport::RemoteExecRequest>>>
 impl aerorsync::aerorsync::mock::MockRemoteShellTransport
 pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::cancel_was_called(&self) -> bool
 pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::captured_outbound(&self) -> alloc::vec::Vec<alloc::vec::Vec<u8>>
@@ -916,6 +918,7 @@ impl aerorsync::aerorsync::mock::MockRemoteShellTransport
 pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::captured_raw_outbound(&self) -> alloc::vec::Vec<u8>
 impl aerorsync::aerorsync::transport::RawRemoteShellTransport for aerorsync::aerorsync::mock::MockRemoteShellTransport
 pub type aerorsync::aerorsync::mock::MockRemoteShellTransport::RawStream = aerorsync::aerorsync::mock::MockRawStream
+pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::endpoint(&self) -> core::option::Option<(alloc::string::String, u16, alloc::string::String)>
 pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::open_raw_stream<'life0, 'async_trait>(&'life0 self, aerorsync::aerorsync::transport::RemoteExecRequest) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<Self::RawStream, aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 impl aerorsync::aerorsync::transport::RemoteShellTransport for aerorsync::aerorsync::mock::MockRemoteShellTransport
 pub type aerorsync::aerorsync::mock::MockRemoteShellTransport::Stream = aerorsync::aerorsync::mock::MockStream
@@ -924,7 +927,7 @@ pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::cancel_handle(&self
 pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::exec<'life0, 'async_trait>(&'life0 self, aerorsync::aerorsync::transport::RemoteExecRequest) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<aerorsync::aerorsync::transport::RemoteCommandOutput, aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::open_stream<'life0, 'async_trait>(&'life0 self, aerorsync::aerorsync::transport::RemoteExecRequest) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<Self::Stream, aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::probe<'life0, 'async_trait>(&'life0 self) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<aerorsync::aerorsync::transport::TransportProbe, aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
-impl core::marker::Freeze for aerorsync::aerorsync::mock::MockRemoteShellTransport
+impl !core::marker::Freeze for aerorsync::aerorsync::mock::MockRemoteShellTransport
 impl core::marker::Send for aerorsync::aerorsync::mock::MockRemoteShellTransport
 impl core::marker::Sync for aerorsync::aerorsync::mock::MockRemoteShellTransport
 impl core::marker::Unpin for aerorsync::aerorsync::mock::MockRemoteShellTransport
@@ -952,9 +955,11 @@ impl core::marker::UnsafeUnpin for aerorsync::aerorsync::mock::MockStream
 impl core::panic::unwind_safe::RefUnwindSafe for aerorsync::aerorsync::mock::MockStream
 impl core::panic::unwind_safe::UnwindSafe for aerorsync::aerorsync::mock::MockStream
 pub struct aerorsync::aerorsync::mock::MockTransportConfig
+pub aerorsync::aerorsync::mock::MockTransportConfig::endpoint: core::option::Option<(alloc::string::String, u16, alloc::string::String)>
 pub aerorsync::aerorsync::mock::MockTransportConfig::exec_output: aerorsync::aerorsync::transport::RemoteCommandOutput
 pub aerorsync::aerorsync::mock::MockTransportConfig::probe: aerorsync::aerorsync::transport::TransportProbe
 pub aerorsync::aerorsync::mock::MockTransportConfig::raw_exhausted_detail: core::option::Option<alloc::string::String>
+pub aerorsync::aerorsync::mock::MockTransportConfig::raw_open_script: alloc::vec::Vec<aerorsync::aerorsync::mock::OpenRawStreamBehavior>
 pub aerorsync::aerorsync::mock::MockTransportConfig::raw_stream_behavior: core::option::Option<aerorsync::aerorsync::mock::OpenRawStreamBehavior>
 pub aerorsync::aerorsync::mock::MockTransportConfig::read_exhausted: aerorsync::aerorsync::mock::ReadExhaustedBehavior
 pub aerorsync::aerorsync::mock::MockTransportConfig::stream_behavior: aerorsync::aerorsync::mock::OpenStreamBehavior
@@ -962,8 +967,10 @@ impl aerorsync::aerorsync::mock::MockTransportConfig
 pub fn aerorsync::aerorsync::mock::MockTransportConfig::healthy_download() -> Self
 pub fn aerorsync::aerorsync::mock::MockTransportConfig::healthy_upload() -> Self
 pub fn aerorsync::aerorsync::mock::MockTransportConfig::stream_open_fails() -> Self
+pub fn aerorsync::aerorsync::mock::MockTransportConfig::with_endpoint(self, &str, u16, &str) -> Self
 pub fn aerorsync::aerorsync::mock::MockTransportConfig::with_raw_exhausted_detail(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn aerorsync::aerorsync::mock::MockTransportConfig::with_raw_inbound(self, alloc::vec::Vec<u8>) -> Self
+pub fn aerorsync::aerorsync::mock::MockTransportConfig::with_raw_open_script(self, alloc::vec::Vec<aerorsync::aerorsync::mock::OpenRawStreamBehavior>) -> Self
 impl core::clone::Clone for aerorsync::aerorsync::mock::MockTransportConfig
 pub fn aerorsync::aerorsync::mock::MockTransportConfig::clone(&self) -> aerorsync::aerorsync::mock::MockTransportConfig
 impl core::fmt::Debug for aerorsync::aerorsync::mock::MockTransportConfig
@@ -1033,6 +1040,7 @@ pub async fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::drive_uplo
 pub async fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::drive_upload_symlink(&mut self, aerorsync::aerorsync::remote_command::RemoteCommandSpec, aerorsync::aerorsync::real_wire::FileListEntry, &mut dyn aerorsync::aerorsync::events::EventSink) -> core::result::Result<(), aerorsync::aerorsync::types::AerorsyncError>
 pub async fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::drive_upload_through_delta(&mut self, aerorsync::aerorsync::remote_command::RemoteCommandSpec, aerorsync::aerorsync::real_wire::FileListEntry, &[u8], &dyn aerorsync::aerorsync::engine_adapter::DeltaEngineAdapter, &mut dyn aerorsync::aerorsync::events::EventSink) -> core::result::Result<(), aerorsync::aerorsync::types::AerorsyncError>
 pub async fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::drive_upload_through_delta_streaming<R>(&mut self, aerorsync::aerorsync::remote_command::RemoteCommandSpec, aerorsync::aerorsync::real_wire::FileListEntry, R, u64, &dyn aerorsync::aerorsync::engine_adapter::DeltaEngineAdapter, &mut dyn aerorsync::aerorsync::events::EventSink) -> core::result::Result<(), aerorsync::aerorsync::types::AerorsyncError> where R: tokio::io::async_read::AsyncRead + tokio::io::async_seek::AsyncSeek + core::marker::Unpin + core::marker::Send
+pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::effective_checksum_algo(&self) -> core::option::Option<&str>
 pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::file_list(&self) -> &[aerorsync::aerorsync::real_wire::FileListEntry]
 pub async fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::finish_session(&mut self, &mut dyn aerorsync::aerorsync::events::EventSink) -> core::result::Result<(), aerorsync::aerorsync::types::AerorsyncError>
 pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::last_iflags(&self) -> u16
@@ -1041,6 +1049,7 @@ pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::negotiated_check
 pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::negotiated_compression_algo(&self) -> core::option::Option<&str>
 pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::negotiated_compression_algos(&self) -> &str
 pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::new(T, aerorsync::aerorsync::transport::CancelHandle) -> Self
+pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::peer_negotiates_strings(&self) -> core::option::Option<bool>
 pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::phase(&self) -> aerorsync::aerorsync::native_driver::AerorsyncSessionPhase
 pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::protocol_version(&self) -> u32
 pub fn aerorsync::aerorsync::native_driver::AerorsyncDriver<T>::received_file_checksum(&self) -> core::option::Option<&[u8]>
@@ -1242,6 +1251,25 @@ impl core::marker::Unpin for aerorsync::aerorsync::real_wire::MuxTag
 impl core::marker::UnsafeUnpin for aerorsync::aerorsync::real_wire::MuxTag
 impl core::panic::unwind_safe::RefUnwindSafe for aerorsync::aerorsync::real_wire::MuxTag
 impl core::panic::unwind_safe::UnwindSafe for aerorsync::aerorsync::real_wire::MuxTag
+pub enum aerorsync::aerorsync::real_wire::PreambleCompression
+pub aerorsync::aerorsync::real_wire::PreambleCompression::FixedOrOff
+pub aerorsync::aerorsync::real_wire::PreambleCompression::Negotiated
+impl core::clone::Clone for aerorsync::aerorsync::real_wire::PreambleCompression
+pub fn aerorsync::aerorsync::real_wire::PreambleCompression::clone(&self) -> aerorsync::aerorsync::real_wire::PreambleCompression
+impl core::cmp::Eq for aerorsync::aerorsync::real_wire::PreambleCompression
+impl core::cmp::PartialEq for aerorsync::aerorsync::real_wire::PreambleCompression
+pub fn aerorsync::aerorsync::real_wire::PreambleCompression::eq(&self, &aerorsync::aerorsync::real_wire::PreambleCompression) -> bool
+impl core::fmt::Debug for aerorsync::aerorsync::real_wire::PreambleCompression
+pub fn aerorsync::aerorsync::real_wire::PreambleCompression::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for aerorsync::aerorsync::real_wire::PreambleCompression
+impl core::marker::StructuralPartialEq for aerorsync::aerorsync::real_wire::PreambleCompression
+impl core::marker::Freeze for aerorsync::aerorsync::real_wire::PreambleCompression
+impl core::marker::Send for aerorsync::aerorsync::real_wire::PreambleCompression
+impl core::marker::Sync for aerorsync::aerorsync::real_wire::PreambleCompression
+impl core::marker::Unpin for aerorsync::aerorsync::real_wire::PreambleCompression
+impl core::marker::UnsafeUnpin for aerorsync::aerorsync::real_wire::PreambleCompression
+impl core::panic::unwind_safe::RefUnwindSafe for aerorsync::aerorsync::real_wire::PreambleCompression
+impl core::panic::unwind_safe::UnwindSafe for aerorsync::aerorsync::real_wire::PreambleCompression
 pub enum aerorsync::aerorsync::real_wire::RealWireError
 pub aerorsync::aerorsync::real_wire::RealWireError::DeflateDecompressionFailed
 pub aerorsync::aerorsync::real_wire::RealWireError::DeflateDecompressionFailed::reason: alloc::string::String
@@ -1658,6 +1686,28 @@ impl core::marker::Unpin for aerorsync::aerorsync::real_wire::RsyncAcl
 impl core::marker::UnsafeUnpin for aerorsync::aerorsync::real_wire::RsyncAcl
 impl core::panic::unwind_safe::RefUnwindSafe for aerorsync::aerorsync::real_wire::RsyncAcl
 impl core::panic::unwind_safe::UnwindSafe for aerorsync::aerorsync::real_wire::RsyncAcl
+pub struct aerorsync::aerorsync::real_wire::ServerHello
+pub aerorsync::aerorsync::real_wire::ServerHello::compat_flags: i32
+pub aerorsync::aerorsync::real_wire::ServerHello::consumed: usize
+pub aerorsync::aerorsync::real_wire::ServerHello::protocol_version: u32
+impl aerorsync::aerorsync::real_wire::ServerHello
+pub fn aerorsync::aerorsync::real_wire::ServerHello::negotiates_strings(&self) -> bool
+impl core::clone::Clone for aerorsync::aerorsync::real_wire::ServerHello
+pub fn aerorsync::aerorsync::real_wire::ServerHello::clone(&self) -> aerorsync::aerorsync::real_wire::ServerHello
+impl core::cmp::Eq for aerorsync::aerorsync::real_wire::ServerHello
+impl core::cmp::PartialEq for aerorsync::aerorsync::real_wire::ServerHello
+pub fn aerorsync::aerorsync::real_wire::ServerHello::eq(&self, &aerorsync::aerorsync::real_wire::ServerHello) -> bool
+impl core::fmt::Debug for aerorsync::aerorsync::real_wire::ServerHello
+pub fn aerorsync::aerorsync::real_wire::ServerHello::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for aerorsync::aerorsync::real_wire::ServerHello
+impl core::marker::StructuralPartialEq for aerorsync::aerorsync::real_wire::ServerHello
+impl core::marker::Freeze for aerorsync::aerorsync::real_wire::ServerHello
+impl core::marker::Send for aerorsync::aerorsync::real_wire::ServerHello
+impl core::marker::Sync for aerorsync::aerorsync::real_wire::ServerHello
+impl core::marker::Unpin for aerorsync::aerorsync::real_wire::ServerHello
+impl core::marker::UnsafeUnpin for aerorsync::aerorsync::real_wire::ServerHello
+impl core::panic::unwind_safe::RefUnwindSafe for aerorsync::aerorsync::real_wire::ServerHello
+impl core::panic::unwind_safe::UnwindSafe for aerorsync::aerorsync::real_wire::ServerHello
 pub struct aerorsync::aerorsync::real_wire::ServerPreamble
 pub aerorsync::aerorsync::real_wire::ServerPreamble::checksum_algos: alloc::string::String
 pub aerorsync::aerorsync::real_wire::ServerPreamble::checksum_seed: u32
@@ -1782,6 +1832,7 @@ pub const aerorsync::aerorsync::real_wire::ACL_XMIT_MASK_OBJ: u8
 pub const aerorsync::aerorsync::real_wire::ACL_XMIT_NAME_LIST: u8
 pub const aerorsync::aerorsync::real_wire::ACL_XMIT_OTHER_OBJ: u8
 pub const aerorsync::aerorsync::real_wire::ACL_XMIT_USER_OBJ: u8
+pub const aerorsync::aerorsync::real_wire::CF_VARINT_FLIST_FLAGS: i32
 pub const aerorsync::aerorsync::real_wire::CHECKSUM_SEED_LEN: usize
 pub const aerorsync::aerorsync::real_wire::INT_BYTE_EXTRA: [u8; 64]
 pub const aerorsync::aerorsync::real_wire::MAX_ACL_NAMED_ENTRIES: usize
@@ -1840,7 +1891,9 @@ pub fn aerorsync::aerorsync::real_wire::decode_file_list_entry(&[u8], &aerorsync
 pub fn aerorsync::aerorsync::real_wire::decode_item_flags(&[u8]) -> core::result::Result<(u16, usize), aerorsync::aerorsync::real_wire::RealWireError>
 pub fn aerorsync::aerorsync::real_wire::decode_ndx(&[u8], &mut aerorsync::aerorsync::real_wire::NdxState) -> core::result::Result<(i32, usize), aerorsync::aerorsync::real_wire::RealWireError>
 pub fn aerorsync::aerorsync::real_wire::decode_protocol_version(&[u8]) -> core::result::Result<(u32, usize), aerorsync::aerorsync::real_wire::RealWireError>
+pub fn aerorsync::aerorsync::real_wire::decode_server_hello(&[u8]) -> core::result::Result<aerorsync::aerorsync::real_wire::ServerHello, aerorsync::aerorsync::real_wire::RealWireError>
 pub fn aerorsync::aerorsync::real_wire::decode_server_preamble(&[u8]) -> core::result::Result<aerorsync::aerorsync::real_wire::ServerPreamble, aerorsync::aerorsync::real_wire::RealWireError>
+pub fn aerorsync::aerorsync::real_wire::decode_server_preamble_with(&[u8], aerorsync::aerorsync::real_wire::PreambleCompression) -> core::result::Result<aerorsync::aerorsync::real_wire::ServerPreamble, aerorsync::aerorsync::real_wire::RealWireError>
 pub fn aerorsync::aerorsync::real_wire::decode_sum_block(&[u8], usize) -> core::result::Result<(aerorsync::aerorsync::real_wire::SumBlock, usize), aerorsync::aerorsync::real_wire::RealWireError>
 pub fn aerorsync::aerorsync::real_wire::decode_sum_head(&[u8]) -> core::result::Result<(aerorsync::aerorsync::real_wire::SumHead, usize), aerorsync::aerorsync::real_wire::RealWireError>
 pub fn aerorsync::aerorsync::real_wire::decode_summary_frame(&[u8], u32) -> core::result::Result<(aerorsync::aerorsync::real_wire::SummaryFrame, usize), aerorsync::aerorsync::real_wire::RealWireError>
@@ -1850,6 +1903,7 @@ pub fn aerorsync::aerorsync::real_wire::decompress_deflate_literal_stream(&[&[u8
 pub fn aerorsync::aerorsync::real_wire::decompress_deflate_literal_stream_boundaries(&[&[u8]]) -> core::result::Result<alloc::vec::Vec<alloc::vec::Vec<u8>>, aerorsync::aerorsync::real_wire::RealWireError>
 pub fn aerorsync::aerorsync::real_wire::decompress_zstd_literal_stream(&[&[u8]]) -> core::result::Result<alloc::vec::Vec<u8>, aerorsync::aerorsync::real_wire::RealWireError>
 pub fn aerorsync::aerorsync::real_wire::decompress_zstd_literal_stream_boundaries(&[&[u8]]) -> core::result::Result<alloc::vec::Vec<alloc::vec::Vec<u8>>, aerorsync::aerorsync::real_wire::RealWireError>
+pub fn aerorsync::aerorsync::real_wire::encode_client_negotiated_strings(&str, core::option::Option<&str>) -> alloc::vec::Vec<u8>
 pub fn aerorsync::aerorsync::real_wire::encode_client_preamble(&aerorsync::aerorsync::real_wire::ClientPreamble) -> alloc::vec::Vec<u8>
 pub fn aerorsync::aerorsync::real_wire::encode_delta_op(&aerorsync::aerorsync::real_wire::DeltaOp, &mut aerorsync::aerorsync::real_wire::DeltaStreamState) -> alloc::vec::Vec<u8>
 pub fn aerorsync::aerorsync::real_wire::encode_delta_stream(&aerorsync::aerorsync::real_wire::DeltaStreamReport) -> alloc::vec::Vec<u8>
@@ -1860,6 +1914,7 @@ pub fn aerorsync::aerorsync::real_wire::encode_item_flags(u16) -> [u8; 2]
 pub fn aerorsync::aerorsync::real_wire::encode_ndx(i32, &mut aerorsync::aerorsync::real_wire::NdxState) -> alloc::vec::Vec<u8>
 pub fn aerorsync::aerorsync::real_wire::encode_protocol_version(u32) -> [u8; 4]
 pub fn aerorsync::aerorsync::real_wire::encode_server_preamble(&aerorsync::aerorsync::real_wire::ServerPreamble) -> alloc::vec::Vec<u8>
+pub fn aerorsync::aerorsync::real_wire::encode_server_preamble_with(&aerorsync::aerorsync::real_wire::ServerPreamble, aerorsync::aerorsync::real_wire::PreambleCompression) -> alloc::vec::Vec<u8>
 pub fn aerorsync::aerorsync::real_wire::encode_sum_block(&aerorsync::aerorsync::real_wire::SumBlock) -> alloc::vec::Vec<u8>
 pub fn aerorsync::aerorsync::real_wire::encode_sum_head(&aerorsync::aerorsync::real_wire::SumHead) -> [u8; 16]
 pub fn aerorsync::aerorsync::real_wire::encode_summary_frame(&aerorsync::aerorsync::real_wire::SummaryFrame, u32) -> alloc::vec::Vec<u8>
@@ -1874,6 +1929,27 @@ pub fn aerorsync::aerorsync::real_wire::reassemble_with_events(&[u8]) -> core::r
 pub fn aerorsync::aerorsync::real_wire::resolve_xattr_datum_section(&[u8], &mut [aerorsync::aerorsync::real_wire::XattrPair]) -> core::result::Result<usize, aerorsync::aerorsync::real_wire::RealWireError>
 pub fn aerorsync::aerorsync::real_wire::xattr_value_digest(&[u8]) -> [u8; 16]
 pub mod aerorsync::aerorsync::remote_command
+pub enum aerorsync::aerorsync::remote_command::ArgvCompression
+pub aerorsync::aerorsync::remote_command::ArgvCompression::Negotiated
+pub aerorsync::aerorsync::remote_command::ArgvCompression::NewCompress
+impl core::clone::Clone for aerorsync::aerorsync::remote_command::ArgvCompression
+pub fn aerorsync::aerorsync::remote_command::ArgvCompression::clone(&self) -> aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::cmp::Eq for aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::cmp::PartialEq for aerorsync::aerorsync::remote_command::ArgvCompression
+pub fn aerorsync::aerorsync::remote_command::ArgvCompression::eq(&self, &aerorsync::aerorsync::remote_command::ArgvCompression) -> bool
+impl core::default::Default for aerorsync::aerorsync::remote_command::ArgvCompression
+pub fn aerorsync::aerorsync::remote_command::ArgvCompression::default() -> aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::fmt::Debug for aerorsync::aerorsync::remote_command::ArgvCompression
+pub fn aerorsync::aerorsync::remote_command::ArgvCompression::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::marker::StructuralPartialEq for aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::marker::Freeze for aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::marker::Send for aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::marker::Sync for aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::marker::Unpin for aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::marker::UnsafeUnpin for aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::panic::unwind_safe::RefUnwindSafe for aerorsync::aerorsync::remote_command::ArgvCompression
+impl core::panic::unwind_safe::UnwindSafe for aerorsync::aerorsync::remote_command::ArgvCompression
 pub enum aerorsync::aerorsync::remote_command::RemoteCommandFlavor
 pub aerorsync::aerorsync::remote_command::RemoteCommandFlavor::AerorsyncServe
 pub aerorsync::aerorsync::remote_command::RemoteCommandFlavor::WrapperParity
@@ -1894,6 +1970,7 @@ impl core::marker::UnsafeUnpin for aerorsync::aerorsync::remote_command::RemoteC
 impl core::panic::unwind_safe::RefUnwindSafe for aerorsync::aerorsync::remote_command::RemoteCommandFlavor
 impl core::panic::unwind_safe::UnwindSafe for aerorsync::aerorsync::remote_command::RemoteCommandFlavor
 pub struct aerorsync::aerorsync::remote_command::RemoteCommandSpec
+pub aerorsync::aerorsync::remote_command::RemoteCommandSpec::compression: aerorsync::aerorsync::remote_command::ArgvCompression
 pub aerorsync::aerorsync::remote_command::RemoteCommandSpec::emit_stats: bool
 pub aerorsync::aerorsync::remote_command::RemoteCommandSpec::flavor: aerorsync::aerorsync::remote_command::RemoteCommandFlavor
 pub aerorsync::aerorsync::remote_command::RemoteCommandSpec::preserve_acls: bool
@@ -1909,6 +1986,7 @@ pub fn aerorsync::aerorsync::remote_command::RemoteCommandSpec::to_command_line(
 pub fn aerorsync::aerorsync::remote_command::RemoteCommandSpec::to_exec_request(&self) -> aerorsync::aerorsync::transport::RemoteExecRequest
 pub fn aerorsync::aerorsync::remote_command::RemoteCommandSpec::upload(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn aerorsync::aerorsync::remote_command::RemoteCommandSpec::with_acls(self, bool) -> Self
+pub fn aerorsync::aerorsync::remote_command::RemoteCommandSpec::with_compression(self, aerorsync::aerorsync::remote_command::ArgvCompression) -> Self
 pub fn aerorsync::aerorsync::remote_command::RemoteCommandSpec::with_xattrs(self, bool) -> Self
 impl core::clone::Clone for aerorsync::aerorsync::remote_command::RemoteCommandSpec
 pub fn aerorsync::aerorsync::remote_command::RemoteCommandSpec::clone(&self) -> aerorsync::aerorsync::remote_command::RemoteCommandSpec
@@ -1973,6 +2051,7 @@ pub async fn aerorsync::aerorsync::russh_session_transport::RusshSessionTranspor
 pub fn aerorsync::aerorsync::russh_session_transport::RusshSessionTransport::share_session(&self) -> Self
 impl aerorsync::aerorsync::transport::RawRemoteShellTransport for aerorsync::aerorsync::russh_session_transport::RusshSessionTransport
 pub type aerorsync::aerorsync::russh_session_transport::RusshSessionTransport::RawStream = aerorsync::aerorsync::russh_session_transport::RusshRawStream
+pub fn aerorsync::aerorsync::russh_session_transport::RusshSessionTransport::endpoint(&self) -> core::option::Option<(alloc::string::String, u16, alloc::string::String)>
 pub fn aerorsync::aerorsync::russh_session_transport::RusshSessionTransport::open_raw_stream<'life0, 'async_trait>(&'life0 self, aerorsync::aerorsync::transport::RemoteExecRequest) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<Self::RawStream, aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 impl aerorsync::aerorsync::transport::RemoteShellTransport for aerorsync::aerorsync::russh_session_transport::RusshSessionTransport
 pub type aerorsync::aerorsync::russh_session_transport::RusshSessionTransport::Stream = aerorsync::aerorsync::russh_session_transport::RusshUnusedStream
@@ -2053,6 +2132,7 @@ impl aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport
 pub fn aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport::new(aerorsync::aerorsync::ssh_transport::SshTransportConfig) -> Self
 impl aerorsync::aerorsync::transport::RawRemoteShellTransport for aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport
 pub type aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport::RawStream = aerorsync::aerorsync::ssh_transport::SshRawStream
+pub fn aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport::endpoint(&self) -> core::option::Option<(alloc::string::String, u16, alloc::string::String)>
 pub fn aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport::open_raw_stream<'life0, 'async_trait>(&'life0 self, aerorsync::aerorsync::transport::RemoteExecRequest) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<Self::RawStream, aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 impl aerorsync::aerorsync::transport::RemoteShellTransport for aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport
 pub type aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport::Stream = aerorsync::aerorsync::ssh_transport::SshProtoStream
@@ -2243,15 +2323,19 @@ pub fn aerorsync::aerorsync::ssh_transport::SshRawStream::shutdown<'life0, 'asyn
 pub fn aerorsync::aerorsync::ssh_transport::SshRawStream::write_bytes<'life0, 'life1, 'async_trait>(&'life0 mut self, &'life1 [u8]) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<(), aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait, 'life1: 'async_trait
 pub trait aerorsync::aerorsync::transport::RawRemoteShellTransport: aerorsync::aerorsync::transport::RemoteShellTransport
 pub type aerorsync::aerorsync::transport::RawRemoteShellTransport::RawStream: aerorsync::aerorsync::transport::RawByteStream + core::marker::Send
+pub fn aerorsync::aerorsync::transport::RawRemoteShellTransport::endpoint(&self) -> core::option::Option<(alloc::string::String, u16, alloc::string::String)>
 pub fn aerorsync::aerorsync::transport::RawRemoteShellTransport::open_raw_stream<'life0, 'async_trait>(&'life0 self, aerorsync::aerorsync::transport::RemoteExecRequest) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<Self::RawStream, aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 impl aerorsync::aerorsync::transport::RawRemoteShellTransport for aerorsync::aerorsync::mock::MockRemoteShellTransport
 pub type aerorsync::aerorsync::mock::MockRemoteShellTransport::RawStream = aerorsync::aerorsync::mock::MockRawStream
+pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::endpoint(&self) -> core::option::Option<(alloc::string::String, u16, alloc::string::String)>
 pub fn aerorsync::aerorsync::mock::MockRemoteShellTransport::open_raw_stream<'life0, 'async_trait>(&'life0 self, aerorsync::aerorsync::transport::RemoteExecRequest) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<Self::RawStream, aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 impl aerorsync::aerorsync::transport::RawRemoteShellTransport for aerorsync::aerorsync::russh_session_transport::RusshSessionTransport
 pub type aerorsync::aerorsync::russh_session_transport::RusshSessionTransport::RawStream = aerorsync::aerorsync::russh_session_transport::RusshRawStream
+pub fn aerorsync::aerorsync::russh_session_transport::RusshSessionTransport::endpoint(&self) -> core::option::Option<(alloc::string::String, u16, alloc::string::String)>
 pub fn aerorsync::aerorsync::russh_session_transport::RusshSessionTransport::open_raw_stream<'life0, 'async_trait>(&'life0 self, aerorsync::aerorsync::transport::RemoteExecRequest) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<Self::RawStream, aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 impl aerorsync::aerorsync::transport::RawRemoteShellTransport for aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport
 pub type aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport::RawStream = aerorsync::aerorsync::ssh_transport::SshRawStream
+pub fn aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport::endpoint(&self) -> core::option::Option<(alloc::string::String, u16, alloc::string::String)>
 pub fn aerorsync::aerorsync::ssh_transport::SshRemoteShellTransport::open_raw_stream<'life0, 'async_trait>(&'life0 self, aerorsync::aerorsync::transport::RemoteExecRequest) -> core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<Self::RawStream, aerorsync::aerorsync::types::AerorsyncError>> + core::marker::Send + 'async_trait)>> where Self: 'async_trait, 'life0: 'async_trait
 pub trait aerorsync::aerorsync::transport::RemoteShellTransport: core::marker::Send + core::marker::Sync
 pub type aerorsync::aerorsync::transport::RemoteShellTransport::Stream: aerorsync::aerorsync::transport::BidirectionalByteStream + core::marker::Send

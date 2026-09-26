@@ -327,7 +327,14 @@
             "protonCliTitle": "Sử dụng CLI chính thức của Proton Drive",
             "protonCliBody": "Cài Proton Drive CLI từ proton.me/download/drive/cli, rồi chạy proton-drive auth login trong terminal và hoàn tất trên trình duyệt. AeroFTP không bao giờ thấy mật khẩu của bạn; phiên nằm trong kho bí mật của OS.",
             "protonUnofficial": "Đây là ứng dụng bên thứ ba không được Proton hỗ trợ chính thức.",
-            "protonConnectHint": "\"Kết nối\" dùng CLI đã đăng nhập trên máy này. Một tài khoản Proton cho mỗi người dùng OS."
+            "protonConnectHint": "\"Kết nối\" dùng CLI đã đăng nhập trên máy này. Một tài khoản Proton cho mỗi người dùng OS.",
+            "twakeInstance": "Địa chỉ Twake",
+            "twakeInstanceHelp": "Địa chỉ riêng của bạn, ví dụ yourname.twake.app. Bạn cũng có thể dán bất kỳ địa chỉ trang Twake nào từ trình duyệt của mình.",
+            "twakeSignIn": "Đăng nhập bằng Twake",
+            "twakeSignInAgain": "Đăng nhập lại",
+            "twakeSignedIn": "Đã đăng nhập",
+            "twakeWaitingBrowser": "Hoàn tất đăng nhập trong trình duyệt của bạn...",
+            "twakeSignInHelp": "AeroFTP mở Twake trong trình duyệt của bạn và chỉ yêu cầu quyền truy cập vào tệp của bạn. Nếu Twake hiển thị lỗi lần đầu tiên, hãy đăng nhập vào Twake trong trình duyệt rồi đăng nhập lại. Bạn có thể thu hồi quyền truy cập bất kỳ lúc nào trong Cài đặt Twake, Thiết bị đã kết nối."
         },
         "browser": {
             "remote": "Từ xa",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Điểm cuối này phục vụ S3 qua HTTP không mã hóa trên mạng. Chấp nhận cho hồ sơ này: thông tin xác thực đã ký và mọi tệp đi qua mạng mà không được mã hóa.",
             "discoverFilebase": "Filebase: lưu trữ đối tượng tương thích S3 (5 GB miễn phí)",
             "protonDesc": "Kết nối qua CLI Proton Drive",
-            "protonTooltip": "Sử dụng CLI Proton Drive - cài đặt, đăng nhập trên trình duyệt, AeroFTP là GUI"
+            "protonTooltip": "Sử dụng CLI Proton Drive - cài đặt, đăng nhập trên trình duyệt, AeroFTP là GUI",
+            "twakeDesc": "Twake Drive (5 GB miễn phí)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, đám mây mã nguồn mở của Pháp (Cozy Cloud giờ đây là một phần của nó) với 5 GB miễn phí",
+            "discoverTwake": "Đám mây mã nguồn mở châu Âu của Linagora, giờ đây là ngôi nhà mới của Cozy Cloud (5 GB miễn phí)"
         },
         "shortcuts": {
             "title": "Phím tắt",

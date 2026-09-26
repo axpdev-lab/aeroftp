@@ -24,7 +24,7 @@
 //! for U+0027 in object keys, so a builtin-only translator silently
 //! drops apostrophes in listed file names.
 
-/// Map an XML reference name (the bytes between `&` and `;`) to its
+/// Map an XML reference name (the text between `&` and `;`) to its
 /// expansion as an owned `String`.
 ///
 /// Handles:
@@ -36,24 +36,23 @@
 /// Returns `None` for unsupported / unknown names and for numeric refs
 /// that don't decode to a valid Unicode scalar value; callers should
 /// treat those as "skip / leave the surrounding text unchanged".
-pub fn xml_entity_to_str(name: &[u8]) -> Option<String> {
+pub fn xml_entity_to_str(name: &str) -> Option<String> {
     match name {
-        b"amp" => Some("&".to_string()),
-        b"lt" => Some("<".to_string()),
-        b"gt" => Some(">".to_string()),
-        b"quot" => Some("\"".to_string()),
-        b"apos" => Some("'".to_string()),
-        n if n.first() == Some(&b'#') => decode_numeric_ref(&n[1..]),
+        "amp" => Some("&".to_string()),
+        "lt" => Some("<".to_string()),
+        "gt" => Some(">".to_string()),
+        "quot" => Some("\"".to_string()),
+        "apos" => Some("'".to_string()),
+        n if n.starts_with('#') => decode_numeric_ref(&n[1..]),
         _ => None,
     }
 }
 
-fn decode_numeric_ref(rest: &[u8]) -> Option<String> {
-    let s = std::str::from_utf8(rest).ok()?;
-    let codepoint = if let Some(hex) = s.strip_prefix(['x', 'X']) {
+fn decode_numeric_ref(rest: &str) -> Option<String> {
+    let codepoint = if let Some(hex) = rest.strip_prefix(['x', 'X']) {
         u32::from_str_radix(hex, 16).ok()?
     } else {
-        s.parse::<u32>().ok()?
+        rest.parse::<u32>().ok()?
     };
     char::from_u32(codepoint).map(|c| c.to_string())
 }
@@ -61,10 +60,10 @@ fn decode_numeric_ref(rest: &[u8]) -> Option<String> {
 /// Decode an XML attribute value, applying entity unescape and XML
 /// attribute-value normalization.
 ///
-/// quick-xml gives back attribute values verbatim (entities are NOT
+/// quick-xml gives back attribute values as text (entities are NOT
 /// auto-resolved on `attr.value`). For payloads where file names are
 /// stored as attributes (e.g. Jottacloud `<file name="a&amp;b.txt">`),
-/// the raw bytes still contain `&amp;` etc. and a plain UTF-8 decode
+/// the raw text still contains `&amp;` etc. and using it unchanged
 /// produces the literal `a&amp;b.txt` instead of `a&b.txt`.
 ///
 /// quick-xml 0.40 deprecated `unescape_value` in favour of
@@ -74,7 +73,7 @@ fn decode_numeric_ref(rest: &[u8]) -> Option<String> {
 /// behaviour and resolves the same five builtin entities plus numeric
 /// references.
 ///
-/// Falls back to a lossy UTF-8 decode if unescape fails (e.g. unknown
+/// Falls back to the raw attribute text if unescape fails (e.g. unknown
 /// named reference): better to surface the raw value than to silently
 /// drop the attribute.
 pub fn attr_value(attr: &quick_xml::events::attributes::Attribute) -> String {
@@ -84,5 +83,51 @@ pub fn attr_value(attr: &quick_xml::events::attributes::Attribute) -> String {
     // payloads this helper feeds.
     attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
         .map(|s| s.into_owned())
-        .unwrap_or_else(|_| String::from_utf8_lossy(&attr.value).to_string())
+        .unwrap_or_else(|_| attr.value.to_string())
+}
+
+#[cfg(test)]
+mod recorded_fragment_fixture {
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+
+    use super::{attr_value, xml_entity_to_str};
+
+    #[test]
+    fn parses_recorded_fragment() {
+        let xml = include_str!("fixtures/quickxml/xml-text-fragment.xml");
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(false);
+        let mut buf = Vec::new();
+        let mut attr_name = None;
+        let mut text = String::new();
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(e) | Event::Empty(e)) => {
+                    if e.local_name().as_ref() == "file" {
+                        if let Some(Ok(attr)) = e.attributes().next() {
+                            attr_name = Some(attr_value(&attr));
+                        }
+                    }
+                }
+                Ok(Event::Text(e)) => {
+                    let raw = e.as_ref();
+                    if !raw.trim().is_empty() {
+                        text.push_str(raw.trim());
+                    }
+                }
+                Ok(Event::GeneralRef(e)) => {
+                    if let Some(ch) = xml_entity_to_str(e.as_ref()) {
+                        text.push_str(&ch);
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(err) => panic!("fixture parse: {err}"),
+                _ => {}
+            }
+            buf.clear();
+        }
+        assert_eq!(attr_name.as_deref(), Some("a&b.txt"));
+        assert_eq!(text, "x&y");
+    }
 }

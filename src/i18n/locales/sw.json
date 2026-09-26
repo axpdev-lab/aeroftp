@@ -327,7 +327,14 @@
             "protonCliTitle": "Inatumia CLI rasmi ya Proton Drive",
             "protonCliBody": "Sakinisha Proton Drive CLI kutoka proton.me/download/drive/cli, kisha endesha proton-drive auth login kwenye terminal na kamilisha kwenye kivinjari. AeroFTP haioni nenosiri lako kamwe; kipindi kinabaki kwenye hifadhi ya siri ya OS.",
             "protonUnofficial": "Hii ni programu ya mtu wa tatu ambayo Proton haiungi mkono rasmi.",
-            "protonConnectHint": "\"Unganisha\" hutumia CLI iliyoingia tayari kwenye mashine hii. Akaunti moja ya Proton kwa kila mtumiaji wa OS."
+            "protonConnectHint": "\"Unganisha\" hutumia CLI iliyoingia tayari kwenye mashine hii. Akaunti moja ya Proton kwa kila mtumiaji wa OS.",
+            "twakeInstance": "Anwani ya Twake",
+            "twakeInstanceHelp": "Anwani yako mwenyewe, kwa mfano yourname.twake.app. Unaweza pia kubandika anwani yoyote ya ukurasa wa Twake kutoka kwenye kivinjari chako.",
+            "twakeSignIn": "Ingia kwa Twake",
+            "twakeSignInAgain": "Ingia tena",
+            "twakeSignedIn": "Umeingia",
+            "twakeWaitingBrowser": "Kamilisha kuingia kwenye kivinjari chako...",
+            "twakeSignInHelp": "AeroFTP hufungua Twake kwenye kivinjari chako na kuomba ufikiaji wa faili zako pekee. Ikiwa Twake itaonyesha hitilafu mara ya kwanza, ingia kwenye Twake kwenye kivinjari kisha ingia tena. Unaweza kubatilisha ufikiaji wakati wowote kwenye Mipangilio ya Twake, Vifaa Vilivyounganishwa."
         },
         "browser": {
             "remote": "Mbali",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Sehemu hii ya mwisho hutoa S3 kupitia HTTP wazi kwenye mtandao. Ikubali kwa wasifu huu: vitambulisho vilivyotiwa saini na kila faili hupita kwenye mtandao bila kusimbwa.",
             "discoverFilebase": "Filebase: hifadhi ya vitu inayooana na S3 (5 GB bure)",
             "protonDesc": "Inaunganisha kupitia CLI ya Proton Drive",
-            "protonTooltip": "Inatumia CLI ya Proton Drive - sakinisha, ingia kwenye kivinjari, AeroFTP ndiyo GUI"
+            "protonTooltip": "Inatumia CLI ya Proton Drive - sakinisha, ingia kwenye kivinjari, AeroFTP ndiyo GUI",
+            "twakeDesc": "Twake Drive (5 GB bila malipo)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, wingu la Ufaransa la chanzo huria (Cozy Cloud sasa ni sehemu yake) likiwa na 5 GB bure",
+            "discoverTwake": "Wingu la Ulaya la chanzo huria kutoka Linagora, sasa nyumbani kwa Cozy Cloud (5 GB bure)"
         },
         "shortcuts": {
             "title": "Njia za Mkato",

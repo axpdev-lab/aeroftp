@@ -77,10 +77,10 @@ fn parse_azure_xml_error(body: &str) -> String {
     loop {
         match reader.read_event() {
             Ok(Event::Start(ref e)) => {
-                current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                current_tag = e.name().as_ref().to_string();
             }
             Ok(Event::Text(ref e)) => {
-                let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                let text = e.as_ref().to_string();
                 if text.trim().is_empty() {
                     continue;
                 }
@@ -511,40 +511,40 @@ impl AzureProvider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => match e.name().as_ref() {
-                    b"BlobPrefix" => {
+                    "BlobPrefix" => {
                         state = ParseState::BlobPrefix;
                         in_prefix = true;
                         current_name.clear();
                     }
-                    b"Blob" => {
+                    "Blob" => {
                         state = ParseState::Blob;
                         in_blob = true;
                         current_name.clear();
                         current_size = 0;
                         current_modified = None;
                     }
-                    b"Name" if in_prefix => {
+                    "Name" if in_prefix => {
                         state = ParseState::BlobPrefixName;
                     }
-                    b"Name" if in_blob => {
+                    "Name" if in_blob => {
                         state = ParseState::BlobName;
                     }
-                    b"Properties" if in_blob => {
+                    "Properties" if in_blob => {
                         state = ParseState::BlobProperties;
                     }
-                    b"Content-Length" if in_blob => {
+                    "Content-Length" if in_blob => {
                         state = ParseState::BlobContentLength;
                     }
-                    b"Last-Modified" if in_blob => {
+                    "Last-Modified" if in_blob => {
                         state = ParseState::BlobLastModified;
                     }
-                    b"NextMarker" => {
+                    "NextMarker" => {
                         state = ParseState::NextMarker;
                     }
                     _ => {}
                 },
                 Ok(Event::Text(ref e)) => {
-                    let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                    let text = e.as_ref().to_string();
                     // Skip indentation-only fragments, but preserve
                     // whitespace while a blob/prefix <Name> is open: there
                     // it is payload (e.g. `a&amp; &amp;b.txt`).
@@ -594,7 +594,7 @@ impl AzureProvider {
                     }
                 }
                 Ok(Event::End(ref e)) => match e.name().as_ref() {
-                    b"BlobPrefix" if in_prefix => {
+                    "BlobPrefix" if in_prefix => {
                         let display_name = current_name.trim_end_matches('/');
                         let relative = display_name
                             .strip_prefix(strip_prefix)
@@ -611,7 +611,7 @@ impl AzureProvider {
                         in_prefix = false;
                         state = ParseState::Root;
                     }
-                    b"Blob" if in_blob => {
+                    "Blob" if in_blob => {
                         let relative = current_name
                             .strip_prefix(strip_prefix)
                             .unwrap_or(&current_name);
@@ -629,20 +629,20 @@ impl AzureProvider {
                         in_blob = false;
                         state = ParseState::Root;
                     }
-                    b"Name" => {
+                    "Name" => {
                         if in_prefix {
                             state = ParseState::BlobPrefix;
                         } else if in_blob {
                             state = ParseState::Blob;
                         }
                     }
-                    b"Properties" if in_blob => {
+                    "Properties" if in_blob => {
                         state = ParseState::Blob;
                     }
-                    b"Content-Length" | b"Last-Modified" if in_blob => {
+                    "Content-Length" | "Last-Modified" if in_blob => {
                         state = ParseState::BlobProperties;
                     }
-                    b"NextMarker" => {
+                    "NextMarker" => {
                         state = ParseState::Root;
                     }
                     _ => {}
@@ -2373,7 +2373,7 @@ impl AzureProvider {
             loop {
                 match reader.read_event_into(&mut buf) {
                     Ok(quick_xml::events::Event::Start(ref e)) => {
-                        let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                        let name = e.name().as_ref().to_string();
                         if name == "Blob" {
                             in_blob = true;
                             blob_name.clear();
@@ -2384,7 +2384,7 @@ impl AzureProvider {
                         tag_name = name;
                     }
                     Ok(quick_xml::events::Event::Text(ref e)) => {
-                        let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                        let text = e.as_ref().to_string();
                         // Skip indentation-only fragments, but preserve
                         // whitespace inside <Name>: there it is payload
                         // (e.g. `a&amp; &amp;b.txt`).
@@ -2425,9 +2425,7 @@ impl AzureProvider {
                             }
                         }
                     }
-                    Ok(quick_xml::events::Event::End(ref e))
-                        if String::from_utf8_lossy(e.name().as_ref()) == "Blob" =>
-                    {
+                    Ok(quick_xml::events::Event::End(ref e)) if e.name().as_ref() == "Blob" => {
                         if in_blob && is_deleted && !blob_name.is_empty() {
                             let mut meta = std::collections::HashMap::new();
                             meta.insert("deleted".to_string(), "true".to_string());
@@ -3055,5 +3053,31 @@ Time:2026-01-01</Message>
         assert_eq!(items[0].name, "a& &b.txt");
         assert_eq!(items[0].size, 3);
         assert_eq!(items[1].name, " &x.txt");
+    }
+}
+
+#[cfg(test)]
+mod recorded_enumeration_fixture {
+    use super::AzureProvider;
+
+    #[test]
+    fn parses_recorded_enumeration() {
+        let xml = include_str!("fixtures/quickxml/azure-enumeration.xml");
+        let (items, marker) = AzureProvider::parse_blob_list(xml, "");
+        assert_eq!(marker.as_deref(), Some("2!ABC"));
+        let dir = items.iter().find(|i| i.name == "reports").expect("prefix");
+        assert!(dir.is_prefix);
+        let readme = items
+            .iter()
+            .find(|i| i.name == "readme.txt")
+            .expect("readme");
+        assert!(!readme.is_prefix);
+        assert_eq!(readme.size, 1234);
+        assert_eq!(
+            readme.last_modified.as_deref(),
+            Some("Mon, 01 Jan 2026 12:00:00 GMT")
+        );
+        let escaped = items.iter().find(|i| i.name == "a&b.txt").expect("entity");
+        assert_eq!(escaped.size, 4);
     }
 }

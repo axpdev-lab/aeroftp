@@ -175,7 +175,65 @@ jobs:
           done
       - name: Capture and verify rsync 3.1.3 zlibx tokens
         working-directory: src-tauri/src/aerorsync/capture
+        # Keep the 3.1.3 server up for the native step below.
+        env:
+          KEEP_STACK: "1"
         run: ./run_deflate_rsync_capture.sh
+      # The native client against a server that negotiates nothing: rsync
+      # 3.1.3 answers compat flags without CF_VARINT_FLIST_FLAGS, sends no
+      # algorithm lists and reads -z as legacy zlib. Until 2026-09-24 the
+      # native session died there with exit 12 before a byte moved, and
+      # only the classic fallback hid it. Both directions must now finish
+      # natively: MD5 sums, classic flag bytes, zlibx via --new-compress.
+      - name: Native delta against rsync 3.1.3 (no negotiated strings)
+        working-directory: src-tauri
+        run: |
+          set -o pipefail
+          CAP="$PWD/src/aerorsync/capture"
+          WS="$CAP/workspace/legacy-peer"
+          mkdir -p "$WS/local" "$WS/upload"
+          python3 - "$WS" <<'PY'
+          import random, sys
+          from pathlib import Path
+          w = Path(sys.argv[1])
+          src = random.Random(42).randbytes(256 * 1024)
+          basis = bytearray(src)
+          basis[100000:100064] = bytes(64)
+          (w / "src.bin").write_bytes(src)
+          (w / "expected.bin").write_bytes(src)
+          (w / "local_dl.basis").write_bytes(bytes(basis))
+          PY
+          export RSNP_TEST_REAL_HOST=127.0.0.1 RSNP_TEST_REAL_PORT=2225
+          export RSNP_TEST_REAL_USER=testuser RSNP_TEST_REAL_REQUIRED=1
+          export RSNP_TEST_REAL_SSH_KEY="$CAP/keys/id_ed25519"
+          export RSNP_TEST_REAL_WORKSPACE="$WS"
+          export RSNP_TEST_REAL_REMOTE_DOWNLOAD_TARGET=/workspace/legacy-peer/src.bin
+          export RSNP_TEST_REAL_EXPECT_DOWNLOAD_FILE="$WS/expected.bin"
+          export RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE="$WS/local_dl.bin"
+          export RSNP_TEST_REAL_REMOTE_UPLOAD_TARGET=/workspace/legacy-peer/upload/target.bin
+          # Once over libssh2 (key auth), once over russh (ssh-agent), the two
+          # SSH stacks a product profile can select.
+          eval "$(ssh-agent -s)"
+          ssh-add "$RSNP_TEST_REAL_SSH_KEY"
+          for leg in libssh2 russh; do
+            if [ "$leg" = russh ]; then export RSNP_TEST_REAL_AUTH_AGENT=1; fi
+            # Both tests use the product advertisement: against 3.1.3 that
+            # is MD5 (the only checksum such a peer has), classic flag bytes
+            # and zlibx, verified on the whole-file trailer, with a real
+            # delta (copy blocks) on upload.
+            for t in live_real_rsync_native_delta_download_verifies_whole_file \
+                     live_real_rsync_native_upload_verifies_whole_file; do
+              cp "$WS/local_dl.basis" "$WS/local_dl.bin"
+              cargo test --features aerorsync --lib "aerorsync::live_tests::$t" \
+                -- --ignored --exact --nocapture --test-threads=1 | tee "/tmp/legacy-$leg-$t.log"
+              ../scripts/assert-tests-ran.sh "/tmp/legacy-$leg-$t.log" =1 \
+                "native vs rsync 3.1.3 over $leg: $t"
+            done
+          done
+          ssh-agent -k
+      - name: Tear down the rsync 3.1.3 server
+        if: always()
+        run: docker rm -f aeroftp-rsync-313-deflate >/dev/null 2>&1 || true
 
   # ------------------------------------------------------------------
   # lane3: Docker-backed lane 3: a real `rsync 3.2.7` server over SSH.

@@ -284,7 +284,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn guard_delta_brackets_touched_allocation() {
+    fn guard_delta_end_rss_is_at_least_the_live_buffer() {
         let guard = ResourceSampleGuard::begin().expect("begin captures");
         // Allocate and TOUCH a few MiB so the pages are genuinely resident
         // before the end sample; keep the buffer alive across finish().
@@ -294,11 +294,19 @@ mod tests {
         }
         let delta = guard.finish().expect("finish captures");
         std::hint::black_box(&buf);
-        // RSS growth from touched pages is reliable, but allocators may
-        // already own the heap; assert the contract (populated fields,
-        // end not below start) rather than an exact byte count.
+        // RSS is process-global like the fd counts below: sibling tests on
+        // parallel threads free memory between the two samples, so end can
+        // read below start, and no process-wide figure can attribute bytes to
+        // this buffer. The assertion is only an absolute lower bound: a live
+        // process holding 8 MiB of touched pages cannot report less RSS than
+        // that, so a sampler that returned a stale or truncated value would.
         assert!(delta.rss_start_bytes > 0);
-        assert!(delta.rss_end_bytes >= delta.rss_start_bytes);
+        assert!(
+            delta.rss_end_bytes >= buf.len() as u64,
+            "end RSS {} is below the {} touched bytes the process still holds",
+            delta.rss_end_bytes,
+            buf.len()
+        );
         // fd counts are process-global while `cargo test` runs sibling tests
         // on parallel threads that open/close their own fds, so an ordering
         // assertion between start and end would be racy. Assert population

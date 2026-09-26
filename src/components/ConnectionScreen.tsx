@@ -80,6 +80,7 @@ const PROTOCOL_COLORS: Record<string, string> = {
     filen: 'from-emerald-500 to-green-400',
     opendrive: 'from-cyan-500 to-sky-400',
     immich: 'from-indigo-500 to-violet-400',
+    twake: 'from-sky-500 to-indigo-400',
 };
 
 // AeroCloud config interface (matching Rust struct)
@@ -563,6 +564,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     } | null>(null);
     const [savedServersUpdate, setSavedServersUpdate] = useState(0);
     const [showPassword, setShowPassword] = useState(false);
+    // Twake Drive sign-in (browser round trip, dynamic client registration).
+    const [twakeSigningIn, setTwakeSigningIn] = useState(false);
+    const [twakeSignInError, setTwakeSignInError] = useState<string | null>(null);
+    const twakeSignInTokenRef = useRef<string | null>(null);
     // Reveal toggle for the optional Filen CLI API Key field.
     const [showFilenApiKey, setShowFilenApiKey] = useState(false);
 
@@ -1471,6 +1476,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     ...connectionParams,
                     server: connectionParams.server || '',
                     username: connectionParams.username || 'api-key',
+                    port: connectionParams.port || 443,
+                }
+            : protocol === 'twake'
+                ? {
+                    ...connectionParams,
+                    server: connectionParams.server || '',
                     port: connectionParams.port || 443,
                 }
             : protocol === 'backblaze'
@@ -3739,7 +3750,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze',
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'twake', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze',
         // #215 harmonization: OAuth clouds are now two-column too, so they get the
         // same wide card (max-w-4xl) as the rest instead of the narrow single-column one.
         'googledrive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive', 'yandexdisk',
@@ -3793,7 +3804,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     jottacloud: 'Jottacloud', filen: 'Filen', internxt: 'Internxt', proton: 'Proton Drive',
                                     kdrive: 'kDrive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk',
                                     drime: 'Drime', mega: 'MEGA', backblaze: 'Backblaze B2', fourshared: '4shared',
-                                    imagekit: 'ImageKit', uploadcare: 'Uploadcare', cloudinary: 'Cloudinary',
+                                    imagekit: 'ImageKit', uploadcare: 'Uploadcare', cloudinary: 'Cloudinary', twake: 'Twake Drive',
                                     filelu: 'FileLu', github: 'GitHub', gitlab: 'GitLab',
                                     mtp: 'Portable device (MTP)',
                                 };
@@ -5931,6 +5942,90 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             buttonColorClass: 'bg-red-600 hover:bg-red-700',
                                             showCancelSaveAsNew: true,
                                         })}
+                                    </div>
+                                ) : protocol === 'twake' ? (
+                                    /* Twake Drive: instance address + browser sign-in (OAuth2, dynamic client registration) */
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.twakeInstance')}</label>
+                                            <input
+                                                type="url"
+                                                value={connectionParams.server}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    server: e.target.value,
+                                                    port: 443,
+                                                    // A sign-in belongs to one instance: a new address needs a new one.
+                                                    password: '',
+                                                })}
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                                                placeholder="https://yourname.twake.app"
+                                                autoFocus
+                                            />
+                                            <p className="text-xs text-gray-400 mt-1.5">{t('connection.twakeInstanceHelp')}</p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                type="button"
+                                                disabled={!connectionParams.server || twakeSigningIn}
+                                                onClick={async () => {
+                                                    setTwakeSignInError(null);
+                                                    setTwakeSigningIn(true);
+                                                    const token = `twake_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                                                    twakeSignInTokenRef.current = token;
+                                                    try {
+                                                        const result = await invoke<{ instance: string; credentials: string }>('twake_sign_in', {
+                                                            params: {
+                                                                instance: connectionParams.server,
+                                                                connectToken: token,
+                                                            },
+                                                        });
+                                                        onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            server: result.instance,
+                                                            port: 443,
+                                                            password: result.credentials,
+                                                        });
+                                                    } catch (err) {
+                                                        setTwakeSignInError(String(err));
+                                                    } finally {
+                                                        twakeSignInTokenRef.current = null;
+                                                        setTwakeSigningIn(false);
+                                                    }
+                                                }}
+                                                className="px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                                            >
+                                                {twakeSigningIn && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                                                {connectionParams.password?.startsWith('twake1:') ? t('connection.twakeSignInAgain') : t('connection.twakeSignIn')}
+                                            </button>
+                                            {twakeSigningIn && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const token = twakeSignInTokenRef.current;
+                                                        if (token) invoke('cancel_connection', { token }).catch(() => { });
+                                                    }}
+                                                    className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                                                >
+                                                    {t('common.cancel')}
+                                                </button>
+                                            )}
+                                            {!twakeSigningIn && connectionParams.password?.startsWith('twake1:') && (
+                                                <span className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
+                                                    <Check size={14} /> {t('connection.twakeSignedIn')}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {twakeSigningIn && (
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">{t('connection.twakeWaitingBrowser')}</p>
+                                        )}
+                                        {twakeSignInError && (
+                                            <p className="text-xs text-red-600 dark:text-red-400 break-words">{twakeSignInError}</p>
+                                        )}
+                                        <p className="text-xs text-gray-400/70">{t('connection.twakeSignInHelp')}</p>
+                                        </div>
+                                        {renderRightColumn({ disabled: !connectionParams.server || !connectionParams.password?.startsWith('twake1:') || twakeSigningIn, buttonColorClass: 'bg-sky-600 hover:bg-sky-700' })}
                                     </div>
                                 ) : protocol === 'immich' ? (
                                     /* Immich Specific Form: Server URL + API Key */

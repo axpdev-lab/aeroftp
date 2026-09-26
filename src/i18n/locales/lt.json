@@ -327,7 +327,14 @@
             "protonCliTitle": "Naudoja oficialią Proton Drive CLI",
             "protonCliBody": "Įdiekite Proton Drive CLI iš proton.me/download/drive/cli, tada terminale paleiskite proton-drive auth login ir užbaikite naršyklėje. AeroFTP niekada nemato jūsų slaptažodžio; seansas lieka OS paslapčių saugykloje.",
             "protonUnofficial": "Tai trečiosios šalies programa, kurios Proton oficialiai nepalaiko.",
-            "protonConnectHint": "\"Prisijungti\" naudoja šioje mašinoje jau prisijungusią CLI. Viena Proton paskyra vienam OS naudotojui."
+            "protonConnectHint": "\"Prisijungti\" naudoja šioje mašinoje jau prisijungusią CLI. Viena Proton paskyra vienam OS naudotojui.",
+            "twakeInstance": "Twake adresas",
+            "twakeInstanceHelp": "Jūsų paties adresas, pavyzdžiui, yourname.twake.app. Taip pat galite įklijuoti bet kokį Twake puslapio adresą iš naršyklės.",
+            "twakeSignIn": "Prisijungti su Twake",
+            "twakeSignInAgain": "Prisijunkite iš naujo",
+            "twakeSignedIn": "Prisijungta",
+            "twakeWaitingBrowser": "Baikite prisijungimą naršyklėje...",
+            "twakeSignInHelp": "AeroFTP atidaro Twake jūsų naršyklėje ir prašo prieigos tik prie jūsų failų. Jei Twake pirmą kartą rodo klaidą, prisijunkite prie Twake naršyklėje ir prisijunkite iš naujo. Prieigą galite atšaukti bet kada Twake nustatymuose, Prijungti įrenginiai."
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Šis galinis taškas teikia S3 per neužšifruotą HTTP tinklu. Priimkite tai šiam profiliui: pasirašyti prisijungimo duomenys ir kiekvienas failas keliauja tinklu neužšifruoti.",
             "discoverFilebase": "Filebase: su S3 suderinama objektų saugykla (5 GB nemokamai)",
             "protonDesc": "Jungiasi per Proton Drive CLI",
-            "protonTooltip": "Naudoja Proton Drive CLI - įdiekite, prisijunkite naršyklėje, AeroFTP yra GUI"
+            "protonTooltip": "Naudoja Proton Drive CLI - įdiekite, prisijunkite naršyklėje, AeroFTP yra GUI",
+            "twakeDesc": "Twake Drive (5 GB nemokamai)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, prancūziškas atvirojo kodo debesis (Cozy Cloud dabar yra jo dalis) su 5 GB nemokamai",
+            "discoverTwake": "Linagora atvirojo kodo Europos debesis, dabar naujieji Cozy Cloud namai (5 GB nemokamai)"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

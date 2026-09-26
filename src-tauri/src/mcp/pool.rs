@@ -554,6 +554,7 @@ fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
         "YANDEXDISK" | "YANDEX" => ProviderType::YandexDisk,
         "SWIFT" => ProviderType::Swift,
         "IMMICH" => ProviderType::Immich,
+        "TWAKE" | "TWAKEDRIVE" => ProviderType::Twake,
         "IMAGEKIT" => ProviderType::ImageKit,
         "UPLOADCARE" => ProviderType::Uploadcare,
         "CLOUDINARY" => ProviderType::Cloudinary,
@@ -680,7 +681,7 @@ fn create_provider_from_vault(
                 "Protocol '{}' on server '{}' is not yet supported via MCP. \
                  Supported: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab, MEGA, Azure, \
                  Filen, Internxt, kDrive, Jottacloud, DrimeCloud, FileLu, Koofr, \
-                 OpenDrive, YandexDisk, Swift, Immich, ImageKit, Uploadcare, \
+                 OpenDrive, YandexDisk, Swift, Immich, Twake Drive, ImageKit, Uploadcare, \
                  Cloudinary, Backblaze B2. OAuth2 providers (Google Drive, Dropbox, \
                  OneDrive, Box, pCloud, Zoho) require valid tokens in vault.",
                 protocol, profile_name
@@ -764,6 +765,8 @@ mod tests {
     fn announced_providers_are_buildable_by_the_pool() {
         let cases = [
             ("immich", ProviderType::Immich),
+            ("twake", ProviderType::Twake),
+            ("Twake-Drive", ProviderType::Twake),
             ("imagekit", ProviderType::ImageKit),
             ("image_kit", ProviderType::ImageKit),
             (" image-kit ", ProviderType::ImageKit),

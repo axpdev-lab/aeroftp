@@ -327,7 +327,14 @@
             "protonCliTitle": "Menggunakan CLI rasmi Proton Drive",
             "protonCliBody": "Pasang Proton Drive CLI dari proton.me/download/drive/cli, kemudian jalankan proton-drive auth login dalam terminal dan selesaikan dalam pelayar. AeroFTP tidak pernah melihat kata laluan anda; sesi kekal dalam stor rahsia OS.",
             "protonUnofficial": "Ini ialah aplikasi pihak ketiga yang tidak disokong secara rasmi oleh Proton.",
-            "protonConnectHint": "\"Sambung\" menggunakan CLI yang sudah log masuk pada mesin ini. Satu akaun Proton setiap pengguna OS."
+            "protonConnectHint": "\"Sambung\" menggunakan CLI yang sudah log masuk pada mesin ini. Satu akaun Proton setiap pengguna OS.",
+            "twakeInstance": "Alamat Twake",
+            "twakeInstanceHelp": "Alamat anda sendiri, contohnya yourname.twake.app. Anda juga boleh tampal mana-mana alamat halaman Twake dari pelayar anda.",
+            "twakeSignIn": "Log masuk dengan Twake",
+            "twakeSignInAgain": "Log masuk semula",
+            "twakeSignedIn": "Log masuk berjaya",
+            "twakeWaitingBrowser": "Selesaikan log masuk dalam pelayar anda...",
+            "twakeSignInHelp": "AeroFTP membuka Twake dalam pelayar anda dan hanya meminta akses kepada fail anda. Jika Twake menunjukkan ralat pada kali pertama, log masuk ke Twake dalam pelayar dan log masuk semula. Anda boleh menarik balik akses pada bila-bila masa dalam Tetapan Twake, Peranti Disambungkan."
         },
         "browser": {
             "remote": "Jauh",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Titik akhir ini menyediakan S3 melalui HTTP biasa merentasi rangkaian. Terima untuk profil ini: bukti kelayakan yang ditandatangani dan setiap fail melintasi rangkaian tanpa penyulitan.",
             "discoverFilebase": "Filebase: storan objek serasi S3 (5 GB percuma)",
             "protonDesc": "Menyambung melalui CLI Proton Drive",
-            "protonTooltip": "Menggunakan CLI Proton Drive - pasang, log masuk dalam pelayar, AeroFTP ialah GUI"
+            "protonTooltip": "Menggunakan CLI Proton Drive - pasang, log masuk dalam pelayar, AeroFTP ialah GUI",
+            "twakeDesc": "Twake Drive (5 GB percuma)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, awan sumber terbuka dari Perancis (Cozy Cloud kini menjadi sebahagian daripadanya) dengan 5 GB percuma",
+            "discoverTwake": "Awan Eropah sumber terbuka oleh Linagora, kini rumah baharu Cozy Cloud (5 GB percuma)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

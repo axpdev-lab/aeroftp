@@ -1,0 +1,1 @@
+rsync --server -ltprIe.iLsfxCIvu --new-compress --stats . /workspace/legacy/up_probe.bin

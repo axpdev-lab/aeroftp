@@ -330,6 +330,7 @@ pub fn capabilities_for_protocol(protocol: &str) -> Vec<&'static str> {
         "fourshared" => vec!["share_links"],
         "swift" => vec!["server_copy", "checksum"],
         "immich" => vec!["thumbnails"],
+        "twake" => vec!["server_copy", "checksum"],
         "github" | "gitlab" => vec!["share_links", "versions"],
         _ => vec![],
     }
@@ -367,6 +368,7 @@ pub fn provider_type_for_transfer_capabilities(protocol: &str) -> Option<Provide
         "gitlab" => Some(ProviderType::GitLab),
         "swift" => Some(ProviderType::Swift),
         "immich" => Some(ProviderType::Immich),
+        "twake" => Some(ProviderType::Twake),
         "imagekit" | "image_kit" => Some(ProviderType::ImageKit),
         "uploadcare" | "upload_care" => Some(ProviderType::Uploadcare),
         "backblaze" | "b2" | "backblazeb2" | "backblaze_b2" => Some(ProviderType::Backblaze),
@@ -586,6 +588,7 @@ pub fn default_transfer_optimization_hints_for_provider(
         ProviderType::GitHub
         | ProviderType::GitLab
         | ProviderType::Immich
+        | ProviderType::Twake
         | ProviderType::AeroCloud
         | ProviderType::Proton
         | ProviderType::AeroVaultMount
@@ -621,6 +624,7 @@ fn provider_supports_server_side_copy_baseline(provider_type: ProviderType) -> b
             | ProviderType::YandexDisk
             | ProviderType::OpenDrive
             | ProviderType::ImageKit
+            | ProviderType::Twake
     )
 }
 
@@ -638,6 +642,8 @@ fn static_http_clone_pool_slots(provider_type: ProviderType) -> Option<(u16, u16
         // DAG-P1-05A: Drime + Uploadcare promote to HttpClonePool with ceiling 4;
         // list remains locked-single (no list_executor override).
         ProviderType::DrimeCloud | ProviderType::Uploadcare => Some((4, 1)),
+        // Twake: clone workers share the client and the access token.
+        ProviderType::Twake => Some((4, 1)),
         // DAG-P1-05B: Dropbox + Box multipart part workers, ceiling 4;
         // list remains locked-single.
         ProviderType::Dropbox | ProviderType::Box => Some((4, 1)),

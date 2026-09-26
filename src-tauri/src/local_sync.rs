@@ -170,6 +170,35 @@ async fn copy_file_with_global_bandwidth(src: &Path, temp: &Path) -> std::io::Re
     Ok(copied)
 }
 
+/// Whether the mirror walk enters or reports `entry`: an excluded directory is
+/// not entered (its subtree is excluded); an excluded file is still walked so
+/// the report lists it as skipped.
+fn mirror_walk_keeps(
+    source: &Path,
+    entry: &walkdir::DirEntry,
+    excludes: &crate::sync_exclude::ExcludeMatcher,
+) -> bool {
+    entry.depth() == 0
+        || !entry.file_type().is_dir()
+        || !entry
+            .path()
+            .strip_prefix(source)
+            .is_ok_and(|rel| excludes.is_excluded(&rel.to_string_lossy()))
+}
+
+/// Files the mirror walk visits, the progress denominator. Excluded files are
+/// counted (they are reported as skipped); files under an excluded directory
+/// are not.
+fn count_mirror_files(source: &Path, excludes: &crate::sync_exclude::ExcludeMatcher) -> u32 {
+    walkdir::WalkDir::new(source)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| mirror_walk_keeps(source, e, excludes))
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .count() as u32
+}
+
 /// Walk `source` and mirror every file into `destination`. Files at or above
 /// `DEFAULT_MIN_FILE_SIZE` (1 MiB) go through `LocalDeltaTransport` unless
 /// `no_delta` is set; smaller files fall back to plain copy.
@@ -196,19 +225,13 @@ pub async fn local_sync_run(
     // start walking; the dialog's Stop button / guarded-close raises it again.
     LOCAL_SYNC_CANCEL.store(false, Ordering::Relaxed);
 
-    let exclude_matchers: Vec<globset::GlobMatcher> = request
-        .exclude
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect();
+    // The matcher every sync surface shares: an invalid pattern is an error for
+    // the dialog to show, never dropped.
+    let excludes = crate::sync::compile_excludes(&request.exclude)?;
+    let keep_entry = |e: &walkdir::DirEntry| mirror_walk_keeps(&source, e, &excludes);
 
     // Pre-walk to count total files (for accurate progress denominator).
-    let total_files: u32 = walkdir::WalkDir::new(&source)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .count() as u32;
+    let total_files = count_mirror_files(&source, &excludes);
 
     let start = Instant::now();
     let mut report = LocalSyncReport {
@@ -233,7 +256,11 @@ pub async fn local_sync_run(
 
     let mut processed: u32 = 0;
     let mut cancelled = false;
-    for entry in walkdir::WalkDir::new(&source).follow_links(false) {
+    for entry in walkdir::WalkDir::new(&source)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(keep_entry)
+    {
         // Honour a cancel request at the file boundary: the bytes already
         // written stay on disk (a partial mirror), and the report status
         // flips to "cancelled" so the UI can distinguish it from a clean run.
@@ -260,13 +287,7 @@ pub async fn local_sync_run(
         if rel_str.is_empty() {
             continue;
         }
-        let fname = entry.file_name().to_string_lossy().to_string();
-        let rel_path_ref: &Path = relative.as_path();
-        let fname_path_ref: &Path = Path::new(&fname);
-        if exclude_matchers
-            .iter()
-            .any(|m| m.is_match(rel_path_ref) || m.is_match(fname_path_ref))
-        {
+        if excludes.is_excluded(&rel_str) {
             report.skipped += 1;
             push_entry(
                 &mut report,
@@ -478,4 +499,30 @@ pub async fn local_sync_run(
         report.status = "partial".to_string();
     }
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_mirror_walk_prunes_an_excluded_directory_and_keeps_excluded_files_countable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("web/Node_Modules/pkg")).unwrap();
+        std::fs::write(root.join("web/Node_Modules/pkg/i.js"), b"x").unwrap();
+        std::fs::write(root.join("web/app.js"), b"x").unwrap();
+        std::fs::write(root.join("notes.tmp"), b"x").unwrap();
+        let excludes =
+            crate::sync::compile_excludes(&["node_modules".to_string(), "*.tmp".to_string()])
+                .unwrap();
+        // app.js and notes.tmp (reported as skipped); nothing under Node_Modules.
+        assert_eq!(count_mirror_files(root, &excludes), 2);
+    }
+
+    #[test]
+    fn an_invalid_exclude_is_an_error_for_the_dialog() {
+        let err = crate::sync::compile_excludes(&["a[b".to_string()]).unwrap_err();
+        assert!(err.contains("invalid exclude pattern 'a[b'"), "{err}");
+    }
 }

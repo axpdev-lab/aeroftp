@@ -16,7 +16,7 @@
       AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV,
       S3-compatible storage, and cloud providers including Google Drive, Dropbox,
       OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, Filen, Zoho WorkDrive,
-      Internxt Drive, kDrive, Koofr, FileLu, Yandex Disk, and OpenDrive. 7 transport protocols, 25 native providers, 47 presets, one app.
+      Internxt Drive, kDrive, Koofr, FileLu, Yandex Disk, and OpenDrive. 7 transport protocols, 26 native providers, 47 presets, one app.
     </p>
     <p>Security and Encryption:</p>
     <ul>
@@ -46,7 +46,7 @@
     </ul>
     <p>Command-Line Interface:</p>
     <ul>
-      <li>AeroFTP CLI: 95 commands across 7 transport protocols and 25 native providers with JSON output, glob transfers, batch scripting, FUSE mount, and MCP server mode</li>
+      <li>AeroFTP CLI: 95 commands across 7 transport protocols and 26 native providers with JSON output, glob transfers, batch scripting, FUSE mount, and MCP server mode</li>
       <li>Batch engine: .aeroftp script files with variables, error policies, and 17 commands</li>
       <li>Security hardened: path traversal prevention, ANSI sanitization, OOM protection, 45-finding audit</li>
     </ul>

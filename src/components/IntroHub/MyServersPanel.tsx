@@ -110,7 +110,7 @@ const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<
 function deriveProviderId(server: ServerProfile): string | undefined {
     const proto = server.protocol;
     if (!proto) return undefined;
-    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive', 'github', 'gitlab'].includes(proto)) return proto;
+    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive', 'github', 'gitlab', 'twake'].includes(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
         if (host.includes('backblaze')) return 'backblaze';

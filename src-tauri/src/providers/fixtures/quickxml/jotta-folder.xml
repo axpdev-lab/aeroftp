@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<folder name="Backup" time="2024-03-04-T08:09:10Z">
+  <path xml:space="preserve">/Backup</path>
+  <abspath xml:space="preserve">/Backup</abspath>
+  <folders>
+    <folder name="Photos"/>
+    <folder name="Old" deleted="2020-01-01-T00:00:00Z"/>
+  </folders>
+  <files>
+    <file name="report.pdf" uuid="11111111-1111-1111-1111-111111111111">
+      <currentRevision>
+        <number>1</number>
+        <state>COMPLETED</state>
+        <size>2048</size>
+        <md5>deadbeef</md5>
+        <mime>application/pdf</mime>
+        <modified>2024-03-04-T08:09:10Z</modified>
+      </currentRevision>
+    </file>
+    <file name="a&amp;b.pdf" uuid="22222222-2222-2222-2222-222222222222">
+      <currentRevision>
+        <number>1</number>
+        <state>COMPLETED</state>
+        <size>9</size>
+        <mime>application/pdf</mime>
+        <modified>2024-03-04-T08:09:11Z</modified>
+      </currentRevision>
+    </file>
+    <file name="uploading.bin">
+      <currentRevision>
+        <state>INCOMPLETE</state>
+        <size>999</size>
+      </currentRevision>
+    </file>
+  </files>
+</folder>

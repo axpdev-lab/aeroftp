@@ -339,6 +339,17 @@ export const PixelUnionLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// Twake Drive (Linagora): official mark supplied by the owner
+export const TwakeLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/twake.svg"
+        alt="Twake Drive"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // Immich: multi-color star/pinwheel
 export const ImmichLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 512 512">
@@ -639,6 +650,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'hetzner-storage-box': HetznerLogo,
     'aspnix': ASPnixLogo,
     'immich': ImmichLogo,
+    'twake': TwakeLogo,
     'pixelunion': PixelUnionLogo,
     'imagekit': ImageKitLogo,
     'uploadcare': UploadcareLogo,

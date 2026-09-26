@@ -67,13 +67,14 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Storj | US | 30-day trial | S3* |
 | TAB.DIGITAL | EU | 8 GB (managed Nextcloud) | WebDAV |
 | Tencent COS | CN | 6-month trial | S3* |
+| Twake Drive | FR | 5 GB | OAuth |
 | Uploadcare | US | 1 GB (media CDN) | API |
 | Wasabi | US | 30-day trial | S3* |
 | Yandex Disk | RU | 5 GB | OAuth, WebDAV* |
 | Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>55 providers, 69 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>56 providers, 70 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
 

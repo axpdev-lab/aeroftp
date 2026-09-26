@@ -327,7 +327,14 @@
             "protonCliTitle": "Користи званични Proton Drive CLI",
             "protonCliBody": "Инсталирајте Proton Drive CLI са proton.me/download/drive/cli, затим у терминалу покрените proton-drive auth login и завршите у прегледачу. AeroFTP никад не види вашу лозинку; сесија остаје у складишту тајни ОС-а.",
             "protonUnofficial": "Ово је апликација треће стране коју Proton званично не подржава.",
-            "protonConnectHint": "\"Повежи се\" користи CLI који је на овој машини већ пријављен. Један Proton налог по кориснику ОС-а."
+            "protonConnectHint": "\"Повежи се\" користи CLI који је на овој машини већ пријављен. Један Proton налог по кориснику ОС-а.",
+            "twakeInstance": "Twake adresa",
+            "twakeInstanceHelp": "Vaša sopstvena adresa, na primer yourname.twake.app. Takođe možete nalepiti bilo koju adresu Twake stranice iz pregledača.",
+            "twakeSignIn": "Prijavite se putem Twake-a",
+            "twakeSignInAgain": "Prijavite se ponovo",
+            "twakeSignedIn": "Prijavljeni ste",
+            "twakeWaitingBrowser": "Završite prijavu u pregledaču...",
+            "twakeSignInHelp": "AeroFTP otvara Twake u vašem pregledaču i traži pristup samo vašim fajlovima. Ako Twake prvi put prikaže grešku, prijavite se na Twake u pregledaču i prijavite se ponovo. Pristup možete opozvati u bilo kom trenutku u Twake podešavanjima, Povezani uređaji."
         },
         "browser": {
             "remote": "Удаљено",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Ова крајња тачка опслужује S3 преко обичног HTTP-а кроз мрежу. Прихватите то за овај профил: потписани подаци за приступ и свака датотека пролазе кроз мрежу нешифровани.",
             "discoverFilebase": "Filebase: S3-компатибилно складиште објеката (5 GB бесплатно)",
             "protonDesc": "Повезује се преко Proton Drive CLI",
-            "protonTooltip": "Користи Proton Drive CLI - инсталирајте, пријавите се у прегледачу, AeroFTP је GUI"
+            "protonTooltip": "Користи Proton Drive CLI - инсталирајте, пријавите се у прегледачу, AeroFTP је GUI",
+            "twakeDesc": "Twake Drive (5 GB besplatno)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, француски облак отвореног кода (Cozy Cloud је сада део њега) са 5 GB бесплатно",
+            "discoverTwake": "Европски облак отвореног кода компаније Linagora, сада дом Cozy Cloud-а (5 GB бесплатно)"
         },
         "shortcuts": {
             "title": "Пречице на тастатури",

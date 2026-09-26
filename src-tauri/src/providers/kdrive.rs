@@ -215,6 +215,10 @@ pub struct KDriveProvider {
     current_path: String,
     current_file_id: i64,
     dir_cache: HashMap<String, DirInfo>,
+    /// Test-only API base (`http://127.0.0.1:port`) for local HTTP fixtures.
+    /// Production paths never set it.
+    #[cfg(test)]
+    api_base_override: Option<String>,
 }
 
 impl KDriveProvider {
@@ -233,7 +237,18 @@ impl KDriveProvider {
             current_path: "/".to_string(),
             current_file_id: 1,
             dir_cache: HashMap::new(),
+            #[cfg(test)]
+            api_base_override: None,
         }
+    }
+
+    /// Base of the Infomaniak API.
+    fn api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(base) = &self.api_base_override {
+            return base.as_str();
+        }
+        API_BASE
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────
@@ -297,7 +312,7 @@ impl KDriveProvider {
     /// `drive_id` here would silently address drive 0.
     pub async fn discover_drives(&self) -> Result<Vec<(String, String)>, ProviderError> {
         let profile_response = self
-            .get_with_retry(&format!("{API_BASE}/2/profile"))
+            .get_with_retry(&format!("{}/2/profile", self.api_base()))
             .await?;
         let profile_status = profile_response.status();
         let profile_body = profile_response.bytes().await.map_err(|e| {
@@ -320,7 +335,10 @@ impl KDriveProvider {
         })?;
 
         let response = self
-            .get_with_retry(&format!("{API_BASE}/2/drive?account_id={account_id}"))
+            .get_with_retry(&format!(
+                "{}/2/drive?account_id={account_id}",
+                self.api_base()
+            ))
             .await?;
         let status = response.status();
         let body = response.bytes().await.map_err(|e| {
@@ -513,11 +531,21 @@ impl KDriveProvider {
     }
 
     fn api_url_v2(&self, path: &str) -> String {
-        format!("{}/2/drive/{}{}", API_BASE, self.config.drive_id, path)
+        format!(
+            "{}/2/drive/{}{}",
+            self.api_base(),
+            self.config.drive_id,
+            path
+        )
     }
 
     fn api_url_v3(&self, path: &str) -> String {
-        format!("{}/3/drive/{}{}", API_BASE, self.config.drive_id, path)
+        format!(
+            "{}/3/drive/{}{}",
+            self.api_base(),
+            self.config.drive_id,
+            path
+        )
     }
 
     fn normalize_path(path: &str) -> String {
@@ -1112,9 +1140,10 @@ impl StorageProvider for KDriveProvider {
         // KD-008: Removed preemptive delete: use conflict=version to let the API
         // create a new version atomically. This prevents data loss if the upload fails.
 
-        if let Some(ref cb) = on_progress {
-            cb(0, file_size);
-        }
+        // The body reports the bytes as they go out; 100 percent waits for
+        // kDrive's parsed answer (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
+        progress.start();
 
         let last_modified = std::fs::metadata(local_path)
             .and_then(|m| m.modified())
@@ -1136,11 +1165,7 @@ impl StorageProvider for KDriveProvider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let stream = tokio_util::io::ReaderStream::new(file);
-        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
-            stream,
-            crate::transfer_dag::governor::TransferDirection::Upload,
-        ));
+        let body = progress.file_body(file);
 
         let resp: reqwest::Response = self
             .client
@@ -1167,10 +1192,8 @@ impl StorageProvider for KDriveProvider {
             ProviderError::ServerError(format!("Parse upload response failed: {}", e))
         })?;
 
-        // KD-005: Report progress after successful upload completion
-        if let Some(ref cb) = on_progress {
-            cb(file_size, file_size);
-        }
+        // KD-005: 100 percent only after the successful, parsed answer.
+        progress.complete();
 
         kdrive_log(&format!("Uploaded {} successfully", filename));
         Ok(())
@@ -1961,7 +1984,9 @@ impl KDriveProvider {
 
         let url = format!(
             "{}/2/drive/{}/trash/{}/restore",
-            API_BASE, self.config.drive_id, file_id
+            self.api_base(),
+            self.config.drive_id,
+            file_id
         );
         let resp = self
             .post_with_retry(&url, "application/json", Vec::new())
@@ -1989,7 +2014,9 @@ impl KDriveProvider {
 
         let url = format!(
             "{}/2/drive/{}/trash/{}",
-            API_BASE, self.config.drive_id, file_id
+            self.api_base(),
+            self.config.drive_id,
+            file_id
         );
         let resp = self.delete_with_retry(&url).await?;
 
@@ -2009,7 +2036,7 @@ impl KDriveProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let url = format!("{}/2/drive/{}/trash", API_BASE, self.config.drive_id);
+        let url = format!("{}/2/drive/{}/trash", self.api_base(), self.config.drive_id);
         let resp = self.delete_with_retry(&url).await?;
 
         let status = resp.status();
@@ -2278,6 +2305,57 @@ mod tests {
             initial_path: None,
         };
         KDriveProvider::new(config)
+    }
+
+    /// Upload a 300 KB file to the v3 upload route of a local fixture that
+    /// answers `status` and `body`; returns the outcome and the updates.
+    async fn upload_against_fixture(
+        status: u16,
+        body: &str,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![Route::post("/3/drive/987654/upload", status, body)]).await;
+        let mut provider = test_provider();
+        provider.api_base_override = Some(base);
+        provider.connected = true;
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// The v3 upload streams the file: the bar follows the bytes going out and
+    /// reaches 100 only after kDrive's answer has been parsed (KD-005). It used
+    /// to report 0, then the total after the response.
+    #[tokio::test]
+    async fn upload_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = upload_against_fixture(
+            200,
+            r#"{"result":"success","data":{"id":42,"name":"f.bin"}}"#,
+        )
+        .await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) =
+            upload_against_fixture(500, r#"{"result":"error","error":{"code":"x"}}"#).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
+
+        // A success status whose body is not the upload answer is a failure.
+        let (outcome, updates) = upload_against_fixture(200, "<html>").await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     #[test]

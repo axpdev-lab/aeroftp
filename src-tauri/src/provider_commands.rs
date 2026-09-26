@@ -877,6 +877,7 @@ impl ProviderConnectionParams {
             "swift" => ProviderType::Swift,
             "googlephotos" | "google_photos" => ProviderType::GooglePhotos,
             "immich" => ProviderType::Immich,
+            "twake" | "twakedrive" => ProviderType::Twake,
             "imagekit" | "image_kit" => ProviderType::ImageKit,
             "uploadcare" | "upload_care" => ProviderType::Uploadcare,
             "cloudinary" => ProviderType::Cloudinary,
@@ -5855,6 +5856,110 @@ pub async fn oauth2_connect(
     Ok(OAuth2ConnectResult {
         display_name,
         account_email,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TwakeSignInParams {
+    /// What the user typed: instance host, instance URL or any app URL.
+    pub instance: String,
+    #[serde(default, alias = "connect_token")]
+    pub connect_token: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TwakeSignInResult {
+    /// Normalized instance origin, to store as the profile host.
+    pub instance: String,
+    /// Credentials blob, to store as the profile password.
+    pub credentials: String,
+}
+
+/// Sign in to a Twake Drive instance: register an OAuth client on it (RFC 7591),
+/// open the authorization page in the system browser, wait for the loopback
+/// callback, and exchange the code (PKCE). Returns the credentials the profile
+/// stores; nothing is written to the vault here.
+#[tauri::command]
+pub async fn twake_sign_in(
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
+    params: TwakeSignInParams,
+) -> Result<TwakeSignInResult, String> {
+    use crate::providers::oauth2::{bind_callback_listener_on_port, wait_for_callback};
+    use crate::providers::twake;
+
+    let cancel_token = params
+        .connect_token
+        .as_deref()
+        .map(|key| cancel_registry.register(key));
+    let _cancel_guard = params
+        .connect_token
+        .as_deref()
+        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+
+    let (listener, port) = bind_callback_listener_on_port(twake::TWAKE_CALLBACK_PORT)
+        .await
+        .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
+    let pending = twake::begin_sign_in(&params.instance, port, env!("CARGO_PKG_VERSION"))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let expected_state = pending.state.clone();
+    let callback_state = expected_state.clone();
+    let mut callback_task =
+        AbortOnDrop::spawn(async move { wait_for_callback(listener, &callback_state).await });
+
+    // Every failure after the registration deletes the client it created, so
+    // an abandoned attempt leaves nothing in the user's Connected devices.
+    let outcome: Result<twake::TwakeCredentials, String> = async {
+        // System browser only: Twake refuses embedded webviews. Returning drops
+        // the listener and the PKCE verifier, so the URL is not worth offering
+        // for manual use.
+        open::that(&pending.auth_url).map_err(|e| {
+            format!("Could not open the system browser for the Twake sign-in: {}", e)
+        })?;
+        info!("Twake sign-in: browser opened, waiting for callback");
+
+        let (code, state) = tokio::select! {
+            res = callback_task.wait() => res
+                .map_err(|e| format!("Callback server error: {}", e))?
+                .map_err(|e| format!("Callback error: {}", e))?,
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(300)) => {
+                return Err("Twake sign-in timeout: no response within 5 minutes. If Twake showed \"The state parameter is mandatory\", log in to Twake in your browser first, then sign in again.".to_string());
+            }
+            _ = async {
+                match cancel_token.as_ref() {
+                    Some(token) => token.cancelled().await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                return Err(CONNECT_CANCELLED.to_string());
+            }
+        };
+        if state != expected_state {
+            return Err("OAuth state mismatch - possible CSRF attack".to_string());
+        }
+        twake::finish_sign_in(&pending, &code)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    let creds = match outcome {
+        Ok(creds) => creds,
+        Err(e) => {
+            pending.abandon().await;
+            return Err(e);
+        }
+    };
+
+    // The previous client of a re-signed profile is NOT deleted here: the new
+    // credentials only exist in the form until the profile is saved, and
+    // revoking now would leave a cancelled edit holding dead credentials. An
+    // old client stays listed in the user's Connected devices until removed.
+    Ok(TwakeSignInResult {
+        instance: creds.instance.clone(),
+        credentials: creds.to_stored(),
     })
 }
 
@@ -12988,6 +13093,8 @@ async fn walk_compare_remote_serially(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut remote_files: HashMap<String, crate::sync::FileInfo> = HashMap::new();
     let mut skipped_links = Vec::new();
     let mut dirs_to_process = vec![remote_path.to_string()];
@@ -13065,7 +13172,8 @@ async fn walk_compare_remote_serially(
                 }
             };
 
-            if crate::sync::should_exclude(&relative_path, exclude_patterns) {
+            // The entry's own name is matched too: it may hold a `/`.
+            if excludes.is_excluded_entry(&relative_path, &entry.name) {
                 continue;
             }
 
@@ -13672,6 +13780,53 @@ mod tests {
                 .any(|path| *path == "parent" || path.starts_with("parent/link")),
             "the compare offers nothing at or above the protected file: {offered:?}"
         );
+    }
+
+    /// The serial walk (an armed crypt overlay) matches the entry's own name
+    /// like the shared walk does: a name holding a `/` (Google Drive) is not
+    /// its path's last segment.
+    #[tokio::test]
+    async fn compare_serial_walk_matches_an_entry_name_holding_a_slash() {
+        // Nested, so the name is not the whole relative path (`d/x/y`), which
+        // the path alone would already match.
+        let tree = crate::sync_core::scan::tests::WalkTreeProvider::new(
+            HashMap::from([
+                (
+                    "/root".to_string(),
+                    vec![crate::providers::RemoteEntry::directory(
+                        "d".into(),
+                        "/root/d".into(),
+                    )],
+                ),
+                (
+                    "/root/d".to_string(),
+                    vec![
+                        crate::providers::RemoteEntry::file("x/y".into(), "/root/d/x/y".into(), 1),
+                        crate::providers::RemoteEntry::file(
+                            "keep".into(),
+                            "/root/d/keep".into(),
+                            1,
+                        ),
+                    ],
+                ),
+            ]),
+            false,
+        );
+        let provider: Mutex<Option<Box<dyn StorageProvider>>> = Mutex::new(Some(Box::new(tree)));
+        let (rows, _) = walk_compare_remote_serially(
+            &provider,
+            "/root",
+            &["x?y".to_string()],
+            usize::MAX,
+            &AtomicBool::new(false),
+            &|| true,
+            &mut |_, _, _| {},
+        )
+        .await
+        .expect("the walk completes");
+        let mut paths: Vec<_> = rows.keys().cloned().collect();
+        paths.sort();
+        assert_eq!(paths, vec!["d", "d/keep"]);
     }
 
     /// A cancel that lands while the serial walk lists its last directory must

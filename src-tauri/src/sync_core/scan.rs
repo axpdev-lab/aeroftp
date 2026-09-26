@@ -85,15 +85,18 @@ pub struct ScanOptions {
     pub disable_recursive_fastpath: bool,
 }
 
-fn compile_matchers(patterns: &[String]) -> Vec<globset::GlobMatcher> {
-    patterns
-        .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
-        .collect()
-}
-
-fn matches_any(matchers: &[globset::GlobMatcher], rel: &str, name: &str) -> bool {
-    matchers.iter().any(|m| m.is_match(rel) || m.is_match(name))
+impl ScanOptions {
+    /// The compiled exclude list ([`crate::sync_exclude`], the matcher the GUI
+    /// shares). The scans cannot return an error, so the CLI compiles the list
+    /// before it scans and reports an invalid pattern; if one ever reaches a
+    /// scan it fails closed: every path excluded, and the scan reported
+    /// incomplete so no orphan delete trusts the empty result.
+    pub fn excludes_or_everything(&self) -> crate::sync_exclude::ExcludeMatcher {
+        crate::sync::compile_excludes(&self.exclude_patterns).unwrap_or_else(|e| {
+            tracing::error!("{e}: the scan excludes every path and reports itself incomplete");
+            crate::sync_exclude::ExcludeMatcher::everything()
+        })
+    }
 }
 
 /// GAP-9f: derive a path relative to `root` from a provider-returned absolute
@@ -130,14 +133,26 @@ fn adapt_fastpath_entries(
     root: &str,
     opts: &ScanOptions,
 ) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>, Vec<UnseenPath>)> {
-    let matchers = compile_matchers(&opts.exclude_patterns);
+    let excludes = opts.excludes_or_everything();
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let mut results = Vec::new();
     let mut skipped_links = Vec::new();
     let mut unseen: Vec<UnseenPath> = Vec::new();
     let mut stopped_at: HashSet<String> = HashSet::new();
+    if excludes.excludes_everything() {
+        // An invalid exclude list: let the BFS path report the scan incomplete.
+        return None;
+    }
     for entry in entries {
+        // An excluded path is dropped before anything else, as the BFS prunes
+        // it: it never becomes a depth-limit boundary or a skipped link.
+        if rel_from_abs(&entry.path, root)
+            .filter(|rel| !rel.is_empty())
+            .is_some_and(|rel| excludes.is_excluded(&rel))
+        {
+            continue;
+        }
         // The BFS lists a directory only while its depth is below the limit, so
         // an entry below that level sits under the directory the walk stops at.
         // Name that directory once, as the BFS does, and keep nothing under it:
@@ -217,9 +232,6 @@ fn adapt_fastpath_entries(
             continue;
         }
         if opts.skip_filenames.iter().any(|name| name == &entry.name) {
-            continue;
-        }
-        if !matchers.is_empty() && matches_any(&matchers, &rel, &entry.name) {
             continue;
         }
         if let Some(ref set) = opts.files_from {
@@ -386,8 +398,9 @@ pub struct ScanBoundaries {
     /// failed to list, an entry whose metadata could not be read.
     pub unseen: Vec<UnseenPath>,
     /// Set when the scan missed a part of the tree it cannot name (it did not
-    /// see its root, was cancelled, cut off at the entry cap, or lost its
-    /// session), so no run can be bounded around it.
+    /// see its root, was cancelled, cut off at the entry cap, lost its
+    /// session, or was handed an exclude list that does not compile), so no
+    /// run can be bounded around it.
     pub unbounded: Option<&'static str>,
     /// The scan root does not exist. That is an empty tree on the side a run
     /// writes to, so a sync into a new directory runs, and a missing source on
@@ -700,7 +713,18 @@ pub fn scan_local_tree_checked(
     root: &str,
     opts: &ScanOptions,
 ) -> (Vec<LocalEntry>, ScanCompleteness, ScanBoundaries) {
-    let matchers = compile_matchers(&opts.exclude_patterns);
+    let excludes = opts.excludes_or_everything();
+    if excludes.excludes_everything() {
+        let completeness = ScanCompleteness {
+            truncated: true,
+            ..Default::default()
+        };
+        let boundaries = ScanBoundaries {
+            unbounded: Some("invalid_exclude"),
+            ..Default::default()
+        };
+        return (Vec::new(), completeness, boundaries);
+    }
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let relative_of = |path: &Path| {
@@ -717,6 +741,8 @@ pub fn scan_local_tree_checked(
         .follow_links(false)
         .max_depth(depth)
         .into_iter()
+        // An excluded directory is not descended into: its subtree is excluded.
+        .filter_entry(|e| e.depth() == 0 || !excludes.is_excluded(&relative_of(e.path())))
     {
         let walk_entry = match result {
             Ok(e) => e,
@@ -839,7 +865,7 @@ pub fn scan_local_tree_checked(
         if opts.skip_filenames.iter().any(|n| n == &fname) {
             continue;
         }
-        if !matchers.is_empty() && matches_any(&matchers, &relative, &fname) {
+        if excludes.is_excluded(&relative) {
             continue;
         }
         if let Some(ref set) = opts.files_from {
@@ -975,6 +1001,23 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
 ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
+    // Compiled once for the whole walk; every directory reads this one.
+    let excludes = opts.excludes_or_everything();
+    if excludes.excludes_everything() {
+        // An invalid exclude list: nothing is listed, and the scan says it did
+        // not see the tree, so an orphan delete refuses instead of trusting it.
+        // Checked here, before the fast path and the locked or pooled walk, so
+        // every branch answers the same way.
+        let completeness = ScanCompleteness {
+            truncated: true,
+            ..Default::default()
+        };
+        let boundaries = ScanBoundaries {
+            unbounded: Some("invalid_exclude"),
+            ..Default::default()
+        };
+        return (Vec::new(), completeness, boundaries);
+    }
     let mut completeness = ScanCompleteness::default();
 
     // GAP-9f: provider-native single-shot recursive listing fast-path,
@@ -998,9 +1041,18 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     }
 
     if !list_model.is_clone_pool() {
-        return scan_remote_tree_locked(provider, remote_root, opts, list_model, cancel, observer)
-            .await;
+        return scan_remote_tree_locked(
+            provider,
+            remote_root,
+            opts,
+            &excludes,
+            list_model,
+            cancel,
+            observer,
+        )
+        .await;
     }
+    let excludes = Arc::new(excludes);
 
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
@@ -1071,6 +1123,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 warm_workers.clone(),
                 dir,
                 opts.clone(),
+                Arc::clone(&excludes),
                 want_remote_checksum,
                 cancel.clone(),
                 cap.saturating_sub(results.len() + boundaries.len()),
@@ -1176,6 +1229,7 @@ async fn scan_remote_tree_locked(
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     remote_root: &str,
     opts: &ScanOptions,
+    excludes: &crate::sync_exclude::ExcludeMatcher,
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
@@ -1260,6 +1314,7 @@ async fn scan_remote_tree_locked(
                 provider,
                 &dir,
                 opts,
+                excludes,
                 want_remote_checksum,
                 &cancel,
                 link_budget,
@@ -1413,6 +1468,7 @@ fn spawn_remote_scan_task(
     warm_workers: WarmScanWorkers,
     dir: RemoteScanDir,
     opts: ScanOptions,
+    excludes: Arc<crate::sync_exclude::ExcludeMatcher>,
     want_remote_checksum: bool,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     link_budget: usize,
@@ -1456,6 +1512,7 @@ fn spawn_remote_scan_task(
             &mut worker,
             &dir,
             &opts,
+            &excludes,
             want_remote_checksum,
             &cancel,
             link_budget,
@@ -1522,15 +1579,18 @@ fn scan_cancelled(cancel: &Option<Arc<std::sync::atomic::AtomicBool>>) -> bool {
         .unwrap_or(false)
 }
 
+/// List one directory of a remote walk. `excludes` is the walk's list,
+/// compiled once for the whole walk rather than once per directory.
+#[allow(clippy::too_many_arguments)]
 async fn scan_remote_dir(
     provider: &mut Box<dyn StorageProvider>,
     dir: &RemoteScanDir,
     opts: &ScanOptions,
+    excludes: &crate::sync_exclude::ExcludeMatcher,
     want_remote_checksum: bool,
     cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
     link_budget: usize,
 ) -> Result<RemoteScanBatch, RemoteScanFailure> {
-    let matchers = compile_matchers(&opts.exclude_patterns);
     let entries = match list_with_transport_retry(provider, &dir.abs_dir).await {
         Ok(entries) => entries,
         Err(error) => {
@@ -1572,6 +1632,11 @@ async fn scan_remote_dir(
             );
             continue;
         }
+        // An excluded directory is not walked: its whole subtree is excluded.
+        // The provider's own name is matched too: it may hold a `/`.
+        if excludes.is_excluded_entry(&entry_rel, &entry.name) {
+            continue;
+        }
         if entry.is_dir {
             // A symlink to a directory is never walked (GAP-A02): syncing
             // through one would duplicate the target's tree, and a link to
@@ -1605,9 +1670,6 @@ async fn scan_remote_dir(
             continue;
         }
         if opts.skip_filenames.iter().any(|name| name == &entry.name) {
-            continue;
-        }
-        if !matchers.is_empty() && matches_any(&matchers, &entry_rel, &entry.name) {
             continue;
         }
         if let Some(ref set) = opts.files_from {
@@ -1936,6 +1998,46 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn scan_local_tree_prunes_an_excluded_directory_case_insensitively() {
+        // The CLI matched `--exclude node_modules` against the file path and
+        // the file name only, so node_modules/pkg/index.js stayed in the sync.
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("web/Node_Modules/pkg")).unwrap();
+        fs::write(root.join("web/Node_Modules/pkg/index.js"), b"x").unwrap();
+        fs::write(root.join("web/app.js"), b"x").unwrap();
+
+        let opts = ScanOptions {
+            exclude_patterns: vec!["node_modules".to_string()],
+            ..Default::default()
+        };
+        let entries = scan_local_tree(root.to_str().unwrap(), &opts);
+        let paths: Vec<String> = entries.iter().map(|e| e.rel_path.clone()).collect();
+        assert_eq!(paths, vec!["web/app.js"]);
+    }
+
+    #[test]
+    fn an_invalid_exclude_reaching_a_scan_fails_closed() {
+        // The CLI rejects an invalid pattern before it scans; a scan that is
+        // handed one anyway must exclude everything, never nothing.
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("a.txt"), b"x").unwrap();
+        let opts = ScanOptions {
+            exclude_patterns: vec!["a[b".to_string()],
+            ..Default::default()
+        };
+        let (entries, completeness, boundaries) =
+            scan_local_tree_checked(root.to_str().unwrap(), &opts);
+        assert!(entries.is_empty());
+        assert!(
+            !completeness.is_complete(),
+            "an orphan delete must not trust it"
+        );
+        assert_eq!(boundaries.unbounded, Some("invalid_exclude"));
+    }
+
+    #[test]
     fn scan_local_tree_computes_sha256_when_requested() {
         let tmp = tempdir().unwrap();
         let root = tmp.path();
@@ -2143,6 +2245,36 @@ pub(crate) mod tests {
         paths.sort();
         // The directory entry is dropped; both files keep their nesting.
         assert_eq!(paths, vec!["a/b/c.txt".to_string(), "top.txt".to_string()]);
+    }
+
+    #[test]
+    fn adapt_fastpath_entries_drops_excluded_paths_before_the_depth_limit() {
+        // An excluded subtree past the depth limit used to be named as an
+        // unseen depth boundary, and an excluded link as a skipped link: both
+        // bound (or refuse) a run over paths the user excluded.
+        let mut link = provider_file("ln", "/root/node_modules/ln", 0);
+        link.is_symlink = true;
+        let entries = vec![
+            provider_file("keep.txt", "/root/keep.txt", 1),
+            provider_file("x.js", "/root/node_modules/a/b/x.js", 1),
+            link,
+        ];
+        let (rows, links, unseen) = adapt_fastpath_entries(
+            entries,
+            "/root",
+            &ScanOptions {
+                exclude_patterns: vec!["node_modules".to_string()],
+                max_depth: Some(2),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            rows.iter().map(|r| r.rel_path.as_str()).collect::<Vec<_>>(),
+            vec!["keep.txt"]
+        );
+        assert!(links.is_empty(), "{links:?}");
+        assert!(unseen.is_empty(), "{unseen:?}");
     }
 
     #[test]
@@ -3107,6 +3239,38 @@ pub(crate) mod tests {
         }
     }
 
+    /// An invalid exclude list reaching a remote scan excludes everything and
+    /// says so on BOTH walks: the pooled walk used to skip every entry and
+    /// report the empty result as a complete scan, which reads every
+    /// destination file as an orphan to delete.
+    #[tokio::test]
+    async fn an_invalid_exclude_reaching_a_remote_scan_fails_closed_on_both_walks() {
+        for pool in [false, true] {
+            let tree = WalkTreeProvider::new(
+                std::collections::HashMap::from([(
+                    "/root".to_string(),
+                    vec![provider_file("a.txt", "/root/a.txt", 1)],
+                )]),
+                pool,
+            );
+            let opts = ScanOptions {
+                exclude_patterns: vec!["a[b".to_string()],
+                ..ScanOptions::default()
+            };
+            let (rows, completeness, boundaries) = walk_tree_with(tree, opts, None).await;
+            assert!(rows.is_empty(), "(pool={pool})");
+            assert!(
+                !completeness.is_complete(),
+                "an orphan delete must not trust it (pool={pool})"
+            );
+            assert_eq!(
+                boundaries.unbounded,
+                Some("invalid_exclude"),
+                "(pool={pool})"
+            );
+        }
+    }
+
     /// G51: a root whose `exists` check fails (permission on a parent the
     /// account cannot traverse) must not be read as missing. `root_is_absent`
     /// takes only `Ok(false)` as absence; any other answer leaves the root a
@@ -3435,6 +3599,7 @@ pub(crate) mod tests {
             &mut provider,
             &dir,
             &ScanOptions::default(),
+            &crate::sync_exclude::ExcludeMatcher::default(),
             false,
             &None,
             2,

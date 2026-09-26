@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>test-bucket</Name>
+  <Prefix></Prefix>
+  <KeyCount>2</KeyCount>
+  <MaxKeys>1000</MaxKeys>
+  <IsTruncated>true</IsTruncated>
+  <NextContinuationToken>token-2</NextContinuationToken>
+  <Contents>
+    <Key>readme.txt</Key>
+    <LastModified>2026-09-01T12:00:00.000Z</LastModified>
+    <ETag>"abc"</ETag>
+    <Size>11</Size>
+    <StorageClass>STANDARD</StorageClass>
+  </Contents>
+  <Contents>
+    <Key>a&amp;b.txt</Key>
+    <LastModified>2026-09-01T12:00:01.000Z</LastModified>
+    <ETag>"def"</ETag>
+    <Size>4</Size>
+    <StorageClass>STANDARD</StorageClass>
+  </Contents>
+  <CommonPrefixes>
+    <Prefix>reports/</Prefix>
+  </CommonPrefixes>
+</ListBucketResult>

@@ -3,15 +3,15 @@
   "generated_by": "scripts/gen-provider-inventory.ts",
   "counts": {
     "transport_protocols": 7,
-    "native_integrations": 25,
+    "native_integrations": 26,
     "presets": 47,
     "presets_over_transport": 43,
     "connection_forms": 52,
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
-    "providers": 55,
-    "connection_methods": 69,
-    "catalog_services": 76
+    "providers": 56,
+    "connection_methods": 70,
+    "catalog_services": 77
   },
   "transport_protocols": [
     "ftp",
@@ -45,6 +45,7 @@
     "opendrive",
     "pcloud",
     "proton",
+    "twake",
     "uploadcare",
     "yandexdisk",
     "zohoworkdrive"
@@ -123,7 +124,7 @@
     "protocols": 7,
     "object-storage": 22,
     "webdav": 19,
-    "cloud-storage": 19,
+    "cloud-storage": 20,
     "media-services": 5,
     "developer": 3
   },
@@ -439,6 +440,12 @@
       "id": "tencent-cos",
       "protocols": [
         "s3"
+      ]
+    },
+    {
+      "id": "twake",
+      "protocols": [
+        "twake"
       ]
     },
     {

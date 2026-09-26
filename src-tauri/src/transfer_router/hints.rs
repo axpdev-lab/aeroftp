@@ -80,6 +80,7 @@ pub fn from_provider_type(
         | ProviderType::GitLab
         | ProviderType::Swift
         | ProviderType::Immich
+        | ProviderType::Twake
         | ProviderType::ImageKit
         | ProviderType::Uploadcare
         | ProviderType::Cloudinary

@@ -327,7 +327,14 @@
             "protonCliTitle": "공식 Proton Drive CLI를 사용합니다",
             "protonCliBody": "proton.me/download/drive/cli에서 Proton Drive CLI를 설치한 뒤 터미널에서 proton-drive auth login을 실행하고 브라우저에서 마칩니다. AeroFTP는 비밀번호를 보지 않습니다. 세션은 OS 비밀 저장소에 남습니다.",
             "protonUnofficial": "Proton이 공식적으로 지원하지 않는 타사 앱입니다.",
-            "protonConnectHint": "\"연결\" 버튼은 이 컴퓨터에 이미 로그인한 CLI를 사용합니다. OS 사용자당 Proton 계정 하나."
+            "protonConnectHint": "\"연결\" 버튼은 이 컴퓨터에 이미 로그인한 CLI를 사용합니다. OS 사용자당 Proton 계정 하나.",
+            "twakeInstance": "Twake 주소",
+            "twakeInstanceHelp": "본인의 주소, 예를 들어 yourname.twake.app. 브라우저에서 복사한 Twake 페이지 주소를 붙여넣을 수도 있습니다.",
+            "twakeSignIn": "Twake로 로그인",
+            "twakeSignInAgain": "다시 로그인",
+            "twakeSignedIn": "로그인됨",
+            "twakeWaitingBrowser": "브라우저에서 로그인을 완료하세요...",
+            "twakeSignInHelp": "AeroFTP는 브라우저에서 Twake를 열고 파일에 대한 액세스만 요청합니다. Twake가 처음에 오류를 표시하면 브라우저에서 Twake에 로그인한 후 다시 로그인하세요. Twake 설정의 연결된 기기에서 언제든지 액세스를 취소할 수 있습니다."
         },
         "browser": {
             "remote": "원격",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "이 엔드포인트는 네트워크를 통해 일반 HTTP로 S3를 제공합니다. 이 프로필에서 허용합니다: 서명된 자격 증명과 모든 파일이 암호화되지 않은 채 네트워크를 통과합니다.",
             "discoverFilebase": "Filebase: S3 호환 객체 스토리지 (5 GB 무료)",
             "protonDesc": "Proton Drive CLI를 통해 연결합니다",
-            "protonTooltip": "Proton Drive CLI를 사용합니다 - 설치하고 브라우저에서 로그인한 뒤, AeroFTP가 GUI입니다"
+            "protonTooltip": "Proton Drive CLI를 사용합니다 - 설치하고 브라우저에서 로그인한 뒤, AeroFTP가 GUI입니다",
+            "twakeDesc": "Twake Drive(무료 5GB)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, 프랑스의 오픈소스 클라우드(Cozy Cloud가 이제 그 일부입니다), 5 GB 무료 제공",
+            "discoverTwake": "Linagora의 오픈소스 유럽 클라우드, 이제 Cozy Cloud의 새로운 보금자리 (5 GB 무료)"
         },
         "shortcuts": {
             "title": "단축키",

@@ -327,7 +327,14 @@
             "protonCliTitle": "ប្រើ Proton Drive CLI ផ្លូវការ",
             "protonCliBody": "ដំឡើង Proton Drive CLI ពី proton.me/download/drive/cli បន្ទាប់មកដំណើរការ proton-drive auth login ក្នុងស្ថានីយ ហើយបញ្ចប់ក្នុងកម្មវិធីរុករក។ AeroFTP មិនឃើញពាក្យសម្ងាត់របស់អ្នកទេ។ សម័យនៅក្នុងឃ្លាំងសម្ងាត់របស់ OS។",
             "protonUnofficial": "នេះជាកម្មវិធីភាគីទីបីដែល Proton មិនគាំទ្រផ្លូវការ។",
-            "protonConnectHint": "\"ភ្ជាប់\" ប្រើ CLI ដែលបានចូលរួចហើយនៅលើម៉ាស៊ីននេះ។ គណនី Proton មួយក្នុងមួយអ្នកប្រើ OS។"
+            "protonConnectHint": "\"ភ្ជាប់\" ប្រើ CLI ដែលបានចូលរួចហើយនៅលើម៉ាស៊ីននេះ។ គណនី Proton មួយក្នុងមួយអ្នកប្រើ OS។",
+            "twakeInstance": "អាសយដ្ឋាន Twake",
+            "twakeInstanceHelp": "អាសយដ្ឋានផ្ទាល់ខ្លួនរបស់អ្នក ឧទាហរណ៍ yourname.twake.app។ អ្នកក៏អាចបិទភ្ជាប់អាសយដ្ឋានទំព័រ Twake ណាមួយពីកម្មវិធីរុករករបស់អ្នកផងដែរ។",
+            "twakeSignIn": "ចូលគណនីជាមួយ Twake",
+            "twakeSignInAgain": "ចូលគណនីម្តងទៀត",
+            "twakeSignedIn": "បានចូលគណនី",
+            "twakeWaitingBrowser": "សូមបញ្ចប់ការចូលគណនីនៅក្នុងកម្មវិធីរុករករបស់អ្នក...",
+            "twakeSignInHelp": "AeroFTP បើក Twake នៅក្នុងកម្មវិធីរុករករបស់អ្នក ហើយស្នើសុំសិទ្ធិចូលប្រើតែឯកសាររបស់អ្នកប៉ុណ្ណោះ។ ប្រសិនបើ Twake បង្ហាញកំហុសលើកដំបូង សូមចូលគណនី Twake នៅក្នុងកម្មវិធីរុករក ហើយចូលគណនីម្តងទៀត។ អ្នកអាចដកហូតសិទ្ធិចូលប្រើនៅពេលណាក៏បាននៅក្នុងការកំណត់ Twake ឧបករណ៍ដែលបានភ្ជាប់។"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "ចំណុចបញ្ចប់នេះផ្តល់ S3 តាម HTTP ធម្មតាឆ្លងកាត់បណ្តាញ។ ទទួលយកវាសម្រាប់ប្រវត្តិរូបនេះ៖ ព័ត៌មានសម្គាល់ដែលបានចុះហត្ថលេខា និងឯកសារទាំងអស់ឆ្លងកាត់បណ្តាញដោយមិនបានអ៊ិនគ្រីប។",
             "discoverFilebase": "Filebase: ការផ្ទុកវត្ថុដែលត្រូវគ្នាជាមួយ S3 (5 GB ឥតគិតថ្លៃ)",
             "protonDesc": "តភ្ជាប់តាម Proton Drive CLI",
-            "protonTooltip": "ប្រើ Proton Drive CLI - ដំឡើង, ចូលក្នុងកម្មវិធីរុករក, AeroFTP គឺ GUI"
+            "protonTooltip": "ប្រើ Proton Drive CLI - ដំឡើង, ចូលក្នុងកម្មវិធីរុករក, AeroFTP គឺ GUI",
+            "twakeDesc": "Twake Drive (5 GB ឥតគិតថ្លៃ)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace ជាការផ្ទុកពពកប្រភពបើកចំហរបស់បារាំង (Cozy Cloud ឥឡូវនេះជាផ្នែកមួយរបស់វា) ជាមួយ 5 GB ឥតគិតថ្លៃ",
+            "discoverTwake": "ការផ្ទុកពពកអឺរ៉ុបប្រភពបើកចំហរដោយ Linagora ឥឡូវនេះជាទីតាំងថ្មីរបស់ Cozy Cloud (5 GB ឥតគិតថ្លៃ)"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",

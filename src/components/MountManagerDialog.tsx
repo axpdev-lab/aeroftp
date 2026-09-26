@@ -101,6 +101,7 @@ const PROTOCOL_COLORS: Record<string, string> = {
     github: 'from-gray-700 to-gray-500',
     googlephotos: 'from-amber-500 to-amber-400',
     immich: 'from-indigo-500 to-purple-400',
+    twake: 'from-sky-500 to-indigo-400',
 };
 
 const MountProfileIcon: React.FC<{ profile: ServerProfile }> = ({ profile }) => {

@@ -20,6 +20,7 @@
 // SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::aerorsync::real_wire::PreambleCompression;
 use crate::aerorsync::transport::RemoteExecRequest;
 use crate::aerorsync::types::SessionRole;
 
@@ -153,16 +154,65 @@ pub(crate) fn always_checksum_from_args(args: &[String]) -> Option<bool> {
     Some(short_options.contains('c'))
 }
 
+/// Whether the completed argv leaves the compression algorithm to the
+/// negotiated strings. Only `-z` with no fixed choice does: with
+/// `--new-compress`, `--compress-choice` or no `z` at all, a negotiating
+/// server sends the checksum list alone (`compat.c::negotiate_the_strings`).
+/// Read from the argv actually sent, like the metadata flags, so an
+/// `AEROFTP_RSYNC_SERVER_FLAGS` bundle without `z` is honoured too.
+pub(crate) fn preamble_compression_from_args(args: &[String]) -> PreambleCompression {
+    let fixed = args
+        .iter()
+        .any(|arg| arg == "--new-compress" || arg.starts_with("--compress-choice"));
+    let z = args
+        .iter()
+        .find(|arg| arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1)
+        .map(|bundle| bundle.split('.').next().unwrap_or(bundle).contains('z'))
+        .unwrap_or(false);
+    if z && !fixed {
+        PreambleCompression::Negotiated
+    } else {
+        PreambleCompression::FixedOrOff
+    }
+}
+
 pub const AERORSYNC_SERVER_PROGRAM: &str = "/opt/aerorsync/bin/aerorsync_serve";
 
 /// Working directory placeholder passed to `rsync --server`.
 /// In remote-shell mode rsync uses `.` as the source in the remote command.
 pub const REMOTE_WORKDIR_PLACEHOLDER: &str = ".";
 
+/// Drop `z` from the short options of a compact bundle, leaving the
+/// capability string after `e.` untouched: `-ltprIze.iLsfxCIvu` becomes
+/// `-ltprIe.iLsfxCIvu`, the form a stock client sends with `--new-compress`.
+fn without_compress_letter(bundle: &str) -> String {
+    match bundle.split_once("e.") {
+        Some((short, caps)) => format!("{}e.{caps}", short.replace('z', "")),
+        None => bundle.replace('z', ""),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RemoteCommandFlavor {
     WrapperParity,
     AerorsyncServe,
+}
+
+/// How the argv asks for compression. rsync 3.2+ negotiates the algorithm
+/// when it sees `-z`; rsync 3.0.x and 3.1.x negotiate nothing, and to them
+/// `-z` means the legacy `zlib` codec, which feeds matched block data
+/// through the compressor history and which this module cannot drive.
+/// Measured on 2026-09-24 with a stock rsync 3.2.7 client: `-z
+/// --new-compress` becomes `-ltprIe.iLsfxCIvu --new-compress --stats` on
+/// the server argv (the `z` leaves the compact bundle) and selects `zlibx`
+/// on both a 3.1.3 and a 3.2.7 server, without a compression list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ArgvCompression {
+    /// `-z` in the compact bundle, algorithm left to negotiation.
+    #[default]
+    Negotiated,
+    /// `--new-compress` instead of the `z`: zlibx, fixed on the command line.
+    NewCompress,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,6 +236,10 @@ pub struct RemoteCommandSpec {
     /// so the emitted command line is unchanged until a caller opts in via
     /// [`RemoteCommandSpec::with_xattrs`].
     pub preserve_xattrs: bool,
+    /// How compression is asked for. Negotiated on every constructor; the
+    /// transport switches to [`ArgvCompression::NewCompress`] for a peer
+    /// known to predate rsync 3.2.
+    pub compression: ArgvCompression,
     /// Compact-flag family. Production constructors pin [`CompactFlagProfile::Product`].
     flag_profile: CompactFlagProfile,
 }
@@ -199,6 +253,7 @@ impl RemoteCommandSpec {
             flavor: RemoteCommandFlavor::WrapperParity,
             preserve_acls: false,
             preserve_xattrs: false,
+            compression: ArgvCompression::Negotiated,
             flag_profile: CompactFlagProfile::Product,
         }
     }
@@ -211,6 +266,7 @@ impl RemoteCommandSpec {
             flavor: RemoteCommandFlavor::WrapperParity,
             preserve_acls: false,
             preserve_xattrs: false,
+            compression: ArgvCompression::Negotiated,
             flag_profile: CompactFlagProfile::Product,
         }
     }
@@ -240,6 +296,7 @@ impl RemoteCommandSpec {
             flavor: RemoteCommandFlavor::AerorsyncServe,
             preserve_acls: false,
             preserve_xattrs: false,
+            compression: ArgvCompression::Negotiated,
             flag_profile: CompactFlagProfile::Product,
         }
     }
@@ -252,6 +309,7 @@ impl RemoteCommandSpec {
             flavor: RemoteCommandFlavor::AerorsyncServe,
             preserve_acls: false,
             preserve_xattrs: false,
+            compression: ArgvCompression::Negotiated,
             flag_profile: CompactFlagProfile::Product,
         }
     }
@@ -267,6 +325,11 @@ impl RemoteCommandSpec {
     /// compact flag bundle. Off by default: see `compact_flags_for`.
     pub fn with_xattrs(mut self, preserve_xattrs: bool) -> Self {
         self.preserve_xattrs = preserve_xattrs;
+        self
+    }
+
+    pub fn with_compression(mut self, compression: ArgvCompression) -> Self {
+        self.compression = compression;
         self
     }
 
@@ -308,7 +371,12 @@ impl RemoteCommandSpec {
                         )
                         .to_string()
                     });
-                args.push(compact_flags);
+                if self.compression == ArgvCompression::NewCompress {
+                    args.push(without_compress_letter(&compact_flags));
+                    args.push("--new-compress".to_string());
+                } else {
+                    args.push(compact_flags);
+                }
                 if self.emit_stats {
                     args.push("--stats".to_string());
                 }
@@ -357,6 +425,95 @@ impl RemoteCommandSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A frozen stock argv from `capture/artifacts_real/frozen/legacy-peer`.
+    fn stock_argv(dir: &str) -> Vec<String> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(crate::aerorsync::fixtures::REAL_RSYNC_FROZEN_TRANSCRIPT_REL)
+            .join("legacy-peer")
+            .join(dir)
+            .join("remote_command.txt");
+        let line = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("frozen argv {} missing: {e}", path.display()));
+        line.split_whitespace()
+            .skip(1)
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn new_compress_upload_argv_is_the_stock_one() {
+        // Stock rsync 3.2.7, `-rltpI -z --new-compress --stats`, against
+        // rsync 3.1.3: the product flags with the `z` dropped and the long
+        // option placed before `--stats`.
+        let spec = RemoteCommandSpec::upload("/workspace/legacy/up_probe.bin")
+            .with_compression(ArgvCompression::NewCompress);
+        assert_eq!(spec.to_args(), stock_argv("313-stock-upload-new-compress"));
+    }
+
+    #[test]
+    fn new_compress_download_argv_has_the_stock_shape() {
+        // The stock download capture used no `-rltpI`, so only the shape
+        // is shared: bundle without `z`, then `--new-compress`, then `.`.
+        let stock = stock_argv("313-stock-download-new-compress");
+        assert_eq!(stock[3], "--new-compress");
+        let ours = RemoteCommandSpec::download("/t")
+            .with_compression(ArgvCompression::NewCompress)
+            .to_args();
+        assert_eq!(
+            ours,
+            [
+                "--server",
+                "--sender",
+                "-ltprIe.iLsfxCIvu",
+                "--new-compress",
+                ".",
+                "/t"
+            ]
+        );
+    }
+
+    #[test]
+    fn new_compress_keeps_every_other_letter_of_the_bundle() {
+        for (acls, xattrs) in [(false, true), (true, false), (true, true)] {
+            let negotiated = RemoteCommandSpec::upload("/t")
+                .with_acls(acls)
+                .with_xattrs(xattrs)
+                .to_args();
+            let fixed = RemoteCommandSpec::upload("/t")
+                .with_acls(acls)
+                .with_xattrs(xattrs)
+                .with_compression(ArgvCompression::NewCompress)
+                .to_args();
+            assert_eq!(fixed[1], negotiated[1].replacen('z', "", 1));
+            assert!(!fixed[1].split('.').next().unwrap().contains('z'));
+            assert_eq!(fixed[2], "--new-compress");
+        }
+    }
+
+    #[test]
+    fn preamble_compression_follows_the_argv_actually_sent() {
+        let product = RemoteCommandSpec::upload("/t").to_args();
+        assert_eq!(
+            preamble_compression_from_args(&product),
+            PreambleCompression::Negotiated
+        );
+        let fixed = RemoteCommandSpec::upload("/t")
+            .with_compression(ArgvCompression::NewCompress)
+            .to_args();
+        assert_eq!(
+            preamble_compression_from_args(&fixed),
+            PreambleCompression::FixedOrOff
+        );
+        let no_z: Vec<String> = ["--server", "-ltprIe.iLsfxCIvu", ".", "/t"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            preamble_compression_from_args(&no_z),
+            PreambleCompression::FixedOrOff
+        );
+    }
 
     // B.5 pin: production dispatch (`AerorsyncDeltaTransport::upload` and
     // `::download` in `delta_transport_impl.rs`) calls `RemoteCommandSpec::

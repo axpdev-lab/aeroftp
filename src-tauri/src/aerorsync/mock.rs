@@ -64,6 +64,14 @@ pub struct MockTransportConfig {
     /// reword this freely to prove that clean-EOF classification tracks
     /// the structured error class, never the wording.
     pub raw_exhausted_detail: Option<String>,
+    /// Behaviours for successive `open_raw_stream` calls, consumed front
+    /// first; once empty, every further open uses `raw_stream_behavior`.
+    /// Lets a test script a session that fails and the reopen after it.
+    pub raw_open_script: Vec<OpenRawStreamBehavior>,
+    /// What `RawRemoteShellTransport::endpoint` reports. `None` (the
+    /// default) keeps the driver's per-endpoint dialect cache out of the
+    /// test entirely.
+    pub endpoint: Option<(String, u16, String)>,
 }
 
 /// How the mock should behave when `open_raw_stream` is called. The
@@ -71,8 +79,12 @@ pub struct MockTransportConfig {
 /// and the outbound capture is likewise a flat `Vec<u8>`.
 #[derive(Debug, Clone)]
 pub enum OpenRawStreamBehavior {
-    Success { inbound: Vec<u8> },
+    Success {
+        inbound: Vec<u8>,
+    },
     Fail(String),
+    /// Fail with this exact error, kind included.
+    FailWith(AerorsyncError),
 }
 
 impl MockTransportConfig {
@@ -94,6 +106,8 @@ impl MockTransportConfig {
             read_exhausted: ReadExhaustedBehavior::Error,
             raw_stream_behavior: None,
             raw_exhausted_detail: None,
+            raw_open_script: Vec::new(),
+            endpoint: None,
         }
     }
 
@@ -120,6 +134,19 @@ impl MockTransportConfig {
     /// is attached either way; only the human-readable text changes.
     pub fn with_raw_exhausted_detail(mut self, detail: impl Into<String>) -> Self {
         self.raw_exhausted_detail = Some(detail.into());
+        self
+    }
+
+    /// Script the first `open_raw_stream` calls; see
+    /// [`MockTransportConfig::raw_open_script`].
+    pub fn with_raw_open_script(mut self, script: Vec<OpenRawStreamBehavior>) -> Self {
+        self.raw_open_script = script;
+        self
+    }
+
+    /// Report `(host, port, user)` as the transport's endpoint.
+    pub fn with_endpoint(mut self, host: &str, port: u16, user: &str) -> Self {
+        self.endpoint = Some((host.to_string(), port, user.to_string()));
         self
     }
 }
@@ -194,10 +221,14 @@ pub struct MockRemoteShellTransport {
     /// raw stream. None until `open_raw_stream` succeeds.
     pub last_raw_outbound: Arc<Mutex<Option<RawOutboundBuffer>>>,
     pub last_raw_shutdown: Arc<Mutex<Option<ShutdownFlag>>>,
+    /// Every `open_raw_stream` request, in order, failed opens included.
+    pub raw_exec_history: Arc<Mutex<Vec<RemoteExecRequest>>>,
+    raw_open_script: Mutex<VecDeque<OpenRawStreamBehavior>>,
 }
 
 impl MockRemoteShellTransport {
     pub fn new(config: MockTransportConfig) -> Self {
+        let raw_open_script = Mutex::new(VecDeque::from(config.raw_open_script.clone()));
         Self {
             config,
             last_exec: Arc::new(Mutex::new(None)),
@@ -206,6 +237,8 @@ impl MockRemoteShellTransport {
             last_shutdown: Arc::new(Mutex::new(None)),
             last_raw_outbound: Arc::new(Mutex::new(None)),
             last_raw_shutdown: Arc::new(Mutex::new(None)),
+            raw_exec_history: Arc::new(Mutex::new(Vec::new())),
+            raw_open_script,
         }
     }
 
@@ -397,15 +430,24 @@ impl MockRemoteShellTransport {
 impl RawRemoteShellTransport for MockRemoteShellTransport {
     type RawStream = MockRawStream;
 
+    fn endpoint(&self) -> Option<(String, u16, String)> {
+        self.config.endpoint.clone()
+    }
+
     async fn open_raw_stream(
         &self,
         request: RemoteExecRequest,
     ) -> Result<Self::RawStream, AerorsyncError> {
+        self.raw_exec_history.lock().unwrap().push(request.clone());
         {
             let mut exec_guard = self.last_exec.lock().unwrap();
             *exec_guard = Some(request);
         }
-        match &self.config.raw_stream_behavior {
+        let scripted = self.raw_open_script.lock().unwrap().pop_front();
+        match scripted
+            .as_ref()
+            .or(self.config.raw_stream_behavior.as_ref())
+        {
             Some(OpenRawStreamBehavior::Success { inbound }) => {
                 let (mut stream, outbound, shutdown) = MockRawStream::new(inbound.clone());
                 stream.exhausted_detail = self.config.raw_exhausted_detail.clone();
@@ -416,6 +458,7 @@ impl RawRemoteShellTransport for MockRemoteShellTransport {
             Some(OpenRawStreamBehavior::Fail(reason)) => {
                 Err(AerorsyncError::transport(reason.clone()))
             }
+            Some(OpenRawStreamBehavior::FailWith(error)) => Err(error.clone()),
             None => Err(AerorsyncError::transport(
                 "raw stream not configured on MockTransportConfig",
             )),

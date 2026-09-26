@@ -480,6 +480,27 @@
     ]
   },
   {
+    "company": "Twake Drive",
+    "logoId": "twake",
+    "country": "FR",
+    "freeGb": 5,
+    "freeNote": null,
+    "freeRequiresCard": false,
+    "regions": [
+      "FR"
+    ],
+    "protocols": [
+      {
+        "label": "OAuth",
+        "protocol": "twake",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "Jottacloud",
     "logoId": "jottacloud",
     "country": "NO",

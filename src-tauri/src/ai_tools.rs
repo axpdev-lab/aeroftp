@@ -1864,6 +1864,7 @@ pub(crate) async fn create_temp_provider(
         "koofr" => ProviderType::Koofr,
         "opendrive" => ProviderType::OpenDrive,
         "yandexdisk" => ProviderType::YandexDisk,
+        "twake" => ProviderType::Twake,
         "googledrive" | "dropbox" | "onedrive" | "box" | "pcloud" | "zohoworkdrive"
         | "fourshared" => {
             return Err(format!(

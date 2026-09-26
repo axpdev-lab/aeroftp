@@ -1,0 +1,1 @@
+rsync --server --sender -e.LsfxCIvu --new-compress . /workspace/legacy/src.bin

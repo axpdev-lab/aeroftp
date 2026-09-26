@@ -7,7 +7,7 @@ import { X, Plus, Loader2, Wifi, WifiOff, Cloud, CloudOff, Server, Lock, ShieldC
 import { Bucket } from './connectionMethodIcons';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
 import type { LocalTab } from '../types/aerofile';
-import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, GitLabLogo, ImmichLogo, PROVIDER_LOGOS } from './ProviderLogos';
+import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, GitLabLogo, ImmichLogo, TwakeLogo, PROVIDER_LOGOS } from './ProviderLogos';
 import { useTranslation } from '../i18n';
 import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../utils/providerConnectionMeta';
 import { middleClickClose } from '../utils/middleClick';
@@ -156,6 +156,8 @@ const ProviderIcon: React.FC<{
             return <span className={opacityClass}><GitLabLogo size={size} /></span>;
         case 'immich':
             return <span className={opacityClass}><ImmichLogo size={size} /></span>;
+        case 'twake':
+            return <span className={opacityClass}><TwakeLogo size={size} /></span>;
         case 'backblaze':
             return <Flame size={size} className={`${combinedClass} text-red-600`} />;
         case 'sftp':
@@ -193,6 +195,7 @@ const getProviderColor = (protocol: ProviderType | undefined): string => {
         case 'github': return 'text-gray-400';
         case 'gitlab': return 'text-orange-500';
         case 'immich': return 'text-indigo-500';
+        case 'twake': return 'text-sky-500';
         case 'backblaze': return 'text-red-600';
         case 'sftp': return 'text-emerald-500';  // SFTP - emerald (lock)
         case 'ftps': return 'text-green-500';    // FTPS - green (shield)
