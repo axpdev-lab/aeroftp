@@ -198,6 +198,9 @@ pub struct FourSharedProvider {
     /// path -> file_id cache
     file_cache: HashMap<String, String>,
     account_email: Option<String>,
+    /// Replaces `UPLOAD_BASE` in tests.
+    #[cfg(test)]
+    upload_base_override: Option<String>,
 }
 
 impl FourSharedProvider {
@@ -218,7 +221,18 @@ impl FourSharedProvider {
             folder_cache: HashMap::new(),
             file_cache: HashMap::new(),
             account_email: None,
+            #[cfg(test)]
+            upload_base_override: None,
         }
+    }
+
+    /// `UPLOAD_BASE`, pointed at a local server in tests.
+    fn upload_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(base) = &self.upload_base_override {
+            return base;
+        }
+        UPLOAD_BASE
     }
 
     /// Build OAuth1Credentials from config
@@ -606,56 +620,6 @@ impl FourSharedProvider {
 
         // H2: Size-limited download to prevent OOM on large files
         super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
-    }
-
-    /// Upload bytes to 4shared folder (FS-009: uses retry)
-    #[allow(dead_code)]
-    async fn upload_bytes(
-        &self,
-        folder_id: &str,
-        file_name: &str,
-        content: Vec<u8>,
-    ) -> Result<Option<String>, ProviderError> {
-        let sign_url = format!("{}/files", UPLOAD_BASE);
-        let extra = [("folderId", folder_id), ("fileName", file_name)];
-        let auth = oauth1::authorization_header("POST", &sign_url, &self.credentials(), &extra);
-
-        let url = format!(
-            "{}/files?folderId={}&fileName={}",
-            UPLOAD_BASE,
-            folder_id,
-            oauth1::percent_encode(file_name)
-        );
-
-        let request = self
-            .client
-            .post(&url)
-            .header("Authorization", &auth)
-            .header("Content-Type", "application/octet-stream")
-            .body(content)
-            .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        let resp = send_with_retry(&self.client, request, &Self::retry_config())
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!(
-                "Upload failed ({}): {}",
-                status, body
-            )));
-        }
-
-        let file_id: Option<String> = resp
-            .json::<FourSharedUploadResponse>()
-            .await
-            .ok()
-            .and_then(|r| r.id);
-
-        Ok(file_id)
     }
 
     /// Extract a JSON array from the body: tries raw array, then wrapper object keys.
@@ -1145,13 +1109,12 @@ impl StorageProvider for FourSharedProvider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(|e| ProviderError::Other(format!("Open local file: {}", e)))?;
-        let stream = tokio_util::io::ReaderStream::new(file);
-        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
-            stream,
-            crate::transfer_dag::governor::TransferDirection::Upload,
-        ));
+        // The bytes are reported as they go out; 100 percent waits for the
+        // server's answer (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
+        let body = progress.file_body(file);
 
-        let sign_url = format!("{}/files", UPLOAD_BASE);
+        let sign_url = format!("{}/files", self.upload_base());
         let extra = [
             ("folderId", folder_id.as_str()),
             ("fileName", file_name.as_str()),
@@ -1160,7 +1123,7 @@ impl StorageProvider for FourSharedProvider {
 
         let url = format!(
             "{}/files?folderId={}&fileName={}",
-            UPLOAD_BASE,
+            self.upload_base(),
             folder_id,
             oauth1::percent_encode(&file_name)
         );
@@ -1198,10 +1161,8 @@ impl StorageProvider for FourSharedProvider {
             self.file_cache.insert(normalized, fid);
         }
 
-        // FS-007: Report upload completion to progress callback
-        if let Some(ref cb) = on_progress {
-            cb(file_size, file_size);
-        }
+        // FS-007: the upload is acknowledged
+        progress.complete();
 
         Ok(())
     }
@@ -1671,6 +1632,41 @@ mod tests {
             access_token_secret: secrecy::SecretString::from("ats".to_string()),
         };
         FourSharedProvider::new(config)
+    }
+
+    /// Upload a 300 KB file to the root folder through a local fixture that
+    /// answers `POST /files` with `status`; returns the outcome and the
+    /// progress updates.
+    async fn upload_against_fixture(status: u16) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![Route::post("/files", status, r#"{"id":"abc"}"#)]).await;
+        let mut provider = test_provider();
+        provider.upload_base_override = Some(base);
+        provider.root_folder_id = "r1".to_string();
+        provider.connected = true;
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// The upload streams the file: the bar follows the bytes going out and
+    /// reaches 100 only on 4shared's success answer. It used to report the
+    /// total once, after the response.
+    #[tokio::test]
+    async fn upload_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = upload_against_fixture(200).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = upload_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     #[test]

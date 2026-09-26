@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "name": "Site mirror",
+  "description": "Nightly mirror of the site",
+  "created_by": "AeroFTP v4.2.0",
+  "path_patterns": [
+    {
+      "local": "/home/u/site",
+      "remote": "/www/site"
+    }
+  ],
+  "profile": {
+    "direction": "local_to_remote",
+    "compare_timestamp": true,
+    "compare_size": true,
+    "compare_checksum": true,
+    "delete_orphans": true,
+    "parallel_streams": 3,
+    "compression_mode": "on",
+    "verify_policy": "full"
+  },
+  "exclude_patterns": [
+    "*.tmp",
+    "cache/"
+  ],
+  "schedule": null
+}
