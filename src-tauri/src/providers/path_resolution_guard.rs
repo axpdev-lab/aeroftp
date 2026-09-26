@@ -54,7 +54,7 @@ fn sites<'a>(source: &'a str, needle: &str) -> Vec<(usize, &'a str)> {
 /// satisfies `matches`. A struct declared inside a function owns its fields
 /// only up to its closing brace; the lines after it belong to the function
 /// again (`resume_upload` in OneDrive declares one).
-fn sites_where<'a>(source: &'a str, matches: impl Fn(&str) -> bool) -> Vec<(usize, &'a str)> {
+fn sites_where(source: &str, matches: impl Fn(&str) -> bool) -> Vec<(usize, &str)> {
     let mut current = "";
     // The indentation of an open struct's closing brace, and the function
     // to go back to after it.
