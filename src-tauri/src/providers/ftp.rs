@@ -1228,6 +1228,23 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::AuthenticationFailed(e.to_string()))?;
 
+        // Implicit FTPS encrypts the session from the first byte, but a server
+        // keeps the data connections in the clear until the client asks for
+        // them to be protected, as in explicit FTPS (RFC 4217: `PBSZ 0`, then
+        // `PROT P`). suppaftp's implicit connect wraps every data connection
+        // in TLS without sending either, so against a server that honours the
+        // default (vsftpd) every transfer died in the data handshake.
+        if matches!(self.config.tls_mode, FtpTlsMode::Implicit) {
+            for command in ["PBSZ 0", "PROT P"] {
+                stream
+                    .custom_command(command, &[Status::CommandOk])
+                    .await
+                    .map_err(|e| {
+                        ProviderError::ConnectionFailed(format!("{command} refused: {e}"))
+                    })?;
+            }
+        }
+
         // Set binary transfer mode
         stream
             .transfer_type(FileType::Binary)
