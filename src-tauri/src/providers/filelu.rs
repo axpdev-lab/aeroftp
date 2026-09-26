@@ -1001,6 +1001,136 @@ impl FileLuProvider {
         }
     }
 
+    /// Move and/or rename `entry` from `norm_from` to `norm_to`, whose
+    /// destination the caller has found free.
+    async fn relocate(
+        &mut self,
+        entry: &CacheEntry,
+        norm_from: &str,
+        norm_to: &str,
+        from_parent: &str,
+        to_parent: &str,
+    ) -> Result<(), ProviderError> {
+        let old_name = norm_from.rsplit('/').next().unwrap_or("").to_string();
+        let new_name = norm_to.rsplit('/').next().unwrap_or("").to_string();
+        let moves = from_parent != to_parent;
+        let renames = new_name != old_name;
+        if moves && renames {
+            // FileLu keeps two items with one name side by side, so neither
+            // step may land on a taken name. The move keeps the old name, so
+            // when the destination folder already holds it the rename goes
+            // first, in the source folder.
+            let old_name_at_destination =
+                format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
+            if self.path_is_taken(&old_name_at_destination).await? {
+                let new_name_at_source =
+                    format!("{}/{}", from_parent.trim_end_matches('/'), new_name);
+                if self.path_is_taken(&new_name_at_source).await? {
+                    return Err(ProviderError::Other(format!(
+                        "Cannot move {norm_from} to {norm_to} in two steps without two items sharing a \
+                         name: {old_name_at_destination} and {new_name_at_source} both exist"
+                    )));
+                }
+                self.rename_entry(entry, norm_from, &new_name).await?;
+                self.move_entry(entry, &new_name_at_source, to_parent)
+                    .await
+                    .map_err(|e| {
+                        ProviderError::Other(format!(
+                            "renamed {norm_from} to {new_name_at_source}, but moving it to {to_parent} \
+                             failed, so it is still there: {e}"
+                        ))
+                    })?;
+            } else {
+                self.move_entry(entry, norm_from, to_parent).await?;
+                self.rename_entry(entry, &old_name_at_destination, &new_name)
+                    .await
+                    .map_err(|e| {
+                        ProviderError::Other(format!(
+                            "moved {norm_from} to {old_name_at_destination}, but renaming it to \
+                             {new_name} failed, so it is still there: {e}"
+                        ))
+                    })?;
+            }
+        } else if moves {
+            self.move_entry(entry, norm_from, to_parent).await?;
+        } else if renames {
+            self.rename_entry(entry, norm_from, &new_name).await?;
+        }
+        Ok(())
+    }
+
+    /// Whether `path` names an item, file or folder.
+    async fn path_is_taken(&mut self, path: &str) -> Result<bool, ProviderError> {
+        match self.resolve_path_entry(path).await {
+            Ok(_) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Move `entry`, now at `current_path`, into the folder `to_parent`
+    /// under the name it has. A folder moves by id (v1 `folder/move`, v2 has
+    /// no folder move), a file by path (v2 `file/set_folder`).
+    async fn move_entry(
+        &mut self,
+        entry: &CacheEntry,
+        current_path: &str,
+        to_parent: &str,
+    ) -> Result<(), ProviderError> {
+        let url = if entry.is_dir {
+            let dest_fld_id = self.resolve_fld_id(to_parent).await?;
+            self.api_url_with(
+                "folder/move",
+                &[
+                    ("fld_id", &entry.fld_id.to_string()),
+                    ("dest_fld_id", &dest_fld_id.to_string()),
+                ],
+            )
+        } else {
+            let dest_folder = format!("{}/", to_parent.trim_end_matches('/'));
+            self.api_v2_url(
+                "file/set_folder",
+                &[
+                    ("file_path", current_path),
+                    ("destination_folder_path", &dest_folder),
+                ],
+            )
+        };
+        let resp = self.get_with_retry(&url).await?;
+        Self::ensure_api_ok(resp).await
+    }
+
+    /// Rename `entry`, now at `current_path`, to `new_name` in the folder it
+    /// is in. A file is renamed by its file code (v1 `file/rename`), which
+    /// cannot pick another item; a folder by path (v2 `folder/rename`), which
+    /// the caller has made unambiguous by checking that no other item has
+    /// that path.
+    async fn rename_entry(
+        &mut self,
+        entry: &CacheEntry,
+        current_path: &str,
+        new_name: &str,
+    ) -> Result<(), ProviderError> {
+        let url = if entry.is_dir {
+            self.api_v2_url(
+                "folder/rename",
+                &[("folder_path", current_path), ("name", new_name)],
+            )
+        } else if !entry.file_code.is_empty() {
+            self.api_url_with(
+                "file/rename",
+                &[("file_code", &entry.file_code), ("name", new_name)],
+            )
+        } else {
+            self.api_v2_url(
+                "file/rename",
+                &[("file_path", current_path), ("name", new_name)],
+            )
+        };
+        let resp = self.get_with_retry(&url).await?;
+        Self::ensure_api_ok(resp).await
+    }
+
     fn invalidate_cache_under(&mut self, parent: &str) {
         let prefix = Self::normalize_path(parent);
         let prefix_slash = if prefix == "/" {
@@ -1892,91 +2022,27 @@ impl StorageProvider for FileLuProvider {
             .unwrap_or_else(|| "/".to_string());
 
         let entry = self.resolve_path_entry(&norm_from).await?;
-        let old_name = norm_from.rsplit('/').next().unwrap_or("").to_string();
 
         // The trait promises no overwrite, and FileLu puts a second item with
         // the same name next to the first (found live on 2026-09-25: a file
         // moved onto an existing name left two `a.txt` in the folder).
-        if norm_to != norm_from {
-            match self.resolve_path_entry(&norm_to).await {
-                Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
-                Err(ProviderError::NotFound(_)) => {}
-                Err(e) => return Err(e),
-            }
+        if norm_to == norm_from {
+            return Ok(());
+        }
+        if self.path_is_taken(&norm_to).await? {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
         }
 
-        // v2: path-based rename and move
-        if from_parent == to_parent {
-            // Pure rename: same directory
-            if entry.is_dir {
-                let url = self.api_v2_url(
-                    "folder/rename",
-                    &[("folder_path", &norm_from), ("name", &new_name)],
-                );
-                let resp = self.get_with_retry(&url).await?;
-                Self::ensure_api_ok(resp).await?;
-            } else {
-                let url = self.api_v2_url(
-                    "file/rename",
-                    &[("file_path", &norm_from), ("name", &new_name)],
-                );
-                let resp = self.get_with_retry(&url).await?;
-                Self::ensure_api_ok(resp).await?;
-            }
-        } else {
-            // Cross-directory move: v2 path-based
-            if entry.is_dir {
-                // Folder move: not yet available in v2: fallback to v1
-                let dest_fld_id = self.resolve_fld_id(&to_parent).await?;
-                let url = self.api_url_with(
-                    "folder/move",
-                    &[
-                        ("fld_id", &entry.fld_id.to_string()),
-                        ("dest_fld_id", &dest_fld_id.to_string()),
-                    ],
-                );
-                let resp = self.get_with_retry(&url).await?;
-                Self::ensure_api_ok(resp).await?;
-                if new_name != old_name {
-                    // After move, rename at new location via v2
-                    let moved_path = format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
-                    let url = self.api_v2_url(
-                        "folder/rename",
-                        &[("folder_path", &moved_path), ("name", &new_name)],
-                    );
-                    let resp = self.get_with_retry(&url).await?;
-                    Self::ensure_api_ok(resp).await?;
-                }
-            } else {
-                // File move: v2 set_folder by path
-                let dest_folder = format!("{}/", to_parent.trim_end_matches('/'));
-                let url = self.api_v2_url(
-                    "file/set_folder",
-                    &[
-                        ("file_path", &norm_from),
-                        ("destination_folder_path", &dest_folder),
-                    ],
-                );
-                let resp = self.get_with_retry(&url).await?;
-                Self::ensure_api_ok(resp).await?;
-                if new_name != old_name {
-                    // After move, rename at new location via v2
-                    let moved_path = format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
-                    let url = self.api_v2_url(
-                        "file/rename",
-                        &[("file_path", &moved_path), ("name", &new_name)],
-                    );
-                    let resp = self.get_with_retry(&url).await?;
-                    Self::ensure_api_ok(resp).await?;
-                }
-            }
-        }
+        let outcome = self
+            .relocate(&entry, &norm_from, &norm_to, &from_parent, &to_parent)
+            .await;
 
+        // Also after a failure: a step that went through has changed paths.
         self.path_cache.remove(&norm_from);
         self.invalidate_cache_under(&norm_from);
         self.invalidate_cache_under(&from_parent);
         self.invalidate_cache_under(&to_parent);
-        Ok(())
+        outcome
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2341,6 +2407,150 @@ mod tests {
             "{outcome:?}"
         );
         assert!(moves.lock().unwrap().is_empty());
+    }
+
+    /// A connected provider whose cache knows `tree` (`path`, and the fld_id
+    /// of a folder or the file code of a file), pointed at a double that
+    /// lists every folder as empty and answers every other call Ok. Returns
+    /// it and the `path?query` of every call that is not a listing.
+    async fn provider_with_cached_tree(
+        tree: &[(&str, &str)],
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let listing = uri.path().ends_with("/list");
+            if !listing {
+                let query = uri.query().unwrap_or("").replace("key=k&", "");
+                seen.lock().unwrap().push(format!("{}?{query}", uri.path()));
+            }
+            async move {
+                if listing {
+                    r#"{"status":200,"msg":"OK","result":{"files":[],"folders":[]}}"#
+                } else {
+                    r#"{"status":200,"msg":"OK"}"#
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        for (path, id) in tree {
+            let is_dir = id.parse::<u64>().is_ok();
+            provider.path_cache.insert(
+                path.to_string(),
+                CacheEntry {
+                    is_dir,
+                    fld_id: id.parse().unwrap_or(0),
+                    fld_token: None,
+                    file_code: if is_dir {
+                        String::new()
+                    } else {
+                        id.to_string()
+                    },
+                    size: 0,
+                    modified: None,
+                    hash: None,
+                },
+            );
+        }
+        (provider, calls)
+    }
+
+    /// The move keeps the old name, and the rename that followed named the
+    /// file by that path in the destination: with a second `a.txt` there it
+    /// could rename the wrong one. The rename now names it by its file code.
+    #[tokio::test]
+    async fn a_move_under_a_new_name_renames_the_file_by_its_code() {
+        let (mut provider, calls) =
+            provider_with_cached_tree(&[("/src", "11"), ("/dst", "22"), ("/src/a.txt", "AAA")])
+                .await;
+        provider
+            .rename("/src/a.txt", "/dst/b.txt")
+            .await
+            .expect("move");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "/apiv2/file/set_folder?file_path=/src/a.txt&destination_folder_path=/dst/",
+                "/api/file/rename?file_code=AAA&name=b.txt",
+            ]
+        );
+    }
+
+    /// FileLu keeps two items with one name side by side, so a move onto a
+    /// folder that already holds the old name renames first, in the source
+    /// folder, and never leaves two `a.txt` in `/dst`, even for a moment.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/src", "11"),
+            ("/dst", "22"),
+            ("/src/a.txt", "AAA"),
+            ("/dst/a.txt", "OTHER"),
+        ])
+        .await;
+        provider
+            .rename("/src/a.txt", "/dst/b.txt")
+            .await
+            .expect("move");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "/api/file/rename?file_code=AAA&name=b.txt",
+                "/apiv2/file/set_folder?file_path=/src/b.txt&destination_folder_path=/dst/",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_folder_move_whose_destination_holds_the_old_name_renames_first() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/src", "11"),
+            ("/dst", "22"),
+            ("/src/sub", "33"),
+            ("/dst/sub", "44"),
+        ])
+        .await;
+        provider.rename("/src/sub", "/dst/new").await.expect("move");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "/apiv2/folder/rename?folder_path=/src/sub&name=new",
+                "/api/folder/move?fld_id=33&dest_fld_id=22",
+            ]
+        );
+    }
+
+    /// When the old name is taken at the destination and the new one at the
+    /// source, either order would put two items under one name.
+    #[tokio::test]
+    async fn a_move_that_cannot_avoid_a_shared_name_changes_nothing() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/src", "11"),
+            ("/dst", "22"),
+            ("/src/a.txt", "AAA"),
+            ("/src/b.txt", "BBB"),
+            ("/dst/a.txt", "OTHER"),
+        ])
+        .await;
+        let outcome = provider.rename("/src/a.txt", "/dst/b.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
     }
 
     /// FileLu answers HTTP 200 and puts the refusal in the body: reading
