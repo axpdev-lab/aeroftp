@@ -70,6 +70,7 @@ pub mod sts;
 pub mod swift;
 pub mod totp_helper;
 pub mod tpslimit;
+pub mod twake;
 pub mod types;
 pub mod uploadcare;
 pub mod webdav;
@@ -127,6 +128,7 @@ pub use proton::{ProtonCliProvider, ProtonConfig};
 pub use s3::S3Provider;
 pub use sftp::SftpProvider;
 pub use swift::SwiftProvider;
+pub use twake::TwakeProvider;
 pub use uploadcare::UploadcareProvider;
 pub use webdav::WebDavProvider;
 pub use yandex_disk::YandexDiskProvider;
@@ -1773,6 +1775,12 @@ impl ProviderFactory {
                 let immich_config = immich::ImmichConfig::from_provider_config(config)?;
                 Ok(Box::new(ImmichProvider::new(immich_config)))
             }
+            ProviderType::Twake => {
+                // Built from the sign-in blob stored as the profile password, so
+                // the MCP pool, the CLI profile path and AeroCloud reach it too.
+                let twake_config = twake::TwakeConfig::from_provider_config(config)?;
+                Ok(Box::new(TwakeProvider::new(twake_config)))
+            }
             ProviderType::ImageKit => {
                 let imagekit_config = imagekit::ImageKitConfig::from_provider_config(config)?;
                 Ok(Box::new(ImageKitProvider::new(imagekit_config)))
@@ -1842,6 +1850,7 @@ impl ProviderFactory {
             ProviderType::Swift,
             ProviderType::GooglePhotos,
             ProviderType::Immich,
+            ProviderType::Twake,
             ProviderType::ImageKit,
             ProviderType::Uploadcare,
             ProviderType::Backblaze,

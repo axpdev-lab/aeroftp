@@ -327,7 +327,14 @@
             "protonCliTitle": "Proton Drive CLI ofiziala erabiltzen du",
             "protonCliBody": "Instalatu Proton Drive CLI proton.me/download/drive/cli helbidetik, exekutatu proton-drive auth login terminalean eta amaitu nabigatzailean. AeroFTP-k ez du inoiz zure pasahitza ikusten; saioa sistema eragilearen sekretu-biltegian geratzen da.",
             "protonUnofficial": "Hirugarrenen aplikazioa da hau, Proton-ek ofizialki onartzen ez duena.",
-            "protonConnectHint": "\"Konektatu\" botoiak makina honetan dagoeneko hasitako CLI erabiltzen du. Proton kontu bat sistema eragileko erabiltzaile bakoitzeko."
+            "protonConnectHint": "\"Konektatu\" botoiak makina honetan saioa hasita duen CLI erabiltzen du. Proton kontu bat sistema eragileko erabiltzaile bakoitzeko.",
+            "twakeInstance": "Twake helbidea",
+            "twakeInstanceHelp": "Zure helbidea, adibidez yourname.twake.app. Zure nabigatzailetik edozein Twake orriren helbidea itsatsi dezakezu.",
+            "twakeSignIn": "Hasi saioa Twakerekin",
+            "twakeSignInAgain": "Hasi saioa berriro",
+            "twakeSignedIn": "Saioa hasita",
+            "twakeWaitingBrowser": "Amaitu saioa hastea zure nabigatzailean...",
+            "twakeSignInHelp": "AeroFTPk Twake zure nabigatzailean irekitzen du eta zure fitxategietarako sarbidea baino ez du eskatzen. Twakek lehen aldiz errorea erakusten badu, hasi saioa Twaken nabigatzailean eta saiatu berriro. Sarbidea edonoiz ken dezakezu Twakeren ezarpenetan, Konektatutako gailuak."
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Amaiera-puntu honek S3 zerbitzatzen du HTTP soilaren bidez, sarea zeharkatuz. Onartu profil honetarako: sinatutako kredentzialak eta fitxategi guztiak zifratu gabe zeharkatzen dute sarea.",
             "discoverFilebase": "Filebase: S3-rekin bateragarria den objektu-biltegia (5 GB doan)",
             "protonDesc": "Proton Drive CLI bidez konektatzen da",
-            "protonTooltip": "Proton Drive CLI erabiltzen du - instalatu, hasi saioa nabigatzailean, AeroFTP da GUI"
+            "protonTooltip": "Proton Drive CLI erabiltzen du - instalatu, hasi saioa nabigatzailean, AeroFTP da GUI",
+            "twakeDesc": "Twake Drive (5 GB doan)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, iturburu irekiko hodei frantsesa (Cozy Cloud orain horren zati da) 5 GB doan",
+            "discoverTwake": "Linagoraren iturburu irekiko hodei europarra, orain Cozy Cloud-en etxe berria (5 GB doan)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

@@ -256,6 +256,11 @@ pub struct CompareOptions {
     /// [`crate::sync_backup::BackupDir::parse`] refuses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup_dir: Option<String>,
+    /// The sync root's `.aeroignore`, when the caller scanned with it
+    /// (AeroCloud). The compare reads the same rule the scan did, so a `!`
+    /// that re-includes a path the configured list excludes survives both.
+    #[serde(skip)]
+    pub aeroignore: Option<std::sync::Arc<crate::sync_ignore::AeroIgnore>>,
 }
 
 impl CompareOptions {
@@ -269,6 +274,32 @@ impl CompareOptions {
             .as_deref()
             .map(crate::sync_backup::BackupDir::parse)
             .transpose()
+    }
+
+    /// Whether the compare leaves `path` out: the `.aeroignore` rule with its
+    /// `!` overrides when there is one, the configured list otherwise.
+    fn excludes_path(
+        &self,
+        excludes: &crate::sync_exclude::ExcludeMatcher,
+        path: &str,
+        is_dir: bool,
+    ) -> bool {
+        match &self.aeroignore {
+            Some(rules) => rules.should_exclude(path, is_dir, excludes),
+            None => excludes.is_excluded(path),
+        }
+    }
+
+    /// The compiled exclude list for a comparison builder, which cannot return
+    /// an error. Every entry point compiles the list first and reports an
+    /// invalid pattern, so the fallback is unreachable in practice; if it is
+    /// ever reached it fails closed (every path excluded, nothing copied or
+    /// deleted) instead of failing open.
+    pub fn excludes_or_everything(&self) -> crate::sync_exclude::ExcludeMatcher {
+        compile_excludes(&self.exclude_patterns).unwrap_or_else(|e| {
+            tracing::error!("{e}: the comparison excludes every path");
+            crate::sync_exclude::ExcludeMatcher::everything()
+        })
     }
 }
 
@@ -296,6 +327,7 @@ impl Default for CompareOptions {
             min_age_secs: None,
             max_age_secs: None,
             backup_dir: None,
+            aeroignore: None,
         }
     }
 }
@@ -825,51 +857,13 @@ pub fn validate_relative_path(relative_path: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Check if a path matches any exclude pattern
-pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
-    let path_lower = path.to_lowercase();
-    let path_segments: Vec<&str> = path_lower.split(&['/', '\\'][..]).collect();
-
-    for pattern in patterns {
-        let pattern_lower = pattern.to_lowercase();
-        // CLAUDE-AV-B3-09: a trailing '/' marks a directory pattern
-        // (`node_modules/`, the natural gitignore spelling the .aeroignore
-        // template teaches); strip it so it matches the `node_modules` segment
-        // instead of failing open. A pattern with an interior '/' (`build/output`)
-        // is a path fragment matched at a '/' boundary rather than never matching.
-        let pattern_clean = pattern_lower.trim_end_matches('/');
-        if pattern_clean.is_empty() {
-            continue;
-        }
-
-        // Simple glob matching
-        if let Some(ext) = pattern_clean.strip_prefix('*') {
-            // *.ext pattern
-            if path_lower.ends_with(ext) {
-                return true;
-            }
-        } else if pattern_clean.contains('/') {
-            // Multi-segment fragment: match anchored at a path boundary.
-            let norm = path_lower.replace('\\', "/");
-            if norm == pattern_clean
-                || norm.starts_with(&format!("{}/", pattern_clean))
-                || norm.contains(&format!("/{}/", pattern_clean))
-                || norm.ends_with(&format!("/{}", pattern_clean))
-            {
-                return true;
-            }
-        } else {
-            // Match against path segments (not just substring)
-            // This prevents false positives like "node" matching "node_modules"
-            for segment in &path_segments {
-                if segment == &pattern_clean {
-                    return true;
-                }
-            }
-        }
-    }
-
-    false
+/// Compile an exclude list with the one matcher every sync surface shares
+/// ([`crate::sync_exclude`]). An invalid pattern is returned as an error for the
+/// caller to report, never dropped.
+pub fn compile_excludes(
+    patterns: &[String],
+) -> Result<crate::sync_exclude::ExcludeMatcher, String> {
+    crate::sync_exclude::ExcludeMatcher::new(patterns).map_err(|e| e.to_string())
 }
 
 /// Check if a file should be filtered out by size/age constraints.
@@ -1166,6 +1160,7 @@ pub fn build_comparison_results(
     let backup_dir = options.parsed_backup_dir().ok().flatten();
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
+    let excludes = options.excludes_or_everything();
 
     for path in all_paths {
         // Reject paths with traversal components
@@ -1174,8 +1169,12 @@ pub fn build_comparison_results(
             continue;
         }
 
+        let local = local_files.get(&path);
+        let remote = remote_files.get(&path);
+
         // Skip excluded paths
-        if should_exclude(&path, &options.exclude_patterns) {
+        let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
+        if options.excludes_path(&excludes, &path, is_dir) {
             continue;
         }
         if backup_dir
@@ -1184,9 +1183,6 @@ pub fn build_comparison_results(
         {
             continue;
         }
-
-        let local = local_files.get(&path);
-        let remote = remote_files.get(&path);
 
         // Apply size/age filters
         if should_filter(local, options) || should_filter(remote, options) {
@@ -3259,6 +3255,7 @@ pub fn classify_with_summary(
     let backup_dir = options.parsed_backup_dir().ok().flatten();
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
+    let excludes = options.excludes_or_everything();
 
     for path in all_paths {
         // Reject paths with traversal components
@@ -3267,7 +3264,11 @@ pub fn classify_with_summary(
             continue;
         }
 
-        if should_exclude(&path, &options.exclude_patterns) {
+        let local = local_files.get(&path);
+        let remote = remote_files.get(&path);
+
+        let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
+        if options.excludes_path(&excludes, &path, is_dir) {
             continue;
         }
         if backup_dir
@@ -3276,9 +3277,6 @@ pub fn classify_with_summary(
         {
             continue;
         }
-
-        let local = local_files.get(&path);
-        let remote = remote_files.get(&path);
 
         // Apply size/age filters
         if should_filter(local, options) || should_filter(remote, options) {
@@ -5944,6 +5942,8 @@ mod tests {
 
     #[test]
     fn test_should_exclude() {
+        let should_exclude =
+            |p: &str, pats: &[String]| compile_excludes(pats).unwrap().is_excluded(p);
         let patterns = vec!["node_modules".to_string(), "*.pyc".to_string()];
 
         assert!(should_exclude("node_modules/package/file.js", &patterns));
@@ -7556,6 +7556,8 @@ mod tests {
     /// Pre-fix they compared each path segment verbatim and never matched.
     #[test]
     fn should_exclude_matches_dir_and_multi_segment_patterns() {
+        let should_exclude =
+            |p: &str, pats: &[String]| compile_excludes(pats).unwrap().is_excluded(p);
         let patterns = vec![
             "node_modules/".to_string(),
             "build/output".to_string(),
@@ -7991,6 +7993,39 @@ mod tests {
             checksum: None,
             checksum_alg: None,
         }
+    }
+
+    /// A `!` in `.aeroignore` that re-includes a path the configured list
+    /// excludes survived AeroCloud's scans and was then dropped by the
+    /// compare, which read the configured list alone.
+    #[test]
+    fn the_compare_reads_the_aeroignore_reinclusion_the_scan_read() {
+        let local = HashMap::from([
+            (
+                "build/keep.txt".to_string(),
+                mk_file_info("build/keep.txt", 1, None),
+            ),
+            (
+                "build/drop.txt".to_string(),
+                mk_file_info("build/drop.txt", 1, None),
+            ),
+        ]);
+        let rules = crate::sync_ignore::AeroIgnore::parse("!build/keep.txt").unwrap();
+        let opts = CompareOptions {
+            exclude_patterns: vec!["build".to_string()],
+            aeroignore: Some(std::sync::Arc::new(rules)),
+            ..Default::default()
+        };
+        let report = classify_with_summary(local.clone(), HashMap::new(), &opts, None);
+        let paths: Vec<_> = report
+            .differences
+            .iter()
+            .map(|c| c.relative_path.as_str())
+            .collect();
+        assert_eq!(paths, vec!["build/keep.txt"]);
+        let legacy = build_comparison_results(local, HashMap::new(), &opts);
+        let paths: Vec<_> = legacy.iter().map(|c| c.relative_path.as_str()).collect();
+        assert_eq!(paths, vec!["build/keep.txt"]);
     }
 
     #[allow(dead_code)]

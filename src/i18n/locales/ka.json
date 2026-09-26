@@ -327,7 +327,14 @@
             "protonCliTitle": "იყენებს ოფიციალურ Proton Drive CLI-ს",
             "protonCliBody": "დააყენეთ Proton Drive CLI მისამართიდან proton.me/download/drive/cli, შემდეგ ტერმინალში გაუშვით proton-drive auth login და დაასრულეთ ბრაუზერში. AeroFTP თქვენს პაროლს არასოდეს ხედავს; სესია რჩება OS-ის საიდუმლო საცავში.",
             "protonUnofficial": "ეს არის მესამე მხარის აპლიკაცია, რომელსაც Proton ოფიციალურად არ უჭერს მხარს.",
-            "protonConnectHint": "\"დაკავშირება\" იყენებს ამ მანქანაზე უკვე შესულ CLI-ს. ერთი Proton ანგარიში OS-ის თითოეულ მომხმარებელზე."
+            "protonConnectHint": "\"დაკავშირება\" იყენებს ამ მანქანაზე უკვე შესულ CLI-ს. ერთი Proton ანგარიში OS-ის თითოეულ მომხმარებელზე.",
+            "twakeInstance": "Twake-ის მისამართი",
+            "twakeInstanceHelp": "თქვენი საკუთარი მისამართი, მაგალითად yourname.twake.app. ასევე შეგიძლიათ ჩასვათ Twake-ის ნებისმიერი გვერდის მისამართი თქვენი ბრაუზერიდან.",
+            "twakeSignIn": "შესვლა Twake-ით",
+            "twakeSignInAgain": "ხელახლა შესვლა",
+            "twakeSignedIn": "შესული ხართ",
+            "twakeWaitingBrowser": "დაასრულეთ შესვლა თქვენს ბრაუზერში...",
+            "twakeSignInHelp": "AeroFTP ხსნის Twake-ს თქვენს ბრაუზერში და ითხოვს წვდომას მხოლოდ თქვენს ფაილებზე. თუ Twake პირველად შეცდომას აჩვენებს, შედით Twake-ში ბრაუზერში და კვლავ შედით სისტემაში. წვდომის გაუქმება შეგიძლიათ ნებისმიერ დროს Twake-ის პარამეტრებში, დაკავშირებული მოწყობილობები."
         },
         "browser": {
             "remote": "დისტანციური",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "ეს ბოლოწერტილი S3-ს უბრალო HTTP-ით, ქსელის გავლით ემსახურება. მიიღეთ ეს ამ პროფილისთვის: ხელმოწერილი ავტორიზაციის მონაცემები და ყოველი ფაილი ქსელს დაუშიფრავად კვეთს.",
             "discoverFilebase": "Filebase: S3-თან თავსებადი ობიექტების საცავი (5 GB უფასოდ)",
             "protonDesc": "უკავშირდება Proton Drive CLI-ით",
-            "protonTooltip": "იყენებს Proton Drive CLI-ს - დააყენეთ, შედით ბრაუზერში, AeroFTP არის GUI"
+            "protonTooltip": "იყენებს Proton Drive CLI-ს - დააყენეთ, შედით ბრაუზერში, AeroFTP არის GUI",
+            "twakeDesc": "Twake Drive (5 GB უფასოდ)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, ფრანგული ღია კოდის ღრუბელი (Cozy Cloud ახლა მისი ნაწილია) 5 GB უფასოდ",
+            "discoverTwake": "Linagora-ს ღია კოდის ევროპული ღრუბელი, ახლა Cozy Cloud-ის ახალი სახლი (5 GB უფასოდ)"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

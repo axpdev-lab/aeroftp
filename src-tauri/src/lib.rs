@@ -248,6 +248,7 @@ mod sync_badge;
 #[cfg(test)]
 mod sync_command_audit;
 pub mod sync_core;
+pub mod sync_exclude;
 mod sync_ignore;
 mod sync_scheduler;
 pub mod sync_script;
@@ -4287,26 +4288,63 @@ async fn upload_files_batch(
 }
 
 /// Preserve remote file modification time on a downloaded local file.
-/// Parses common ISO 8601 / timestamp formats and sets the file's mtime via `filetime`.
+/// Parses the timestamp shapes providers report (see [`parse_remote_mtime`])
+/// and sets the file's mtime via `filetime`.
 /// Best-effort: silently ignores failures (e.g. permission denied, unparseable timestamp).
 pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
-    let Some(modified_str) = remote_modified else {
+    let Some(secs) = remote_modified.and_then(parse_remote_mtime) else {
         return;
     };
-    // Strip trailing 'Z' suffix (UTC marker added in v2.9.6) before NaiveDateTime parsing
-    let clean_str = modified_str.strip_suffix('Z').unwrap_or(modified_str);
-    let ts = chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
+    let ft = filetime::FileTime::from_unix_time(secs, 0);
+    let _ = filetime::set_file_mtime(local_path, ft);
+}
+
+/// Unix seconds of a provider-reported modification time: naive
+/// `YYYY-MM-DD HH:MM:SS` / ISO 8601 (read as UTC, optional trailing `Z` added
+/// in v2.9.6), RFC 3339 with an offset, and RFC 2822 (`Thu, 24 Sep 2026
+/// 19:41:46 GMT`), which is what WebDAV `getlastmodified` carries. Without the
+/// RFC 2822 arm no WebDAV download ever kept its remote mtime, and a later
+/// sync saw every downloaded file as changed.
+pub fn parse_remote_mtime(modified_str: &str) -> Option<i64> {
+    let trimmed = modified_str.trim();
+    // FTP MLSD-derived listings end in `Z` or `UTC` with no offset.
+    let clean_str = trimmed
+        .strip_suffix('Z')
+        .or_else(|| trimmed.strip_suffix("UTC"))
+        .unwrap_or(trimmed);
+    chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
-        .or_else(|_| {
-            // Try parsing full RFC 3339 (with timezone) → strip tz suffix
-            chrono::DateTime::parse_from_rfc3339(modified_str).map(|dt| dt.naive_utc())
-        })
-        .ok();
-    if let Some(ndt) = ts {
-        let secs = ndt.and_utc().timestamp();
-        let ft = filetime::FileTime::from_unix_time(secs, 0);
-        let _ = filetime::set_file_mtime(local_path, ft);
+        .map(|ndt| ndt.and_utc().timestamp())
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(trimmed).map(|dt| dt.timestamp()))
+        .or_else(|_| chrono::DateTime::parse_from_rfc2822(trimmed).map(|dt| dt.timestamp()))
+        .ok()
+}
+
+#[cfg(test)]
+mod parse_remote_mtime_tests {
+    use super::parse_remote_mtime;
+
+    // 2026-09-24T19:41:46Z
+    const EXPECTED: i64 = 1_790_278_906;
+
+    #[test]
+    fn reads_every_shape_providers_report() {
+        for s in [
+            "2026-09-24 19:41:46",
+            "2026-09-24T19:41:46",
+            "2026-09-24T19:41:46Z",
+            "2026-09-24T19:41:46.123456Z",
+            "2026-09-24T21:41:46+02:00",
+            "Thu, 24 Sep 2026 19:41:46 GMT",
+            "Thu, 24 Sep 2026 21:41:46 +0200",
+            "2026-09-24 19:41:46UTC",
+        ] {
+            assert_eq!(parse_remote_mtime(s), Some(EXPECTED), "{s}");
+        }
+        assert_eq!(parse_remote_mtime("yesterday"), None);
+        assert_eq!(parse_remote_mtime("?"), None);
+        assert_eq!(parse_remote_mtime(""), None);
     }
 }
 
@@ -11088,9 +11126,9 @@ use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use sync::{
     classify_sync_error, classify_with_summary, delete_sync_journal, journal_sig_filename,
     load_sync_index, load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample,
-    should_exclude, sign_journal, verify_local_file, CanaryResult, CanarySampleResult,
-    CanarySummary, CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus,
-    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+    sign_journal, verify_local_file, CanaryResult, CanarySampleResult, CanarySummary,
+    CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus, SyncErrorInfo, SyncIndex,
+    SyncJournal, VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -11722,6 +11760,8 @@ pub async fn get_local_files_recursive_checked(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut files = HashMap::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
     let base = PathBuf::from(base_path);
@@ -11814,7 +11854,7 @@ pub async fn get_local_files_recursive_checked(
                 .unwrap_or_else(|_| name.clone());
 
             // Skip excluded paths
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -11959,6 +11999,8 @@ pub async fn get_local_files_recursive_parallel(
     max_concurrent_hashes: usize,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<HashMap<String, FileInfo>, String> {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let base = PathBuf::from(base_path);
     if !base.exists() {
         return Ok(HashMap::new());
@@ -11995,7 +12037,7 @@ pub async fn get_local_files_recursive_parallel(
                 .map(|p| p.to_string_lossy().to_string().replace('\\', "/"))
                 .unwrap_or_else(|_| name.clone());
 
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -12150,6 +12192,8 @@ async fn get_remote_files_recursive_with_progress(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut files = HashMap::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
     // (absolute_path, depth): depth limit prevents infinite loops on servers
@@ -12221,7 +12265,7 @@ async fn get_remote_files_recursive_with_progress(
                 }
             };
 
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -19751,6 +19795,7 @@ pub fn run() {
             provider_commands::oauth2_complete_auth,
             provider_commands::oauth2_connect,
             provider_commands::oauth2_full_auth,
+            provider_commands::twake_sign_in,
             provider_commands::oauth2_redirect_uri,
             provider_commands::oauth2_has_tokens,
             provider_commands::oauth2_logout,

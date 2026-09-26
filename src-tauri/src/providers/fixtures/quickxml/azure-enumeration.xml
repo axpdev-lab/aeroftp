@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults ServiceEndpoint="https://myacc.blob.core.windows.net/" ContainerName="mycontainer">
+  <Prefix></Prefix>
+  <MaxResults>2</MaxResults>
+  <Blobs>
+    <BlobPrefix>
+      <Name>reports/</Name>
+    </BlobPrefix>
+    <Blob>
+      <Name>readme.txt</Name>
+      <Properties>
+        <Last-Modified>Mon, 01 Jan 2026 12:00:00 GMT</Last-Modified>
+        <Content-Length>1234</Content-Length>
+        <Content-Type>text/plain</Content-Type>
+        <BlobType>BlockBlob</BlobType>
+      </Properties>
+    </Blob>
+    <Blob>
+      <Name>a&amp;b.txt</Name>
+      <Properties>
+        <Content-Length>4</Content-Length>
+        <BlobType>BlockBlob</BlobType>
+      </Properties>
+    </Blob>
+  </Blobs>
+  <NextMarker>2!ABC</NextMarker>
+</EnumerationResults>

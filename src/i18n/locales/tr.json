@@ -327,7 +327,14 @@
             "protonCliTitle": "Resmi Proton Drive CLI kullanır",
             "protonCliBody": "Proton Drive CLI'yi proton.me/download/drive/cli adresinden kurun, ardından terminalde proton-drive auth login çalıştırıp tarayıcıda tamamlayın. AeroFTP parolanızı asla görmez; oturum işletim sisteminin gizli deposunda kalır.",
             "protonUnofficial": "Bu, Proton tarafından resmi olarak desteklenmeyen üçüncü taraf bir uygulamadır.",
-            "protonConnectHint": "\"Bağlan\", bu makinede zaten oturum açmış CLI'yi kullanır. İşletim sistemi kullanıcısı başına bir Proton hesabı."
+            "protonConnectHint": "\"Bağlan\", bu makinede zaten oturum açmış CLI'yi kullanır. İşletim sistemi kullanıcısı başına bir Proton hesabı.",
+            "twakeInstance": "Twake adresi",
+            "twakeInstanceHelp": "Kendi adresiniz, örneğin yourname.twake.app. Ayrıca tarayıcınızdan herhangi bir Twake sayfa adresini de yapıştırabilirsiniz.",
+            "twakeSignIn": "Twake ile giriş yap",
+            "twakeSignInAgain": "Tekrar giriş yap",
+            "twakeSignedIn": "Giriş yapıldı",
+            "twakeWaitingBrowser": "Tarayıcınızda girişi tamamlayın...",
+            "twakeSignInHelp": "AeroFTP, tarayıcınızda Twake'i açar ve yalnızca dosyalarınıza erişim ister. Twake ilk seferde hata gösterirse, tarayıcıda Twake'e giriş yapın ve tekrar giriş yapın. Erişimi istediğiniz zaman Twake Ayarları, Bağlı cihazlar bölümünden iptal edebilirsiniz."
         },
         "browser": {
             "remote": "Uzak",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Bu uç nokta S3'ü ağ üzerinden şifrelenmemiş HTTP ile sunuyor. Bu profil için kabul edin: imzalı kimlik bilgileri ve her dosya ağı şifrelenmemiş olarak geçer.",
             "discoverFilebase": "Filebase: S3 uyumlu nesne depolama (5 GB ücretsiz)",
             "protonDesc": "Proton Drive CLI üzerinden bağlanır",
-            "protonTooltip": "Proton Drive CLI kullanır - kurun, tarayıcıda oturum açın, AeroFTP GUI'dir"
+            "protonTooltip": "Proton Drive CLI kullanır - kurun, tarayıcıda oturum açın, AeroFTP GUI'dir",
+            "twakeDesc": "Twake Drive (5 GB ücretsiz)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Fransız açık kaynaklı bulut (Cozy Cloud artık onun bir parçası) 5 GB ücretsiz ile",
+            "discoverTwake": "Linagora'nın açık kaynaklı Avrupa bulutu, artık Cozy Cloud'un yeni yuvası (5 GB ücretsiz)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

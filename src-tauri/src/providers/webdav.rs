@@ -715,7 +715,7 @@ impl WebDavProvider {
                 }
                 Ok(Event::Text(ref t)) => {
                     if let Some(tag) = current_tag.as_deref() {
-                        let text = String::from_utf8_lossy(t.as_ref()).to_string();
+                        let text = t.as_ref().to_string();
                         if !text.trim().is_empty() {
                             match tag {
                                 "getcontentlength" => size_text.push_str(&text),
@@ -1777,10 +1777,7 @@ impl WebDavProvider {
                 Err(_) => break,
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(ref e)) => {
-                    let local = e.local_name();
-                    let tag = std::str::from_utf8(local.as_ref())
-                        .unwrap_or("")
-                        .to_string();
+                    let tag = e.local_name().as_ref().to_string();
                     match tag.as_str() {
                         "response" => {
                             in_response = true;
@@ -1805,14 +1802,14 @@ impl WebDavProvider {
                 }
                 Ok(Event::Empty(ref e)) => {
                     let local = e.local_name();
-                    let tag = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                    let tag = local.as_ref();
                     if tag == "collection" && in_resourcetype {
                         is_collection = true;
                     }
                 }
                 Ok(Event::End(ref e)) => {
                     let local = e.local_name();
-                    let tag = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                    let tag = local.as_ref();
                     match tag {
                         "response" if in_response => {
                             in_response = false;
@@ -1847,7 +1844,7 @@ impl WebDavProvider {
                 }
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let raw = String::from_utf8_lossy(e.as_ref()).to_string();
+                        let raw = e.as_ref().to_string();
                         // Whitespace-only fragments are indentation EXCEPT
                         // inside name/path-bearing tags, where the space is
                         // payload (e.g. `a&amp; &amp;b.txt`).
@@ -2249,7 +2246,7 @@ impl WebDavProvider {
 
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let raw = String::from_utf8_lossy(e.as_ref()).to_string();
+                        let raw = e.as_ref().to_string();
                         // Whitespace-only fragments are indentation EXCEPT
                         // inside href/displayname, where the space is part
                         // of the name (e.g. `a&amp; &amp;b.txt`).
@@ -2289,7 +2286,7 @@ impl WebDavProvider {
 
                 Ok(Event::CData(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                        let text = e.as_ref().trim().to_string();
                         if !text.is_empty() {
                             match tag.as_str() {
                                 "href" => href = text,
@@ -2369,7 +2366,7 @@ impl WebDavProvider {
                 }
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let raw = String::from_utf8_lossy(e.as_ref()).to_string();
+                        let raw = e.as_ref().to_string();
                         if !raw.trim().is_empty() {
                             if tag == "iscollection" && raw.trim() == "1" {
                                 props.insert("_is_collection".to_string(), "true".to_string());
@@ -2383,7 +2380,7 @@ impl WebDavProvider {
                 }
                 Ok(Event::CData(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                        let text = e.as_ref().trim().to_string();
                         if !text.is_empty() {
                             if tag == "iscollection" && text == "1" {
                                 props.insert("_is_collection".to_string(), "true".to_string());
@@ -2412,11 +2409,10 @@ impl WebDavProvider {
 
 /// Strip namespace prefix from an XML element name, returning an owned String.
 /// e.g. "d:response" -> "response", "DAV:href" -> "href", "response" -> "response"
-fn local_name(raw: &[u8]) -> String {
-    let s = std::str::from_utf8(raw).unwrap_or("");
-    match s.rfind(':') {
-        Some(pos) => s[pos + 1..].to_string(),
-        None => s.to_string(),
+fn local_name(raw: &str) -> String {
+    match raw.rfind(':') {
+        Some(pos) => raw[pos + 1..].to_string(),
+        None => raw.to_string(),
     }
 }
 
@@ -6424,5 +6420,41 @@ mod tests {
             "rotated",
             "the sibling must not still be presenting the dead nonce"
         );
+    }
+}
+
+#[cfg(test)]
+mod recorded_propfind_fixture {
+    use secrecy::SecretString;
+
+    use super::super::WebDavConfig;
+    use super::WebDavProvider;
+
+    #[test]
+    fn parses_recorded_propfind() {
+        let provider = WebDavProvider::new(WebDavConfig {
+            url: "https://example.com/dav".to_string(),
+            username: "user".to_string(),
+            password: SecretString::from("pass".to_string()),
+            initial_path: None,
+            provider_id: None,
+            verify_cert: true,
+            anonymous: false,
+        })
+        .expect("provider");
+        let xml = include_str!("fixtures/quickxml/webdav-propfind.xml");
+        let entries = provider
+            .parse_propfind_response(xml, "/dav")
+            .expect("parse");
+        let file = entries.iter().find(|e| e.name == "file.txt").expect("file");
+        assert!(!file.is_dir);
+        assert_eq!(file.size, 1024);
+        let escaped = entries
+            .iter()
+            .find(|e| e.name == "a&b.txt")
+            .expect("entity");
+        assert_eq!(escaped.size, 7);
+        let dir = entries.iter().find(|e| e.name == "subdir").expect("dir");
+        assert!(dir.is_dir);
     }
 }

@@ -6538,6 +6538,12 @@ const App: React.FC = () => {
         username: params.username || 'api-key',
       };
     }
+    if (protocol === 'twake') {
+      return {
+        ...params,
+        port: params.port || 443,
+      };
+    }
     return params;
   };
 
@@ -7628,7 +7634,9 @@ const App: React.FC = () => {
                       ? `InfiniCLOUD ${effectiveParams.username}`
                       : protocol === 'immich'
                         ? (effectiveParams.providerId === 'pixelunion' ? 'PixelUnion' : effectiveParams.server.replace(/^https?:\/\//, ''))
-                        : effectiveParams.server.split(':')[0]);
+                        : protocol === 'twake'
+                          ? effectiveParams.server.replace(/^https?:\/\//, '')
+                          : effectiveParams.server.split(':')[0]);
       const protocolLabel = connectionViaLabel(effectiveParams);
       // SEC: mask credentials in log-only provider name to prevent data leakage
       const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)
@@ -17212,7 +17220,9 @@ const App: React.FC = () => {
                           ? normalizedParams.username
                           : normalizedParams.protocol === 'immich'
                             ? (normalizedParams.providerId === 'pixelunion' ? 'PixelUnion' : normalizedParams.server.replace(/^https?:\/\//, ''))
-                            : normalizedParams.server.split(':')[0]);
+                            : normalizedParams.protocol === 'twake'
+                              ? normalizedParams.server.replace(/^https?:\/\//, '')
+                              : normalizedParams.server.split(':')[0]);
                   const protocolLabel = connectionViaLabel(normalizedParams);
                   // SEC: mask credentials in log-only provider name to prevent data leakage
                   const maskedProviderName = normalizedParams.username && providerName.includes(normalizedParams.username)
