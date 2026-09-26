@@ -31,8 +31,12 @@
 //! the asset root after decoding.
 
 use std::convert::Infallible;
+use std::future::Future;
+use std::io;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use http_body_util::Full;
@@ -44,7 +48,9 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::{TokioIo, TokioTimer};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::sync::Semaphore;
+use tokio::time::Sleep;
 
 /// The header `localhost_security::wait_for_owned_server` looks for (it
 /// compares names case-insensitively, as HTTP does).
@@ -83,12 +89,18 @@ pub(crate) struct Limits {
     /// accept, which confines a local connection flood to this server instead of
     /// letting it exhaust the process's file descriptors.
     pub max_connections: usize,
+    /// A response write that makes no progress for this long ends the
+    /// connection. Without it a client that asks for a large asset and never
+    /// reads keeps its connection slot forever, and enough of them hold every
+    /// slot the webview needs.
+    pub write_stall_timeout: Duration,
 }
 
 impl Limits {
     pub(crate) const APP: Limits = Limits {
         header_read_timeout: Duration::from_secs(10),
         max_connections: 128,
+        write_stall_timeout: Duration::from_secs(10),
     };
 }
 
@@ -155,7 +167,10 @@ async fn accept_loop(listener: std::net::TcpListener, site: Arc<Site>, limits: L
             let served = http1::Builder::new()
                 .timer(TokioTimer::new())
                 .header_read_timeout(limits.header_read_timeout)
-                .serve_connection(TokioIo::new(stream), service)
+                .serve_connection(
+                    TokioIo::new(StallGuard::new(stream, limits.write_stall_timeout)),
+                    service,
+                )
                 .await;
             // A client that went away, or one that was too slow: its own
             // connection ends, nothing else does.
@@ -164,6 +179,82 @@ async fn accept_loop(listener: std::net::TcpListener, site: Arc<Site>, limits: L
             }
             drop(slot);
         });
+    }
+}
+
+/// A connection stream whose writes fail once they stop making progress. Reads
+/// are left to hyper's header timer.
+struct StallGuard<S> {
+    inner: S,
+    stall: Duration,
+    stalled_since: Option<Pin<Box<Sleep>>>,
+}
+
+impl<S> StallGuard<S> {
+    fn new(inner: S, stall: Duration) -> Self {
+        Self {
+            inner,
+            stall,
+            stalled_since: None,
+        }
+    }
+
+    /// Called when the inner write is pending: start the stall clock, or fail
+    /// once it has run out.
+    fn stalled<T>(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<T>> {
+        let stall = self.stall;
+        let timer = self
+            .stalled_since
+            .get_or_insert_with(|| Box::pin(tokio::time::sleep(stall)));
+        match timer.as_mut().poll(cx) {
+            Poll::Ready(()) => Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the client stopped reading the response",
+            ))),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+impl<S: AsyncRead + Unpin> AsyncRead for StallGuard<S> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.get_mut().inner).poll_read(cx, buf)
+    }
+}
+
+impl<S: AsyncWrite + Unpin> AsyncWrite for StallGuard<S> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        let this = self.get_mut();
+        match Pin::new(&mut this.inner).poll_write(cx, buf) {
+            Poll::Pending => this.stalled(cx),
+            ready => {
+                this.stalled_since = None;
+                ready
+            }
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        match Pin::new(&mut this.inner).poll_flush(cx) {
+            Poll::Pending => this.stalled(cx),
+            ready => {
+                this.stalled_since = None;
+                ready
+            }
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
     }
 }
 
@@ -294,7 +385,7 @@ mod tests {
         );
         source.assets.insert(
             "/big.bin".into(),
-            (vec![7u8; 8 << 20], "application/octet-stream", None),
+            (vec![7u8; 16 << 20], "application/octet-stream", None),
         );
         let asked = source.asked.clone();
         let addr = start(source, "127.0.0.1:0".parse().unwrap(), NONCE.into(), limits).unwrap();
@@ -531,7 +622,7 @@ mod tests {
             send(&mut stream, "GET", "/big.bin", host(addr));
             let mut first = [0u8; 1024];
             let _ = stream.read(&mut first).unwrap();
-            // Dropped with most of the 8 MiB body unread: the server's write fails.
+            // Dropped with most of the 16 MiB body unread: the server's write fails.
         }
         let mut stream = connect(addr);
         send(&mut stream, "GET", "/index.html", host(addr));
@@ -566,6 +657,26 @@ mod tests {
         let mut again = connect(addr);
         send(&mut again, "GET", "/index.html", host(addr));
         assert_eq!(read_response(&mut again, false).0, 200);
+    }
+
+    /// The write side of a slowloris: ask for an asset far larger than the
+    /// socket buffers and never read it. With one slot, the next connection is
+    /// served only if the stalled one gives its slot back.
+    #[test]
+    fn a_client_that_stops_reading_gives_its_slot_back() {
+        let limits = Limits {
+            max_connections: 1,
+            write_stall_timeout: Duration::from_millis(300),
+            ..Limits::APP
+        };
+        let (addr, _) = serve(limits);
+        let mut stalled = connect(addr);
+        send(&mut stalled, "GET", "/big.bin", host(addr));
+        std::thread::sleep(Duration::from_millis(1500));
+        let mut next = connect(addr);
+        send(&mut next, "GET", "/index.html", host(addr));
+        assert_eq!(read_response(&mut next, false).0, 200);
+        drop(stalled);
     }
 
     #[test]
