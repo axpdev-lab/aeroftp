@@ -6088,8 +6088,9 @@ struct SyncCycleStats {
     error_count: u32,
     /// Changed pairs left as they are (the JSON `conflicts_open`).
     conflicts_open: Vec<String>,
-    /// Emptied directories kept after a failed removal (the JSON `dirs_kept`).
-    dirs_kept: u32,
+    /// Emptied directories kept after a failed removal, with the reason: the
+    /// JSON `dirs_kept`, the same list in the `sync` result and the watch cycle.
+    dirs_kept: Vec<CliSyncKeptDir>,
 }
 
 impl From<i32> for SyncCycleStats {
@@ -49569,7 +49570,7 @@ async fn cmd_sync(
             ec_sidecar_delete_failed: 0,
             error_count: 0,
             conflicts_open,
-            dirs_kept: 0,
+            dirs_kept: Vec::new(),
         };
     }
 
@@ -50510,7 +50511,7 @@ async fn cmd_sync(
         ec_sidecar_delete_failed: ec_counters.sidecar_delete_failed,
         error_count: errors.len() as u32,
         conflicts_open,
-        dirs_kept: dirs_kept.len() as u32,
+        dirs_kept,
     }
 }
 
@@ -58045,7 +58046,7 @@ async fn cmd_sync_watch(
                 if !stats.conflicts_open.is_empty() {
                     payload["conflicts_open"] = serde_json::json!(stats.conflicts_open);
                 }
-                if stats.dirs_kept > 0 {
+                if !stats.dirs_kept.is_empty() {
                     payload["dirs_kept"] = serde_json::json!(stats.dirs_kept);
                 }
                 if error_correction_pct.is_some() {
@@ -79858,8 +79859,14 @@ mod tests {
             &cli,
         );
         assert_eq!(stats.exit_code, 0);
+        let kept: Vec<&str> = stats
+            .dirs_kept
+            .iter()
+            .map(|dir| dir.path.as_str())
+            .collect();
         assert_eq!(
-            stats.dirs_kept, 1,
+            kept,
+            vec!["old"],
             "RMD refused the directory the listing showed empty"
         );
     }
