@@ -1741,12 +1741,27 @@ pub(crate) fn set_aside_move_failed(
 /// place but could not delete the one set aside as `aside`. The replace is
 /// done, so it is a success: an error made callers undo or retry a replace
 /// that had happened (a WebDAV client retrying the MOVE, an edit deleting
-/// its temporary). What is left over goes to the log instead.
+/// its temporary). What is left over goes to the log, and to stderr: the log
+/// reaches no one where no subscriber is installed (the CLI without `-v` or
+/// `RUST_LOG`, `serve webdav`), and the leftover is a hidden name holding
+/// the old content, which no one would otherwise find.
 pub(crate) fn report_set_aside_leftover(to: &str, aside: &str, error: &ProviderError) {
-    tracing::warn!(
+    let message = format!(
         "replaced {to}, but deleting the previous version, set aside as {aside}, failed: \
          {error}; delete it by hand"
     );
+    tracing::warn!("{message}");
+    eprintln!("warning: {message}");
+    #[cfg(test)]
+    REPORTED_LEFTOVERS.with(|reported| reported.borrow_mut().push(aside.to_string()));
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The set-aside paths [`report_set_aside_leftover`] reported on this
+    /// thread (`#[tokio::test]` runs its runtime on the test's own thread).
+    pub(crate) static REPORTED_LEFTOVERS: std::cell::RefCell<Vec<String>> =
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Refuse `rename(from, to)` when `to` is taken, on a backend whose own move

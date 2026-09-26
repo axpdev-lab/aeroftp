@@ -2675,6 +2675,31 @@ mod tests {
             calls.lock().unwrap()[1],
             "/api/file/rename?file_code=NEW&name=a.txt"
         );
+        let reported = crate::providers::REPORTED_LEFTOVERS.with(|r| r.borrow().clone());
+        assert_eq!(reported.len(), 1, "{reported:?}");
+        assert!(
+            reported[0].starts_with("/dst/.a.txt.aeroftp-replaced-"),
+            "the leftover is named where it is: {reported:?}"
+        );
+    }
+
+    /// A file moved onto a folder the listing shows is refused before any
+    /// call, like a move onto a file: FileLu keeps two items with one name.
+    #[tokio::test]
+    async fn a_file_onto_an_existing_folder_is_refused_before_any_call() {
+        let (mut provider, calls) =
+            provider_with_cached_tree(&[("/dst", "22"), ("/dst/c.txt", "CCC"), ("/dst/d", "33")])
+                .await;
+        let outcome = provider.rename("/dst/c.txt", "/dst/d").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
     }
 
     /// A replace puts one file in place of another. Onto a folder it set the
