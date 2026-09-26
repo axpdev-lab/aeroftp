@@ -782,7 +782,8 @@ impl JottacloudProvider {
             JfsLook::Entry(found) => Ok(Some(*found)),
             JfsLook::Absent => Ok(None),
             JfsLook::IncompleteUpload => Err(ProviderError::AlreadyExists(format!(
-                "{to}: an upload that has not completed holds the name"
+                "{to}: an upload that has not completed holds the name; `rm` it, or `put` \
+                 the file again to complete it"
             ))),
         }
     }
@@ -1846,7 +1847,8 @@ impl StorageProvider for JottacloudProvider {
             }
             JfsLook::IncompleteUpload => {
                 return Err(ProviderError::AlreadyExists(format!(
-                    "{to}: an upload that has not completed holds the name"
+                    "{to}: an upload that has not completed holds the name; `rm` it, or \
+                     `put` the file again to complete it"
                 )));
             }
             JfsLook::Absent => {}
@@ -2069,8 +2071,14 @@ impl JottacloudProvider {
         // or the agent must resolve against the working directory, otherwise it
         // silently targets a same-named entry in the account root (#397).
         let resolved = self.resolve_path(path);
-        // Ask what it is first (see `delete_param`).
-        let is_dir = self.stat(&resolved).await?.is_dir;
+        // Ask what it is first (see `delete_param`). An upload that has not
+        // completed is a file here: it is not listed, but it holds its name,
+        // and `rm` is how that name is freed.
+        let is_dir = match self.look_at(&resolved).await? {
+            JfsLook::Entry(entry) => entry.is_dir,
+            JfsLook::IncompleteUpload => false,
+            JfsLook::Absent => return Err(ProviderError::NotFound(resolved)),
+        };
         let url = format!(
             "{}?{}=true",
             self.jfs_url(&resolved),
@@ -3460,6 +3468,18 @@ mod tests {
             .await
             .expect("a trashed file's name is free");
         assert_eq!(posts.lock().unwrap().len(), 1);
+    }
+
+    /// An upload that has not completed holds its name for `mv`, but `rm`
+    /// did not see it (stat says it is not there), so nothing could free
+    /// the name. `rm` now moves it to the trash like any file.
+    #[tokio::test]
+    async fn rm_frees_the_name_an_unfinished_upload_holds() {
+        let (mut provider, posts) = provider_on_jfs().await;
+        provider.delete("/incomplete.txt").await.expect("rm");
+        let posts = posts.lock().unwrap().clone();
+        assert_eq!(posts.len(), 1, "{posts:?}");
+        assert_eq!(posts[0], "dl=true", "a file goes to the trash");
     }
 
     /// A 200 without a completed file read as NotFound: a file still being
