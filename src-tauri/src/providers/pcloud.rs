@@ -8,7 +8,6 @@
 
 use async_trait::async_trait;
 use chrono;
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::info;
@@ -1013,33 +1012,13 @@ impl StorageProvider for PCloudProvider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        // The callback is Send, not Sync. Serialize access between the body
-        // stream and the final API acknowledgement without detaching a task.
-        let progress = std::sync::Arc::new(std::sync::Mutex::new(progress));
-        let stream_progress = progress.clone();
-        let mut sent = 0u64;
-        let stream = tokio_util::io::ReaderStream::new(file).inspect(move |chunk| {
-            if let Ok(bytes) = chunk {
-                sent += bytes.len() as u64;
-                // The body being on the wire is not the upload being accepted:
-                // pCloud reports failure in a JSON `result` inside an HTTP 200,
-                // which is read after the last chunk has gone out. Reporting
-                // `file_size / file_size` here would show a completed transfer
-                // and then fail it. The terminal update belongs to the success
-                // path below, where the acknowledgement has been read.
-                if sent < file_size {
-                    if let Ok(callback) = stream_progress.lock() {
-                        if let Some(cb) = callback.as_ref() {
-                            cb(sent, file_size);
-                        }
-                    }
-                }
-            }
-        });
-        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
-            stream,
-            crate::transfer_dag::governor::TransferDirection::Upload,
-        ));
+        // The body being on the wire is not the upload being accepted: pCloud
+        // reports failure in a JSON `result` inside an HTTP 200, read after
+        // the last chunk has gone out. The streamed updates stop short of the
+        // total, and 100 percent is reported below, once the acknowledgement
+        // has been read (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(progress, file_size);
+        let body = progress.file_body(file);
 
         // stream_with_length sets Content-Length so pCloud doesn't hang on chunked encoding
         let form = reqwest::multipart::Form::new()
@@ -1090,12 +1069,8 @@ impl StorageProvider for PCloudProvider {
             return Err(ProviderError::TransferFailed(sanitize_api_error(&msg)));
         }
 
-        // PA-005: Report upload completion to progress callback
-        if let Ok(callback) = progress.lock() {
-            if let Some(cb) = callback.as_ref() {
-                cb(file_size, file_size);
-            }
-        }
+        // PA-005: the upload is acknowledged
+        progress.complete();
 
         Ok(())
     }
