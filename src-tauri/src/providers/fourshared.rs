@@ -201,6 +201,9 @@ pub struct FourSharedProvider {
     /// Replaces `UPLOAD_BASE` in tests.
     #[cfg(test)]
     upload_base_override: Option<String>,
+    /// Replaces `self.api_base()` in tests.
+    #[cfg(test)]
+    api_base_override: Option<String>,
 }
 
 impl FourSharedProvider {
@@ -223,7 +226,18 @@ impl FourSharedProvider {
             account_email: None,
             #[cfg(test)]
             upload_base_override: None,
+            #[cfg(test)]
+            api_base_override: None,
         }
+    }
+
+    /// `self.api_base()`, pointed at a local server in tests.
+    fn api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(base) = &self.api_base_override {
+            return base;
+        }
+        API_BASE
     }
 
     /// `UPLOAD_BASE`, pointed at a local server in tests.
@@ -422,6 +436,63 @@ impl FourSharedProvider {
         Self::normalize_path(&format!("{}/{}", base, trimmed))
     }
 
+    /// Move the file or folder `id` (`kind` is `files` or `folders`) into
+    /// the folder `target_folder_id`. The move API expects the folder as a
+    /// query parameter, not a form body.
+    async fn move_item(
+        &self,
+        kind: &str,
+        id: &str,
+        target_folder_id: &str,
+    ) -> Result<(), ProviderError> {
+        let sign_url = format!("{}/{}/{}/move", self.api_base(), kind, id);
+        let extra = [("folderId", target_folder_id)];
+        let auth = oauth1::authorization_header("PUT", &sign_url, &self.credentials(), &extra);
+        let full_url = format!(
+            "{}/{}/{}/move?folderId={}",
+            self.api_base(),
+            kind,
+            id,
+            oauth1::percent_encode(target_folder_id)
+        );
+        let request = self
+            .client
+            .put(&full_url)
+            .header("Authorization", &auth)
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = send_with_retry(&self.client, request, &Self::retry_config())
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Move failed ({}): {}",
+                status,
+                &body[..body.floor_char_boundary(300)]
+            )));
+        }
+        Ok(())
+    }
+
+    /// Rename the file or folder `id` (`kind` is `files` or `folders`) to
+    /// `new_name` in the folder it is in.
+    async fn rename_item(&self, kind: &str, id: &str, new_name: &str) -> Result<(), ProviderError> {
+        let url = format!("{}/{}/{}", self.api_base(), kind, id);
+        let form = [("name", new_name)];
+        let resp = self.signed_put_form(&url, &form).await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Rename failed ({}): {}",
+                status, body
+            )));
+        }
+        Ok(())
+    }
+
     /// Split path into (parent_path, name)
     fn split_path(normalized: &str) -> (String, String) {
         match normalized.rfind('/') {
@@ -465,7 +536,7 @@ impl FourSharedProvider {
                 continue;
             }
 
-            let url = format!("{}/folders/{}/children", API_BASE, current_id);
+            let url = format!("{}/folders/{}/children", self.api_base(), current_id);
             let resp = self.signed_get(&url).await?;
 
             if !resp.status().is_success() {
@@ -514,7 +585,7 @@ impl FourSharedProvider {
         let (parent_path, file_name) = Self::split_path(&normalized);
         let folder_id = self.resolve_folder_id(&parent_path).await?;
 
-        let url = format!("{}/folders/{}/files", API_BASE, folder_id);
+        let url = format!("{}/folders/{}/files", self.api_base(), folder_id);
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
@@ -561,7 +632,7 @@ impl FourSharedProvider {
     ) -> Result<(), ProviderError> {
         let normalized = self.resolve_path(path);
         let file_id = self.resolve_file_id(&normalized).await?;
-        let url = format!("{}/files/{}", API_BASE, file_id);
+        let url = format!("{}/files/{}", self.api_base(), file_id);
         let owner_only = if is_public { "false" } else { "true" };
         let form = [("ownerOnly", owner_only)];
         let resp = self.signed_put_form(&url, &form).await?;
@@ -587,7 +658,7 @@ impl FourSharedProvider {
     ) -> Result<(), ProviderError> {
         let normalized = self.resolve_path(path);
         let folder_id = self.resolve_folder_id(&normalized).await?;
-        let url = format!("{}/folders/{}", API_BASE, folder_id);
+        let url = format!("{}/folders/{}", self.api_base(), folder_id);
         let access = if is_public { "public" } else { "private" };
         let form = [("access", access)];
         let resp = self.signed_put_form(&url, &form).await?;
@@ -606,7 +677,7 @@ impl FourSharedProvider {
 
     /// Download file bytes from 4shared (uses retry via signed_get: FS-009)
     async fn download_bytes(&self, file_id: &str) -> Result<Vec<u8>, ProviderError> {
-        let url = format!("{}/files/{}/download", API_BASE, file_id);
+        let url = format!("{}/files/{}/download", self.api_base(), file_id);
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
@@ -742,7 +813,7 @@ impl StorageProvider for FourSharedProvider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         info!("Connecting to 4shared...");
 
-        let url = format!("{}/user", API_BASE);
+        let url = format!("{}/user", self.api_base());
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
@@ -812,7 +883,10 @@ impl StorageProvider for FourSharedProvider {
         loop {
             let folders_url = format!(
                 "{}/folders/{}/children?offset={}&limit={}",
-                API_BASE, folder_id, offset, PAGE_SIZE
+                self.api_base(),
+                folder_id,
+                offset,
+                PAGE_SIZE
             );
             tracing::debug!("[4shared] 4shared GET folders: {}", folders_url);
             let resp = self.signed_get(&folders_url).await?;
@@ -890,7 +964,10 @@ impl StorageProvider for FourSharedProvider {
         loop {
             let files_url = format!(
                 "{}/folders/{}/files?offset={}&limit={}",
-                API_BASE, folder_id, offset, PAGE_SIZE
+                self.api_base(),
+                folder_id,
+                offset,
+                PAGE_SIZE
             );
             tracing::debug!("[4shared] 4shared GET files: {}", files_url);
             let resp = self.signed_get(&files_url).await?;
@@ -1011,7 +1088,7 @@ impl StorageProvider for FourSharedProvider {
         let file_id = self.resolve_file_id(&resolved).await?;
 
         // FS-009: Use signed_get which includes retry logic
-        let url = format!("{}/files/{}/download", API_BASE, file_id);
+        let url = format!("{}/files/{}/download", self.api_base(), file_id);
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
@@ -1065,7 +1142,7 @@ impl StorageProvider for FourSharedProvider {
         let resolved = self.resolve_path(remote_path);
         let file_id = self.resolve_file_id(&resolved).await?;
 
-        let url = format!("{}/files/{}/download", API_BASE, file_id);
+        let url = format!("{}/files/{}/download", self.api_base(), file_id);
         let creds = self.credentials();
         let auth = oauth1::authorization_header("GET", &url, &creds, &[]);
 
@@ -1172,7 +1249,7 @@ impl StorageProvider for FourSharedProvider {
         let (parent_path, folder_name) = Self::split_path(&normalized);
         let parent_id = self.resolve_folder_id(&parent_path).await?;
 
-        let url = format!("{}/folders", API_BASE);
+        let url = format!("{}/folders", self.api_base());
         let form = [
             ("parentId", parent_id.as_str()),
             ("name", folder_name.as_str()),
@@ -1202,7 +1279,7 @@ impl StorageProvider for FourSharedProvider {
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let normalized = self.resolve_path(path);
         let file_id = self.resolve_file_id(&normalized).await?;
-        let url = format!("{}/files/{}", API_BASE, file_id);
+        let url = format!("{}/files/{}", self.api_base(), file_id);
         let resp = self.signed_delete(&url).await?;
 
         if !resp.status().is_success() {
@@ -1220,7 +1297,7 @@ impl StorageProvider for FourSharedProvider {
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let normalized = self.resolve_path(path);
         let folder_id = self.resolve_folder_id(&normalized).await?;
-        let url = format!("{}/folders/{}", API_BASE, folder_id);
+        let url = format!("{}/folders/{}", self.api_base(), folder_id);
         let resp = self.signed_delete(&url).await?;
 
         if !resp.status().is_success() {
@@ -1240,135 +1317,74 @@ impl StorageProvider for FourSharedProvider {
         self.rmdir(path).await
     }
 
+    /// A move to the new folder and/or a rename, by id. What 4shared does
+    /// with a taken name is not documented, so the destination is looked up
+    /// first and a taken one refused. The move keeps the old name: when the
+    /// destination folder already holds it the rename goes first, in the
+    /// source folder, so neither step puts two items under one name.
     async fn rename(&mut self, old_path: &str, new_path: &str) -> Result<(), ProviderError> {
         let old_normalized = self.resolve_path(old_path);
         let new_normalized = self.resolve_path(new_path);
+        if old_normalized == new_normalized {
+            return Ok(());
+        }
+        super::refuse_occupied_destination(self, &old_normalized, &new_normalized).await?;
         let (old_parent, old_name) = Self::split_path(&old_normalized);
         let (new_parent, new_name) = Self::split_path(&new_normalized);
 
         let is_cross_folder = old_parent != new_parent;
+        let renames = old_name != new_name;
 
-        // Try as file first, then as folder
-        if let Ok(file_id) = self.resolve_file_id(&old_normalized).await {
-            // Step 1: Move to new folder if cross-folder operation
-            if is_cross_folder {
-                let target_folder_id = self.resolve_folder_id(&new_parent).await?;
-                // 4shared move API expects folderId as query param, not form body
-                let sign_url = format!("{}/files/{}/move", API_BASE, file_id);
-                let extra = [("folderId", target_folder_id.as_str())];
-                let auth =
-                    oauth1::authorization_header("PUT", &sign_url, &self.credentials(), &extra);
-                let full_url = format!(
-                    "{}/files/{}/move?folderId={}",
-                    API_BASE,
-                    file_id,
-                    oauth1::percent_encode(&target_folder_id)
-                );
-                let request = self
-                    .client
-                    .put(&full_url)
-                    .header("Authorization", &auth)
-                    .build()
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-                let resp = send_with_retry(&self.client, request, &Self::retry_config())
-                    .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-                if !resp.status().is_success() {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!(
-                        "Move file failed ({}): {}",
-                        status,
-                        &body[..body.floor_char_boundary(300)]
-                    )));
-                }
-                info!(
-                    "4shared moved file {} to folder {}",
-                    old_normalized, new_parent
-                );
+        // Files first, then folders, as before.
+        let (kind, id) = match self.resolve_file_id(&old_normalized).await {
+            Ok(file_id) => ("files", file_id),
+            Err(_) => ("folders", self.resolve_folder_id(&old_normalized).await?),
+        };
+        let target_folder_id = if is_cross_folder {
+            Some(self.resolve_folder_id(&new_parent).await?)
+        } else {
+            None
+        };
+        let old_name_at_destination = format!("{}/{}", new_parent.trim_end_matches('/'), old_name);
+        let rename_first =
+            is_cross_folder && renames && self.stat(&old_name_at_destination).await.is_ok();
+        if rename_first {
+            let new_name_at_source = format!("{}/{}", old_parent.trim_end_matches('/'), new_name);
+            if self.stat(&new_name_at_source).await.is_ok() {
+                return Err(ProviderError::Other(format!(
+                    "Cannot move {old_normalized} to {new_normalized} in two steps without two \
+                     items sharing a name: {old_name_at_destination} and {new_name_at_source} \
+                     both exist"
+                )));
             }
+            self.rename_item(kind, &id, &new_name).await?;
+        }
+        if let Some(target_folder_id) = &target_folder_id {
+            self.move_item(kind, &id, target_folder_id).await?;
+            info!(
+                "4shared moved {} {} to {}",
+                kind, old_normalized, new_parent
+            );
+        }
+        if renames && !rename_first {
+            self.rename_item(kind, &id, &new_name).await?;
+        }
 
-            // Step 2: Rename if the name changed
-            if old_name != new_name {
-                let url = format!("{}/files/{}", API_BASE, file_id);
-                let form = [("name", new_name.as_str())];
-                let resp = self.signed_put_form(&url, &form).await?;
-
-                if !resp.status().is_success() {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!(
-                        "Rename failed ({}): {}",
-                        status, body
-                    )));
-                }
-            }
-
+        if kind == "files" {
             if let Some(id) = self.file_cache.remove(&old_normalized) {
                 self.file_cache.insert(new_normalized, id);
             }
-        } else {
-            let folder_id = self.resolve_folder_id(&old_normalized).await?;
-
-            // Step 1: Move to new parent folder if cross-folder operation
-            if is_cross_folder {
-                let target_folder_id = self.resolve_folder_id(&new_parent).await?;
-                // 4shared move API expects folderId as query param, not form body
-                let sign_url = format!("{}/folders/{}/move", API_BASE, folder_id);
-                let extra = [("folderId", target_folder_id.as_str())];
-                let auth =
-                    oauth1::authorization_header("PUT", &sign_url, &self.credentials(), &extra);
-                let full_url = format!(
-                    "{}/folders/{}/move?folderId={}",
-                    API_BASE,
-                    folder_id,
-                    oauth1::percent_encode(&target_folder_id)
-                );
-                let request = self
-                    .client
-                    .put(&full_url)
-                    .header("Authorization", &auth)
-                    .build()
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-                let resp = send_with_retry(&self.client, request, &Self::retry_config())
-                    .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-                if !resp.status().is_success() {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!(
-                        "Move folder failed ({}): {}",
-                        status,
-                        &body[..body.floor_char_boundary(300)]
-                    )));
-                }
-                info!("4shared moved folder {} to {}", old_normalized, new_parent);
-            }
-
-            // Step 2: Rename if the name changed
-            if old_name != new_name {
-                let url = format!("{}/folders/{}", API_BASE, folder_id);
-                let form = [("name", new_name.as_str())];
-                let resp = self.signed_put_form(&url, &form).await?;
-
-                if !resp.status().is_success() {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!(
-                        "Rename folder failed ({}): {}",
-                        status, body
-                    )));
-                }
-            }
-
-            if let Some(id) = self.folder_cache.remove(&old_normalized) {
-                self.folder_cache.insert(new_normalized, id);
-            }
+        } else if let Some(id) = self.folder_cache.remove(&old_normalized) {
+            self.folder_cache.insert(new_normalized, id);
         }
-
         Ok(())
+    }
+
+    /// No: 4shared documents no overwrite on rename or move, so there is no
+    /// one-step replace, and the callers that need one refuse before they
+    /// write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1376,7 +1392,7 @@ impl StorageProvider for FourSharedProvider {
 
         // Try as file
         if let Ok(file_id) = self.resolve_file_id(&normalized).await {
-            let url = format!("{}/files/{}", API_BASE, file_id);
+            let url = format!("{}/files/{}", self.api_base(), file_id);
             let resp = self.signed_get(&url).await?;
 
             if resp.status().is_success() {
@@ -1411,7 +1427,7 @@ impl StorageProvider for FourSharedProvider {
 
         // Try as folder
         let folder_id = self.resolve_folder_id(&normalized).await?;
-        let url = format!("{}/folders/{}", API_BASE, folder_id);
+        let url = format!("{}/folders/{}", self.api_base(), folder_id);
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
@@ -1463,7 +1479,7 @@ impl StorageProvider for FourSharedProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let url = format!("{}/user", API_BASE);
+        let url = format!("{}/user", self.api_base());
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
@@ -1501,14 +1517,14 @@ impl StorageProvider for FourSharedProvider {
 
         // FS-009: Use signed_get with retry for the search request.
         // The 4shared search API requires OAuth-signed query parameters.
-        let base_url = format!("{}/files", API_BASE);
+        let base_url = format!("{}/files", self.api_base());
         let extra = [("searchName", pattern)];
         let auth = oauth1::authorization_header("GET", &base_url, &self.credentials(), &extra);
 
         // Build full URL with query parameter
         let url = format!(
             "{}/files?searchName={}",
-            API_BASE,
+            self.api_base(),
             oauth1::percent_encode(pattern)
         );
 
@@ -1652,6 +1668,103 @@ mod tests {
         server.abort();
         let updates = updates.lock().unwrap().clone();
         (outcome, updates)
+    }
+
+    /// A 4shared API double: the root `R` holds the folders `src` (`S`) and
+    /// `dst` (`D`); `src` holds `a.txt` (`FA`), `dst` holds `b.txt` (`FB`)
+    /// and, when `dst_holds_a`, an `a.txt` of its own (`FA2`). Every PUT (a
+    /// move or a rename) succeeds. Returns a provider on it and every PUT as
+    /// its path.
+    async fn provider_on_fourshared(
+        dst_holds_a: bool,
+    ) -> (
+        FourSharedProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let puts: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&puts);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    if req.method() == axum::http::Method::PUT {
+                        seen.lock().unwrap().push(path);
+                        return axum::Json(serde_json::json!({})).into_response();
+                    }
+                    let item = |id: &str, name: &str| serde_json::json!({ "id": id, "name": name });
+                    let body = match path.as_str() {
+                        "/folders/R/children" => {
+                            serde_json::json!([item("S", "src"), item("D", "dst")])
+                        }
+                        "/folders/S/files" => serde_json::json!([item("FA", "a.txt")]),
+                        "/folders/D/files" if dst_holds_a => {
+                            serde_json::json!([item("FB", "b.txt"), item("FA2", "a.txt")])
+                        }
+                        "/folders/D/files" => serde_json::json!([item("FB", "b.txt")]),
+                        "/files/FA" => item("FA", "a.txt"),
+                        "/files/FA2" => item("FA2", "a.txt"),
+                        "/files/FB" => item("FB", "b.txt"),
+                        "/folders/S" => item("S", "src"),
+                        "/folders/D" => item("D", "dst"),
+                        p if p.ends_with("/children") || p.ends_with("/files") => {
+                            serde_json::json!([])
+                        }
+                        _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                    };
+                    axum::Json(body).into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.root_folder_id = "R".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, puts)
+    }
+
+    /// What 4shared does with a taken name is not documented, and the move
+    /// and the rename went out without a look. A rename onto a taken name is
+    /// refused before either.
+    #[tokio::test]
+    async fn a_rename_onto_a_taken_name_is_refused_before_any_change() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/dst/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// The move keeps the old name: with `/dst/a.txt` there it would put a
+    /// second `a.txt` in `/dst` until the rename. The rename goes first, in
+    /// the source folder.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        let (mut provider, puts) = provider_on_fourshared(true).await;
+        provider
+            .rename("/src/a.txt", "/dst/c.txt")
+            .await
+            .expect("rename then move");
+        assert_eq!(*puts.lock().unwrap(), ["/files/FA", "/files/FA/move"]);
+    }
+
+    /// 4shared documents no overwrite on rename or move, so there is no one-step
+    /// replace. The answer is no, so the callers that need one (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write.
+    #[tokio::test]
+    async fn fourshared_does_not_claim_an_atomic_replace() {
+        let mut p = test_provider();
+        assert!(!p.supports_atomic_replace().await.unwrap());
     }
 
     /// The upload streams the file: the bar follows the bytes going out and
