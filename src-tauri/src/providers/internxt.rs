@@ -2761,7 +2761,9 @@ mod tests {
     /// `src` (`S`) and `dst` (`D`), and `files` (uuid, name, folder) kept in
     /// memory. A move (PATCH) or a rename (PUT `/meta`) onto a name its
     /// folder holds answers 409, as Internxt does; a rename to a name
-    /// starting with `fail`, and any change to a folder, answers 403.
+    /// starting with `fail`, and any change to a folder, answers 403. A
+    /// rename to a name starting with `failsquat` also puts another `a.txt`
+    /// (`SQ`) in `src`, as a second client taking the name meanwhile.
     /// Returns a provider on it, the files,
     /// and every change as `METHOD path`.
     #[allow(clippy::type_complexity)]
@@ -2842,6 +2844,9 @@ mod tests {
                             args["type"].as_str().unwrap_or("")
                         );
                         if name.starts_with("fail") {
+                            if name.starts_with("failsquat") {
+                                items.push(("SQ".into(), "a.txt".into(), "S".into()));
+                            }
                             return axum::http::StatusCode::FORBIDDEN.into_response();
                         }
                         (name, items[at].2.clone())
@@ -2950,6 +2955,38 @@ mod tests {
         );
         let back = store.lock().unwrap()[0].clone();
         assert_eq!((back.1.as_str(), back.2.as_str()), ("a.txt", "S"));
+    }
+
+    /// The rename after the move failed, and so did the move back: another
+    /// file took the old name in `src` meanwhile. The file stays in `dst`
+    /// under its old name, and the error names both failures and that path
+    /// (never the rename's refusal alone, which would say nothing changed).
+    #[tokio::test]
+    async fn a_move_whose_rename_and_undo_both_fail_says_where_the_file_is() {
+        let (mut provider, store, changes) = provider_on_drive(&[("FA", "a.txt", "S")]).await;
+        let outcome = provider.rename("/src/a.txt", "/dst/failsquat.txt").await;
+        match &outcome {
+            Err(ProviderError::Other(message)) => {
+                assert!(message.contains("now at /dst/a.txt"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(
+            *changes.lock().unwrap(),
+            [
+                "PATCH /drive/files/FA",
+                "PUT /drive/files/FA/meta",
+                "PATCH /drive/files/FA"
+            ]
+        );
+        let file = store
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|f| f.0 == "FA")
+            .cloned()
+            .unwrap();
+        assert_eq!((file.1.as_str(), file.2.as_str()), ("a.txt", "D"));
     }
 
     fn test_provider() -> InternxtProvider {
