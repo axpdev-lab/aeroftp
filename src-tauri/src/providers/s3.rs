@@ -1379,6 +1379,11 @@ impl S3Provider {
         if from_trimmed == to_trimmed {
             return Ok(());
         }
+        // The copies below take the same keys the checks take: with its
+        // trailing slash `d/` was checked as `d` but copied to the key `d/`,
+        // a folder marker, which no listing shows as a file.
+        let (from_path, to_path) = (format!("/{from_trimmed}"), format!("/{to_trimmed}"));
+        let (from, to) = (from_path.as_str(), to_path.as_str());
         let prefix = format!("{}/", from_trimmed);
 
         // Check if this is a directory by listing objects under the prefix
@@ -1417,6 +1422,14 @@ impl S3Provider {
                     .any(|listed| listed == to_trimmed);
             if occupant_is_dir || occupant_is_file {
                 super::refuse_replace_across_types(to, !keys.is_empty(), occupant_is_dir)?;
+            }
+            // A folder over a folder copied the keys in beside the ones there:
+            // a merge, not a replace.
+            if occupant_is_dir && !keys.is_empty() {
+                return Err(ProviderError::AlreadyExists(format!(
+                    "{to} is a folder, and on S3 moving a folder over it would merge the two: \
+                     nothing was changed"
+                )));
             }
         }
 
@@ -9061,6 +9074,38 @@ mod tests {
             );
             assert_eq!(bucket.lock().unwrap().len(), objects.len());
         }
+    }
+
+    /// A replace of a folder over a folder copied its keys in beside the
+    /// ones already there: the two were merged, not replaced. It is refused
+    /// before any copy.
+    #[tokio::test]
+    async fn a_replace_of_a_folder_over_a_folder_copies_nothing() {
+        let objects = [("src/a.txt", "A"), ("dst/b.txt", "B")];
+        let (mut provider, bucket, log) = provider_on_memory_bucket(&objects).await;
+        let outcome = provider.replace("/src", "/dst").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            !log.lock().unwrap().iter().any(|r| r.starts_with("PUT")),
+            "{:?}",
+            log.lock().unwrap()
+        );
+        assert_eq!(bucket.lock().unwrap().len(), 2);
+    }
+
+    /// A file renamed to `d/` was checked as `d` but copied to the key `d/`,
+    /// the marker of a folder, where no listing shows it as a file. It is
+    /// now the file `d`.
+    #[tokio::test]
+    async fn a_rename_to_a_trailing_slash_names_the_file_not_a_folder_marker() {
+        let (mut provider, bucket, _) = provider_on_memory_bucket(&[("a.txt", "A")]).await;
+        provider.rename("/a.txt", "/d/").await.expect("rename");
+        let bucket = bucket.lock().unwrap().clone();
+        assert_eq!(bucket.keys().collect::<Vec<_>>(), ["d"], "{bucket:?}");
+        assert_eq!(bucket["d"], b"A");
     }
 
     /// The objects of an in-memory bucket, by key.

@@ -442,8 +442,15 @@ impl AzureProvider {
         to: &str,
         overwrite: bool,
     ) -> Result<(), ProviderError> {
-        let from_blob = self.resolve_blob_path(from);
-        let to_blob = self.resolve_blob_path(to);
+        // Without its trailing slash: `d/` names the blob `d/`, the marker
+        // `mkdir` writes, which no listing shows. A file copied there was
+        // invisible and went with the folder; the prefix check below probed
+        // `d//` and found nothing.
+        let from_blob = self
+            .resolve_blob_path(from)
+            .trim_end_matches('/')
+            .to_string();
+        let to_blob = self.resolve_blob_path(to).trim_end_matches('/').to_string();
         // Onto itself a copy-then-delete would delete the only copy.
         if from_blob == to_blob {
             return Ok(());
@@ -538,12 +545,32 @@ impl AzureProvider {
     /// `blob/` (the marker `mkdir` writes included), so one listing of that
     /// prefix answers.
     async fn is_a_folder(&self, blob: &str) -> Result<bool, ProviderError> {
-        let url = format!(
+        // Azure may answer a page with no blob and a continuation marker, so
+        // an empty page is "not yet", and only the last one is "no".
+        let mut marker = String::new();
+        loop {
+            let body = self.list_one_blob_under(blob, &marker).await?;
+            if lists_a_blob(&body) {
+                return Ok(true);
+            }
+            match Self::parse_blob_list(&body, "").1 {
+                Some(next) if !next.is_empty() => marker = next,
+                _ => return Ok(false),
+            }
+        }
+    }
+
+    /// One `comp=list` page of at most one blob under `blob/`, from `marker`.
+    async fn list_one_blob_under(&self, blob: &str, marker: &str) -> Result<String, ProviderError> {
+        let mut url = format!(
             "{}/{}?restype=container&comp=list&prefix={}&maxresults=1",
             self.config.blob_endpoint(),
             self.config.container,
             urlencoding::encode(&format!("{blob}/"))
         );
+        if !marker.is_empty() {
+            url.push_str(&format!("&marker={}", urlencoding::encode(marker)));
+        }
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now()
             .format("%a, %d %b %Y %H:%M:%S GMT")
@@ -565,11 +592,9 @@ impl AzureProvider {
                 parse_azure_xml_error(&body)
             )));
         }
-        let body = resp
-            .text()
+        resp.text()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-        Ok(lists_a_blob(&body))
+            .map_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     /// AZ-005/AZ-006: Send a request with retry logic for transient errors (429/5xx).
@@ -2650,7 +2675,8 @@ mod tests {
     }
 
     /// A blob service double for container `mycontainer` holding `existing`
-    /// (blob names). A listing names the first blob under its prefix. A Copy
+    /// (blob names). A listing names the first blob under its prefix; under
+    /// `e/` the first page is empty with a continuation marker. A Copy
     /// Blob onto an existing blob under `If-None-Match: *` answers 412, as
     /// Azure does; any other copy lands and completes at once; a delete
     /// succeeds. Returns a provider pointed at it and every request as
@@ -2683,6 +2709,15 @@ mod tests {
                             .split('&')
                             .find_map(|pair| pair.strip_prefix("prefix="))
                             .unwrap_or("");
+                        // Under `e/` the first page is empty and says to go on.
+                        if prefix == "e/" && !query.contains("marker=M1") {
+                            return axum::response::Response::builder()
+                                .status(200)
+                                .body(axum::body::Body::from(
+                                    "<EnumerationResults><Blobs /><NextMarker>M1</NextMarker></EnumerationResults>",
+                                ))
+                                .unwrap();
+                        }
                         let blobs: String = existing
                             .iter()
                             .filter(|name| name.starts_with(prefix))
@@ -2765,12 +2800,29 @@ mod tests {
         let (mut provider, log) = provider_on_blob_service(&["d/x.txt"]).await;
         let renamed = provider.rename("/a.txt", "/d").await;
         let replaced = provider.replace("/a.txt", "/d").await;
-        for outcome in [renamed, replaced] {
+        // With a trailing slash the copy went into the folder marker blob
+        // `d/`, which no listing shows and `rm -r d` deletes.
+        let slashed = provider.rename("/a.txt", "/d/").await;
+        for outcome in [renamed, replaced, slashed] {
             assert!(
                 matches!(outcome, Err(ProviderError::AlreadyExists(_))),
                 "{outcome:?}"
             );
         }
+        let log = log.lock().unwrap().clone();
+        assert!(!log.iter().any(|r| r.starts_with("PUT")), "{log:?}");
+    }
+
+    /// Azure may answer a page with no blob and a continuation marker: read
+    /// as "no folder", the copy put a blob `e` beside the folder `e/`.
+    #[tokio::test]
+    async fn a_folder_found_on_a_later_page_is_still_a_folder() {
+        let (mut provider, log) = provider_on_blob_service(&["e/x.txt"]).await;
+        let outcome = provider.rename("/a.txt", "/e").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
         let log = log.lock().unwrap().clone();
         assert!(!log.iter().any(|r| r.starts_with("PUT")), "{log:?}");
     }
