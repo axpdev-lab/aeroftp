@@ -279,12 +279,21 @@ impl Summary {
 /// Bind `addr` and serve `source` from it until the process exits. The bind is
 /// synchronous, so a port that is already taken is reported to the caller here,
 /// before any webview could load an origin that belongs to someone else.
+///
+/// `addr` must be a loopback address: the frontend and its nonce are for this
+/// machine's webviews, never for the network.
 pub(crate) fn start(
     source: impl AssetSource,
     addr: SocketAddr,
     nonce: String,
     limits: Limits,
 ) -> std::io::Result<SocketAddr> {
+    if !addr.ip().is_loopback() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("the UI server binds a loopback address only, not {addr}"),
+        ));
+    }
     let listener = std::net::TcpListener::bind(addr)?;
     listener.set_nonblocking(true)?;
     let local = listener.local_addr()?;
@@ -1396,6 +1405,15 @@ mod tests {
             assert_eq!(written, 8, "only the first buffer went out");
             drop(client);
         });
+    }
+
+    #[test]
+    fn the_server_binds_loopback_only() {
+        for addr in ["0.0.0.0:0", "[::]:0", "192.0.2.1:0"] {
+            let refused = start(site(), addr.parse().unwrap(), NONCE.into(), Limits::APP);
+            let error = refused.expect_err(addr);
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{addr}");
+        }
     }
 
     #[test]
