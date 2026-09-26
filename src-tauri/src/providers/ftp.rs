@@ -11,7 +11,14 @@ use globset::GlobBuilder;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use suppaftp::tokio::{AsyncRustlsConnector, AsyncRustlsFtpStream};
+use suppaftp::tokio::{
+    AsyncRustlsConnector, AsyncRustlsFtpStream, AsyncRustlsStream, TransferStream,
+};
+
+/// The data connection of one transfer. It finishes itself: `finish()` closes
+/// it (TLS `close_notify`, then FIN) and reads the completion reply on the
+/// control channel.
+type FtpTransfer = TransferStream<AsyncRustlsStream>;
 use suppaftp::types::FileType;
 use suppaftp::{FtpError, Status};
 use tokio::io::AsyncWriteExt;
@@ -1532,9 +1539,8 @@ impl StorageProvider for FtpProvider {
         let bytes_read = data.len();
 
         // Finalize the stream
-        let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
-        stream
-            .finalize_retr_stream(data_stream)
+        data_stream
+            .finish()
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
@@ -1909,10 +1915,8 @@ impl StorageProvider for FtpProvider {
         // to collect as its own answer.
         file.flush().await.map_err(ProviderError::IoError)?;
         let data_stream = channel.finish()?;
-
-        let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
-        stream
-            .finalize_retr_stream(data_stream)
+        data_stream
+            .finish()
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
@@ -2002,19 +2006,10 @@ impl StorageProvider for FtpProvider {
         }
 
         channel.flush().await?;
-        // The same end-of-data signal as `upload_single`: our close, then the
-        // server's, bounded so a server that never closes cannot hang the resume
-        // where it can no longer hang the upload.
-        channel.shutdown().await?;
-
-        let mut data_stream = channel.finish()?;
-        let _ = tokio::time::timeout(DATA_DRAIN_BUDGET, drain_to_eof(&mut data_stream)).await;
-
-        let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
-        if let Err(e) = stream
-            .finalize_put_stream(AlreadyShutDown(data_stream))
-            .await
-        {
+        // The end of data as `upload_single` signals it: `finish` sends our
+        // close_notify and FIN after the last byte, then reads the 226.
+        let data_stream = channel.finish()?;
+        if let Err(e) = data_stream.finish().await {
             // The finalise is the last word on the transfer. A failure here
             // leaves the control channel mid-sentence, and the guard is already
             // settled, so nothing else would discard it: do it here.
@@ -2265,10 +2260,7 @@ impl StorageProvider for FtpProvider {
         // Bounded FTP reads intentionally stop before EOF. Some servers will report an
         // error while finalizing that partial RETR; when that happens we proactively
         // disconnect so the disposable chunk connection cannot be reused in a bad state.
-        let finalize_result = {
-            let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
-            stream.finalize_retr_stream(data_stream).await
-        };
+        let finalize_result = data_stream.finish().await;
         if finalize_result.is_err() {
             let _ = self.disconnect().await;
         }
@@ -2594,52 +2586,6 @@ const LIST_BUDGET: std::time::Duration = std::time::Duration::from_secs(300);
 
 const DATA_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);
 
-/// How long an upload waits for the server to close the data connection after
-/// our FIN before reading the 226 anyway. A compliant server closes as soon as
-/// it has read to EOF, so this only bounds a server that never does.
-const DATA_DRAIN_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
-
-/// Read a data stream until the peer's EOF, discarding the bytes: the only
-/// thing a STOR data connection can carry back is the close itself.
-async fn drain_to_eof<S: tokio::io::AsyncRead + Unpin>(stream: &mut S) {
-    use tokio::io::AsyncReadExt;
-    let mut sink = [0u8; 1024];
-    while let Ok(n) = stream.read(&mut sink).await {
-        if n == 0 {
-            break;
-        }
-    }
-}
-
-/// A data stream that has already been shut down and drained: suppaftp's
-/// `finalize_put_stream` calls `shutdown()` on what it is given, and a second
-/// shutdown on a socket the peer has already closed can fail with "not
-/// connected" after a transfer that succeeded. Writes still go through, so a
-/// misuse is loud rather than silent.
-struct AlreadyShutDown<S>(S);
-
-impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for AlreadyShutDown<S> {
-    fn poll_write(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<std::io::Result<usize>> {
-        std::pin::Pin::new(&mut self.0).poll_write(cx, buf)
-    }
-    fn poll_flush(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        std::pin::Pin::new(&mut self.0).poll_flush(cx)
-    }
-    fn poll_shutdown(
-        self: std::pin::Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        std::task::Poll::Ready(Ok(()))
-    }
-}
-
 /// How long the data may stay silent AFTER the server has spoken on control.
 ///
 /// Reading the first byte of a reply only works in the clear. Under FTPS the
@@ -2758,10 +2704,7 @@ impl FtpProvider {
     /// STOR, and because a shared data-loop primitive is being built on top of
     /// these call sites: five copies would have to be unified and re-reviewed
     /// one by one.
-    async fn abandon_transfer<S>(&mut self, data_stream: S) -> SessionAfterAbandon
-    where
-        S: tokio::io::AsyncRead + Unpin + 'static,
-    {
+    async fn abandon_transfer(&mut self, data_stream: FtpTransfer) -> SessionAfterAbandon {
         // Five seconds, and the asymmetry here points the OPPOSITE way to the
         // one on the transfer deadlines above, which is worth saying because
         // the two constants sit near each other and a reader who assumes they
@@ -2808,10 +2751,10 @@ impl FtpProvider {
 /// session away. The next operation dials again instead of inheriting a channel
 /// whose state nobody knows. A session that is thrown away costs a reconnect; a
 /// session in an unknown state costs a wrong answer delivered as a right one.
-struct DataChannel<'p, S> {
+struct DataChannel<'p> {
     provider: &'p mut FtpProvider,
     /// `None` once the stream has been handed back or given away.
-    data: Option<S>,
+    data: Option<FtpTransfer>,
     watch: ControlWatch,
     /// Named in the error, so a failure says which operation was in flight.
     operation: &'static str,
@@ -2821,11 +2764,13 @@ struct DataChannel<'p, S> {
     settled: bool,
 }
 
-impl<'p, S> DataChannel<'p, S>
-where
-    S: tokio::io::AsyncRead + Unpin + 'static,
-{
-    fn new(provider: &'p mut FtpProvider, data: S, operation: &'static str, path: &str) -> Self {
+impl<'p> DataChannel<'p> {
+    fn new(
+        provider: &'p mut FtpProvider,
+        data: FtpTransfer,
+        operation: &'static str,
+        path: &str,
+    ) -> Self {
         Self {
             provider,
             data: Some(data),
@@ -2852,13 +2797,16 @@ where
                 .stream
                 .as_ref()
                 .ok_or(ProviderError::NotConnected)?;
-            let control = stream.get_ref();
+            // The control channel, locked for this one read: the data reads
+            // never take that lock, and `finish` / `abort`, which do, run only
+            // after the guard is dropped at the end of this block.
+            let control = stream.get_ref().await;
             // Replies the control reader has already pulled off the socket
             // and not yet consumed. A peek on the bare socket is blind to
             // them, and they are exactly where a fast refusal hides.
-            let buffered = stream.buffered_reply_bytes();
+            let buffered = control.buffered_reply_bytes();
             let data = data.as_mut().ok_or(ProviderError::NotConnected)?;
-            FtpProvider::read_watching_control(data, control, buffered, buf, watch).await
+            FtpProvider::read_watching_control(data, &control, buffered, buf, watch).await
         };
         match step {
             Ok(DataStep::Read(n)) => Ok(n),
@@ -2895,7 +2843,7 @@ where
 
     /// The transfer ended on its own terms: hand the stream back so the caller
     /// finalises it exactly as it did before.
-    fn finish(mut self) -> Result<S, ProviderError> {
+    fn finish(mut self) -> Result<FtpTransfer, ProviderError> {
         self.settled = true;
         self.data.take().ok_or(ProviderError::NotConnected)
     }
@@ -2909,13 +2857,7 @@ where
 /// same for the upload path, which until now had five exits that returned
 /// while the server still considered the data channel open.
 ///
-/// The bound adds `AsyncWrite` to the one `read` already needs, and the upload
-/// stream satisfies both: the resume path reads from it too, to drain the tail
-/// after its own shutdown. That is why this half could always have existed.
-impl<'p, S> DataChannel<'p, S>
-where
-    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + 'static,
-{
+impl DataChannel<'_> {
     async fn write_all(&mut self, buf: &[u8]) -> Result<(), ProviderError> {
         let outcome = match self.data.as_mut() {
             Some(data) => data.write_all(buf).await,
@@ -2932,15 +2874,7 @@ where
         self.settle_write(outcome, "Flush error").await
     }
 
-    async fn shutdown(&mut self) -> Result<(), ProviderError> {
-        let outcome = match self.data.as_mut() {
-            Some(data) => data.shutdown().await,
-            None => return Err(ProviderError::NotConnected),
-        };
-        self.settle_write(outcome, "Data close error").await
-    }
-
-    /// One place decides what a write failure does, so the three above cannot
+    /// One place decides what a write failure does, so the two above cannot
     /// drift apart: give the channel away, then report.
     async fn settle_write(
         &mut self,
@@ -2957,7 +2891,7 @@ where
     }
 }
 
-impl<'p, S> Drop for DataChannel<'p, S> {
+impl Drop for DataChannel<'_> {
     fn drop(&mut self) {
         if !self.settled {
             // Nothing here can await, so the session cannot be closed politely.
@@ -3060,7 +2994,7 @@ impl FtpProvider {
     async fn after_timed_out_open(&mut self, operation: &'static str, path: &str) -> ProviderError {
         let queued = match self.stream.as_ref() {
             Some(stream) => {
-                let control = stream.get_ref();
+                let control = stream.get_ref().await;
                 let mut probe = [0u8; 1];
                 let mut got = tokio::io::ReadBuf::new(&mut probe);
                 std::future::poll_fn(|cx| {
@@ -3216,13 +3150,13 @@ impl FtpProvider {
     async fn redial_if_a_reply_is_pending(&mut self) -> Result<(), ProviderError> {
         let pending = match self.stream.as_ref() {
             Some(stream) => {
-                if !stream.buffered_reply_bytes().is_empty() {
+                let control = stream.get_ref().await;
+                if !control.buffered_reply_bytes().is_empty() {
                     true
                 } else {
                     // The reader's buffer is empty; the socket may still hold
                     // a reply the reader never pulled. One non-blocking peek,
                     // the same probe `after_timed_out_open` uses.
-                    let control = stream.get_ref();
                     let mut probe = [0u8; 1];
                     let mut got = tokio::io::ReadBuf::new(&mut probe);
                     std::future::poll_fn(|cx| {
@@ -3400,7 +3334,7 @@ impl FtpProvider {
     ///
     /// A reply is only acted on when it is a refusal. 4yz and 5yz end the wait;
     /// 2yz is the ordinary completion reply, which arrives on this channel too
-    /// and must be left alone for `finalize_retr_stream` to consume, or the
+    /// and must be left alone for `finish` to consume, or the
     /// tail of a perfectly good transfer would be thrown away.
     ///
     /// TWO PLACES are watched, because a reply can wait in either. `control`
@@ -3583,11 +3517,8 @@ impl FtpProvider {
         // that failure from leaving a live session with an unread `226`.
         atomic.commit().await.map_err(ProviderError::IoError)?;
         let data_stream = channel.finish()?;
-
-        // Finalize the stream - need to get stream again after the borrow
-        let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
-        stream
-            .finalize_retr_stream(data_stream)
+        data_stream
+            .finish()
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
@@ -3664,26 +3595,19 @@ impl FtpProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
 
-        // End of data, with a signal instead of a guess. This used to sleep
-        // `min(2 s, size / 4096 ms)` on TLS connections so the kernel could
-        // drain the last records before close_notify: a fixed two seconds on
-        // every upload of 8 MiB or more, which the DAG engine review measured
-        // as a constant 3 s overshoot on a 10 s rate-capped upload (rclone:
-        // 0.8 s). The real signal is the server closing the data connection
-        // once it has read to EOF, so we send our close_notify and FIN, read
-        // until the server's EOF (bounded, so a server that never closes
-        // cannot hang the upload), and only then let suppaftp read the 226.
-        // The wrapper keeps suppaftp's own `shutdown()` from touching a socket
-        // that is already fully closed on both sides.
+        // End of data. `finish` sends our close_notify and FIN after the last
+        // byte, closes the socket and reads the 226: the server writes the
+        // file once it reads that EOF, and it has nothing to send on a STOR
+        // data connection before it (the TLS cap below keeps TLS 1.3
+        // post-handshake tickets off it), so closing does not race unread
+        // bytes into a reset. It replaces our own shutdown, drain to the
+        // server's EOF and second shutdown kept harmless by a wrapper: under
+        // suppaftp 12 a second shutdown of a socket closed on both sides
+        // fails with "not connected", and `finish` reports that failure for
+        // an upload even after a 226. A shutdown error is still reported, as
+        // before.
         data_stream
-            .shutdown()
-            .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Data close error: {}", e)))?;
-        let _ = tokio::time::timeout(DATA_DRAIN_BUDGET, drain_to_eof(&mut data_stream)).await;
-
-        // Finalize: reads 226 from the control channel (the stream is closed).
-        stream
-            .finalize_put_stream(AlreadyShutDown(data_stream))
+            .finish()
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
@@ -3907,11 +3831,7 @@ async fn ftp_download_one_range(
     // The bounded RETR intentionally stopped before EOF; finalizing that
     // partial RETR may error. The connection is disposable (one per range),
     // so disconnect regardless: the same posture as `read_range`.
-    let finalize_result = {
-        let stream = worker.stream.as_mut().ok_or(ProviderError::NotConnected)?;
-        stream.finalize_retr_stream(data_stream).await
-    };
-    let _ = finalize_result;
+    let _ = data_stream.finish().await;
     let _ = worker.disconnect().await;
 
     Ok(ConcurrentRangeOutcome::Completed)
@@ -5299,7 +5219,7 @@ mod data_channel_watch_tests {
     /// 226 arrives on the same channel, and treating it like a refusal would
     /// throw away the tail of a transfer that was working. The watch switches
     /// itself off instead, so the loop cannot spin on a socket that stays
-    /// readable, and the reply is left in place for `finalize_retr_stream`.
+    /// readable, and the reply is left in place for `finish`.
     #[tokio::test]
     async fn a_completion_reply_is_left_alone_and_the_data_keeps_flowing() {
         let (mut data_client, mut data_server) = silent_pair().await;
@@ -5438,48 +5358,6 @@ mod live_listing_timeout {
 }
 
 #[cfg(test)]
-mod data_drain_tests {
-    use super::*;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-    /// The drain returns when the peer closes, and consumes nothing else the
-    /// caller cares about (a STOR data connection carries nothing back).
-    #[tokio::test]
-    async fn drain_to_eof_returns_at_the_peers_close() {
-        let (mut ours, mut theirs) = tokio::io::duplex(64);
-        let server = tokio::spawn(async move {
-            theirs.write_all(b"late bytes").await.unwrap();
-            drop(theirs);
-        });
-        tokio::time::timeout(std::time::Duration::from_secs(2), drain_to_eof(&mut ours))
-            .await
-            .expect("the drain must end when the peer closes");
-        server.await.unwrap();
-        let mut rest = Vec::new();
-        assert_eq!(ours.read_to_end(&mut rest).await.unwrap(), 0);
-    }
-
-    /// The wrapper lets writes and flushes through and swallows only the
-    /// shutdown, which the caller has already done on the real stream.
-    #[tokio::test]
-    async fn already_shut_down_forwards_writes_and_neutralises_shutdown() {
-        let (ours, mut theirs) = tokio::io::duplex(64);
-        let mut wrapped = AlreadyShutDown(ours);
-        wrapped.write_all(b"data").await.unwrap();
-        wrapped.flush().await.unwrap();
-        wrapped
-            .shutdown()
-            .await
-            .expect("a second shutdown is a no-op");
-        let mut buf = [0u8; 4];
-        theirs.read_exact(&mut buf).await.unwrap();
-        assert_eq!(&buf, b"data");
-        // The inner stream is still writable: the wrapper did not close it.
-        wrapped.write_all(b"more").await.unwrap();
-    }
-}
-
-#[cfg(test)]
 mod late_reply_guard_tests {
     use super::*;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -5541,6 +5419,76 @@ mod late_reply_guard_tests {
                 }
             }
         }
+    }
+
+    /// End to end on the real crate: the server answers `RETR` with `150` and
+    /// the final `550` in ONE write and keeps the data connection open and
+    /// silent. suppaftp's reader pulls both replies while it collects the
+    /// `150`, so the refusal lives only in the reader's buffer and the socket
+    /// underneath is empty. The download must end on the refusal at once, not
+    /// wait out the thirty-minute data idle timeout. This is the path the
+    /// fork's `ControlSocket::buffered_reply_bytes` exists for: the watch reads
+    /// the buffer through it, and a peek on the socket sees nothing.
+    #[tokio::test]
+    async fn a_refusal_sent_with_the_150_ends_a_real_download_at_once() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let data_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let data_port = data_listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (read, mut write) = stream.into_split();
+            let mut lines = BufReader::new(read).lines();
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            // Kept open and silent: a closed data socket would end the wait by
+            // another road and the stall would never show.
+            let mut held_data = Vec::new();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+                let reply = match cmd.as_str() {
+                    "USER" => "331 password please\r\n".to_string(),
+                    "PASS" => "230 logged in\r\n".to_string(),
+                    "PWD" => "257 \"/\" is current\r\n".to_string(),
+                    "PASV" => format!(
+                        "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                        data_port / 256,
+                        data_port % 256
+                    ),
+                    "RETR" => {
+                        let (data, _) = data_listener.accept().await.unwrap();
+                        held_data.push(data);
+                        "150 Opening data connection.\r\n550 Failed to open file.\r\n".to_string()
+                    }
+                    _ => "200 ok\r\n".to_string(),
+                };
+                if write.write_all(reply.as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port: addr.port(),
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider.connect().await.expect("the dial must succeed");
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.download_to_bytes("/missing.bin"),
+        )
+        .await
+        .expect("the refusal in the reader's buffer must end the download, not the idle timeout");
+        let err = outcome.expect_err("a refused RETR is an error");
+        assert!(
+            err.to_string().contains("550") || err.to_string().contains("Failed to open"),
+            "the error must carry the server's refusal, got {err}"
+        );
+        server.abort();
     }
 
     /// A reply that arrives AFTER the failure-path checks used to be read as
