@@ -752,7 +752,9 @@ mod tests {
         p.rename("/a.txt", "/link.txt")
             .await
             .expect("the same file under two names is no other item");
+        // rename(2) between two names of one file does nothing: both stay.
         assert_eq!(std::fs::read(dir.path().join("link.txt")).unwrap(), b"A");
+        assert_eq!(std::fs::read(dir.path().join("a.txt")).unwrap(), b"A");
     }
 
     /// `replace` keeps rename(2), which puts the new file in place in one step.
