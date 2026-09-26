@@ -572,11 +572,14 @@ fn build_metadata_json(profile: &AerosyncScriptProfile, app_version: &str) -> se
     if let Ok(v) = serde_json::to_value(&profile.profile.verify_policy) {
         map.insert("verify_policy".to_string(), v);
     }
+    // Neutral, as in the .aerosync export: no run reads streams or
+    // compression, so the script must not promise them. The keys stay for
+    // the versions that read them.
     map.insert(
         "parallel_streams".to_string(),
-        serde_json::Value::Number(serde_json::Number::from(profile.profile.parallel_streams)),
+        serde_json::Value::Number(serde_json::Number::from(1)),
     );
-    if let Ok(v) = serde_json::to_value(&profile.profile.compression_mode) {
+    if let Ok(v) = serde_json::to_value(CompressionMode::Off) {
         map.insert("compression_mode".to_string(), v);
     }
     map.insert(
@@ -936,10 +939,8 @@ mod tests {
             parsed.profile.profile.delete_orphans,
             original.profile.delete_orphans
         );
-        assert_eq!(
-            parsed.profile.profile.parallel_streams,
-            original.profile.parallel_streams
-        );
+        // Exported neutral, so it reads back as one stream.
+        assert_eq!(parsed.profile.profile.parallel_streams, 1);
         assert_eq!(parsed.profile.local_path, original.local_path);
         assert_eq!(parsed.profile.remote_path, original.remote_path);
         assert_eq!(parsed.profile.connect_profile, original.connect_profile);
@@ -1042,8 +1043,32 @@ mod tests {
         assert!(parsed.profile.track_renames);
         assert!(parsed.profile.watch);
         assert_eq!(parsed.profile.conflict_mode.as_deref(), Some("rename"));
-        assert_eq!(parsed.profile.profile.parallel_streams, 6);
+        // The 6 streams of the profile are not exported: no run reads them.
+        assert_eq!(parsed.profile.profile.parallel_streams, 1);
         assert_eq!(parsed.profile.profile.id, "custom-1");
+    }
+
+    /// A script exported before the neutral export (6 streams, compression
+    /// on in its metadata) still imports; the values are read and ignored.
+    #[test]
+    fn a_script_with_old_tuning_still_imports() {
+        let text = generate_script(&sample(SyncProfile::mirror()), "4.2.0-test")
+            .replace("\"parallel_streams\": 1", "\"parallel_streams\": 6")
+            .replace(
+                "\"compression_mode\": \"off\"",
+                "\"compression_mode\": \"on\"",
+            );
+        assert!(
+            text.contains("\"parallel_streams\": 6"),
+            "fixture edit did not apply"
+        );
+        assert!(
+            text.contains("\"compression_mode\": \"on\""),
+            "fixture edit did not apply"
+        );
+        let parsed = parse_script(&text).expect("must parse");
+        assert_eq!(parsed.profile.profile.parallel_streams, 6);
+        assert!(parsed.unmapped_fields.is_empty());
     }
 
     #[test]

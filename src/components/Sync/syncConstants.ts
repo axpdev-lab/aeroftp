@@ -11,15 +11,20 @@
  * virtual-scroll constants they relied on were removed with them.
  */
 
-import { RetryPolicy, VerifyPolicy, CompressionMode } from '../../types';
+import { RetryPolicy, VerifyPolicy } from '../../types';
 
 // --- Speed Mode Types ---
 
 export type SpeedMode = 'normal' | 'fast' | 'turbo' | 'extreme' | 'maniac';
 
+/**
+ * What a speed mode changes in an AeroSync run: whether transfers go through
+ * the delta path (SFTP with native rsync; other protocols ignore it). The retry
+ * policy per mode is `retryPolicyForSpeed`; Maniac also applies
+ * `MANIAC_OVERRIDES`. There is no parallelism or compression here: the run
+ * transfers one file at a time.
+ */
 export interface SpeedPreset {
-    parallelStreams: number;
-    compressionMode: CompressionMode;
     deltaSyncEnabled: boolean;
 }
 
@@ -36,11 +41,14 @@ export interface ManiacOverrides {
 // --- Speed Presets ---
 
 export const SPEED_PRESETS: Record<SpeedMode, SpeedPreset> = {
-    normal:  { parallelStreams: 1, compressionMode: 'off',  deltaSyncEnabled: false },
-    fast:    { parallelStreams: 3, compressionMode: 'auto', deltaSyncEnabled: false },
-    turbo:   { parallelStreams: 6, compressionMode: 'on',   deltaSyncEnabled: true  },
-    extreme: { parallelStreams: 8, compressionMode: 'on',   deltaSyncEnabled: true  },
-    maniac:  { parallelStreams: 8, compressionMode: 'on',   deltaSyncEnabled: true  },
+    // Delta from Fast up: what runs have done since the Plan tab took over
+    // (the executor used `speedMode !== 'normal'`); this table is now the one
+    // place that says so.
+    normal:  { deltaSyncEnabled: false },
+    fast:    { deltaSyncEnabled: true  },
+    turbo:   { deltaSyncEnabled: true  },
+    extreme: { deltaSyncEnabled: true  },
+    maniac:  { deltaSyncEnabled: true  },
 };
 
 export const MANIAC_OVERRIDES: ManiacOverrides = {

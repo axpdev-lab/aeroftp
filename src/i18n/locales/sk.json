@@ -2142,9 +2142,6 @@
                 "disk_error": "Chyba disku",
                 "unknown": "Neznáme"
             },
-            "parallelStreams": "Prúdy",
-            "parallelSequential": "Postupne",
-            "parallelStreamLabel": "prúdov",
             "schedulerTitle": "Plánovač synchronizácie",
             "schedulerEnabled": "Povoliť plánovač",
             "schedulerResume": "Obnoviť",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Vysoký počet adresárov - môže prekročiť limit inotify",
             "watcherPolling": "Používa sa režim poll (pomalší, ale univerzálny)",
-            "compressionToggle": "Kompresia",
-            "compressionAuto": "Auto",
-            "compressionOn": "Zapnuté",
-            "compressionOff": "Vypnuté",
             "multiPathAdd": "Pridať pár ciest",
             "multiPathEmpty": "Žiadne páry ciest nakonfigurované",
             "templateExport": "Exportovať šablónu",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Obnoviť",
             "rollbackEmpty": "Žiadne snímky nie sú k dispozícii",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 prúdov + VŠETKA bezpečnosť vypnutá - bez denníka, bez overenia, bez opakovania",
+            "speedManiacTooltip": "Bez denníka, bez overenia počas behu, limity šírky pásma ignorované, 2 rýchle opakovania. Stiahnuté súbory sa overia po behu.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Bez denníka. Bez overenia. Bez opakovania. Maximálna surová rýchlosť. Ak niečo zlyhá, je to stratené. Po dokončení synchronizácie sa spustí úplné overenie.",
+            "maniacWarningBody": "Bez denníka a bez overenia počas behu, limity šírky pásma sa ignorujú a neúspešný súbor dostane len 2 rýchle opakovania. Po behu sa stiahnuté súbory overia; nahrané nie.",
             "maniacConfirm": "Rozumiem, pokračovať",
             "maniacPostSyncReport": "Overenie po synchronizácii: {ok} OK, {mismatches} nezhodných, {failed} neúspešných",
             "rollback": "Vrátiť späť",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Uložiť aktuálnu konfiguráciu synchronizácie ako opakovane použiteľnú šablónu .aerosync",
             "templateImportDesc": "Načítať šablónu .aerosync na použitie jej konfigurácie synchronizácie",
             "maniacActive": "Aktívne",
-            "speedStreams": "{count} prúdov",
             "actionUploaded": "Nahraté",
             "actionDownloaded": "Stiahnuté",
             "actionDeleted": "Vymazané",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Nerozpoznané polia metadát",
             "aerosyncScriptApplyButton": "Uložiť ako preset",
             "aerosyncScriptAppliedToast": "Importovaný preset uložený. Otvor AeroSync na jeho použitie.",
-            "compressionHint": "Komprimuje dáta počas prenosu, aby ho zrýchlil; v cieli neukladá komprimované súbory. Auto preskakuje formáty, ktoré sú už komprimované (zip, jpg, mp4 a podobné).",
             "canaryDryRun": "Nič sa neprenáša: zobrazí náhľad toho, čo by urobila úplná synchronizácia, vypočítaný zo vzorky. Je to grafický náprotivok príkazu aeroftp-cli sync --dry-run (a --dry-run nástroja rclone).",
-            "templateImportPathPairs": "Počet použiteľných párov ciest v tejto šablóne: {count}. AeroFTP použije práve jeden, takže sa nič neimportovalo. Ponechajte v šablóne jediný pár a importujte ju znova.",
+            "templateImportPathPairs": "Použiteľné páry ciest (miestna/vzdialená) v tejto šablóne: {count}. Okno AeroSync pracuje s práve jedným párom, preto sa nič neimportovalo. Upravte šablónu tak, aby v nej zostal jediný pár, a potom ju importujte znova.",
             "templateNamePlaceholder": "napr. Nočná záloha do S3",
             "templateDescPlaceholder": "Na čo slúži táto šablóna (voliteľné)"
         },
@@ -5070,7 +5061,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Porovnať",
             "tabPlan": "Plán",
-            "tabSync": "Synchronizovať",
+            "tabSync": "Lokálne zrkadlo",
             "compareWontFitTitle": "Nad limitmi {name}: {count}",
             "compareWontFitHint": "Tieto súbory prekračujú zdokumentovaný limit veľkosti poskytovateľa, alebo je ich názov či cesta dlhšia, než prijíma. Synchronizácia by pri nich zlyhala: najprv ich premenujte, presuňte alebo rozdeľte.",
             "compareWontFitTooLarge": "{size}, limit {limit}",
@@ -5078,6 +5069,78 @@
             "compareWontFitNameChars": "názov nad {count} znakov",
             "compareWontFitPathBytes": "cesta nad {count} bajtov",
             "compareWontFitPathChars": "cesta nad {count} znakov",
+            "presetDefault": "Predvolené",
+            "actionLabel": {
+                "skip": "Preskočiť",
+                "copy-to-right": "Kopírovať → doprava",
+                "copy-to-left": "Kopírovať ← doľava",
+                "overwrite-right": "Prepísať vpravo",
+                "overwrite-left": "Prepísať vľavo",
+                "delete-right": "Odstrániť vpravo",
+                "delete-left": "Odstrániť vľavo",
+                "rename-to-right": "Ponechať obe → doprava",
+                "rename-to-left": "Ponechať obe ← doľava",
+                "conflict-skip": "Konflikt (preskočiť)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Preskočiť",
+                    "tagline": "Ponechá konflikty na oboch stranách bez zmeny."
+                },
+                "rename": {
+                    "label": "Ponechať obe",
+                    "tagline": "Skopíruje verziu zo zdroja s príponou obsahujúcou dátum a čas."
+                },
+                "newer-wins": {
+                    "label": "Vyhráva novšia",
+                    "tagline": "Strana s novším časom zmeny prepíše druhú."
+                },
+                "older-wins": {
+                    "label": "Vyhráva staršia",
+                    "tagline": "Staršia strana prepíše novšiu (na archiváciu)."
+                },
+                "larger-wins": {
+                    "label": "Vyhráva väčšia",
+                    "tagline": "Strana s väčšou veľkosťou prepíše menšiu."
+                },
+                "smaller-wins": {
+                    "label": "Vyhráva menšia",
+                    "tagline": "Menšia strana prepíše väčšiu."
+                }
+            },
+            "bucketName": {
+                "only-left": "Iba vľavo",
+                "newer-left": "Novšie vľavo",
+                "only-right": "Iba vpravo",
+                "newer-right": "Novšie vpravo",
+                "conflict": "Konflikt",
+                "same": "Rovnaké"
+            },
+            "bucketDescription": {
+                "only-left": "Nachádza sa na zdrojovom paneli, v cieli chýba.",
+                "newer-left": "Nachádza sa na oboch stranách, kópia v zdroji má novšiu časovú značku.",
+                "only-right": "Nachádza sa v cieli, na zdrojovom paneli chýba.",
+                "newer-right": "Nachádza sa na oboch stranách, kópia v cieli má novšiu časovú značku.",
+                "conflict": "Položka je na oboch stranách, ale pri porovnateľných časových značkách sa líši veľkosťou.",
+                "same": "Položky sa zhodujú podľa aktívneho pravidla porovnania."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Iba veľkosť",
+                "mtimeOnly": "Iba časová značka",
+                "sizeAndMtime": "Veľkosť + časová značka"
+            },
+            "compareTable": {
+                "name": "Názov",
+                "leftSize": "Veľkosť vľavo",
+                "rightSize": "Veľkosť vpravo",
+                "leftModified": "Zmenené vľavo",
+                "rightModified": "Zmenené vpravo",
+                "folder": "priečinok",
+                "noEntries": "Žiadne položky.",
+                "countedNotListed": "Započítané, ale nevypísané: skenovanie uvádza zhodné súbory ako súhrnný počet namiesto samostatného riadka pre každý, aby veľké stromy zostali rýchle.",
+                "shown": "Zobrazené: {shown} z {total}",
+                "moreNotListed": "Započítané, ale nevypísané: {count}"
+            },
             "compareUnavailable": "Otvorte druhý panel alebo vzdialené pripojenie na porovnanie.",
             "planUnavailable": "Pred výberom predvoľby je potrebný výsledok porovnania. Najprv otvorte kartu Porovnať.",
             "totalEntries": "Celkový počet záznamov",
@@ -5114,7 +5177,7 @@
             "ignoredForMirror": "IGNOROVANÉ PRE ZRKADLENIE",
             "versionedBackup": "Verziovaná záloha",
             "enable": "Povoliť",
-            "versionedBackupHint": "Zachyťte cieľovú kópiu v tomto adresári pred každým prepísaním alebo odstránením.",
+            "versionedBackupHint": "Pred prepísaním alebo odstránením súboru sa jeho kópia v cieli presunie do {dir}, do priečinka pomenovaného podľa dátumu a času behu.",
             "actionable": "Na vykonanie",
             "reportCopiedRight": "Skopírované doprava",
             "reportCopiedLeft": "Skopírované doľava",
@@ -5136,7 +5199,6 @@
             "executePreset": "Vykonať predvoľbu",
             "execute": "Vykonať",
             "sync": {
-                "title": "AeroSync: lokálne na lokálne",
                 "description": "Zrkadlí lokálny zdrojový adresár do lokálneho cieľa. Súbory ≥ 1 MiB používajú vstavaný delta engine; menšie súbory používajú priame kopírovanie.",
                 "source": "Zdroj",
                 "destination": "Cieľ",
@@ -5192,7 +5254,7 @@
             "speedMode_fast": "Rýchly",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extrémny",
-            "speedModeHint": "Paralelné toky + predvoľba kompresie použité pre spustenie.",
+            "speedModeHint": "Nastavuje politiku opakovaní. Od režimu Rýchly vyššie sa zmenené súbory posielajú ako delty, ak to server podporuje (SFTP s rsync).",
             "verifyPolicy": "Politika overenia",
             "verifyPolicy_none": "Žiadna",
             "verifyPolicy_size_only": "Iba veľkosť",
@@ -5237,7 +5299,45 @@
             "errorCorrection": "Oprava chýb",
             "errorCorrectionHint": "Uloží malý paritný súbor .aerocorrect vedľa každého zálohovaného súboru, takže vzdialenú kópiu poškodenú bit-rotom možno opraviť pri ďalšom stiahnutí, bez originálu.",
             "outOfSyncItemsPct": "Nesynchronizované položky",
-            "outOfSyncBytesPct": "Nesynchronizované bajty"
+            "outOfSyncBytesPct": "Nesynchronizované bajty",
+            "exclude": {
+                "label": "Vzory na vylúčenie",
+                "hint": "Oddelené čiarkou alebo novým riadkom, napríklad cache, *.tmp alebo build/output. Vždy vylúčené: {list}."
+            },
+            "cli": {
+                "title": "Rovnaké spustenie z príkazového riadka",
+                "copy": "Kopírovať",
+                "copied": "Skopírované",
+                "copyFailed": "Kopírovanie zlyhalo",
+                "none": "V CLI neexistuje presný ekvivalent: {reason}",
+                "reason": {
+                    "localPair": "pre dva lokálne priečinky spúšťa CLI vlastné zrkadlenie, ktoré ignoruje nastavenia smeru, mazania a konfliktov.",
+                    "unsavedServer": "toto pripojenie nie je uložený server a CLI ho potrebuje, aby ho mohlo zadať cez --profile.",
+                    "overwritesNewer": "CLI prepíše kópiu v cieli s inou veľkosťou, aj keď je novšia, čo táto predvoľba nikdy nerobí.",
+                    "twoWay": "CLI považuje dve kópie rovnakej veľkosti s rozdielnym časom za konflikt a prepíše staršiu; tento plán ich v rozmedzí 30 sekúnd považuje za rovnaké.",
+                    "canary": "CLI nemá skúšobné spustenie Canary.",
+                    "versionedBackup": "CLI zatiaľ neukladá zálohy v rovnakej štruktúre.",
+                    "transferBudget": "keď sa rozpočet minie, tento plán sa zastaví, vrátane mazania; CLI obmedzuje iba prenosy a aj tak maže.",
+                    "remotePath": "CLI určuje vzdialený priečinok voči počiatočnému priečinku uloženého servera a dostalo by sa do iného.",
+                    "exclusions": "CLI vyhodnocuje vzory na vylúčenie inak, takže by nepreskočilo všetko, čo preskakuje tento plán (node_modules, .git a ostatné)."
+                }
+            },
+            "rescan": "Znova prehľadať",
+            "rescanNeeded": "Porovnanie bolo vykonané s inými vylúčeniami alebo iným priečinkom záloh. Pred spustením znova prehľadajte.",
+            "backup": {
+                "checking": "Zisťuje sa, ako tento server presúva súbory...",
+                "serverCopy": "Tento server nepodporuje presun: každá uchovaná kópia sa skopíruje na serveri a potom odstráni. Stojí to úplnú kópiu každého uchovaného súboru, v dvoch samostatných krokoch.",
+                "clientCopy": "Tento server nepodporuje presun: každá uchovaná kópia sa stiahne, nahrá do priečinka záloh a potom odstráni. Každý uchovaný súbor prejde týmto počítačom dvakrát, v samostatných krokoch.",
+                "unsupported": "Tento server nedokáže presúvať súbory do iného priečinka, preto nemôže uchovávať staré kópie. Na spustenie vypnite verziovanú zálohu.",
+                "checkFailed": "Server sa nepodarilo opýtať, ako presúva súbory. Pripojte sa znova alebo na spustenie vypnite verziovanú zálohu.",
+                "nested": "Priečinok záloh je vnútri {folder}, do ktorého táto synchronizácia zapisuje. Vyberte priečinok mimo neho.",
+                "invalid": {
+                    "empty": "Zadajte názov priečinka záloh.",
+                    "absolute": "Použite priečinok vnútri cieľa, nie absolútnu cestu.",
+                    "parent": "Priečinok záloh nemôže obsahovať '..'.",
+                    "name": "Tento názov priečinka záloh nie je platný."
+                }
+            }
         },
         "accountLock": {
             "title": "Vyberte účet",

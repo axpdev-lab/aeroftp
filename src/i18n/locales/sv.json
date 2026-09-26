@@ -2142,9 +2142,6 @@
                 "disk_error": "Diskfel",
                 "unknown": "Okänt"
             },
-            "parallelStreams": "Strömmar",
-            "parallelSequential": "Sekventiell",
-            "parallelStreamLabel": "strömmar",
             "schedulerTitle": "Synkroniseringsschema",
             "schedulerEnabled": "Aktivera schemaläggare",
             "schedulerResume": "Återuppta",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Högt antal kataloger - kan överskrida inotify-gränsen",
             "watcherPolling": "Använder pollningsläge (långsammare men universellt)",
-            "compressionToggle": "Komprimering",
-            "compressionAuto": "Auto",
-            "compressionOn": "På",
-            "compressionOff": "Av",
             "multiPathAdd": "Lägg till sökvägspar",
             "multiPathEmpty": "Inga sökvägspar konfigurerade",
             "templateExport": "Exportera mall",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Återställ",
             "rollbackEmpty": "Inga ögonblicksbilder tillgängliga",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 strömmar + ALL säkerhet avstängd - ingen logg, ingen verifiering, inget omförsök",
+            "speedManiacTooltip": "Ingen logg, ingen verifiering under körningen, bandbreddsgränser ignoreras, 2 snabba omförsök. Nedladdade filer verifieras efter körningen.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Ingen logg. Ingen verifiering. Inget omförsök. Maximal råhastighet. Om något misslyckas är det borta. En fullständig verifieringsskanning körs efter synkroniseringen.",
+            "maniacWarningBody": "Ingen logg och ingen verifiering under körningen, bandbreddsgränser ignoreras och en misslyckad fil får bara 2 snabba omförsök. Efter körningen verifieras nedladdade filer; uppladdade filer gör det inte.",
             "maniacConfirm": "Jag förstår, fortsätt",
             "maniacPostSyncReport": "Verifiering efter synk: {ok} OK, {mismatches} avvikelser, {failed} misslyckade",
             "rollback": "Återställ",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Spara aktuell synkkonfiguration som en återanvändbar .aerosync-mall",
             "templateImportDesc": "Ladda en .aerosync-mall för att tillämpa dess synkkonfiguration",
             "maniacActive": "Aktiv",
-            "speedStreams": "{count} strömmar",
             "actionUploaded": "Uppladdad",
             "actionDownloaded": "Nedladdad",
             "actionDeleted": "Raderad",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Okända metadata-fält",
             "aerosyncScriptApplyButton": "Spara som preset",
             "aerosyncScriptAppliedToast": "Importerad preset sparad. Öppna AeroSync för att använda den.",
-            "compressionHint": "Komprimerar data under överföringen för att snabba upp den; den lagrar inga komprimerade filer på destinationen. Auto hoppar över format som redan är komprimerade (zip, jpg, mp4 och liknande).",
             "canaryDryRun": "Inget överförs: detta förhandsvisar vad en fullständig synkronisering skulle göra, beräknat från urvalet. Det är den grafiska motsvarigheten till CLI-kommandot aeroftp-cli sync --dry-run (och rclones --dry-run).",
-            "templateImportPathPairs": "Antal användbara sökvägspar i den här mallen: {count}. AeroFTP tillämpar exakt ett, så ingenting importerades. Redigera mallen så att ett sökvägspar återstår och importera den igen.",
+            "templateImportPathPairs": "Användbara sökvägspar (lokal/fjärr) i den här mallen: {count}. Ett AeroSync-fönster arbetar med exakt ett par, så ingenting importerades. Redigera mallen så att bara ett par återstår och importera den sedan igen.",
             "templateNamePlaceholder": "t.ex. Nattlig säkerhetskopia till S3",
             "templateDescPlaceholder": "Vad den här mallen används till (valfritt)"
         },
@@ -5070,7 +5061,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Jämför",
             "tabPlan": "Plan",
-            "tabSync": "Synkronisera",
+            "tabSync": "Lokal spegel",
             "compareWontFitTitle": "Över gränserna för {name}: {count}",
             "compareWontFitHint": "Dessa filer är större än leverantörens dokumenterade gräns, eller så är deras namn eller sökväg längre än tillåtet. En synkronisering skulle misslyckas för dem: byt namn, flytta eller dela upp dem först.",
             "compareWontFitTooLarge": "{size}, gräns {limit}",
@@ -5078,6 +5069,78 @@
             "compareWontFitNameChars": "namn över {count} tecken",
             "compareWontFitPathBytes": "sökväg över {count} byte",
             "compareWontFitPathChars": "sökväg över {count} tecken",
+            "presetDefault": "Standard",
+            "actionLabel": {
+                "skip": "Hoppa över",
+                "copy-to-right": "Kopiera → höger",
+                "copy-to-left": "Kopiera ← vänster",
+                "overwrite-right": "Skriv över på höger sida",
+                "overwrite-left": "Skriv över på vänster sida",
+                "delete-right": "Ta bort på höger sida",
+                "delete-left": "Ta bort på vänster sida",
+                "rename-to-right": "Behåll båda → höger",
+                "rename-to-left": "Behåll båda ← vänster",
+                "conflict-skip": "Konflikt (hoppa över)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Hoppa över",
+                    "tagline": "Lämnar konflikter orörda på båda sidor."
+                },
+                "rename": {
+                    "label": "Behåll båda",
+                    "tagline": "Kopierar källans version med ett suffix med datum och tid."
+                },
+                "newer-wins": {
+                    "label": "Nyaste vinner",
+                    "tagline": "Sidan med den senaste ändringstiden skriver över den andra."
+                },
+                "older-wins": {
+                    "label": "Äldsta vinner",
+                    "tagline": "Den äldre sidan skriver över den nyare (för arkivering)."
+                },
+                "larger-wins": {
+                    "label": "Största vinner",
+                    "tagline": "Sidan med störst filstorlek skriver över den mindre."
+                },
+                "smaller-wins": {
+                    "label": "Minsta vinner",
+                    "tagline": "Den mindre sidan skriver över den större."
+                }
+            },
+            "bucketName": {
+                "only-left": "Endast till vänster",
+                "newer-left": "Nyare till vänster",
+                "only-right": "Endast till höger",
+                "newer-right": "Nyare till höger",
+                "conflict": "Konflikt",
+                "same": "Lika"
+            },
+            "bucketDescription": {
+                "only-left": "Finns i källpanelen, saknas i destinationen.",
+                "newer-left": "Finns på båda sidor, källans kopia har den senaste tidsstämpeln.",
+                "only-right": "Finns i destinationen, saknas i källpanelen.",
+                "newer-right": "Finns på båda sidor, destinationens kopia har den senaste tidsstämpeln.",
+                "conflict": "Båda sidor har posten men storleken skiljer sig trots jämförbara tidsstämplar.",
+                "same": "Posterna stämmer överens enligt den aktiva jämförelsepolicyn."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Endast storlek",
+                "mtimeOnly": "Endast tidsstämpel",
+                "sizeAndMtime": "Storlek + tidsstämpel"
+            },
+            "compareTable": {
+                "name": "Namn",
+                "leftSize": "Storlek vänster",
+                "rightSize": "Storlek höger",
+                "leftModified": "Ändrad vänster",
+                "rightModified": "Ändrad höger",
+                "folder": "mapp",
+                "noEntries": "Inga poster.",
+                "countedNotListed": "Räknade men inte listade: genomsökningen rapporterar identiska filer som ett totalt antal i stället för en rad per fil, så att stora träd förblir snabba.",
+                "shown": "Visas: {shown} av {total}",
+                "moreNotListed": "Räknade men inte listade: {count}"
+            },
             "compareUnavailable": "Öppna en andra panel eller en fjärranslutning för att jämföra.",
             "planUnavailable": "Ett jämförelseresultat krävs innan du väljer en förinställning. Öppna fliken Jämför först.",
             "totalEntries": "Totalt antal poster",
@@ -5114,7 +5177,7 @@
             "ignoredForMirror": "IGNORERAS FÖR SPEGLING",
             "versionedBackup": "Versionerad säkerhetskopia",
             "enable": "Aktivera",
-            "versionedBackupHint": "Fånga målkopian i denna katalog före varje överskrivning eller radering.",
+            "versionedBackupHint": "Innan en fil skrivs över eller raderas flyttas dess kopia i destinationen till {dir}, i en mapp som namnges efter körningens datum och tid.",
             "actionable": "Att utföra",
             "reportCopiedRight": "Kopierat till höger",
             "reportCopiedLeft": "Kopierat till vänster",
@@ -5136,7 +5199,6 @@
             "executePreset": "Utför förinställning",
             "execute": "Utför",
             "sync": {
-                "title": "AeroSync: lokalt till lokalt",
                 "description": "Speglar en lokal källkatalog till en lokal destination. Filer ≥ 1 MiB använder den inbyggda delta-motorn; mindre filer använder direkt kopiering.",
                 "source": "Källa",
                 "destination": "Destination",
@@ -5192,7 +5254,7 @@
             "speedMode_fast": "Snabb",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extrem",
-            "speedModeHint": "Parallella strömmar + komprimeringsförinställning tillämpas på körningen.",
+            "speedModeHint": "Anger policyn för omförsök. Från Snabb och uppåt skickas ändrade filer som delta där servern stöder det (SFTP med rsync).",
             "verifyPolicy": "Verifieringspolicy",
             "verifyPolicy_none": "Ingen",
             "verifyPolicy_size_only": "Endast storlek",
@@ -5237,7 +5299,45 @@
             "errorCorrection": "Felkorrigering",
             "errorCorrectionHint": "Sparar en liten .aerocorrect-paritetsfil bredvid varje säkerhetskopierad fil, så att en fjärrkopia skadad av bit-rot kan repareras vid nästa hämtning, utan originalet.",
             "outOfSyncItemsPct": "Osynkroniserade objekt",
-            "outOfSyncBytesPct": "Osynkroniserade byte"
+            "outOfSyncBytesPct": "Osynkroniserade byte",
+            "exclude": {
+                "label": "Exkluderingsmönster",
+                "hint": "Separerade med komma eller ny rad, till exempel cache, *.tmp eller build/output. Alltid exkluderade: {list}."
+            },
+            "cli": {
+                "title": "Samma körning från kommandoraden",
+                "copy": "Kopiera",
+                "copied": "Kopierat",
+                "copyFailed": "Kopieringen misslyckades",
+                "none": "Ingen exakt CLI-motsvarighet: {reason}",
+                "reason": {
+                    "localPair": "för två lokala mappar kör CLI:t sin egen spegling, som ignorerar inställningar för riktning, borttagning och konflikter.",
+                    "unsavedServer": "den här anslutningen är inte en sparad server, och CLI:t behöver en för att ange den med --profile.",
+                    "overwritesNewer": "CLI:t skriver över en målkopia med annan storlek även när den är nyare, vilket den här förinställningen aldrig gör.",
+                    "twoWay": "CLI:t behandlar två kopior av samma storlek med olika tider som en konflikt och skriver över den äldre; den här planen räknar dem som lika inom 30 sekunder.",
+                    "canary": "CLI:t har ingen Canary-provkörning.",
+                    "versionedBackup": "CLI:t sparar ännu inte säkerhetskopior i samma struktur.",
+                    "transferBudget": "när budgeten tar slut stoppar den här planen, borttagningar inräknade; CLI:t begränsar bara överföringar och tar ändå bort.",
+                    "remotePath": "CLI:t tolkar fjärrmappen utifrån den sparade serverns startmapp och skulle hamna i en annan.",
+                    "exclusions": "CLI:t matchar exkluderingsmönster annorlunda, så det skulle inte hoppa över allt som den här planen hoppar över (node_modules, .git och resten)."
+                }
+            },
+            "rescan": "Skanna om",
+            "rescanNeeded": "Jämförelsen gjordes med andra exkluderingar eller en annan säkerhetskopieringsmapp. Skanna om innan körning.",
+            "backup": {
+                "checking": "Kontrollerar hur den här servern flyttar filer...",
+                "serverCopy": "Den här servern kan inte flytta: varje bevarad kopia kopieras på servern och raderas sedan. Det kostar en fullständig kopia av varje bevarad fil, i två separata steg.",
+                "clientCopy": "Den här servern kan inte flytta: varje bevarad kopia laddas ned, laddas upp till säkerhetskopieringsmappen och raderas sedan. Varje bevarad fil passerar genom den här datorn två gånger, i separata steg.",
+                "unsupported": "Den här servern kan inte flytta filer till en annan mapp och kan därför inte bevara gamla kopior. Stäng av versionerad säkerhetskopia för att köra.",
+                "checkFailed": "Kunde inte fråga servern hur den flyttar filer. Anslut igen, eller stäng av versionerad säkerhetskopia för att köra.",
+                "nested": "Säkerhetskopieringsmappen ligger i {folder}, som den här synkroniseringen skriver till. Välj en mapp utanför den.",
+                "invalid": {
+                    "empty": "Ange ett namn på säkerhetskopieringsmappen.",
+                    "absolute": "Använd en mapp inuti destinationen, inte en absolut sökväg.",
+                    "parent": "Säkerhetskopieringsmappen får inte innehålla '..'.",
+                    "name": "Det här namnet på säkerhetskopieringsmappen är inte giltigt."
+                }
+            }
         },
         "accountLock": {
             "title": "Välj ett konto",

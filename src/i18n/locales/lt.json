@@ -2142,9 +2142,6 @@
                 "disk_error": "Disko klaida",
                 "unknown": "Nežinoma"
             },
-            "parallelStreams": "Srautai",
-            "parallelSequential": "Nuoseklus",
-            "parallelStreamLabel": "srautai",
             "schedulerTitle": "Sinchronizacijos planuoklis",
             "schedulerEnabled": "Įjungti planavimą",
             "schedulerResume": "Tęsti",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Serveris",
             "watcherInotifyWarning": "Didelis katalogų skaičius - gali viršyti inotify limitą",
             "watcherPolling": "Naudojamas apklausos režimas (lėtesnis, bet universalus)",
-            "compressionToggle": "Suspaudimas",
-            "compressionAuto": "Automatinis",
-            "compressionOn": "Įjungta",
-            "compressionOff": "Išjungta",
             "multiPathAdd": "Pridėti kelių porą",
             "multiPathEmpty": "Nesukonfigūruota kelių porų",
             "templateExport": "Eksportuoti šabloną",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Atkurti",
             "rollbackEmpty": "Nėra prieinamų momentinių kopijų",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 srautai + VISI saugos mechanizmai išjungti - be žurnalo, be patikrinimo, be pakartojimo",
+            "speedManiacTooltip": "Be žurnalo, be patikrinimo vykdymo metu, pralaidumo ribos ignoruojamos, 2 greiti pakartojimai. Atsisiųsti failai patikrinami po vykdymo.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Jokio žurnalo. Jokio patikrinimo. Jokio pakartojimo. Maksimalus greitis. Jei kas nors nepavyksta, tai prarasta. Pilnas patikrinimas bus atliktas pasibaigus sinchronizacijai.",
+            "maniacWarningBody": "Vykdymo metu nėra nei žurnalo, nei patikrinimo, pralaidumo ribos ignoruojamos, o nepavykęs failas gauna tik 2 greitus pakartojimus. Po vykdymo atsisiųsti failai patikrinami; įkelti ne.",
             "maniacConfirm": "Suprantu, tęsti",
             "maniacPostSyncReport": "Patikrinimas po sinchronizacijos: {ok} gerai, {mismatches} neatitinka, {failed} nepavyko",
             "rollback": "Atstatymas",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Išsaugoti dabartinę sinchronizacijos konfigūraciją kaip pakartotinai naudojamą .aerosync šabloną",
             "templateImportDesc": "Įkelti .aerosync šabloną ir pritaikyti jo sinchronizacijos konfigūraciją",
             "maniacActive": "Aktyvus",
-            "speedStreams": "{count} srautai",
             "actionUploaded": "Įkeltas",
             "actionDownloaded": "Atsisiųstas",
             "actionDeleted": "Ištrintas",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Neatpazinti metadata laukai",
             "aerosyncScriptApplyButton": "Išsaugoti kaip preset",
             "aerosyncScriptAppliedToast": "Importuotas preset išsaugotas. Atidarykite AeroSync, kad jį naudotumėte.",
-            "compressionHint": "Suspaudžia duomenis perdavimo metu, kad transferis būtų greitesnis; suspaustų failų paskirties vietoje nesaugo. Auto praleidžia jau suspaustus formatus (zip, jpg, mp4 ir panašius).",
             "canaryDryRun": "Niekas neperkeliama: tai parodo, ką darytų visas sinchronizavimas, apskaičiuota iš imties. Tai komandos aeroftp-cli sync --dry-run (ir rclone --dry-run) grafinis atitikmuo.",
-            "templateImportPathPairs": "Naudotinų kelių porų šiame šablone: {count}. AeroFTP taiko lygiai vieną, todėl nieko neimportuota. Pataisykite šabloną taip, kad liktų viena pora, ir importuokite jį dar kartą.",
+            "templateImportPathPairs": "Naudotinos kelių poros (vietinis/nuotolinis) šiame šablone: {count}. AeroSync langas dirba su lygiai viena pora, todėl nieko neimportuota. Redaguokite šabloną taip, kad liktų tik viena pora, tada importuokite jį dar kartą.",
             "templateNamePlaceholder": "pvz. Naktinė atsarginė kopija į S3",
             "templateDescPlaceholder": "Kam skirtas šis šablonas (nebūtina)"
         },
@@ -5070,7 +5061,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Palyginti",
             "tabPlan": "Planas",
-            "tabSync": "Sinchronizuoti",
+            "tabSync": "Vietinis veidrodis",
             "compareWontFitTitle": "Viršija {name} ribas: {count}",
             "compareWontFitHint": "Šie failai viršija dokumentuotą teikėjo dydžio ribą arba jų pavadinimas ar kelias ilgesnis, nei leidžiama. Sinchronizavimas su jais nepavyktų: pirmiausia pervadinkite, perkelkite arba padalykite juos.",
             "compareWontFitTooLarge": "{size}, riba {limit}",
@@ -5078,6 +5069,78 @@
             "compareWontFitNameChars": "pavadinimas ilgesnis nei {count} simbolių",
             "compareWontFitPathBytes": "kelias ilgesnis nei {count} baitų",
             "compareWontFitPathChars": "kelias ilgesnis nei {count} simbolių",
+            "presetDefault": "Numatytasis",
+            "actionLabel": {
+                "skip": "Praleisti",
+                "copy-to-right": "Kopijuoti → į dešinę",
+                "copy-to-left": "Kopijuoti ← į kairę",
+                "overwrite-right": "Perrašyti dešinėje",
+                "overwrite-left": "Perrašyti kairėje",
+                "delete-right": "Ištrinti dešinėje",
+                "delete-left": "Ištrinti kairėje",
+                "rename-to-right": "Palikti abu → į dešinę",
+                "rename-to-left": "Palikti abu ← į kairę",
+                "conflict-skip": "Konfliktas (praleisti)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Praleisti",
+                    "tagline": "Palieka konfliktus nepakeistus abiejose pusėse."
+                },
+                "rename": {
+                    "label": "Palikti abu",
+                    "tagline": "Nukopijuoja šaltinio versiją su datos ir laiko priesaga."
+                },
+                "newer-wins": {
+                    "label": "Laimi naujesnis",
+                    "tagline": "Pusė su vėlesniu keitimo laiku perrašo kitą."
+                },
+                "older-wins": {
+                    "label": "Laimi senesnis",
+                    "tagline": "Senesnė pusė perrašo naujesnę (archyvavimui)."
+                },
+                "larger-wins": {
+                    "label": "Laimi didesnis",
+                    "tagline": "Pusė su didesniu dydžiu perrašo mažesnę."
+                },
+                "smaller-wins": {
+                    "label": "Laimi mažesnis",
+                    "tagline": "Mažesnė pusė perrašo didesnę."
+                }
+            },
+            "bucketName": {
+                "only-left": "Tik kairėje",
+                "newer-left": "Naujesnis kairėje",
+                "only-right": "Tik dešinėje",
+                "newer-right": "Naujesnis dešinėje",
+                "conflict": "Konfliktas",
+                "same": "Vienodi"
+            },
+            "bucketDescription": {
+                "only-left": "Yra šaltinio skydelyje, trūksta paskirties vietoje.",
+                "newer-left": "Yra abiejose pusėse, šaltinio kopija turi naujesnę laiko žymą.",
+                "only-right": "Yra paskirties vietoje, trūksta šaltinio skydelyje.",
+                "newer-right": "Yra abiejose pusėse, paskirties vietos kopija turi naujesnę laiko žymą.",
+                "conflict": "Įrašas yra abiejose pusėse, tačiau esant panašioms laiko žymoms skiriasi dydis.",
+                "same": "Įrašai sutampa pagal aktyvią palyginimo taisyklę."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Tik dydis",
+                "mtimeOnly": "Tik laiko žyma",
+                "sizeAndMtime": "Dydis + laiko žyma"
+            },
+            "compareTable": {
+                "name": "Pavadinimas",
+                "leftSize": "Dydis kairėje",
+                "rightSize": "Dydis dešinėje",
+                "leftModified": "Pakeista kairėje",
+                "rightModified": "Pakeista dešinėje",
+                "folder": "aplankas",
+                "noEntries": "Įrašų nėra.",
+                "countedNotListed": "Suskaičiuota, bet neišvardyta: nuskaitymas pateikia identiškus failus kaip bendrą skaičių, o ne po eilutę kiekvienam, kad dideli medžiai išliktų greiti.",
+                "shown": "Rodoma: {shown} iš {total}",
+                "moreNotListed": "Suskaičiuota, bet neišvardyta: {count}"
+            },
             "compareUnavailable": "Atidarykite antrą skydelį arba nuotolinį prisijungimą palyginimui.",
             "planUnavailable": "Prieš pasirenkant išankstinį nustatymą reikia palyginimo rezultato. Pirma atidarykite Palyginti kortelę.",
             "totalEntries": "Iš viso įrašų",
@@ -5114,7 +5177,7 @@
             "ignoredForMirror": "IGNORUOJAMA VEIDRODZIUI",
             "versionedBackup": "Versijuota atsarginė kopija",
             "enable": "Igalinti",
-            "versionedBackupHint": "Išsaugokite tikslines kopijos šią direktoriją prieš kiekvieną perrašymą ar trinimą.",
+            "versionedBackupHint": "Prieš perrašant ar ištrinant failą, jo kopija paskirties vietoje perkeliama į {dir}, į aplanką, pavadintą pagal vykdymo datą ir laiką.",
             "actionable": "Vykdytinas",
             "reportCopiedRight": "Nukopijuota į dešinę",
             "reportCopiedLeft": "Nukopijuota į kairę",
@@ -5136,7 +5199,6 @@
             "executePreset": "Vykdyti išankstinį nustatymą",
             "execute": "Vykdyti",
             "sync": {
-                "title": "AeroSync: iš vietinio į vietinį",
                 "description": "Atspindi vietinį šaltinio katalogą į vietinę paskirties vietą. Failai ≥ 1 MiB naudoja vidinį delta variklį; mažesni failai naudoja tiesioginį kopijavimą.",
                 "source": "Šaltinis",
                 "destination": "Paskirties vieta",
@@ -5192,7 +5254,7 @@
             "speedMode_fast": "Greitas",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Ekstremalus",
-            "speedModeHint": "Lygiagretūs srautai + glaudinimo išankstinis nustatymas pritaikytas paleidimui.",
+            "speedModeHint": "Nustato pakartojimų politiką. Nuo režimo Greitas ir aukščiau pakeisti failai siunčiami kaip deltos, kur serveris tai palaiko (SFTP su rsync).",
             "verifyPolicy": "Patikrinimo politika",
             "verifyPolicy_none": "Nėra",
             "verifyPolicy_size_only": "Tik dydis",
@@ -5237,7 +5299,45 @@
             "errorCorrection": "Klaidų taisymas",
             "errorCorrectionHint": "Šalia kiekvieno atsarginio failo išsaugo mažą .aerocorrect lygiškumo failą, kad bit-rot pažeistą nuotolinę kopiją būtų galima atkurti kito atsisiuntimo metu be originalo.",
             "outOfSyncItemsPct": "Nesinchronizuoti elementai",
-            "outOfSyncBytesPct": "Nesinchronizuoti baitai"
+            "outOfSyncBytesPct": "Nesinchronizuoti baitai",
+            "exclude": {
+                "label": "Išskyrimo šablonai",
+                "hint": "Atskirti kableliu arba nauja eilute, pavyzdžiui, cache, *.tmp arba build/output. Visada išskiriama: {list}."
+            },
+            "cli": {
+                "title": "Tas pats paleidimas iš komandinės eilutės",
+                "copy": "Kopijuoti",
+                "copied": "Nukopijuota",
+                "copyFailed": "Nepavyko nukopijuoti",
+                "none": "Nėra tikslaus CLI atitikmens: {reason}",
+                "reason": {
+                    "localPair": "dviem vietiniams aplankams CLI vykdo savo veidrodinį kopijavimą, kuris nepaiso krypties, trynimo ir konfliktų nustatymų.",
+                    "unsavedServer": "šis ryšys nėra išsaugotas serveris, o CLI jo reikia, kad nurodytų jį su --profile.",
+                    "overwritesNewer": "CLI perrašo kitokio dydžio paskirties kopiją net tada, kai ji naujesnė, ko šis išankstinis nustatymas niekada nedaro.",
+                    "twoWay": "CLI dvi vienodo dydžio kopijas su skirtingu laiku laiko konfliktu ir perrašo senesnę; šis planas jas laiko vienodomis, jei skirtumas neviršija 30 sekundžių.",
+                    "canary": "CLI neturi bandomojo paleidimo.",
+                    "versionedBackup": "CLI kol kas nesaugo atsarginių kopijų ta pačia struktūra.",
+                    "transferBudget": "kai biudžetas baigiasi, šis planas sustoja, įskaitant trynimą; CLI riboja tik perkėlimus ir vis tiek trina.",
+                    "remotePath": "CLI nuotolinį aplanką nustato pagal išsaugoto serverio pradinį aplanką ir pasiektų kitą.",
+                    "exclusions": "CLI išskyrimo šablonus taiko kitaip, todėl nepraleistų visko, ką praleidžia šis planas (node_modules, .git ir kita)."
+                }
+            },
+            "rescan": "Nuskaityti iš naujo",
+            "rescanNeeded": "Palyginimas atliktas su kitais išskyrimais arba kitu atsarginių kopijų aplanku. Prieš paleisdami nuskaitykite iš naujo.",
+            "backup": {
+                "checking": "Tikrinama, kaip šis serveris perkelia failus...",
+                "serverCopy": "Šis serveris negali perkelti: kiekviena saugoma kopija nukopijuojama serveryje ir tada ištrinama. Tai kainuoja visą kiekvieno saugomo failo kopiją, dviem atskirais žingsniais.",
+                "clientCopy": "Šis serveris negali perkelti: kiekviena saugoma kopija atsisiunčiama, įkeliama į atsarginių kopijų aplanką ir tada ištrinama. Kiekvienas saugomas failas du kartus keliauja per šį kompiuterį, atskirais žingsniais.",
+                "unsupported": "Šis serveris negali perkelti failų į kitą aplanką, todėl negali saugoti senų kopijų. Norėdami paleisti, išjunkite versijuotą atsarginę kopiją.",
+                "checkFailed": "Nepavyko paklausti serverio, kaip jis perkelia failus. Prisijunkite iš naujo arba, norėdami paleisti, išjunkite versijuotą atsarginę kopiją.",
+                "nested": "Atsarginių kopijų aplankas yra {folder} viduje, į kurį rašo šis sinchronizavimas. Pasirinkite aplanką už jo ribų.",
+                "invalid": {
+                    "empty": "Įveskite atsarginių kopijų aplanko pavadinimą.",
+                    "absolute": "Naudokite aplanką paskirties vietoje, o ne absoliutų kelią.",
+                    "parent": "Atsarginių kopijų aplanke negali būti '..'.",
+                    "name": "Šis atsarginių kopijų aplanko pavadinimas netinkamas."
+                }
+            }
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",

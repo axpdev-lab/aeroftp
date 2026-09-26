@@ -3868,9 +3868,6 @@
                 "disk_error": "Disk error",
                 "unknown": "Unknown"
             },
-            "parallelStreams": "Streams",
-            "parallelSequential": "Sequential",
-            "parallelStreamLabel": "streams",
             "schedulerTitle": "Sync Scheduler",
             "schedulerEnabled": "Enable Scheduler",
             "schedulerResume": "Resume",
@@ -3885,10 +3882,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "High directory count - may exceed inotify limit",
             "watcherPolling": "Using poll mode (slower but universal)",
-            "compressionToggle": "Compression",
-            "compressionAuto": "Auto",
-            "compressionOn": "On",
-            "compressionOff": "Off",
             "multiPathAdd": "Add Path Pair",
             "multiPathEmpty": "No path pairs configured",
             "templateExport": "Export Template",
@@ -3905,20 +3898,19 @@
             "rollbackConfirmTitle": "Restore snapshot",
             "rollbackConfirmBody": "This will re-download {count} file(s) from the remote to restore them to their state at the time of the snapshot.",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 streams + ALL safety disabled - no journal, no verify, no retry",
+            "speedManiacTooltip": "No journal, no verification during the run, bandwidth limits ignored, 2 quick retries. Downloaded files are verified after the run.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "No journal. No verification. No retry. Maximum raw speed. If something fails, it's gone. A full verification scan will run after sync completes.",
+            "maniacWarningBody": "No journal and no verification during the run, bandwidth limits are ignored, and a failed file gets only 2 quick retries. After the run, downloaded files are verified; uploaded files are not.",
             "maniacConfirm": "I understand, proceed",
             "maniacPostSyncReport": "Post-sync verification: {ok} OK, {mismatches} mismatches, {failed} failed",
             "rollback": "Rollback",
             "rollbackFiles": "Files in snapshot",
             "compression": "Compression",
-            "compressionHint": "Compresses data on the wire to speed up the transfer; it does not store compressed files at the destination. Auto skips formats that are already compressed (zip, jpg, mp4, and similar).",
             "multiPath": "Multi-Path Sync",
             "templates": "Templates",
             "templateExportDesc": "Save current sync configuration as a reusable .aerosync template",
             "templateImportDesc": "Load a .aerosync template to apply its sync configuration",
-            "templateImportPathPairs": "This template defines {count} usable local/remote path pairs. AeroFTP applies exactly one, so nothing was imported. Edit the template to keep a single pair, then import it again.",
+            "templateImportPathPairs": "Usable local/remote path pairs in this template: {count}. An AeroSync window works on exactly one pair, so nothing was imported. Edit the template to keep a single pair, then import it again.",
             "templateFormat": "Format",
             "templateFormatAerosync": ".aerosync template",
             "templateFormatBash": "Bash script (.sh)",
@@ -3937,7 +3929,6 @@
             "aerosyncScriptApplyButton": "Save as preset",
             "aerosyncScriptAppliedToast": "Imported preset saved. Open AeroSync to use it.",
             "maniacActive": "Active",
-            "speedStreams": "{count} streams",
             "actionUploaded": "Uploaded",
             "actionDownloaded": "Downloaded",
             "actionDeleted": "Deleted",
@@ -5295,7 +5286,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Compare",
             "tabPlan": "Plan",
-            "tabSync": "Sync",
+            "tabSync": "Local mirror",
             "compareWontFitTitle": "Over the limits of {name}: {count}",
             "compareWontFitHint": "These files are larger than the provider's documented limit, or their name or path is longer than it accepts. A sync would fail on them: rename, move or split them first.",
             "compareWontFitTooLarge": "{size}, limit {limit}",
@@ -5303,6 +5294,78 @@
             "compareWontFitNameChars": "name over {count} characters",
             "compareWontFitPathBytes": "path over {count} bytes",
             "compareWontFitPathChars": "path over {count} characters",
+            "presetDefault": "Default",
+            "actionLabel": {
+                "skip": "Skip",
+                "copy-to-right": "Copy → right",
+                "copy-to-left": "Copy ← left",
+                "overwrite-right": "Overwrite right",
+                "overwrite-left": "Overwrite left",
+                "delete-right": "Delete on right",
+                "delete-left": "Delete on left",
+                "rename-to-right": "Keep both → right",
+                "rename-to-left": "Keep both ← left",
+                "conflict-skip": "Conflict (skip)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Skip",
+                    "tagline": "Leave conflicts untouched on both sides."
+                },
+                "rename": {
+                    "label": "Keep both",
+                    "tagline": "Copy the source-side copy under a timestamped suffix."
+                },
+                "newer-wins": {
+                    "label": "Newer wins",
+                    "tagline": "The side with the more recent mtime overwrites the other."
+                },
+                "older-wins": {
+                    "label": "Older wins",
+                    "tagline": "The older side overwrites the newer (archive use case)."
+                },
+                "larger-wins": {
+                    "label": "Larger wins",
+                    "tagline": "The side with the larger size overwrites the smaller."
+                },
+                "smaller-wins": {
+                    "label": "Smaller wins",
+                    "tagline": "The smaller side overwrites the larger."
+                }
+            },
+            "bucketName": {
+                "only-left": "Only on left",
+                "newer-left": "Newer on left",
+                "only-right": "Only on right",
+                "newer-right": "Newer on right",
+                "conflict": "Conflict",
+                "same": "Same"
+            },
+            "bucketDescription": {
+                "only-left": "Present on the source panel, missing from the destination.",
+                "newer-left": "Present on both sides, the source copy has the more recent timestamp.",
+                "only-right": "Present on the destination, missing from the source panel.",
+                "newer-right": "Present on both sides, the destination copy has the more recent timestamp.",
+                "conflict": "Both sides have the entry but they disagree on size with comparable timestamps.",
+                "same": "Entries match according to the active comparison policy."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Size only",
+                "mtimeOnly": "Timestamp only",
+                "sizeAndMtime": "Size + timestamp"
+            },
+            "compareTable": {
+                "name": "Name",
+                "leftSize": "Left size",
+                "rightSize": "Right size",
+                "leftModified": "Left modified",
+                "rightModified": "Right modified",
+                "folder": "folder",
+                "noEntries": "No entries.",
+                "countedNotListed": "Counted but not listed: the scan reports identical files as a total instead of one row each, so large trees stay fast.",
+                "shown": "Shown: {shown} of {total}",
+                "moreNotListed": "Counted but not listed: {count}"
+            },
             "compareUnavailable": "Open a second panel or a remote connection to compare.",
             "planUnavailable": "A compare result is required before picking a preset. Open the Compare tab first.",
             "totalEntries": "Total entries",
@@ -5341,7 +5404,7 @@
             "ignoredForMirror": "IGNORED FOR MIRROR",
             "versionedBackup": "Versioned backup",
             "enable": "Enable",
-            "versionedBackupHint": "Capture the destination copy under this directory before each overwrite or delete.",
+            "versionedBackupHint": "Before a file is overwritten or deleted, its destination copy is moved into {dir}, in a folder named after the run's date and time.",
             "actionable": "Actionable",
             "reportCopiedRight": "Copied to right",
             "reportCopiedLeft": "Copied to left",
@@ -5363,7 +5426,6 @@
             "executePreset": "Execute preset",
             "execute": "Execute",
             "sync": {
-                "title": "AeroFile Sync: Local to Local",
                 "description": "Mirror a local source directory to a local destination. Files >= 1 MiB route through the AeroRsync delta engine; smaller files use plain copy.",
                 "source": "Source",
                 "destination": "Destination",
@@ -5454,7 +5516,7 @@
             "speedMode_fast": "Fast",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extreme",
-            "speedModeHint": "Parallel streams + compression preset applied to the run.",
+            "speedModeHint": "Sets the retry policy. From Fast up, changed files are sent as deltas where the server supports it (SFTP with rsync).",
             "errorCorrection": "Error Correction",
             "errorCorrectionHint": "Stores a small .aerocorrect parity file next to each backed-up file so a bit-rotted remote copy can be repaired on the next pull, without the original.",
             "verifyPolicy": "Verify policy",
@@ -5462,7 +5524,45 @@
             "verifyPolicy_size_only": "Size only",
             "verifyPolicy_size_and_mtime": "Size + timestamp",
             "verifyPolicy_full_checksum": "Full checksum",
-            "verifyPolicyHint": "Post-transfer integrity check applied to each file."
+            "verifyPolicyHint": "Post-transfer integrity check applied to each file.",
+            "exclude": {
+                "label": "Exclude patterns",
+                "hint": "Comma or newline separated, for example cache, *.tmp or build/output. Always excluded: {list}."
+            },
+            "cli": {
+                "title": "Same run from the command line",
+                "copy": "Copy",
+                "copied": "Copied",
+                "copyFailed": "Copy failed",
+                "none": "No exact CLI equivalent: {reason}",
+                "reason": {
+                    "localPair": "for two local folders the CLI runs its own mirror, which ignores direction, delete and conflict settings.",
+                    "unsavedServer": "this connection is not a saved server, and the CLI needs one to name with --profile.",
+                    "overwritesNewer": "the CLI overwrites a destination copy of a different size even when it is newer, which this preset never does.",
+                    "twoWay": "the CLI treats two copies of the same size whose times differ as a conflict and overwrites the older one; this plan counts them as the same within 30 seconds.",
+                    "canary": "the CLI has no canary trial.",
+                    "versionedBackup": "the CLI does not keep backups in the same layout yet.",
+                    "transferBudget": "when the budget runs out this plan stops, deletions included; the CLI limits transfers only and still deletes.",
+                    "remotePath": "the CLI resolves the remote folder against the saved server's start folder and would reach a different one.",
+                    "exclusions": "the CLI matches exclude patterns differently, so it would not skip everything this plan skips (node_modules, .git and the rest)."
+                }
+            },
+            "rescan": "Rescan",
+            "rescanNeeded": "The comparison was made with other exclusions or another backup folder. Rescan before running.",
+            "backup": {
+                "checking": "Checking how this server moves files...",
+                "serverCopy": "This server has no move: each kept copy is copied on the server and then deleted. That costs a full copy of every file kept, in two separate steps.",
+                "clientCopy": "This server has no move: each kept copy is downloaded, uploaded into the backup folder and then deleted. Every file kept travels through this computer twice, in separate steps.",
+                "unsupported": "This server cannot move files into another folder, so it cannot keep old copies. Turn versioned backup off to run.",
+                "checkFailed": "Could not ask the server how it moves files. Reconnect, or turn versioned backup off to run.",
+                "nested": "The backup folder is inside {folder}, which this sync writes to. Choose a folder outside it.",
+                "invalid": {
+                    "empty": "Enter a name for the backup folder.",
+                    "absolute": "Use a folder inside the destination, not an absolute path.",
+                    "parent": "The backup folder cannot contain '..'.",
+                    "name": "This backup folder name is not valid."
+                }
+            }
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

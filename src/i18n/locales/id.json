@@ -2142,9 +2142,6 @@
                 "disk_error": "Kesalahan disk",
                 "unknown": "Tidak diketahui"
             },
-            "parallelStreams": "Stream",
-            "parallelSequential": "Berurutan",
-            "parallelStreamLabel": "stream",
             "schedulerTitle": "Penjadwal Sinkronisasi",
             "schedulerEnabled": "Aktifkan Penjadwal",
             "schedulerResume": "Lanjutkan",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Jumlah direktori tinggi - mungkin melebihi batas inotify",
             "watcherPolling": "Menggunakan mode polling (lebih lambat tetapi universal)",
-            "compressionToggle": "Kompresi",
-            "compressionAuto": "Otomatis",
-            "compressionOn": "Aktif",
-            "compressionOff": "Mati",
             "multiPathAdd": "Tambah Pasangan Path",
             "multiPathEmpty": "Tidak ada pasangan path yang dikonfigurasi",
             "templateExport": "Ekspor Template",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Kembalikan",
             "rollbackEmpty": "Tidak ada snapshot tersedia",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 stream + SEMUA keamanan dinonaktifkan - tanpa jurnal, tanpa verifikasi, tanpa percobaan ulang",
+            "speedManiacTooltip": "Tanpa jurnal, tanpa verifikasi selama proses, batas bandwidth diabaikan, 2 percobaan ulang cepat. File yang diunduh diverifikasi setelah proses.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Tanpa jurnal. Tanpa verifikasi. Tanpa percobaan ulang. Kecepatan mentah maksimum. Jika ada yang gagal, hilang. Pemindaian verifikasi penuh akan berjalan setelah sinkronisasi selesai.",
+            "maniacWarningBody": "Tanpa jurnal dan tanpa verifikasi selama proses, batas bandwidth diabaikan, dan file yang gagal hanya mendapat 2 percobaan ulang cepat. Setelah proses, file yang diunduh diverifikasi; file yang diunggah tidak.",
             "maniacConfirm": "Saya mengerti, lanjutkan",
             "maniacPostSyncReport": "Verifikasi pasca-sinkronisasi: {ok} OK, {mismatches} ketidakcocokan, {failed} gagal",
             "rollback": "Rollback",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Simpan konfigurasi sinkronisasi saat ini sebagai template .aerosync yang dapat digunakan kembali",
             "templateImportDesc": "Muat template .aerosync untuk menerapkan konfigurasi sinkronisasinya",
             "maniacActive": "Aktif",
-            "speedStreams": "{count} aliran",
             "actionUploaded": "Diunggah",
             "actionDownloaded": "Diunduh",
             "actionDeleted": "Dihapus",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Bidang metadata tidak dikenal",
             "aerosyncScriptApplyButton": "Simpan sebagai preset",
             "aerosyncScriptAppliedToast": "Preset yang diimpor telah disimpan. Buka AeroSync untuk menggunakannya.",
-            "compressionHint": "Mengompresi data saat transit untuk mempercepat transfer; tidak menyimpan berkas terkompresi di tujuan. Auto melewati format yang sudah terkompresi (zip, jpg, mp4, dan sejenisnya).",
             "canaryDryRun": "Tidak ada yang ditransfer: ini menampilkan pratinjau dari apa yang akan dilakukan sinkronisasi penuh, dihitung dari sampel. Ini adalah padanan GUI dari perintah aeroftp-cli sync --dry-run (dan --dry-run milik rclone).",
-            "templateImportPathPairs": "Templat ini mendefinisikan {count} pasangan path yang dapat digunakan. AeroFTP menerapkan tepat satu, jadi tidak ada yang diimpor. Edit templat agar tersisa satu pasangan saja, lalu impor lagi.",
+            "templateImportPathPairs": "Pasangan path lokal/remote yang dapat digunakan dalam template ini: {count}. Jendela AeroSync bekerja dengan tepat satu pasangan, jadi tidak ada yang diimpor. Edit template agar hanya tersisa satu pasangan, lalu impor lagi.",
             "templateNamePlaceholder": "mis. Cadangan malam ke S3",
             "templateDescPlaceholder": "Untuk apa templat ini (opsional)"
         },
@@ -5070,7 +5061,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Bandingkan",
             "tabPlan": "Rencana",
-            "tabSync": "Sinkronkan",
+            "tabSync": "Cermin lokal",
             "compareWontFitTitle": "Melebihi batas {name}: {count}",
             "compareWontFitHint": "File ini melebihi batas ukuran yang didokumentasikan penyedia, atau nama atau jalurnya lebih panjang dari yang diterima. Sinkronisasi akan gagal untuk file ini: ganti nama, pindahkan, atau pecah dulu.",
             "compareWontFitTooLarge": "{size}, batas {limit}",
@@ -5078,6 +5069,78 @@
             "compareWontFitNameChars": "nama lebih dari {count} karakter",
             "compareWontFitPathBytes": "jalur lebih dari {count} byte",
             "compareWontFitPathChars": "jalur lebih dari {count} karakter",
+            "presetDefault": "Bawaan",
+            "actionLabel": {
+                "skip": "Lewati",
+                "copy-to-right": "Salin → kanan",
+                "copy-to-left": "Salin ← kiri",
+                "overwrite-right": "Timpa di kanan",
+                "overwrite-left": "Timpa di kiri",
+                "delete-right": "Hapus di kanan",
+                "delete-left": "Hapus di kiri",
+                "rename-to-right": "Simpan keduanya → kanan",
+                "rename-to-left": "Simpan keduanya ← kiri",
+                "conflict-skip": "Konflik (lewati)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Lewati",
+                    "tagline": "Membiarkan konflik tetap utuh di kedua sisi."
+                },
+                "rename": {
+                    "label": "Simpan keduanya",
+                    "tagline": "Menyalin versi sumber dengan akhiran tanggal dan waktu."
+                },
+                "newer-wins": {
+                    "label": "Yang lebih baru menang",
+                    "tagline": "Sisi dengan waktu modifikasi yang lebih baru menimpa sisi lainnya."
+                },
+                "older-wins": {
+                    "label": "Yang lebih lama menang",
+                    "tagline": "Sisi yang lebih lama menimpa yang lebih baru (untuk pengarsipan)."
+                },
+                "larger-wins": {
+                    "label": "Yang lebih besar menang",
+                    "tagline": "Sisi dengan ukuran lebih besar menimpa yang lebih kecil."
+                },
+                "smaller-wins": {
+                    "label": "Yang lebih kecil menang",
+                    "tagline": "Sisi yang lebih kecil menimpa yang lebih besar."
+                }
+            },
+            "bucketName": {
+                "only-left": "Hanya di kiri",
+                "newer-left": "Lebih baru di kiri",
+                "only-right": "Hanya di kanan",
+                "newer-right": "Lebih baru di kanan",
+                "conflict": "Konflik",
+                "same": "Sama"
+            },
+            "bucketDescription": {
+                "only-left": "Ada di panel sumber, tidak ada di tujuan.",
+                "newer-left": "Ada di kedua sisi, salinan sumber memiliki stempel waktu yang lebih baru.",
+                "only-right": "Ada di tujuan, tidak ada di panel sumber.",
+                "newer-right": "Ada di kedua sisi, salinan tujuan memiliki stempel waktu yang lebih baru.",
+                "conflict": "Kedua sisi memiliki entri tersebut, tetapi ukurannya berbeda dengan stempel waktu yang sebanding.",
+                "same": "Entri cocok menurut kebijakan perbandingan yang aktif."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Hanya ukuran",
+                "mtimeOnly": "Hanya stempel waktu",
+                "sizeAndMtime": "Ukuran + stempel waktu"
+            },
+            "compareTable": {
+                "name": "Nama",
+                "leftSize": "Ukuran kiri",
+                "rightSize": "Ukuran kanan",
+                "leftModified": "Diubah di kiri",
+                "rightModified": "Diubah di kanan",
+                "folder": "folder",
+                "noEntries": "Tidak ada entri.",
+                "countedNotListed": "Dihitung tetapi tidak dicantumkan: pemindaian melaporkan file identik sebagai total, bukan satu baris per file, sehingga pohon besar tetap cepat.",
+                "shown": "Ditampilkan: {shown} dari {total}",
+                "moreNotListed": "Dihitung tetapi tidak dicantumkan: {count}"
+            },
             "compareUnavailable": "Buka panel kedua atau koneksi jarak jauh untuk membandingkan.",
             "planUnavailable": "Hasil perbandingan diperlukan sebelum memilih preset. Buka tab Bandingkan terlebih dahulu.",
             "totalEntries": "Total entri",
@@ -5114,7 +5177,7 @@
             "ignoredForMirror": "DIABAIKAN UNTUK MIRROR",
             "versionedBackup": "Cadangan berversi",
             "enable": "Aktifkan",
-            "versionedBackupHint": "Tangkap salinan tujuan di direktori ini sebelum setiap penimpaan atau penghapusan.",
+            "versionedBackupHint": "Sebelum file ditimpa atau dihapus, salinannya di tujuan dipindahkan ke {dir}, dalam folder yang dinamai sesuai tanggal dan waktu proses.",
             "actionable": "Dapat dijalankan",
             "reportCopiedRight": "Disalin ke kanan",
             "reportCopiedLeft": "Disalin ke kiri",
@@ -5136,7 +5199,6 @@
             "executePreset": "Jalankan preset",
             "execute": "Jalankan",
             "sync": {
-                "title": "AeroSync: lokal ke lokal",
                 "description": "Mencerminkan direktori sumber lokal ke tujuan lokal. File ≥ 1 MiB menggunakan mesin delta internal; file yang lebih kecil menggunakan salinan langsung.",
                 "source": "Sumber",
                 "destination": "Tujuan",
@@ -5192,7 +5254,7 @@
             "speedMode_fast": "Cepat",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Ekstrem",
-            "speedModeHint": "Aliran paralel + preset kompresi diterapkan pada eksekusi.",
+            "speedModeHint": "Mengatur kebijakan percobaan ulang. Mulai dari Cepat ke atas, file yang berubah dikirim sebagai delta jika server mendukungnya (SFTP dengan rsync).",
             "verifyPolicy": "Kebijakan verifikasi",
             "verifyPolicy_none": "Tidak ada",
             "verifyPolicy_size_only": "Hanya ukuran",
@@ -5237,7 +5299,45 @@
             "errorCorrection": "Koreksi Kesalahan",
             "errorCorrectionHint": "Menyimpan file paritas .aerocorrect kecil di samping setiap file cadangan, sehingga salinan jarak jauh yang rusak karena bit-rot dapat diperbaiki pada pull berikutnya, tanpa aslinya.",
             "outOfSyncItemsPct": "Item tidak tersinkron",
-            "outOfSyncBytesPct": "Bita tidak tersinkron"
+            "outOfSyncBytesPct": "Bita tidak tersinkron",
+            "exclude": {
+                "label": "Pola pengecualian",
+                "hint": "Dipisahkan koma atau baris baru, misalnya cache, *.tmp atau build/output. Selalu dikecualikan: {list}."
+            },
+            "cli": {
+                "title": "Proses yang sama dari baris perintah",
+                "copy": "Salin",
+                "copied": "Disalin",
+                "copyFailed": "Gagal menyalin",
+                "none": "Tidak ada padanan CLI yang persis: {reason}",
+                "reason": {
+                    "localPair": "untuk dua folder lokal, CLI menjalankan pencerminannya sendiri, yang mengabaikan pengaturan arah, penghapusan, dan konflik.",
+                    "unsavedServer": "koneksi ini bukan server tersimpan, dan CLI memerlukannya untuk disebut dengan --profile.",
+                    "overwritesNewer": "CLI menimpa salinan tujuan yang ukurannya berbeda meskipun lebih baru, hal yang tidak pernah dilakukan preset ini.",
+                    "twoWay": "CLI menganggap dua salinan berukuran sama dengan waktu berbeda sebagai konflik dan menimpa yang lebih lama; rencana ini menganggapnya sama dalam rentang 30 detik.",
+                    "canary": "CLI tidak memiliki uji coba.",
+                    "versionedBackup": "CLI belum menyimpan cadangan dengan struktur yang sama.",
+                    "transferBudget": "saat anggaran habis, rencana ini berhenti, termasuk penghapusan; CLI hanya membatasi transfer dan tetap menghapus.",
+                    "remotePath": "CLI menentukan folder jarak jauh relatif terhadap folder awal server tersimpan dan akan sampai ke folder lain.",
+                    "exclusions": "CLI mencocokkan pola pengecualian secara berbeda, jadi tidak akan melewati semua yang dilewati rencana ini (node_modules, .git, dan lainnya)."
+                }
+            },
+            "rescan": "Pindai ulang",
+            "rescanNeeded": "Perbandingan dibuat dengan pengecualian lain atau folder cadangan lain. Pindai ulang sebelum menjalankan.",
+            "backup": {
+                "checking": "Memeriksa cara server ini memindahkan file...",
+                "serverCopy": "Server ini tidak bisa memindahkan: setiap salinan yang disimpan disalin di server lalu dihapus. Itu memakan satu salinan penuh dari setiap file yang disimpan, dalam dua langkah terpisah.",
+                "clientCopy": "Server ini tidak bisa memindahkan: setiap salinan yang disimpan diunduh, diunggah ke folder cadangan lalu dihapus. Setiap file yang disimpan melewati komputer ini dua kali, dalam langkah terpisah.",
+                "unsupported": "Server ini tidak dapat memindahkan file ke folder lain, sehingga tidak dapat menyimpan salinan lama. Matikan cadangan berversi untuk menjalankan.",
+                "checkFailed": "Tidak dapat menanyakan ke server cara memindahkan file. Sambungkan ulang, atau matikan cadangan berversi untuk menjalankan.",
+                "nested": "Folder cadangan berada di dalam {folder}, tempat sinkronisasi ini menulis. Pilih folder di luarnya.",
+                "invalid": {
+                    "empty": "Masukkan nama untuk folder cadangan.",
+                    "absolute": "Gunakan folder di dalam tujuan, bukan path absolut.",
+                    "parent": "Folder cadangan tidak boleh berisi '..'.",
+                    "name": "Nama folder cadangan ini tidak valid."
+                }
+            }
         },
         "accountLock": {
             "title": "Pilih akun",
