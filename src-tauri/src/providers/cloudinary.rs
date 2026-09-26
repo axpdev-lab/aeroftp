@@ -1337,7 +1337,19 @@ impl StorageProvider for CloudinaryProvider {
             let public_id = entry.metadata.get("public_id").cloned().ok_or_else(|| {
                 ProviderError::NotFound("Missing Cloudinary public_id".to_string())
             })?;
-            self.delete_file_with_fallback(&public_id).await
+            // The type of the asset the path names. An image `v` and a video
+            // `v` share the public id, and the cache keyed by public id holds
+            // the type listed last: `rm /v.png` deleted the video.
+            match entry.metadata.get("resource_type") {
+                Some(kind) => {
+                    if self.delete_resource(&public_id, kind).await? {
+                        Ok(())
+                    } else {
+                        Err(ProviderError::NotFound(resolved))
+                    }
+                }
+                None => self.delete_file_with_fallback(&public_id).await,
+            }
         }
     }
 
@@ -1869,20 +1881,18 @@ fn resource_name(item: &CloudinaryResource, dynamic: bool) -> String {
     }
 }
 
-/// `item` as an entry of the folder `parent`. On a fixed-folder account its
-/// path is its public id; on a dynamic-folder account, where the public id is
-/// not a path, it is the folder and the name `list` shows.
+/// `item` as an entry of the folder `parent`: its path is the folder and the
+/// name `list` shows, the name `stat` resolves first. On a fixed-folder
+/// account it was the public id, which two assets of different types share
+/// (the image `b`, listed `b.png`, and a raw `b`): an action on the image
+/// through its listed path found the raw asset.
 fn resource_to_entry(item: &CloudinaryResource, parent: &str, dynamic: bool) -> RemoteEntry {
     let name = resource_name(item, dynamic);
-    let path = if dynamic {
-        let folder = parent.trim_matches('/');
-        if folder.is_empty() {
-            format!("/{name}")
-        } else {
-            format!("/{folder}/{name}")
-        }
+    let folder = parent.trim_matches('/');
+    let path = if folder.is_empty() {
+        format!("/{name}")
     } else {
-        format!("/{}", item.public_id.trim_start_matches('/'))
+        format!("/{folder}/{name}")
     };
 
     let mut metadata = HashMap::new();
@@ -2349,7 +2359,8 @@ mod tests {
 
     /// A fixed-folder Cloudinary double holding `resources` (public id,
     /// format, resource type) and the folders `folders` at the root. Returns
-    /// a provider on it and every rename query.
+    /// a provider on it and every rename query, and every delete as
+    /// `DELETE <path>`.
     async fn provider_on_fixed_folders(
         resources: &'static [(&'static str, &'static str, &'static str)],
         folders: &'static [&'static str],
@@ -2367,6 +2378,14 @@ mod tests {
                     if req.method() == axum::http::Method::POST && path.ends_with("/rename") {
                         seen.lock().unwrap().push(query);
                         return axum::Json(serde_json::json!({ "public_id": "x" })).into_response();
+                    }
+                    if req.method() == axum::http::Method::DELETE {
+                        seen.lock().unwrap().push(format!("DELETE {path}"));
+                        let public_id = query.rsplit('=').next().unwrap_or("").to_string();
+                        return axum::Json(
+                            serde_json::json!({ "deleted": { public_id: "deleted" } }),
+                        )
+                        .into_response();
                     }
                     if path == "/resources/by_asset_folder" {
                         return (
@@ -2467,6 +2486,39 @@ mod tests {
             "{:?}",
             renames.lock().unwrap()
         );
+    }
+
+    /// With an image `v` (`v.png`) and a video `v` (`v.mp4`), `rm /v.png`
+    /// took the resource type from a cache keyed by public id, which held
+    /// the type listed last, and deleted the video. The type is the one of
+    /// the asset the path names.
+    #[tokio::test]
+    async fn rm_deletes_the_asset_its_path_names() {
+        let (mut provider, calls) =
+            provider_on_fixed_folders(&[("v", "png", "image"), ("v", "mp4", "video")], &[]).await;
+        provider.delete("/v.png").await.expect("rm");
+        assert_eq!(*calls.lock().unwrap(), ["DELETE /resources/image/upload"]);
+    }
+
+    /// On a fixed-folder account the listed path was the public id, which
+    /// the image `b` (`b.png`) and a raw `b` share: an action on the image
+    /// through its listed path found the raw asset. Each listed path names
+    /// its own asset.
+    #[tokio::test]
+    async fn each_listed_path_names_its_own_asset() {
+        let (mut provider, _) =
+            provider_on_fixed_folders(&[("b", "png", "image"), ("b", "", "raw")], &[]).await;
+        let listed = provider.list("/").await.expect("list");
+        assert_eq!(listed.len(), 2, "{listed:?}");
+        for entry in listed {
+            let found = provider.stat(&entry.path).await.expect("stat");
+            assert_eq!(
+                found.metadata.get("resource_type"),
+                entry.metadata.get("resource_type"),
+                "{} resolved to {found:?}",
+                entry.path
+            );
+        }
     }
 
     /// A path names the asset `list` shows under that name first: with a
