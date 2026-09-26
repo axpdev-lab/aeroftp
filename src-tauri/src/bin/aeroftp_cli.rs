@@ -61433,6 +61433,15 @@ const BATCH_COMMAND_SPECS: &[BatchCommandSpec] = &[
 
 const BATCH_SUPPORTED_COMMANDS: &str = "SET, ECHO, ON_ERROR, CONNECT, DISCONNECT, GET, PUT, RM, MV, LS, CAT, STAT, FIND, DF, MKDIR, TREE, SYNC, CONNECT_SOURCE_PROFILE, CONNECT_DEST_PROFILE, TRANSFER";
 
+/// The CLI a batch uses for a `CONNECT <url>` target: the same flags without
+/// an outer `--profile`, which the connection would otherwise resolve instead
+/// of the URL (an OAuth or MTP profile then took every command of the script).
+fn cli_for_url_targets(cli: &Cli) -> Cli {
+    let mut url_cli = cli.clone();
+    url_cli.profile = None;
+    url_cli
+}
+
 /// One logical line of a batch script, read and checked before anything runs.
 #[derive(Debug)]
 struct BatchLine {
@@ -61832,6 +61841,9 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
     // CONNECT --profile: a copy of the CLI whose `--profile` is the connected
     // profile, so every command resolves it as `aeroftp-cli --profile` would.
     let mut profile_cli: Option<Cli> = None;
+    // CONNECT <url>: the CLI without an outer --profile, which would
+    // otherwise win over the URL on every command of the script.
+    let url_cli = cli_for_url_targets(cli);
     let mut exit_code = 0;
     let mut on_error_continue = false;
     let mut total_commands: u32 = 0;
@@ -61937,7 +61949,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     .clone()
                     .expect("read_batch_script sets the CONNECT target");
                 exit_code = match &target {
-                    BatchTarget::Url(url) => cmd_connect(url, cli, format).await,
+                    BatchTarget::Url(url) => cmd_connect(url, &url_cli, format).await,
                     BatchTarget::Profile(name) => {
                         let mut pcli = cli.clone();
                         pcli.profile = Some(name.clone());
@@ -61965,7 +61977,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 profile_cli = None;
             }
             "GET" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -61993,7 +62005,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "PUT" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62022,7 +62034,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "RM" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62039,7 +62051,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "MV" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62055,7 +62067,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "LS" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62076,7 +62088,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "CAT" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62092,7 +62104,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "STAT" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62108,7 +62120,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "FIND" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62124,7 +62136,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "DF" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62140,7 +62152,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "MKDIR" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62156,7 +62168,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "TREE" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62173,7 +62185,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "SYNC" => {
-                let (url, cli) = match require_target(&current, cli, &profile_cli, line_num) {
+                let (url, cli) = match require_target(&current, &url_cli, &profile_cli, line_num) {
                     Ok(t) => t,
                     Err(code) => return code,
                 };
@@ -62629,6 +62641,29 @@ DISCONNECT\n";
                 Some(BatchTarget::Url("sftp://u:pa'ss@h/".into()))
             );
         });
+    }
+
+    /// `aeroftp-cli --profile X batch s.aeroftp-script` with `CONNECT <url>`
+    /// in the script: the URL is what the script connects to, not X.
+    #[test]
+    fn a_url_target_does_not_inherit_the_outer_profile() {
+        on_big_stack(a_url_target_does_not_inherit_the_outer_profile_body);
+    }
+
+    fn a_url_target_does_not_inherit_the_outer_profile_body() {
+        let cli = Cli::try_parse_from([
+            "aeroftp-cli",
+            "--profile",
+            "Other",
+            "--quiet",
+            "batch",
+            "s.aeroftp-script",
+        ])
+        .expect("parses");
+        assert_eq!(cli.profile.as_deref(), Some("Other"));
+        let url_cli = cli_for_url_targets(&cli);
+        assert_eq!(url_cli.profile, None);
+        assert!(url_cli.quiet, "the other flags are kept");
     }
 
     #[test]
