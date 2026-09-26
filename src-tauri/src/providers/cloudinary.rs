@@ -744,9 +744,29 @@ impl CloudinaryProvider {
                     }
                 }
             };
+            // A free name whose public id (the name without its format) is
+            // held by another asset, one of another format listed under
+            // another name (`report.pdf` for `report.jpg`): the rename would
+            // take its public id, and a replace would overwrite it. It is
+            // refused, naming that asset.
+            if displaced.is_none() {
+                let parent = parent_segments(&target);
+                let dynamic = self.dynamic_folders();
+                if let Some(holder) = self
+                    .list_files(&parent)
+                    .await?
+                    .into_iter()
+                    .find(|f| f.public_id == to_pid)
+                {
+                    return Err(ProviderError::AlreadyExists(format!(
+                        "{to}: its public id `{to_pid}` belongs to {}, a different asset",
+                        resource_name(&holder, dynamic)
+                    )));
+                }
+            }
             // Without `overwrite` (default false) Cloudinary refuses a target
-            // public id that is already taken (rename reference); a replace
-            // asks for the overwrite.
+            // public id that is already taken (rename reference). A replace
+            // asks for the overwrite, and only onto the asset it found there.
             let mut url = format!(
                 "{}/{}/rename?from_public_id={}&to_public_id={}",
                 self.api_base(),
@@ -754,7 +774,7 @@ impl CloudinaryProvider {
                 urlencoding::encode(&from_pid),
                 urlencoding::encode(&to_pid)
             );
-            if overwrite {
+            if overwrite && displaced.is_some() {
                 url.push_str("&overwrite=true");
             }
             let resp = self
@@ -2070,20 +2090,29 @@ mod tests {
         occupied: bool,
         dynamic: bool,
     ) -> (CloudinaryProvider, CloudinaryCalls, CloudinaryCalls) {
+        provider_for_file_rename_with(occupied, dynamic, "jpg").await
+    }
+
+    /// [`provider_for_file_rename`] whose image `b` has the format `b_format`.
+    async fn provider_for_file_rename_with(
+        occupied: bool,
+        dynamic: bool,
+        b_format: &'static str,
+    ) -> (CloudinaryProvider, CloudinaryCalls, CloudinaryCalls) {
         use std::sync::Arc;
         let renames: CloudinaryCalls = Arc::default();
         let updates: CloudinaryCalls = Arc::default();
         let (seen_renames, seen_updates) = (Arc::clone(&renames), Arc::clone(&updates));
-        let image = |id: &str| {
+        let image = |id: &str, format: &str| {
             serde_json::json!({
                 "asset_id": format!("AID_{id}"), "public_id": id, "display_name": id,
-                "format": "jpg", "bytes": 3, "resource_type": "image", "type": "upload",
+                "format": format, "bytes": 3, "resource_type": "image", "type": "upload",
                 "asset_folder": "",
             })
         };
-        let mut at_root = vec![image("a")];
+        let mut at_root = vec![image("a", "jpg")];
         if occupied {
-            at_root.push(image("b"));
+            at_root.push(image("b", b_format));
         }
         let root_listing = serde_json::json!({ "resources": at_root }).to_string();
         let app = axum::Router::new()
@@ -2158,9 +2187,11 @@ mod tests {
                 }),
             )
             .fallback({
-                let listing = serde_json::json!({ "resources": [image("a")] }).to_string();
-                let occupied_listing =
-                    serde_json::json!({ "resources": [image("a"), image("b")] }).to_string();
+                let listing = serde_json::json!({ "resources": [image("a", "jpg")] }).to_string();
+                let occupied_listing = serde_json::json!({
+                    "resources": [image("a", "jpg"), image("b", b_format)]
+                })
+                .to_string();
                 move || {
                     let body = if occupied {
                         occupied_listing.clone()
@@ -2240,6 +2271,31 @@ mod tests {
         assert_eq!(
             query_value(&renames[0], "overwrite").as_deref(),
             Some("true")
+        );
+    }
+
+    /// On a fixed-folder account `b.jpg` is free while the asset `b.pdf`
+    /// holds the public id `b`. The rename took `b`, and the replace behind
+    /// a served WebDAV MOVE with `Overwrite: T` asked for the overwrite:
+    /// `b.pdf` was replaced by the image. It is refused, naming `b.pdf`.
+    #[tokio::test]
+    async fn a_free_name_whose_public_id_is_taken_is_refused() {
+        let (mut provider, renames, _) = provider_for_file_rename_with(true, false, "pdf").await;
+        for outcome in [
+            provider.rename("/a.jpg", "/b.jpg").await,
+            provider.replace("/a.jpg", "/b.jpg").await,
+        ] {
+            match outcome {
+                Err(ProviderError::AlreadyExists(message)) => {
+                    assert!(message.contains("b.pdf"), "{message}")
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+        assert!(
+            renames.lock().unwrap().is_empty(),
+            "{:?}",
+            renames.lock().unwrap()
         );
     }
 
