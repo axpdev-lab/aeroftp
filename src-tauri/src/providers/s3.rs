@@ -1385,17 +1385,19 @@ impl S3Provider {
         let keys = self.list_keys_with_prefix(&prefix).await?;
 
         // The trait promises no overwrite, and CopyObject replaces whatever
-        // the destination key holds. A listing, not a HEAD: without
+        // the destination key holds. Listings, not a HEAD: without
         // s3:ListBucket AWS answers HEAD on a missing key with 403, and the
         // listing above already needs that permission.
+        //
+        // The check and the copies are separate requests, so an object
+        // written to the destination between them is overwritten. AWS closes
+        // that window with `If-None-Match: *` on CopyObject (since October
+        // 2025), but the S3-compatible servers this provider also talks to
+        // either ignore the header, which changes nothing, or refuse the
+        // request with it, which would break every rename there. It is not
+        // sent, and the window stays open.
         let to_prefix = format!("{}/", to_trimmed);
-        if !overwrite
-            && self
-                .list_keys_with_prefix(to_trimmed)
-                .await?
-                .iter()
-                .any(|key| key == to_trimmed || key.starts_with(&to_prefix))
-        {
+        if !overwrite && self.key_or_folder_exists(to_trimmed).await? {
             return Err(ProviderError::AlreadyExists(to.to_string()));
         }
 
@@ -1464,10 +1466,22 @@ impl S3Provider {
         } else {
             // Directory rename: copy all objects to new prefix, then delete
             // originals (the folder marker, when there is one, is among them).
-            for old_key in &keys {
+            for (copied, old_key) in keys.iter().enumerate() {
                 let new_key = old_key.replacen(&prefix, &to_prefix, 1);
-                self.server_copy(&format!("/{}", old_key), &format!("/{}", new_key))
-                    .await?;
+                if let Err(e) = self
+                    .server_copy(&format!("/{}", old_key), &format!("/{}", new_key))
+                    .await
+                {
+                    // The copies made so far stay under the destination, so a
+                    // retry would be refused as AlreadyExists with nothing to
+                    // say why: say it here.
+                    return Err(ProviderError::Other(format!(
+                        "rename copied {copied} of {} objects to {to} before copying {old_key} \
+                         failed; the originals are all still in {from}, the {copied} copies \
+                         stay under {to}, and a retry is refused until they are removed: {e}",
+                        keys.len()
+                    )));
+                }
             }
 
             // A delete that fails leaves the folder under both names: that is
@@ -3806,6 +3820,39 @@ impl S3Provider {
     /// Used by rename (folder) and rmdir_recursive.
     /// Includes pagination via continuation-token (H-05).
     async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, ProviderError> {
+        self.list_keys_with_prefix_up_to(prefix, None).await
+    }
+
+    /// Whether `key` is an object, or a folder with at least one object under
+    /// `key/`, in at most two listings of one key each. The rename check used
+    /// to page through every key that merely starts with `key`: in a large
+    /// bucket that is every object under the folder and every sibling that
+    /// shares the prefix, before a single byte moved. The first listing is
+    /// enough for the object itself, because the shortest key with a prefix
+    /// is the prefix and S3 lists keys in order.
+    async fn key_or_folder_exists(&self, key: &str) -> Result<bool, ProviderError> {
+        if self
+            .list_keys_with_prefix_up_to(key, Some(1))
+            .await?
+            .iter()
+            .any(|listed| listed == key)
+        {
+            return Ok(true);
+        }
+        Ok(!self
+            .list_keys_with_prefix_up_to(&format!("{key}/"), Some(1))
+            .await?
+            .is_empty())
+    }
+
+    /// The keys under `prefix`: every page, or with `first` only the first
+    /// page, of at most that many keys.
+    async fn list_keys_with_prefix_up_to(
+        &self,
+        prefix: &str,
+        first: Option<usize>,
+    ) -> Result<Vec<String>, ProviderError> {
+        let max_keys = first.map_or_else(|| "1000".to_string(), |n| n.to_string());
         let mut all_keys = Vec::new();
         // Filen's S3 bridge returns <Key> percent-encoded (issue #196). Decode to
         // the logical key here so the single downstream encode_s3_key_path() call
@@ -3818,8 +3865,11 @@ impl S3Provider {
         let mut continuation_token: Option<String> = None;
 
         loop {
-            let mut params: Vec<(&str, &str)> =
-                vec![("list-type", "2"), ("prefix", prefix), ("max-keys", "1000")];
+            let mut params: Vec<(&str, &str)> = vec![
+                ("list-type", "2"),
+                ("prefix", prefix),
+                ("max-keys", &max_keys),
+            ];
 
             let token_str: String;
             if let Some(ref token) = continuation_token {
@@ -3933,10 +3983,9 @@ impl S3Provider {
                 buf.clear();
             }
 
-            if let Some(token) = next_token {
-                continuation_token = Some(token);
-            } else {
-                break;
+            match next_token {
+                Some(token) if first.is_none() => continuation_token = Some(token),
+                _ => break,
             }
         }
 
@@ -8965,8 +9014,9 @@ mod tests {
 
     /// A path-style S3 double for `test-bucket` that keeps its objects in
     /// memory: ListObjectsV2 (prefix, max-keys, continuation by offset),
-    /// HEAD, GET, PUT (with `x-amz-copy-source`, a CopyObject) and DELETE.
-    /// Batch delete answers 405, so deletes go one by one. Returns the
+    /// HEAD, GET, PUT (with `x-amz-copy-source`, a CopyObject; 500 for a
+    /// source whose key contains `unreadable`) and DELETE. Batch delete
+    /// answers 405, so deletes go one by one. Returns the
     /// provider, the objects, and every request as `METHOD path?query`.
     async fn provider_on_memory_bucket(
         objects: &[(&str, &str)],
@@ -9067,6 +9117,13 @@ mod tests {
                             let data = match copy_source {
                                 Some(source) => {
                                     let source = source.trim_start_matches("/test-bucket/");
+                                    if source.contains("unreadable") {
+                                        return reply(
+                                            500,
+                                            &[],
+                                            b"<Error><Code>InternalError</Code></Error>".to_vec(),
+                                        );
+                                    }
                                     match store.get(source) {
                                         Some(data) => data.clone(),
                                         None => return reply(404, &[], Vec::new()),
@@ -9126,6 +9183,82 @@ mod tests {
             objects.lock().unwrap().get("a.txt").map(Vec::as_slice),
             Some(&b"a"[..])
         );
+    }
+
+    /// The destination check paged through every key that starts with the
+    /// destination name: here 2500 siblings `dst-NNNN`, three pages, before
+    /// anything moved. It now asks for one key, at most twice.
+    #[tokio::test]
+    async fn the_destination_check_lists_one_key_at_most_twice() {
+        let mut objects: Vec<(String, &str)> =
+            (0..2500).map(|i| (format!("dst-{i:04}"), "x")).collect();
+        objects.push(("src.txt".to_string(), "s"));
+        let objects: Vec<(&str, &str)> = objects.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+        let (mut provider, bucket, log) = provider_on_memory_bucket(&objects).await;
+        provider.rename("/src.txt", "/dst").await.expect("rename");
+        assert_eq!(
+            bucket.lock().unwrap().get("dst").map(Vec::as_slice),
+            Some(&b"s"[..])
+        );
+        let destination_listings: Vec<HashMap<String, String>> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|request| request.strip_prefix("GET "))
+            .filter_map(|uri| reqwest::Url::parse(&format!("http://h{uri}")).ok())
+            .map(|url| {
+                url.query_pairs()
+                    .into_owned()
+                    .collect::<HashMap<String, String>>()
+            })
+            .filter(|query| query.get("prefix").is_some_and(|p| p.starts_with("dst")))
+            .collect();
+        assert!(
+            (1..=2).contains(&destination_listings.len()),
+            "{destination_listings:?}"
+        );
+        for query in &destination_listings {
+            assert_eq!(
+                query.get("max-keys").map(String::as_str),
+                Some("1"),
+                "{query:?}"
+            );
+            assert!(!query.contains_key("continuation-token"), "{query:?}");
+        }
+    }
+
+    /// A key that only shares the destination's prefix does not occupy it,
+    /// and a key under `dst/` does.
+    #[tokio::test]
+    async fn the_destination_check_tells_a_sibling_from_a_folder() {
+        let (mut provider, _, _) =
+            provider_on_memory_bucket(&[("dst-a", "x"), ("dst.txt", "x"), ("a.txt", "a")]).await;
+        provider
+            .rename("/a.txt", "/dst")
+            .await
+            .expect("siblings only");
+        let (mut provider, _, _) =
+            provider_on_memory_bucket(&[("dst-a", "x"), ("dst/x", "x"), ("a.txt", "a")]).await;
+        let outcome = provider.rename("/a.txt", "/dst").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// A folder copied halfway leaves copies under the destination, so the
+    /// retry is refused as AlreadyExists: the first error has to say so.
+    #[tokio::test]
+    async fn a_folder_rename_that_fails_halfway_says_what_it_left() {
+        let (mut provider, _, _) =
+            provider_on_memory_bucket(&[("src/a.txt", "a"), ("src/unreadable.txt", "b")]).await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the second copy fails");
+        let message = err.to_string();
+        assert!(message.contains("copied 1 of 2"), "{message}");
+        assert!(message.contains("retry"), "{message}");
     }
 
     /// Opt-in live check. Supply a disposable bucket's saved-profile export
