@@ -128,6 +128,19 @@ pub fn is_backup_path(rel: &str, dir: &BackupDir) -> bool {
         || (rel.len() > dir.len() && rel.starts_with(dir) && rel.as_bytes()[dir.len()] == b'/')
 }
 
+/// True for a folder the backup folder sits in: `history` for
+/// `history/versions`. The compare leaves out that folder's own row, not its
+/// contents: as a folder present on the destination only, a Mirror would
+/// delete it whole, backups included, while the ordinary files in it keep
+/// their own rows and are synced one by one.
+pub fn is_backup_ancestor(rel: &str, dir: &BackupDir) -> bool {
+    let rel = rel
+        .trim_start_matches("./")
+        .trim_start_matches('/')
+        .trim_end_matches('/');
+    !rel.is_empty() && dir.ancestors().contains(&rel)
+}
+
 /// Where the copy of `rel` from the run `stamp` goes, relative to the root,
 /// before any collision suffix.
 pub fn archive_rel_path(dir: &BackupDir, stamp: &str, rel: &str) -> String {

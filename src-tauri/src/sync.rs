@@ -1177,10 +1177,10 @@ pub fn build_comparison_results(
         if options.excludes_path(&excludes, &path, is_dir) {
             continue;
         }
-        if backup_dir
-            .as_ref()
-            .is_some_and(|dir| crate::sync_backup::is_backup_path(&path, dir))
-        {
+        if backup_dir.as_ref().is_some_and(|dir| {
+            crate::sync_backup::is_backup_path(&path, dir)
+                || (is_dir && crate::sync_backup::is_backup_ancestor(&path, dir))
+        }) {
             continue;
         }
 
@@ -3271,10 +3271,10 @@ pub fn classify_with_summary(
         if options.excludes_path(&excludes, &path, is_dir) {
             continue;
         }
-        if backup_dir
-            .as_ref()
-            .is_some_and(|dir| crate::sync_backup::is_backup_path(&path, dir))
-        {
+        if backup_dir.as_ref().is_some_and(|dir| {
+            crate::sync_backup::is_backup_path(&path, dir)
+                || (is_dir && crate::sync_backup::is_backup_ancestor(&path, dir))
+        }) {
             continue;
         }
 
@@ -8384,6 +8384,48 @@ mod tests {
         let flat = build_comparison_results(local, remote, &opts);
         let paths: Vec<&str> = flat.iter().map(|d| d.relative_path.as_str()).collect();
         assert_eq!(paths, vec!["docs/.aeroftp-versions/keep.txt"]);
+    }
+
+    /// A nested backup folder (`history/versions`): the folder it sits in,
+    /// present on the destination only, used to keep its row, and a Mirror
+    /// mapped that row to one recursive delete of `history`, backups
+    /// included. The row is left out; the ordinary files in `history` keep
+    /// their own rows, so they are still synced one by one.
+    #[test]
+    fn test_compare_leaves_out_the_folders_a_nested_backup_folder_sits_in() {
+        let now = Utc::now();
+        let local: HashMap<String, FileInfo> = HashMap::new();
+        let mut remote: HashMap<String, FileInfo> = HashMap::new();
+        remote.insert("history".to_string(), mk_dir_info("history"));
+        remote.insert("history/versions".to_string(), mk_dir_info("versions"));
+        remote.insert(
+            "history/versions/20260925T070000Z/a.txt".to_string(),
+            mk_file_info("a.txt", 10, Some(now)),
+        );
+        remote.insert(
+            "history/notes.txt".to_string(),
+            mk_file_info("notes.txt", 4, Some(now)),
+        );
+        remote.insert("historyX".to_string(), mk_dir_info("historyX"));
+        let opts = CompareOptions {
+            exclude_patterns: vec![],
+            backup_dir: Some("history/versions".to_string()),
+            ..Default::default()
+        };
+        let mut paths: Vec<String> =
+            classify_with_summary(HashMap::new(), remote.clone(), &opts, None)
+                .differences
+                .into_iter()
+                .map(|d| d.relative_path)
+                .collect();
+        paths.sort();
+        assert_eq!(paths, ["history/notes.txt", "historyX"]);
+        let mut flat: Vec<String> = build_comparison_results(local, remote, &opts)
+            .into_iter()
+            .map(|d| d.relative_path)
+            .collect();
+        flat.sort();
+        assert_eq!(flat, ["history/notes.txt", "historyX"]);
     }
 
     /// The Plan tab's own patterns reach the compare: a file that exists only
