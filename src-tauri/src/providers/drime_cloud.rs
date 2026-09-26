@@ -573,7 +573,9 @@ impl DrimeCloudProvider {
         // holder, and a lagging listing that still shows the item there hid
         // a real one.
         let holder = self
-            .find_entry_in_folder(folder_id, |found, id| found == name && id != file_id)
+            .find_entry_in_folder(folder_id, |found, id| {
+                (found == name && id != file_id).then_some(true)
+            })
             .await?;
         match holder {
             Some(_) => Err(ProviderError::AlreadyExists(format!(
@@ -638,21 +640,32 @@ impl DrimeCloudProvider {
         folder_id: &str,
         filename: &str,
     ) -> Result<Option<(String, bool, Option<String>)>, ProviderError> {
-        self.find_entry_in_folder(folder_id, |name, _| name.eq_ignore_ascii_case(filename))
-            .await
+        // The name as spelled first, whatever the order of the listing: with
+        // `A.txt` listed before `a.txt`, a first match that ignored the case
+        // resolved `a.txt` to `A.txt`. Another case is the fallback.
+        self.find_entry_in_folder(folder_id, |name, _| {
+            if name == filename {
+                Some(true)
+            } else {
+                name.eq_ignore_ascii_case(filename).then_some(false)
+            }
+        })
+        .await
     }
 
-    /// The first entry of the folder `folder_id` whose name and id satisfy
-    /// `wanted`, read page by page (see [`Self::find_file_in_folder`]).
+    /// The entry of the folder `folder_id` that `wanted` picks, read page by
+    /// page (see [`Self::find_file_in_folder`]): the first it answers
+    /// `Some(true)` for, else the first it answers `Some(false)` for.
     async fn find_entry_in_folder(
         &self,
         folder_id: &str,
-        wanted: impl Fn(&str, &str) -> bool,
+        wanted: impl Fn(&str, &str) -> Option<bool>,
     ) -> Result<Option<(String, bool, Option<String>)>, ProviderError> {
         const MAX_ATTEMPTS: u32 = 4;
         const RETRY_DELAYS_MS: [u64; 3] = [200, 500, 2000];
 
         let mut page = 1u32;
+        let mut fallback = None;
 
         loop {
             let url = if folder_id.is_empty() {
@@ -715,9 +728,15 @@ impl DrimeCloudProvider {
 
             for file in &files {
                 if let (Some(ref name), Some(id)) = (&file.name, file.id_str()) {
-                    if wanted(name, &id) {
-                        let is_dir = file.file_type.as_deref() == Some("folder");
+                    let Some(exact) = wanted(name, &id) else {
+                        continue;
+                    };
+                    let is_dir = file.file_type.as_deref() == Some("folder");
+                    if exact {
                         return Ok(Some((id, is_dir, file.hash.clone())));
+                    }
+                    if fallback.is_none() {
+                        fallback = Some((id, is_dir, file.hash.clone()));
                     }
                 }
             }
@@ -728,7 +747,7 @@ impl DrimeCloudProvider {
             page += 1;
         }
 
-        Ok(None)
+        Ok(fallback)
     }
 
     /// Parse a Drime date string into "YYYY-MM-DD HH:MM:SS" format
@@ -3083,6 +3102,25 @@ mod tests {
             .cloned()
             .unwrap();
         assert_eq!((a.1.as_str(), a.2.as_str()), ("a.txt", "1"));
+    }
+
+    /// With `A.txt` listed before `a.txt`, a path lookup that took the first
+    /// match ignoring the case resolved `/d/a.txt` to `A.txt`, and the move
+    /// moved the other file. The name as spelled comes first.
+    #[tokio::test]
+    async fn a_path_resolves_to_the_name_as_spelled_first() {
+        let (mut provider, _, changes) = provider_on_drime_entries(&[
+            (1, "d", "", "folder"),
+            (2, "e", "", "folder"),
+            (10, "A.txt", "1", "file"),
+            (11, "a.txt", "1", "file"),
+        ])
+        .await;
+        provider
+            .rename("/d/a.txt", "/e/a.txt")
+            .await
+            .expect("a free name");
+        assert_eq!(*changes.lock().unwrap(), ["move 11 2"]);
     }
 
     /// A second step refused for a name taken since the look, with the first
