@@ -2142,9 +2142,6 @@
                 "disk_error": "Błąd dysku",
                 "unknown": "Nieznany"
             },
-            "parallelStreams": "Strumienie",
-            "parallelSequential": "Sekwencyjnie",
-            "parallelStreamLabel": "strumienie",
             "schedulerTitle": "Harmonogram synchronizacji",
             "schedulerEnabled": "Włącz harmonogram",
             "schedulerResume": "Wznów",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Wysoka liczba katalogów - może przekroczyć limit inotify",
             "watcherPolling": "Używanie trybu poll (wolniejszy, ale uniwersalny)",
-            "compressionToggle": "Kompresja",
-            "compressionAuto": "Auto",
-            "compressionOn": "Włączone",
-            "compressionOff": "Wyłączone",
             "multiPathAdd": "Dodaj parę ścieżek",
             "multiPathEmpty": "Nie skonfigurowano par ścieżek",
             "templateExport": "Eksportuj szablon",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Przywróć",
             "rollbackEmpty": "Brak dostępnych migawek",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 strumieni + WSZYSTKIE zabezpieczenia wyłączone - bez dziennika, bez weryfikacji, bez ponownych prób",
+            "speedManiacTooltip": "Bez dziennika, bez weryfikacji w trakcie przebiegu, limity przepustowości ignorowane, 2 szybkie ponowne próby. Pobrane pliki są weryfikowane po przebiegu.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Bez dziennika. Bez weryfikacji. Bez ponownych prób. Maksymalna surowa prędkość. Jeśli coś się nie powiedzie, jest stracone. Pełne skanowanie weryfikacyjne zostanie uruchomione po zakończeniu synchronizacji.",
+            "maniacWarningBody": "Bez dziennika i bez weryfikacji w trakcie przebiegu, limity przepustowości są ignorowane, a nieudany plik dostaje tylko 2 szybkie ponowne próby. Po przebiegu pobrane pliki są weryfikowane; wysłane nie.",
             "maniacConfirm": "Rozumiem, kontynuuj",
             "maniacPostSyncReport": "Weryfikacja po synchronizacji: {ok} OK, {mismatches} niezgodności, {failed} nieudane",
             "rollback": "Cofnij",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Zapisz bieżącą konfigurację synchronizacji jako szablon .aerosync do wielokrotnego użytku",
             "templateImportDesc": "Załaduj szablon .aerosync, aby zastosować jego konfigurację synchronizacji",
             "maniacActive": "Aktywny",
-            "speedStreams": "{count} strumieni",
             "actionUploaded": "Przesłano",
             "actionDownloaded": "Pobrano",
             "actionDeleted": "Usunięto",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Nierozpoznane pola metadata",
             "aerosyncScriptApplyButton": "Zapisz jako preset",
             "aerosyncScriptAppliedToast": "Zaimportowany preset zapisany. Otwórz AeroSync, aby go użyć.",
-            "compressionHint": "Kompresuje dane podczas przesyłania, aby przyspieszyć transfer; nie zapisuje skompresowanych plików w miejscu docelowym. Auto pomija formaty, które są już skompresowane (zip, jpg, mp4 i podobne).",
             "canaryDryRun": "Nic nie jest przesyłane: pokazuje podgląd tego, co zrobiłaby pełna synchronizacja, obliczony na podstawie próbki. To graficzny odpowiednik polecenia aeroftp-cli sync --dry-run (oraz --dry-run w rclone).",
-            "templateImportPathPairs": "Liczba użytecznych par ścieżek w tym szablonie: {count}. AeroFTP stosuje dokładnie jedną, więc nic nie zostało zaimportowane. Zostaw w szablonie jedną parę i zaimportuj go ponownie.",
+            "templateImportPathPairs": "Użyteczne pary ścieżek (lokalna/zdalna) w tym szablonie: {count}. Okno AeroSync działa na dokładnie jednej parze, więc nic nie zostało zaimportowane. Edytuj szablon tak, aby została w nim tylko jedna para, a następnie zaimportuj go ponownie.",
             "templateNamePlaceholder": "np. Nocna kopia zapasowa do S3",
             "templateDescPlaceholder": "Do czego służy ten szablon (opcjonalnie)"
         },
@@ -2766,7 +2757,7 @@
             },
             "analyzeThisImage": "Analizuj ten obraz",
             "error": {
-                "commandSentToTerminal": "Polecenie wyslane do terminala",
+                "commandSentToTerminal": "Polecenie wysłane do terminala",
                 "noCommandSpecified": "Nie podano polecenia",
                 "noEntrySpecified": "Nie podano wpisu",
                 "operationFailed": "Operacja nie powiodła się",
@@ -5070,7 +5061,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Porównaj",
             "tabPlan": "Plan",
-            "tabSync": "Synchronizuj",
+            "tabSync": "Lokalne lustro",
             "compareWontFitTitle": "Ponad limity {name}: {count}",
             "compareWontFitHint": "Te pliki przekraczają udokumentowany limit rozmiaru dostawcy albo ich nazwa lub ścieżka jest dłuższa, niż akceptuje. Synchronizacja tych plików by się nie powiodła: najpierw zmień ich nazwę, przenieś je lub podziel.",
             "compareWontFitTooLarge": "{size}, limit {limit}",
@@ -5078,6 +5069,78 @@
             "compareWontFitNameChars": "nazwa ponad {count} znaków",
             "compareWontFitPathBytes": "ścieżka ponad {count} bajtów",
             "compareWontFitPathChars": "ścieżka ponad {count} znaków",
+            "presetDefault": "Domyślny",
+            "actionLabel": {
+                "skip": "Pomiń",
+                "copy-to-right": "Kopiuj → w prawo",
+                "copy-to-left": "Kopiuj ← w lewo",
+                "overwrite-right": "Nadpisz po prawej",
+                "overwrite-left": "Nadpisz po lewej",
+                "delete-right": "Usuń po prawej",
+                "delete-left": "Usuń po lewej",
+                "rename-to-right": "Zachowaj oba → w prawo",
+                "rename-to-left": "Zachowaj oba ← w lewo",
+                "conflict-skip": "Konflikt (pomiń)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Pomiń",
+                    "tagline": "Pozostawia konflikty nietknięte po obu stronach."
+                },
+                "rename": {
+                    "label": "Zachowaj oba",
+                    "tagline": "Kopiuje wersję ze źródła z przyrostkiem zawierającym datę i godzinę."
+                },
+                "newer-wins": {
+                    "label": "Wygrywa nowszy",
+                    "tagline": "Strona z późniejszą datą modyfikacji nadpisuje drugą."
+                },
+                "older-wins": {
+                    "label": "Wygrywa starszy",
+                    "tagline": "Starsza strona nadpisuje nowszą (do archiwizacji)."
+                },
+                "larger-wins": {
+                    "label": "Wygrywa większy",
+                    "tagline": "Strona o większym rozmiarze nadpisuje mniejszą."
+                },
+                "smaller-wins": {
+                    "label": "Wygrywa mniejszy",
+                    "tagline": "Mniejsza strona nadpisuje większą."
+                }
+            },
+            "bucketName": {
+                "only-left": "Tylko po lewej",
+                "newer-left": "Nowsze po lewej",
+                "only-right": "Tylko po prawej",
+                "newer-right": "Nowsze po prawej",
+                "conflict": "Konflikt",
+                "same": "Takie same"
+            },
+            "bucketDescription": {
+                "only-left": "Obecne w panelu źródłowym, brak w miejscu docelowym.",
+                "newer-left": "Obecne po obu stronach, kopia w źródle ma nowszy znacznik czasu.",
+                "only-right": "Obecne w miejscu docelowym, brak w panelu źródłowym.",
+                "newer-right": "Obecne po obu stronach, kopia w miejscu docelowym ma nowszy znacznik czasu.",
+                "conflict": "Wpis istnieje po obu stronach, ale rozmiar się różni przy porównywalnych znacznikach czasu.",
+                "same": "Wpisy są zgodne według aktywnej zasady porównywania."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Tylko rozmiar",
+                "mtimeOnly": "Tylko znacznik czasu",
+                "sizeAndMtime": "Rozmiar + znacznik czasu"
+            },
+            "compareTable": {
+                "name": "Nazwa",
+                "leftSize": "Rozmiar po lewej",
+                "rightSize": "Rozmiar po prawej",
+                "leftModified": "Zmodyfikowano po lewej",
+                "rightModified": "Zmodyfikowano po prawej",
+                "folder": "folder",
+                "noEntries": "Brak wpisów.",
+                "countedNotListed": "Policzone, ale niewymienione: skanowanie podaje identyczne pliki jako sumę zamiast jednego wiersza dla każdego, dzięki czemu duże drzewa pozostają szybkie.",
+                "shown": "Wyświetlono: {shown} z {total}",
+                "moreNotListed": "Policzone, ale niewymienione: {count}"
+            },
             "compareUnavailable": "Otwórz drugi panel lub połączenie zdalne, aby porównać.",
             "planUnavailable": "Wynik porównania jest wymagany przed wyborem ustawienia. Najpierw otwórz kartę Porównaj.",
             "totalEntries": "Łączna liczba wpisów",
@@ -5114,7 +5177,7 @@
             "ignoredForMirror": "IGNOROWANE DLA MIRRORA",
             "versionedBackup": "Kopia zapasowa z wersjami",
             "enable": "Włącz",
-            "versionedBackupHint": "Zapisz kopię docelową w tym katalogu przed każdym nadpisaniem lub usunięciem.",
+            "versionedBackupHint": "Zanim plik zostanie nadpisany lub usunięty, jego kopia w celu jest przenoszona do {dir}, do folderu nazwanego datą i godziną przebiegu.",
             "actionable": "Do wykonania",
             "reportCopiedRight": "Skopiowano w prawo",
             "reportCopiedLeft": "Skopiowano w lewo",
@@ -5136,7 +5199,6 @@
             "executePreset": "Wykonaj preset",
             "execute": "Wykonaj",
             "sync": {
-                "title": "AeroSync: lokalnie do lokalnie",
                 "description": "Odzwierciedla lokalny katalog źródłowy do lokalnego celu. Pliki ≥ 1 MiB używają wbudowanego silnika delta; mniejsze pliki używają bezpośredniej kopii.",
                 "source": "Źródło",
                 "destination": "Cel",
@@ -5192,7 +5254,7 @@
             "speedMode_fast": "Szybki",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Ekstremalny",
-            "speedModeHint": "Równoległe strumienie + ustawienie kompresji zastosowane do uruchomienia.",
+            "speedModeHint": "Ustawia zasady ponownych prób. Od trybu Szybki wzwyż zmienione pliki są wysyłane jako delty, jeśli serwer to obsługuje (SFTP z rsync).",
             "verifyPolicy": "Polityka weryfikacji",
             "verifyPolicy_none": "Brak",
             "verifyPolicy_size_only": "Tylko rozmiar",
@@ -5237,7 +5299,45 @@
             "errorCorrection": "Korekcja błędów",
             "errorCorrectionHint": "Zapisuje mały plik parzystości .aerocorrect obok każdego pliku kopii zapasowej, dzięki czemu zdalną kopię uszkodzoną przez bit-rot można naprawić przy następnym pobraniu, bez oryginału.",
             "outOfSyncItemsPct": "Niezsynchronizowane elementy",
-            "outOfSyncBytesPct": "Niezsynchronizowane bajty"
+            "outOfSyncBytesPct": "Niezsynchronizowane bajty",
+            "exclude": {
+                "label": "Wzorce wykluczeń",
+                "hint": "Oddzielone przecinkiem lub nową linią, na przykład cache, *.tmp lub build/output. Zawsze wykluczone: {list}."
+            },
+            "cli": {
+                "title": "To samo uruchomienie z wiersza poleceń",
+                "copy": "Kopiuj",
+                "copied": "Skopiowano",
+                "copyFailed": "Kopiowanie nie powiodło się",
+                "none": "Brak dokładnego odpowiednika w CLI: {reason}",
+                "reason": {
+                    "localPair": "dla dwóch folderów lokalnych CLI uruchamia własne lustro, które ignoruje ustawienia kierunku, usuwania i konfliktów.",
+                    "unsavedServer": "to połączenie nie jest zapisanym serwerem, a CLI potrzebuje takiego, aby wskazać go przez --profile.",
+                    "overwritesNewer": "CLI nadpisuje kopię docelową o innym rozmiarze nawet wtedy, gdy jest nowsza, czego ten preset nigdy nie robi.",
+                    "twoWay": "CLI traktuje dwie kopie o tym samym rozmiarze i różnym czasie jako konflikt i nadpisuje starszą; ten plan uznaje je za takie same w granicach 30 sekund.",
+                    "canary": "CLI nie ma próbnego uruchomienia Canary.",
+                    "versionedBackup": "CLI nie przechowuje jeszcze kopii zapasowych w tym samym układzie.",
+                    "transferBudget": "gdy budżet się wyczerpie, ten plan się zatrzymuje, łącznie z usuwaniem; CLI ogranicza tylko transfery i nadal usuwa.",
+                    "remotePath": "CLI ustala folder zdalny względem folderu startowego zapisanego serwera i trafiłby do innego.",
+                    "exclusions": "CLI dopasowuje wzorce wykluczeń inaczej, więc nie pominąłby wszystkiego, co pomija ten plan (node_modules, .git i reszta)."
+                }
+            },
+            "rescan": "Skanuj ponownie",
+            "rescanNeeded": "Porównanie wykonano z innymi wykluczeniami lub innym folderem kopii zapasowych. Przed uruchomieniem przeskanuj ponownie.",
+            "backup": {
+                "checking": "Sprawdzanie, jak ten serwer przenosi pliki...",
+                "serverCopy": "Ten serwer nie obsługuje przenoszenia: każda zachowywana kopia jest kopiowana na serwerze, a następnie usuwana. Kosztuje to pełną kopię każdego zachowanego pliku, w dwóch osobnych krokach.",
+                "clientCopy": "Ten serwer nie obsługuje przenoszenia: każda zachowywana kopia jest pobierana, wysyłana do folderu kopii zapasowych, a następnie usuwana. Każdy zachowany plik przechodzi dwa razy przez ten komputer, w osobnych krokach.",
+                "unsupported": "Ten serwer nie może przenosić plików do innego folderu, więc nie może zachować starych kopii. Wyłącz kopię zapasową z wersjami, aby uruchomić.",
+                "checkFailed": "Nie udało się zapytać serwera, jak przenosi pliki. Połącz się ponownie lub wyłącz kopię zapasową z wersjami, aby uruchomić.",
+                "nested": "Folder kopii zapasowych znajduje się w {folder}, do którego zapisuje ta synchronizacja. Wybierz folder poza nim.",
+                "invalid": {
+                    "empty": "Wpisz nazwę folderu kopii zapasowych.",
+                    "absolute": "Użyj folderu wewnątrz celu, a nie ścieżki bezwzględnej.",
+                    "parent": "Folder kopii zapasowych nie może zawierać '..'.",
+                    "name": "Ta nazwa folderu kopii zapasowych jest nieprawidłowa."
+                }
+            }
         },
         "accountLock": {
             "title": "Wybierz konto",

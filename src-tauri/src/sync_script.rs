@@ -37,6 +37,61 @@ const KNOWN_META_FIELDS: &[&str] = &[
 
 const CONFLICT_MODES: &[&str] = &["newer", "older", "larger", "smaller", "rename", "skip"];
 
+/// Preset settings `aeroftp-cli sync` has no flag for yet. The exported script
+/// names each one, with the preset's value, in a comment above its `SYNC`
+/// line, so running the script never drops them silently; they still travel
+/// in the metadata for the GUI import. An entry leaves this list when `sync`
+/// gains the flag, and the batch round-trip test in the CLI fails if a preset
+/// field is neither checked against a flag nor listed here.
+pub const SETTINGS_NOT_APPLIED_BY_CLI: &[&str] = &["compare", "retry", "verify"];
+
+/// Delete cap an exported script passes with `--delete`. A batch run is never
+/// interactive (cron, Task Scheduler, the wrappers), and `sync` refuses an
+/// unattended `--delete` without an explicit `--max-delete`, so without it
+/// every script from a deleting preset would fail. The GUI has no numeric cap
+/// to mirror (only the destructive-preset warning and the incomplete-scan
+/// refusal), so the value is the owner's choice for unattended runs.
+pub const UNATTENDED_MAX_DELETE: &str = "50%";
+
+/// The preset's value of one `SETTINGS_NOT_APPLIED_BY_CLI` entry, as the
+/// script comment shows it.
+fn not_applied_setting_value(profile: &SyncProfile, setting: &str) -> String {
+    match setting {
+        "compare" => {
+            let mut on = Vec::new();
+            if profile.compare_timestamp {
+                on.push("timestamp");
+            }
+            if profile.compare_size {
+                on.push("size");
+            }
+            if profile.compare_checksum {
+                on.push("checksum");
+            }
+            if on.is_empty() {
+                "none".to_string()
+            } else {
+                on.join(", ")
+            }
+        }
+        "retry" => format!(
+            "{} retries, {} ms to {} ms backoff, {} ms timeout",
+            profile.retry_policy.max_retries,
+            profile.retry_policy.base_delay_ms,
+            profile.retry_policy.max_delay_ms,
+            profile.retry_policy.timeout_ms
+        ),
+        "verify" => match profile.verify_policy {
+            VerifyPolicy::None => "none",
+            VerifyPolicy::SizeOnly => "size only",
+            VerifyPolicy::SizeAndMtime => "size and mtime",
+            VerifyPolicy::Full => "full",
+        }
+        .to_string(),
+        other => unreachable!("no value for setting {other}"),
+    }
+}
+
 /// Wire format for AeroSync script export/import. Embeds the
 /// authoritative `SyncProfile`, the path pair, and a connection
 /// reference. CLI-level runtime knobs (`dry_run`, `conflict_mode`,
@@ -154,12 +209,36 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
     }
     out.push('\n');
 
+    if !SETTINGS_NOT_APPLIED_BY_CLI.is_empty() {
+        out.push_str(
+            "# Not applied by `aeroftp-cli sync` yet (kept in the metadata for the GUI):\n",
+        );
+        for setting in SETTINGS_NOT_APPLIED_BY_CLI {
+            out.push_str(&format!(
+                "#   {}: {}\n",
+                setting,
+                not_applied_setting_value(&profile.profile, setting)
+            ));
+        }
+    }
+    if profile.profile.delete_orphans {
+        out.push_str(&format!(
+            "# --max-delete {cap} is the safety cap for an unattended run: when the plan would\n\
+             # delete more than {cap} of the files on the side it deletes from, sync stops before\n\
+             # transferring or deleting anything and exits 4. That stops a source that lost most\n\
+             # of its files and a source whose files were all replaced. An empty or missing\n\
+             # source is refused on its own. Change it deliberately.\n",
+            cap = UNATTENDED_MAX_DELETE
+        ));
+    }
     out.push_str("SYNC ${LOCAL} ${REMOTE}");
     let direction_flag = direction_to_flag(profile.profile.direction);
     out.push_str(" \\\n  --direction ");
     out.push_str(direction_flag);
     if profile.profile.delete_orphans {
         out.push_str(" \\\n  --delete");
+        out.push_str(" \\\n  --max-delete ");
+        out.push_str(UNATTENDED_MAX_DELETE);
     }
     if profile.dry_run {
         out.push_str(" \\\n  --dry-run");
@@ -183,7 +262,13 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
         }
     }
     for pattern in &profile.profile.exclude_patterns {
-        out.push_str(" \\\n  --exclude ");
+        // A pattern that starts with `-` would read as a flag after a space;
+        // the `=` form keeps it a value for the CLI and for the import.
+        out.push_str(if pattern.starts_with('-') {
+            " \\\n  --exclude="
+        } else {
+            " \\\n  --exclude "
+        });
         out.push_str(&shell_quote(pattern));
     }
     out.push('\n');
@@ -268,7 +353,9 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
         if let Some(rest) = trimmed.strip_prefix("SET ") {
             if let Some(eq) = rest.find('=') {
                 let name = rest[..eq].trim().to_string();
-                let value = rest[eq + 1..].trim().to_string();
+                // Expanded as it is defined, like the batch runner does, so
+                // `$$` in a value is a `$` and a value is never expanded twice.
+                let value = expand_variables(rest[eq + 1..].trim(), &variables, line_num)?;
                 if !name.is_empty() {
                     variables.insert(name, value);
                 } else {
@@ -362,6 +449,25 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
     let sync_args = sync_args.ok_or(ParseError::MissingSync)?;
     let expanded_sync = expand_variables(&sync_args, &variables, sync_line)?;
     let parsed_sync = parse_sync(&expanded_sync, sync_line)?;
+    for flag in &parsed_sync.not_kept {
+        warnings.push(format!(
+            "line {}: {} is not part of the AeroSync template and is dropped on import; a new export will not write it",
+            sync_line, flag
+        ));
+    }
+    // The template keeps no delete cap: an export always writes
+    // UNATTENDED_MAX_DELETE. Say so when the script carries another value,
+    // so a round trip through the GUI never widens (or narrows) it silently.
+    if let Some(cap) = parsed_sync
+        .max_delete
+        .as_deref()
+        .filter(|cap| *cap != UNATTENDED_MAX_DELETE)
+    {
+        warnings.push(format!(
+            "line {}: --max-delete {} is not kept by the template; a new export writes --max-delete {}. Edit the exported script to keep {}.",
+            sync_line, cap, UNATTENDED_MAX_DELETE, cap
+        ));
+    }
 
     // Build the SyncProfile from metadata + sync line. Metadata is
     // authoritative for header-only fields; SYNC flags are
@@ -572,11 +678,14 @@ fn build_metadata_json(profile: &AerosyncScriptProfile, app_version: &str) -> se
     if let Ok(v) = serde_json::to_value(&profile.profile.verify_policy) {
         map.insert("verify_policy".to_string(), v);
     }
+    // Neutral, as in the .aerosync export: no run reads streams or
+    // compression, so the script must not promise them. The keys stay for
+    // the versions that read them.
     map.insert(
         "parallel_streams".to_string(),
-        serde_json::Value::Number(serde_json::Number::from(profile.profile.parallel_streams)),
+        serde_json::Value::Number(serde_json::Number::from(1)),
     );
-    if let Ok(v) = serde_json::to_value(&profile.profile.compression_mode) {
+    if let Ok(v) = serde_json::to_value(CompressionMode::Off) {
         map.insert("compression_mode".to_string(), v);
     }
     map.insert(
@@ -619,6 +728,9 @@ fn shell_quote(value: &str) -> String {
         match ch {
             '\\' => out.push_str("\\\\"),
             '"' => out.push_str("\\\""),
+            // Both readers expand variables before they split the line, and
+            // read `$$` as one `$`.
+            '$' => out.push_str("$$"),
             _ => out.push(ch),
         }
     }
@@ -653,33 +765,49 @@ fn expand_variables(
     vars: &std::collections::HashMap<String, String>,
     line: usize,
 ) -> Result<String, ParseError> {
-    // CLAUDE-AV-B3-04: scan by `str` slices, never by raw bytes. The prior
-    // fallback computed a char length from `(b as char).len_utf8()` on a RAW
-    // byte, which for a multi-byte UTF-8 lead byte (e.g. 0xE7) yields the wrong
-    // length and slices mid-character, panicking on any non-ASCII literal path
-    // in a SYNC/CONNECT line. `find("${")` and slicing at the returned char
-    // boundaries is UTF-8-safe.
-    let mut out = String::with_capacity(body.len());
-    let mut rest = body;
-    while let Some(pos) = rest.find("${") {
+    expand_script_variables(body, vars).map_err(|name| ParseError::UndefinedVariable { line, name })
+}
+
+/// Expand `${NAME}` and `$NAME` in one line of a script, in one pass: a
+/// value is inserted as it is and never expanded again. `$$` is a literal
+/// `$`, and a `$` not followed by a name, `{` or `$` stays as written. A
+/// variable that was never SET is an error, returned as its name: kept as
+/// text it became part of a path, and a SYNC wrote into a folder called
+/// `${REMOT}`. The single rule for the GUI import and the CLI batch; the
+/// export writes every `$` of a value as `$$`.
+pub fn expand_script_variables(
+    line: &str,
+    vars: &std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(pos) = rest.find('$') {
         out.push_str(&rest[..pos]);
-        let after = &rest[pos + 2..];
-        if let Some(end) = after.find('}') {
-            let name = &after[..end];
-            match vars.get(name) {
-                Some(v) => out.push_str(v),
+        let after = &rest[pos + 1..];
+        if let Some(tail) = after.strip_prefix('$') {
+            out.push('$');
+            rest = tail;
+        } else if let Some(braced) = after.strip_prefix('{') {
+            match braced.find('}') {
+                Some(end) => {
+                    let name = &braced[..end];
+                    out.push_str(vars.get(name).ok_or_else(|| name.to_string())?);
+                    rest = &braced[end + 1..];
+                }
                 None => {
-                    return Err(ParseError::UndefinedVariable {
-                        line,
-                        name: name.to_string(),
-                    });
+                    out.push_str("${");
+                    rest = braced;
                 }
             }
-            rest = &after[end + 1..];
+        } else if after.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
+            let end = after
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(after.len());
+            let name = &after[..end];
+            out.push_str(vars.get(name).ok_or_else(|| name.to_string())?);
+            rest = &after[end..];
         } else {
-            // No closing brace: emit the literal "${" and keep scanning after it
-            // (preserves the pre-fix behavior for an unterminated variable).
-            out.push_str("${");
+            out.push('$');
             rest = after;
         }
     }
@@ -689,29 +817,34 @@ fn expand_variables(
 
 /// Collect a logical line that may span multiple physical lines via
 /// trailing `\` continuations. Advances `idx` past the joined region.
+/// The line without its continuation mark, when it has one. A line
+/// continues only when it ends in whitespace and then `\\`, the form the
+/// export and CLI-GUIDE write: a backslash glued to a word is the end of a
+/// Windows path (`SET DEST=C:\\Backup\\`), and reading it as a continuation
+/// swallowed the next command. One rule for the GUI import and the CLI batch.
+pub fn continuation_head(line: &str) -> Option<&str> {
+    let head = line.strip_suffix('\\')?;
+    head.ends_with(char::is_whitespace).then(|| head.trim_end())
+}
+
 fn collect_continued_line(first: &str, lines: &[&str], idx: &mut usize) -> String {
     let mut joined = first.trim().to_string();
     *idx += 1;
-    loop {
-        if joined.ends_with('\\') {
-            joined.pop(); // strip the trailing backslash
-            joined.push(' ');
-            if *idx >= lines.len() {
-                break;
-            }
-            let next = lines[*idx].trim();
-            joined.push_str(next);
-            *idx += 1;
-            continue;
+    while let Some(head_len) = continuation_head(&joined).map(str::len) {
+        joined.truncate(head_len);
+        joined.push(' ');
+        if *idx >= lines.len() {
+            break;
         }
-        break;
+        joined.push_str(lines[*idx].trim());
+        *idx += 1;
     }
     joined
 }
 
 fn parse_connect(body: &str, line: usize) -> Result<(Option<String>, Option<String>), ParseError> {
-    let tokens =
-        tokenize(body, line).map_err(|message| ParseError::MalformedConnect { line, message })?;
+    let tokens = tokenize_script_line(body)
+        .map_err(|message| ParseError::MalformedConnect { line, message })?;
     let mut it = tokens.into_iter().peekable();
     let mut profile: Option<String> = None;
     let mut url: Option<String> = None;
@@ -752,11 +885,41 @@ struct ParsedSyncLine {
     watch: bool,
     conflict_mode: Option<String>,
     exclude_patterns: Vec<String>,
+    /// `--max-delete` as written, so an edited cap is reported on import
+    /// instead of being replaced in silence by the next export.
+    max_delete: Option<String>,
+    /// Flags the template has no field for, dropped on import and named in
+    /// a warning.
+    not_kept: Vec<String>,
+}
+
+/// The value of `flag`: the one written after `=`, or the next argument. As
+/// in the CLI, a separate value may not start with `-` (it would read as a
+/// flag there); such a value is written `--flag=<value>`.
+fn flag_value(
+    inline: Option<String>,
+    it: &mut std::iter::Peekable<std::vec::IntoIter<String>>,
+    flag: &str,
+    what: &str,
+    line: usize,
+) -> Result<String, ParseError> {
+    if let Some(value) = inline {
+        return Ok(value);
+    }
+    match it.next_if(|next| !next.starts_with('-')) {
+        Some(value) => Ok(value),
+        None => Err(ParseError::MalformedSync {
+            line,
+            message: format!(
+                "{flag} expects {what}; a value that starts with '-' is written {flag}=<value>"
+            ),
+        }),
+    }
 }
 
 fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
-    let tokens =
-        tokenize(body, line).map_err(|message| ParseError::MalformedSync { line, message })?;
+    let tokens = tokenize_script_line(body)
+        .map_err(|message| ParseError::MalformedSync { line, message })?;
     let mut positional: Vec<String> = Vec::new();
     let mut direction: Option<CompareDirection> = None;
     let mut delete_orphans = false;
@@ -767,14 +930,20 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
     let mut watch = false;
     let mut conflict_mode: Option<String> = None;
     let mut exclude_patterns: Vec<String> = Vec::new();
+    let mut max_delete: Option<String> = None;
+    let mut not_kept: Vec<String> = Vec::new();
     let mut it = tokens.into_iter().peekable();
     while let Some(tok) = it.next() {
+        // `--flag=value` is the same flag with its value attached.
+        let (tok, inline) = match tok.split_once('=') {
+            Some((flag, value)) if flag.starts_with("--") => {
+                (flag.to_string(), Some(value.to_string()))
+            }
+            _ => (tok, None),
+        };
         match tok.as_str() {
             "--direction" => {
-                let v = it.next().ok_or_else(|| ParseError::MalformedSync {
-                    line,
-                    message: "--direction expects a value".to_string(),
-                })?;
+                let v = flag_value(inline, &mut it, "--direction", "a value", line)?;
                 direction =
                     Some(
                         flag_to_direction(&v).ok_or_else(|| ParseError::MalformedSync {
@@ -790,10 +959,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
             "--resync" => resync = true,
             "--watch" => watch = true,
             "--conflict-mode" => {
-                let v = it.next().ok_or_else(|| ParseError::MalformedSync {
-                    line,
-                    message: "--conflict-mode expects a value".to_string(),
-                })?;
+                let v = flag_value(inline, &mut it, "--conflict-mode", "a value", line)?;
                 if !CONFLICT_MODES.contains(&v.as_str()) {
                     return Err(ParseError::MalformedSync {
                         line,
@@ -802,22 +968,30 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
                 }
                 conflict_mode = Some(v);
             }
-            "--exclude" | "-e" => {
-                let v = it.next().ok_or_else(|| ParseError::MalformedSync {
+            "--max-delete" => {
+                max_delete = Some(flag_value(
+                    inline,
+                    &mut it,
+                    "--max-delete",
+                    "a value",
                     line,
-                    message: "--exclude expects a pattern".to_string(),
-                })?;
-                exclude_patterns.push(v);
+                )?);
+            }
+            "--exclude" | "-e" => {
+                exclude_patterns.push(flag_value(inline, &mut it, "--exclude", "a pattern", line)?);
             }
             other if other.starts_with("--") => {
-                // Forward-compat: ignore unknown long flags but try to
-                // also consume their value if it does not look like a
-                // flag itself.
-                if let Some(next) = it.peek() {
-                    if !next.starts_with('-') {
-                        let _ = it.next();
+                // A flag the template has no field for: dropped on import,
+                // and named so the user knows a new export will not carry
+                // it. Its value, when it has one, goes with it.
+                if inline.is_none() {
+                    if let Some(next) = it.peek() {
+                        if !next.starts_with('-') {
+                            let _ = it.next();
+                        }
                     }
                 }
+                not_kept.push(other.to_string());
             }
             _ => positional.push(tok),
         }
@@ -848,28 +1022,34 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
         watch,
         conflict_mode,
         exclude_patterns,
+        max_delete,
+        not_kept,
     })
 }
 
-/// Tokenise a shell-style command body. Supports double and single
-/// quotes and `\` escapes inside double-quoted regions.
-fn tokenize(body: &str, _line: usize) -> Result<Vec<String>, String> {
+/// Split one line of a `.aeroftp-script` into arguments. The single rule for
+/// the format, shared by the GUI import and the CLI batch runner so the two
+/// can never read a line differently:
+/// - whitespace separates arguments outside quotes;
+/// - inside double quotes `\\` is a backslash and `\"` a quote, the two
+///   escapes the exporter writes; any other backslash is kept, so a Windows
+///   path written by hand (`"C:\Users\me"`) reads as written, but the
+///   leading `\\` of a UNC path reads as one backslash: write it doubled or
+///   between single quotes;
+/// - inside single quotes every character is literal (variables have already
+///   been expanded by [`expand_script_variables`]);
+/// - `""` or `''` is an empty argument, and an unclosed quote is an error.
+pub fn tokenize_script_line(body: &str) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = Vec::new();
     let mut current = String::new();
     let mut in_double = false;
     let mut in_single = false;
-    let mut escape = false;
     let mut has_token = false;
-    for ch in body.chars() {
-        if escape {
-            current.push(ch);
-            escape = false;
-            has_token = true;
-            continue;
-        }
+    let mut chars = body.chars().peekable();
+    while let Some(ch) = chars.next() {
         match ch {
-            '\\' if in_double => {
-                escape = true;
+            '\\' if in_double && matches!(chars.peek(), Some('\\') | Some('"')) => {
+                current.push(chars.next().expect("peeked"));
             }
             '"' if !in_single => {
                 in_double = !in_double;
@@ -892,7 +1072,7 @@ fn tokenize(body: &str, _line: usize) -> Result<Vec<String>, String> {
         }
     }
     if in_double || in_single {
-        return Err("unterminated quoted token".to_string());
+        return Err("unmatched quote".to_string());
     }
     if has_token {
         out.push(current);
@@ -903,6 +1083,94 @@ fn tokenize(body: &str, _line: usize) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An exclusion that starts with a dash could not be exported and read
+    /// back: the import took `--exclude -tmp`, which the CLI refuses, and
+    /// dropped `--exclude=-tmp`, which the CLI takes, as an unknown flag. The
+    /// export now writes the `=` form, the import reads it, a separate value
+    /// that starts with `-` is refused as the CLI refuses it, and a flag the
+    /// template does not keep is named in a warning instead of vanishing.
+    #[test]
+    fn a_dash_exclusion_round_trips_and_unknown_flags_are_named() {
+        let mut profile = sample(SyncProfile::mirror());
+        profile.profile.exclude_patterns = vec!["-tmp".to_string(), "*.log".to_string()];
+        let script = generate_script(&profile, "test");
+        assert!(script.contains("--exclude=\"-tmp\""), "{script}");
+        let parsed = parse_script(&script).expect("imports");
+        assert_eq!(parsed.profile.profile.exclude_patterns, ["-tmp", "*.log"]);
+
+        let with = |sync: &str| {
+            script.replace("--direction upload", &format!("--direction upload {sync}"))
+        };
+        let err = parse_script(&with("--exclude -tmp")).unwrap_err();
+        assert!(err.to_string().contains("--exclude=<value>"), "{err}");
+        assert!(script.contains("--conflict-mode newer"), "{script}");
+        let parsed = parse_script(
+            &with("--backup-dir old --delta")
+                .replace("--conflict-mode newer", "--conflict-mode=rename"),
+        )
+        .expect("imports");
+        assert_eq!(parsed.profile.conflict_mode.as_deref(), Some("rename"));
+        for flag in ["--backup-dir", "--delta"] {
+            assert!(
+                parsed.warnings.iter().any(|w| w.contains(flag)),
+                "{flag} not named: {:?}",
+                parsed.warnings
+            );
+        }
+    }
+
+    /// `$$` is a literal `$`, and a variable that was never SET is an error
+    /// in the GUI import and in the batch alike: kept as text, `${REMOT}`
+    /// became part of a path. Values are inserted once, never expanded again.
+    #[test]
+    fn variables_expand_once_and_an_unknown_one_is_an_error() {
+        let vars = std::collections::HashMap::from([
+            ("A".to_string(), "x$$y".to_string()),
+            ("B_1".to_string(), "b".to_string()),
+        ]);
+        assert_eq!(
+            expand_script_variables("${A}/$B_1/$$C/$5/${ /照片", &vars),
+            Ok("x$$y/b/$C/$5/${ /照片".to_string())
+        );
+        assert_eq!(
+            expand_script_variables("/d/${REMOT}", &vars),
+            Err("REMOT".to_string())
+        );
+        assert_eq!(
+            expand_script_variables("/d/$REMOT/x", &vars),
+            Err("REMOT".to_string())
+        );
+    }
+
+    /// A path with `$` in it survives an export and a GUI import: the export
+    /// writes `$$` and both readers read it back as `$`.
+    #[test]
+    fn a_dollar_in_a_path_survives_the_export_and_the_import() {
+        let mut profile = sample(SyncProfile::mirror());
+        profile.local_path = "/data/$weird/a$$b".to_string();
+        profile.remote_path = "/r/${HOME}".to_string();
+        let script = generate_script(&profile, "test");
+        let parsed = parse_script(&script).expect("imports");
+        assert_eq!(parsed.profile.local_path, "/data/$weird/a$$b");
+        assert_eq!(parsed.profile.remote_path, "/r/${HOME}");
+    }
+
+    /// Only ` \\` continues a line: a SYNC whose last path ends in a
+    /// backslash is complete, and the next line is not glued onto it.
+    #[test]
+    fn a_path_ending_in_a_backslash_does_not_continue_the_sync_line() {
+        assert_eq!(continuation_head("SYNC /a /b \\"), Some("SYNC /a /b"));
+        assert_eq!(continuation_head("SYNC /a /b\t\\"), Some("SYNC /a /b"));
+        assert_eq!(continuation_head("SYNC /a C:\\dest\\"), None);
+        assert_eq!(continuation_head("SET DEST=C:\\Backup\\"), None);
+        assert_eq!(continuation_head("\\"), None);
+        let lines = ["SYNC /a C:\\dest\\", "--direction download"];
+        let mut idx = 0;
+        let joined = collect_continued_line("/a C:\\dest\\", &lines, &mut idx);
+        assert_eq!(joined, "/a C:\\dest\\");
+        assert_eq!(idx, 1, "the next line is not consumed");
+    }
 
     fn sample(profile: SyncProfile) -> AerosyncScriptProfile {
         AerosyncScriptProfile {
@@ -936,10 +1204,8 @@ mod tests {
             parsed.profile.profile.delete_orphans,
             original.profile.delete_orphans
         );
-        assert_eq!(
-            parsed.profile.profile.parallel_streams,
-            original.profile.parallel_streams
-        );
+        // Exported neutral, so it reads back as one stream.
+        assert_eq!(parsed.profile.profile.parallel_streams, 1);
         assert_eq!(parsed.profile.local_path, original.local_path);
         assert_eq!(parsed.profile.remote_path, original.remote_path);
         assert_eq!(parsed.profile.connect_profile, original.connect_profile);
@@ -1042,8 +1308,32 @@ mod tests {
         assert!(parsed.profile.track_renames);
         assert!(parsed.profile.watch);
         assert_eq!(parsed.profile.conflict_mode.as_deref(), Some("rename"));
-        assert_eq!(parsed.profile.profile.parallel_streams, 6);
+        // The 6 streams of the profile are not exported: no run reads them.
+        assert_eq!(parsed.profile.profile.parallel_streams, 1);
         assert_eq!(parsed.profile.profile.id, "custom-1");
+    }
+
+    /// A script exported before the neutral export (6 streams, compression
+    /// on in its metadata) still imports; the values are read and ignored.
+    #[test]
+    fn a_script_with_old_tuning_still_imports() {
+        let text = generate_script(&sample(SyncProfile::mirror()), "4.2.0-test")
+            .replace("\"parallel_streams\": 1", "\"parallel_streams\": 6")
+            .replace(
+                "\"compression_mode\": \"off\"",
+                "\"compression_mode\": \"on\"",
+            );
+        assert!(
+            text.contains("\"parallel_streams\": 6"),
+            "fixture edit did not apply"
+        );
+        assert!(
+            text.contains("\"compression_mode\": \"on\""),
+            "fixture edit did not apply"
+        );
+        let parsed = parse_script(&text).expect("must parse");
+        assert_eq!(parsed.profile.profile.parallel_streams, 6);
+        assert!(parsed.unmapped_fields.is_empty());
     }
 
     #[test]
@@ -1151,6 +1441,96 @@ mod tests {
         let content = "# @aerosync:1\nCONNECT --profile \"x\"\nSYNC /a /b --direction both\n";
         let target = detect_wrapper_target(&wrapper_path, content);
         assert!(target.is_none());
+    }
+
+    #[test]
+    fn tokenize_script_line_follows_the_format_rules() {
+        assert_eq!(
+            tokenize_script_line(r#"SYNC "C:\Users\me" "a \"q\" b" 'lit $x \n' "" x"#).unwrap(),
+            vec!["SYNC", r"C:\Users\me", r#"a "q" b"#, r"lit $x \n", "", "x"]
+        );
+        // Whatever the exporter quotes reads back as the value, once the
+        // variables are expanded as both readers do.
+        for value in [
+            "has $dollar and $$ two",
+            r"C:\Users\me\Docs",
+            r#"has "quotes""#,
+            r"trailing\",
+            "sp ace",
+            "",
+        ] {
+            let expanded =
+                expand_script_variables(&shell_quote(value), &std::collections::HashMap::new())
+                    .unwrap();
+            assert_eq!(
+                tokenize_script_line(&expanded).unwrap(),
+                vec![value],
+                "{value}"
+            );
+        }
+        // A UNC path: doubled between double quotes, or single-quoted.
+        assert_eq!(
+            tokenize_script_line(r#""\\\\nas\\share" '\\nas\share'"#).unwrap(),
+            vec![r"\\nas\share", r"\\nas\share"]
+        );
+        assert!(tokenize_script_line("\"open").is_err());
+        assert!(tokenize_script_line("'open").is_err());
+    }
+
+    #[test]
+    fn a_value_flag_never_swallows_the_next_flag() {
+        let script = generate_script(&sample(SyncProfile::mirror()), "test");
+        for (from, to) in [
+            (
+                format!("  --max-delete {}", UNATTENDED_MAX_DELETE),
+                "  --max-delete --dry-run".to_string(),
+            ),
+            (
+                "--exclude \"node_modules\"".to_string(),
+                "--exclude --dry-run".to_string(),
+            ),
+        ] {
+            let broken = script.replacen(&from, &to, 1);
+            assert_ne!(broken, script, "{from} is in the export");
+            let err = parse_script(&broken).expect_err(&to);
+            assert!(err.to_string().contains("expects"), "{to}: {err}");
+        }
+    }
+
+    #[test]
+    fn an_edited_delete_cap_is_reported_on_import_not_replaced_silently() {
+        let mut exported = sample(SyncProfile::mirror());
+        assert!(exported.profile.delete_orphans, "Mirror deletes orphans");
+        let script = generate_script(&exported, "test");
+        // The exported cap round-trips without a word.
+        let parsed = parse_script(&script).expect("parses");
+        assert!(
+            !parsed.warnings.iter().any(|w| w.contains("--max-delete")),
+            "{:?}",
+            parsed.warnings
+        );
+        // An owner-edited cap is named, with what the next export will write.
+        let edited = script.replace(
+            &format!("--max-delete {}", UNATTENDED_MAX_DELETE),
+            "--max-delete 10%",
+        );
+        assert_ne!(edited, script, "the export carries the cap");
+        let parsed = parse_script(&edited).expect("parses");
+        assert!(
+            parsed
+                .warnings
+                .iter()
+                .any(|w| w.contains("--max-delete 10% is not kept")
+                    && w.contains(&format!("writes --max-delete {}", UNATTENDED_MAX_DELETE))),
+            "{:?}",
+            parsed.warnings
+        );
+        exported.profile.delete_orphans = false;
+        let no_delete = generate_script(&exported, "test");
+        assert!(
+            !no_delete.contains("--max-delete"),
+            "no cap without --delete"
+        );
     }
 
     #[test]

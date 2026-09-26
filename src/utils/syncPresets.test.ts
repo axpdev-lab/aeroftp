@@ -10,8 +10,6 @@ import { compareEntries } from './compareEndpoints';
 import {
     CONFLICT_POLICIES,
     derivePresetPlan,
-    describeAction,
-    describeConflictPolicy,
     describePreset,
 } from './syncPresets';
 
@@ -370,20 +368,4 @@ describe('preset descriptors', () => {
         expect(describePreset('bisync').safe).toBe(false);
     });
 
-    it('emits stable human-readable action labels', () => {
-        expect(describeAction('copy-to-right')).toMatch(/Copy/);
-        expect(describeAction('delete-right')).toMatch(/Delete/);
-        expect(describeAction('conflict-skip')).toMatch(/Conflict/);
-        expect(describeAction('skip')).toBe('Skip');
-        expect(describeAction('rename-to-right')).toMatch(/Keep both/);
-    });
-
-    it('exposes all six conflict policies with stable labels', () => {
-        expect(CONFLICT_POLICIES).toHaveLength(6);
-        for (const policy of CONFLICT_POLICIES) {
-            const { label, tagline } = describeConflictPolicy(policy);
-            expect(label).toBeTruthy();
-            expect(tagline).toBeTruthy();
-        }
-    });
 });

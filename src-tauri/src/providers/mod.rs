@@ -486,7 +486,45 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
             max_name_chars: Some(255),
             ..Default::default()
         },
-        _ => DocumentedFileLimits::default(),
+        // No limit to warn about, each for a stated reason. The match has no
+        // wildcard on purpose: a new provider type does not compile until
+        // someone answers for it.
+        //
+        // Set by the provider itself, on AWS endpoints only (AWS_S3_FILE_LIMITS).
+        ProviderType::S3 => DocumentedFileLimits::default(),
+        // Decided by each server or by the operator, not by a service.
+        ProviderType::Ftp
+        | ProviderType::Ftps
+        | ProviderType::Sftp
+        | ProviderType::WebDav
+        | ProviderType::Swift
+        | ProviderType::GitLab
+        | ProviderType::Immich => DocumentedFileLimits::default(),
+        // Documented as unlimited, or unlimited on the highest plan.
+        ProviderType::Mega | ProviderType::Filen | ProviderType::FileLu => {
+            DocumentedFileLimits::default()
+        }
+        // No official number found (marketing page only, site not readable,
+        // or custom plans without a stated ceiling).
+        ProviderType::PCloud
+        | ProviderType::Jottacloud
+        | ProviderType::DrimeCloud
+        | ProviderType::OpenDrive
+        | ProviderType::ImageKit
+        | ProviderType::Uploadcare
+        | ProviderType::Twake => DocumentedFileLimits::default(),
+        // Two write paths with two limits: a repository file goes through the
+        // Contents API (100 MB, refused by the provider itself before the
+        // upload, github/mod.rs MAX_CONTENT_SIZE), a release asset has 2 GiB.
+        // One number per provider type would warn wrongly on one of them.
+        // https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents
+        // https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
+        ProviderType::GitHub => DocumentedFileLimits::default(),
+        // Not a remote a sync uploads to through this path.
+        ProviderType::AeroCloud
+        | ProviderType::AeroVaultMount
+        | ProviderType::Peer
+        | ProviderType::Mtp => DocumentedFileLimits::default(),
     }
 }
 
