@@ -36,21 +36,24 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
 use http_body_util::Full;
-use hyper::body::{Bytes, Incoming};
+use hyper::body::{Body, Bytes, Frame, Incoming, SizeHint};
 use hyper::header::{
-    HeaderName, HeaderValue, ALLOW, CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, HOST,
+    HeaderName, HeaderValue, ALLOW, CACHE_CONTROL, CONNECTION, CONTENT_SECURITY_POLICY,
+    CONTENT_TYPE, HOST,
 };
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::{TokioIo, TokioTimer};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::sync::Semaphore;
+use tokio::net::TcpStream;
+use tokio::sync::{oneshot, Notify, OwnedSemaphorePermit, Semaphore};
 use tokio::time::Sleep;
 
 /// The header `localhost_security::wait_for_owned_server` looks for (it
@@ -172,11 +175,13 @@ pub(crate) struct Limits {
     /// is closed after it: hyper runs the same timer while it waits for the next
     /// head. WebKit simply reconnects.
     pub header_read_timeout: Duration,
-    /// Connections served at once. Beyond it a new connection is closed at
-    /// accept, which confines a local connection flood to this server instead of
-    /// letting it exhaust the process's file descriptors. Memory is not what
-    /// it bounds: responses share the cached asset and are written without
-    /// being copied, so a connection costs hyper's buffers whatever it asks for.
+    /// Connections served at once. At the cap the oldest idle connection is
+    /// closed to make room, and a new connection is closed at accept only when
+    /// every slot is answering a request. That confines a local connection
+    /// flood to this server instead of letting it exhaust the process's file
+    /// descriptors. Memory is not what it bounds: responses share the cached
+    /// asset and are written without being copied, so a connection costs
+    /// hyper's buffers whatever it asks for.
     pub max_connections: usize,
     /// A response write that makes no progress for this long ends the
     /// connection. Without it a client that asks for a large asset and never
@@ -246,6 +251,8 @@ async fn accept_loop(listener: std::net::TcpListener, site: Arc<Site>, limits: L
         }
     };
     let slots = Arc::new(Semaphore::new(limits.max_connections));
+    let occupants = Arc::new(Occupants::default());
+    let mut accepted: u64 = 0;
     loop {
         let stream = match listener.accept().await {
             Ok((stream, _)) => stream,
@@ -256,43 +263,229 @@ async fn accept_loop(listener: std::net::TcpListener, site: Arc<Site>, limits: L
                 continue;
             }
         };
-        let Ok(slot) = slots.clone().try_acquire_owned() else {
-            log::warn!(
-                "UI server at {} connections, closing a new one",
-                limits.max_connections
-            );
-            continue;
-        };
-        let site = site.clone();
-        tauri::async_runtime::spawn(async move {
-            let service = service_fn(move |request| {
-                let site = site.clone();
-                async move { Ok::<_, Infallible>(site.respond(request).await) }
-            });
-            let connection = http1::Builder::new()
-                .timer(TokioTimer::new())
-                .header_read_timeout(limits.header_read_timeout)
-                .serve_connection(
-                    TokioIo::new(StallGuard::new(stream, limits.write_stall_timeout)),
-                    service,
-                );
-            tokio::pin!(connection);
-            let served = tokio::select! {
-                served = connection.as_mut() => served,
-                _ = tokio::time::sleep(limits.max_connection_age) => {
-                    connection.as_mut().graceful_shutdown();
-                    tokio::time::timeout(limits.shutdown_grace, connection.as_mut())
-                        .await
-                        .unwrap_or(Ok(()))
+        accepted += 1;
+        let admission = match slots.clone().try_acquire_owned() {
+            Ok(slot) => Admission::Now(slot),
+            // An idle connection gives its slot up rather than the newcomer
+            // being refused, so holding every slot takes that many requests in
+            // flight, not that many open sockets.
+            Err(_) => match occupants.evict_oldest_idle() {
+                Some(handover) => Admission::After(handover),
+                None => {
+                    log::warn!(
+                        "UI server at {} connections, closing a new one",
+                        limits.max_connections
+                    );
+                    continue;
                 }
-            };
-            // A client that went away, was too slow, or stayed too long: its
-            // own connection ends, nothing else does.
-            if let Err(error) = served {
-                log::debug!("UI server connection ended: {error}");
+            },
+        };
+        tauri::async_runtime::spawn(serve(
+            stream,
+            site.clone(),
+            limits,
+            occupants.clone(),
+            admission,
+            accepted,
+        ));
+    }
+}
+
+/// How a new connection gets its slot.
+enum Admission {
+    Now(OwnedSemaphorePermit),
+    /// From an idle connection asked to close for it, once that one has.
+    After(oneshot::Receiver<OwnedSemaphorePermit>),
+}
+
+async fn serve(
+    stream: TcpStream,
+    site: Arc<Site>,
+    limits: Limits,
+    occupants: Arc<Occupants>,
+    admission: Admission,
+    accepted: u64,
+) {
+    let slot = match admission {
+        Admission::Now(slot) => slot,
+        Admission::After(handover) => match handover.await {
+            Ok(slot) => slot,
+            Err(_) => return,
+        },
+    };
+    let tenancy = Tenancy::admit(occupants, slot, accepted);
+    let occupant = tenancy.occupant.clone();
+    let service = {
+        let occupant = occupant.clone();
+        service_fn(move |request| {
+            occupant.answering.store(true, Ordering::Relaxed);
+            let answered = Answered(occupant.clone());
+            let site = site.clone();
+            async move {
+                let response = site.respond(request).await;
+                Ok::<_, Infallible>(response.map(|body| Reply {
+                    body,
+                    _answered: answered,
+                }))
             }
-            drop(slot);
+        })
+    };
+    let connection = http1::Builder::new()
+        .timer(TokioTimer::new())
+        .header_read_timeout(limits.header_read_timeout)
+        .serve_connection(
+            TokioIo::new(StallGuard::new(
+                stream,
+                limits.write_stall_timeout,
+                occupant.clone(),
+            )),
+            service,
+        );
+    tokio::pin!(connection);
+    // Past its age, or asked to make room: the response in flight may finish
+    // within the grace (hyper closes an idle connection at once), then the
+    // connection is dropped.
+    let finished = tokio::select! {
+        served = connection.as_mut() => Some(served),
+        () = tokio::time::sleep(limits.max_connection_age) => None,
+        () = occupant.evict.notified() => None,
+    };
+    let served = match finished {
+        Some(served) => served,
+        None => {
+            connection.as_mut().graceful_shutdown();
+            tokio::time::timeout(limits.shutdown_grace, connection.as_mut())
+                .await
+                .unwrap_or(Ok(()))
+        }
+    };
+    // A client that went away, was too slow, or stayed too long: its own
+    // connection ends, nothing else does.
+    if let Err(error) = served {
+        log::debug!("UI server connection ended: {error}");
+    }
+}
+
+/// A connection holding a slot, as the accept loop sees it.
+#[derive(Default)]
+struct Occupant {
+    /// Its place in the accept order. The list below is in the order the
+    /// connection tasks first ran, which the runtime does not keep: it runs
+    /// the task spawned last first when it can.
+    accepted: u64,
+    /// A request arrived and hyper has not yet taken all of its response.
+    answering: AtomicBool,
+    /// hyper wrote to the socket and has not since found its buffer drained.
+    unflushed: AtomicBool,
+    /// Wakes the connection to close for a newcomer.
+    evict: Notify,
+    /// The newcomer waiting for this connection's slot.
+    successor: Mutex<Option<oneshot::Sender<OwnedSemaphorePermit>>>,
+}
+
+impl Occupant {
+    /// Nothing in flight, so closing it loses nothing. It is a hint read
+    /// across threads: hyper's graceful shutdown closes an idle connection at
+    /// once and lets a request it is serving finish first, so a wrong guess
+    /// costs the newcomer time, never a response.
+    fn idle(&self) -> bool {
+        !self.answering.load(Ordering::Relaxed) && !self.unflushed.load(Ordering::Relaxed)
+    }
+}
+
+/// The connections holding slots.
+#[derive(Default)]
+struct Occupants(Mutex<Vec<Arc<Occupant>>>);
+
+impl Occupants {
+    /// Asks the oldest idle connection to close, and returns where its slot
+    /// will arrive once it has.
+    fn evict_oldest_idle(&self) -> Option<oneshot::Receiver<OwnedSemaphorePermit>> {
+        let occupants = lock(&self.0);
+        let oldest = occupants
+            .iter()
+            .filter(|occupant| occupant.idle() && lock(&occupant.successor).is_none())
+            .min_by_key(|occupant| occupant.accepted)?;
+        let (handover, arrival) = oneshot::channel();
+        *lock(&oldest.successor) = Some(handover);
+        oldest.evict.notify_one();
+        Some(arrival)
+    }
+}
+
+/// A slot held by one connection. Dropping it, when the connection ends or
+/// its task unwinds, takes the connection off the list and passes the slot to
+/// the newcomer waiting for it, or back to the pool.
+struct Tenancy {
+    occupants: Arc<Occupants>,
+    occupant: Arc<Occupant>,
+    slot: Option<OwnedSemaphorePermit>,
+}
+
+impl Tenancy {
+    fn admit(occupants: Arc<Occupants>, slot: OwnedSemaphorePermit, accepted: u64) -> Self {
+        let occupant = Arc::new(Occupant {
+            accepted,
+            ..Occupant::default()
         });
+        lock(&occupants.0).push(occupant.clone());
+        Self {
+            occupants,
+            occupant,
+            slot: Some(slot),
+        }
+    }
+}
+
+impl Drop for Tenancy {
+    fn drop(&mut self) {
+        lock(&self.occupants.0).retain(|occupant| !Arc::ptr_eq(occupant, &self.occupant));
+        let successor = lock(&self.occupant.successor).take();
+        if let (Some(handover), Some(slot)) = (successor, self.slot.take()) {
+            // A newcomer that is gone refuses it, and the permit returns to
+            // the pool as the failed send drops it.
+            let _ = handover.send(slot);
+        }
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Clears `answering` once hyper has taken the whole response body, or the
+/// request was abandoned: whichever drops it.
+struct Answered(Arc<Occupant>);
+
+impl Drop for Answered {
+    fn drop(&mut self) {
+        self.0.answering.store(false, Ordering::Relaxed);
+    }
+}
+
+/// A response body that carries its connection's `Answered`.
+struct Reply {
+    body: Full<Bytes>,
+    _answered: Answered,
+}
+
+impl Body for Reply {
+    type Data = Bytes;
+    type Error = Infallible;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, Infallible>>> {
+        Pin::new(&mut self.get_mut().body).poll_frame(cx)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.body.is_end_stream()
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        self.body.size_hint()
     }
 }
 
@@ -302,14 +495,24 @@ struct StallGuard<S> {
     inner: S,
     stall: Duration,
     stalled_since: Option<Pin<Box<Sleep>>>,
+    /// Told when hyper writes and when its buffer has drained: half of what
+    /// makes the connection idle.
+    occupant: Arc<Occupant>,
 }
 
 impl<S> StallGuard<S> {
-    fn new(inner: S, stall: Duration) -> Self {
+    fn new(inner: S, stall: Duration, occupant: Arc<Occupant>) -> Self {
         Self {
             inner,
             stall,
             stalled_since: None,
+            occupant,
+        }
+    }
+
+    fn wrote(&self, polled: &Poll<io::Result<usize>>) {
+        if matches!(polled, Poll::Ready(Ok(written)) if *written > 0) {
+            self.occupant.unflushed.store(true, Ordering::Relaxed);
         }
     }
 
@@ -356,6 +559,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for StallGuard<S> {
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
         let polled = Pin::new(&mut this.inner).poll_write(cx, buf);
+        this.wrote(&polled);
         this.progress(cx, polled)
     }
 
@@ -369,6 +573,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for StallGuard<S> {
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
         let polled = Pin::new(&mut this.inner).poll_write_vectored(cx, bufs);
+        this.wrote(&polled);
         this.progress(cx, polled)
     }
 
@@ -379,6 +584,10 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for StallGuard<S> {
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let this = self.get_mut();
         let polled = Pin::new(&mut this.inner).poll_flush(cx);
+        // hyper flushes the stream only once its own buffer is empty.
+        if let Poll::Ready(Ok(())) = polled {
+            this.occupant.unflushed.store(false, Ordering::Relaxed);
+        }
         this.progress(cx, polled)
     }
 
@@ -390,22 +599,22 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for StallGuard<S> {
 impl Site {
     async fn respond(self: Arc<Self>, request: Request<Incoming>) -> Response<Full<Bytes>> {
         if !self.host_allowed(&request) {
-            return plain(StatusCode::MISDIRECTED_REQUEST);
+            return refusal(StatusCode::MISDIRECTED_REQUEST);
         }
         let method = request.method();
         if method != Method::GET && method != Method::HEAD {
-            let mut response = plain(StatusCode::METHOD_NOT_ALLOWED);
+            let mut response = refusal(StatusCode::METHOD_NOT_ALLOWED);
             response
                 .headers_mut()
                 .insert(ALLOW, HeaderValue::from_static("GET, HEAD"));
             return response;
         }
         let Some(path) = asset_path(request.uri().path()) else {
-            return plain(StatusCode::NOT_FOUND);
+            return refusal(StatusCode::NOT_FOUND);
         };
         match self.resolve(path).await {
             Some(asset) => self.asset_response(asset),
-            None => plain(StatusCode::NOT_FOUND),
+            None => refusal(StatusCode::NOT_FOUND),
         }
     }
 
@@ -454,9 +663,14 @@ impl Site {
     }
 }
 
-fn plain(status: StatusCode) -> Response<Full<Bytes>> {
+/// An empty answer that closes the connection: a refused client keeps no
+/// slot on the strength of answers it was refused.
+fn refusal(status: StatusCode) -> Response<Full<Bytes>> {
     let mut response = Response::new(Full::new(Bytes::new()));
     *response.status_mut() = status;
+    response
+        .headers_mut()
+        .insert(CONNECTION, HeaderValue::from_static("close"));
     response
 }
 
@@ -487,7 +701,6 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpStream;
-    use std::sync::Mutex;
     use std::time::Instant;
 
     const NONCE: &str = "test-nonce";
@@ -808,18 +1021,19 @@ mod tests {
         assert_eq!(read_response(&mut stream, false).0, 200);
     }
 
+    /// With every slot answering a request, a newcomer is closed at accept:
+    /// nothing in flight is cut short for it, and it is not left waiting.
     #[test]
-    fn connections_beyond_the_cap_are_closed_at_accept() {
+    fn at_the_cap_with_no_idle_connection_a_newcomer_is_closed() {
         let limits = Limits {
-            max_connections: 3,
+            max_connections: 1,
             ..Limits::APP
         };
         let (addr, _) = serve(limits);
-        let mut held: Vec<TcpStream> = (0..3).map(|_| connect(addr)).collect();
-        for stream in &mut held {
-            send(stream, "GET", "/index.html", host(addr));
-            assert_eq!(read_response(stream, false).0, 200);
-        }
+        let mut busy = connect(addr);
+        send(&mut busy, "GET", "/big.bin", host(addr));
+        // Time for the server to start the response and fill the buffers.
+        std::thread::sleep(Duration::from_millis(300));
         // Closed by the server (EOF or reset), not merely left waiting: a read
         // timeout here would mean the connection was accepted and kept.
         let mut over = connect(addr);
@@ -829,13 +1043,82 @@ mod tests {
             Err(error) => error.kind() == std::io::ErrorKind::ConnectionReset,
         };
         assert!(closed, "a connection over the cap was kept open");
+        let (status, _, body) = read_response(&mut busy, false);
+        assert_eq!((status, body.len()), (200, big().len()));
+    }
 
-        // A slot frees up as soon as a held connection closes.
-        drop(held.pop());
-        std::thread::sleep(Duration::from_millis(200));
-        let mut again = connect(addr);
-        send(&mut again, "GET", "/index.html", host(addr));
-        assert_eq!(read_response(&mut again, false).0, 200);
+    /// At the cap the oldest idle connection closes to make room, so a slot
+    /// is not held by a socket that merely stays open.
+    #[test]
+    fn at_the_cap_the_oldest_idle_connection_makes_room() {
+        let limits = Limits {
+            max_connections: 2,
+            ..Limits::APP
+        };
+        let (addr, _) = serve(limits);
+        let mut oldest = connect(addr);
+        let mut newer = connect(addr);
+        for stream in [&mut oldest, &mut newer] {
+            send(stream, "GET", "/index.html", host(addr));
+            assert_eq!(read_response(stream, false).0, 200);
+        }
+        let mut third = connect(addr);
+        send(&mut third, "GET", "/index.html", host(addr));
+        assert_eq!(read_response(&mut third, false).0, 200);
+        let mut rest = Vec::new();
+        let closed = oldest.read_to_end(&mut rest).is_ok() && rest.is_empty();
+        assert!(closed, "the oldest idle connection was kept");
+        send(&mut newer, "GET", "/assets/app.css", host(addr));
+        assert_eq!(read_response(&mut newer, false).0, 200);
+    }
+
+    /// A socket that never sends a request (a preconnect, or a flood) counts
+    /// as idle and gives its slot up at once.
+    #[test]
+    fn at_the_cap_a_silent_connection_makes_room() {
+        let limits = Limits {
+            max_connections: 1,
+            ..Limits::APP
+        };
+        let (addr, _) = serve(limits);
+        let mut silent = connect(addr);
+        std::thread::sleep(Duration::from_millis(100));
+        let mut next = connect(addr);
+        send(&mut next, "GET", "/index.html", host(addr));
+        assert_eq!(read_response(&mut next, false).0, 200);
+        let mut rest = Vec::new();
+        assert!(silent.read_to_end(&mut rest).is_ok() && rest.is_empty());
+    }
+
+    /// A refused request closes its connection, so a client (a DNS-rebound
+    /// page among them) keeps no slot open by asking for what it is refused.
+    #[test]
+    fn a_refusal_closes_its_connection() {
+        let (addr, _) = serve(Limits::APP);
+        let port = addr.port();
+        for (request, expected) in [
+            (
+                format!("GET /index.html HTTP/1.1\r\nHost: evil.example:{port}\r\n\r\n"),
+                421,
+            ),
+            (
+                format!("DELETE /index.html HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"),
+                405,
+            ),
+            (
+                format!("GET /../etc/passwd HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"),
+                404,
+            ),
+        ] {
+            let mut stream = connect(addr);
+            stream.write_all(request.as_bytes()).unwrap();
+            let (status, headers, _) = read_response(&mut stream, false);
+            assert_eq!(status, expected, "{request}");
+            assert_eq!(headers.get("connection").map(String::as_str), Some("close"));
+            let mut rest = Vec::new();
+            let closed = stream.read_to_end(&mut rest).is_ok() && rest.is_empty();
+            assert!(closed, "{request}: the connection was kept open");
+        }
     }
 
     /// The write side of a slowloris: ask for an asset far larger than the
@@ -995,7 +1278,11 @@ mod tests {
                 .await
                 .unwrap();
             let (server, _) = listener.accept().await.unwrap();
-            let mut stream = TokioIo::new(StallGuard::new(server, Duration::from_secs(1)));
+            let mut stream = TokioIo::new(StallGuard::new(
+                server,
+                Duration::from_secs(1),
+                Arc::default(),
+            ));
             assert!(hyper::rt::Write::is_write_vectored(&stream));
             let parts = [io::IoSlice::new(b"head"), io::IoSlice::new(b"body")];
             let written = std::future::poll_fn(|cx| {
