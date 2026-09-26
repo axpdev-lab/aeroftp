@@ -2085,12 +2085,21 @@ impl StorageProvider for InternxtProvider {
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_resolved = self.resolve_path(from);
         let to_resolved = self.resolve_path(to);
+        if from_resolved == to_resolved {
+            return Ok(());
+        }
+        // A move to another folder keeps the name, and the rename that
+        // follows is the step Internxt refuses onto a taken name (409): by
+        // then the source had moved. The destination is looked up first.
+        super::refuse_occupied_destination(self, &from_resolved, &to_resolved).await?;
         let (from_parent, from_name) = Self::split_path(&from_resolved);
         let from_parent = from_parent.to_string();
         let from_name = from_name.to_string();
         let (to_parent, to_name) = Self::split_path(&to_resolved);
         let to_parent = to_parent.to_string();
         let to_name = to_name.to_string();
+        // Where the move alone puts the source: the path a 409 on it names.
+        let moved_to = format!("{}/{}", to_parent.trim_end_matches('/'), from_name);
         let from_parent_uuid = self.resolve_folder_uuid(&from_parent).await?;
 
         // Try as file first
@@ -2115,11 +2124,7 @@ impl StorageProvider for InternxtProvider {
                 if !move_resp.status().is_success() {
                     let status = move_resp.status();
                     let body = move_resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::ServerError(format!(
-                        "Move file failed ({}): {}",
-                        status,
-                        super::sanitize_api_error(&body)
-                    )));
+                    return Err(rename_refused("Move file", status, &body, &moved_to));
                 }
             }
 
@@ -2145,11 +2150,7 @@ impl StorageProvider for InternxtProvider {
                 if !resp.status().is_success() {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::ServerError(format!(
-                        "Rename failed ({}): {}",
-                        status,
-                        super::sanitize_api_error(&body)
-                    )));
+                    return Err(rename_refused("Rename", status, &body, &to_resolved));
                 }
             }
             return Ok(());
@@ -2178,11 +2179,7 @@ impl StorageProvider for InternxtProvider {
             if !move_resp.status().is_success() {
                 let status = move_resp.status();
                 let body = move_resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Move folder failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
+                return Err(rename_refused("Move folder", status, &body, &moved_to));
             }
         }
 
@@ -2203,11 +2200,7 @@ impl StorageProvider for InternxtProvider {
             if !rename_resp.status().is_success() {
                 let status = rename_resp.status();
                 let body = rename_resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Rename folder failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
+                return Err(rename_refused("Rename folder", status, &body, &to_resolved));
             }
         }
 
@@ -2216,6 +2209,13 @@ impl StorageProvider for InternxtProvider {
         self.dir_cache_insert(to_resolved, DirInfo { uuid: folder_uuid });
 
         Ok(())
+    }
+
+    /// No: Internxt refuses a taken name (409) and has no overwrite on
+    /// rename or move, so there is no one-step replace, and the callers that
+    /// need one refuse before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2670,9 +2670,133 @@ impl InternxtProvider {
     }
 }
 
+/// The error of a refused move or rename step. Internxt answers a taken name
+/// with 409: that is AlreadyExists (the CLI's exit 9), the one sync and
+/// `mkdir -p` handle.
+fn rename_refused(what: &str, status: reqwest::StatusCode, body: &str, to: &str) -> ProviderError {
+    if status == reqwest::StatusCode::CONFLICT {
+        return ProviderError::AlreadyExists(to.to_string());
+    }
+    ProviderError::ServerError(format!(
+        "{what} failed ({}): {}",
+        status,
+        super::sanitize_api_error(body)
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Internxt refuses a taken name and has no overwrite on rename or move, so
+    /// there is no one-step replace. The answer is no, so the callers that need
+    /// one (CLI `edit`, MCP `remote_edit`, the crypt marker paths) refuse before
+    /// they write.
+    #[tokio::test]
+    async fn internxt_does_not_claim_an_atomic_replace() {
+        let mut p = test_provider();
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
+
+    /// Internxt refuses a move or rename onto a taken name with 409, which
+    /// reached the caller as a server error.
+    #[test]
+    fn a_taken_name_is_already_exists() {
+        let taken = rename_refused(
+            "Rename",
+            reqwest::StatusCode::CONFLICT,
+            r#"{"error":"File already exists"}"#,
+            "/b.txt",
+        );
+        assert!(
+            matches!(taken, ProviderError::AlreadyExists(_)),
+            "{taken:?}"
+        );
+        let other = rename_refused("Rename", reqwest::StatusCode::BAD_GATEWAY, "", "/b.txt");
+        assert!(matches!(other, ProviderError::ServerError(_)), "{other:?}");
+    }
+
+    /// An Internxt drive double: the root `R` holds the folders `src` (`S`)
+    /// and `dst` (`D`), `src` holds `a.txt` and `dst` holds `b.txt`. A move
+    /// (PATCH) succeeds; a rename (PUT `/meta`) answers 409, as Internxt does
+    /// for a taken name. Returns a provider on it and every change as
+    /// `METHOD path`.
+    async fn provider_on_drive() -> (
+        InternxtProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let changes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&changes);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    if method != axum::http::Method::GET {
+                        seen.lock().unwrap().push(format!("{method} {path}"));
+                        return if path.ends_with("/meta") {
+                            (
+                                axum::http::StatusCode::CONFLICT,
+                                r#"{"error":"A file with this name already exists"}"#,
+                            )
+                                .into_response()
+                        } else {
+                            axum::Json(serde_json::json!({})).into_response()
+                        };
+                    }
+                    let folder = |uuid: &str, name: &str| {
+                        serde_json::json!({ "uuid": uuid, "plainName": name })
+                    };
+                    let file = |uuid: &str, name: &str| {
+                        serde_json::json!({ "uuid": uuid, "plainName": name, "type": "txt" })
+                    };
+                    let body = match path.as_str() {
+                        "/drive/folders/content/R/folders" => serde_json::json!({
+                            "folders": [folder("S", "src"), folder("D", "dst")]
+                        }),
+                        "/drive/folders/content/S/files" => {
+                            serde_json::json!({ "files": [file("FA", "a")] })
+                        }
+                        "/drive/folders/content/D/files" => {
+                            serde_json::json!({ "files": [file("FB", "b")] })
+                        }
+                        p if p.ends_with("/folders") => serde_json::json!({ "folders": [] }),
+                        _ => serde_json::json!({ "files": [] }),
+                    };
+                    axum::Json(body).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.root_folder_id = "R".to_string();
+        provider.api_base = format!("http://{addr}");
+        (provider, changes)
+    }
+
+    /// A move to another folder onto a taken name moved the source there and
+    /// only then had its rename refused (409): the source was left moved, the
+    /// error saying nothing was done. It is now refused before any change.
+    #[tokio::test]
+    async fn a_move_onto_a_taken_name_is_refused_before_any_change() {
+        let (mut provider, changes) = provider_on_drive().await;
+        let outcome = provider.rename("/src/a.txt", "/dst/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
+    }
 
     fn test_provider() -> InternxtProvider {
         let config = InternxtConfig {
