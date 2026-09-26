@@ -723,6 +723,17 @@ impl FtpProvider {
         Ok(entries)
     }
 
+    /// RNFR `from`, RNTO `to`.
+    async fn rename_on_server(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
+        let stream = self.stream_mut()?;
+        stream
+            .rename(from, to)
+            .await
+            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+        Ok(())
+    }
+
     /// CWD into `target`, returning where the SERVER says we were.
     ///
     /// The saved directory comes from PWD, not from `self.current_path`. That
@@ -1706,14 +1717,32 @@ impl StorageProvider for FtpProvider {
         self.rmdir(path).await
     }
 
+    /// RNFR/RNTO, after refusing an occupied destination. The trait promises
+    /// no overwrite, and RNTO onto an existing file replaces it on most Unix
+    /// servers (vsftpd, ProFTPD and Pure-FTPd rename over it) while others
+    /// refuse. FTP has no conditional rename, so the destination is looked up
+    /// first; a file written there between the look and the RNTO is still
+    /// overwritten on the servers that overwrite.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        let stream = self.stream_mut()?;
-        stream
-            .rename(from, to)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-        Ok(())
+        if from.trim_end_matches('/') == to.trim_end_matches('/') {
+            return Ok(());
+        }
+        match self.stat(to).await {
+            Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
+            Err(ProviderError::NotFound(_)) => {}
+            Err(e) => return Err(e),
+        }
+        self.rename_on_server(from, to).await
+    }
+
+    /// RNFR/RNTO without the look: where the server renames over an existing
+    /// file it does so in one step (the POSIX rename it maps to is atomic);
+    /// where it refuses, so does this.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        if from.trim_end_matches('/') == to.trim_end_matches('/') {
+            return Ok(());
+        }
+        self.rename_on_server(from, to).await
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -5282,5 +5311,167 @@ mod late_reply_guard_tests {
             .await
             .expect("the second connection must be dialed")
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod rename_contract_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::{TcpListener, TcpStream};
+
+    /// One scripted control connection of a server that holds the files
+    /// `files` in `/`, advertises MLST and MLSD, answers MLST on the control
+    /// channel and MLSD over a PASV data connection, and renames on
+    /// RNFR/RNTO over an existing file, as vsftpd does. Every RNFR and RNTO
+    /// is logged.
+    async fn serve_connection(
+        stream: TcpStream,
+        files: Arc<Mutex<Vec<String>>>,
+        log: Arc<Mutex<Vec<String>>>,
+    ) {
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        if write.write_all(b"220 ready\r\n").await.is_err() {
+            return;
+        }
+        let mut data: Option<TcpListener> = None;
+        let mut rename_from = String::new();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+            let cmd = cmd.to_uppercase();
+            let argument = argument.trim().to_string();
+            let present = |path: &str| files.lock().unwrap().iter().any(|f| f == path);
+            let reply = match cmd.as_str() {
+                "USER" => "331 password please\r\n".to_string(),
+                "PASS" => "230 logged in\r\n".to_string(),
+                "FEAT" => "211-Features:\r\n MLST type*;size*;modify*;\r\n MLSD\r\n211 End\r\n"
+                    .to_string(),
+                "PWD" => "257 \"/\" is current\r\n".to_string(),
+                "MLST" if argument == "/" || argument.is_empty() => {
+                    "250-Listing /\r\n type=dir; /\r\n250 End\r\n".to_string()
+                }
+                "MLST" if present(&argument) => format!(
+                    "250-Listing {argument}\r\n type=file;size=3;modify=20240101000000; {argument}\r\n250 End\r\n"
+                ),
+                "MLST" => "550 No such file or directory\r\n".to_string(),
+                "PASV" => {
+                    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    let port = listener.local_addr().unwrap().port();
+                    data = Some(listener);
+                    format!(
+                        "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                        port / 256,
+                        port % 256
+                    )
+                }
+                "MLSD" => {
+                    if write.write_all(b"150 Opening data connection\r\n").await.is_err() {
+                        return;
+                    }
+                    if let Some(listener) = data.take() {
+                        if let Ok((mut socket, _)) = listener.accept().await {
+                            let listing: String = files
+                                .lock()
+                                .unwrap()
+                                .iter()
+                                .map(|f| {
+                                    format!(
+                                        "type=file;size=3;modify=20240101000000; {}\r\n",
+                                        f.trim_start_matches('/')
+                                    )
+                                })
+                                .collect();
+                            let _ = socket.write_all(listing.as_bytes()).await;
+                            let _ = socket.shutdown().await;
+                        }
+                    }
+                    "226 Transfer complete\r\n".to_string()
+                }
+                "RNFR" => {
+                    log.lock().unwrap().push(format!("RNFR {argument}"));
+                    rename_from = argument;
+                    "350 Ready for RNTO\r\n".to_string()
+                }
+                "RNTO" => {
+                    log.lock().unwrap().push(format!("RNTO {argument}"));
+                    let mut files = files.lock().unwrap();
+                    files.retain(|f| *f != argument && *f != rename_from);
+                    files.push(argument);
+                    "250 Renamed\r\n".to_string()
+                }
+                "QUIT" => {
+                    let _ = write.write_all(b"221 bye\r\n").await;
+                    return;
+                }
+                _ => "200 ok\r\n".to_string(),
+            };
+            if write.write_all(reply.as_bytes()).await.is_err() {
+                return;
+            }
+        }
+    }
+
+    /// A connected provider on a scripted server holding `/a.txt` and
+    /// `/b.txt`. Returns it and the RNFR/RNTO log.
+    async fn provider_on_scripted_server() -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let files = Arc::new(Mutex::new(vec!["/a.txt".to_string(), "/b.txt".to_string()]));
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(serve_connection(
+                    stream,
+                    Arc::clone(&files),
+                    Arc::clone(&seen),
+                ));
+            }
+        });
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port: addr.port(),
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider
+            .connect()
+            .await
+            .expect("connect to the scripted server");
+        (provider, log)
+    }
+
+    /// RNTO onto an existing file replaces it on vsftpd, ProFTPD and
+    /// Pure-FTPd: a rename onto `/b.txt` destroyed it and answered Ok.
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination_before_rnfr() {
+        let (mut provider, log) = provider_on_scripted_server().await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+    }
+
+    #[tokio::test]
+    async fn rename_onto_a_free_name_sends_rnfr_and_rnto() {
+        let (mut provider, log) = provider_on_scripted_server().await;
+        provider.rename("/a.txt", "/c.txt").await.expect("rename");
+        assert_eq!(*log.lock().unwrap(), ["RNFR /a.txt", "RNTO /c.txt"]);
+    }
+
+    /// `replace` keeps what rename did before the look: RNFR/RNTO, which
+    /// the server performs over the existing file.
+    #[tokio::test]
+    async fn replace_renames_over_an_existing_destination() {
+        let (mut provider, log) = provider_on_scripted_server().await;
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        assert_eq!(*log.lock().unwrap(), ["RNFR /a.txt", "RNTO /b.txt"]);
     }
 }
