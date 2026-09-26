@@ -1059,6 +1059,63 @@ impl FileLuProvider {
         Ok(())
     }
 
+    /// Delete `entry` for good: FileLu's API has no trash (see `delete`).
+    async fn remove_entry(&mut self, entry: &CacheEntry) -> Result<(), ProviderError> {
+        // FileLu's `file/remove` and `folder/delete` endpoints occasionally
+        // surface intermittent 5xx responses (HTTP 500 with body `{"status":500}`
+        // or HTTP 5xx with a generic body). They are provider-side hiccups and
+        // succeed on a fresh attempt. `send_with_retry` already retries on
+        // HTTP 5xx, but a body-level `{"status":500,"msg":"..."}` returned with
+        // HTTP 200 slips through. Wrap the API-OK check in a small retry loop
+        // that also matches body-level 5xx and the matching error text.
+        let url = if entry.is_dir {
+            self.api_url_with("folder/delete", &[("fld_id", &entry.fld_id.to_string())])
+        } else {
+            // v1 file/remove with remove=1. FileLu API has no soft-delete endpoint -
+            // file/remove without remove=1 returns "Invalid option". Permanent delete is
+            // the only API-supported delete. Trash is web-UI only on FileLu.
+            self.api_url_with(
+                "file/remove",
+                &[("file_code", &entry.file_code), ("remove", "1")],
+            )
+        };
+
+        const FILELU_DELETE_ATTEMPTS: u32 = 3;
+        let mut last_err: Option<ProviderError> = None;
+        for attempt in 0..FILELU_DELETE_ATTEMPTS {
+            let resp = self.get_with_retry(&url).await?;
+            match Self::ensure_api_ok(resp).await {
+                Ok(()) => {
+                    last_err = None;
+                    break;
+                }
+                Err(e)
+                    if Self::is_filelu_transient_5xx(&e)
+                        && attempt + 1 < FILELU_DELETE_ATTEMPTS =>
+                {
+                    let backoff_ms = 500u64 * (1u64 << attempt);
+                    tracing::debug!(
+                        "FileLu delete returned transient 5xx ({}), retrying after {}ms (attempt {}/{})",
+                        e,
+                        backoff_ms,
+                        attempt + 1,
+                        FILELU_DELETE_ATTEMPTS
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    last_err = Some(e);
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                    break;
+                }
+            }
+        }
+        match last_err {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+
     /// Whether `path` names an item, file or folder.
     async fn path_is_taken(&mut self, path: &str) -> Result<bool, ProviderError> {
         match self.resolve_path_entry(path).await {
@@ -1879,59 +1936,7 @@ impl StorageProvider for FileLuProvider {
         }
         let norm = self.resolve_path(path);
         let entry = self.resolve_path_entry(&norm).await?;
-
-        // FileLu's `file/remove` and `folder/delete` endpoints occasionally
-        // surface intermittent 5xx responses (HTTP 500 with body `{"status":500}`
-        // or HTTP 5xx with a generic body). They are provider-side hiccups and
-        // succeed on a fresh attempt. `send_with_retry` already retries on
-        // HTTP 5xx, but a body-level `{"status":500,"msg":"..."}` returned with
-        // HTTP 200 slips through. Wrap the API-OK check in a small retry loop
-        // that also matches body-level 5xx and the matching error text.
-        let url = if entry.is_dir {
-            self.api_url_with("folder/delete", &[("fld_id", &entry.fld_id.to_string())])
-        } else {
-            // v1 file/remove with remove=1. FileLu API has no soft-delete endpoint -
-            // file/remove without remove=1 returns "Invalid option". Permanent delete is
-            // the only API-supported delete. Trash is web-UI only on FileLu.
-            self.api_url_with(
-                "file/remove",
-                &[("file_code", &entry.file_code), ("remove", "1")],
-            )
-        };
-
-        const FILELU_DELETE_ATTEMPTS: u32 = 3;
-        let mut last_err: Option<ProviderError> = None;
-        for attempt in 0..FILELU_DELETE_ATTEMPTS {
-            let resp = self.get_with_retry(&url).await?;
-            match Self::ensure_api_ok(resp).await {
-                Ok(()) => {
-                    last_err = None;
-                    break;
-                }
-                Err(e)
-                    if Self::is_filelu_transient_5xx(&e)
-                        && attempt + 1 < FILELU_DELETE_ATTEMPTS =>
-                {
-                    let backoff_ms = 500u64 * (1u64 << attempt);
-                    tracing::debug!(
-                        "FileLu delete returned transient 5xx ({}), retrying after {}ms (attempt {}/{})",
-                        e,
-                        backoff_ms,
-                        attempt + 1,
-                        FILELU_DELETE_ATTEMPTS
-                    );
-                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
-                    last_err = Some(e);
-                }
-                Err(e) => {
-                    last_err = Some(e);
-                    break;
-                }
-            }
-        }
-        if let Some(e) = last_err {
-            return Err(e);
-        }
+        self.remove_entry(&entry).await?;
 
         let parent = norm
             .rfind('/')
@@ -2043,6 +2048,54 @@ impl StorageProvider for FileLuProvider {
         self.invalidate_cache_under(&from_parent);
         self.invalidate_cache_under(&to_parent);
         outcome
+    }
+
+    /// FileLu has no move that overwrites, and keeps two items with one name
+    /// side by side, so a replace renames the item at `to` aside, puts `from`
+    /// in its place, and only then deletes the one set aside; if the move
+    /// fails the item set aside gets its name back.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            self.connect().await?;
+        }
+        let norm_from = self.resolve_path(from);
+        let norm_to = self.resolve_path(to);
+        if norm_from == norm_to {
+            return Ok(());
+        }
+        let occupant = match self.resolve_path_entry(&norm_to).await {
+            Ok(occupant) => occupant,
+            Err(ProviderError::NotFound(_)) => return self.rename(from, to).await,
+            Err(e) => return Err(e),
+        };
+        // The source must be there before anything changes.
+        self.resolve_path_entry(&norm_from).await?;
+        let (to_parent, to_name) = match norm_to.rsplit_once('/') {
+            Some(("", name)) => ("/".to_string(), name.to_string()),
+            Some((parent, name)) => (parent.to_string(), name.to_string()),
+            None => ("/".to_string(), norm_to.clone()),
+        };
+        let aside = super::set_aside_name(&to_name);
+        let aside_path = format!("{}/{aside}", to_parent.trim_end_matches('/'));
+
+        self.rename_entry(&occupant, &norm_to, &aside).await?;
+        // The cache still maps `to` to the item just set aside.
+        self.path_cache.remove(&norm_to);
+        self.invalidate_cache_under(&norm_to);
+        if let Err(e) = self.rename(from, to).await {
+            let restored = self.rename_entry(&occupant, &aside_path, &to_name).await;
+            self.invalidate_cache_under(&to_parent);
+            return Err(super::set_aside_move_failed(to, &aside_path, e, restored));
+        }
+        self.remove_entry(&occupant)
+            .await
+            .map_err(|e| super::set_aside_delete_failed(to, &aside_path, e))
+    }
+
+    /// A replace leaves `to` empty between setting the old item aside and
+    /// moving the new one in.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2551,6 +2604,33 @@ mod tests {
             "{:?}",
             calls.lock().unwrap()
         );
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination. The
+    /// file there is renamed aside, the new one takes its name, and only then
+    /// is the old one removed.
+    #[tokio::test]
+    async fn replace_sets_the_old_file_aside_renames_the_new_one_in_then_removes_it() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/dst", "22"),
+            ("/dst/a.txt", "OLD"),
+            ("/dst/a.txt.tmp", "NEW"),
+        ])
+        .await;
+        provider
+            .replace("/dst/a.txt.tmp", "/dst/a.txt")
+            .await
+            .expect("replace");
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 3, "{calls:?}");
+        assert!(
+            calls[0].starts_with("/api/file/rename?file_code=OLD&name=.a.txt.aeroftp-replaced-"),
+            "{calls:?}"
+        );
+        assert_eq!(calls[1], "/api/file/rename?file_code=NEW&name=a.txt");
+        assert_eq!(calls[2], "/api/file/remove?file_code=OLD&remove=1");
     }
 
     /// FileLu answers HTTP 200 and puts the refusal in the body: reading

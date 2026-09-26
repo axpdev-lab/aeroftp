@@ -103,7 +103,7 @@ fn is_drive_folder(file: &DriveFile) -> bool {
 }
 
 /// Google Drive file metadata from API
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 struct DriveFile {
@@ -270,7 +270,7 @@ pub struct GoogleDriveProvider {
     test_access_token: Option<String>,
 }
 
-/// Where `rename` takes a file (see `rename_place`).
+/// Where `rename` or `replace` takes a file (see `rename_place`).
 struct RenamePlace {
     file_id: String,
     from_parent_id: String,
@@ -626,7 +626,7 @@ impl GoogleDriveProvider {
         Ok(current_id)
     }
 
-    /// Where a rename of `from` to `to` takes the file: its
+    /// Where a rename or replace of `from` to `to` takes the file: its
     /// source and destination folders, the new name, and the other item
     /// that already has that name there, if any.
     async fn rename_place(&mut self, from: &str, to: &str) -> Result<RenamePlace, ProviderError> {
@@ -1971,6 +1971,45 @@ impl StorageProvider for GoogleDriveProvider {
         Ok(())
     }
 
+    /// Drive has no move that overwrites and keeps two items with one name
+    /// side by side, so a replace renames the item at `to` aside, moves
+    /// `from` in, and only then trashes the one set aside; if the move fails
+    /// the item set aside gets its name back.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let place = self.rename_place(from, to).await?;
+        let Some(occupant) = place.occupant.clone() else {
+            return self.rename(from, to).await;
+        };
+        let aside = super::set_aside_name(&place.new_name);
+        let aside_path = match to.trim_end_matches('/').rsplit_once('/') {
+            Some((parent, _)) => format!("{parent}/{aside}"),
+            None => aside.clone(),
+        };
+        self.patch_drive_file(&occupant.id, &serde_json::json!({ "name": aside }), None)
+            .await?;
+        if let Err(e) = self.patch_into_place(&place).await {
+            let restored = self
+                .patch_drive_file(
+                    &occupant.id,
+                    &serde_json::json!({ "name": occupant.name }),
+                    None,
+                )
+                .await;
+            return Err(super::set_aside_move_failed(to, &aside_path, e, restored));
+        }
+        self.forget_folder(from);
+        self.forget_folder(to);
+        self.patch_drive_file(&occupant.id, &serde_json::json!({ "trashed": true }), None)
+            .await
+            .map_err(|e| super::set_aside_delete_failed(to, &aside_path, e))
+    }
+
+    /// A replace leaves `to` empty between setting the old item aside and
+    /// moving the new one in.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
@@ -3214,6 +3253,26 @@ mod tests {
         p.rmdir("/a").await.expect("rmdir");
         assert!(!p.folder_cache.contains_key("/a"));
         assert!(!p.folder_cache.contains_key("/a/sub"));
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination. The
+    /// file there is renamed aside, the new one takes its name, and only then
+    /// is the old one trashed.
+    #[tokio::test]
+    async fn replace_sets_the_old_file_aside_renames_the_new_one_in_then_trashes_it() {
+        let (mut p, patches) =
+            provider_on_drive(&[("OLD", "a.txt", "root"), ("NEW", "a.txt.tmp", "root")]).await;
+        p.replace("/a.txt.tmp", "/a.txt").await.expect("replace");
+        let patches = patches.lock().unwrap().clone();
+        assert_eq!(patches.len(), 3, "{patches:?}");
+        assert!(
+            patches[0].starts_with(r#"OLD {"name":".a.txt.aeroftp-replaced-"#),
+            "{patches:?}"
+        );
+        assert_eq!(patches[1], r#"NEW {"name":"a.txt"}"#);
+        assert_eq!(patches[2], r#"OLD {"trashed":true}"#);
     }
 
     /// After `cd /docs`: `/x` and `x` name different folders, `/x` the

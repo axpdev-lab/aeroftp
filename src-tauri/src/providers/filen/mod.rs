@@ -1056,15 +1056,173 @@ impl FilenProvider {
             .retain(|cached, _| cached != path && !cached.starts_with(&below));
     }
 
-    /// Whether `siblings` holds an item named `name` other than `uuid`.
+    /// Rename and/or move `from` to `to`. Filen renames and moves by uuid
+    /// with two separate calls, so a destination in another folder takes a
+    /// move (`v3/file/move` / `v3/dir/move`) and, if the name changes too, a
+    /// rename. Filen keeps two items with one name side by side, so neither
+    /// step may pass through a taken name. An occupied destination is refused
+    /// (the `rename` contract) unless `overwrite` (the `replace` contract):
+    /// then the item there is renamed aside first, gets its name back if the
+    /// move fails, and is trashed once the new one is in. Every call is built
+    /// before the first goes out.
+    async fn relocate(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        let from_path = Self::normalize_path(from);
+        let (from_parent, old_name) = Self::split_parent(&from_path);
+        let (to_parent, new_name) = Self::split_parent(&Self::normalize_path(to));
+        let moves = from_parent != to_parent;
+        let renames = new_name != old_name;
+
+        let entries = self.list(&from_parent).await?;
+        let entry = entries
+            .iter()
+            .find(|e| e.name == old_name)
+            .cloned()
+            .ok_or_else(|| ProviderError::NotFound(old_name.clone()))?;
+
+        let uuid = entry
+            .metadata
+            .get("uuid")
+            .cloned()
+            .ok_or_else(|| ProviderError::Other("No UUID".to_string()))?;
+
+        filen_log(&format!(
+            "rename: '{}' -> '{}', is_dir={}, uuid={}",
+            from, to, entry.is_dir, uuid
+        ));
+
+        if !moves && !renames {
+            return Ok(());
+        }
+        let destination_siblings = if moves {
+            self.list(&to_parent).await?
+        } else {
+            entries.clone()
+        };
+        let occupant = destination_siblings
+            .iter()
+            .find(|sibling| Self::name_taken(std::slice::from_ref(*sibling), &new_name, &[&uuid]))
+            .cloned();
+        if occupant.is_some() && !overwrite {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+        let occupant_uuid = occupant
+            .as_ref()
+            .and_then(|o| o.metadata.get("uuid").cloned())
+            .unwrap_or_default();
+        let except = [uuid.as_str(), occupant_uuid.as_str()];
+        // The item a replace sets aside: its uuid, the calls that rename it
+        // aside and back, and where it waits.
+        let set_aside = match &occupant {
+            Some(occupant) => {
+                let aside = super::set_aside_name(&occupant.name);
+                Some((
+                    self.rename_calls(&occupant_uuid, occupant, &aside)?,
+                    self.rename_calls(&occupant_uuid, occupant, &occupant.name)?,
+                    format!("{}/{aside}", to_parent.trim_end_matches('/')),
+                    if occupant.is_dir {
+                        "v3/dir/trash"
+                    } else {
+                        "v3/file/trash"
+                    },
+                ))
+            }
+            None => None,
+        };
+
+        // Everything the two calls send is built before either goes out: a
+        // file whose key is missing used to fail after the move, and stayed in
+        // the new folder under its old name behind the error.
+        let rename_calls = if renames {
+            self.rename_calls(&uuid, &entry, &new_name)?
+        } else {
+            Vec::new()
+        };
+        let to_parent_uuid = if moves {
+            Some(self.resolve_folder_uuid(&to_parent).await?)
+        } else {
+            None
+        };
+        // The move keeps the old name: when the destination already holds it
+        // the rename goes first, in the source folder.
+        let rename_first =
+            moves && renames && Self::name_taken(&destination_siblings, &old_name, &except);
+        if rename_first && Self::name_taken(&entries, &new_name, &except) {
+            return Err(ProviderError::Other(format!(
+                "Cannot move {from} to {to} in two steps without two items sharing a name: \
+                 {to_parent} holds {old_name} and {from_parent} holds {new_name}"
+            )));
+        }
+
+        if let Some((ref set_aside_calls, _, _, _)) = set_aside {
+            self.send_rename_calls(set_aside_calls).await?;
+        }
+        // In a block, so that a failed step reaches the restore below
+        // instead of returning past it.
+        let outcome = async {
+            match to_parent_uuid {
+                None => self.send_rename_calls(&rename_calls).await,
+                Some(ref to_parent_uuid) if rename_first => {
+                    self.send_rename_calls(&rename_calls).await?;
+                    self.move_item(&uuid, to_parent_uuid, entry.is_dir)
+                        .await
+                        .map_err(|e| {
+                            ProviderError::Other(format!(
+                                "renamed {from} to {new_name}, but moving it to {to_parent} \
+                                 failed, so it is still in {from_parent}: {e}"
+                            ))
+                        })
+                }
+                Some(ref to_parent_uuid) => {
+                    self.move_item(&uuid, to_parent_uuid, entry.is_dir).await?;
+                    self.send_rename_calls(&rename_calls).await.map_err(|e| {
+                        ProviderError::Other(format!(
+                            "moved {from} to {to_parent}, but renaming it to {new_name} \
+                             failed, so it is there under its old name: {e}"
+                        ))
+                    })
+                }
+            }
+        }
+        .await;
+        let outcome = match (outcome, set_aside) {
+            (outcome, None) => outcome,
+            (Err(e), Some((_, restore_calls, aside_path, _))) => {
+                let restored = self.send_rename_calls(&restore_calls).await;
+                Err(super::set_aside_move_failed(to, &aside_path, e, restored))
+            }
+            (Ok(()), Some((_, _, aside_path, trash))) => self
+                .post_v3(trash, &serde_json::json!({ "uuid": occupant_uuid }))
+                .await
+                .map_err(|e| super::set_aside_delete_failed(to, &aside_path, e)),
+        };
+        // Also after a failure: a step that went through has changed paths.
+        if entry.is_dir {
+            self.forget_dir_subtree(&from_path);
+        }
+        if occupant.as_ref().is_some_and(|o| o.is_dir) {
+            self.forget_dir_subtree(&Self::normalize_path(to));
+        }
+        outcome
+    }
+
+    /// Whether `siblings` holds an item named `name` other than those whose
+    /// uuid is in `except`.
     /// Filen identifies a name by the hash of its lowercased form
     /// (`hash_name`), so the comparison ignores letter case, and the item
     /// itself does not count, so a rename that only changes the case goes
     /// through.
-    fn name_taken(siblings: &[RemoteEntry], name: &str, uuid: &str) -> bool {
+    fn name_taken(siblings: &[RemoteEntry], name: &str, except: &[&str]) -> bool {
         let name = name.to_lowercase();
         siblings.iter().any(|sibling| {
-            sibling.metadata.get("uuid").map(String::as_str) != Some(uuid)
+            !sibling
+                .metadata
+                .get("uuid")
+                .is_some_and(|uuid| except.contains(&uuid.as_str()))
                 && sibling.name.to_lowercase() == name
         })
     }
@@ -2405,101 +2563,22 @@ impl StorageProvider for FilenProvider {
         self.rmdir(path).await // Filen trash handles recursive
     }
 
-    /// Rename and/or move. Filen renames and moves by uuid with two
-    /// separate calls, so a destination in another folder takes a move
-    /// (`v3/file/move` / `v3/dir/move`) and, if the name changes too, a
-    /// rename. The trait promises no overwrite, and Filen would keep a
-    /// second item with the same name, so an occupied destination is refused,
-    /// and neither step may pass through a taken name: see `relocate`.
+    /// Rename and/or move: see `relocate`.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let from_path = Self::normalize_path(from);
-        let (from_parent, old_name) = Self::split_parent(&from_path);
-        let (to_parent, new_name) = Self::split_parent(&Self::normalize_path(to));
-        let moves = from_parent != to_parent;
-        let renames = new_name != old_name;
+        self.relocate(from, to, false).await
+    }
 
-        let entries = self.list(&from_parent).await?;
-        let entry = entries
-            .iter()
-            .find(|e| e.name == old_name)
-            .cloned()
-            .ok_or_else(|| ProviderError::NotFound(old_name.clone()))?;
+    /// Filen has no move that overwrites, and keeps two items with one name,
+    /// so a replace renames the item at `to` aside, moves `from` in, and only
+    /// then trashes the one set aside: see `relocate`.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.relocate(from, to, true).await
+    }
 
-        let uuid = entry
-            .metadata
-            .get("uuid")
-            .cloned()
-            .ok_or_else(|| ProviderError::Other("No UUID".to_string()))?;
-
-        filen_log(&format!(
-            "rename: '{}' -> '{}', is_dir={}, uuid={}",
-            from, to, entry.is_dir, uuid
-        ));
-
-        if !moves && !renames {
-            return Ok(());
-        }
-        let destination_siblings = if moves {
-            self.list(&to_parent).await?
-        } else {
-            entries.clone()
-        };
-        if Self::name_taken(&destination_siblings, &new_name, &uuid) {
-            return Err(ProviderError::AlreadyExists(to.to_string()));
-        }
-
-        // Everything the two calls send is built before either goes out: a
-        // file whose key is missing used to fail after the move, and stayed in
-        // the new folder under its old name behind the error.
-        let rename_calls = if renames {
-            self.rename_calls(&uuid, &entry, &new_name)?
-        } else {
-            Vec::new()
-        };
-        let to_parent_uuid = if moves {
-            Some(self.resolve_folder_uuid(&to_parent).await?)
-        } else {
-            None
-        };
-        // The move keeps the old name: when the destination already holds it
-        // the rename goes first, in the source folder.
-        let rename_first =
-            moves && renames && Self::name_taken(&destination_siblings, &old_name, &uuid);
-        if rename_first && Self::name_taken(&entries, &new_name, &uuid) {
-            return Err(ProviderError::Other(format!(
-                "Cannot move {from} to {to} in two steps without two items sharing a name: \
-                 {to_parent} holds {old_name} and {from_parent} holds {new_name}"
-            )));
-        }
-
-        let outcome = match to_parent_uuid {
-            None => self.send_rename_calls(&rename_calls).await,
-            Some(ref to_parent_uuid) if rename_first => {
-                self.send_rename_calls(&rename_calls).await?;
-                self.move_item(&uuid, to_parent_uuid, entry.is_dir)
-                    .await
-                    .map_err(|e| {
-                        ProviderError::Other(format!(
-                            "renamed {from} to {new_name}, but moving it to {to_parent} failed, \
-                             so it is still in {from_parent}: {e}"
-                        ))
-                    })
-            }
-            Some(ref to_parent_uuid) => {
-                self.move_item(&uuid, to_parent_uuid, entry.is_dir).await?;
-                self.send_rename_calls(&rename_calls).await.map_err(|e| {
-                    ProviderError::Other(format!(
-                        "moved {from} to {to_parent}, but renaming it to {new_name} failed, \
-                         so it is there under its old name: {e}"
-                    ))
-                })
-            }
-        };
-        // Also after a failure: a step that went through has changed paths.
-        if entry.is_dir {
-            self.forget_dir_subtree(&from_path);
-        }
-        outcome
+    /// A replace leaves `to` empty between setting the old item aside and
+    /// moving the new one in.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -3642,6 +3721,8 @@ mod tests {
             "/v3/file/rename",
             "/v3/dir/rename",
             "/v3/dir/metadata",
+            "/v3/file/trash",
+            "/v3/dir/trash",
         ] {
             let calls = Arc::clone(&calls);
             let status = move_status || !endpoint.ends_with("/move");
@@ -3731,6 +3812,44 @@ mod tests {
         server.abort();
         assert!(outcome.is_err(), "a refused move must not report success");
         assert_eq!(endpoints(&calls), ["/v3/file/move"]);
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination. The
+    /// file there is renamed aside, the new one moved in, and only then is
+    /// the old one trashed.
+    #[tokio::test]
+    async fn replace_sets_the_old_file_aside_moves_the_new_one_in_then_trashes_it() {
+        let (mut provider, calls, server) = tree_gateway(&["f.txt"], true).await;
+        let outcome = provider.replace("/a/f.txt", "/b/f.txt").await;
+        server.abort();
+        outcome.expect("replace");
+        assert_eq!(
+            endpoints(&calls),
+            ["/v3/file/rename", "/v3/file/move", "/v3/file/trash"]
+        );
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls[0].1["uuid"], "B0");
+        assert_eq!(calls[1].1, serde_json::json!({ "uuid": "F", "to": "B" }));
+        assert_eq!(calls[2].1, serde_json::json!({ "uuid": "B0" }));
+    }
+
+    /// A replace whose move is refused gives the file it set aside its name
+    /// back: the destination is left as it was.
+    #[tokio::test]
+    async fn a_replace_whose_move_fails_gives_the_old_file_its_name_back() {
+        let (mut provider, calls, server) = tree_gateway(&["f.txt"], false).await;
+        let outcome = provider.replace("/a/f.txt", "/b/f.txt").await;
+        server.abort();
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(
+            endpoints(&calls),
+            ["/v3/file/rename", "/v3/file/move", "/v3/file/rename"]
+        );
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls[0].1["uuid"], "B0");
+        assert_eq!(calls[2].1["uuid"], "B0");
     }
 
     /// The key check ran after the move: the file ended up in the new

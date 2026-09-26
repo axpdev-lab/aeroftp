@@ -807,7 +807,11 @@ pub trait StorageProvider: Send + Sync {
     ///
     /// The default forwards to `rename`, which is what every caller did
     /// before this method existed. A backend whose rename refuses an occupied
-    /// destination overrides this; `SftpProvider` and `WebDavProvider` do.
+    /// destination must override this, or every replace onto an existing
+    /// file fails: SFTP, WebDAV, the copy-based backends (S3, B2, Swift,
+    /// Azure, Cloudinary, OpenDrive), FTP and ImageKit overwrite in one server
+    /// step, and MEGA, Filen, FileLu and Google Drive, which have no such step,
+    /// set the old item aside first (see [`set_aside_name`]).
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.rename(from, to).await
     }
@@ -822,9 +826,10 @@ pub trait StorageProvider: Send + Sync {
     ///
     /// The default answers `true`, which is the assumption every caller
     /// already made. It means "no known obstacle", not "verified": only a
-    /// backend that has actually measured its own ground says otherwise, and
-    /// today that is `SftpProvider`, which asks the server whether it offers
-    /// `posix-rename@openssh.com`.
+    /// backend that has actually measured its own ground says otherwise:
+    /// `SftpProvider`, which asks the server whether it offers
+    /// `posix-rename@openssh.com`, and the backends whose replace sets the
+    /// old item aside (MEGA, Filen, FileLu, Google Drive) or has none (Twake).
     ///
     /// [`replace`]: StorageProvider::replace
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
@@ -1619,6 +1624,50 @@ pub async fn ensure_atomic_replace(
     )))
 }
 
+/// The name an item displaced by a replace takes until it is deleted, on a
+/// backend that can neither overwrite on a move nor swap two items in one
+/// call (MEGA, Filen, FileLu, Google Drive). Their `replace` renames the item
+/// at the destination to this, moves the new one in, and only then deletes
+/// it: no step can lose either item, and the name is hidden and unique so it
+/// never meets another. The destination is empty between the first two
+/// steps, which is why those backends answer `false` to
+/// [`StorageProvider::supports_atomic_replace`].
+pub(crate) fn set_aside_name(name: &str) -> String {
+    let unique = uuid::Uuid::new_v4().simple().to_string();
+    format!(".{name}.aeroftp-replaced-{}", &unique[..8])
+}
+
+/// The error of a set-aside replace whose move of the new item into `to`
+/// failed: `error` alone when the item set aside as `aside` got its name
+/// back, and both failures with where that item is when it did not.
+pub(crate) fn set_aside_move_failed(
+    to: &str,
+    aside: &str,
+    error: ProviderError,
+    restored: Result<(), ProviderError>,
+) -> ProviderError {
+    match restored {
+        Ok(()) => error,
+        Err(restore) => ProviderError::Other(format!(
+            "replace could not move the new item to {to} ({error}), and giving the previous one \
+             its name back failed too ({restore}): it is kept as {aside}"
+        )),
+    }
+}
+
+/// The error of a set-aside replace that put the new item in place but
+/// could not delete the one set aside as `aside`: the replace is done, and
+/// the caller learns what is left over.
+pub(crate) fn set_aside_delete_failed(
+    to: &str,
+    aside: &str,
+    error: ProviderError,
+) -> ProviderError {
+    ProviderError::Other(format!(
+        "replaced {to}, but deleting the previous version, set aside as {aside}, failed: {error}"
+    ))
+}
+
 /// Provider factory for creating provider instances
 pub struct ProviderFactory;
 
@@ -2033,6 +2082,17 @@ mod tests {
         );
         assert!(out.contains("[REDACTED]"));
         assert!(!out.contains("stack trace"), "only the first line is kept");
+    }
+
+    /// Hidden, unique, and naming what it stands in for.
+    #[test]
+    fn a_set_aside_name_is_hidden_unique_and_readable() {
+        let first = set_aside_name("report.pdf");
+        assert!(
+            first.starts_with(".report.pdf.aeroftp-replaced-"),
+            "{first}"
+        );
+        assert_ne!(first, set_aside_name("report.pdf"));
     }
 
     /// Row 4: an empty body degrades to a stable placeholder, never panics.
