@@ -75,7 +75,7 @@ fn classify_pcloud_result(result: u32, error: Option<&str>) -> Option<ProviderEr
         // negative. Without 2005 here, the AeroCrypt overlay bootstrap probe
         // (`exists(.aeroftp-crypt.json)`) saw a ServerError and failed "could
         // not be unlocked" on pCloud.
-        2002 | 2005 | 2009 | 2010 => ProviderError::NotFound(msg),
+        2002 | 2005 | 2009 | 2010 => ProviderError::NotFound(with_code(msg, result)),
         2003 | 2028 => ProviderError::PermissionDenied(msg),
         2004 => ProviderError::AlreadyExists(msg),
         // 4006: "Throttle limit reached", often inside HTTP 200 JSON.
@@ -85,13 +85,21 @@ fn classify_pcloud_result(result: u32, error: Option<&str>) -> Option<ProviderEr
         // 2026-09-26) under a code its documentation does not list. The
         // message is the absence; every other code stays an error.
         _ if raw_msg
+            .trim()
             .trim_end_matches('.')
+            .trim_end()
             .eq_ignore_ascii_case("File or folder not found") =>
         {
-            ProviderError::NotFound(msg)
+            ProviderError::NotFound(with_code(msg, result))
         }
-        _ => ProviderError::ServerError(msg),
+        _ => ProviderError::ServerError(with_code(msg, result)),
     })
+}
+
+/// `msg` with the pCloud result code it came with, so a run records the
+/// number, which pCloud's own text does not carry.
+fn with_code(msg: String, result: u32) -> String {
+    format!("{msg} (pCloud result {result})")
 }
 
 /// The refusal above, said as what it is.
@@ -2592,6 +2600,23 @@ mod tests {
         assert!(
             matches!(outcome, Err(ProviderError::PermissionDenied(_))),
             "{outcome:?}"
+        );
+    }
+
+    /// The text of an absence and of a server error carries pCloud's result
+    /// code, which a live run can then record; the text is matched past
+    /// surrounding spaces.
+    #[test]
+    fn an_absence_or_a_server_error_names_its_result_code() {
+        let absent = classify_pcloud_result(2055, Some(" File or folder not found.  "));
+        assert!(
+            matches!(&absent, Some(ProviderError::NotFound(m)) if m.contains("(pCloud result 2055)")),
+            "{absent:?}"
+        );
+        let failed = classify_pcloud_result(5000, Some("Internal error. Try again later."));
+        assert!(
+            matches!(&failed, Some(ProviderError::ServerError(m)) if m.contains("(pCloud result 5000)")),
+            "{failed:?}"
         );
     }
 
