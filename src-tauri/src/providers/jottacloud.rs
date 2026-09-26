@@ -1706,7 +1706,11 @@ impl StorageProvider for JottacloudProvider {
     }
 
     /// The JFS `mv` without the look, as before the look existed: whatever
-    /// JFS does with the file at the destination. Never across types.
+    /// JFS does with the file at the destination. Never across types, and
+    /// never a folder over a folder: what `mvDir` does onto an existing
+    /// folder is not documented (a merge, a refusal, a replacement), and
+    /// MEGAcmd refuses the same case. Onto the source itself under another
+    /// letter case it is the rename.
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let resolved_from = self.resolve_path(from);
         let resolved_to = self.resolve_path(to);
@@ -1715,6 +1719,21 @@ impl StorageProvider for JottacloudProvider {
         }
         let source = self.stat(&resolved_from).await?;
         match self.stat(&resolved_to).await {
+            Ok(occupant)
+                if super::is_the_source_under_another_case(
+                    &resolved_from,
+                    &resolved_to,
+                    &occupant.name,
+                ) =>
+            {
+                return self.rename(from, to).await;
+            }
+            Ok(occupant) if source.is_dir && occupant.is_dir => {
+                return Err(ProviderError::AlreadyExists(format!(
+                    "{to} is a folder, and JFS does not document moving a folder over \
+                     another: nothing was changed"
+                )));
+            }
             Ok(occupant) => super::refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?,
             Err(ProviderError::NotFound(_)) => {}
             Err(e) => return Err(e),
@@ -1782,10 +1801,23 @@ impl StorageProvider for JottacloudProvider {
         } else {
             // Try to parse as file listing (parent folder containing the file)
             let entries = Self::parse_folder_xml(&xml, &resolved);
-            entries.into_iter().next().ok_or_else(|| {
-                // Return basic entry if parsing yields nothing
-                ProviderError::NotFound(format!("Could not stat: {}", resolved))
-            })
+            if let Some(entry) = entries.into_iter().next() {
+                return Ok(entry);
+            }
+            // A 200 without a completed live file. A tombstone (a file in the
+            // trash, still answered at its old path) is not there. A file
+            // whose upload has not completed is: its name is taken. Anything
+            // else is a body this look cannot read, and read as NotFound it
+            // made a taken name look free.
+            if Self::jfs_root_file_is_tombstone(&xml) {
+                return Err(ProviderError::NotFound(resolved));
+            }
+            if Self::jfs_root_element(&xml).as_deref() == Some("file") {
+                return Ok(RemoteEntry::file(name, resolved, 0));
+            }
+            Err(ProviderError::ParseError(format!(
+                "Cannot tell what is at {resolved}: JFS answered 200 without a file or a folder"
+            )))
         }
     }
 
@@ -3235,9 +3267,10 @@ mod tests {
     }
 
     /// A JFS double for `test_provider()` holding the files `a.txt` and
-    /// `b.txt` and the folder `d` in the mount root; a look at `busy.txt`
-    /// answers 503. Every POST (a move) succeeds. Returns a provider on it
-    /// and every POST query.
+    /// `b.txt`, the folders `d` and `e`, and `incomplete.txt`, whose upload
+    /// has not completed, in the mount root; a look at `busy.txt` answers
+    /// 503 and one at `garbage.txt` a body that is not XML. Every POST (a
+    /// move) succeeds. Returns a provider on it and every POST query.
     async fn provider_on_jfs() -> (
         JottacloudProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
@@ -3274,6 +3307,15 @@ mod tests {
                         "/user123/Jotta/Archive/d" | "/user123/Jotta/Archive/d/" => {
                             "<folder name=\"d\"><folders/><files/></folder>".into_response()
                         }
+                        "/user123/Jotta/Archive/e" | "/user123/Jotta/Archive/e/" => {
+                            "<folder name=\"e\"><folders/><files/></folder>".into_response()
+                        }
+                        "/user123/Jotta/Archive/incomplete.txt" => {
+                            "<?xml version=\"1.0\"?><file name=\"incomplete.txt\">\
+                             <latestRevision><state>INCOMPLETE</state></latestRevision></file>"
+                                .into_response()
+                        }
+                        "/user123/Jotta/Archive/garbage.txt" => "not a JFS answer".into_response(),
                         _ => axum::http::StatusCode::NOT_FOUND.into_response(),
                     }
                 }
@@ -3334,6 +3376,47 @@ mod tests {
             provider.stat("/gone.txt").await,
             Err(ProviderError::NotFound(_))
         ));
+    }
+
+    /// A 200 without a completed file read as NotFound: a file still being
+    /// uploaded, or a body that is not a JFS answer, made the look report
+    /// the name as free and the move went out. The first is a taken name,
+    /// the second an error; neither sends a move.
+    #[tokio::test]
+    async fn a_look_that_finds_no_completed_file_is_not_a_free_name() {
+        let (mut provider, posts) = provider_on_jfs().await;
+        let incomplete = provider.rename("/a.txt", "/incomplete.txt").await;
+        assert!(
+            matches!(incomplete, Err(ProviderError::AlreadyExists(_))),
+            "{incomplete:?}"
+        );
+        let garbage = provider.rename("/a.txt", "/garbage.txt").await;
+        assert!(
+            garbage.is_err() && !matches!(garbage, Err(ProviderError::NotFound(_))),
+            "{garbage:?}"
+        );
+        assert!(
+            posts.lock().unwrap().is_empty(),
+            "{:?}",
+            posts.lock().unwrap()
+        );
+    }
+
+    /// What `mvDir` does onto an existing folder is not documented: a
+    /// replace of a folder over a folder sent it anyway. It is refused.
+    #[tokio::test]
+    async fn a_replace_of_a_folder_over_a_folder_sends_nothing() {
+        let (mut provider, posts) = provider_on_jfs().await;
+        let outcome = provider.replace("/d", "/e").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            posts.lock().unwrap().is_empty(),
+            "{:?}",
+            posts.lock().unwrap()
+        );
     }
 
     /// `replace` keeps the move without the look (whatever JFS does with the
