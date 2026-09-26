@@ -2568,9 +2568,10 @@ enum Commands {
         /// Safety limit: abort if more than N files (or N%) would be deleted
         #[arg(long)]
         max_delete: Option<String>,
-        /// Copy each local file into this directory before sync deletes it. Local
-        /// deletes only: files overwritten by a transfer and files deleted on the
-        /// remote are not backed up
+        /// Copy each local file into this directory before sync deletes it; a file
+        /// whose copy fails is not deleted and is reported. Local deletes only:
+        /// files overwritten by a transfer and files deleted on the remote are not
+        /// backed up
         #[arg(long)]
         backup_dir: Option<String>,
         /// Suffix for backup files (e.g., ".bak")
@@ -47012,9 +47013,9 @@ fn backup_file(
     backup_suffix: &str,
     relative_path: &str,
     suffix_keep_extension: bool,
-) {
+) -> Result<(), String> {
     if backup_dir.is_empty() {
-        return;
+        return Ok(());
     }
     let backup_name = if suffix_keep_extension && !backup_suffix.is_empty() {
         // Insert suffix before extension: "file.txt" + ".bak" -> "file.bak.txt"
@@ -47038,11 +47039,35 @@ fn backup_file(
     };
     let dest = Path::new(backup_dir).join(backup_name);
     if let Some(parent) = dest.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("backup folder {}: {}", parent.display(), e))?;
     }
-    if let Err(e) = std::fs::copy(source_path, &dest) {
-        eprintln!("Warning: backup failed for {}: {}", relative_path, e);
+    std::fs::copy(source_path, &dest)
+        .map(|_| ())
+        .map_err(|e| format!("backup of {} failed: {}", relative_path, e))
+}
+
+/// Delete one local file for `sync --delete`, after copying it into
+/// `--backup-dir` when one is set. A backup that fails leaves the file where
+/// it is and is the error: the user asked to keep a copy of what is deleted,
+/// and a warning followed by the delete lost it.
+fn backup_then_delete_local(
+    local_path: &str,
+    backup_dir: Option<&str>,
+    backup_suffix: &str,
+    relative_path: &str,
+    suffix_keep_extension: bool,
+) -> Result<(), String> {
+    if let Some(dir) = backup_dir {
+        backup_file(
+            local_path,
+            dir,
+            backup_suffix,
+            relative_path,
+            suffix_keep_extension,
+        )?;
     }
+    std::fs::remove_file(local_path).map_err(|e| e.to_string())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -49448,17 +49473,13 @@ async fn cmd_sync(
             continue;
         }
         let local_path = format!("{}/{}", local, path);
-        // Backup before delete (if --backup-dir set)
-        if let Some(bdir) = backup_dir {
-            backup_file(
-                &local_path,
-                bdir,
-                backup_suffix,
-                path,
-                suffix_keep_extension,
-            );
-        }
-        match std::fs::remove_file(&local_path) {
+        match backup_then_delete_local(
+            &local_path,
+            backup_dir,
+            backup_suffix,
+            path,
+            suffix_keep_extension,
+        ) {
             Ok(()) => deleted += 1,
             Err(e) => errors.push(format!("delete local {}: {}", path, e)),
         }
@@ -62751,6 +62772,40 @@ DISCONNECT\n";
             assert_eq!(lines[0].target, Some(BatchTarget::Profile("Koofr".into())));
             assert_eq!(lines[2].args, ["My A"]);
         });
+    }
+
+    /// `sync --delete --backup-dir`: a backup that cannot be written keeps
+    /// the file and reports it, instead of a warning and the delete.
+    #[test]
+    fn a_failed_backup_keeps_the_file_it_was_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"keep me").unwrap();
+        // The backup folder cannot exist: a file has its name.
+        let blocked = dir.path().join("blocked");
+        std::fs::write(&blocked, b"").unwrap();
+        let backup_dir = blocked.join("sub");
+        let outcome = backup_then_delete_local(
+            file.to_str().unwrap(),
+            Some(backup_dir.to_str().unwrap()),
+            "",
+            "a.txt",
+            false,
+        );
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(std::fs::read(&file).unwrap(), b"keep me");
+
+        let good = dir.path().join("bak");
+        backup_then_delete_local(
+            file.to_str().unwrap(),
+            Some(good.to_str().unwrap()),
+            ".old",
+            "a.txt",
+            false,
+        )
+        .unwrap();
+        assert!(!file.exists());
+        assert_eq!(std::fs::read(good.join("a.txt.old")).unwrap(), b"keep me");
     }
 
     #[test]
