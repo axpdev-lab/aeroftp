@@ -560,11 +560,17 @@ impl StorageProvider for MtpFsProvider {
         // mount finds the source itself under the new spelling, which is no
         // other item. The look and the rename are two calls; a file created
         // in between is still replaced.
-        if let Ok(occupant) = std::fs::symlink_metadata(&dest) {
-            let source = std::fs::symlink_metadata(&src).map_err(ProviderError::IoError)?;
-            if !same_file(&source, &occupant) {
-                return Err(ProviderError::AlreadyExists(to.to_string()));
+        // A look that fails for another reason than an absence says nothing
+        // about the destination, and read as free it let rename(2) go.
+        match std::fs::symlink_metadata(&dest) {
+            Ok(occupant) => {
+                let source = std::fs::symlink_metadata(&src).map_err(ProviderError::IoError)?;
+                if !same_file(&src, &dest, &source, &occupant) {
+                    return Err(ProviderError::AlreadyExists(to.to_string()));
+                }
             }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(ProviderError::IoError(e)),
         }
         tokio::fs::rename(&src, &dest)
             .await
@@ -583,9 +589,13 @@ impl StorageProvider for MtpFsProvider {
         }
         let src = self.resolve_existing(&from_v)?;
         let dest = self.resolve_for_create(&to_v)?;
-        if let Ok(occupant) = std::fs::symlink_metadata(&dest) {
-            let source = std::fs::symlink_metadata(&src).map_err(ProviderError::IoError)?;
-            super::super::refuse_replace_across_types(to, source.is_dir(), occupant.is_dir())?;
+        match std::fs::symlink_metadata(&dest) {
+            Ok(occupant) => {
+                let source = std::fs::symlink_metadata(&src).map_err(ProviderError::IoError)?;
+                super::super::refuse_replace_across_types(to, source.is_dir(), occupant.is_dir())?;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(ProviderError::IoError(e)),
         }
         tokio::fs::rename(&src, &dest)
             .await
@@ -657,21 +667,29 @@ impl StorageProvider for MtpFsProvider {
     }
 }
 
-/// Whether two metadata describe one file: the same inode on the same
-/// device where the platform says so, the same length, type and
-/// modification time elsewhere.
-fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
+/// Whether `a` and `b` (with their metadata) are one file: the same inode
+/// on the same device on Unix; elsewhere the same canonical path, which a
+/// case-insensitive volume gives both spellings of one name. Two files that
+/// merely share a size and times are two files.
+fn same_file(
+    a: &std::path::Path,
+    b: &std::path::Path,
+    a_meta: &std::fs::Metadata,
+    b_meta: &std::fs::Metadata,
+) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        a.dev() == b.dev() && a.ino() == b.ino()
+        let _ = (a, b);
+        a_meta.dev() == b_meta.dev() && a_meta.ino() == b_meta.ino()
     }
     #[cfg(not(unix))]
     {
-        a.len() == b.len()
-            && a.is_dir() == b.is_dir()
-            && a.modified().ok() == b.modified().ok()
-            && a.created().ok() == b.created().ok()
+        let _ = (a_meta, b_meta);
+        match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        }
     }
 }
 
@@ -718,6 +736,23 @@ mod tests {
         assert_eq!(std::fs::read(dir.path().join("A.txt")).unwrap(), b"A");
         p.rename("/A.txt", "/c.txt").await.expect("free name");
         assert_eq!(std::fs::read(dir.path().join("c.txt")).unwrap(), b"A");
+    }
+
+    /// The case-only rename above meets its own source only on a
+    /// case-insensitive volume, so on a case-sensitive one it could not
+    /// fail. A hard link is a second name for the same file on any Unix
+    /// volume: the look must take it for the source, not for another item.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_second_name_for_the_same_file_is_not_another_item() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"A").unwrap();
+        std::fs::hard_link(dir.path().join("a.txt"), dir.path().join("link.txt")).unwrap();
+        let mut p = connected(dir.path()).await;
+        p.rename("/a.txt", "/link.txt")
+            .await
+            .expect("the same file under two names is no other item");
+        assert_eq!(std::fs::read(dir.path().join("link.txt")).unwrap(), b"A");
     }
 
     /// `replace` keeps rename(2), which puts the new file in place in one step.
