@@ -224,6 +224,9 @@ mod provider_commands;
 // PD-CLI-CONV-A). Additive visibility only: no behaviour change, no API
 // break (visibility only widens).
 pub mod copy_fallback;
+/// Class-level pin: every consumer of a provider time uses the single parser.
+#[cfg(test)]
+mod mtime_parse_audit;
 pub mod progress_governor;
 pub mod provider_transfer_executor;
 pub mod providers;
@@ -4291,16 +4294,26 @@ async fn upload_files_batch(
 /// Preserve remote file modification time on a downloaded local file.
 /// Parses the timestamp shapes providers report (see [`parse_remote_mtime`])
 /// and sets the file's mtime via `filetime`.
-/// Best-effort: silently ignores failures (e.g. permission denied, unparseable timestamp).
+/// Best-effort: a failure to set it (permission denied) is ignored. A date that
+/// is not an instant (an FTP `LIST` date is server-local, with no zone) is not
+/// written, and the debug log says so.
 pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
-    let Some(secs) = remote_modified.and_then(parse_remote_mtime) else {
+    let Some(text) = remote_modified else {
+        return;
+    };
+    let Some(secs) = parse_remote_mtime(text) else {
+        log::debug!("[mtime] {local_path}: '{text}' is not an instant with a known zone, mtime left as written");
         return;
     };
     let ft = filetime::FileTime::from_unix_time(secs, 0);
     let _ = filetime::set_file_mtime(local_path, ft);
 }
 
-/// Unix seconds of a provider-reported modification time: naive
+/// Unix seconds of a provider-reported modification time. Only an instant with
+/// seconds reads: an FTP `LIST` date (`2026-09-24 19:41`, `2025-09-24`, see
+/// `ftp_listing::list_date_text`) is server-local with no zone and is refused
+/// on purpose, so it never reaches a comparison or a downloaded file's mtime.
+/// The shapes read: naive
 /// `YYYY-MM-DD HH:MM:SS` / ISO 8601 (read as UTC, optional trailing `Z` added
 /// in v2.9.6), RFC 3339 with an offset, and RFC 2822 (`Thu, 24 Sep 2026
 /// 19:41:46 GMT`), which is what WebDAV `getlastmodified` carries. Without the
@@ -4316,10 +4329,18 @@ pub fn parse_remote_mtime(modified_str: &str) -> Option<i64> {
     chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S%.f"))
         .map(|ndt| ndt.and_utc().timestamp())
         .or_else(|_| chrono::DateTime::parse_from_rfc3339(trimmed).map(|dt| dt.timestamp()))
         .or_else(|_| chrono::DateTime::parse_from_rfc2822(trimmed).map(|dt| dt.timestamp()))
         .ok()
+}
+
+/// [`parse_remote_mtime`] as a UTC `DateTime`, for the comparisons that hold
+/// one. Every consumer of a provider-reported time reads it through these two
+/// functions; `mtime_parse_audit` fails if another parser appears.
+pub fn parse_remote_datetime(modified_str: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::from_timestamp(parse_remote_mtime(modified_str)?, 0)
 }
 
 #[cfg(test)]
@@ -4340,6 +4361,9 @@ mod parse_remote_mtime_tests {
             "Thu, 24 Sep 2026 19:41:46 GMT",
             "Thu, 24 Sep 2026 21:41:46 +0200",
             "2026-09-24 19:41:46UTC",
+            "2026-09-24 19:41:46.250Z",
+            "2026-09-24 21:41:46+02:00",
+            "2026-09-24T19:41:46.123456",
         ] {
             assert_eq!(parse_remote_mtime(s), Some(EXPECTED), "{s}");
         }
@@ -4446,20 +4470,6 @@ struct FtpDownloadScanResult {
     cancelled: bool,
 }
 
-pub(crate) fn parse_remote_modified_datetime(
-    remote_modified: Option<&str>,
-) -> Option<chrono::DateTime<chrono::Utc>> {
-    let modified_str = remote_modified?;
-    let clean_str = modified_str.strip_suffix('Z').unwrap_or(modified_str);
-
-    chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
-        .or_else(|_| chrono::DateTime::parse_from_rfc3339(modified_str).map(|dt| dt.naive_utc()))
-        .ok()
-        .map(|ndt| ndt.and_utc())
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn scan_ftp_download_entries(
     app: &AppHandle,
@@ -4552,7 +4562,7 @@ async fn scan_ftp_download_entries(
             }
 
             result.total_files_discovered += 1;
-            let modified_dt = parse_remote_modified_datetime(file.modified.as_deref());
+            let modified_dt = file.modified.as_deref().and_then(parse_remote_datetime);
 
             if let Some(parent) = local_file_path.parent() {
                 if parent.exists() {
@@ -5104,7 +5114,7 @@ async fn prepare_ftp_upload_entries(
                             let remote_file_path =
                                 format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
                             let modified_dt =
-                                parse_remote_modified_datetime(entry.modified.as_deref());
+                                entry.modified.as_deref().and_then(parse_remote_datetime);
                             remote_index
                                 .insert(remote_file_path, (entry.size.unwrap_or(0), modified_dt));
                         }
@@ -11386,6 +11396,7 @@ async fn compare_directories(
     sync::apply_error_correction_excludes(&mut options);
     // A backup folder the archive would refuse must not quietly be compared.
     options.parsed_backup_dir().map_err(|e| e.to_string())?;
+    options.modify_window = crate::sync_core::mtime::ModifyWindow::LEGACY_FTP;
 
     validate_path(&local_path)?;
     if remote_path.contains('\0') {
@@ -11543,6 +11554,12 @@ async fn compare_local_directories(
     sync::apply_error_correction_excludes(&mut options);
     // A backup folder the archive would refuse must not quietly be compared.
     options.parsed_backup_dir().map_err(|e| e.to_string())?;
+    options.modify_window = crate::sync_core::mtime::ModifyWindow::resolve(
+        None,
+        crate::sync_core::mtime::LOCAL_MTIME_PRECISION,
+        crate::sync_core::mtime::LOCAL_MTIME_PRECISION,
+        crate::sync_core::mtime::SizeOnlyReason::NoComparableTime,
+    );
 
     validate_path(&left_path)?;
     validate_path(&right_path)?;
@@ -12274,20 +12291,7 @@ async fn get_remote_files_recursive_with_progress(
                 name: entry.name.clone(),
                 path: format!("{}/{}", current_dir, entry.name),
                 size: entry.size.unwrap_or(0),
-                modified: entry.modified.and_then(|s| {
-                    let clean = s.strip_suffix('Z').unwrap_or(&s);
-                    chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
-                        .or_else(|_| {
-                            chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                        })
-                        .ok()
-                        .map(|dt| {
-                            chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                                dt,
-                                chrono::Utc,
-                            )
-                        })
-                }),
+                modified: entry.modified.as_deref().and_then(parse_remote_datetime),
                 is_dir: entry.is_dir,
                 checksum_alg: None,
                 checksum: None,
@@ -13796,7 +13800,11 @@ async fn sync_canary_run(
             if let Some(cached) = idx.files.get(rel_path) {
                 // File exists in index: check if it changed locally
                 let local_changed = info.size != cached.size
-                    || !sync::timestamps_equal(info.modified, cached.modified);
+                    || !sync::timestamps_equal(
+                        info.modified,
+                        cached.modified,
+                        crate::sync_core::mtime::ModifyWindow::default(),
+                    );
                 if local_changed {
                     "upload" // Changed since last sync
                 } else {
@@ -14448,11 +14456,7 @@ fn verify_local_transfer_blocking(
     expected_hash: Option<String>,
     policy: VerifyPolicy,
 ) -> VerifyResult {
-    let mtime = expected_mtime.and_then(|s| {
-        chrono::DateTime::parse_from_rfc3339(&s)
-            .ok()
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-    });
+    let mtime = expected_mtime.as_deref().and_then(parse_remote_datetime);
     verify_local_file(
         &local_path,
         expected_size,

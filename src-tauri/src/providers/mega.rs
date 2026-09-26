@@ -452,6 +452,11 @@ impl StorageProvider for MegaCmdProvider {
         ProviderType::Mega
     }
 
+    /// `mega-ls -l` prints its date and time columns with no zone.
+    fn mtime_precision(&self) -> Option<std::time::Duration> {
+        None
+    }
+
     fn display_name(&self) -> String {
         self.config.email.clone()
     }

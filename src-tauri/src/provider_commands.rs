@@ -4051,18 +4051,10 @@ async fn provider_download_folder_inner(
                 let local_p = std::path::Path::new(&entry.local_path);
                 if let Ok(local_meta) = std::fs::metadata(local_p) {
                     if local_meta.is_file() {
-                        let remote_modified = entry.modified.as_ref().and_then(|s| {
-                            let clean = s.strip_suffix('Z').unwrap_or(s);
-                            chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                                .or_else(|_| {
-                                    chrono::NaiveDateTime::parse_from_str(
-                                        clean,
-                                        "%Y-%m-%dT%H:%M:%S",
-                                    )
-                                })
-                                .ok()
-                                .map(|ndt| ndt.and_utc())
-                        });
+                        let remote_modified = entry
+                            .modified
+                            .as_deref()
+                            .and_then(crate::parse_remote_datetime);
                         if crate::should_skip_file_download(
                             &file_exists_action,
                             remote_modified,
@@ -4495,8 +4487,10 @@ async fn provider_upload_folder_inner(
                         for entry in entries.into_iter().filter(|entry| !entry.is_dir) {
                             let fallback_path =
                                 format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
-                            let modified =
-                                crate::parse_remote_modified_datetime(entry.modified.as_deref());
+                            let modified = entry
+                                .modified
+                                .as_deref()
+                                .and_then(crate::parse_remote_datetime);
                             remote_index.insert(fallback_path.clone(), (entry.size, modified));
                             if entry.path != fallback_path {
                                 remote_index.insert(entry.path, (entry.size, modified));
@@ -7224,25 +7218,10 @@ pub async fn provider_compare_directories(
             } else {
                 format!("{}/{}", remote_path, relative_path.trim_start_matches('/'))
             };
-            let modified = entry.mtime.and_then(|s| {
-                chrono::DateTime::parse_from_rfc3339(&s)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .ok()
-                    .or_else(|| {
-                        let clean = s.strip_suffix('Z').unwrap_or(&s);
-                        chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
-                            .or_else(|_| {
-                                chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                            })
-                            .ok()
-                            .map(|dt| {
-                                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                                    dt,
-                                    chrono::Utc,
-                                )
-                            })
-                    })
-            });
+            let modified = entry
+                .mtime
+                .as_deref()
+                .and_then(crate::parse_remote_datetime);
 
             let file_info = FileInfo {
                 name,
@@ -7318,6 +7297,11 @@ pub async fn provider_compare_directories(
                 crate::SCAN_INCOMPLETE_MARKER
             ));
         }
+        // Read after the scan: an FTP session whose MLSD broke during it has
+        // fallen back to LIST, and its dates stopped being comparable.
+        options.modify_window =
+            crate::sync_core::mtime::ModifyWindow::against_provider(None, provider.as_ref());
+        info!("Provider compare: {}", options.modify_window.describe());
     }
 
     // A scan that missed a part of the tree it cannot name refuses the run, and
@@ -13197,25 +13181,10 @@ async fn walk_compare_remote_serially(
                 continue;
             }
 
-            let modified = entry.modified.and_then(|s| {
-                chrono::DateTime::parse_from_rfc3339(&s)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .ok()
-                    .or_else(|| {
-                        let clean = s.strip_suffix('Z').unwrap_or(&s);
-                        chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
-                            .or_else(|_| {
-                                chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                            })
-                            .ok()
-                            .map(|dt| {
-                                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                                    dt,
-                                    chrono::Utc,
-                                )
-                            })
-                    })
-            });
+            let modified = entry
+                .modified
+                .as_deref()
+                .and_then(crate::parse_remote_datetime);
 
             let file_info = crate::sync::FileInfo {
                 name: entry.name.clone(),

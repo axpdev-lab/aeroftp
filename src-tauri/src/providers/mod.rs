@@ -683,6 +683,105 @@ pub struct UploadedPart {
     pub etag: String,
 }
 
+/// The granularity at which each backend's listed modification times can be
+/// compared, `None` when they cannot be. The match is exhaustive on purpose: a
+/// new backend does not compile until somebody states what its dates are.
+///
+/// Measured from what each `list` puts in `RemoteEntry.modified` (audit of
+/// 2026-09-25). A value is the granularity of a time with a known zone; it
+/// says nothing about whether the time is the file's own mtime or its upload
+/// time, which the one-way rule (`destination_is_current`) already absorbs.
+/// `None` is declared for a date with no zone, a localized display string, a
+/// shape nothing reads, or no date at all.
+pub fn declared_mtime_precision(provider: ProviderType) -> Option<std::time::Duration> {
+    use std::time::Duration;
+    const SECOND: Option<Duration> = Some(Duration::from_secs(1));
+    const MILLI: Option<Duration> = Some(Duration::from_millis(1));
+    const MICRO: Option<Duration> = Some(Duration::from_micros(1));
+    const NANO: Option<Duration> = Some(Duration::from_nanos(1));
+    match provider {
+        // Without a session nothing says whether MLSD (UTC, seconds) or LIST
+        // (server-local, no zone) will be read; `FtpProvider` answers per
+        // session and the legacy `FtpManager` only reads LIST.
+        ProviderType::Ftp | ProviderType::Ftps => None,
+        // `attrs.mtime`, Unix seconds.
+        ProviderType::Sftp => SECOND,
+        // `getlastmodified`, RFC 1123.
+        ProviderType::WebDav => SECOND,
+        // `LastModified` carries milliseconds, but the ListObjects value is
+        // the upload time and whole seconds are what the sync compares.
+        ProviderType::S3 => SECOND,
+        // A sync configuration, never a storage backend of its own.
+        ProviderType::AeroCloud => None,
+        // `modifiedTime`, RFC 3339 with milliseconds.
+        ProviderType::GoogleDrive => MILLI,
+        // `server_modified`, whole seconds.
+        ProviderType::Dropbox => SECOND,
+        // `lastModifiedDateTime`, RFC 3339.
+        ProviderType::OneDrive => SECOND,
+        // Native: node `ts`, Unix seconds. `MegaCmdProvider` overrides this:
+        // `mega-ls -l` prints a date with no zone.
+        ProviderType::Mega => SECOND,
+        // `claimedModificationTime`, milliseconds.
+        ProviderType::Proton => MILLI,
+        // `modified_at`, RFC 3339 with an offset.
+        ProviderType::Box => SECOND,
+        // `modified`, RFC 2822.
+        ProviderType::PCloud => SECOND,
+        // `Last-Modified`, RFC 1123.
+        ProviderType::Azure => SECOND,
+        // `lastModified` in milliseconds, cut to seconds.
+        ProviderType::Filen => SECOND,
+        // `modified` passed through with a shape nothing in the code pins.
+        ProviderType::FourShared => None,
+        // `modified_time_i18` is a localized display string.
+        ProviderType::ZohoWorkdrive => None,
+        // `modificationTime`, ISO 8601 with milliseconds.
+        ProviderType::Internxt => MILLI,
+        // `last_modified_at`, Unix seconds.
+        ProviderType::KDrive => SECOND,
+        // `<modified>`, parsed to seconds.
+        ProviderType::Jottacloud => SECOND,
+        // `updated_at`, parsed to seconds.
+        ProviderType::DrimeCloud => SECOND,
+        // `uploaded` is `YYYY-MM-DD HH:MM:SS` with no zone.
+        ProviderType::FileLu => None,
+        // `modified` in milliseconds, cut to seconds.
+        ProviderType::Koofr => SECOND,
+        // `DateModified`, Unix seconds.
+        ProviderType::OpenDrive => SECOND,
+        // `modified`, RFC 3339 with an offset.
+        ProviderType::YandexDisk => SECOND,
+        // The Contents API lists no date; only `stat` looks one up.
+        ProviderType::GitHub => None,
+        ProviderType::GitLab => None,
+        // `last_modified`, microseconds in UTC.
+        ProviderType::Swift => MICRO,
+        // `creationTime`, RFC 3339.
+        ProviderType::GooglePhotos => SECOND,
+        // `fileModifiedAt`, milliseconds.
+        ProviderType::Immich => MILLI,
+        // `updatedAt`, milliseconds.
+        ProviderType::ImageKit => MILLI,
+        // `datetime_uploaded`, microseconds.
+        ProviderType::Uploadcare => MICRO,
+        // `uploadTimestamp`, milliseconds.
+        ProviderType::Backblaze => MILLI,
+        // `created_at`, whole seconds.
+        ProviderType::Cloudinary => SECOND,
+        // Vault entries carry no date.
+        ProviderType::AeroVaultMount => None,
+        // The peer's own file mtime, RFC 3339 with nanoseconds.
+        ProviderType::Peer => NANO,
+        // libmtp reports bare Unix seconds, WPD nothing, gvfs RFC 3339: the
+        // backend is chosen at run time and two of the three do not read.
+        ProviderType::Mtp => None,
+        // `updated_at`, RFC 3339 (Cozy); uploads write the local mtime to
+        // the second.
+        ProviderType::Twake => SECOND,
+    }
+}
+
 /// Unified storage provider trait
 ///
 /// All storage backends must implement this trait to be used with AeroFTP.
@@ -1342,6 +1441,17 @@ pub trait StorageProvider: Send + Sync {
     /// Whether this provider supports file checksums
     fn supports_checksum(&self) -> bool {
         false
+    }
+
+    /// How finely the modification times this backend lists can be compared,
+    /// `None` when they cannot be compared at all. The sync reads it through
+    /// [`crate::sync_core::mtime::ModifyWindow::resolve`]: the window is the
+    /// coarser of this and 2 s, and `None` compares by size only. The default
+    /// is the backend's declared value ([`declared_mtime_precision`]); a
+    /// provider whose answer depends on the session (FTP with or without
+    /// MLSD) overrides it, and an overlay forwards its inner provider's.
+    fn mtime_precision(&self) -> Option<std::time::Duration> {
+        declared_mtime_precision(self.provider_type())
     }
 
     /// Whether `size`/`stat` report the EXACT logical (plaintext) size. True for
