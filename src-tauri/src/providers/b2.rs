@@ -3741,16 +3741,6 @@ pub(crate) fn encode_path_segments(key: &str) -> String {
         .join("/")
 }
 
-/// True when an error indicates the master auth token must be refreshed.
-///
-/// `map_b2_status` already classifies 401 `expired_auth_token` /
-/// `bad_auth_token` as `AuthenticationFailed`. This filter reads that
-/// variant. It does not search the message: a wording change at the
-/// producer must not silently disable reauth.
-///
-/// In this file `AuthenticationFailed` is only a token condition.
-/// Authorize body-read and parse failures used to borrow the variant
-/// after a 2xx; they are `ConnectionFailed` and `ServerError`.
 /// A rename whose copy landed but whose source delete failed has left the
 /// file under both names. That is a failure, never a success: the caller
 /// asked for one file and would otherwise find two.
@@ -3761,6 +3751,16 @@ fn source_delete_failed(copied_to: &str, error: ProviderError) -> ProviderError 
     ))
 }
 
+/// True when an error indicates the master auth token must be refreshed.
+///
+/// `map_b2_status` already classifies 401 `expired_auth_token` /
+/// `bad_auth_token` as `AuthenticationFailed`. This filter reads that
+/// variant. It does not search the message: a wording change at the
+/// producer must not silently disable reauth.
+///
+/// In this file `AuthenticationFailed` is only a token condition.
+/// Authorize body-read and parse failures used to borrow the variant
+/// after a 2xx; they are `ConnectionFailed` and `ServerError`.
 fn is_b2_token_failure(err: &ProviderError) -> bool {
     matches!(err, ProviderError::AuthenticationFailed(_))
 }

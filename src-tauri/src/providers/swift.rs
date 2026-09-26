@@ -765,6 +765,14 @@ impl SwiftProvider {
 
         // The trait promises no overwrite, and a PUT with X-Copy-From
         // replaces whatever the destination holds: look first.
+        //
+        // The look and the copy are two requests, so an object written to
+        // the destination between them is overwritten. `If-None-Match: *`
+        // closes that window on a plain PUT, but not on a copy: Swift's copy
+        // middleware (swift/common/middleware/copy.py) fetches the source
+        // with `req.copy_get()`, which keeps the client's headers, so the
+        // condition reaches the GET of the source, which exists and answers
+        // 304, and the copy fails every time. The window stays open.
         if !overwrite {
             match self.stat(to).await {
                 Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
