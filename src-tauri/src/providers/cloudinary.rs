@@ -788,6 +788,12 @@ impl CloudinaryProvider {
         })
     }
 
+    /// Whether the account names assets by `asset_folder` and
+    /// `display_name` (dynamic folders), as the last listing found.
+    fn dynamic_folders(&self) -> bool {
+        self.dynamic_folder_mode.lock().ok().and_then(|m| *m) == Some(true)
+    }
+
     fn primary_resource_type(&self, item: &CloudinaryResource) -> String {
         if !item.resource_type.is_empty() {
             item.resource_type.clone()
@@ -915,7 +921,12 @@ impl StorageProvider for CloudinaryProvider {
             .into_iter()
             .map(|sf| folder_to_entry(&sf, &folder_norm))
             .collect();
-        entries.extend(files.iter().map(|f| resource_to_entry(f, &folder_norm)));
+        let dynamic = self.dynamic_folders();
+        entries.extend(
+            files
+                .iter()
+                .map(|f| resource_to_entry(f, &folder_norm, dynamic)),
+        );
         Ok(entries)
     }
 
@@ -1363,12 +1374,19 @@ impl StorageProvider for CloudinaryProvider {
         for f in &files {
             self.cache_resource_type(&f.public_id, &f.resource_type);
         }
-        let pid_no_ext = trimmed.clone();
+        // A path names an asset only by the name `list` shows, and on a
+        // fixed-folder account also by its public id (the path `list` gives
+        // it). Matching the display name there, or the public id on a
+        // dynamic-folder account, is matching what a rename leaves unchanged:
+        // the old name kept resolving to the renamed asset (found live on
+        // 2026-09-26), so it could be read under both names and a new file
+        // could not take the old one.
+        let dynamic = self.dynamic_folders();
         let entry = files
             .into_iter()
-            .find(|f| f.public_id == pid_no_ext || resource_display_name(f) == name);
+            .find(|f| resource_name(f, dynamic) == name || (!dynamic && f.public_id == trimmed));
         match entry {
-            Some(f) => Ok(resource_to_entry(&f, &parent)),
+            Some(f) => Ok(resource_to_entry(&f, &parent, dynamic)),
             None => Err(ProviderError::NotFound(format!("/{}", trimmed))),
         }
     }
@@ -1473,11 +1491,13 @@ impl StorageProvider for CloudinaryProvider {
                     matches.push(folder_to_entry(sf, &dir));
                 }
             }
-            for f in self.list_files(&dir).await? {
+            let files = self.list_files(&dir).await?;
+            let dynamic = self.dynamic_folders();
+            for f in files {
                 self.cache_resource_type(&f.public_id, &f.resource_type);
-                let display = resource_display_name(&f);
-                if super::matches_find_pattern(&display, pattern) {
-                    matches.push(resource_to_entry(&f, &dir));
+                let name = resource_name(&f, dynamic);
+                if super::matches_find_pattern(&name, pattern) {
+                    matches.push(resource_to_entry(&f, &dir, dynamic));
                 }
             }
         }
@@ -1708,6 +1728,8 @@ fn folder_to_entry(folder: &CloudinarySubFolder, parent: &str) -> RemoteEntry {
     entry
 }
 
+/// The display name of an asset with its format, or the last segment of
+/// its public id when it has none: the name on a dynamic-folder account.
 fn resource_display_name(item: &CloudinaryResource) -> String {
     if let Some(ref dn) = item.display_name {
         if !dn.trim().is_empty() {
@@ -1736,10 +1758,40 @@ fn resource_display_name(item: &CloudinaryResource) -> String {
     base
 }
 
-fn resource_to_entry(item: &CloudinaryResource, parent: &str) -> RemoteEntry {
-    let name = resource_display_name(item);
-    let path = if parent.is_empty() {
-        format!("/{}", item.public_id)
+/// The name an asset goes by. On a dynamic-folder account that is its
+/// display name, which a rename changes and the public id does not; on a
+/// fixed-folder account it is the last segment of its public id, which a
+/// rename changes, while `display_name` keeps the original filename.
+fn resource_name(item: &CloudinaryResource, dynamic: bool) -> String {
+    if dynamic {
+        return resource_display_name(item);
+    }
+    let base = basename(&item.public_id).to_string();
+    match item.format.as_deref() {
+        Some(format)
+            if !base.is_empty()
+                && !base
+                    .to_lowercase()
+                    .ends_with(&format!(".{}", format.to_lowercase())) =>
+        {
+            format!("{base}.{format}")
+        }
+        _ => base,
+    }
+}
+
+/// `item` as an entry of the folder `parent`. On a fixed-folder account its
+/// path is its public id; on a dynamic-folder account, where the public id is
+/// not a path, it is the folder and the name `list` shows.
+fn resource_to_entry(item: &CloudinaryResource, parent: &str, dynamic: bool) -> RemoteEntry {
+    let name = resource_name(item, dynamic);
+    let path = if dynamic {
+        let folder = parent.trim_matches('/');
+        if folder.is_empty() {
+            format!("/{name}")
+        } else {
+            format!("/{folder}/{name}")
+        }
     } else {
         format!("/{}", item.public_id.trim_start_matches('/'))
     };
@@ -1862,6 +1914,126 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A Cloudinary double whose root holds `resource` and nothing else, on
+    /// a dynamic-folder account (listing by `asset_folder`) or a fixed-folder
+    /// one (`by_asset_folder` refused, listing by prefix).
+    async fn provider_listing(resource: serde_json::Value, dynamic: bool) -> CloudinaryProvider {
+        let listing = serde_json::json!({ "resources": [resource] }).to_string();
+        let app = axum::Router::new()
+            .route(
+                "/resources/by_asset_folder",
+                axum::routing::get({
+                    let listing = listing.clone();
+                    move || {
+                        let listing = listing.clone();
+                        async move {
+                            if dynamic {
+                                (axum::http::StatusCode::OK, listing)
+                            } else {
+                                (
+                                    axum::http::StatusCode::BAD_REQUEST,
+                                    r#"{"error":{"message":"Unknown parameter asset_folder"}}"#
+                                        .to_string(),
+                                )
+                            }
+                        }
+                    }
+                }),
+            )
+            .route(
+                // The prefix listing of a fixed-folder account, per type.
+                "/resources/image",
+                axum::routing::get(move || {
+                    let listing = listing.clone();
+                    async move { listing }
+                }),
+            )
+            .route(
+                "/resources/{kind}",
+                axum::routing::get(|| async { r#"{"resources":[]}"# }),
+            )
+            .route(
+                "/folders",
+                axum::routing::get(|| async { r#"{"folders":[]}"# }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = CloudinaryProvider::new(CloudinaryConfig {
+            cloud_name: "test".to_string(),
+            api_key: "test".to_string(),
+            api_secret: SecretString::from("test".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider
+    }
+
+    /// Resolve `path` with `stat`; `Some(name)` when it resolves.
+    async fn resolved_name(provider: &mut CloudinaryProvider, path: &str) -> Option<String> {
+        match provider.stat(path).await {
+            Ok(entry) => Some(entry.name),
+            Err(ProviderError::NotFound(_)) => None,
+            Err(e) => panic!("{path}: {e}"),
+        }
+    }
+
+    /// An asset named `a` and renamed to `c`: on a fixed-folder account the
+    /// rename changes the public id and leaves `display_name` at the original
+    /// filename. `stat` matched that display name too, so the old name still
+    /// resolved to the renamed asset (found live on 2026-09-26: after
+    /// `mv /d/a.txt /d/c.txt`, `cat /d/a.txt` answered its content) and a new
+    /// file could not take the name. A path resolves only to the name `ls`
+    /// shows, which on these accounts comes from the public id.
+    #[tokio::test]
+    async fn fixed_folders_name_an_asset_by_its_public_id_only() {
+        let renamed = serde_json::json!({
+            "asset_id": "AID", "public_id": "c", "display_name": "a", "format": "jpg",
+            "bytes": 3, "resource_type": "image", "type": "upload",
+        });
+        let mut provider = provider_listing(renamed, false).await;
+        let listed: Vec<RemoteEntry> = provider.list("/").await.expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "c.jpg");
+        assert_eq!(resolved_name(&mut provider, "/a.jpg").await, None);
+        assert_eq!(
+            resolved_name(&mut provider, "/c.jpg").await.as_deref(),
+            Some("c.jpg")
+        );
+        let path = listed[0].path.clone();
+        assert_eq!(
+            resolved_name(&mut provider, &path).await.as_deref(),
+            Some("c.jpg")
+        );
+    }
+
+    /// On a dynamic-folder account a rename changes `display_name` and keeps
+    /// the public id, which `stat` also matched: the old name resolved to the
+    /// renamed asset there too. The listed path is the one `stat` resolves.
+    #[tokio::test]
+    async fn dynamic_folders_name_an_asset_by_its_display_name_only() {
+        let renamed = serde_json::json!({
+            "asset_id": "AID", "public_id": "a", "display_name": "c", "format": "jpg",
+            "bytes": 3, "resource_type": "image", "type": "upload", "asset_folder": "",
+        });
+        let mut provider = provider_listing(renamed, true).await;
+        let listed: Vec<RemoteEntry> = provider.list("/").await.expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "c.jpg");
+        assert_eq!(resolved_name(&mut provider, "/a.jpg").await, None);
+        assert_eq!(resolved_name(&mut provider, "/a").await, None);
+        assert_eq!(
+            resolved_name(&mut provider, "/c.jpg").await.as_deref(),
+            Some("c.jpg")
+        );
+        let path = listed[0].path.clone();
+        assert_eq!(
+            resolved_name(&mut provider, &path).await.as_deref(),
+            Some("c.jpg")
+        );
+    }
 
     /// What a Cloudinary double received: rename queries and
     /// `PUT /resources/{asset_id}` bodies.
