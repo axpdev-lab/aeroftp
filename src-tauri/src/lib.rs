@@ -8078,9 +8078,9 @@ pub(crate) fn is_safe_archive_entry(entry_name: &str) -> bool {
     true
 }
 
-/// Copy an archive entry into `writer` but never write more than the entry's
-/// declared uncompressed size: a stream that expands past what its header claims
-/// is a decompression bomb (or a corrupt archive) and is rejected. Mirrors the
+/// Copy exactly the entry's declared uncompressed size into `writer`. Reject
+/// both premature EOF and streams that expand past the declared size, so an
+/// incomplete decode cannot commit a truncated replacement. Mirrors the
 /// single-entry browse path (archive_browse.rs, CLAUDE-AV-015) so the
 /// whole-archive extractors get the same defense the preview path already had.
 /// (CLAUDE-AV-B1-04)
@@ -8095,6 +8095,12 @@ fn copy_entry_bounded<R: std::io::Read + ?Sized, W: std::io::Write>(
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "archive entry expands past its declared size (compression bomb?)",
+        ));
+    }
+    if written < declared {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "archive entry ended before its declared size",
         ));
     }
     Ok(written)
@@ -21523,6 +21529,32 @@ mod standalone_stream_tests {
         let err = copy_entry_bounded(&mut &big[..], &mut out2, 8)
             .expect_err("an over-declared stream must be rejected");
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn short_archive_entries_leave_existing_files_untouched() {
+        use super::{copy_entry_bounded, write_entry_atomically};
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("existing.txt");
+        let original = b"the user's own file";
+        std::fs::write(&target, original).unwrap();
+
+        // Wrong-password decoding can report EOF instead of a read error.
+        // Cover empty and partially decoded content without random encryption.
+        for mut decoded in [&b""[..], &b"partial"[..]] {
+            let err =
+                write_entry_atomically(&target, |file| copy_entry_bounded(&mut decoded, file, 40))
+                    .expect_err("a short entry must not replace an existing file");
+            assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof);
+            assert_eq!(std::fs::read(&target).unwrap(), original);
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        }
+
+        // An actual empty entry is still valid when its header declares zero.
+        assert_eq!(
+            copy_entry_bounded(&mut std::io::empty(), &mut Vec::new(), 0).unwrap(),
+            0
+        );
     }
 
     // The single consolidated guard rejects traversal/absolute/drive/null/empty
