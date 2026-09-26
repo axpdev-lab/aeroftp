@@ -1896,7 +1896,6 @@ impl B2Provider {
         Ok(())
     }
 
-    /// Look up the latest version's `fileId` and `contentLength` for a given key.
     /// Whether a folder is at `key`: B2 has no folders, only names under
     /// `key/` (a `.bzEmpty` marker included), so one listing of that prefix
     /// answers.
@@ -1907,6 +1906,7 @@ impl B2Provider {
         Ok(!listed.files.is_empty())
     }
 
+    /// Look up the latest version's `fileId` and `contentLength` for a given key.
     async fn lookup_file_id(&self, key: &str) -> Result<(String, u64), ProviderError> {
         let resp = self.list_file_names(key, None, None, 1).await?;
         let f = resp
@@ -3690,11 +3690,12 @@ pub(crate) fn normalize_path(p: &str) -> String {
     if p.is_empty() {
         return "/".to_string();
     }
-    let trimmed = p.trim();
-    let with_root = if trimmed.starts_with('/') {
-        trimmed.to_string()
+    // No whitespace is trimmed: B2 keeps a name's spaces, and trimmed `d `
+    // and `d` were one key, so a rename to `d ` landed on `d`.
+    let with_root = if p.starts_with('/') {
+        p.to_string()
     } else {
-        format!("/{}", trimmed)
+        format!("/{}", p)
     };
     let mut out = String::with_capacity(with_root.len());
     let mut prev_slash = false;
@@ -3823,6 +3824,13 @@ mod tests {
     fn normalize_relative_to_absolute() {
         assert_eq!(normalize_path("foo"), "/foo");
         assert_eq!(normalize_path("foo/bar"), "/foo/bar");
+    }
+
+    /// A name's spaces are part of it: `d ` and `d` are two keys.
+    #[test]
+    fn normalize_keeps_the_spaces_of_a_name() {
+        assert_eq!(normalize_path("/d "), "/d ");
+        assert_eq!(normalize_path("/a/ b"), "/a/ b");
     }
 
     #[test]
