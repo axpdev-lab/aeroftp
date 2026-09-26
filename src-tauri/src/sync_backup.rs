@@ -233,6 +233,7 @@ pub fn remote_move_support(provider: ProviderType) -> RemoteMove {
         P::ZohoWorkdrive => Native,       // move, then rename
         P::Internxt => Native,            // PATCH destinationFolder
         P::KDrive => Native,              // POST move/{parent}
+        P::Twake => Native,               // one PATCH with dir_id and name
         P::Jottacloud => Native,          // ?mv=
         P::DrimeCloud => Native,          // move, then rename
         P::FileLu => Native,              // set_folder, then rename

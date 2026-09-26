@@ -511,7 +511,8 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
         | ProviderType::OpenDrive
         | ProviderType::GitHub
         | ProviderType::ImageKit
-        | ProviderType::Uploadcare => DocumentedFileLimits::default(),
+        | ProviderType::Uploadcare
+        | ProviderType::Twake => DocumentedFileLimits::default(),
         // Not a remote a sync uploads to through this path.
         ProviderType::AeroCloud
         | ProviderType::AeroVaultMount
