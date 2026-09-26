@@ -448,9 +448,13 @@ impl DrimeCloudProvider {
                 continue;
             }
 
-            // List children to find the folder
+            // List children to find the folder: the name as spelled first,
+            // another case as the fallback. With sibling folders `D` (listed
+            // first) and `d`, a first match that ignored the case walked
+            // `/d/x` into `D`.
             let mut page = 1u32;
-            let mut found = false;
+            let mut exact = None;
+            let mut fallback = None;
 
             loop {
                 let url = if current_id.is_empty() {
@@ -498,31 +502,31 @@ impl DrimeCloudProvider {
                     let is_folder = file.file_type.as_deref() == Some("folder");
                     if is_folder {
                         if let (Some(ref name), Some(id)) = (&file.name, file.id_str()) {
-                            if name.eq_ignore_ascii_case(part) {
-                                self.dir_cache_insert(
-                                    current_path.clone(),
-                                    DirInfo { id: id.clone() },
-                                );
-                                current_id = id;
-                                found = true;
+                            if name == part {
+                                exact = Some(id);
                                 break;
+                            }
+                            if fallback.is_none() && name.eq_ignore_ascii_case(part) {
+                                fallback = Some(id);
                             }
                         }
                     }
                 }
 
-                if found || page >= last_page {
+                if exact.is_some() || page >= last_page {
                     break;
                 }
                 page += 1;
             }
 
-            if !found {
+            let Some(id) = exact.or(fallback) else {
                 return Err(ProviderError::NotFound(format!(
                     "Folder '{}' not found in {}",
                     part, current_path
                 )));
-            }
+            };
+            self.dir_cache_insert(current_path.clone(), DirInfo { id: id.clone() });
+            current_id = id;
         }
 
         Ok(current_id)
@@ -3102,6 +3106,22 @@ mod tests {
             .cloned()
             .unwrap();
         assert_eq!((a.1.as_str(), a.2.as_str()), ("a.txt", "1"));
+    }
+
+    /// With sibling folders `D` (listed first) and `d`, the folder lookup
+    /// took the first match ignoring the case: `/d/x.txt` looked into `D`
+    /// and was not found, while `ls /d` shows it. The name as spelled comes
+    /// first.
+    #[tokio::test]
+    async fn a_folder_resolves_to_the_name_as_spelled_first() {
+        let (mut provider, _, _) = provider_on_drime_entries(&[
+            (3, "D", "", "folder"),
+            (4, "d", "", "folder"),
+            (12, "x.txt", "4", "file"),
+        ])
+        .await;
+        let found = provider.stat("/d/x.txt").await.expect("stat");
+        assert_eq!(found.name, "x.txt");
     }
 
     /// With `A.txt` listed before `a.txt`, a path lookup that took the first
