@@ -1559,58 +1559,14 @@ pub struct ProfileChoices<'a> {
     pub fingerprint: &'a str,
 }
 
-/// What the profile step can undo: each touched secret as the app read it,
-/// the active partition list, and the legacy blob.
+/// What a failed profile step puts back: this device's state from before the
+/// import wrote anything. The touched secrets, as the app read them, and the
+/// list come from the plan; the legacy blob is read by the import before its
+/// vault commit.
 struct ProfileStepSnapshot {
     secrets: Vec<(String, Option<Zeroizing<String>>)>,
-    partition_list: Option<Vec<serde_json::Value>>,
+    list: Vec<serde_json::Value>,
     blob: Option<String>,
-}
-
-fn snapshot_profile_step(
-    store: &crate::credential_store::CredentialStore,
-    db: Option<&Path>,
-    keys: &[String],
-) -> Result<ProfileStepSnapshot, String> {
-    let conn = db.and_then(|db| {
-        rusqlite::Connection::open_with_flags(
-            db,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )
-        .ok()
-    });
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let mut secrets = Vec::with_capacity(keys.len());
-    let mut failure = None;
-    for key in keys {
-        match read_effective_secret(store, conn.as_ref(), &root_key, key) {
-            Ok(v) => secrets.push((key.clone(), v)),
-            Err(e) => {
-                failure = Some(e.to_string());
-                break;
-            }
-        }
-    }
-    root_key.zeroize();
-    if let Some(e) = failure {
-        return Err(e);
-    }
-    let partition_list = match db {
-        Some(db) => Some(crate::user_partitions::read_active_profiles_from_db(
-            store, db,
-        )?),
-        None => None,
-    };
-    let blob = match store.get("config_server_profiles") {
-        Ok(v) => Some(v),
-        Err(crate::credential_store::CredentialError::NotFound(_)) => None,
-        Err(e) => return Err(e.to_string()),
-    };
-    Ok(ProfileStepSnapshot {
-        secrets,
-        partition_list,
-        blob,
-    })
 }
 
 fn save_partition_list(
@@ -1638,8 +1594,9 @@ fn restore_profile_step(
             failures.push(format!("{key}: {e}"));
         }
     }
-    if let (Some(db), Some(list)) = (db, snapshot.partition_list.as_ref()) {
-        if let Err(e) = save_partition_list(store, db, list) {
+    // Into the partition the app loads now, which may be the backup's.
+    if let Some(db) = db {
+        if let Err(e) = save_partition_list(store, db, &snapshot.list) {
             failures.push(format!("server list: {e}"));
         }
     }
@@ -1664,15 +1621,17 @@ fn restore_profile_step(
 /// the active partition and mirrored to the legacy blob. Returns the number
 /// of profiles in that list.
 ///
-/// All or nothing: the touched secrets, the partition list and the blob are
-/// read first, and any failure puts them back, so a profile is never left
-/// listed without the credentials it was kept with, nor a copy's credentials
-/// left without its profile.
+/// All or nothing: any failure puts the touched secrets, the list and the
+/// blob back as they were before the import (`blob_before_import`), so a
+/// profile is never left listed without the credentials it was kept with, a
+/// copy's credentials are never left without their profile, and a profile
+/// kept from this device never ends up with the backup's credentials.
 fn apply_profile_decisions(
     store: &crate::credential_store::CredentialStore,
     config_dir: Option<&Path>,
     inputs: &PlanInputs,
     choices: ProfileChoices<'_>,
+    blob_before_import: Option<String>,
 ) -> Result<u32, String> {
     let outcome = keystore_profile_plan::apply(
         inputs,
@@ -1684,8 +1643,21 @@ fn apply_profile_decisions(
     let mut touched: Vec<String> = outcome.secret_ops.iter().map(|(k, _)| k.clone()).collect();
     touched.sort();
     touched.dedup();
-    let snapshot = snapshot_profile_step(store, db.as_deref(), &touched)
-        .map_err(|e| format!("read the current state before applying: {e}"))?;
+    // Put back what the plan read before the import wrote, not what is there
+    // now: the import has already replaced it with the backup's version, even
+    // for a profile the user kept from this device. A key the plan did not
+    // read belongs to a new copy, which did not exist then.
+    let snapshot = ProfileStepSnapshot {
+        secrets: touched
+            .into_iter()
+            .map(|key| {
+                let before = inputs.local_secrets.get(&key).cloned().flatten();
+                (key, before)
+            })
+            .collect(),
+        list: inputs.local.clone(),
+        blob: blob_before_import,
+    };
 
     let applied = (|| -> Result<(), String> {
         for (key, value) in &outcome.secret_ops {
@@ -1713,7 +1685,7 @@ fn apply_profile_decisions(
         Err(e) => {
             let failures = restore_profile_step(store, db.as_deref(), &snapshot);
             if failures.is_empty() {
-                Err(format!("{e}; the server list and its credentials were put back as the import left them"))
+                Err(format!("{e}; the server list and its credentials were put back as they were before the import"))
             } else {
                 Err(format!(
                     "{e}; restoring the previous state also failed for: {}",
@@ -1851,6 +1823,16 @@ fn import_keystore_with_store(
     if let Some(cfg) = config_dir {
         refresh_legacy_profiles_blob(store, cfg, "import (before merge)");
     }
+    // #347: the blob a failed profile step puts back, as this device has it
+    // (healed above) before the vault commit below replaces it.
+    let blob_before_import = match &profile_plan {
+        Some(_) => match store.get("config_server_profiles") {
+            Ok(v) => Some(v),
+            Err(crate::credential_store::CredentialError::NotFound(_)) => None,
+            Err(e) => return Err(from_store_error(e)),
+        },
+        None => None,
+    };
 
     // Get existing accounts for merge strategy
     let existing = if merge_strategy == "skip_existing" {
@@ -2156,11 +2138,13 @@ fn import_keystore_with_store(
     // #347: last, so the decisions see the list the restore and the re-key
     // produced and have the final word on it. Everything above is already
     // written, so a failure here is reported next to the import's result, not
-    // as a failed import that would hide the restart and backup notes.
+    // as a failed import that would hide the restart and backup notes. The
+    // server list and its credentials then go back to how they were before
+    // the import; the other sections stay imported.
     let mut profiles_after_decisions = None;
     let mut profile_decisions_error = None;
     if let Some((inputs, choices)) = &profile_plan {
-        match apply_profile_decisions(store, config_dir, inputs, *choices) {
+        match apply_profile_decisions(store, config_dir, inputs, *choices, blob_before_import) {
             Ok(count) => profiles_after_decisions = Some(count),
             Err(e) => {
                 tracing::error!("Keystore import: profile decisions not applied: {e}");
@@ -3324,6 +3308,7 @@ mod tests {
                 decisions: &decisions,
                 fingerprint: &fingerprint,
             },
+            Some(blob_before.clone()),
         )
         .unwrap_err();
         std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o644)).unwrap();
@@ -3366,6 +3351,108 @@ mod tests {
             effective_secret(&store, &cfg, "server_srv_drive").as_deref(),
             Some("partition-password"),
             "the user's partition row was deleted"
+        );
+    }
+
+    /// A profile step that fails inside a real import puts back this device's
+    /// state from before the import, not the state the import left: keeping
+    /// this device's version must not end with the backup's password because
+    /// a later write failed. The backup's partition refuses the password row
+    /// of the "keep both" copy (a new id is `srv_<digits>_...`), so the step
+    /// fails after writing this device's values.
+    #[test]
+    fn a_failed_profile_step_puts_back_the_state_before_the_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg, backup) = machine_and_backup_347(dir.path());
+        let mut payload = open_backup(PASSWORD_736, &backup, None).unwrap();
+        let refusing = dir.path().join("refusing.db");
+        std::fs::write(
+            &refusing,
+            B64.decode(&payload.sqlite_dumps["user_partitions.db"])
+                .unwrap(),
+        )
+        .unwrap();
+        rusqlite::Connection::open(&refusing)
+            .unwrap()
+            .execute_batch(
+                "CREATE TRIGGER refuse_copy BEFORE INSERT ON user_credentials
+                 WHEN NEW.credential_id GLOB 'server_srv_[0-9]*'
+                 BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+            )
+            .unwrap();
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            B64.encode(std::fs::read(&refusing).unwrap()),
+        );
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let decisions = [
+            ProfileDecisionInput {
+                id: "srv_drive".into(),
+                decision: keystore_profile_plan::ProfileDecision::Both,
+                copy_name: Some("Drive (backup)".into()),
+            },
+            ProfileDecisionInput {
+                id: "srv_photos".into(),
+                decision: keystore_profile_plan::ProfileDecision::Reject,
+                copy_name: None,
+            },
+        ];
+        let fingerprint = previewed(&store, &cfg, &backup, "overwrite");
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            Some(ProfileChoices {
+                decisions: &decisions,
+                fingerprint: &fingerprint,
+            }),
+        )
+        .unwrap();
+
+        let error = result
+            .profile_decisions_error
+            .expect("the profile step did not fail");
+        assert!(error.contains("disk full"), "{error}");
+        assert!(!error.contains("also failed"), "{error}");
+        assert_eq!(result.profiles_after_decisions, None);
+        assert_eq!(
+            store.get("server_srv_drive").unwrap(),
+            "local-password",
+            "the password kept from this device was left replaced by the backup's"
+        );
+        assert_eq!(
+            effective_secret(&store, &cfg, "server_srv_drive").as_deref(),
+            Some("local-password")
+        );
+        assert_eq!(
+            effective_secret(&store, &cfg, "aerocrypt_overlay_pw_srv_drive").as_deref(),
+            Some("local-overlay")
+        );
+        let before = vec![profile("srv_drive", "Drive 2TB")];
+        assert_eq!(my_servers(&store, &cfg), before);
+        assert_eq!(blob_of(&store), before);
+        assert!(
+            store.get("server_srv_photos").is_err(),
+            "a profile that was not here before the import kept its password"
+        );
+        let copies: Vec<String> = store
+            .list_accounts()
+            .unwrap()
+            .into_iter()
+            .filter(|k| {
+                k.split("srv_")
+                    .skip(1)
+                    .any(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+            })
+            .collect();
+        assert!(
+            copies.is_empty(),
+            "the copy left secrets behind: {copies:?}"
         );
     }
 
