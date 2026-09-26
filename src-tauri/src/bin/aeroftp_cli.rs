@@ -10236,6 +10236,25 @@ async fn upload_with_resume(
 /// the caller for the disconnect. The CLI renders progress through the
 /// `indicatif` callback and prints its own result line, so the graph runs
 /// with a `NoopDagObserver`.
+/// What a local file is before a download that may write it in place: its
+/// size and modification time, or nothing when it does not exist.
+fn local_file_state(path: &str) -> Option<(u64, Option<std::time::SystemTime>)> {
+    std::fs::metadata(path)
+        .ok()
+        .map(|meta| (meta.len(), meta.modified().ok()))
+}
+
+/// Remove what a failed or interrupted `--inplace` download left at
+/// `local_path`, and nothing else. A download that failed or was stopped
+/// before it opened the destination (the server had not answered yet) never
+/// touched the file: it is the user's, as it was `before`, and stays. Once the
+/// download truncated it, the old content is gone and the partial one goes.
+fn remove_inplace_leftover(local_path: &str, before: Option<(u64, Option<std::time::SystemTime>)>) {
+    if local_file_state(local_path) != before {
+        let _ = std::fs::remove_file(local_path);
+    }
+}
+
 /// Run a single transfer until it ends, or until Ctrl-C raises `cancelled`:
 /// `None` then, and the transfer future is dropped, which closes its
 /// connections and runs its guards (an atomic download removes its
@@ -10405,6 +10424,7 @@ async fn download_transfer_task(
         .map_err(|code| format!("connection failed with exit code {}", code))?;
 
     let progress_cb = aggregate.map(|aggregate| make_aggregate_progress_cb(aggregate, overall_pb));
+    let before = local_file_state(&local_path);
     let result = download_with_resume(
         &mut *provider,
         &remote_path,
@@ -10420,7 +10440,7 @@ async fn download_transfer_task(
     // transfer can leave a truncated file behind. When --partial is disabled, match
     // the single-file commands and remove that partial artifact.
     if result.is_err() && cli.inplace && !cli.partial {
-        let _ = std::fs::remove_file(&local_path);
+        remove_inplace_leftover(&local_path, before);
     }
 
     // Account transferred bytes, and keep the remote mtime on the local copy
@@ -32228,6 +32248,7 @@ async fn cmd_get(
     // DAG-ENGINE: route the plain classic single-file download through the
     // graph engine. `--partial` keeps the legacy `download_with_resume`
     // (its resume branch is not the plain leaf).
+    let before = local_file_state(local_path);
     let transfer = async move {
         if !cli.partial {
             cli_run_single_file_dag(
@@ -32260,9 +32281,9 @@ async fn cmd_get(
         }
         // The transfer was dropped mid-way: an atomic download removes its
         // `.aerotmp` as it goes, a `--partial` one keeps it for the resume, and
-        // only `--inplace` wrote the destination itself.
+        // only `--inplace` wrote the destination itself, if it got that far.
         if cli.inplace && !cli.partial {
-            let _ = std::fs::remove_file(local_path);
+            remove_inplace_leftover(local_path, before);
         }
         print_error(
             format,
@@ -32328,7 +32349,7 @@ async fn cmd_get(
             // destroy a pre-existing file the download never wrote. Match the batch
             // download guard: clean up only when --inplace and --partial is off.
             if cli.inplace && !cli.partial {
-                let _ = std::fs::remove_file(local_path);
+                remove_inplace_leftover(local_path, before);
             }
             print_error(
                 format,
@@ -32807,6 +32828,7 @@ async fn pget_fallback_single(
         }) as Box<dyn Fn(u64, u64) + Send>
     });
 
+    let before = local_file_state(local_path);
     match download_with_resume(
         &mut *provider,
         remote_path,
@@ -32864,7 +32886,7 @@ async fn pget_fallback_single(
             // removing it here would erase a pre-existing file. Only clean up the
             // final path when --inplace wrote it directly and --partial is off.
             if cli.inplace && !cli.partial {
-                let _ = std::fs::remove_file(local_path);
+                remove_inplace_leftover(local_path, before);
             }
             let code = provider_error_to_exit_code(&e);
             print_error(format, &format!("Download failed: {}", e), code);
@@ -76994,10 +77016,13 @@ mod tests {
     }
 
     /// A server that accepts a transfer and never finishes it: the one a user
-    /// stops with Ctrl-C. With `refuse`, it fails every download at once.
+    /// stops with Ctrl-C. With `refuse`, it fails every download at once;
+    /// with `write_then_refuse`, it writes a few bytes over the local file
+    /// first, as an in-place download cut short does.
     #[derive(Default)]
     struct StallingProvider {
         refuse: bool,
+        write_then_refuse: bool,
     }
 
     #[async_trait::async_trait]
@@ -77035,9 +77060,13 @@ mod tests {
         async fn download(
             &mut self,
             _remote_path: &str,
-            _local_path: &str,
+            local_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            if self.write_then_refuse {
+                std::fs::write(local_path, b"par").unwrap();
+                return Err(ProviderError::TransferFailed("cut short".to_string()));
+            }
             if self.refuse {
                 return Err(ProviderError::NotFound("/f.bin".to_string()));
             }
@@ -77247,9 +77276,25 @@ mod tests {
     /// removed the existing local file under `--inplace`.
     #[test]
     fn a_failed_inplace_download_keeps_a_file_it_never_wrote() {
-        let (code, kept) = inplace_get_over_an_existing_file(StallingProvider { refuse: true });
+        let (code, kept) = inplace_get_over_an_existing_file(StallingProvider {
+            refuse: true,
+            ..Default::default()
+        });
         assert_ne!(code, 0);
         assert_eq!(kept.as_deref(), Some(&b"keep me"[..]));
+    }
+
+    /// And what an in-place download did write before failing goes: the old
+    /// content was already overwritten, and a partial file must not pass for
+    /// the whole one.
+    #[test]
+    fn a_failed_inplace_download_removes_what_it_wrote() {
+        let (code, kept) = inplace_get_over_an_existing_file(StallingProvider {
+            write_then_refuse: true,
+            ..Default::default()
+        });
+        assert_ne!(code, 0);
+        assert_eq!(kept, None, "the partial file stayed");
     }
 
     /// An interrupted transfer is not retried: `--retries` is for failures,
