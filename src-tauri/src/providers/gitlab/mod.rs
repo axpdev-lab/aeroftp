@@ -1022,7 +1022,11 @@ impl StorageProvider for GitLabProvider {
         }
         let resolved_from = self.resolve_path(from);
         let resolved_to = self.resolve_path(to);
+        if resolved_from == resolved_to {
+            return Ok(());
+        }
 
+        // GitLab refuses a move onto an existing path (400, AlreadyExists).
         self.commit_actions(
             &format!("Rename {} to {} via AeroFTP", resolved_from, resolved_to),
             vec![serde_json::json!({
@@ -1034,6 +1038,13 @@ impl StorageProvider for GitLabProvider {
         .await?;
 
         Ok(())
+    }
+
+    /// No: a commit that moves a file onto an existing path is refused, so
+    /// there is no one-step replace, and the callers that need one refuse
+    /// before they write anything (a staged temporary would be a commit).
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1159,6 +1170,58 @@ impl StorageProvider for GitLabProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A rename is a commit with a `move` action: onto its own path it sent
+    /// a commit that moves the file onto the path it already has, which
+    /// GitLab refuses like any move onto an existing path. It is a no-op
+    /// everywhere else: no request is sent.
+    #[tokio::test]
+    async fn a_rename_onto_its_own_path_sends_no_commit() {
+        use std::sync::{Arc, Mutex};
+        let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&requests);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            seen.lock().unwrap().push(uri.path().to_string());
+            async { "{}" }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = GitLabProvider::new(GitLabConfig {
+            token: "t".to_string(),
+            api_base: format!("http://{addr}/api/v4"),
+            project_path: "group/project".to_string(),
+            branch: "main".to_string(),
+            initial_path: None,
+            accept_invalid_certs: false,
+        })
+        .unwrap();
+        provider.connected = true;
+        provider.rename("/a.txt", "/a.txt").await.expect("a no-op");
+        assert!(
+            requests.lock().unwrap().is_empty(),
+            "{:?}",
+            requests.lock().unwrap()
+        );
+    }
+
+    /// A commit that moves a file onto an existing path is refused, so there
+    /// is no one-step replace. The answer is no, so the callers that need one
+    /// (CLI `edit`, MCP `remote_edit`, the crypt marker paths) refuse before
+    /// they write.
+    #[tokio::test]
+    async fn gitlab_does_not_claim_an_atomic_replace() {
+        let mut p = GitLabProvider::new(GitLabConfig {
+            token: "t".to_string(),
+            api_base: "http://127.0.0.1/api/v4".to_string(),
+            project_path: "group/project".to_string(),
+            branch: "main".to_string(),
+            initial_path: None,
+            accept_invalid_certs: false,
+        })
+        .unwrap();
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
 
     #[test]
     fn parse_host_field_accepts_owner_repo_shorthand() {
