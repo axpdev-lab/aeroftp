@@ -377,6 +377,22 @@ impl DropboxProvider {
         Ok(())
     }
 
+    /// `path` in the user's own form, absolute: relative to the current
+    /// folder unless it starts with `/`, and not yet encoded.
+    fn absolute_user_path(&self, path: &str) -> String {
+        let joined = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("{}/{}", self.current_path, path)
+        };
+        format!("/{}", joined.trim_matches('/'))
+    }
+
+    /// `path` as Dropbox names it: [`Self::absolute_user_path`], encoded.
+    fn absolute_path(&self, path: &str) -> String {
+        self.normalize_path(&self.absolute_user_path(path))
+    }
+
     /// Normalize path for Dropbox API (empty string = root, paths start with /).
     ///
     /// This is the single chokepoint through which every outgoing remote path
@@ -385,16 +401,6 @@ impl DropboxProvider {
     /// would otherwise reject). Internal `current_path` stays in the user's
     /// original form; only the string actually sent to the API is encoded here,
     /// and [`Self::to_remote_entry`] decodes names on the way back.
-    /// `path`, relative to the current folder unless it starts with `/`,
-    /// as Dropbox names it.
-    fn absolute_path(&self, path: &str) -> String {
-        if path.starts_with('/') {
-            self.normalize_path(path)
-        } else {
-            self.normalize_path(&format!("{}/{}", self.current_path, path))
-        }
-    }
-
     fn normalize_path(&self, path: &str) -> String {
         let path = path.trim_matches('/');
         let normalized = if path.is_empty() {
@@ -1458,10 +1464,15 @@ impl StorageProvider for DropboxProvider {
             "to_path": to_path
         });
 
-        // Dropbox refuses a taken destination itself (409 `to/conflict`):
-        // that is the AlreadyExists sync and `mkdir -p` handle.
+        // Dropbox refuses a taken destination itself (409 `to/conflict/file`
+        // or `to/conflict/folder`): that is the AlreadyExists sync and
+        // `mkdir -p` handle. `to/conflict/file_ancestor` is a file where a
+        // parent folder should be, not a taken name.
         let _: serde_json::Value = match self.rpc_call("files/move_v2", &body).await {
-            Err(ProviderError::Other(message)) if message.contains("to/conflict") => {
+            Err(ProviderError::Other(message))
+                if message.contains("to/conflict/file/")
+                    || message.contains("to/conflict/folder/") =>
+            {
                 return Err(ProviderError::AlreadyExists(to.to_string()))
             }
             other => other?,
@@ -1476,7 +1487,9 @@ impl StorageProvider for DropboxProvider {
     /// the one set aside, which Dropbox keeps among its deleted files: see
     /// [`super::replace_by_setting_aside`].
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let (from, to) = (self.absolute_path(from), self.absolute_path(to));
+        // In the user's form: every call the helper makes encodes it once,
+        // and the encoding is not idempotent.
+        let (from, to) = (self.absolute_user_path(from), self.absolute_user_path(to));
         super::replace_by_setting_aside(self, &from, &to).await
     }
 
@@ -2918,16 +2931,29 @@ mod tests {
         DropboxProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_refusing_moves_with("file").await
+    }
+
+    /// A Dropbox double whose `files/move_v2` answers 409
+    /// `to/conflict/{conflict}`, and records every call.
+    async fn provider_refusing_moves_with(
+        conflict: &'static str,
+    ) -> (
+        DropboxProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         use std::sync::{Arc, Mutex};
         let calls: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&calls);
         let app = axum::Router::new().fallback(axum::routing::post(
             move |uri: axum::http::Uri| {
                 seen.lock().unwrap().push(uri.path().to_string());
-                async {
+                async move {
                     (
                         axum::http::StatusCode::CONFLICT,
-                        r#"{"error_summary":"to/conflict/file/..","error":{".tag":"to","to":{".tag":"conflict","conflict":{".tag":"file"}}}}"#,
+                        format!(
+                            r#"{{"error":{{".tag":"to","to":{{".tag":"conflict","conflict":{{".tag":"{conflict}"}}}}}},"error_summary":"to/conflict/{conflict}/.."}}"#
+                        ),
                     )
                 }
             },
@@ -2949,6 +2975,19 @@ mod tests {
         let outcome = provider.rename("/a.txt", "/b.txt").await;
         assert!(
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// `to/conflict/file_ancestor` says a parent of the destination is a
+    /// file, not that the name is taken: it is not AlreadyExists (exit 9),
+    /// which tells the caller that something sits at the destination.
+    #[tokio::test]
+    async fn a_file_where_a_parent_folder_should_be_is_not_a_taken_name() {
+        let (mut provider, _) = provider_refusing_moves_with("file_ancestor").await;
+        let outcome = provider.rename("/a.txt", "/f/b.txt").await;
+        assert!(
+            outcome.is_err() && !matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
     }
@@ -3074,6 +3113,20 @@ mod tests {
         let store = store.lock().unwrap().clone();
         assert_eq!(store.len(), 1, "{store:?}");
         assert_eq!(store["/b.txt"].0, "A");
+    }
+
+    /// A name Dropbox cannot store as it is (here a trailing space, stored as
+    /// `b\u{2420}`) was encoded once by the replace and once more by every
+    /// call it made: the look found nothing, and the file went to a third
+    /// name while `b ` kept its old content.
+    #[tokio::test]
+    async fn a_replace_encodes_a_restricted_name_once() {
+        let (mut provider, store, _) =
+            provider_on_dropbox_items(&[("/a.txt", "A", false), ("/b\u{2420}", "B", false)]).await;
+        provider.replace("/a.txt", "/b ").await.expect("replace");
+        let store = store.lock().unwrap().clone();
+        assert_eq!(store.len(), 1, "{store:?}");
+        assert_eq!(store["/b\u{2420}"].0, "A");
     }
 
     /// When the new file cannot be moved in, the one set aside gets its name
