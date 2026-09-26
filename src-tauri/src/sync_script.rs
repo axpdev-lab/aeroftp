@@ -263,7 +263,13 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
         }
     }
     for pattern in &profile.profile.exclude_patterns {
-        out.push_str(" \\\n  --exclude ");
+        // A pattern that starts with `-` would read as a flag after a space;
+        // the `=` form keeps it a value for the CLI and for the import.
+        out.push_str(if pattern.starts_with('-') {
+            " \\\n  --exclude="
+        } else {
+            " \\\n  --exclude "
+        });
         out.push_str(&shell_quote(pattern));
     }
     out.push('\n');
@@ -444,6 +450,12 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
     let sync_args = sync_args.ok_or(ParseError::MissingSync)?;
     let expanded_sync = expand_variables(&sync_args, &variables, sync_line)?;
     let parsed_sync = parse_sync(&expanded_sync, sync_line)?;
+    for flag in &parsed_sync.not_kept {
+        warnings.push(format!(
+            "line {}: {} is not part of the AeroSync template and is dropped on import; a new export will not write it",
+            sync_line, flag
+        ));
+    }
     // The template keeps no delete cap: an export always writes
     // UNATTENDED_MAX_DELETE. Say so when the script carries another value,
     // so a round trip through the GUI never widens (or narrows) it silently.
@@ -874,22 +886,31 @@ struct ParsedSyncLine {
     /// `--max-delete` as written, so an edited cap is reported on import
     /// instead of being replaced in silence by the next export.
     max_delete: Option<String>,
+    /// Flags the template has no field for, dropped on import and named in
+    /// a warning.
+    not_kept: Vec<String>,
 }
 
-/// The value after a SYNC flag. A next token starting with `--` is another
-/// flag, so the value is missing: taking it would swallow that flag
-/// (`--exclude --dry-run` turned a preview into a live run on re-export).
+/// The value of `flag`: the one written after `=`, or the next argument. As
+/// in the CLI, a separate value may not start with `-` (it would read as a
+/// flag there); such a value is written `--flag=<value>`.
 fn flag_value(
+    inline: Option<String>,
     it: &mut std::iter::Peekable<std::vec::IntoIter<String>>,
     flag: &str,
     what: &str,
     line: usize,
 ) -> Result<String, ParseError> {
-    match it.next_if(|next| !next.starts_with("--")) {
+    if let Some(value) = inline {
+        return Ok(value);
+    }
+    match it.next_if(|next| !next.starts_with('-')) {
         Some(value) => Ok(value),
         None => Err(ParseError::MalformedSync {
             line,
-            message: format!("{} expects {}", flag, what),
+            message: format!(
+                "{flag} expects {what}; a value that starts with '-' is written {flag}=<value>"
+            ),
         }),
     }
 }
@@ -908,14 +929,19 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
     let mut conflict_mode: Option<String> = None;
     let mut exclude_patterns: Vec<String> = Vec::new();
     let mut max_delete: Option<String> = None;
+    let mut not_kept: Vec<String> = Vec::new();
     let mut it = tokens.into_iter().peekable();
     while let Some(tok) = it.next() {
+        // `--flag=value` is the same flag with its value attached.
+        let (tok, inline) = match tok.split_once('=') {
+            Some((flag, value)) if flag.starts_with("--") => {
+                (flag.to_string(), Some(value.to_string()))
+            }
+            _ => (tok, None),
+        };
         match tok.as_str() {
             "--direction" => {
-                let v = it.next().ok_or_else(|| ParseError::MalformedSync {
-                    line,
-                    message: "--direction expects a value".to_string(),
-                })?;
+                let v = flag_value(inline, &mut it, "--direction", "a value", line)?;
                 direction =
                     Some(
                         flag_to_direction(&v).ok_or_else(|| ParseError::MalformedSync {
@@ -931,10 +957,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
             "--resync" => resync = true,
             "--watch" => watch = true,
             "--conflict-mode" => {
-                let v = it.next().ok_or_else(|| ParseError::MalformedSync {
-                    line,
-                    message: "--conflict-mode expects a value".to_string(),
-                })?;
+                let v = flag_value(inline, &mut it, "--conflict-mode", "a value", line)?;
                 if !CONFLICT_MODES.contains(&v.as_str()) {
                     return Err(ParseError::MalformedSync {
                         line,
@@ -944,20 +967,29 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
                 conflict_mode = Some(v);
             }
             "--max-delete" => {
-                max_delete = Some(flag_value(&mut it, "--max-delete", "a value", line)?);
+                max_delete = Some(flag_value(
+                    inline,
+                    &mut it,
+                    "--max-delete",
+                    "a value",
+                    line,
+                )?);
             }
             "--exclude" | "-e" => {
-                exclude_patterns.push(flag_value(&mut it, "--exclude", "a pattern", line)?);
+                exclude_patterns.push(flag_value(inline, &mut it, "--exclude", "a pattern", line)?);
             }
             other if other.starts_with("--") => {
-                // Forward-compat: ignore unknown long flags but try to
-                // also consume their value if it does not look like a
-                // flag itself.
-                if let Some(next) = it.peek() {
-                    if !next.starts_with('-') {
-                        let _ = it.next();
+                // A flag the template has no field for: dropped on import,
+                // and named so the user knows a new export will not carry
+                // it. Its value, when it has one, goes with it.
+                if inline.is_none() {
+                    if let Some(next) = it.peek() {
+                        if !next.starts_with('-') {
+                            let _ = it.next();
+                        }
                     }
                 }
+                not_kept.push(other.to_string());
             }
             _ => positional.push(tok),
         }
@@ -989,6 +1021,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
         conflict_mode,
         exclude_patterns,
         max_delete,
+        not_kept,
     })
 }
 
@@ -1048,6 +1081,42 @@ pub fn tokenize_script_line(body: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An exclusion that starts with a dash could not be exported and read
+    /// back: the import took `--exclude -tmp`, which the CLI refuses, and
+    /// dropped `--exclude=-tmp`, which the CLI takes, as an unknown flag. The
+    /// export now writes the `=` form, the import reads it, a separate value
+    /// that starts with `-` is refused as the CLI refuses it, and a flag the
+    /// template does not keep is named in a warning instead of vanishing.
+    #[test]
+    fn a_dash_exclusion_round_trips_and_unknown_flags_are_named() {
+        let mut profile = sample(SyncProfile::mirror());
+        profile.profile.exclude_patterns = vec!["-tmp".to_string(), "*.log".to_string()];
+        let script = generate_script(&profile, "test");
+        assert!(script.contains("--exclude=\"-tmp\""), "{script}");
+        let parsed = parse_script(&script).expect("imports");
+        assert_eq!(parsed.profile.profile.exclude_patterns, ["-tmp", "*.log"]);
+
+        let with = |sync: &str| {
+            script.replace("--direction upload", &format!("--direction upload {sync}"))
+        };
+        let err = parse_script(&with("--exclude -tmp")).unwrap_err();
+        assert!(err.to_string().contains("--exclude=<value>"), "{err}");
+        assert!(script.contains("--conflict-mode newer"), "{script}");
+        let parsed = parse_script(
+            &with("--backup-dir old --delta")
+                .replace("--conflict-mode newer", "--conflict-mode=rename"),
+        )
+        .expect("imports");
+        assert_eq!(parsed.profile.conflict_mode.as_deref(), Some("rename"));
+        for flag in ["--backup-dir", "--delta"] {
+            assert!(
+                parsed.warnings.iter().any(|w| w.contains(flag)),
+                "{flag} not named: {:?}",
+                parsed.warnings
+            );
+        }
+    }
 
     /// `$$` is a literal `$`, and a variable that was never SET is an error
     /// in the GUI import and in the batch alike: kept as text, `${REMOT}`

@@ -62558,13 +62558,22 @@ DISCONNECT\n";
         });
     }
 
-    /// A path with `$` in it, exported and run as a batch, is the same path:
-    /// the export writes `$$`, and `$weird` is no longer read as a variable.
+    /// Paths and patterns with `$`, a leading dash, an apostrophe or a
+    /// trailing backslash, exported and run as a batch, reach `sync` as they
+    /// were: the export writes `$$` and `--exclude=` for a dash, and `$weird`
+    /// is no longer read as a variable.
     #[test]
-    fn a_dollar_in_an_exported_path_reaches_sync_unchanged() {
+    fn edge_values_in_an_exported_script_reach_sync_unchanged() {
         on_big_stack(|| {
+            let mut preset = SyncProfile::mirror();
+            preset.exclude_patterns = vec![
+                "-tmp".to_string(),
+                "it's".to_string(),
+                "dir\\".to_string(),
+                "$HOME".to_string(),
+            ];
             let profile = AerosyncScriptProfile {
-                profile: SyncProfile::mirror(),
+                profile: preset,
                 local_path: "/data/$weird/a$$b".to_string(),
                 remote_path: "/r/${HOME}".to_string(),
                 connect_profile: Some("P".to_string()),
@@ -62579,11 +62588,18 @@ DISCONNECT\n";
             let script = generate_script(&profile, "test");
             let lines = read_batch_script(&script).unwrap_or_else(|e| panic!("{}: {script}", e.1));
             let sync = lines.iter().find(|l| l.cmd == "SYNC").expect("a SYNC line");
-            let Commands::Sync { local, remote, .. } = sync_of(sync) else {
+            let Commands::Sync {
+                local,
+                remote,
+                exclude,
+                ..
+            } = sync_of(sync)
+            else {
                 panic!("not a sync");
             };
             assert_eq!(local, "/data/$weird/a$$b");
             assert_eq!(remote, "/r/${HOME}");
+            assert_eq!(exclude, ["-tmp", "it's", "dir\\", "$HOME"]);
         });
     }
 
