@@ -722,7 +722,28 @@ impl CloudinaryProvider {
                 .get("public_id")
                 .cloned()
                 .unwrap_or_else(|| source.trim_matches('/').to_string());
-            let to_pid = target.trim_matches('/').to_string();
+            // The public id of an image or a video carries no extension (the
+            // listing adds `.{format}`), so the target name is not one. Onto
+            // an occupant its own public id is the one to take: with the
+            // extension a second asset appeared, listed under the same name,
+            // and the old one stayed. Onto a free name the format comes off.
+            let to_pid = match &displaced {
+                Some(occupant)
+                    if !occupant.is_dir && occupant.metadata.contains_key("public_id") =>
+                {
+                    occupant.metadata["public_id"].clone()
+                }
+                _ => {
+                    let named = target.trim_matches('/');
+                    match (kind.as_str(), entry.metadata.get("format")) {
+                        ("image" | "video", Some(format)) if !format.is_empty() => named
+                            .strip_suffix(&format!(".{format}"))
+                            .unwrap_or(named)
+                            .to_string(),
+                        _ => named.to_string(),
+                    }
+                }
+            };
             // Without `overwrite` (default false) Cloudinary refuses a target
             // public id that is already taken (rename reference); a replace
             // asks for the overwrite.
@@ -2163,13 +2184,26 @@ mod tests {
         (provider, renames, updates)
     }
 
+    /// The value of `key` in a query string.
+    fn query_value(query: &str, key: &str) -> Option<String> {
+        url::form_urlencoded::parse(query.as_bytes())
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.into_owned())
+    }
+
+    /// An image's public id has no extension: renamed to `b.jpg` it takes
+    /// the public id `b`. With `b.jpg` it was listed as `b.jpg` beside any
+    /// asset `b`, also listed as `b.jpg`.
     #[tokio::test]
     async fn file_rename_never_asks_for_overwrite() {
         let (mut provider, renames, _) = provider_for_file_rename(false, false).await;
         provider.rename("/a.jpg", "/b.jpg").await.expect("rename");
         let renames = renames.lock().unwrap().clone();
         assert_eq!(renames.len(), 1, "{renames:?}");
-        assert!(renames[0].contains("to_public_id=b"), "{renames:?}");
+        assert_eq!(
+            query_value(&renames[0], "to_public_id").as_deref(),
+            Some("b")
+        );
         assert!(!renames[0].contains("overwrite"), "{renames:?}");
     }
 
@@ -2185,17 +2219,28 @@ mod tests {
     }
 
     /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
-    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
-    /// forwards it to `rename`, which refuses an occupied destination.
+    /// `remote_edit`, the AeroCrypt marker publish). On a fixed-folder
+    /// account it takes the public id of the asset it replaces, with
+    /// `overwrite=true`: with the target name `b.jpg` as the public id it
+    /// created a second asset beside `b` and the old one stayed.
     #[tokio::test]
     async fn replace_renames_over_an_existing_destination_with_overwrite() {
         let (mut provider, renames, _) = provider_for_file_rename(true, false).await;
         provider.replace("/a.jpg", "/b.jpg").await.expect("replace");
         let renames = renames.lock().unwrap().clone();
         assert_eq!(renames.len(), 1, "{renames:?}");
-        assert!(renames[0].contains("from_public_id=a"), "{renames:?}");
-        assert!(renames[0].contains("to_public_id=b"), "{renames:?}");
-        assert!(renames[0].contains("overwrite=true"), "{renames:?}");
+        assert_eq!(
+            query_value(&renames[0], "from_public_id").as_deref(),
+            Some("a")
+        );
+        assert_eq!(
+            query_value(&renames[0], "to_public_id").as_deref(),
+            Some("b")
+        );
+        assert_eq!(
+            query_value(&renames[0], "overwrite").as_deref(),
+            Some("true")
+        );
     }
 
     /// On a dynamic-folder account two assets may share a display name, so
