@@ -392,6 +392,9 @@ pub struct YandexDiskProvider {
     access_token: SecretString,
     connected: bool,
     current_path: String,
+    /// The API base of a local double, in tests.
+    #[cfg(test)]
+    api_base_override: Option<String>,
 }
 
 impl YandexDiskProvider {
@@ -407,7 +410,18 @@ impl YandexDiskProvider {
             access_token: SecretString::from(access_token),
             connected: false,
             current_path: initial_path.unwrap_or_else(|| "/".to_string()),
+            #[cfg(test)]
+            api_base_override: None,
         }
+    }
+
+    /// `API_BASE`, pointed at a local double in tests.
+    fn api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(base) = &self.api_base_override {
+            return base;
+        }
+        API_BASE
     }
 
     fn auth_header(&self) -> HeaderValue {
@@ -490,6 +504,42 @@ impl YandexDiskProvider {
         let status = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
         Self::classify_yandex_error(status, &body)
+    }
+
+    /// Move `from` to `to`; with `overwrite` the destination is replaced.
+    async fn move_resource(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let from_resolved = self.resolve_path(from);
+        let to_resolved = self.resolve_path(to);
+        if from_resolved == to_resolved {
+            return Ok(());
+        }
+        let from_encoded = encode_yd_path(&from_resolved);
+        let to_encoded = encode_yd_path(&to_resolved);
+        let url = format!(
+            "{}/resources/move?from={}&path={}&overwrite={overwrite}",
+            self.api_base(),
+            from_encoded,
+            to_encoded
+        );
+        yd_log(&format!("rename: {} -> {}", from_resolved, to_resolved));
+
+        let resp = self
+            .send_with_reauth(|this| {
+                this.client
+                    .post(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
+
+        self.finish_resource_operation(resp).await
     }
 
     /// 202 only acknowledges a queued mutation. Waiting for its operation is
@@ -651,7 +701,7 @@ impl YandexDiskProvider {
     /// Get metadata for a single resource.
     async fn get_resource(&mut self, path: &str) -> Result<YdResource, ProviderError> {
         let encoded = encode_yd_path(path);
-        let url = format!("{}/resources?path={}", API_BASE, encoded);
+        let url = format!("{}/resources?path={}", self.api_base(), encoded);
         yd_log(&format!("STAT {}", url));
 
         let resp = self
@@ -1463,29 +1513,27 @@ impl StorageProvider for YandexDiskProvider {
     // exists for the separate case of items already in trash from another
     // client.
 
+    /// `resources/move` without `overwrite`, which Yandex then refuses onto
+    /// a taken path (409).
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
+        self.move_resource(from, to, false).await
+    }
+
+    /// `resources/move` with `overwrite=true`: Yandex puts the source in
+    /// place of what the destination holds, in one operation. Never across
+    /// types: the overwrite would put a file in place of a whole folder.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        if self.resolve_path(from) != self.resolve_path(to) {
+            let source = self.stat(from).await?;
+            match self.stat(to).await {
+                Ok(occupant) => {
+                    super::refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?
+                }
+                Err(ProviderError::NotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
         }
-        let from_resolved = self.resolve_path(from);
-        let to_resolved = self.resolve_path(to);
-        let from_encoded = encode_yd_path(&from_resolved);
-        let to_encoded = encode_yd_path(&to_resolved);
-        let url = format!(
-            "{}/resources/move?from={}&path={}",
-            API_BASE, from_encoded, to_encoded
-        );
-        yd_log(&format!("rename: {} -> {}", from_resolved, to_resolved));
-
-        let resp = self
-            .send_with_reauth(|this| {
-                this.client
-                    .post(&url)
-                    .header(AUTHORIZATION, this.auth_header())
-            })
-            .await?;
-
-        self.finish_resource_operation(resp).await
+        self.move_resource(from, to, true).await
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2009,6 +2057,119 @@ impl StorageProvider for YandexDiskProvider {
 
 #[cfg(test)]
 mod tests {
+
+    /// A Yandex Disk double holding the files `/a.txt` and `/b.txt` and the
+    /// folder `/d`. A move onto a taken path without `overwrite=true`
+    /// answers 409 `DiskResourceAlreadyExistsError`, as Yandex does; any
+    /// other move answers 201. Returns a provider on it and every move query.
+    async fn provider_on_yandex() -> (
+        YandexDiskProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let moves: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&moves);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let query = urlencoding::decode(req.uri().query().unwrap_or(""))
+                        .unwrap()
+                        .to_string();
+                    let arg = |name: &str| {
+                        query
+                            .split('&')
+                            .find_map(|pair| pair.strip_prefix(&format!("{name}=")))
+                            .unwrap_or("")
+                            .to_string()
+                    };
+                    let kind = |path: &str| match path {
+                        "disk:/a.txt" | "disk:/b.txt" => Some("file"),
+                        "disk:/d" => Some("dir"),
+                        _ => None,
+                    };
+                    if req.uri().path().ends_with("/resources/move") {
+                        seen.lock().unwrap().push(query.clone());
+                        return if kind(&arg("path")).is_some() && arg("overwrite") != "true" {
+                            (
+                                axum::http::StatusCode::CONFLICT,
+                                r#"{"error":"DiskResourceAlreadyExistsError","description":"Resource already exists"}"#,
+                            )
+                                .into_response()
+                        } else {
+                            (axum::http::StatusCode::CREATED, "{}").into_response()
+                        };
+                    }
+                    let path = arg("path");
+                    match kind(&path) {
+                        Some(kind) => axum::Json(serde_json::json!({
+                            "name": path.rsplit('/').next().unwrap(),
+                            "path": path,
+                            "type": kind,
+                        }))
+                        .into_response(),
+                        None => (
+                            axum::http::StatusCode::NOT_FOUND,
+                            r#"{"error":"DiskNotFoundError","description":"Resource not found"}"#,
+                        )
+                            .into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = YandexDiskProvider::new("t".to_string(), None);
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, moves)
+    }
+
+    /// A rename moves without `overwrite`, and Yandex refuses a taken path:
+    /// AlreadyExists.
+    #[tokio::test]
+    async fn a_rename_onto_a_taken_path_is_already_exists() {
+        let (mut provider, moves) = provider_on_yandex().await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(moves.lock().unwrap()[0].ends_with("overwrite=false"));
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`): it forwarded to the rename, which Yandex refuses onto
+    /// the file it is meant to replace. It now moves with `overwrite=true`.
+    #[tokio::test]
+    async fn a_replace_moves_with_overwrite() {
+        let (mut provider, moves) = provider_on_yandex().await;
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        let moves = moves.lock().unwrap().clone();
+        assert_eq!(moves.len(), 1, "{moves:?}");
+        assert!(moves[0].ends_with("overwrite=true"), "{moves:?}");
+    }
+
+    /// With `overwrite=true` a file would take the place of a whole folder,
+    /// or a folder of a file: both are refused before any move.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_is_refused_before_any_move() {
+        let (mut provider, moves) = provider_on_yandex().await;
+        for (from, to) in [("/a.txt", "/d"), ("/d", "/b.txt")] {
+            let outcome = provider.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+        }
+        assert!(
+            moves.lock().unwrap().is_empty(),
+            "{:?}",
+            moves.lock().unwrap()
+        );
+    }
 
     #[test]
     fn yandex_async_operation_requires_completion_and_a_trusted_url() {
