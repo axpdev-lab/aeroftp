@@ -723,6 +723,33 @@ impl FtpProvider {
         Ok(entries)
     }
 
+    /// Whether the server is known to hold an item at `to` other than
+    /// `from`. A look that cannot be made (a write-only folder whose listing
+    /// is refused, a dropped data connection) answers no: it is unknown, not
+    /// occupied, and the rename goes out as it did before the look existed.
+    /// Declared, not closed: there, a Unix server that renames over an
+    /// existing file overwrites one the look could not see. Refusing instead
+    /// would make every rename in a write-only folder fail.
+    ///
+    /// A rename that only changes the letter case needs its own look: on a
+    /// case-insensitive server a stat of the new spelling finds the source
+    /// itself. There the parent listing decides, since it names each entry
+    /// as stored: only an entry spelled exactly like `to` is another item.
+    async fn holds_another_item_at(&mut self, from: &str, to: &str) -> bool {
+        if from.to_lowercase() != to.to_lowercase() {
+            return self.stat(to).await.is_ok();
+        }
+        let (parent, name) = match to.rsplit_once('/') {
+            Some(("", name)) => ("/", name),
+            Some((parent, name)) => (parent, name),
+            None => ("", to),
+        };
+        match self.list(parent).await {
+            Ok(entries) => entries.iter().any(|entry| entry.name == name),
+            Err(_) => false,
+        }
+    }
+
     /// RNFR `from`, RNTO `to`.
     async fn rename_on_server(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
@@ -1724,13 +1751,12 @@ impl StorageProvider for FtpProvider {
     /// first; a file written there between the look and the RNTO is still
     /// overwritten on the servers that overwrite.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        if from.trim_end_matches('/') == to.trim_end_matches('/') {
+        let (from, to) = (from.trim_end_matches('/'), to.trim_end_matches('/'));
+        if from == to {
             return Ok(());
         }
-        match self.stat(to).await {
-            Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
-            Err(ProviderError::NotFound(_)) => {}
-            Err(e) => return Err(e),
+        if self.holds_another_item_at(from, to).await {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
         }
         self.rename_on_server(from, to).await
     }
@@ -5321,15 +5347,26 @@ mod rename_contract_tests {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::{TcpListener, TcpStream};
 
+    /// How a scripted server differs from the default one.
+    #[derive(Clone, Copy, Default)]
+    struct Quirks {
+        /// Names match whatever their letter case (MLST of `/A.TXT` finds
+        /// `/a.txt`), as on Windows servers.
+        case_insensitive: bool,
+        /// A write-only drop folder: no MLST/MLSD, and LIST is refused.
+        listing_denied: bool,
+    }
+
     /// One scripted control connection of a server that holds the files
     /// `files` in `/`, advertises MLST and MLSD, answers MLST on the control
     /// channel and MLSD over a PASV data connection, and renames on
-    /// RNFR/RNTO over an existing file, as vsftpd does. Every RNFR and RNTO
-    /// is logged.
+    /// RNFR/RNTO over an existing file, as vsftpd does, unless `quirks` says
+    /// otherwise. Every RNFR and RNTO is logged.
     async fn serve_connection(
         stream: TcpStream,
         files: Arc<Mutex<Vec<String>>>,
         log: Arc<Mutex<Vec<String>>>,
+        quirks: Quirks,
     ) {
         let (read, mut write) = stream.into_split();
         let mut lines = BufReader::new(read).lines();
@@ -5342,12 +5379,21 @@ mod rename_contract_tests {
             let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
             let cmd = cmd.to_uppercase();
             let argument = argument.trim().to_string();
-            let present = |path: &str| files.lock().unwrap().iter().any(|f| f == path);
+            let present =
+                |path: &str| {
+                    files.lock().unwrap().iter().any(|f| {
+                        f == path || (quirks.case_insensitive && f.eq_ignore_ascii_case(path))
+                    })
+                };
             let reply = match cmd.as_str() {
                 "USER" => "331 password please\r\n".to_string(),
                 "PASS" => "230 logged in\r\n".to_string(),
+                "FEAT" if quirks.listing_denied => "211-Features:\r\n UTF8\r\n211 End\r\n".to_string(),
                 "FEAT" => "211-Features:\r\n MLST type*;size*;modify*;\r\n MLSD\r\n211 End\r\n"
                     .to_string(),
+                "LIST" | "NLST" | "MLSD" | "MLST" if quirks.listing_denied => {
+                    "550 Permission denied\r\n".to_string()
+                }
                 "PWD" => "257 \"/\" is current\r\n".to_string(),
                 "MLST" if argument == "/" || argument.is_empty() => {
                     "250-Listing /\r\n type=dir; /\r\n250 End\r\n".to_string()
@@ -5397,7 +5443,11 @@ mod rename_contract_tests {
                 "RNTO" => {
                     log.lock().unwrap().push(format!("RNTO {argument}"));
                     let mut files = files.lock().unwrap();
-                    files.retain(|f| *f != argument && *f != rename_from);
+                    files.retain(|f| {
+                        !(f == &argument
+                            || f == &rename_from
+                            || (quirks.case_insensitive && f.eq_ignore_ascii_case(&rename_from)))
+                    });
                     files.push(argument);
                     "250 Renamed\r\n".to_string()
                 }
@@ -5416,9 +5466,20 @@ mod rename_contract_tests {
     /// A connected provider on a scripted server holding `/a.txt` and
     /// `/b.txt`. Returns it and the RNFR/RNTO log.
     async fn provider_on_scripted_server() -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+        provider_on_server_with(&["/a.txt", "/b.txt"], Quirks::default()).await
+    }
+
+    /// A connected provider on a scripted server holding `files`, with
+    /// `quirks`. Returns it and the RNFR/RNTO log.
+    async fn provider_on_server_with(
+        files: &[&str],
+        quirks: Quirks,
+    ) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let files = Arc::new(Mutex::new(vec!["/a.txt".to_string(), "/b.txt".to_string()]));
+        let files = Arc::new(Mutex::new(
+            files.iter().map(|f| f.to_string()).collect::<Vec<_>>(),
+        ));
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&log);
         tokio::spawn(async move {
@@ -5427,6 +5488,7 @@ mod rename_contract_tests {
                     stream,
                     Arc::clone(&files),
                     Arc::clone(&seen),
+                    quirks,
                 ));
             }
         });
@@ -5473,5 +5535,57 @@ mod rename_contract_tests {
         let (mut provider, log) = provider_on_scripted_server().await;
         provider.replace("/a.txt", "/b.txt").await.expect("replace");
         assert_eq!(*log.lock().unwrap(), ["RNFR /a.txt", "RNTO /b.txt"]);
+    }
+
+    /// On a case-insensitive server MLST of `/Readme.TXT` finds the source
+    /// `/readme.txt` itself, so a rename that only changes the letter case
+    /// was refused as AlreadyExists.
+    #[tokio::test]
+    async fn a_case_only_rename_on_a_case_insensitive_server_goes_through() {
+        let quirks = Quirks {
+            case_insensitive: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log) = provider_on_server_with(&["/readme.txt"], quirks).await;
+        provider
+            .rename("/readme.txt", "/Readme.TXT")
+            .await
+            .expect("a case-only rename");
+        assert_eq!(
+            *log.lock().unwrap(),
+            ["RNFR /readme.txt", "RNTO /Readme.TXT"]
+        );
+    }
+
+    /// On a case-sensitive server the two spellings are two files, and the
+    /// other one is not overwritten.
+    #[tokio::test]
+    async fn a_case_only_rename_onto_a_distinct_file_is_refused() {
+        let (mut provider, log) =
+            provider_on_server_with(&["/readme.txt", "/Readme.TXT"], Quirks::default()).await;
+        let outcome = provider.rename("/readme.txt", "/Readme.TXT").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+    }
+
+    /// In a write-only drop folder the listing is refused, so the look for an
+    /// occupied destination can never answer "free": every rename failed. A
+    /// look that cannot be made is unknown, not occupied, and the rename goes
+    /// out as it did before the look existed.
+    #[tokio::test]
+    async fn a_refused_listing_does_not_block_the_rename() {
+        let quirks = Quirks {
+            listing_denied: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log) = provider_on_server_with(&["/a.txt"], quirks).await;
+        provider
+            .rename("/a.txt", "/c.txt")
+            .await
+            .expect("the rename goes out");
+        assert_eq!(*log.lock().unwrap(), ["RNFR /a.txt", "RNTO /c.txt"]);
     }
 }
