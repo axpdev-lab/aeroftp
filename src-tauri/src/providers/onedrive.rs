@@ -1032,17 +1032,21 @@ impl OneDriveProvider {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            if status == reqwest::StatusCode::CONFLICT || text.contains("nameAlreadyExists") {
+            // Only Graph's own code for a taken name: Graph answers 409 for
+            // other conflicts too, a missing parent among them.
+            if text.contains("nameAlreadyExists") {
                 return Err(ProviderError::AlreadyExists(to.to_string()));
             }
             return Err(ProviderError::Other(format!(
-                "Rename/move failed: {}",
+                "Rename/move failed ({status}): {}",
                 sanitize_api_error(&text)
             )));
         }
 
-        // Invalidate old path from cache
-        self.path_cache.remove(from_path.trim_matches('/'));
+        // The ids cached for either path and everything under them now point
+        // at a moved item, or at the one a replace sent to the recycle bin.
+        super::forget_cached_subtree(&mut self.path_cache, from_path.trim_matches('/'));
+        super::forget_cached_subtree(&mut self.path_cache, to_path.trim_matches('/'));
 
         info!("Renamed {} to {}", from, to);
         Ok(())
@@ -2770,6 +2774,13 @@ mod tests {
                     };
                     if req.method() == axum::http::Method::PATCH {
                         seen.lock().unwrap().push(format!("{path}?{query}"));
+                        let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                            .await
+                            .unwrap();
+                        if String::from_utf8_lossy(&body).contains("/missing") {
+                            // Graph's 409 for a parent that is not there.
+                            return refused(axum::http::StatusCode::CONFLICT, "conflict");
+                        }
                         let replace = urlencoding::decode(&query)
                             .unwrap()
                             .contains("conflictBehavior=replace");
@@ -2820,6 +2831,36 @@ mod tests {
         let outcome = provider.rename("/a.txt", "/b.txt").await;
         assert!(
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// After a replace the id cached for `b.txt` was the item Graph sent to
+    /// the recycle bin, and after a folder rename the ids cached under the
+    /// old path were the moved items: a later delete of `b.txt` or of a new
+    /// `d/x.txt` acted on them. Both paths and their subtrees are forgotten.
+    #[tokio::test]
+    async fn a_rename_or_replace_forgets_the_ids_cached_under_both_paths() {
+        let (mut provider, _) = provider_on_graph(false).await;
+        for (path, id) in [("b.txt", "B"), ("d", "D"), ("d/x.txt", "X"), ("dx", "DX")] {
+            provider.path_cache.insert(path.to_string(), id.to_string());
+        }
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        provider.rename("/d", "/e").await.expect("rename");
+        let mut cached: Vec<&str> = provider.path_cache.keys().map(String::as_str).collect();
+        cached.sort();
+        assert_eq!(cached, ["dx"], "a sibling sharing the prefix stays");
+    }
+
+    /// Graph answers 409 for other conflicts than a taken name, a missing
+    /// parent among them: only `nameAlreadyExists` is AlreadyExists (exit
+    /// 9), which says something sits at the destination.
+    #[tokio::test]
+    async fn only_name_already_exists_is_a_taken_name() {
+        let (mut provider, _) = provider_on_graph(false).await;
+        let outcome = provider.rename("/a.txt", "/missing/b.txt").await;
+        assert!(
+            outcome.is_err() && !matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
     }

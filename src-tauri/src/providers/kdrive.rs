@@ -1320,11 +1320,15 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            let lower = body.to_ascii_lowercase();
-            if status == reqwest::StatusCode::CONFLICT
-                || lower.contains("conflict")
-                || lower.contains("already_exist")
-            {
+            // Only the error code that says the name is taken: a status or a
+            // word in the body (a file named `conflict.txt`) says nothing of it.
+            let code = serde_json::from_str::<ApiResponse<serde_json::Value>>(&body)
+                .ok()
+                .and_then(|r| r.error)
+                .and_then(|e| e.code)
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if code == "conflict_error" || code.contains("already_exist") {
                 return Err(ProviderError::AlreadyExists(resolved_to));
             }
             return Err(api_failure("Rename failed", Some(status), &body));
@@ -2339,12 +2343,13 @@ mod tests {
     }
 
     /// A kDrive double whose root (id 1) holds `a.txt` (11) and, when
-    /// `b_taken`, `b.txt` (12). A move answers 409 `conflict_error` when
-    /// `move_conflicts` (a name taken since the look), success otherwise.
+    /// `b_taken`, `b.txt` (12). A move answers that status and error code
+    /// when `move_refusal` is `Some((status, error code))`, success
+    /// otherwise.
     /// Returns a provider on it and the path of every move.
     async fn provider_on_kdrive_root(
         b_taken: bool,
-        move_conflicts: bool,
+        move_refusal: Option<(u16, &'static str)>,
     ) -> (
         KDriveProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
@@ -2363,15 +2368,16 @@ mod tests {
                     };
                     if path.contains("/move/") {
                         seen.lock().unwrap().push(path);
-                        return if move_conflicts {
-                            (
-                                axum::http::StatusCode::CONFLICT,
-                                r#"{"result":"error","error":{"code":"conflict_error","description":"A file with this name already exists"}}"#,
+                        return match move_refusal {
+                            Some((status, code)) => (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                format!(
+                                    r#"{{"result":"error","error":{{"code":"{code}","description":"refused, see conflict.txt"}}}}"#
+                                ),
                             )
-                                .into_response()
-                        } else {
-                            axum::Json(serde_json::json!({ "result": "success", "data": {} }))
-                                .into_response()
+                                .into_response(),
+                            None => axum::Json(serde_json::json!({ "result": "success", "data": {} }))
+                                .into_response(),
                         };
                     }
                     let body = match path.as_str() {
@@ -2407,7 +2413,7 @@ mod tests {
     /// looked up first and a taken one refused before any move.
     #[tokio::test]
     async fn rename_refuses_a_taken_destination_before_moving() {
-        let (mut provider, moves) = provider_on_kdrive_root(true, false).await;
+        let (mut provider, moves) = provider_on_kdrive_root(true, None).await;
         let outcome = provider.rename("/a.txt", "/b.txt").await;
         assert!(
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
@@ -2424,13 +2430,28 @@ mod tests {
     /// 409; that is AlreadyExists, not a server error.
     #[tokio::test]
     async fn a_move_kdrive_refuses_for_a_taken_name_is_already_exists() {
-        let (mut provider, moves) = provider_on_kdrive_root(false, true).await;
+        let (mut provider, moves) =
+            provider_on_kdrive_root(false, Some((409, "conflict_error"))).await;
         let outcome = provider.rename("/a.txt", "/b.txt").await;
         assert!(
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
         assert_eq!(moves.lock().unwrap().len(), 1);
+    }
+
+    /// A refused move whose error code is not `conflict_error` is not a
+    /// taken name, whatever its status or its text says (here a 409 about a
+    /// missing folder, whose description mentions `conflict.txt`).
+    #[tokio::test]
+    async fn only_a_conflict_error_code_is_a_taken_name() {
+        let (mut provider, _) =
+            provider_on_kdrive_root(false, Some((409, "destination_not_found"))).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            outcome.is_err() && !matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
     }
 
     /// Upload a 300 KB file to the v3 upload route of a local fixture that
