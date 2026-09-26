@@ -6018,3 +6018,325 @@ mod hash_negotiation_tests {
         let _ = provider.disconnect().await;
     }
 }
+
+/// The verdict of a transfer, end to end on the real crate: what the server
+/// says after the data, and what the session can still do afterwards.
+#[cfg(test)]
+mod transfer_verdict_tests {
+    use super::*;
+    use std::sync::Mutex;
+    use std::time::Duration;
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::{TcpListener, TcpStream};
+
+    /// How the scripted server ends each transfer.
+    #[derive(Clone)]
+    struct Script {
+        /// RETR: the bytes sent on the data connection before it closes.
+        retr_payload: Vec<u8>,
+        /// RETR: the reply(ies) after the data connection closes.
+        retr_reply: &'static str,
+        /// STOR: the reply once the data connection ends, unless the client
+        /// sent ABOR first.
+        stor_reply: &'static str,
+    }
+
+    /// A server that answers every control connection it is given with
+    /// `script`, recording each command line in `log`.
+    async fn scripted_server(script: Script) -> (u16, Arc<Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let data_listener = Arc::new(TcpListener::bind("127.0.0.1:0").await.unwrap());
+        let port = listener.local_addr().unwrap().port();
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let server_log = Arc::clone(&log);
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(serve(
+                    stream,
+                    Arc::clone(&data_listener),
+                    script.clone(),
+                    Arc::clone(&server_log),
+                ));
+            }
+        });
+        (port, log)
+    }
+
+    async fn serve(
+        stream: TcpStream,
+        data_listener: Arc<TcpListener>,
+        script: Script,
+        log: Arc<Mutex<Vec<String>>>,
+    ) {
+        let data_port = data_listener.local_addr().unwrap().port();
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        if write.write_all(b"220 ready\r\n").await.is_err() {
+            return;
+        }
+        while let Ok(Some(line)) = lines.next_line().await {
+            log.lock().unwrap().push(line.clone());
+            let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+            let reply = match cmd.as_str() {
+                "USER" => "331 password please\r\n".to_string(),
+                "PASS" => "230 logged in\r\n".to_string(),
+                "PWD" => "257 \"/\" is current\r\n".to_string(),
+                "REST" => "350 restarting\r\n".to_string(),
+                "PASV" => format!(
+                    "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                    data_port / 256,
+                    data_port % 256
+                ),
+                "RETR" => {
+                    let (mut data, _) = data_listener.accept().await.unwrap();
+                    if write.write_all(b"150 opening\r\n").await.is_err() {
+                        return;
+                    }
+                    // The client may close early: a failed write is its choice.
+                    let _ = data.write_all(&script.retr_payload).await;
+                    drop(data);
+                    script.retr_reply.to_string()
+                }
+                "STOR" => {
+                    let (mut data, _) = data_listener.accept().await.unwrap();
+                    if write.write_all(b"150 send it\r\n").await.is_err() {
+                        return;
+                    }
+                    let _ = data.read_to_end(&mut Vec::new()).await;
+                    // A client that gives up sends ABOR before it closes the
+                    // data connection, so the ABOR is already on its way.
+                    match tokio::time::timeout(Duration::from_millis(200), lines.next_line()).await
+                    {
+                        Ok(Ok(Some(next))) => {
+                            log.lock().unwrap().push(next.clone());
+                            if next.to_uppercase().starts_with("ABOR") {
+                                "426 transfer aborted\r\n226 ABOR successful\r\n".to_string()
+                            } else {
+                                return;
+                            }
+                        }
+                        _ => script.stor_reply.to_string(),
+                    }
+                }
+                _ => "200 ok\r\n".to_string(),
+            };
+            if write.write_all(reply.as_bytes()).await.is_err() {
+                return;
+            }
+        }
+    }
+
+    async fn connected(port: u16) -> FtpProvider {
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider.connect().await.expect("the dial must succeed");
+        provider
+    }
+
+    /// A server that fails a download after sending its data: the reply after
+    /// the stream is the verdict, and the download is an error. Dropping the
+    /// stream instead of finishing it would read the transfer as done.
+    #[tokio::test]
+    async fn a_download_the_server_fails_after_the_data_is_an_error() {
+        for reply in [
+            "426 Connection closed; transfer aborted.\r\n",
+            "451 Requested action aborted: local error.\r\n",
+        ] {
+            let (port, _) = scripted_server(Script {
+                retr_payload: b"0123456789".to_vec(),
+                retr_reply: reply,
+                stor_reply: "226 done\r\n",
+            })
+            .await;
+            let mut provider = connected(port).await;
+            let dir = tempfile::tempdir().unwrap();
+            let local = dir.path().join("f.bin");
+            let outcome = tokio::time::timeout(
+                Duration::from_secs(10),
+                provider.download("/f.bin", local.to_str().unwrap(), None),
+            )
+            .await
+            .expect("the download must end");
+            assert!(outcome.is_err(), "{reply:?} was read as success");
+        }
+    }
+
+    /// The same for an upload: `451`, `452` and `552` after the data refuse
+    /// the file, and the upload is an error.
+    #[tokio::test]
+    async fn an_upload_the_server_refuses_after_the_data_is_an_error() {
+        for reply in [
+            "451 Requested action aborted: local error.\r\n",
+            "452 Insufficient storage space.\r\n",
+            "552 Exceeded storage allocation.\r\n",
+        ] {
+            let (port, _) = scripted_server(Script {
+                retr_payload: Vec::new(),
+                retr_reply: "226 done\r\n",
+                stor_reply: reply,
+            })
+            .await;
+            let mut provider = connected(port).await;
+            let dir = tempfile::tempdir().unwrap();
+            let local = dir.path().join("f.bin");
+            std::fs::write(&local, b"payload").unwrap();
+            let outcome = tokio::time::timeout(
+                Duration::from_secs(10),
+                provider.upload(local.to_str().unwrap(), "/f.bin", None),
+            )
+            .await
+            .expect("the upload must end");
+            assert!(outcome.is_err(), "{reply:?} was read as success");
+        }
+    }
+
+    /// A range the server cuts short and then fails (`451`) is an error, not
+    /// a shorter read: only a file that really ends inside the range (`226`)
+    /// may return fewer bytes than asked.
+    #[tokio::test]
+    async fn a_range_the_server_cuts_short_is_an_error() {
+        let (port, _) = scripted_server(Script {
+            retr_payload: vec![b'x'; 40],
+            retr_reply: "451 Requested action aborted: local error.\r\n",
+            stor_reply: "226 done\r\n",
+        })
+        .await;
+        let mut provider = connected(port).await;
+        let cut = provider.read_range("/f.bin", 0, 100).await;
+        assert!(cut.is_err(), "a truncated range was returned as Ok");
+
+        let (port, _) = scripted_server(Script {
+            retr_payload: vec![b'x'; 40],
+            retr_reply: "226 done\r\n",
+            stor_reply: "226 done\r\n",
+        })
+        .await;
+        let mut provider = connected(port).await;
+        let short = provider.read_range("/f.bin", 0, 100).await.unwrap();
+        assert_eq!(
+            short.len(),
+            40,
+            "a file shorter than the range is read whole"
+        );
+    }
+
+    /// A range that stops before the end of the file gets the server's
+    /// complaint about the early close (here `426` and a `226` after it): the
+    /// session is dropped, and the next operation dials a fresh one instead of
+    /// reading the leftover `226` as its own reply.
+    #[tokio::test]
+    async fn a_range_that_stops_before_the_end_leaves_the_provider_usable() {
+        let (port, _) = scripted_server(Script {
+            retr_payload: vec![b'x'; 100],
+            retr_reply: "426 Connection closed; transfer aborted.\r\n226 closing\r\n",
+            stor_reply: "226 done\r\n",
+        })
+        .await;
+        let mut provider = connected(port).await;
+        let first = provider.read_range("/f.bin", 0, 10).await.unwrap();
+        assert_eq!(first, vec![b'x'; 10]);
+        let second = tokio::time::timeout(
+            Duration::from_secs(10),
+            provider.read_range("/f.bin", 10, 10),
+        )
+        .await
+        .expect("the next read must end");
+        assert_eq!(second.unwrap(), vec![b'x'; 10]);
+    }
+
+    /// A local read error in the middle of an upload used to drop the data
+    /// connection: the server saw a clean end of file, stored what it had
+    /// received as the whole file and confirmed it with `226`, which the next
+    /// command then consumed unseen. The transfer is aborted instead, so the
+    /// server records it as aborted, and the session answers the next command.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_local_read_error_mid_upload_aborts_the_transfer() {
+        let (port, log) = scripted_server(Script {
+            retr_payload: Vec::new(),
+            retr_reply: "226 done\r\n",
+            stor_reply: "226 done\r\n",
+        })
+        .await;
+        let mut provider = connected(port).await;
+        // Opening a directory succeeds on Unix and reading it fails: the
+        // failure comes after STOR has opened the data connection.
+        let dir = tempfile::tempdir().unwrap();
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(10),
+            provider.upload(dir.path().to_str().unwrap(), "/f.bin", None),
+        )
+        .await
+        .expect("the upload must end");
+        assert!(outcome.is_err());
+        assert!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .any(|line| line.starts_with("ABOR")),
+            "the server was never told: {:?}",
+            log.lock().unwrap()
+        );
+        let pwd = tokio::time::timeout(Duration::from_secs(10), provider.pwd())
+            .await
+            .expect("the next command must end");
+        assert_eq!(pwd.unwrap(), "/");
+    }
+
+    /// FTPS stays on TLS 1.2, and not only for session reuse: an upload never
+    /// reads its data connection, and the TLS 1.3 tickets a server sends on
+    /// it would turn the close into a reset that loses the end of the file.
+    /// A server offering TLS 1.3 gets a TLS 1.2 handshake.
+    #[tokio::test]
+    async fn the_ftps_connector_negotiates_tls_1_2() {
+        use suppaftp::tokio::AsyncTlsConnector;
+
+        let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+        let key = rustls_pki_types::PrivateKeyDer::Pkcs8(
+            rustls_pki_types::PrivatePkcs8KeyDer::from(certified.signing_key.serialize_der()),
+        );
+        let server_config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(vec![certified.cert.der().clone()], key)
+        .unwrap();
+        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let tls = acceptor.accept(tcp).await.unwrap();
+            tls.get_ref().1.protocol_version()
+        });
+
+        let provider = FtpProvider::new(FtpConfig {
+            host: "localhost".to_string(),
+            port: addr.port(),
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::Explicit,
+            verify_cert: false,
+            initial_path: None,
+        });
+        let connector = provider.make_tls_connector().unwrap();
+        let tcp = TcpStream::connect(addr).await.unwrap();
+        let _client = connector
+            .connect("localhost", tcp)
+            .await
+            .expect("the handshake");
+        assert_eq!(
+            server.await.unwrap(),
+            Some(rustls::ProtocolVersion::TLSv1_2)
+        );
+    }
+}

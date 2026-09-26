@@ -122,6 +122,7 @@ dependencies = [
  "rand 0.10.3",
  "rand 0.8.8",
  "ratatui",
+ "rcgen",
  "reed-solomon-erasure",
  "regex",
  "reqwest",

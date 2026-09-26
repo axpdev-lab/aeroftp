@@ -364,6 +364,7 @@ posix-acl = { version = "1.2.0", optional = true }
 acl-sys = { version = "1.2.2", optional = true }
 
 [dev-dependencies]
+rcgen = "0.14"                                                       # Self-signed certificates for the loopback TLS tests
 
 [features]
 default = ["aerorsync", "local-stt"]
