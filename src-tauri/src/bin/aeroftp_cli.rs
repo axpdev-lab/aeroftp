@@ -3805,6 +3805,22 @@ enum Commands {
 mod cli_dispatch;
 
 #[cfg(test)]
+mod warning_line_tests {
+    use super::{warning_line, OutputFormat};
+
+    /// With `--json` stderr carries JSON objects: a warning is one of them,
+    /// not a free-text line a consumer cannot parse.
+    #[test]
+    fn a_warning_is_json_on_json_stderr_and_a_line_otherwise() {
+        let json: serde_json::Value =
+            serde_json::from_str(&warning_line(OutputFormat::Json, "left \"x\"")).unwrap();
+        assert_eq!(json["status"], "warning");
+        assert_eq!(json["warning"], "left \"x\"");
+        assert_eq!(warning_line(OutputFormat::Text, "left"), "warning: left");
+    }
+}
+
+#[cfg(test)]
 mod cli_dispatch_tests {
     use super::{cli_dispatch, Cli};
     use clap::CommandFactory;
@@ -7233,6 +7249,28 @@ fn print_json<T: Serialize>(value: &T) {
     match serde_json::to_string_pretty(value) {
         Ok(json) => println!("{}", json),
         Err(e) => eprintln!("Error: failed to serialize JSON: {}", e),
+    }
+}
+
+/// A warning the library reported during a command (a set-aside leftover
+/// of a replace), as the line `format` shows on stderr: plain text, or with
+/// `--json` a JSON object, since stderr carries JSON there.
+fn warning_line(format: OutputFormat, warning: &str) -> String {
+    match format {
+        OutputFormat::Text => format!("warning: {warning}"),
+        OutputFormat::Json => {
+            serde_json::json!({ "status": "warning", "warning": warning }).to_string()
+        }
+    }
+}
+
+/// Show on stderr the warnings the library reported since the last call.
+/// A closed stderr is no reason to panic: the line is dropped.
+fn render_pending_warnings(format: OutputFormat) {
+    use std::io::Write;
+    let mut stderr = std::io::stderr();
+    for warning in ftp_client_gui_lib::providers::take_warnings() {
+        let _ = writeln!(stderr, "{}", warning_line(format, &warning));
     }
 }
 
@@ -30219,6 +30257,9 @@ async fn webdav_dispatch(
                 }
                 other => other,
             };
+            // A replace that left its set-aside copy behind says so here: the
+            // server runs until stopped, and the log is off by default.
+            render_pending_warnings(OutputFormat::Text);
             match outcome {
                 Ok(()) => {
                     let mut response = Response::new(Body::empty());
@@ -69962,6 +70003,7 @@ async fn main() {
         exit_code
     };
 
+    render_pending_warnings(format);
     std::process::exit(exit_code);
 }
 

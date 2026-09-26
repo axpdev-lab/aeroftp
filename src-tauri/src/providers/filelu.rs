@@ -2675,11 +2675,13 @@ mod tests {
             calls.lock().unwrap()[1],
             "/api/file/rename?file_code=NEW&name=a.txt"
         );
-        let reported = crate::providers::REPORTED_LEFTOVERS.with(|r| r.borrow().clone());
-        assert_eq!(reported.len(), 1, "{reported:?}");
+        // The warning a front end shows the user names the leftover.
+        let warnings = crate::providers::take_warnings();
         assert!(
-            reported[0].starts_with("/dst/.a.txt.aeroftp-replaced-"),
-            "the leftover is named where it is: {reported:?}"
+            warnings
+                .iter()
+                .any(|w| w.contains("set aside as /dst/.a.txt.aeroftp-replaced-")),
+            "the leftover is named where it is: {warnings:?}"
         );
     }
 

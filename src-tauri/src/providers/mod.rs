@@ -1741,7 +1741,8 @@ pub(crate) fn set_aside_move_failed(
 /// place but could not delete the one set aside as `aside`. The replace is
 /// done, so it is a success: an error made callers undo or retry a replace
 /// that had happened (a WebDAV client retrying the MOVE, an edit deleting
-/// its temporary). What is left over goes to the log, and to stderr: the log
+/// its temporary). What is left over goes to the log, and to the pending
+/// warnings a front end renders its own way ([`take_warnings`]): the log
 /// reaches no one where no subscriber is installed (the CLI without `-v` or
 /// `RUST_LOG`, `serve webdav`), and the leftover is a hidden name holding
 /// the old content, which no one would otherwise find.
@@ -1751,17 +1752,28 @@ pub(crate) fn report_set_aside_leftover(to: &str, aside: &str, error: &ProviderE
          {error}; delete it by hand"
     );
     tracing::warn!("{message}");
-    eprintln!("warning: {message}");
-    #[cfg(test)]
-    REPORTED_LEFTOVERS.with(|reported| reported.borrow_mut().push(aside.to_string()));
+    if let Ok(mut pending) = PENDING_WARNINGS.lock() {
+        // A front end that never asks (the GUI, which has the log) must not
+        // grow this without end.
+        if pending.len() < MAX_PENDING_WARNINGS {
+            pending.push(message);
+        }
+    }
 }
 
-#[cfg(test)]
-thread_local! {
-    /// The set-aside paths [`report_set_aside_leftover`] reported on this
-    /// thread (`#[tokio::test]` runs its runtime on the test's own thread).
-    pub(crate) static REPORTED_LEFTOVERS: std::cell::RefCell<Vec<String>> =
-        const { std::cell::RefCell::new(Vec::new()) };
+/// Warnings the user should see that a successful call cannot return, kept
+/// until a front end takes them.
+static PENDING_WARNINGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+const MAX_PENDING_WARNINGS: usize = 64;
+
+/// Take the warnings reported since the last call, oldest first, for the
+/// front end to show in its own format (the CLI: a line on stderr, or a JSON
+/// object there with `--json`).
+pub fn take_warnings() -> Vec<String> {
+    PENDING_WARNINGS
+        .lock()
+        .map(|mut pending| std::mem::take(&mut *pending))
+        .unwrap_or_default()
 }
 
 /// Refuse `rename(from, to)` when `to` is taken, on a backend whose own move
