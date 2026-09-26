@@ -61649,6 +61649,11 @@ fn split_batch_args(
 fn read_batch_script(content: &str) -> Result<Vec<BatchLine>, (usize, String)> {
     let mut variables: HashMap<String, String> = HashMap::new();
     let mut lines = Vec::new();
+    // What earlier lines have opened, so a command that can only fail for
+    // want of a connection is reported now, not when it runs.
+    let mut connected = false;
+    let mut source_profile = false;
+    let mut dest_profile = false;
     for (line_num, logical) in batch_logical_lines(content)? {
         let expanded =
             ftp_client_gui_lib::sync_script::expand_script_variables(&logical, &variables)
@@ -61718,7 +61723,25 @@ fn read_batch_script(content: &str) -> Result<Vec<BatchLine>, (usize, String)> {
             }
             "ECHO" => {}
             "CONNECT" => {
+                // `--profile=Name` is `--profile Name`.
+                let joined: Vec<String>;
+                let rest = match rest {
+                    [single] if single.starts_with("--profile=") => {
+                        joined = vec![
+                            "--profile".to_string(),
+                            single["--profile=".len()..].to_string(),
+                        ];
+                        joined.as_slice()
+                    }
+                    other => other,
+                };
                 line.target = Some(match rest {
+                    [flag] if flag == "--profile" => {
+                        return Err((
+                            line_num,
+                            "CONNECT --profile needs a saved profile name: CONNECT --profile \"My Server\"".to_string(),
+                        ));
+                    }
                     [flag, name] if flag == "--profile" => {
                         if name.trim().is_empty() {
                             return Err((
@@ -61754,12 +61777,19 @@ fn read_batch_script(content: &str) -> Result<Vec<BatchLine>, (usize, String)> {
                 parse_batch_sync("_", rest).map_err(|e| (line_num, format!("SYNC: {}", e)))?;
                 line.sync_args = rest.to_vec();
             }
-            "CONNECT_SOURCE_PROFILE" | "CONNECT_DEST_PROFILE" => {
-                if rest.is_empty() {
-                    return Err((line_num, format!("{} requires a profile name", cmd)));
+            "CONNECT_SOURCE_PROFILE" | "CONNECT_DEST_PROFILE" => match rest {
+                [name] if !name.starts_with('-') && !name.trim().is_empty() => {
+                    line.args = vec![name.clone()];
                 }
-                line.args = vec![rest.join(" ")];
-            }
+                _ => {
+                    return Err((
+                        line_num,
+                        format!(
+                            "{cmd} takes one name: quote a name with spaces, {cmd} \"My Server\""
+                        ),
+                    ));
+                }
+            },
             _ => {
                 let Some(spec) = BATCH_COMMAND_SPECS.iter().find(|s| s.name == cmd) else {
                     return Err((
@@ -61782,6 +61812,31 @@ fn read_batch_script(content: &str) -> Result<Vec<BatchLine>, (usize, String)> {
                 line.args = args;
                 line.flags = flags;
             }
+        }
+        match cmd.as_str() {
+            "CONNECT" => connected = true,
+            "DISCONNECT" => connected = false,
+            "CONNECT_SOURCE_PROFILE" => source_profile = true,
+            "CONNECT_DEST_PROFILE" => dest_profile = true,
+            "TRANSFER" if !(source_profile && dest_profile) => {
+                return Err((
+                    line_num,
+                    "TRANSFER needs CONNECT_SOURCE_PROFILE and CONNECT_DEST_PROFILE on earlier lines"
+                        .to_string(),
+                ));
+            }
+            "GET" | "PUT" | "RM" | "MV" | "LS" | "CAT" | "STAT" | "FIND" | "DF" | "MKDIR"
+            | "TREE" | "SYNC"
+                if !connected =>
+            {
+                return Err((
+                    line_num,
+                    format!(
+                        "{cmd} needs a connection: CONNECT to a URL or a saved profile on an earlier line"
+                    ),
+                ));
+            }
+            _ => {}
         }
         lines.push(line);
     }
@@ -62664,6 +62719,38 @@ DISCONNECT\n";
         let url_cli = cli_for_url_targets(&cli);
         assert_eq!(url_cli.profile, None);
         assert!(url_cli.quiet, "the other flags are kept");
+    }
+
+    /// Mistakes a reader can see are reported while the script is read:
+    /// a command before any CONNECT, a TRANSFER without both profiles, and
+    /// the CONNECT forms that used to get the wrong hint.
+    #[test]
+    fn connection_mistakes_are_reported_before_the_script_runs() {
+        on_big_stack(|| {
+            for (script, needle) in [
+                ("LS /\n", "LS needs a connection"),
+                (
+                    "CONNECT sftp://h/\nDISCONNECT\nGET /a\n",
+                    "GET needs a connection",
+                ),
+                ("CONNECT --profile\n", "needs a saved profile name"),
+                (
+                    "CONNECT_SOURCE_PROFILE A\nTRANSFER /a /b\n",
+                    "CONNECT_DEST_PROFILE",
+                ),
+                ("CONNECT_SOURCE_PROFILE My A\n", "takes one name"),
+                ("CONNECT_DEST_PROFILE --x\n", "takes one name"),
+            ] {
+                let err = read_batch_script(script).expect_err(script);
+                assert!(err.1.contains(needle), "{script:?}: {}", err.1);
+            }
+            let lines = read_batch_script(
+                "CONNECT --profile=Koofr\nLS /\nCONNECT_SOURCE_PROFILE \"My A\"\nCONNECT_DEST_PROFILE B\nTRANSFER /a /b\n",
+            )
+            .unwrap_or_else(|e| panic!("{}", e.1));
+            assert_eq!(lines[0].target, Some(BatchTarget::Profile("Koofr".into())));
+            assert_eq!(lines[2].args, ["My A"]);
+        });
     }
 
     #[test]

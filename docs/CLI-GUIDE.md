@@ -2259,7 +2259,7 @@ DISCONNECT
 
 `ECHO` and `SET` take the rest of their line as text, so `ECHO Don't forget` and `SET MSG=it's done` are fine. Every other line is split into arguments: spaces separate them, double quotes group them (inside double quotes `\\` is one backslash and `\"` a quote, any other backslash is kept, so `"C:\Users\me"` reads as written), and single quotes group them with every character literal. Quote an argument that contains an apostrophe with double quotes, as in `CONNECT "sftp://me:it's@host/"`. A UNC path between double quotes needs its leading backslashes doubled, `"\\\\nas\\share"`, or single quotes, `'\\nas\share'`; written `"\\nas\share"` it reads as `\nas\share`. Variables are expanded before the line is split, also inside single quotes.
 
-The whole script is read and checked before anything runs: an unknown command, a flag the command does not take, a wrong number of arguments, an unclosed quote or a `\` followed by a blank line stops the script with the line number, and no line has run yet. `--` ends the flags, so `RM -- -odd-name` removes a file whose name starts with `-`.
+The whole script is read and checked before anything runs: an unknown command, a flag the command does not take, a wrong number of arguments, an unclosed quote, a `\` followed by a blank line, a variable no earlier line has `SET`, a `SYNC` value `sync` would refuse, a command that needs a connection before any `CONNECT`, or a `TRANSFER` before both `CONNECT_SOURCE_PROFILE` and `CONNECT_DEST_PROFILE` stops the script with the line number, and no line has run yet. `--` ends the flags, so `RM -- -odd-name` removes a file whose name starts with `-`.
 
 ### Commands
 
