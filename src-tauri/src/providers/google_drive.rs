@@ -98,8 +98,10 @@ fn runner_part_size(total_size: u64) -> u64 {
     GDRIVE_MULTIPART_PART_SIZE
 }
 
+const DRIVE_FOLDER_MIME: &str = "application/vnd.google-apps.folder";
+
 fn is_drive_folder(file: &DriveFile) -> bool {
-    file.mime_type == "application/vnd.google-apps.folder"
+    file.mime_type == DRIVE_FOLDER_MIME
 }
 
 /// Google Drive file metadata from API
@@ -273,6 +275,8 @@ pub struct GoogleDriveProvider {
 /// Where `rename` or `replace` takes a file (see `rename_place`).
 struct RenamePlace {
     file_id: String,
+    /// The MIME type of the item being moved.
+    mime_type: String,
     from_parent_id: String,
     to_parent_id: String,
     new_name: String,
@@ -661,6 +665,7 @@ impl GoogleDriveProvider {
             .filter(|existing| existing.id != file.id);
         Ok(RenamePlace {
             file_id: file.id,
+            mime_type: file.mime_type,
             from_parent_id,
             to_parent_id,
             new_name: new_name.to_string(),
@@ -1980,6 +1985,11 @@ impl StorageProvider for GoogleDriveProvider {
         let Some(occupant) = place.occupant.clone() else {
             return self.rename(from, to).await;
         };
+        super::refuse_replace_across_types(
+            to,
+            place.mime_type == DRIVE_FOLDER_MIME,
+            is_drive_folder(&occupant),
+        )?;
         let aside = super::set_aside_name(&place.new_name);
         let aside_path = match to.trim_end_matches('/').rsplit_once('/') {
             Some((parent, _)) => format!("{parent}/{aside}"),
@@ -1999,9 +2009,13 @@ impl StorageProvider for GoogleDriveProvider {
         }
         self.forget_folder(from);
         self.forget_folder(to);
-        self.patch_drive_file(&occupant.id, &serde_json::json!({ "trashed": true }), None)
+        if let Err(e) = self
+            .patch_drive_file(&occupant.id, &serde_json::json!({ "trashed": true }), None)
             .await
-            .map_err(|e| super::set_aside_delete_failed(to, &aside_path, e))
+        {
+            super::report_set_aside_leftover(to, &aside_path, &e);
+        }
+        Ok(())
     }
 
     /// A replace leaves `to` empty between setting the old item aside and
@@ -3273,6 +3287,28 @@ mod tests {
         );
         assert_eq!(patches[1], r#"NEW {"name":"a.txt"}"#);
         assert_eq!(patches[2], r#"OLD {"trashed":true}"#);
+    }
+
+    /// A replace puts one file in place of another. Onto a folder it set the
+    /// whole folder aside and trashed it, contents and all, to leave a file
+    /// under its name; a folder onto a file did the reverse. Both are refused
+    /// before any change.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_is_refused_before_any_change() {
+        let (mut p, patches) =
+            provider_on_drive(&[("DIR", "a", "root"), ("NEW", "b.txt", "root")]).await;
+        for (from, to) in [("/b.txt", "/a"), ("/a", "/b.txt")] {
+            let outcome = p.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+        }
+        assert!(
+            patches.lock().unwrap().is_empty(),
+            "{:?}",
+            patches.lock().unwrap()
+        );
     }
 
     /// After `cd /docs`: `/x` and `x` name different folders, `/x` the

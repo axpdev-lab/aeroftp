@@ -812,6 +812,10 @@ pub trait StorageProvider: Send + Sync {
     /// Azure, Cloudinary, OpenDrive), FTP and ImageKit overwrite in one server
     /// step, and MEGA, Filen, FileLu and Google Drive, which have no such step,
     /// set the old item aside first (see [`set_aside_name`]).
+    ///
+    /// A replace puts a file in place of a file or a folder in place of a
+    /// folder. Across the two (see [`refuse_replace_across_types`]) it is
+    /// refused with AlreadyExists before anything changes.
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.rename(from, to).await
     }
@@ -828,8 +832,10 @@ pub trait StorageProvider: Send + Sync {
     /// already made. It means "no known obstacle", not "verified": only a
     /// backend that has actually measured its own ground says otherwise:
     /// `SftpProvider`, which asks the server whether it offers
-    /// `posix-rename@openssh.com`, and the backends whose replace sets the
-    /// old item aside (MEGA, Filen, FileLu, Google Drive) or has none (Twake).
+    /// `posix-rename@openssh.com`; the backends whose replace sets the old
+    /// item aside (MEGA, Filen, FileLu, Google Drive) or has none (Twake);
+    /// and ImageKit and OpenDrive, which overwrite only across folders while
+    /// every caller stages its temporary in the target's own folder.
     ///
     /// [`replace`]: StorageProvider::replace
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
@@ -1655,17 +1661,42 @@ pub(crate) fn set_aside_move_failed(
     }
 }
 
-/// The error of a set-aside replace that put the new item in place but
-/// could not delete the one set aside as `aside`: the replace is done, and
-/// the caller learns what is left over.
-pub(crate) fn set_aside_delete_failed(
+/// Report the leftover of a set-aside replace that put the new item in
+/// place but could not delete the one set aside as `aside`. The replace is
+/// done, so it is a success: an error made callers undo or retry a replace
+/// that had happened (a WebDAV client retrying the MOVE, an edit deleting
+/// its temporary). What is left over goes to the log instead.
+pub(crate) fn report_set_aside_leftover(to: &str, aside: &str, error: &ProviderError) {
+    tracing::warn!(
+        "replaced {to}, but deleting the previous version, set aside as {aside}, failed: \
+         {error}; delete it by hand"
+    );
+}
+
+/// Refuse a replace that would put a file in place of a folder or a folder
+/// in place of a file. On a backend that sets the old item aside and then
+/// deletes it, a file replacing a folder deleted the whole folder, contents
+/// and all (for good on FileLu, which has no trash), to leave a file under
+/// its name. Nothing a caller means by "replace" asks for that, so it is
+/// refused before anything changes. AlreadyExists, because the destination
+/// is taken by an item this call will not displace.
+pub(crate) fn refuse_replace_across_types(
     to: &str,
-    aside: &str,
-    error: ProviderError,
-) -> ProviderError {
-    ProviderError::Other(format!(
-        "replaced {to}, but deleting the previous version, set aside as {aside}, failed: {error}"
-    ))
+    source_is_dir: bool,
+    occupant_is_dir: bool,
+) -> Result<(), ProviderError> {
+    if source_is_dir == occupant_is_dir {
+        return Ok(());
+    }
+    let (occupant, source) = if occupant_is_dir {
+        ("folder", "file")
+    } else {
+        ("file", "folder")
+    };
+    Err(ProviderError::AlreadyExists(format!(
+        "{to} is a {occupant}, and a replace puts a {source} only in place of a {source}: \
+         nothing was changed"
+    )))
 }
 
 /// Provider factory for creating provider instances
@@ -2082,6 +2113,19 @@ mod tests {
         );
         assert!(out.contains("[REDACTED]"));
         assert!(!out.contains("stack trace"), "only the first line is kept");
+    }
+
+    #[test]
+    fn a_replace_across_types_is_refused_as_already_exists() {
+        assert!(refuse_replace_across_types("/x", false, false).is_ok());
+        assert!(refuse_replace_across_types("/x", true, true).is_ok());
+        for (source_is_dir, occupant_is_dir) in [(false, true), (true, false)] {
+            let refused = refuse_replace_across_types("/x", source_is_dir, occupant_is_dir);
+            assert!(
+                matches!(refused, Err(ProviderError::AlreadyExists(_))),
+                "{refused:?}"
+            );
+        }
     }
 
     /// Hidden, unique, and naming what it stands in for.

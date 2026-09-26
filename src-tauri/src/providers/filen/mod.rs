@@ -1110,6 +1110,9 @@ impl FilenProvider {
         if occupant.is_some() && !overwrite {
             return Err(ProviderError::AlreadyExists(to.to_string()));
         }
+        if let Some(occupant) = &occupant {
+            super::refuse_replace_across_types(to, entry.is_dir, occupant.is_dir)?;
+        }
         let occupant_uuid = occupant
             .as_ref()
             .and_then(|o| o.metadata.get("uuid").cloned())
@@ -1195,10 +1198,15 @@ impl FilenProvider {
                 let restored = self.send_rename_calls(&restore_calls).await;
                 Err(super::set_aside_move_failed(to, &aside_path, e, restored))
             }
-            (Ok(()), Some((_, _, aside_path, trash))) => self
-                .post_v3(trash, &serde_json::json!({ "uuid": occupant_uuid }))
-                .await
-                .map_err(|e| super::set_aside_delete_failed(to, &aside_path, e)),
+            (Ok(()), Some((_, _, aside_path, trash))) => {
+                let trashed = self
+                    .post_v3(trash, &serde_json::json!({ "uuid": occupant_uuid }))
+                    .await;
+                if let Err(e) = trashed {
+                    super::report_set_aside_leftover(to, &aside_path, &e);
+                }
+                Ok(())
+            }
         };
         // Also after a failure: a step that went through has changed paths.
         if entry.is_dir {
@@ -2575,8 +2583,11 @@ impl StorageProvider for FilenProvider {
         self.relocate(from, to, true).await
     }
 
-    /// A replace leaves `to` empty between setting the old item aside and
-    /// moving the new one in.
+    /// No: Filen can neither overwrite on a move nor give a file new content
+    /// under its uuid without a full re-upload, so a replace sets the old item
+    /// aside and the name is empty for a moment. Callers that need atomicity
+    /// (CLI `edit`, MCP `remote_edit`, the crypt marker paths) refuse before
+    /// they write anything.
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
         Ok(false)
     }
@@ -3833,6 +3844,24 @@ mod tests {
         assert_eq!(calls[0].1["uuid"], "B0");
         assert_eq!(calls[1].1, serde_json::json!({ "uuid": "F", "to": "B" }));
         assert_eq!(calls[2].1, serde_json::json!({ "uuid": "B0" }));
+    }
+
+    /// A replace puts one file in place of another. Onto a folder it set the
+    /// whole folder aside and trashed it, contents and all, to leave a file
+    /// under its name; a folder onto a file did the reverse. Both are refused
+    /// before any call.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_is_refused_before_any_call() {
+        let (mut provider, calls, server) = tree_gateway(&[], true).await;
+        for (from, to) in [("/a/f.txt", "/b"), ("/b", "/a/f.txt")] {
+            let outcome = provider.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+        }
+        server.abort();
+        assert!(endpoints(&calls).is_empty(), "{:?}", endpoints(&calls));
     }
 
     /// A replace whose move is refused gives the file it set aside its name

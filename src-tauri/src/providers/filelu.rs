@@ -2069,7 +2069,8 @@ impl StorageProvider for FileLuProvider {
             Err(e) => return Err(e),
         };
         // The source must be there before anything changes.
-        self.resolve_path_entry(&norm_from).await?;
+        let source = self.resolve_path_entry(&norm_from).await?;
+        super::refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?;
         let (to_parent, to_name) = match norm_to.rsplit_once('/') {
             Some(("", name)) => ("/".to_string(), name.to_string()),
             Some((parent, name)) => (parent.to_string(), name.to_string()),
@@ -2087,13 +2088,17 @@ impl StorageProvider for FileLuProvider {
             self.invalidate_cache_under(&to_parent);
             return Err(super::set_aside_move_failed(to, &aside_path, e, restored));
         }
-        self.remove_entry(&occupant)
-            .await
-            .map_err(|e| super::set_aside_delete_failed(to, &aside_path, e))
+        if let Err(e) = self.remove_entry(&occupant).await {
+            super::report_set_aside_leftover(to, &aside_path, &e);
+        }
+        Ok(())
     }
 
-    /// A replace leaves `to` empty between setting the old item aside and
-    /// moving the new one in.
+    /// No: FileLu can neither overwrite on a move nor give a file new
+    /// content in place, so a replace sets the old item aside and the name is
+    /// empty for a moment. Callers that need atomicity (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write
+    /// anything.
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
         Ok(false)
     }
@@ -2472,6 +2477,18 @@ mod tests {
         FileLuProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_with_cached_tree_refusing(tree, "").await
+    }
+
+    /// [`provider_with_cached_tree`] whose API refuses every call to the
+    /// endpoint path `refused` (in the body of an HTTP 200, as FileLu does).
+    async fn provider_with_cached_tree_refusing(
+        tree: &[(&str, &str)],
+        refused: &'static str,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         use std::sync::{Arc, Mutex};
         let calls: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&calls);
@@ -2481,9 +2498,12 @@ mod tests {
                 let query = uri.query().unwrap_or("").replace("key=k&", "");
                 seen.lock().unwrap().push(format!("{}?{query}", uri.path()));
             }
+            let refuse = !refused.is_empty() && uri.path() == refused;
             async move {
                 if listing {
                     r#"{"status":200,"msg":"OK","result":{"files":[],"folders":[]}}"#
+                } else if refuse {
+                    r#"{"status":403,"msg":"denied"}"#
                 } else {
                     r#"{"status":200,"msg":"OK"}"#
                 }
@@ -2631,6 +2651,57 @@ mod tests {
         );
         assert_eq!(calls[1], "/api/file/rename?file_code=NEW&name=a.txt");
         assert_eq!(calls[2], "/api/file/remove?file_code=OLD&remove=1");
+    }
+
+    /// Once the new file has the name, the replace is done: a failed delete
+    /// of the file set aside leaves a leftover to report, not a failure. An
+    /// error there made callers undo or retry a replace that had happened.
+    #[tokio::test]
+    async fn a_replace_whose_final_delete_fails_is_done_and_says_what_is_left() {
+        let (mut provider, calls) = provider_with_cached_tree_refusing(
+            &[
+                ("/dst", "22"),
+                ("/dst/a.txt", "OLD"),
+                ("/dst/a.txt.tmp", "NEW"),
+            ],
+            "/api/file/remove",
+        )
+        .await;
+        provider
+            .replace("/dst/a.txt.tmp", "/dst/a.txt")
+            .await
+            .expect("the new file has the name: the replace is done");
+        assert_eq!(
+            calls.lock().unwrap()[1],
+            "/api/file/rename?file_code=NEW&name=a.txt"
+        );
+    }
+
+    /// A replace puts one file in place of another. Onto a folder it set the
+    /// whole folder aside and deleted it, contents and all and with no trash,
+    /// to leave a file under its name; a folder onto a file did the reverse.
+    /// Both are refused before any call.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_is_refused_before_any_call() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/src", "11"),
+            ("/dst", "22"),
+            ("/src/a.txt", "AAA"),
+            ("/src/f.txt", "FFF"),
+        ])
+        .await;
+        for (from, to) in [("/src/a.txt", "/dst"), ("/dst", "/src/f.txt")] {
+            let outcome = provider.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+        }
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
     }
 
     /// FileLu answers HTTP 200 and puts the refusal in the body: reading

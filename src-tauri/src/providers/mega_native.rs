@@ -1920,6 +1920,11 @@ impl StorageProvider for MegaNativeProvider {
         else {
             return self.rename(from, to).await;
         };
+        let source_is_dir = self
+            .nodes
+            .get(&from_handle)
+            .is_some_and(|node| node.node_type != 0);
+        super::refuse_replace_across_types(to, source_is_dir, occupant.node_type != 0)?;
         if occupant.key.is_empty() {
             return Err(ProviderError::Other(format!(
                 "Cannot replace {to}: the item there has no key to rename it aside with"
@@ -1952,20 +1957,27 @@ impl StorageProvider for MegaNativeProvider {
                 let restored = self.command_with_retry::<Value>(restore).await.map(|_| ());
                 return Err(super::set_aside_move_failed(to, &aside_path, e, restored));
             }
-            self.command_with_retry::<Value>(json!({
-                "a": "m",
-                "n": occupant.handle,
-                "t": trash,
-            }))
-            .await
-            .map(|_| ())
-            .map_err(|e| super::set_aside_delete_failed(to, &aside_path, e))
+            let binned = self
+                .command_with_retry::<Value>(json!({
+                    "a": "m",
+                    "n": occupant.handle,
+                    "t": trash,
+                }))
+                .await;
+            if let Err(e) = binned {
+                super::report_set_aside_leftover(to, &aside_path, &e);
+            }
+            Ok(())
         }
         .await;
         self.invalidate_nodes();
         outcome
     }
 
+    /// No: MEGA can neither overwrite on a move nor give a node new content,
+    /// so a replace sets the old node aside and the name is empty for a
+    /// moment. Callers that need atomicity (CLI `edit`, MCP `remote_edit`,
+    /// the crypt marker paths) refuse before they write anything.
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
         Ok(false)
     }
@@ -2920,6 +2932,30 @@ mod tests {
             .await
             .expect("replace");
         assert_eq!(*commands.lock().unwrap(), ["a G", "m F B", "m G TRASH"]);
+    }
+
+    /// A replace puts one file in place of another. Onto a folder it set the
+    /// whole folder aside and binned it, contents and all, to leave a file
+    /// under its name; a folder onto a file did the reverse. Both are refused
+    /// before any command.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_is_refused_before_any_command() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], true).await;
+        provider.trash_handle = Some("TRASH".to_string());
+        for (from, to) in [("/a/f.txt", "/b"), ("/a", "/b/f.txt")] {
+            let outcome = provider.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+            provider.nodes_loaded = true;
+        }
+        assert!(
+            commands.lock().unwrap().is_empty(),
+            "{:?}",
+            commands.lock().unwrap()
+        );
     }
 
     #[test]
