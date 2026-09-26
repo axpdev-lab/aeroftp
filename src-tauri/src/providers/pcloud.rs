@@ -67,19 +67,29 @@ fn classify_pcloud_result(result: u32, error: Option<&str>) -> Option<ProviderEr
     Some(match result {
         // 1000: "Log in required", 2000: "Log in failed", 2094: "Invalid access_token"
         1000 | 2000 | 2094 => ProviderError::AuthenticationFailed(msg),
-        // 2005: "Directory does not exist", 2009: "File not found or invalid
-        // file/folder id", 2010: "Invalid path". All three are absence
-        // conditions: mapping them to NotFound lets `exists()` return
-        // Ok(false) (not a propagated error) so a probe for a missing file
-        // in an existing folder is a clean negative. Without 2005 here, the
-        // AeroCrypt overlay bootstrap probe (`exists(.aeroftp-crypt.json)`)
-        // saw a ServerError and failed "could not be unlocked" on pCloud.
-        2005 | 2009 | 2010 => ProviderError::NotFound(msg),
+        // 2002: "A component of parent directory does not exist", 2005:
+        // "Directory does not exist", 2009: "File not found or invalid
+        // file/folder id", 2010: "Invalid path". All are absence conditions:
+        // mapping them to NotFound lets `exists()` return Ok(false) (not a
+        // propagated error) so a probe for a missing file is a clean
+        // negative. Without 2005 here, the AeroCrypt overlay bootstrap probe
+        // (`exists(.aeroftp-crypt.json)`) saw a ServerError and failed "could
+        // not be unlocked" on pCloud.
+        2002 | 2005 | 2009 | 2010 => ProviderError::NotFound(msg),
         2003 | 2028 => ProviderError::PermissionDenied(msg),
         2004 => ProviderError::AlreadyExists(msg),
         // 4006: "Throttle limit reached", often inside HTTP 200 JSON.
         // Map through a stable rate-limit phrase so AIMD sees RateLimited.
         PCLOUD_RESULT_THROTTLE => pcloud_throttle_error("API", Some(msg.as_str())),
+        // `stat` of a missing path answers "File or folder not found." (live,
+        // 2026-09-26) under a code its documentation does not list. The
+        // message is the absence; every other code stays an error.
+        _ if raw_msg
+            .trim_end_matches('.')
+            .eq_ignore_ascii_case("File or folder not found") =>
+        {
+            ProviderError::NotFound(msg)
+        }
         _ => ProviderError::ServerError(msg),
     })
 }
@@ -1274,7 +1284,8 @@ impl StorageProvider for PCloudProvider {
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         // PA-006: If stat fails, fall back to listfolder to get folder metadata.
-        // Only when stat says the path is absent (2005, 2009, 2010): any other
+        // Only when stat says the path is absent (see classify_pcloud_result:
+        // 2002, 2005, 2009, 2010, and "File or folder not found."): any other
         // refusal (an internal error, a throttle inside HTTP 200) says nothing
         // about the path, and the listfolder that followed answered 2005 for a
         // file, so the look before a rename read a taken name as free.
@@ -2491,6 +2502,8 @@ mod tests {
                         .map(|(_, v)| v.to_string())
                         .unwrap_or_default();
                     let name = path.rsplit('/').next().unwrap_or("").to_string();
+                    let parent = path.rsplit_once('/').map(|(a, _)| a).unwrap_or_default().to_string();
+                    let in_a_known_folder = parent.is_empty() || tree.contains(&parent.as_str());
                     let is_folder = |p: &str| tree.contains(&p) && !p.contains('.');
                     let is_file = |p: &str| tree.contains(&p) && p.contains('.');
                     match uri.path() {
@@ -2500,7 +2513,16 @@ mod tests {
                         "/stat" if is_file(&path) => format!(
                             r#"{{"result":0,"metadata":{{"name":"{name}","isfolder":false,"fileid":7}}}}"#
                         ),
-                        "/stat" => r#"{"result":2009,"error":"File not found."}"#.to_string(),
+                        // As live pCloud answers (2026-09-26): a missing path
+                        // in an existing folder is "File or folder not found."
+                        // under a code the documentation does not list (the
+                        // double takes one outside the documented absence
+                        // codes); under a missing folder it is 2002.
+                        "/stat" if in_a_known_folder => {
+                            r#"{"result":2055,"error":"File or folder not found."}"#.to_string()
+                        }
+                        "/stat" => r#"{"result":2002,"error":"A component of parent directory does not exist."}"#
+                            .to_string(),
                         "/listfolder" if is_folder(&path) => format!(
                             r#"{{"result":0,"metadata":{{"name":"{name}","isfolder":true,"folderid":9}}}}"#
                         ),
@@ -2571,6 +2593,28 @@ mod tests {
             matches!(outcome, Err(ProviderError::PermissionDenied(_))),
             "{outcome:?}"
         );
+    }
+
+    /// Round 4 let only 2005, 2009 and 2010 count as absent, and every rename
+    /// to a free name failed live: pCloud answers the stat of a missing path
+    /// "File or folder not found." under a code it does not document, and a
+    /// path under a missing folder 2002. Both are absent; the rename to a
+    /// free name goes out.
+    #[tokio::test]
+    async fn a_missing_path_as_pcloud_answers_it_is_absent() {
+        let (mut provider, calls) = provider_on_pcloud_tree(&["/a.txt"], r#"{"result":0}"#).await;
+        provider
+            .rename("/a.txt", "/free.txt")
+            .await
+            .expect("a free name");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["/renamefile?path=/a.txt&topath=/free.txt"]
+        );
+        assert!(matches!(
+            provider.stat("/missing/free.txt").await,
+            Err(ProviderError::NotFound(_))
+        ));
     }
 
     /// A stat that pCloud refuses with anything but an absence code (here
