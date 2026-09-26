@@ -14,15 +14,15 @@ use std::sync::Arc;
 use suppaftp::tokio::{
     AsyncRustlsConnector, AsyncRustlsFtpStream, AsyncRustlsStream, TransferStream,
 };
+use suppaftp::types::FileType;
+use suppaftp::{FtpError, Status};
+use tokio::io::AsyncWriteExt;
+use tokio_util::sync::CancellationToken;
 
 /// The data connection of one transfer. It finishes itself: `finish()` closes
 /// it (TLS `close_notify`, then FIN) and reads the completion reply on the
 /// control channel.
 type FtpTransfer = TransferStream<AsyncRustlsStream>;
-use suppaftp::types::FileType;
-use suppaftp::{FtpError, Status};
-use tokio::io::AsyncWriteExt;
-use tokio_util::sync::CancellationToken;
 
 use super::checksum_matrix;
 use super::multi_thread::{
@@ -343,6 +343,14 @@ impl FtpProvider {
     /// a `426 Failure reading network stream` into a completed transfer. What
     /// stands is the reason for the cap, not the list of clients that share
     /// it.
+    ///
+    /// Uploads depend on the cap too. An upload never reads its data
+    /// connection, and under TLS 1.3 a server sends a NewSessionTicket on
+    /// every one: closing a socket with unread bytes makes the kernel send a
+    /// reset instead of a FIN, and the tail of the file is lost (a `426`, or a
+    /// truncated file confirmed with `226`). `finish()` shuts down and closes
+    /// without reading, so raising the cap needs a drain before the close.
+    /// `the_ftps_connector_negotiates_tls_1_2` fails if the cap is raised.
     fn make_tls_connector(&self) -> Result<AsyncRustlsConnector, ProviderError> {
         // Name the crypto backend explicitly rather than relying on rustls'
         // process-level default. Both `aws-lc-rs` and `ring` are in the
@@ -1910,9 +1918,10 @@ impl StorageProvider for FtpProvider {
 
         // The channel is released AFTER the local flush, not before: its `Drop`
         // is the only thing that poisons the session, and a flush that fails
-        // between the two would otherwise drop an unfinalised stream while
-        // leaving the session alive, with the `226` unread for the next command
-        // to collect as its own answer.
+        // between the two would otherwise drop an unfinished stream while
+        // leaving the session alive. suppaftp 12 drains that `226` before the
+        // next command, so it is no longer read as that command's answer, but
+        // the transfer's own verdict would be lost with it.
         file.flush().await.map_err(ProviderError::IoError)?;
         let data_stream = channel.finish()?;
         data_stream
@@ -2663,16 +2672,15 @@ enum DataStep {
 impl FtpProvider {
     /// The one way out of a data transfer that has failed.
     ///
-    /// Leaving a data loop early drops the `DataStream` and never calls
-    /// `finalize`, so inside `suppaftp` the private `data_connection_open`
-    /// stays true and the completion reply stays unread on the control
-    /// channel. What happens next depends on what the caller does next, and
-    /// one of the two is bad: another data command trips
-    /// `guard_multiple_data_connections` and is recognised as a stale
-    /// connection, which reconnects and works, while a CONTROL command reads
-    /// the stale `226 Transfer complete` as its own reply and fails saying the
-    /// previous operation succeeded. An error that names the success of
-    /// something else is the worst kind of message to hand a user.
+    /// Leaving a data loop early drops the transfer without `finish()`. Under
+    /// suppaftp 10 that left the completion reply unread, and the next CONTROL
+    /// command read the stale `226 Transfer complete` as its own reply and
+    /// failed saying the previous operation succeeded. suppaftp 12 flags the
+    /// reply of a dropped transfer as pending and drains it before the next
+    /// command, so that message is gone, but the drain has no deadline, it
+    /// only logs a failed verdict, and a download keeps the server sending
+    /// until it notices the closed socket. ABOR stops the server and reads the
+    /// verdict, under a budget.
     ///
     /// Those exits were rare before this change and are not any more: a
     /// deadline and a refusal were added to five loops. A defect made common by
@@ -2693,9 +2701,10 @@ impl FtpProvider {
     /// dropped from outside never reaches it: dropping an async fn runs the
     /// destructors of its locals and none of the code that follows. The
     /// transfer executor wraps a download in `tokio::time::timeout` and lets
-    /// the future fall on expiry, so on that path the session is left exactly
-    /// as this function exists to prevent, and the retry that follows reuses
-    /// the same connection. Moving that deadline inside the data loop would
+    /// the future fall on expiry, so on that path the transfer is dropped
+    /// without ABOR: suppaftp drains its reply before the next command on the
+    /// same connection, with no deadline of its own, and the retry that follows
+    /// reuses that connection. Moving that deadline inside the data loop would
     /// turn it into an ordinary error return and bring it back through here,
     /// which is where the shared data-loop primitive will put it anyway.
     ///
@@ -2744,8 +2753,10 @@ impl FtpProvider {
 /// a door that a closure would have kept shut: the caller's body is full of `?`,
 /// and an early return there drops this value without running any cleanup,
 /// because dropping a future does not execute what follows the await. That is
-/// the same shape as the executor dropping a download mid-RETR, which is how a
-/// session ends up answering the next question with the previous answer.
+/// the same shape as the executor dropping a download mid-RETR, which under
+/// suppaftp 10 left a session answering the next question with the previous
+/// answer; suppaftp 12 drains that reply first, but the transfer's verdict is
+/// lost and the session's state is nobody's.
 /// `Drop` cannot abort: aborting has to speak on the wire and `Drop` is not
 /// async. So it does the one thing it can do synchronously, and takes the
 /// session away. The next operation dials again instead of inheriting a channel
@@ -3513,8 +3524,8 @@ impl FtpProvider {
 
         // Released after the commit, for the reason given in `resume_download`:
         // `commit` renames and fsyncs, so it fails on a full disk or across
-        // devices, and until the channel is given up its `Drop` is what keeps
-        // that failure from leaving a live session with an unread `226`.
+        // devices, and until the channel is given up its `Drop` is what takes
+        // the session when that failure drops an unfinished transfer.
         atomic.commit().await.map_err(ProviderError::IoError)?;
         let data_stream = channel.finish()?;
         data_stream
@@ -3598,9 +3609,9 @@ impl FtpProvider {
         // End of data. `finish` sends our close_notify and FIN after the last
         // byte, closes the socket and reads the 226: the server writes the
         // file once it reads that EOF, and it has nothing to send on a STOR
-        // data connection before it (the TLS cap below keeps TLS 1.3
-        // post-handshake tickets off it), so closing does not race unread
-        // bytes into a reset. It replaces our own shutdown, drain to the
+        // data connection before it (the TLS 1.2 cap in `make_tls_connector`
+        // keeps TLS 1.3 post-handshake tickets off it), so closing does not
+        // race unread bytes into a reset. It replaces our own shutdown, drain to the
         // server's EOF and second shutdown kept harmless by a wrapper: under
         // suppaftp 12 a second shutdown of a socket closed on both sides
         // fails with "not connected", and `finish` reports that failure for
