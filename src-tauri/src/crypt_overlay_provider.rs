@@ -1418,6 +1418,15 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.stored_checksum(&enc).await
     }
 
+    async fn stored_checksum_for(
+        &mut self,
+        path: &str,
+        algorithm: &str,
+    ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
+        self.inner.stored_checksum_for(&enc, algorithm).await
+    }
+
     fn supports_remote_upload(&self) -> bool {
         false
     }
