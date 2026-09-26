@@ -577,6 +577,15 @@ impl WebDavProvider {
         }
     }
 
+    /// Whether `from` and the destination URL `destination` name one
+    /// resource. A MOVE onto itself is a no-op everywhere else, but Nextcloud
+    /// answers it with 412, read as AlreadyExists (found live on 2026-09-26),
+    /// and under `Overwrite: T` a server may delete the destination first.
+    /// A trailing slash does not make another resource.
+    fn names_the_same_resource(&self, from: &str, destination: &str) -> bool {
+        self.build_url(from).trim_end_matches('/') == destination.trim_end_matches('/')
+    }
+
     /// Extract the path component of a URL (everything after `host[:port]`),
     /// or `""` if the URL has no path beyond the authority.
     /// Best-effort string parser: avoids pulling in `url` for one call.
@@ -3514,6 +3523,9 @@ impl StorageProvider for WebDavProvider {
         }
 
         let destination = self.build_url(to);
+        if self.names_the_same_resource(from, &destination) {
+            return Ok(());
+        }
 
         let response = self
             .send_replaying_digest(|| {
@@ -3554,6 +3566,9 @@ impl StorageProvider for WebDavProvider {
         }
 
         let destination = self.build_url(to);
+        if self.names_the_same_resource(from, &destination) {
+            return Ok(());
+        }
 
         let response = self
             .send_replaying_digest(|| {
@@ -5565,6 +5580,56 @@ mod tests {
         assert_eq!(
             *depths.lock().unwrap(),
             [Some("infinity".to_string()), Some("infinity".to_string())]
+        );
+    }
+
+    /// Nextcloud answers a MOVE onto its own URL with 412, which read as
+    /// AlreadyExists: `mv x x` failed where every other provider does nothing
+    /// (found live on 2026-09-26). A MOVE with `Overwrite: T` onto itself is
+    /// worse, since a server may delete the destination first. Neither is sent.
+    #[tokio::test]
+    async fn a_rename_or_replace_onto_its_own_path_sends_nothing() {
+        use std::sync::{Arc, Mutex};
+        let moves: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&moves);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let destination = req
+                        .headers()
+                        .get("destination")
+                        .map(|v| v.to_str().unwrap().to_string())
+                        .unwrap_or_default();
+                    let path = req.uri().path().to_string();
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{} {path}", req.method()));
+                    if destination.ends_with(&path) {
+                        axum::http::StatusCode::PRECONDITION_FAILED
+                    } else {
+                        axum::http::StatusCode::CREATED
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = WebDavProvider::new(test_config(&format!("http://{addr}/"))).expect("provider");
+        p.connected = true;
+        p.rename("/d/a.txt", "/d/a.txt")
+            .await
+            .expect("rename onto itself");
+        p.rename("/d", "/d/")
+            .await
+            .expect("folder rename onto itself");
+        p.replace("/d/a.txt", "/d/a.txt")
+            .await
+            .expect("replace onto itself");
+        assert!(
+            moves.lock().unwrap().is_empty(),
+            "{:?}",
+            moves.lock().unwrap()
         );
     }
 
