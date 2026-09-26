@@ -6308,6 +6308,83 @@ mod transfer_verdict_tests {
         assert_eq!(pwd.unwrap(), "/");
     }
 
+    /// A TLS acceptor for a loopback server with a fresh self-signed
+    /// certificate, offering every version rustls supports.
+    fn loopback_tls_acceptor() -> tokio_rustls::TlsAcceptor {
+        let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+        let key = rustls_pki_types::PrivateKeyDer::Pkcs8(
+            rustls_pki_types::PrivatePkcs8KeyDer::from(certified.signing_key.serialize_der()),
+        );
+        let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(vec![certified.cert.der().clone()], key)
+        .unwrap();
+        tokio_rustls::TlsAcceptor::from(Arc::new(config))
+    }
+
+    /// Implicit FTPS negotiates the data channel's protection like explicit
+    /// FTPS does. The session is encrypted from the first byte, but a server
+    /// keeps its data connections in the clear until `PBSZ 0` and `PROT P`
+    /// (RFC 4217), while the client wraps them in TLS: every transfer then
+    /// died in the data handshake (`tls handshake eof` against vsftpd).
+    #[tokio::test]
+    async fn implicit_ftps_asks_for_protected_data_connections() {
+        let acceptor = loopback_tls_acceptor();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let log = Arc::new(Mutex::new(Vec::<String>::new()));
+        let server_log = Arc::clone(&log);
+        tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let tls = acceptor.accept(tcp).await.unwrap();
+            let (read, mut write) = tokio::io::split(tls);
+            let mut lines = BufReader::new(read).lines();
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                server_log.lock().unwrap().push(line.clone());
+                let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+                let reply = match cmd.as_str() {
+                    "USER" => "331 password please\r\n",
+                    "PASS" => "230 logged in\r\n",
+                    "PWD" => "257 \"/\" is current\r\n",
+                    "QUIT" => "221 bye\r\n",
+                    _ => "200 ok\r\n",
+                };
+                if write.write_all(reply.as_bytes()).await.is_err() {
+                    return;
+                }
+                let _ = write.flush().await;
+            }
+        });
+
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "localhost".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::Implicit,
+            verify_cert: false,
+            initial_path: None,
+        });
+        tokio::time::timeout(Duration::from_secs(10), provider.connect())
+            .await
+            .expect("the dial must end")
+            .expect("the dial must succeed");
+        let sent = log.lock().unwrap().clone();
+        assert!(
+            sent.iter().any(|line| line == "PBSZ 0"),
+            "no PBSZ: {sent:?}"
+        );
+        assert!(
+            sent.iter().any(|line| line == "PROT P"),
+            "no PROT P: {sent:?}"
+        );
+    }
+
     /// FTPS stays on TLS 1.2, and not only for session reuse: an upload never
     /// reads its data connection, and the TLS 1.3 tickets a server sends on
     /// it would turn the close into a reset that loses the end of the file.
@@ -6316,19 +6393,7 @@ mod transfer_verdict_tests {
     async fn the_ftps_connector_negotiates_tls_1_2() {
         use suppaftp::tokio::AsyncTlsConnector;
 
-        let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
-        let key = rustls_pki_types::PrivateKeyDer::Pkcs8(
-            rustls_pki_types::PrivatePkcs8KeyDer::from(certified.signing_key.serialize_der()),
-        );
-        let server_config = rustls::ServerConfig::builder_with_provider(Arc::new(
-            rustls::crypto::aws_lc_rs::default_provider(),
-        ))
-        .with_safe_default_protocol_versions()
-        .unwrap()
-        .with_no_client_auth()
-        .with_single_cert(vec![certified.cert.der().clone()], key)
-        .unwrap();
-        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
+        let acceptor = loopback_tls_acceptor();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
