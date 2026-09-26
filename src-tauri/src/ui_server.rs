@@ -94,6 +94,15 @@ pub(crate) struct Limits {
     /// reads keeps its connection slot forever, and enough of them hold every
     /// slot the webview needs.
     pub write_stall_timeout: Duration,
+    /// Longest a connection is served before it is asked to close. A client
+    /// that keeps reading slowly makes progress and never trips the stall
+    /// deadline, so without this it could hold a slot indefinitely. The
+    /// response in flight is allowed to finish (`shutdown_grace`), then the
+    /// connection is dropped; WebKit reconnects for its next request.
+    pub max_connection_age: Duration,
+    /// How long a connection past its age may take to finish the response it
+    /// is sending before it is dropped.
+    pub shutdown_grace: Duration,
 }
 
 impl Limits {
@@ -101,6 +110,8 @@ impl Limits {
         header_read_timeout: Duration::from_secs(10),
         max_connections: 128,
         write_stall_timeout: Duration::from_secs(10),
+        max_connection_age: Duration::from_secs(60),
+        shutdown_grace: Duration::from_secs(10),
     };
 }
 
@@ -164,16 +175,25 @@ async fn accept_loop(listener: std::net::TcpListener, site: Arc<Site>, limits: L
                 let site = site.clone();
                 async move { Ok::<_, Infallible>(site.respond(request).await) }
             });
-            let served = http1::Builder::new()
+            let connection = http1::Builder::new()
                 .timer(TokioTimer::new())
                 .header_read_timeout(limits.header_read_timeout)
                 .serve_connection(
                     TokioIo::new(StallGuard::new(stream, limits.write_stall_timeout)),
                     service,
-                )
-                .await;
-            // A client that went away, or one that was too slow: its own
-            // connection ends, nothing else does.
+                );
+            tokio::pin!(connection);
+            let served = tokio::select! {
+                served = connection.as_mut() => served,
+                _ = tokio::time::sleep(limits.max_connection_age) => {
+                    connection.as_mut().graceful_shutdown();
+                    tokio::time::timeout(limits.shutdown_grace, connection.as_mut())
+                        .await
+                        .unwrap_or(Ok(()))
+                }
+            };
+            // A client that went away, was too slow, or stayed too long: its
+            // own connection ends, nothing else does.
             if let Err(error) = served {
                 log::debug!("UI server connection ended: {error}");
             }
@@ -677,6 +697,38 @@ mod tests {
         send(&mut next, "GET", "/index.html", host(addr));
         assert_eq!(read_response(&mut next, false).0, 200);
         drop(stalled);
+    }
+
+    /// A client that keeps reading, slowly, makes progress and never trips the
+    /// stall deadline. With one slot, the next connection is served only if the
+    /// slow one is retired when it reaches its age.
+    #[test]
+    fn a_slow_but_steady_reader_is_retired_at_its_age() {
+        let limits = Limits {
+            max_connections: 1,
+            max_connection_age: Duration::from_millis(400),
+            shutdown_grace: Duration::from_millis(200),
+            ..Limits::APP
+        };
+        let (addr, _) = serve(limits);
+        let mut slow = connect(addr);
+        send(&mut slow, "GET", "/big.bin", host(addr));
+        let reader = std::thread::spawn(move || {
+            let mut chunk = [0u8; 4096];
+            let started = Instant::now();
+            // Keep draining a little at a time for longer than age + grace.
+            while started.elapsed() < Duration::from_millis(2500) {
+                match slow.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => std::thread::sleep(Duration::from_millis(20)),
+                }
+            }
+        });
+        std::thread::sleep(Duration::from_millis(1200));
+        let mut next = connect(addr);
+        send(&mut next, "GET", "/index.html", host(addr));
+        assert_eq!(read_response(&mut next, false).0, 200);
+        reader.join().unwrap();
     }
 
     #[test]
