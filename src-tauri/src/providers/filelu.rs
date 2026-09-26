@@ -22,8 +22,8 @@ use std::path::Path;
 use tracing::info;
 
 use super::{
-    send_with_retry, FileLuConfig, HttpRetryConfig, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+    send_with_retry, send_with_retry_replayable, FileLuConfig, HttpRetryConfig, ProviderError,
+    ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
 };
 
 const API_BASE: &str = "https://filelu.com/api";
@@ -303,6 +303,9 @@ pub struct FileLuProvider {
     current_fld_id: u64,
     /// Cache: virtual path → entry metadata
     path_cache: HashMap<String, CacheEntry>,
+    /// Replaces the scheme and host of both API bases in tests.
+    #[cfg(test)]
+    api_origin_override: Option<String>,
 }
 
 impl FileLuProvider {
@@ -320,7 +323,18 @@ impl FileLuProvider {
             current_path: "/".to_string(),
             current_fld_id: 0,
             path_cache: HashMap::new(),
+            #[cfg(test)]
+            api_origin_override: None,
         }
+    }
+
+    /// `API_BASE` or `API_V2_BASE`, pointed at a local server in tests.
+    fn api_base(&self, base: &'static str) -> String {
+        #[cfg(test)]
+        if let Some(origin) = &self.api_origin_override {
+            return base.replacen("https://filelu.com", origin, 1);
+        }
+        base.to_string()
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────
@@ -330,12 +344,22 @@ impl FileLuProvider {
     }
 
     fn api_url(&self, endpoint: &str) -> String {
-        format!("{}/{}?key={}", API_BASE, endpoint, self.api_key())
+        format!(
+            "{}/{}?key={}",
+            self.api_base(API_BASE),
+            endpoint,
+            self.api_key()
+        )
     }
 
     /// Build URL for v2 path-based API endpoints
     fn api_v2_url(&self, endpoint: &str, params: &[(&str, &str)]) -> String {
-        let mut url = format!("{}/{}?key={}", API_V2_BASE, endpoint, self.api_key());
+        let mut url = format!(
+            "{}/{}?key={}",
+            self.api_base(API_V2_BASE),
+            endpoint,
+            self.api_key()
+        );
         for (k, v) in params {
             url.push('&');
             url.push_str(k);
@@ -356,7 +380,12 @@ impl FileLuProvider {
     }
 
     fn api_url_with(&self, endpoint: &str, params: &[(&str, &str)]) -> String {
-        let mut url = format!("{}/{}?key={}", API_BASE, endpoint, self.api_key());
+        let mut url = format!(
+            "{}/{}?key={}",
+            self.api_base(API_BASE),
+            endpoint,
+            self.api_key()
+        );
         for (k, v) in params {
             url.push('&');
             url.push_str(k);
@@ -997,7 +1026,7 @@ impl FileLuProvider {
     #[allow(dead_code)]
     async fn get_direct_url(&mut self, file_code: &str) -> Result<String, ProviderError> {
         let body = format!("file_code={}&key={}", file_code, self.api_key());
-        let url = format!("{}/file/direct_link", API_BASE);
+        let url = format!("{}/file/direct_link", self.api_base(API_BASE));
         let resp = self.post_form_with_retry(&url, body).await?;
         let result = Self::parse_api::<DirectLinkResult>(resp).await?;
         result
@@ -1559,56 +1588,46 @@ impl StorageProvider for FileLuProvider {
             .map_err(ProviderError::IoError)?
             .len();
 
-        if let Some(ref cb) = on_progress {
-            cb(0, total_size);
-        }
+        // The bytes are reported as they go out; 100 percent waits for the
+        // file code and, below the root, the folder move (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
+        progress.start();
 
-        let file = tokio::fs::File::open(local_path)
+        // An unreadable file fails here with its own IO error, before a
+        // request is built around it.
+        tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let stream = tokio_util::io::ReaderStream::new(file);
-        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
-            stream,
-            crate::transfer_dag::governor::TransferDirection::Upload,
-        ));
 
-        // Step 3: Upload via multipart with streaming body
-        let part = multipart::Part::stream_with_length(body, total_size)
-            .file_name(filename.clone())
-            .mime_str("application/octet-stream")
-            .map_err(|e| {
-                ProviderError::TransferFailed(format!(
-                    "Multipart error: {}",
-                    redact_key(&e.to_string())
-                ))
-            })?;
-
-        let form = multipart::Form::new()
-            .text("sess_id", sess_id)
-            .text("utype", "prem")
-            .text("fld_id", fld_id.to_string())
-            .part("file_0", part);
-
-        let request = self
-            .client
-            .post(&upload_url)
-            .multipart(form)
-            .build()
-            .map_err(|e| {
-                ProviderError::TransferFailed(format!(
-                    "Build upload request failed: {}",
-                    redact_key(&e.to_string())
-                ))
-            })?;
-
-        let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
-            .await
-            .map_err(|e| {
-                ProviderError::TransferFailed(format!(
-                    "Upload failed: {}",
-                    redact_key(&e.to_string())
-                ))
-            })?;
+        // Step 3: Upload via multipart with a streaming body. The request is
+        // built again for every attempt over a freshly opened file, so a
+        // retry (a 503 from the upload server) sends the whole file again,
+        // and the bar holds where the failed attempt stopped until the new
+        // one passes it.
+        let local = Path::new(local_path);
+        let resp = send_with_retry_replayable(
+            &self.client,
+            || {
+                let part = multipart::Part::stream_with_length(
+                    progress.reopened_file_body(local),
+                    total_size,
+                )
+                .file_name(filename.clone())
+                .mime_str("application/octet-stream")
+                .expect("a constant, valid MIME type");
+                let form = multipart::Form::new()
+                    .text("sess_id", sess_id.clone())
+                    .text("utype", "prem")
+                    .text("fld_id", fld_id.to_string())
+                    .part("file_0", part);
+                self.client.post(&upload_url).multipart(form)
+            },
+            &HttpRetryConfig::default(),
+        )
+        .await
+        .map_err(|e| {
+            ProviderError::TransferFailed(format!("Upload failed: {}", redact_key(&e.to_string())))
+        })?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1665,9 +1684,7 @@ impl StorageProvider for FileLuProvider {
             Self::ensure_api_ok(set_folder_resp).await?;
         }
 
-        if let Some(ref cb) = on_progress {
-            cb(total_size, total_size);
-        }
+        progress.complete();
 
         self.invalidate_cache_under(&dest_dir);
         filelu_log(&format!("Uploaded: {}", filename));
@@ -2224,6 +2241,116 @@ fn mime_from_ext(ext: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Upload a 300 KB file to the root through a local API double: an empty
+    /// root listing (no file to replace), `upload/server` pointing at the
+    /// double, and `upload_body` as the upload server's answer. Returns the
+    /// outcome and the progress updates.
+    async fn upload_against_fixture(
+        upload_body: &'static str,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        let (outcome, updates, _) = upload_against_fixture_logged(upload_body, false).await;
+        (outcome, updates)
+    }
+
+    /// [`upload_against_fixture`], optionally with an upload server that
+    /// answers its first request 503, and the log of the requests it read.
+    async fn upload_against_fixture_logged(
+        upload_body: &'static str,
+        busy_first: bool,
+    ) -> (
+        Result<(), ProviderError>,
+        Vec<(u64, u64)>,
+        crate::providers::upload_progress::fixture::Received,
+    ) {
+        use crate::providers::upload_progress::fixture::{
+            recorder, serve_logged, temp_file, Route,
+        };
+        let upload = Route::post("/up", 200, upload_body);
+        let upload = if busy_first {
+            upload.busy_first()
+        } else {
+            upload
+        };
+        let (origin, server, received) = serve_logged(vec![
+            Route::get(
+                "/apiv2/folder/list",
+                200,
+                r#"{"status":200,"result":{"files":[],"folders":[]}}"#,
+            ),
+            Route::get(
+                "/api/upload/server",
+                200,
+                r#"{"status":200,"sess_id":"s1","result":"{base}/up"}"#,
+            ),
+            upload,
+        ])
+        .await;
+        let mut provider = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_origin_override = Some(origin);
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates, received)
+    }
+
+    /// A 503 from the upload server is retried with the whole file: the
+    /// request is built again over a reopened file. The retry used to go out
+    /// with the multipart headers and no body. The bar never goes back while
+    /// the second attempt resends what the first had sent, and reaches 100
+    /// once, at the end.
+    #[tokio::test]
+    async fn a_busy_upload_server_gets_the_whole_file_again() {
+        let (outcome, updates, received) =
+            upload_against_fixture_logged(r#"[{"file_code":"abc","file_status":"OK"}]"#, true)
+                .await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        let uploads: Vec<usize> = received
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| *path == "/up")
+            .map(|&(_, len)| len)
+            .collect();
+        assert_eq!(uploads.len(), 2, "{uploads:?}");
+        assert!(uploads[0] > 300 * 1024, "{uploads:?}");
+        assert_eq!(uploads[0], uploads[1], "the retry carried a different body");
+        let total = 300 * 1024;
+        crate::providers::upload_progress::fixture::assert_real_progress(&updates, total, true);
+        assert_eq!(
+            updates.iter().filter(|&&(sent, _)| sent == total).count(),
+            1
+        );
+    }
+
+    /// The multipart upload streams the file: the bar follows the bytes going
+    /// out and reaches 100 only once the upload server has returned a file
+    /// code. An answer without one is a failed upload and never shows 100.
+    #[tokio::test]
+    async fn upload_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) =
+            upload_against_fixture(r#"[{"file_code":"abc","file_status":"OK"}]"#).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = upload_against_fixture(r#"[{"file_status":"OK"}]"#).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
+    }
 
     #[test]
     fn test_normalize_path() {

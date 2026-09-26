@@ -72,6 +72,7 @@ pub mod totp_helper;
 pub mod tpslimit;
 pub mod twake;
 pub mod types;
+pub mod upload_progress;
 pub mod uploadcare;
 pub mod webdav;
 pub mod xml_text;
