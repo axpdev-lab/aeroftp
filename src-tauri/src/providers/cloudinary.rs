@@ -369,6 +369,11 @@ impl CloudinaryProvider {
             }
             StatusCode::NOT_FOUND => ProviderError::NotFound(msg),
             StatusCode::CONFLICT => ProviderError::AlreadyExists(msg),
+            // A rename onto a public id taken since the destination check is
+            // a 400 whose message says so: a taken name, not a bad config.
+            s if s.is_client_error() && msg.to_ascii_lowercase().contains("already exist") => {
+                ProviderError::AlreadyExists(msg)
+            }
             s if s.is_client_error() => ProviderError::InvalidConfig(msg),
             s if s.is_server_error() => ProviderError::ServerError(msg),
             _ => ProviderError::Other(format!("HTTP {}: {}", status, msg)),
@@ -2035,6 +2040,29 @@ mod tests {
         assert!(
             updates[1].starts_with("DELETE ") && updates[1].contains("public_ids[]=b"),
             "{updates:?}"
+        );
+    }
+
+    /// Cloudinary refuses a rename onto a taken public id with a 400; one
+    /// taken after the destination check must still read as AlreadyExists,
+    /// which sync and `mkdir -p` handle, not as a configuration error.
+    #[test]
+    fn a_taken_public_id_is_already_exists_not_invalid_config() {
+        let refused = CloudinaryProvider::classify_cloudinary_error(
+            400,
+            r#"{"error":{"message":"to_public_id (b) already exists"}}"#,
+        );
+        assert!(
+            matches!(refused, ProviderError::AlreadyExists(_)),
+            "{refused:?}"
+        );
+        let invalid = CloudinaryProvider::classify_cloudinary_error(
+            400,
+            r#"{"error":{"message":"Invalid public_id"}}"#,
+        );
+        assert!(
+            matches!(invalid, ProviderError::InvalidConfig(_)),
+            "{invalid:?}"
         );
     }
 
