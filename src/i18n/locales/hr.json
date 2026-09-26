@@ -327,7 +327,14 @@
             "protonCliTitle": "Koristi službeni Proton Drive CLI",
             "protonCliBody": "Instalirajte Proton Drive CLI s proton.me/download/drive/cli, zatim u terminalu pokrenite proton-drive auth login i dovršite u pregledniku. AeroFTP nikad ne vidi vašu lozinku; sesija ostaje u spremištu tajni operacijskog sustava.",
             "protonUnofficial": "Ovo je aplikacija treće strane koju Proton službeno ne podržava.",
-            "protonConnectHint": "\"Poveži se\" koristi CLI koji je na ovom računalu već prijavljen. Jedan Proton račun po korisniku operacijskog sustava."
+            "protonConnectHint": "\"Poveži se\" koristi CLI koji je na ovom računalu već prijavljen. Jedan Proton račun po korisniku operacijskog sustava.",
+            "twakeInstance": "Twake adresa",
+            "twakeInstanceHelp": "Vaša vlastita adresa, na primjer yourname.twake.app. Također možete zalijepiti bilo koju adresu Twake stranice iz preglednika.",
+            "twakeSignIn": "Prijava putem Twakea",
+            "twakeSignInAgain": "Prijavite se ponovno",
+            "twakeSignedIn": "Prijavljeni ste",
+            "twakeWaitingBrowser": "Dovršite prijavu u pregledniku...",
+            "twakeSignInHelp": "AeroFTP otvara Twake u vašem pregledniku i traži pristup samo vašim datotekama. Ako Twake prvi put prikaže pogrešku, prijavite se u Twake u pregledniku i prijavite se ponovno. Pristup možete opozvati bilo kada u Twake postavkama, Povezani uređaji."
         },
         "browser": {
             "remote": "Udaljeno",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "Ova krajnja točka poslužuje S3 preko nešifriranog HTTP-a putem mreže. Prihvatite to za ovaj profil: potpisani pristupni podaci i svaka datoteka prelaze mrežu nešifrirani.",
             "discoverFilebase": "Filebase: objektna pohrana kompatibilna sa S3 (5 GB besplatno)",
             "protonDesc": "Povezuje se preko Proton Drive CLI-ja",
-            "protonTooltip": "Koristi Proton Drive CLI - instalirajte, prijavite se u pregledniku, AeroFTP je GUI"
+            "protonTooltip": "Koristi Proton Drive CLI - instalirajte, prijavite se u pregledniku, AeroFTP je GUI",
+            "twakeDesc": "Twake Drive (5 GB besplatno)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francuski open source oblak (Cozy Cloud je sada dio njega) s 5 GB besplatno",
+            "discoverTwake": "Europski open source oblak tvrtke Linagora, sada dom Cozy Clouda (5 GB besplatno)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -2153,9 +2163,6 @@
                 "disk_error": "Pogreška diska",
                 "unknown": "Nepoznato"
             },
-            "parallelStreams": "Tokovi",
-            "parallelSequential": "Sekvencijalni",
-            "parallelStreamLabel": "tokova",
             "schedulerTitle": "Planer sinkronizacije",
             "schedulerEnabled": "Omogući planer",
             "schedulerResume": "Nastavi",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Veliki broj direktorija - može premašiti inotify ograničenje",
             "watcherPolling": "Korištenje načina ispitivanja (sporije ali univerzalno)",
-            "compressionToggle": "Kompresija",
-            "compressionAuto": "Automatski",
-            "compressionOn": "Uključeno",
-            "compressionOff": "Isključeno",
             "multiPathAdd": "Dodaj par putanja",
             "multiPathEmpty": "Nema konfiguriranih parova putanja",
             "templateExport": "Izvezi predložak",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "Vrati",
             "rollbackEmpty": "Nema dostupnih snimaka",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 tokova + SVA sigurnost onemogućena - bez dnevnika, bez provjere, bez ponovnog pokušaja",
+            "speedManiacTooltip": "Bez dnevnika, bez provjere tijekom izvođenja, ograničenja propusnosti zanemarena, 2 brza ponovna pokušaja. Preuzete datoteke provjeravaju se nakon izvođenja.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Bez dnevnika. Bez provjere. Bez ponovnog pokušaja. Maksimalna bruta brzina. Ako nešto ne uspije, izgubljeno je. Potpuna provjera skeniranja izvršit će se nakon završetka sinkronizacije.",
+            "maniacWarningBody": "Bez dnevnika i bez provjere tijekom izvođenja, ograničenja propusnosti se zanemaruju, a neuspjela datoteka dobiva samo 2 brza ponovna pokušaja. Nakon izvođenja preuzete datoteke se provjeravaju; prenesene ne.",
             "maniacConfirm": "Razumijem, nastavi",
             "maniacPostSyncReport": "Provjera nakon sinkronizacije: {ok} OK, {mismatches} neusklađenih, {failed} neuspješnih",
             "rollback": "Vraćanje",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "Spremi trenutnu konfiguraciju sinkronizacije kao predložak .aerosync za višekratnu upotrebu",
             "templateImportDesc": "Učitaj predložak .aerosync za primjenu njegove konfiguracije sinkronizacije",
             "maniacActive": "Aktivno",
-            "speedStreams": "{count} tokova",
             "actionUploaded": "Preneseno",
             "actionDownloaded": "Preuzeto",
             "actionDeleted": "Izbrisano",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "Neprepoznata metadata polja",
             "aerosyncScriptApplyButton": "Spremi kao preset",
             "aerosyncScriptAppliedToast": "Uvezeni preset spremljen. Otvori AeroSync za korištenje.",
-            "compressionHint": "Komprimira podatke tijekom prijenosa kako bi ga ubrzao; ne pohranjuje komprimirane datoteke na odredištu. Auto preskače formate koji su već komprimirani (zip, jpg, mp4 i slično).",
             "canaryDryRun": "Ništa se ne prenosi: ovo prikazuje pretpregled onoga što bi učinila potpuna sinkronizacija, izračunato iz uzorka. To je grafički ekvivalent naredbe aeroftp-cli sync --dry-run (i --dry-run alata rclone).",
-            "templateImportPathPairs": "Broj upotrebljivih parova putanja u ovom predlošku: {count}. AeroFTP primjenjuje točno jedan, pa ništa nije uvezeno. Uredite predložak tako da ostane samo jedan par, pa ga ponovno uvezite.",
+            "templateImportPathPairs": "Upotrebljivi parovi putanja (lokalna/udaljena) u ovom predlošku: {count}. Prozor AeroSync radi s točno jednim parom, pa ništa nije uvezeno. Uredite predložak tako da ostane samo jedan par, a zatim ga ponovno uvezite.",
             "templateNamePlaceholder": "npr. Noćna sigurnosna kopija na S3",
             "templateDescPlaceholder": "Čemu služi ovaj predložak (neobavezno)"
         },
@@ -5081,7 +5082,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Usporedi",
             "tabPlan": "Plan",
-            "tabSync": "Sinkroniziraj",
+            "tabSync": "Lokalno zrcalo",
             "compareWontFitTitle": "Iznad ograničenja {name}: {count}",
             "compareWontFitHint": "Ove datoteke premašuju dokumentirano ograničenje veličine pružatelja ili je njihov naziv ili putanja dulja nego što prihvaća. Sinkronizacija bi za njih zakazala: prvo ih preimenujte, premjestite ili podijelite.",
             "compareWontFitTooLarge": "{size}, ograničenje {limit}",
@@ -5089,6 +5090,78 @@
             "compareWontFitNameChars": "naziv preko {count} znakova",
             "compareWontFitPathBytes": "putanja preko {count} bajtova",
             "compareWontFitPathChars": "putanja preko {count} znakova",
+            "presetDefault": "Zadano",
+            "actionLabel": {
+                "skip": "Preskoči",
+                "copy-to-right": "Kopiraj → desno",
+                "copy-to-left": "Kopiraj ← lijevo",
+                "overwrite-right": "Prepiši desno",
+                "overwrite-left": "Prepiši lijevo",
+                "delete-right": "Izbriši desno",
+                "delete-left": "Izbriši lijevo",
+                "rename-to-right": "Zadrži obje → desno",
+                "rename-to-left": "Zadrži obje ← lijevo",
+                "conflict-skip": "Sukob (preskoči)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Preskoči",
+                    "tagline": "Ostavlja sukobe netaknutima na obje strane."
+                },
+                "rename": {
+                    "label": "Zadrži obje",
+                    "tagline": "Kopira verziju iz izvora sa sufiksom datuma i vremena."
+                },
+                "newer-wins": {
+                    "label": "Novija pobjeđuje",
+                    "tagline": "Strana s novijim vremenom izmjene prepisuje drugu."
+                },
+                "older-wins": {
+                    "label": "Starija pobjeđuje",
+                    "tagline": "Starija strana prepisuje noviju (za arhiviranje)."
+                },
+                "larger-wins": {
+                    "label": "Veća pobjeđuje",
+                    "tagline": "Strana s većom veličinom prepisuje manju."
+                },
+                "smaller-wins": {
+                    "label": "Manja pobjeđuje",
+                    "tagline": "Manja strana prepisuje veću."
+                }
+            },
+            "bucketName": {
+                "only-left": "Samo lijevo",
+                "newer-left": "Novije lijevo",
+                "only-right": "Samo desno",
+                "newer-right": "Novije desno",
+                "conflict": "Sukob",
+                "same": "Isto"
+            },
+            "bucketDescription": {
+                "only-left": "Postoji na izvornom panelu, nedostaje na odredištu.",
+                "newer-left": "Postoji na obje strane, kopija u izvoru ima noviju vremensku oznaku.",
+                "only-right": "Postoji na odredištu, nedostaje na izvornom panelu.",
+                "newer-right": "Postoji na obje strane, kopija na odredištu ima noviju vremensku oznaku.",
+                "conflict": "Stavka postoji na obje strane, ali se veličina razlikuje uz usporedive vremenske oznake.",
+                "same": "Stavke se podudaraju prema aktivnom pravilu usporedbe."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Samo veličina",
+                "mtimeOnly": "Samo vremenska oznaka",
+                "sizeAndMtime": "Veličina + vremenska oznaka"
+            },
+            "compareTable": {
+                "name": "Naziv",
+                "leftSize": "Veličina lijevo",
+                "rightSize": "Veličina desno",
+                "leftModified": "Izmijenjeno lijevo",
+                "rightModified": "Izmijenjeno desno",
+                "folder": "mapa",
+                "noEntries": "Nema stavki.",
+                "countedNotListed": "Prebrojeno, ali nije navedeno: skeniranje prikazuje identične datoteke kao ukupan broj umjesto zasebnog retka za svaku, kako bi velika stabla ostala brza.",
+                "shown": "Prikazano: {shown} od {total}",
+                "moreNotListed": "Prebrojeno, ali nije navedeno: {count}"
+            },
             "compareUnavailable": "Otvori drugi panel ili udaljenu vezu za usporedbu.",
             "planUnavailable": "Potreban je rezultat usporedbe prije odabira presetа. Najprije otvori karticu Usporedi.",
             "totalEntries": "Ukupno stavki",
@@ -5125,7 +5198,7 @@
             "ignoredForMirror": "IGNORIRANO ZA MIRROR",
             "versionedBackup": "Sigurnosna kopija s verzijama",
             "enable": "Omogući",
-            "versionedBackupHint": "Spremi odredišnu kopiju u ovu mapu prije svakog prepisivanja ili brisanja.",
+            "versionedBackupHint": "Prije nego što se datoteka prepiše ili izbriše, njezina kopija na odredištu premješta se u {dir}, u mapu nazvanu po datumu i vremenu izvođenja.",
             "actionable": "Za izvršavanje",
             "reportCopiedRight": "Kopirano udesno",
             "reportCopiedLeft": "Kopirano ulijevo",
@@ -5147,7 +5220,6 @@
             "executePreset": "Izvrši preset",
             "execute": "Izvrši",
             "sync": {
-                "title": "AeroSync: lokalno na lokalno",
                 "description": "Zrcali lokalni izvorni direktorij u lokalno odredište. Datoteke ≥ 1 MiB koriste ugrađeni delta engine; manje datoteke koriste izravno kopiranje.",
                 "source": "Izvor",
                 "destination": "Odredište",
@@ -5203,7 +5275,7 @@
             "speedMode_fast": "Brzo",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Ekstremno",
-            "speedModeHint": "Paralelni tokovi + unaprijed postavljena kompresija primijenjena na izvođenje.",
+            "speedModeHint": "Postavlja pravila ponovnih pokušaja. Od načina Brzo naviše, promijenjene datoteke šalju se kao delte gdje poslužitelj to podržava (SFTP s rsync).",
             "verifyPolicy": "Pravilo provjere",
             "verifyPolicy_none": "Nijedno",
             "verifyPolicy_size_only": "Samo veličina",
@@ -5248,7 +5320,45 @@
             "errorCorrection": "Ispravak pogrešaka",
             "errorCorrectionHint": "Sprema malu .aerocorrect datoteku pariteta uz svaku sigurnosnu kopiju, tako da se udaljena kopija oštećena bit-rotom može popraviti pri sljedećem povlačenju, bez izvornika.",
             "outOfSyncItemsPct": "Nesinkronizirane stavke",
-            "outOfSyncBytesPct": "Nesinkronizirani bajtovi"
+            "outOfSyncBytesPct": "Nesinkronizirani bajtovi",
+            "exclude": {
+                "label": "Uzorci za isključivanje",
+                "hint": "Odvojeni zarezom ili novim redom, na primjer cache, *.tmp ili build/output. Uvijek isključeno: {list}."
+            },
+            "cli": {
+                "title": "Isto pokretanje iz naredbenog retka",
+                "copy": "Kopiraj",
+                "copied": "Kopirano",
+                "copyFailed": "Kopiranje nije uspjelo",
+                "none": "Nema točnog ekvivalenta u CLI-ju: {reason}",
+                "reason": {
+                    "localPair": "za dvije lokalne mape CLI pokreće vlastito zrcaljenje, koje zanemaruje postavke smjera, brisanja i sukoba.",
+                    "unsavedServer": "ova veza nije spremljeni poslužitelj, a CLI ga treba kako bi ga naveo s --profile.",
+                    "overwritesNewer": "CLI prepisuje odredišnu kopiju drukčije veličine čak i kad je novija, što ovaj preset nikad ne radi.",
+                    "twoWay": "CLI dvije kopije iste veličine s različitim vremenom smatra sukobom i prepisuje stariju; ovaj plan ih unutar 30 sekundi smatra jednakima.",
+                    "canary": "CLI nema probno Canary pokretanje.",
+                    "versionedBackup": "CLI još ne čuva sigurnosne kopije u istoj strukturi.",
+                    "transferBudget": "kad se proračun potroši, ovaj se plan zaustavlja, uključujući brisanja; CLI ograničava samo prijenose i svejedno briše.",
+                    "remotePath": "CLI razrješava udaljenu mapu u odnosu na početnu mapu spremljenog poslužitelja i stigao bi do druge.",
+                    "exclusions": "CLI drukčije primjenjuje uzorke za isključivanje, pa ne bi preskočio sve što ovaj plan preskače (node_modules, .git i ostalo)."
+                }
+            },
+            "rescan": "Ponovno skeniraj",
+            "rescanNeeded": "Usporedba je napravljena s drugim isključenjima ili drugom mapom sigurnosnih kopija. Ponovno skenirajte prije pokretanja.",
+            "backup": {
+                "checking": "Provjera kako ovaj poslužitelj premješta datoteke...",
+                "serverCopy": "Ovaj poslužitelj ne može premještati: svaka sačuvana kopija kopira se na poslužitelju, a zatim briše. To stoji punu kopiju svake sačuvane datoteke, u dva odvojena koraka.",
+                "clientCopy": "Ovaj poslužitelj ne može premještati: svaka sačuvana kopija preuzima se, prenosi u mapu sigurnosnih kopija, a zatim briše. Svaka sačuvana datoteka dvaput prolazi kroz ovo računalo, u odvojenim koracima.",
+                "unsupported": "Ovaj poslužitelj ne može premještati datoteke u drugu mapu, pa ne može čuvati stare kopije. Isključite sigurnosnu kopiju s verzijama za pokretanje.",
+                "checkFailed": "Nije moguće pitati poslužitelj kako premješta datoteke. Ponovno se povežite ili isključite sigurnosnu kopiju s verzijama za pokretanje.",
+                "nested": "Mapa sigurnosnih kopija nalazi se unutar {folder}, u koju ova sinkronizacija zapisuje. Odaberite mapu izvan nje.",
+                "invalid": {
+                    "empty": "Unesite naziv mape sigurnosnih kopija.",
+                    "absolute": "Koristite mapu unutar odredišta, a ne apsolutnu putanju.",
+                    "parent": "Mapa sigurnosnih kopija ne smije sadržavati '..'.",
+                    "name": "Ovaj naziv mape sigurnosnih kopija nije valjan."
+                }
+            }
         },
         "accountLock": {
             "title": "Odaberite račun",

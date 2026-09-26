@@ -327,7 +327,14 @@
             "protonCliTitle": "Usa o CLI oficial de Proton Drive",
             "protonCliBody": "Instale o CLI de Proton Drive desde proton.me/download/drive/cli, execute proton-drive auth login nun terminal e remate no navegador. AeroFTP nunca ve o seu contrasinal; a sesión queda no almacén de segredos do sistema.",
             "protonUnofficial": "Esta é unha aplicación de terceiros non admitida oficialmente por Proton.",
-            "protonConnectHint": "\"Conectar\" usa o CLI xa iniciado nesta máquina. Unha conta Proton por usuario do sistema."
+            "protonConnectHint": "\"Conectar\" usa o CLI xa iniciado nesta máquina. Unha conta Proton por usuario do sistema.",
+            "twakeInstance": "Enderezo de Twake",
+            "twakeInstanceHelp": "O teu propio enderezo, por exemplo yourname.twake.app. Tamén podes pegar calquera enderezo de páxina de Twake desde o teu navegador.",
+            "twakeSignIn": "Iniciar sesión con Twake",
+            "twakeSignInAgain": "Iniciar sesión de novo",
+            "twakeSignedIn": "Sesión iniciada",
+            "twakeWaitingBrowser": "Remata de iniciar sesión no teu navegador...",
+            "twakeSignInHelp": "AeroFTP abre Twake no teu navegador e só pide acceso aos teus ficheiros. Se Twake amosa un erro a primeira vez, inicia sesión en Twake no navegador e téntao de novo. Podes revogar o acceso en calquera momento na Configuración de Twake, Dispositivos conectados."
         },
         "browser": {
             "remote": "Remoto",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "Este punto de conexión serve S3 por HTTP sen cifrar a través dunha rede. Acéptao para este perfil: as credenciais asinadas e todos os ficheiros atravesan a rede sen cifrar.",
             "discoverFilebase": "Filebase: almacenamento de obxectos compatible con S3 (5 GB gratis)",
             "protonDesc": "Conéctase a través do CLI de Proton Drive",
-            "protonTooltip": "Usa o CLI de Proton Drive - instáleo, inicie sesión no navegador, AeroFTP é a GUI"
+            "protonTooltip": "Usa o CLI de Proton Drive - instáleo, inicie sesión no navegador, AeroFTP é a GUI",
+            "twakeDesc": "Twake Drive (5 GB gratis)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, nube francesa de código aberto (Cozy Cloud agora forma parte dela) con 5 GB gratis",
+            "discoverTwake": "Nube europea de código aberto de Linagora, agora fogar de Cozy Cloud (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Atallos de teclado",
@@ -2153,9 +2163,6 @@
                 "disk_error": "Erro de disco",
                 "unknown": "Descoñecido"
             },
-            "parallelStreams": "Fluxos",
-            "parallelSequential": "Secuencial",
-            "parallelStreamLabel": "fluxos",
             "schedulerTitle": "Programador de sincronización",
             "schedulerEnabled": "Activar programador",
             "schedulerResume": "Retomar",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Alto número de directorios - pode exceder o límite de inotify",
             "watcherPolling": "Usando modo de sondaxe (máis lento pero universal)",
-            "compressionToggle": "Compresión",
-            "compressionAuto": "Auto",
-            "compressionOn": "Activada",
-            "compressionOff": "Desactivada",
             "multiPathAdd": "Engadir parella de camiños",
             "multiPathEmpty": "Non hai parellas de camiños configuradas",
             "templateExport": "Exportar modelo",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "Restaurar",
             "rollbackEmpty": "Non hai instantáneas dispoñibles",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 fluxos + TODA a seguridade desactivada - sen rexistro, sen verificación, sen reintento",
+            "speedManiacTooltip": "Sen rexistro, sen verificación durante a execución, límites de largo de banda ignorados, 2 reintentos rápidos. Os ficheiros descargados verifícanse despois da execución.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Sen rexistro. Sen verificación. Sen reintento. Velocidade bruta máxima. Se algo falla, pérdese. Executarase unha verificación completa despois de que remate a sincronización.",
+            "maniacWarningBody": "Sen rexistro nin verificación durante a execución, os límites de largo de banda ignóranse e un ficheiro fallido só ten 2 reintentos rápidos. Despois da execución, os ficheiros descargados verifícanse; os subidos non.",
             "maniacConfirm": "Entendo, continuar",
             "maniacPostSyncReport": "Verificación posterior á sincronización: {ok} OK, {mismatches} desaxustes, {failed} fallidos",
             "rollback": "Restauración",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "Gardar a configuración de sincronización actual como modelo .aerosync reutilizable",
             "templateImportDesc": "Cargar un modelo .aerosync para aplicar a súa configuración de sincronización",
             "maniacActive": "Activo",
-            "speedStreams": "{count} fluxos",
             "actionUploaded": "Subido",
             "actionDownloaded": "Descargado",
             "actionDeleted": "Eliminado",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "Campos de metadata non recoñecidos",
             "aerosyncScriptApplyButton": "Gardar como preset",
             "aerosyncScriptAppliedToast": "Preset importado gardado. Abre AeroSync para usalo.",
-            "compressionHint": "Comprime os datos durante a transferencia para aceleraa; non almacena ficheiros comprimidos no destino. Auto omite os formatos que xa están comprimidos (zip, jpg, mp4 e similares).",
             "canaryDryRun": "Non se transfire nada: mostra unha vista previa do que faría unha sincronización completa, calculada a partir da mostra. É o equivalente gráfico do comando aeroftp-cli sync --dry-run (e de --dry-run de rclone).",
-            "templateImportPathPairs": "Este modelo define {count} parellas de camiños utilizables. AeroFTP aplica exactamente unha, así que non se importou nada. Edita o modelo para deixar unha soa parella e impórtao de novo.",
+            "templateImportPathPairs": "Parellas de camiños (local/remoto) utilizables neste modelo: {count}. Unha xanela de AeroSync traballa con exactamente unha parella, así que non se importou nada. Edita o modelo para deixar unha soa parella e despois impórtao de novo.",
             "templateNamePlaceholder": "p. ex. Copia de seguranza nocturna en S3",
             "templateDescPlaceholder": "Para que serve este modelo (opcional)"
         },
@@ -5100,7 +5101,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Comparar",
             "tabPlan": "Plan",
-            "tabSync": "Sincronizar",
+            "tabSync": "Espello local",
             "compareWontFitTitle": "Por riba dos límites de {name}: {count}",
             "compareWontFitHint": "Estes ficheiros superan o límite de tamaño documentado do provedor, ou o seu nome ou ruta é máis longo do que acepta. Unha sincronización fallaría con eles: renoméaos, móveos ou divídeos antes.",
             "compareWontFitTooLarge": "{size}, límite {limit}",
@@ -5108,6 +5109,78 @@
             "compareWontFitNameChars": "nome de máis de {count} caracteres",
             "compareWontFitPathBytes": "ruta de máis de {count} bytes",
             "compareWontFitPathChars": "ruta de máis de {count} caracteres",
+            "presetDefault": "Predeterminado",
+            "actionLabel": {
+                "skip": "Omitir",
+                "copy-to-right": "Copiar → dereita",
+                "copy-to-left": "Copiar ← esquerda",
+                "overwrite-right": "Sobrescribir á dereita",
+                "overwrite-left": "Sobrescribir á esquerda",
+                "delete-right": "Eliminar á dereita",
+                "delete-left": "Eliminar á esquerda",
+                "rename-to-right": "Conservar ambos → dereita",
+                "rename-to-left": "Conservar ambos ← esquerda",
+                "conflict-skip": "Conflito (omitir)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Omitir",
+                    "tagline": "Deixa os conflitos intactos nos dous lados."
+                },
+                "rename": {
+                    "label": "Conservar ambos",
+                    "tagline": "Copia a versión de orixe cun sufixo de data e hora."
+                },
+                "newer-wins": {
+                    "label": "Gaña o máis recente",
+                    "tagline": "O lado coa data de modificación máis recente sobrescribe o outro."
+                },
+                "older-wins": {
+                    "label": "Gaña o máis antigo",
+                    "tagline": "O lado máis antigo sobrescribe o máis recente (para arquivado)."
+                },
+                "larger-wins": {
+                    "label": "Gaña o máis grande",
+                    "tagline": "O lado co tamaño maior sobrescribe o menor."
+                },
+                "smaller-wins": {
+                    "label": "Gaña o máis pequeno",
+                    "tagline": "O lado máis pequeno sobrescribe o máis grande."
+                }
+            },
+            "bucketName": {
+                "only-left": "Só á esquerda",
+                "newer-left": "Máis recente á esquerda",
+                "only-right": "Só á dereita",
+                "newer-right": "Máis recente á dereita",
+                "conflict": "Conflito",
+                "same": "Iguais"
+            },
+            "bucketDescription": {
+                "only-left": "Presente no panel de orixe, ausente no destino.",
+                "newer-left": "Presente nos dous lados, a copia de orixe ten a marca de tempo máis recente.",
+                "only-right": "Presente no destino, ausente no panel de orixe.",
+                "newer-right": "Presente nos dous lados, a copia de destino ten a marca de tempo máis recente.",
+                "conflict": "Os dous lados teñen a entrada, pero o tamaño difire con marcas de tempo comparables.",
+                "same": "As entradas coinciden segundo o criterio de comparación activo."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Só tamaño",
+                "mtimeOnly": "Só marca de tempo",
+                "sizeAndMtime": "Tamaño + marca de tempo"
+            },
+            "compareTable": {
+                "name": "Nome",
+                "leftSize": "Tamaño á esquerda",
+                "rightSize": "Tamaño á dereita",
+                "leftModified": "Modificado á esquerda",
+                "rightModified": "Modificado á dereita",
+                "folder": "cartafol",
+                "noEntries": "Non hai entradas.",
+                "countedNotListed": "Contados pero non listados: a análise informa dos ficheiros idénticos como un total en lugar dunha fila para cada un, para que as árbores grandes sigan sendo rápidas.",
+                "shown": "Mostrados: {shown} de {total}",
+                "moreNotListed": "Contados pero non listados: {count}"
+            },
             "compareUnavailable": "Abre un segundo panel ou unha conexión remota para comparar.",
             "planUnavailable": "Cómpre un resultado de comparación antes de escoller un preset. Abre primeiro a lapela Comparar.",
             "totalEntries": "Entradas totais",
@@ -5144,7 +5217,7 @@
             "ignoredForMirror": "IGNORADO PARA ESPELLO",
             "versionedBackup": "Copia de seguranza versionada",
             "enable": "Habilitar",
-            "versionedBackupHint": "Captura a copia de destino neste directorio antes de cada sobrescritura ou eliminación.",
+            "versionedBackupHint": "Antes de sobrescribir ou eliminar un ficheiro, a súa copia no destino móvese a {dir}, nun cartafol co nome da data e hora da execución.",
             "actionable": "Accionable",
             "reportCopiedRight": "Copiados á dereita",
             "reportCopiedLeft": "Copiados á esquerda",
@@ -5166,7 +5239,6 @@
             "executePreset": "Executar preset",
             "execute": "Executar",
             "sync": {
-                "title": "AeroSync: de local a local",
                 "description": "Reflicte un directorio de orixe local nun destino local. Os ficheiros ≥ 1 MiB usan o motor delta integrado; os ficheiros máis pequenos usan a copia directa.",
                 "source": "Orixe",
                 "destination": "Destino",
@@ -5222,7 +5294,7 @@
             "speedMode_fast": "Rápido",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extremo",
-            "speedModeHint": "Fluxos paralelos + predefinición de compresión aplicada á execución.",
+            "speedModeHint": "Define a política de reintentos. A partir de Rápido, os ficheiros modificados envíanse como deltas onde o servidor o admite (SFTP con rsync).",
             "verifyPolicy": "Política de verificación",
             "verifyPolicy_none": "Ningunha",
             "verifyPolicy_size_only": "Só tamaño",
@@ -5267,7 +5339,45 @@
             "errorCorrection": "Corrección de erros",
             "errorCorrectionHint": "Garda un pequeno ficheiro de paridade .aerocorrect xunto a cada ficheiro de copia de seguranza, para que unha copia remota danada por bit-rot poida repararse no seguinte pull, sen o orixinal.",
             "outOfSyncItemsPct": "Elementos sen sincronizar",
-            "outOfSyncBytesPct": "Bytes sen sincronizar"
+            "outOfSyncBytesPct": "Bytes sen sincronizar",
+            "exclude": {
+                "label": "Patróns de exclusión",
+                "hint": "Separados por coma ou salto de liña, por exemplo cache, *.tmp ou build/output. Sempre excluídos: {list}."
+            },
+            "cli": {
+                "title": "A mesma execución desde a liña de comandos",
+                "copy": "Copiar",
+                "copied": "Copiado",
+                "copyFailed": "Non se puido copiar",
+                "none": "Non hai equivalente exacto na CLI: {reason}",
+                "reason": {
+                    "localPair": "para dous cartafoles locais a CLI executa o seu propio espello, que ignora a dirección, o borrado e a configuración de conflitos.",
+                    "unsavedServer": "esta conexión non é un servidor gardado, e a CLI necesita un para indicalo con --profile.",
+                    "overwritesNewer": "a CLI sobrescribe unha copia de destino de distinto tamaño aínda que sexa máis recente, algo que este preset nunca fai.",
+                    "twoWay": "a CLI trata dúas copias do mesmo tamaño con horas distintas como conflito e sobrescribe a máis antiga; este plan considéraas iguais dentro de 30 segundos.",
+                    "canary": "a CLI non ten modo de proba.",
+                    "versionedBackup": "a CLI aínda non garda as copias de seguridade coa mesma estrutura.",
+                    "transferBudget": "cando se esgota o orzamento este plan detense, borrados incluídos; a CLI só limita as transferencias e segue borrando.",
+                    "remotePath": "a CLI resolve o cartafol remoto respecto do cartafol inicial do servidor gardado e chegaría a outro distinto.",
+                    "exclusions": "a CLI aplica os patróns de exclusión doutro xeito, así que non omitiría todo o que omite este plan (node_modules, .git e o resto)."
+                }
+            },
+            "rescan": "Volver analizar",
+            "rescanNeeded": "A comparación fíxose con outras exclusións ou outro cartafol de copia de seguridade. Volve analizar antes de executar.",
+            "backup": {
+                "checking": "Comprobando como move os ficheiros este servidor...",
+                "serverCopy": "Este servidor non pode mover: cada copia conservada cópiase no servidor e despois elimínase. Iso custa unha copia completa de cada ficheiro conservado, en dous pasos separados.",
+                "clientCopy": "Este servidor non pode mover: cada copia conservada descárgase, súbese ao cartafol de copia de seguranza e despois elimínase. Cada ficheiro conservado pasa dúas veces por este ordenador, en pasos separados.",
+                "unsupported": "Este servidor non pode mover ficheiros a outro cartafol, así que non pode conservar copias antigas. Desactiva a copia de seguranza versionada para executar.",
+                "checkFailed": "Non se puido preguntar ao servidor como move os ficheiros. Volve conectar ou desactiva a copia de seguranza versionada para executar.",
+                "nested": "O cartafol de copia de seguranza está dentro de {folder}, onde escribe esta sincronización. Escolle un cartafol fóra del.",
+                "invalid": {
+                    "empty": "Introduce un nome para o cartafol de copia de seguranza.",
+                    "absolute": "Usa un cartafol dentro do destino, non unha ruta absoluta.",
+                    "parent": "O cartafol de copia de seguranza non pode conter '..'.",
+                    "name": "Este nome de cartafol de copia de seguranza non é válido."
+                }
+            }
         },
         "accountLock": {
             "title": "Escolla unha conta",

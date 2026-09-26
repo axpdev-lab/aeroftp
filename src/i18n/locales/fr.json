@@ -327,7 +327,14 @@
             "protonCliTitle": "Utilise le CLI officiel Proton Drive",
             "protonCliBody": "Installez le CLI Proton Drive depuis proton.me/download/drive/cli, puis exécutez proton-drive auth login dans un terminal et terminez dans le navigateur. AeroFTP ne voit jamais votre mot de passe ; la session reste dans le magasin de secrets du système.",
             "protonUnofficial": "Ceci est une application tierce non prise en charge officiellement par Proton.",
-            "protonConnectHint": "\"Connecter\" utilise le CLI déjà connecté sur cette machine. Un compte Proton par utilisateur du système."
+            "protonConnectHint": "\"Connecter\" utilise le CLI déjà connecté sur cette machine. Un compte Proton par utilisateur du système.",
+            "twakeInstance": "Adresse Twake",
+            "twakeInstanceHelp": "Votre propre adresse, par exemple yourname.twake.app. Vous pouvez aussi coller n'importe quelle adresse de page Twake depuis votre navigateur.",
+            "twakeSignIn": "Se connecter avec Twake",
+            "twakeSignInAgain": "Se reconnecter",
+            "twakeSignedIn": "Connecté",
+            "twakeWaitingBrowser": "Terminez la connexion dans votre navigateur...",
+            "twakeSignInHelp": "AeroFTP ouvre Twake dans votre navigateur et ne demande l'accès qu'à vos fichiers. Si Twake affiche une erreur la première fois, connectez-vous à Twake dans le navigateur puis reconnectez-vous. Vous pouvez révoquer l'accès à tout moment dans les Paramètres Twake, Appareils connectés."
         },
         "browser": {
             "remote": "Distant",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "Ce point de terminaison sert S3 en HTTP non chiffré sur un réseau. Acceptez-le pour ce profil : les identifiants signés et chaque fichier traversent le réseau sans chiffrement.",
             "discoverFilebase": "Filebase: stockage d'objets compatible S3 (5 Go gratuits)",
             "protonDesc": "Se connecte via le CLI Proton Drive",
-            "protonTooltip": "Utilise le CLI Proton Drive - installez-le, connectez-vous dans le navigateur, AeroFTP est la GUI"
+            "protonTooltip": "Utilise le CLI Proton Drive - installez-le, connectez-vous dans le navigateur, AeroFTP est la GUI",
+            "twakeDesc": "Twake Drive (5 Go gratuits)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cloud open source français (Cozy Cloud en fait désormais partie) avec 5 Go gratuits",
+            "discoverTwake": "Cloud européen open source de Linagora, désormais la nouvelle maison de Cozy Cloud (5 Go gratuits)"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",
@@ -2153,9 +2163,6 @@
                 "disk_error": "Erreur disque",
                 "unknown": "Inconnu"
             },
-            "parallelStreams": "Flux",
-            "parallelSequential": "Séquentiel",
-            "parallelStreamLabel": "flux",
             "schedulerTitle": "Planificateur de synchronisation",
             "schedulerEnabled": "Activer le planificateur",
             "schedulerResume": "Reprendre",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Nombre élevé de répertoires - peut dépasser la limite inotify",
             "watcherPolling": "Utilisation du mode polling (plus lent mais universel)",
-            "compressionToggle": "Compression",
-            "compressionAuto": "Auto",
-            "compressionOn": "Activée",
-            "compressionOff": "Désactivée",
             "multiPathAdd": "Ajouter une paire de chemins",
             "multiPathEmpty": "Aucune paire de chemins configurée",
             "templateExport": "Exporter le modèle",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "Restaurer",
             "rollbackEmpty": "Aucun instantané disponible",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 flux + TOUTE sécurité désactivée - pas de journal, pas de vérification, pas de nouvelle tentative",
+            "speedManiacTooltip": "Pas de journal, pas de vérification pendant l'exécution, limites de bande passante ignorées, 2 nouvelles tentatives rapides. Les fichiers téléchargés sont vérifiés après l'exécution.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Pas de journal. Pas de vérification. Pas de nouvelle tentative. Vitesse brute maximale. Si quelque chose échoue, c'est perdu. Une analyse de vérification complète sera effectuée après la fin de la synchronisation.",
+            "maniacWarningBody": "Pas de journal ni de vérification pendant l'exécution, les limites de bande passante sont ignorées et un fichier en échec n'a droit qu'à 2 nouvelles tentatives rapides. Après l'exécution, les fichiers téléchargés sont vérifiés ; les fichiers envoyés ne le sont pas.",
             "maniacConfirm": "Je comprends, continuer",
             "maniacPostSyncReport": "Vérification post-synchronisation : {ok} OK, {mismatches} incompatibilités, {failed} échecs",
             "rollback": "Restauration",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "Enregistrer la configuration de synchronisation actuelle comme modèle .aerosync réutilisable",
             "templateImportDesc": "Charger un modèle .aerosync pour appliquer sa configuration de synchronisation",
             "maniacActive": "Actif",
-            "speedStreams": "{count} flux",
             "actionUploaded": "Envoyé",
             "actionDownloaded": "Téléchargé",
             "actionDeleted": "Supprimé",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "Champs metadata non reconnus",
             "aerosyncScriptApplyButton": "Enregistrer comme preset",
             "aerosyncScriptAppliedToast": "Preset importé enregistré. Ouvre AeroSync pour l'utiliser.",
-            "compressionHint": "Compresse les données pendant le transfert pour l'accélérer; elle ne stocke pas de fichiers compressés à destination. Auto ignore les formats déjà compressés (zip, jpg, mp4 et similaires).",
             "canaryDryRun": "Rien n'est transféré : ceci prévisualise ce que ferait une synchronisation complète, calculée à partir de l'échantillon. C'est l'équivalent graphique de la commande aeroftp-cli sync --dry-run (et de --dry-run de rclone).",
-            "templateImportPathPairs": "Nombre de paires de chemins utilisables dans ce modèle : {count}. AeroFTP en applique exactement une, rien n'a donc été importé. Modifiez le modèle pour n'en garder qu'une seule, puis importez-le de nouveau.",
+            "templateImportPathPairs": "Paires de chemins (local/distant) utilisables dans ce modèle : {count}. Une fenêtre AeroSync fonctionne avec exactement une paire, rien n'a donc été importé. Modifiez le modèle pour n'y garder qu'une seule paire, puis importez-le de nouveau.",
             "templateNamePlaceholder": "par ex. Sauvegarde nocturne vers S3",
             "templateDescPlaceholder": "À quoi sert ce modèle (facultatif)"
         },
@@ -5081,7 +5082,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Comparer",
             "tabPlan": "Plan",
-            "tabSync": "Synchroniser",
+            "tabSync": "Miroir local",
             "compareWontFitTitle": "Au-delà des limites de {name} : {count}",
             "compareWontFitHint": "Ces fichiers dépassent la limite de taille documentée du fournisseur, ou leur nom ou chemin est plus long que ce qu'il accepte. Une synchronisation échouerait sur eux : renommez-les, déplacez-les ou découpez-les d'abord.",
             "compareWontFitTooLarge": "{size}, limite {limit}",
@@ -5089,6 +5090,78 @@
             "compareWontFitNameChars": "nom de plus de {count} caractères",
             "compareWontFitPathBytes": "chemin de plus de {count} octets",
             "compareWontFitPathChars": "chemin de plus de {count} caractères",
+            "presetDefault": "Par défaut",
+            "actionLabel": {
+                "skip": "Ignorer",
+                "copy-to-right": "Copier → droite",
+                "copy-to-left": "Copier ← gauche",
+                "overwrite-right": "Écraser à droite",
+                "overwrite-left": "Écraser à gauche",
+                "delete-right": "Supprimer à droite",
+                "delete-left": "Supprimer à gauche",
+                "rename-to-right": "Garder les deux → droite",
+                "rename-to-left": "Garder les deux ← gauche",
+                "conflict-skip": "Conflit (ignorer)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Ignorer",
+                    "tagline": "Laisse les conflits intacts des deux côtés."
+                },
+                "rename": {
+                    "label": "Garder les deux",
+                    "tagline": "Copie la version source avec un suffixe de date et d'heure."
+                },
+                "newer-wins": {
+                    "label": "Le plus récent l'emporte",
+                    "tagline": "Le côté dont la date de modification est la plus récente écrase l'autre."
+                },
+                "older-wins": {
+                    "label": "Le plus ancien l'emporte",
+                    "tagline": "Le côté le plus ancien écrase le plus récent (pour l'archivage)."
+                },
+                "larger-wins": {
+                    "label": "Le plus grand l'emporte",
+                    "tagline": "Le côté dont la taille est la plus grande écrase le plus petit."
+                },
+                "smaller-wins": {
+                    "label": "Le plus petit l'emporte",
+                    "tagline": "Le côté le plus petit écrase le plus grand."
+                }
+            },
+            "bucketName": {
+                "only-left": "Uniquement à gauche",
+                "newer-left": "Plus récent à gauche",
+                "only-right": "Uniquement à droite",
+                "newer-right": "Plus récent à droite",
+                "conflict": "Conflit",
+                "same": "Identiques"
+            },
+            "bucketDescription": {
+                "only-left": "Présent dans le panneau source, absent de la destination.",
+                "newer-left": "Présent des deux côtés, la copie source a l'horodatage le plus récent.",
+                "only-right": "Présent dans la destination, absent du panneau source.",
+                "newer-right": "Présent des deux côtés, la copie de destination a l'horodatage le plus récent.",
+                "conflict": "Les deux côtés contiennent l'entrée, mais la taille diffère avec des horodatages comparables.",
+                "same": "Les entrées correspondent selon la règle de comparaison active."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Taille uniquement",
+                "mtimeOnly": "Horodatage uniquement",
+                "sizeAndMtime": "Taille + horodatage"
+            },
+            "compareTable": {
+                "name": "Nom",
+                "leftSize": "Taille à gauche",
+                "rightSize": "Taille à droite",
+                "leftModified": "Modifié à gauche",
+                "rightModified": "Modifié à droite",
+                "folder": "dossier",
+                "noEntries": "Aucune entrée.",
+                "countedNotListed": "Comptés mais non listés : l'analyse indique les fichiers identiques sous forme de total plutôt qu'une ligne pour chacun, afin que les grandes arborescences restent rapides.",
+                "shown": "Affichés : {shown} sur {total}",
+                "moreNotListed": "Comptés mais non listés : {count}"
+            },
             "compareUnavailable": "Ouvrez un second panneau ou une connexion distante pour comparer.",
             "planUnavailable": "Un résultat de comparaison est requis avant de choisir un preset. Ouvrez d'abord l'onglet Comparer.",
             "totalEntries": "Entrées totales",
@@ -5125,7 +5198,7 @@
             "ignoredForMirror": "IGNORÉ POUR MIROIR",
             "versionedBackup": "Sauvegarde versionnée",
             "enable": "Activer",
-            "versionedBackupHint": "Capture la copie de destination dans ce répertoire avant chaque écrasement ou suppression.",
+            "versionedBackupHint": "Avant qu'un fichier soit écrasé ou supprimé, sa copie de destination est déplacée dans {dir}, dans un dossier nommé d'après la date et l'heure de l'exécution.",
             "actionable": "Actionnable",
             "reportCopiedRight": "Copiés à droite",
             "reportCopiedLeft": "Copiés à gauche",
@@ -5147,7 +5220,6 @@
             "executePreset": "Exécuter le preset",
             "execute": "Exécuter",
             "sync": {
-                "title": "AeroSync : local vers local",
                 "description": "Réplique un dossier source local vers une destination locale. Les fichiers ≥ 1 MiB utilisent le moteur delta intégré ; les fichiers plus petits utilisent une copie directe.",
                 "source": "Source",
                 "destination": "Destination",
@@ -5203,7 +5275,7 @@
             "speedMode_fast": "Rapide",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extrême",
-            "speedModeHint": "Flux parallèles + préréglage de compression appliqué à l'exécution.",
+            "speedModeHint": "Définit la politique de nouvelles tentatives. À partir de Rapide, les fichiers modifiés sont transférés en delta lorsque le serveur le prend en charge (SFTP avec rsync).",
             "verifyPolicy": "Politique de vérification",
             "verifyPolicy_none": "Aucune",
             "verifyPolicy_size_only": "Taille uniquement",
@@ -5248,7 +5320,45 @@
             "errorCorrection": "Correction d'erreurs",
             "errorCorrectionHint": "Enregistre un petit fichier de parité .aerocorrect à côté de chaque fichier sauvegardé, afin qu'une copie distante endommagée par le bit-rot puisse être réparée lors du prochain pull, sans l'original.",
             "outOfSyncItemsPct": "Éléments désynchronisés",
-            "outOfSyncBytesPct": "Octets désynchronisés"
+            "outOfSyncBytesPct": "Octets désynchronisés",
+            "exclude": {
+                "label": "Motifs d'exclusion",
+                "hint": "Séparés par une virgule ou un retour à la ligne, par exemple cache, *.tmp ou build/output. Toujours exclus : {list}."
+            },
+            "cli": {
+                "title": "La même exécution en ligne de commande",
+                "copy": "Copier",
+                "copied": "Copié",
+                "copyFailed": "Échec de la copie",
+                "none": "Pas d'équivalent exact dans la CLI : {reason}",
+                "reason": {
+                    "localPair": "pour deux dossiers locaux, la CLI exécute son propre miroir, qui ignore la direction, la suppression et les paramètres de conflit.",
+                    "unsavedServer": "cette connexion n'est pas un serveur enregistré, et la CLI en a besoin pour le désigner avec --profile.",
+                    "overwritesNewer": "la CLI écrase une copie de destination de taille différente même lorsqu'elle est plus récente, ce que ce preset ne fait jamais.",
+                    "twoWay": "la CLI traite deux copies de même taille dont les heures diffèrent comme un conflit et écrase la plus ancienne ; ce plan les considère identiques à 30 secondes près.",
+                    "canary": "la CLI n'a pas d'essai Canary.",
+                    "versionedBackup": "la CLI ne conserve pas encore les sauvegardes selon la même structure.",
+                    "transferBudget": "quand le budget est épuisé, ce plan s'arrête, suppressions comprises ; la CLI limite uniquement les transferts et supprime quand même.",
+                    "remotePath": "la CLI résout le dossier distant par rapport au dossier de départ du serveur enregistré et atteindrait un autre dossier.",
+                    "exclusions": "la CLI applique les motifs d'exclusion différemment, elle n'ignorerait donc pas tout ce que ce plan ignore (node_modules, .git et le reste)."
+                }
+            },
+            "rescan": "Réanalyser",
+            "rescanNeeded": "La comparaison a été faite avec d'autres exclusions ou un autre dossier de sauvegarde. Réanalysez avant d'exécuter.",
+            "backup": {
+                "checking": "Vérification de la façon dont ce serveur déplace les fichiers...",
+                "serverCopy": "Ce serveur ne sait pas déplacer : chaque copie conservée est copiée sur le serveur puis supprimée. Cela coûte une copie complète de chaque fichier conservé, en deux étapes distinctes.",
+                "clientCopy": "Ce serveur ne sait pas déplacer : chaque copie conservée est téléchargée, envoyée dans le dossier de sauvegarde puis supprimée. Chaque fichier conservé passe deux fois par cet ordinateur, en étapes distinctes.",
+                "unsupported": "Ce serveur ne peut pas déplacer des fichiers vers un autre dossier, il ne peut donc pas conserver les anciennes copies. Désactivez la sauvegarde versionnée pour lancer l'exécution.",
+                "checkFailed": "Impossible de demander au serveur comment il déplace les fichiers. Reconnectez-vous ou désactivez la sauvegarde versionnée pour lancer l'exécution.",
+                "nested": "Le dossier de sauvegarde se trouve dans {folder}, où écrit cette synchronisation. Choisissez un dossier en dehors.",
+                "invalid": {
+                    "empty": "Saisissez un nom pour le dossier de sauvegarde.",
+                    "absolute": "Utilisez un dossier dans la destination, pas un chemin absolu.",
+                    "parent": "Le dossier de sauvegarde ne peut pas contenir '..'.",
+                    "name": "Ce nom de dossier de sauvegarde n'est pas valide."
+                }
+            }
         },
         "accountLock": {
             "title": "Choisissez un compte",

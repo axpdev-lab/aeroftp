@@ -249,6 +249,58 @@ pub struct CompareOptions {
     /// Maximum file age in seconds (skip older files)
     #[serde(default)]
     pub max_age_secs: Option<u64>,
+    /// Versioned-backup folder, relative to each root. Nothing in it is
+    /// compared, on either side, so a Mirror never deletes old copies and a
+    /// Backup never uploads them. [`crate::sync_backup::is_backup_path`]
+    /// decides; the compare commands refuse a folder
+    /// [`crate::sync_backup::BackupDir::parse`] refuses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_dir: Option<String>,
+    /// The sync root's `.aeroignore`, when the caller scanned with it
+    /// (AeroCloud). The compare reads the same rule the scan did, so a `!`
+    /// that re-includes a path the configured list excludes survives both.
+    #[serde(skip)]
+    pub aeroignore: Option<std::sync::Arc<crate::sync_ignore::AeroIgnore>>,
+}
+
+impl CompareOptions {
+    /// The backup folder, validated. The compare commands call this first,
+    /// so an invalid folder is an error to the caller, not a folder that is
+    /// silently compared.
+    pub fn parsed_backup_dir(
+        &self,
+    ) -> Result<Option<crate::sync_backup::BackupDir>, crate::sync_backup::BackupDirError> {
+        self.backup_dir
+            .as_deref()
+            .map(crate::sync_backup::BackupDir::parse)
+            .transpose()
+    }
+
+    /// Whether the compare leaves `path` out: the `.aeroignore` rule with its
+    /// `!` overrides when there is one, the configured list otherwise.
+    fn excludes_path(
+        &self,
+        excludes: &crate::sync_exclude::ExcludeMatcher,
+        path: &str,
+        is_dir: bool,
+    ) -> bool {
+        match &self.aeroignore {
+            Some(rules) => rules.should_exclude(path, is_dir, excludes),
+            None => excludes.is_excluded(path),
+        }
+    }
+
+    /// The compiled exclude list for a comparison builder, which cannot return
+    /// an error. Every entry point compiles the list first and reports an
+    /// invalid pattern, so the fallback is unreachable in practice; if it is
+    /// ever reached it fails closed (every path excluded, nothing copied or
+    /// deleted) instead of failing open.
+    pub fn excludes_or_everything(&self) -> crate::sync_exclude::ExcludeMatcher {
+        compile_excludes(&self.exclude_patterns).unwrap_or_else(|e| {
+            tracing::error!("{e}: the comparison excludes every path");
+            crate::sync_exclude::ExcludeMatcher::everything()
+        })
+    }
 }
 
 impl Default for CompareOptions {
@@ -274,6 +326,8 @@ impl Default for CompareOptions {
             max_size: None,
             min_age_secs: None,
             max_age_secs: None,
+            backup_dir: None,
+            aeroignore: None,
         }
     }
 }
@@ -803,51 +857,13 @@ pub fn validate_relative_path(relative_path: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Check if a path matches any exclude pattern
-pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
-    let path_lower = path.to_lowercase();
-    let path_segments: Vec<&str> = path_lower.split(&['/', '\\'][..]).collect();
-
-    for pattern in patterns {
-        let pattern_lower = pattern.to_lowercase();
-        // CLAUDE-AV-B3-09: a trailing '/' marks a directory pattern
-        // (`node_modules/`, the natural gitignore spelling the .aeroignore
-        // template teaches); strip it so it matches the `node_modules` segment
-        // instead of failing open. A pattern with an interior '/' (`build/output`)
-        // is a path fragment matched at a '/' boundary rather than never matching.
-        let pattern_clean = pattern_lower.trim_end_matches('/');
-        if pattern_clean.is_empty() {
-            continue;
-        }
-
-        // Simple glob matching
-        if let Some(ext) = pattern_clean.strip_prefix('*') {
-            // *.ext pattern
-            if path_lower.ends_with(ext) {
-                return true;
-            }
-        } else if pattern_clean.contains('/') {
-            // Multi-segment fragment: match anchored at a path boundary.
-            let norm = path_lower.replace('\\', "/");
-            if norm == pattern_clean
-                || norm.starts_with(&format!("{}/", pattern_clean))
-                || norm.contains(&format!("/{}/", pattern_clean))
-                || norm.ends_with(&format!("/{}", pattern_clean))
-            {
-                return true;
-            }
-        } else {
-            // Match against path segments (not just substring)
-            // This prevents false positives like "node" matching "node_modules"
-            for segment in &path_segments {
-                if segment == &pattern_clean {
-                    return true;
-                }
-            }
-        }
-    }
-
-    false
+/// Compile an exclude list with the one matcher every sync surface shares
+/// ([`crate::sync_exclude`]). An invalid pattern is returned as an error for the
+/// caller to report, never dropped.
+pub fn compile_excludes(
+    patterns: &[String],
+) -> Result<crate::sync_exclude::ExcludeMatcher, String> {
+    crate::sync_exclude::ExcludeMatcher::new(patterns).map_err(|e| e.to_string())
 }
 
 /// Check if a file should be filtered out by size/age constraints.
@@ -1140,8 +1156,11 @@ pub fn build_comparison_results(
     options: &CompareOptions,
 ) -> Vec<FileComparison> {
     let mut results = Vec::new();
+    // Validated by the commands that accept options from outside.
+    let backup_dir = options.parsed_backup_dir().ok().flatten();
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
+    let excludes = options.excludes_or_everything();
 
     for path in all_paths {
         // Reject paths with traversal components
@@ -1150,13 +1169,20 @@ pub fn build_comparison_results(
             continue;
         }
 
-        // Skip excluded paths
-        if should_exclude(&path, &options.exclude_patterns) {
-            continue;
-        }
-
         let local = local_files.get(&path);
         let remote = remote_files.get(&path);
+
+        // Skip excluded paths
+        let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
+        if options.excludes_path(&excludes, &path, is_dir) {
+            continue;
+        }
+        if backup_dir.as_ref().is_some_and(|dir| {
+            crate::sync_backup::is_backup_path(&path, dir)
+                || (is_dir && crate::sync_backup::is_backup_ancestor(&path, dir))
+        }) {
+            continue;
+        }
 
         // Apply size/age filters
         if should_filter(local, options) || should_filter(remote, options) {
@@ -3225,8 +3251,11 @@ pub fn classify_with_summary(
         examined_bytes: 0,
         identical_bytes: 0,
     };
+    // Validated by the commands that accept options from outside.
+    let backup_dir = options.parsed_backup_dir().ok().flatten();
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
+    let excludes = options.excludes_or_everything();
 
     for path in all_paths {
         // Reject paths with traversal components
@@ -3235,12 +3264,19 @@ pub fn classify_with_summary(
             continue;
         }
 
-        if should_exclude(&path, &options.exclude_patterns) {
-            continue;
-        }
-
         let local = local_files.get(&path);
         let remote = remote_files.get(&path);
+
+        let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
+        if options.excludes_path(&excludes, &path, is_dir) {
+            continue;
+        }
+        if backup_dir.as_ref().is_some_and(|dir| {
+            crate::sync_backup::is_backup_path(&path, dir)
+                || (is_dir && crate::sync_backup::is_backup_ancestor(&path, dir))
+        }) {
+            continue;
+        }
 
         // Apply size/age filters
         if should_filter(local, options) || should_filter(remote, options) {
@@ -4727,8 +4763,12 @@ pub fn export_sync_template(
             compare_size: profile.compare_size,
             compare_checksum: profile.compare_checksum,
             delete_orphans: profile.delete_orphans,
-            parallel_streams: profile.parallel_streams,
-            compression_mode: profile.compression_mode.clone(),
+            // Written neutral: an AeroSync run transfers one file at a time
+            // and does not compress, so a template must not promise either.
+            // The fields stay for the versions that read them; an import
+            // accepts and ignores what an older export put there.
+            parallel_streams: 1,
+            compression_mode: crate::transfer_pool::CompressionMode::Off,
             verify_policy: Some(profile.verify_policy.clone()),
             canary: None,
         },
@@ -5902,6 +5942,8 @@ mod tests {
 
     #[test]
     fn test_should_exclude() {
+        let should_exclude =
+            |p: &str, pats: &[String]| compile_excludes(pats).unwrap().is_excluded(p);
         let patterns = vec!["node_modules".to_string(), "*.pyc".to_string()];
 
         assert!(should_exclude("node_modules/package/file.js", &patterns));
@@ -7191,6 +7233,44 @@ mod tests {
         assert!(template.profile.canary.is_none());
     }
 
+    /// Streams and compression are exported neutral whatever the preset
+    /// holds: no run reads them, so a template must not promise them.
+    #[test]
+    fn test_sync_template_export_writes_neutral_tuning() {
+        let mut profile = SyncProfile::mirror();
+        profile.parallel_streams = 6;
+        profile.compression_mode = crate::transfer_pool::CompressionMode::On;
+        let template =
+            export_sync_template("T", "", &profile, "/tmp/a", "/remote/a", &[], None).unwrap();
+        assert_eq!(template.profile.parallel_streams, 1);
+        assert_eq!(
+            template.profile.compression_mode,
+            crate::transfer_pool::CompressionMode::Off
+        );
+    }
+
+    /// A template written by AeroFTP 4.2.0 (Mirror, Plan in Turbo: 3 streams,
+    /// compression on, full checksum) still reads. The fixture is the output
+    /// of 4.2.0's own export path: `export_sync_template` of this tree, whose
+    /// code was identical to the v4.2.0 tag, then the v4.2.0 frontend overlay
+    /// taken from the tag.
+    #[test]
+    fn test_a_4_2_0_template_still_reads() {
+        let template: SyncTemplate = serde_json::from_str(include_str!(
+            "../tests/fixtures/aerosync/mirror-turbo-4.2.0.aerosync"
+        ))
+        .expect("a 4.2.0 export must still deserialize");
+        assert_eq!(template.schema_version, 1);
+        assert_eq!(template.created_by, "AeroFTP v4.2.0");
+        assert_eq!(template.profile.parallel_streams, 3);
+        assert_eq!(
+            template.profile.compression_mode,
+            crate::transfer_pool::CompressionMode::On
+        );
+        assert_eq!(template.profile.verify_policy, Some(VerifyPolicy::Full));
+        assert_eq!(template.exclude_patterns, vec!["*.tmp", "cache/"]);
+    }
+
     #[test]
     fn template_serde_keeps_verify_policy_and_canary() {
         let profile = SyncProfile::mirror();
@@ -7476,6 +7556,8 @@ mod tests {
     /// Pre-fix they compared each path segment verbatim and never matched.
     #[test]
     fn should_exclude_matches_dir_and_multi_segment_patterns() {
+        let should_exclude =
+            |p: &str, pats: &[String]| compile_excludes(pats).unwrap().is_excluded(p);
         let patterns = vec![
             "node_modules/".to_string(),
             "build/output".to_string(),
@@ -7913,6 +7995,39 @@ mod tests {
         }
     }
 
+    /// A `!` in `.aeroignore` that re-includes a path the configured list
+    /// excludes survived AeroCloud's scans and was then dropped by the
+    /// compare, which read the configured list alone.
+    #[test]
+    fn the_compare_reads_the_aeroignore_reinclusion_the_scan_read() {
+        let local = HashMap::from([
+            (
+                "build/keep.txt".to_string(),
+                mk_file_info("build/keep.txt", 1, None),
+            ),
+            (
+                "build/drop.txt".to_string(),
+                mk_file_info("build/drop.txt", 1, None),
+            ),
+        ]);
+        let rules = crate::sync_ignore::AeroIgnore::parse("!build/keep.txt").unwrap();
+        let opts = CompareOptions {
+            exclude_patterns: vec!["build".to_string()],
+            aeroignore: Some(std::sync::Arc::new(rules)),
+            ..Default::default()
+        };
+        let report = classify_with_summary(local.clone(), HashMap::new(), &opts, None);
+        let paths: Vec<_> = report
+            .differences
+            .iter()
+            .map(|c| c.relative_path.as_str())
+            .collect();
+        assert_eq!(paths, vec!["build/keep.txt"]);
+        let legacy = build_comparison_results(local, HashMap::new(), &opts);
+        let paths: Vec<_> = legacy.iter().map(|c| c.relative_path.as_str()).collect();
+        assert_eq!(paths, vec!["build/keep.txt"]);
+    }
+
     #[allow(dead_code)]
     fn mk_dir_info(name: &str) -> FileInfo {
         FileInfo {
@@ -8225,5 +8340,132 @@ mod tests {
         assert_eq!(report.summary.examined_count, 0);
         assert_eq!(report.summary.identical_count, 0);
         assert_eq!(report.summary.examined_bytes, 0);
+    }
+    /// Versioned backup: the backup folder is invisible to the compare on
+    /// both sides. On the destination, a second Mirror run would otherwise
+    /// list the old copies as orphans and delete them; on the source, a
+    /// Backup would upload them. A folder of the same name deeper in the tree
+    /// is ordinary data.
+    #[test]
+    fn test_compare_skips_the_backup_folder_on_both_sides_only_at_the_root() {
+        let now = Utc::now();
+        let mut local: HashMap<String, FileInfo> = HashMap::new();
+        let mut remote: HashMap<String, FileInfo> = HashMap::new();
+        local.insert(
+            ".aeroftp-versions/20260925T070000Z/a.txt".to_string(),
+            mk_file_info("a.txt", 10, Some(now)),
+        );
+        remote.insert(
+            ".aeroftp-versions/20260925T070000Z/b.txt".to_string(),
+            mk_file_info("b.txt", 20, Some(now)),
+        );
+        remote.insert(
+            ".aeroftp-versions".to_string(),
+            mk_file_info(".aeroftp-versions", 0, Some(now)),
+        );
+        local.insert(
+            "docs/.aeroftp-versions/keep.txt".to_string(),
+            mk_file_info("keep.txt", 5, Some(now)),
+        );
+
+        let opts = CompareOptions {
+            exclude_patterns: vec![],
+            backup_dir: Some(".aeroftp-versions".to_string()),
+            ..Default::default()
+        };
+        let report = classify_with_summary(local.clone(), remote.clone(), &opts, None);
+        let paths: Vec<&str> = report
+            .differences
+            .iter()
+            .map(|d| d.relative_path.as_str())
+            .collect();
+        assert_eq!(paths, vec!["docs/.aeroftp-versions/keep.txt"]);
+
+        let flat = build_comparison_results(local, remote, &opts);
+        let paths: Vec<&str> = flat.iter().map(|d| d.relative_path.as_str()).collect();
+        assert_eq!(paths, vec!["docs/.aeroftp-versions/keep.txt"]);
+    }
+
+    /// A nested backup folder (`history/versions`): the folder it sits in,
+    /// present on the destination only, used to keep its row, and a Mirror
+    /// mapped that row to one recursive delete of `history`, backups
+    /// included. The row is left out; the ordinary files in `history` keep
+    /// their own rows, so they are still synced one by one.
+    #[test]
+    fn test_compare_leaves_out_the_folders_a_nested_backup_folder_sits_in() {
+        let now = Utc::now();
+        let local: HashMap<String, FileInfo> = HashMap::new();
+        let mut remote: HashMap<String, FileInfo> = HashMap::new();
+        remote.insert("history".to_string(), mk_dir_info("history"));
+        remote.insert("history/versions".to_string(), mk_dir_info("versions"));
+        remote.insert(
+            "history/versions/20260925T070000Z/a.txt".to_string(),
+            mk_file_info("a.txt", 10, Some(now)),
+        );
+        remote.insert(
+            "history/notes.txt".to_string(),
+            mk_file_info("notes.txt", 4, Some(now)),
+        );
+        remote.insert("historyX".to_string(), mk_dir_info("historyX"));
+        let opts = CompareOptions {
+            exclude_patterns: vec![],
+            backup_dir: Some("history/versions".to_string()),
+            ..Default::default()
+        };
+        let mut paths: Vec<String> =
+            classify_with_summary(HashMap::new(), remote.clone(), &opts, None)
+                .differences
+                .into_iter()
+                .map(|d| d.relative_path)
+                .collect();
+        paths.sort();
+        assert_eq!(paths, ["history/notes.txt", "historyX"]);
+        let mut flat: Vec<String> = build_comparison_results(local, remote, &opts)
+            .into_iter()
+            .map(|d| d.relative_path)
+            .collect();
+        flat.sort();
+        assert_eq!(flat, ["history/notes.txt", "historyX"]);
+    }
+
+    /// The Plan tab's own patterns reach the compare: a file that exists only
+    /// on the remote and matches one is not listed, so Mirror cannot delete it.
+    #[test]
+    fn test_compare_drops_a_remote_only_file_matching_a_user_pattern() {
+        let now = Utc::now();
+        let local: HashMap<String, FileInfo> = HashMap::new();
+        let mut remote: HashMap<String, FileInfo> = HashMap::new();
+        remote.insert(
+            "logs/app.log".to_string(),
+            mk_file_info("app.log", 7, Some(now)),
+        );
+        remote.insert(
+            "keep.txt".to_string(),
+            mk_file_info("keep.txt", 7, Some(now)),
+        );
+        let opts = CompareOptions {
+            exclude_patterns: vec!["*.log".to_string()],
+            ..Default::default()
+        };
+        let report = classify_with_summary(local, remote, &opts, None);
+        let paths: Vec<&str> = report
+            .differences
+            .iter()
+            .map(|d| d.relative_path.as_str())
+            .collect();
+        assert_eq!(paths, vec!["keep.txt"]);
+    }
+
+    #[test]
+    fn test_compare_options_refuse_an_invalid_backup_folder() {
+        let opts = CompareOptions {
+            backup_dir: Some("../out".to_string()),
+            ..Default::default()
+        };
+        assert!(opts.parsed_backup_dir().is_err());
+        assert!(CompareOptions::default()
+            .parsed_backup_dir()
+            .unwrap()
+            .is_none());
     }
 }

@@ -327,7 +327,14 @@
             "protonCliTitle": "公式 Proton Drive CLI を使用します",
             "protonCliBody": "proton.me/download/drive/cli から Proton Drive CLI をインストールし、ターミナルで proton-drive auth login を実行してブラウザーで完了してください。AeroFTP がパスワードを見ることはありません。セッションは OS のシークレットストアに残ります。",
             "protonUnofficial": "これは Proton が公式にサポートしていないサードパーティー製アプリです。",
-            "protonConnectHint": "\"接続\" はこのマシンですでにサインイン済みの CLI を使います。OS ユーザーあたり Proton アカウントは 1 つです。"
+            "protonConnectHint": "\"接続\" はこのマシンですでにサインイン済みの CLI を使います。OS ユーザーあたり Proton アカウントは 1 つです。",
+            "twakeInstance": "Twakeアドレス",
+            "twakeInstanceHelp": "ご自身のアドレス、例えばyourname.twake.appなど。ブラウザからTwakeの任意のページアドレスを貼り付けることもできます。",
+            "twakeSignIn": "Twakeでサインイン",
+            "twakeSignInAgain": "再度サインイン",
+            "twakeSignedIn": "サインイン済み",
+            "twakeWaitingBrowser": "ブラウザでサインインを完了してください...",
+            "twakeSignInHelp": "AeroFTPはブラウザでTwakeを開き、ファイルへのアクセスのみを要求します。初回にTwakeでエラーが表示された場合は、ブラウザでTwakeにログインしてから再度サインインしてください。アクセス権はいつでもTwakeの設定の「接続済みデバイス」から取り消せます。"
         },
         "browser": {
             "remote": "リモート",
@@ -1620,7 +1627,7 @@
             "update_checking": "アップデートを確認中...",
             "update_available": "Update available: v{version} (.{format})",
             "update_uptodate": "最新です (v{version})",
-            "update_error": "Update check failed: {error}",
+            "update_error": "更新の確認に失敗しました: {error}",
             "file_skipped": "スキップ（変更なし）: {filename}",
             "navigate_opened": "[{location}] フォルダを開きました: {path}",
             "navigate_entered": "[{location}] フォルダに入りました: {path}",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "このエンドポイントはネットワーク越しに S3 を平文の HTTP で提供します。このプロファイルで許可します: 署名済みの認証情報とすべてのファイルが暗号化されずにネットワークを通過します。",
             "discoverFilebase": "Filebase: S3 互換オブジェクトストレージ（5 GB 無料）",
             "protonDesc": "Proton Drive CLI 経由で接続します",
-            "protonTooltip": "Proton Drive CLI を使用します - インストールし、ブラウザーでサインイン、AeroFTP が GUI です"
+            "protonTooltip": "Proton Drive CLI を使用します - インストールし、ブラウザーでサインイン、AeroFTP が GUI です",
+            "twakeDesc": "Twake Drive(無料5GB)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace、フランス発のオープンソースクラウド(Cozy Cloud は現在その一部)、5 GB 無料",
+            "discoverTwake": "Linagora によるオープンソースの欧州製クラウド、現在は Cozy Cloud の新たな拠点(5 GB 無料)"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -2118,9 +2128,6 @@
                 "disk_error": "ディスクエラー",
                 "unknown": "不明"
             },
-            "parallelStreams": "ストリーム",
-            "parallelSequential": "順次",
-            "parallelStreamLabel": "ストリーム",
             "schedulerTitle": "同期スケジューラー",
             "schedulerEnabled": "スケジューラーを有効化",
             "schedulerResume": "再開",
@@ -2135,10 +2142,6 @@
             "watcherBackend": "バックエンド",
             "watcherInotifyWarning": "ディレクトリ数が多い - inotify制限を超える可能性があります",
             "watcherPolling": "ポーリングモードを使用中（遅いが汎用的）",
-            "compressionToggle": "圧縮",
-            "compressionAuto": "自動",
-            "compressionOn": "オン",
-            "compressionOff": "オフ",
             "multiPathAdd": "パスペアを追加",
             "multiPathEmpty": "パスペアが設定されていません",
             "templateExport": "テンプレートをエクスポート",
@@ -2151,9 +2154,9 @@
             "rollbackRestore": "復元",
             "rollbackEmpty": "利用可能なスナップショットがありません",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8ストリーム + すべての安全機能を無効化 - ジャーナルなし、検証なし、リトライなし",
+            "speedManiacTooltip": "ジャーナルなし、実行中の検証なし、帯域幅制限を無視、クイックリトライ2回。ダウンロードしたファイルは実行後に検証されます。",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "ジャーナルなし。検証なし。リトライなし。最大速度のみ。何かが失敗したら、それは失われます。同期完了後に完全な検証スキャンが実行されます。",
+            "maniacWarningBody": "実行中はジャーナルも検証もなく、帯域幅制限は無視され、失敗したファイルのクイックリトライは2回だけです。実行後、ダウンロードしたファイルは検証されますが、アップロードしたファイルは検証されません。",
             "maniacConfirm": "理解しました、続行します",
             "maniacPostSyncReport": "同期後の検証: {ok}件OK、{mismatches}件不一致、{failed}件失敗",
             "rollback": "ロールバック",
@@ -2164,7 +2167,6 @@
             "templateExportDesc": "現在の同期設定を再利用可能な.aerosyncテンプレートとして保存",
             "templateImportDesc": ".aerosyncテンプレートを読み込んで同期設定を適用",
             "maniacActive": "アクティブ",
-            "speedStreams": "{count}ストリーム",
             "actionUploaded": "アップロード済み",
             "actionDownloaded": "ダウンロード済み",
             "actionDeleted": "削除済み",
@@ -2222,9 +2224,8 @@
             "aerosyncScriptUnmappedFields": "認識されていない metadata フィールド",
             "aerosyncScriptApplyButton": "preset として保存",
             "aerosyncScriptAppliedToast": "インポートした preset を保存しました。AeroSync を開いて使用してください。",
-            "compressionHint": "転送を高速化するため通信中にデータを圧縮します。圧縮ファイルが転送先に保存されることはありません。Auto はすでに圧縮された形式（zip、jpg、mp4 など）をスキップします。",
             "canaryDryRun": "何も転送されません。これはサンプルから計算した、完全同期で行われる内容のプレビューです。CLI コマンド aeroftp-cli sync --dry-run（および rclone の --dry-run）の GUI 版です。",
-            "templateImportPathPairs": "このテンプレートには使用可能なパスペアが {count} 件定義されています。AeroFTP が適用するのはちょうど 1 件だけなので、何もインポートされませんでした。テンプレートを編集してパスペアを 1 件だけにしてから、もう一度インポートしてください。",
+            "templateImportPathPairs": "このテンプレート内の使用可能なローカル/リモートのパスペア: {count}。AeroSync のウィンドウはちょうど 1 つのペアで動作するため、何もインポートされませんでした。ペアが 1 つだけになるようにテンプレートを編集してから、もう一度インポートしてください。",
             "templateNamePlaceholder": "例: S3 への夜間バックアップ",
             "templateDescPlaceholder": "このテンプレートの用途 (任意)"
         },
@@ -5081,7 +5082,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "比較",
             "tabPlan": "プラン",
-            "tabSync": "同期",
+            "tabSync": "ローカルミラー",
             "compareWontFitTitle": "{name} の上限を超えるもの: {count}",
             "compareWontFitHint": "これらのファイルはプロバイダーが文書化しているサイズ上限を超えているか、名前またはパスが許容より長くなっています。このまま同期すると失敗します。先に名前を変えるか、移動するか、分割してください。",
             "compareWontFitTooLarge": "{size}、上限 {limit}",
@@ -5089,6 +5090,78 @@
             "compareWontFitNameChars": "名前が {count} 文字を超えています",
             "compareWontFitPathBytes": "パスが {count} バイトを超えています",
             "compareWontFitPathChars": "パスが {count} 文字を超えています",
+            "presetDefault": "既定",
+            "actionLabel": {
+                "skip": "スキップ",
+                "copy-to-right": "コピー → 右",
+                "copy-to-left": "コピー ← 左",
+                "overwrite-right": "右側を上書き",
+                "overwrite-left": "左側を上書き",
+                "delete-right": "右側で削除",
+                "delete-left": "左側で削除",
+                "rename-to-right": "両方を保持 → 右",
+                "rename-to-left": "両方を保持 ← 左",
+                "conflict-skip": "競合（スキップ）"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "スキップ",
+                    "tagline": "両側の競合をそのままにします。"
+                },
+                "rename": {
+                    "label": "両方を保持",
+                    "tagline": "転送元のバージョンに日時のサフィックスを付けてコピーします。"
+                },
+                "newer-wins": {
+                    "label": "新しい方を優先",
+                    "tagline": "更新日時が新しい側がもう一方を上書きします。"
+                },
+                "older-wins": {
+                    "label": "古い方を優先",
+                    "tagline": "古い側が新しい側を上書きします（アーカイブ用途）。"
+                },
+                "larger-wins": {
+                    "label": "大きい方を優先",
+                    "tagline": "サイズが大きい側が小さい側を上書きします。"
+                },
+                "smaller-wins": {
+                    "label": "小さい方を優先",
+                    "tagline": "小さい側が大きい側を上書きします。"
+                }
+            },
+            "bucketName": {
+                "only-left": "左のみ",
+                "newer-left": "左が新しい",
+                "only-right": "右のみ",
+                "newer-right": "右が新しい",
+                "conflict": "競合",
+                "same": "同一"
+            },
+            "bucketDescription": {
+                "only-left": "転送元パネルにのみ存在し、転送先にはありません。",
+                "newer-left": "両側に存在し、転送元のコピーの方がタイムスタンプが新しいです。",
+                "only-right": "転送先にのみ存在し、転送元パネルにはありません。",
+                "newer-right": "両側に存在し、転送先のコピーの方がタイムスタンプが新しいです。",
+                "conflict": "両側にエントリがありますが、タイムスタンプが近いにもかかわらずサイズが異なります。",
+                "same": "現在の比較ポリシーに従ってエントリが一致しています。"
+            },
+            "comparePolicy": {
+                "sizeOnly": "サイズのみ",
+                "mtimeOnly": "タイムスタンプのみ",
+                "sizeAndMtime": "サイズ + タイムスタンプ"
+            },
+            "compareTable": {
+                "name": "名前",
+                "leftSize": "左のサイズ",
+                "rightSize": "右のサイズ",
+                "leftModified": "左の更新日時",
+                "rightModified": "右の更新日時",
+                "folder": "フォルダ",
+                "noEntries": "エントリがありません。",
+                "countedNotListed": "集計のみで一覧には表示されません: 大きなツリーでも高速に動作するよう、スキャンは同一のファイルを1件ずつの行ではなく合計数として報告します。",
+                "shown": "表示中: {total} 件中 {shown} 件",
+                "moreNotListed": "集計のみで一覧には表示されません: {count}"
+            },
             "compareUnavailable": "比較するには、もう一つのパネルまたはリモート接続を開いてください。",
             "planUnavailable": "プリセットを選択する前に比較結果が必要です。まず比較タブを開いてください。",
             "totalEntries": "総エントリ数",
@@ -5125,7 +5198,7 @@
             "ignoredForMirror": "ミラー対象外",
             "versionedBackup": "バージョン付きバックアップ",
             "enable": "有効化",
-            "versionedBackupHint": "上書きまたは削除のたびに、このディレクトリに宛先のコピーを保存します。",
+            "versionedBackupHint": "ファイルが上書きまたは削除される前に、宛先のコピーが {dir} 内の、実行日時の名前が付いたフォルダに移動されます。",
             "actionable": "実行可能",
             "reportCopiedRight": "右へコピー",
             "reportCopiedLeft": "左へコピー",
@@ -5147,7 +5220,6 @@
             "executePreset": "プリセットを実行",
             "execute": "実行",
             "sync": {
-                "title": "AeroSync: ローカルからローカルへ",
                 "description": "ローカルのソースディレクトリをローカルの宛先にミラーします。1 MiB 以上のファイルは組み込みの delta エンジンを使用し、それより小さいファイルは直接コピーを使用します。",
                 "source": "ソース",
                 "destination": "宛先",
@@ -5203,7 +5275,7 @@
             "speedMode_fast": "高速",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "エクストリーム",
-            "speedModeHint": "並列ストリーム + 圧縮プリセットが実行に適用されます。",
+            "speedModeHint": "リトライポリシーを設定します。高速モード以上では、サーバーが対応していれば (SFTP と rsync)、変更されたファイルがデルタとして送信されます。",
             "verifyPolicy": "検証ポリシー",
             "verifyPolicy_none": "なし",
             "verifyPolicy_size_only": "サイズのみ",
@@ -5248,7 +5320,45 @@
             "errorCorrection": "エラー訂正",
             "errorCorrectionHint": "バックアップされた各ファイルの隣に小さな .aerocorrect パリティファイルを保存し、bit-rot で破損したリモートコピーを元ファイルなしで次回の pull 時に修復できるようにします。",
             "outOfSyncItemsPct": "同期していない項目",
-            "outOfSyncBytesPct": "同期していないバイト"
+            "outOfSyncBytesPct": "同期していないバイト",
+            "exclude": {
+                "label": "除外パターン",
+                "hint": "カンマまたは改行で区切ります。例: cache、*.tmp、build/output。常に除外: {list}。"
+            },
+            "cli": {
+                "title": "コマンドラインで同じ実行",
+                "copy": "コピー",
+                "copied": "コピーしました",
+                "copyFailed": "コピーに失敗しました",
+                "none": "CLI に完全に同等のコマンドはありません: {reason}",
+                "reason": {
+                    "localPair": "2つのローカルフォルダの場合、CLI は独自のミラーを実行し、方向、削除、競合の設定を無視します。",
+                    "unsavedServer": "この接続は保存済みサーバーではありません。CLI では --profile で指定するために保存済みサーバーが必要です。",
+                    "overwritesNewer": "CLI はサイズが異なる転送先のコピーを、新しい場合でも上書きします。このプリセットはそうしません。",
+                    "twoWay": "CLI は同じサイズで時刻が異なる2つのコピーを競合として扱い、古い方を上書きします。このプランでは30秒以内の差なら同一とみなします。",
+                    "canary": "CLI には Canary の試行がありません。",
+                    "versionedBackup": "CLI はまだ同じ構成でバックアップを保存しません。",
+                    "transferBudget": "予算を使い切ると、このプランは削除も含めて停止します。CLI は転送のみを制限し、削除は続けます。",
+                    "remotePath": "CLI はリモートフォルダを保存済みサーバーの開始フォルダを基準に解決するため、別のフォルダに到達します。",
+                    "exclusions": "CLI は除外パターンの照合方法が異なるため、このプランがスキップするもの (node_modules、.git など) をすべてはスキップしません。"
+                }
+            },
+            "rescan": "再スキャン",
+            "rescanNeeded": "比較は別の除外設定または別のバックアップフォルダで行われました。実行前に再スキャンしてください。",
+            "backup": {
+                "checking": "このサーバーのファイル移動方法を確認しています...",
+                "serverCopy": "このサーバーには移動機能がありません。保持する各ファイルはサーバー上でバックアップフォルダにコピーされ、その後、元の場所のファイルが削除されます。保持するファイルごとに完全なコピーが発生し、2つの別々の手順で行われます。",
+                "clientCopy": "このサーバーには移動機能がありません。保持する各ファイルはこのコンピューターにダウンロードされ、バックアップフォルダにアップロードされた後、元の場所のファイルが削除されます。保持するファイルはそれぞれ、別々の手順でこのコンピューターを2回通過します。",
+                "unsupported": "このサーバーはファイルを別のフォルダに移動できないため、古いコピーを保持できません。実行するにはバージョン付きバックアップをオフにしてください。",
+                "checkFailed": "サーバーにファイルの移動方法を問い合わせできませんでした。再接続するか、バージョン付きバックアップをオフにして実行してください。",
+                "nested": "バックアップフォルダが、この同期の書き込み先である {folder} の中にあります。その外にあるフォルダを選択してください。",
+                "invalid": {
+                    "empty": "バックアップフォルダの名前を入力してください。",
+                    "absolute": "絶対パスではなく、宛先内のフォルダを使用してください。",
+                    "parent": "バックアップフォルダに '..' を含めることはできません。",
+                    "name": "このバックアップフォルダ名は無効です。"
+                }
+            }
         },
         "accountLock": {
             "title": "アカウントを選択",

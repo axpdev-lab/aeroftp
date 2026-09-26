@@ -327,7 +327,14 @@
             "protonCliTitle": "Proton Drive CLI ofiziala erabiltzen du",
             "protonCliBody": "Instalatu Proton Drive CLI proton.me/download/drive/cli helbidetik, exekutatu proton-drive auth login terminalean eta amaitu nabigatzailean. AeroFTP-k ez du inoiz zure pasahitza ikusten; saioa sistema eragilearen sekretu-biltegian geratzen da.",
             "protonUnofficial": "Hirugarrenen aplikazioa da hau, Proton-ek ofizialki onartzen ez duena.",
-            "protonConnectHint": "\"Konektatu\" botoiak makina honetan dagoeneko hasitako CLI erabiltzen du. Proton kontu bat sistema eragileko erabiltzaile bakoitzeko."
+            "protonConnectHint": "\"Konektatu\" botoiak makina honetan saioa hasita duen CLI erabiltzen du. Proton kontu bat sistema eragileko erabiltzaile bakoitzeko.",
+            "twakeInstance": "Twake helbidea",
+            "twakeInstanceHelp": "Zure helbidea, adibidez yourname.twake.app. Zure nabigatzailetik edozein Twake orriren helbidea itsatsi dezakezu.",
+            "twakeSignIn": "Hasi saioa Twakerekin",
+            "twakeSignInAgain": "Hasi saioa berriro",
+            "twakeSignedIn": "Saioa hasita",
+            "twakeWaitingBrowser": "Amaitu saioa hastea zure nabigatzailean...",
+            "twakeSignInHelp": "AeroFTPk Twake zure nabigatzailean irekitzen du eta zure fitxategietarako sarbidea baino ez du eskatzen. Twakek lehen aldiz errorea erakusten badu, hasi saioa Twaken nabigatzailean eta saiatu berriro. Sarbidea edonoiz ken dezakezu Twakeren ezarpenetan, Konektatutako gailuak."
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "Amaiera-puntu honek S3 zerbitzatzen du HTTP soilaren bidez, sarea zeharkatuz. Onartu profil honetarako: sinatutako kredentzialak eta fitxategi guztiak zifratu gabe zeharkatzen dute sarea.",
             "discoverFilebase": "Filebase: S3-rekin bateragarria den objektu-biltegia (5 GB doan)",
             "protonDesc": "Proton Drive CLI bidez konektatzen da",
-            "protonTooltip": "Proton Drive CLI erabiltzen du - instalatu, hasi saioa nabigatzailean, AeroFTP da GUI"
+            "protonTooltip": "Proton Drive CLI erabiltzen du - instalatu, hasi saioa nabigatzailean, AeroFTP da GUI",
+            "twakeDesc": "Twake Drive (5 GB doan)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, iturburu irekiko hodei frantsesa (Cozy Cloud orain horren zati da) 5 GB doan",
+            "discoverTwake": "Linagoraren iturburu irekiko hodei europarra, orain Cozy Cloud-en etxe berria (5 GB doan)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -2153,9 +2163,6 @@
                 "disk_error": "Disko errorea",
                 "unknown": "Ezezaguna"
             },
-            "parallelStreams": "Jarioak",
-            "parallelSequential": "Sekuentziala",
-            "parallelStreamLabel": "jario",
             "schedulerTitle": "Sinkronizazio-antolatzailea",
             "schedulerEnabled": "Gaitu antolatzailea",
             "schedulerResume": "Berrekin",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "Atzeko plataforma",
             "watcherInotifyWarning": "Direktorio kopuru handia - inotify muga gainditu lezake",
             "watcherPolling": "Inkesta modua erabiltzen (motelagoa baina unibertsala)",
-            "compressionToggle": "Konpresioa",
-            "compressionAuto": "Automatikoa",
-            "compressionOn": "Piztuta",
-            "compressionOff": "Itzalita",
             "multiPathAdd": "Gehitu bide-bikotea",
             "multiPathEmpty": "Ez dago bide-bikoterik konfiguratuta",
             "templateExport": "Esportatu txantiloia",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "Leheneratu",
             "rollbackEmpty": "Ez dago argazkirik eskuragarri",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 jario + segurtasun GUZTIA desgaituta - egunekorik ez, egiaztapenik ez, berriz saiaketarik ez",
+            "speedManiacTooltip": "Egunkaririk ez, egiaztapenik ez exekuzioan zehar, banda-zabaleraren mugak ez dira kontuan hartzen, 2 berriz saiakera azkar. Deskargatutako fitxategiak exekuzioaren ondoren egiaztatzen dira.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Egunekorik ez. Egiaztapenik ez. Berriz saiaketarik ez. Gehienezko abiadura gordina. Zerbait huts egiten badu, galdu egiten da. Egiaztapen eskaneatze osoa egingo da sinkronizazioa amaitu ondoren.",
+            "maniacWarningBody": "Egunkaririk eta egiaztapenik ez exekuzioan zehar, banda-zabaleraren mugak ez dira kontuan hartzen, eta huts egiten duen fitxategi batek 2 berriz saiakera azkar baino ez ditu. Exekuzioaren ondoren, deskargatutako fitxategiak egiaztatzen dira; igotakoak ez.",
             "maniacConfirm": "Ulertzen dut, jarraitu",
             "maniacPostSyncReport": "Sinkronizazio ondorengo egiaztapena: {ok} OK, {mismatches} desadostasun, {failed} huts egin",
             "rollback": "Leheneratu",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "Gorde uneko sinkronizazio-konfigurazioa berrerabilgarria den .aerosync txantiloi gisa",
             "templateImportDesc": "Kargatu .aerosync txantiloia bere sinkronizazio-konfigurazioa aplikatzeko",
             "maniacActive": "Aktiboa",
-            "speedStreams": "{count} transmisio",
             "actionUploaded": "Igota",
             "actionDownloaded": "Deskargatuta",
             "actionDeleted": "Ezabatuta",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "Ezagutzen ez diren metadata eremuak",
             "aerosyncScriptApplyButton": "Gorde preset gisa",
             "aerosyncScriptAppliedToast": "Inportatutako preset-a gordeta. Ireki AeroSync erabiltzeko.",
-            "compressionHint": "Datuak transferentzian zehar konprimitzen ditu, transferentzia bizkortzeko; ez ditu fitxategi konprimituak helmugan gordetzen. Auto aukerak dagoeneko konprimituta dauden formatuak saltatzen ditu (zip, jpg, mp4 eta antzekoak).",
             "canaryDryRun": "Ez da ezer transferitzen: sinkronizazio osoak zer egingo lukeen aurreikusten du, laginetik kalkulatuta. aeroftp-cli sync --dry-run komandoaren (eta rclone-ren --dry-run) interfaze grafikoaren baliokidea da.",
-            "templateImportPathPairs": "Txantiloi honek {count} bide-bikote erabilgarri definitzen ditu. AeroFTPk bat bakarra aplikatzen du, beraz ez da ezer inportatu. Editatu txantiloia bikote bakarra uzteko, eta inportatu berriro.",
+            "templateImportPathPairs": "Txantiloi honetako bide-bikote erabilgarriak (lokala/urrunekoa): {count}. AeroSync leiho batek zehazki bikote batekin egiten du lan, beraz ez da ezer inportatu. Editatu txantiloia bikote bakarra gera dadin, eta inportatu berriro.",
             "templateNamePlaceholder": "adib. Gaueko babeskopia S3-ra",
             "templateDescPlaceholder": "Zertarako den txantiloi hau (aukerakoa)"
         },
@@ -5100,7 +5101,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Konparatu",
             "tabPlan": "Plana",
-            "tabSync": "Sinkronizatu",
+            "tabSync": "Ispilu lokala",
             "compareWontFitTitle": "{name} zerbitzuaren mugetatik gora: {count}",
             "compareWontFitHint": "Fitxategi hauek hornitzaileak dokumentatutako tamaina-muga gainditzen dute, edo haien izena edo bidea onartzen duena baino luzeagoa da. Sinkronizazioak huts egingo luke haiekin: aldatu izena, mugitu edo zatitu lehenago.",
             "compareWontFitTooLarge": "{size}, muga {limit}",
@@ -5108,6 +5109,78 @@
             "compareWontFitNameChars": "{count} karaktere baino gehiagoko izena",
             "compareWontFitPathBytes": "{count} byte baino gehiagoko bidea",
             "compareWontFitPathChars": "{count} karaktere baino gehiagoko bidea",
+            "presetDefault": "Lehenetsia",
+            "actionLabel": {
+                "skip": "Saltatu",
+                "copy-to-right": "Kopiatu → eskuinera",
+                "copy-to-left": "Kopiatu ← ezkerrera",
+                "overwrite-right": "Gainidatzi eskuinean",
+                "overwrite-left": "Gainidatzi ezkerrean",
+                "delete-right": "Ezabatu eskuinean",
+                "delete-left": "Ezabatu ezkerrean",
+                "rename-to-right": "Mantendu biak → eskuinera",
+                "rename-to-left": "Mantendu biak ← ezkerrera",
+                "conflict-skip": "Gatazka (saltatu)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Saltatu",
+                    "tagline": "Gatazkak ukitu gabe uzten ditu bi aldeetan."
+                },
+                "rename": {
+                    "label": "Mantendu biak",
+                    "tagline": "Iturburuko bertsioa kopiatzen du data eta orduko atzizki batekin."
+                },
+                "newer-wins": {
+                    "label": "Berriagoak irabazten du",
+                    "tagline": "Aldaketa-data berriagoa duen aldeak bestea gainidazten du."
+                },
+                "older-wins": {
+                    "label": "Zaharragoak irabazten du",
+                    "tagline": "Alde zaharragoak berriagoa gainidazten du (artxibatzeko)."
+                },
+                "larger-wins": {
+                    "label": "Handiagoak irabazten du",
+                    "tagline": "Tamaina handiagoa duen aldeak txikiagoa gainidazten du."
+                },
+                "smaller-wins": {
+                    "label": "Txikiagoak irabazten du",
+                    "tagline": "Alde txikiagoak handiagoa gainidazten du."
+                }
+            },
+            "bucketName": {
+                "only-left": "Ezkerrean soilik",
+                "newer-left": "Berriagoa ezkerrean",
+                "only-right": "Eskuinean soilik",
+                "newer-right": "Berriagoa eskuinean",
+                "conflict": "Gatazka",
+                "same": "Berdinak"
+            },
+            "bucketDescription": {
+                "only-left": "Iturburuko panelean dago, helmugan falta da.",
+                "newer-left": "Bi aldeetan dago, iturburuko kopiak denbora-marka berriagoa du.",
+                "only-right": "Helmugan dago, iturburuko panelean falta da.",
+                "newer-right": "Bi aldeetan dago, helmugako kopiak denbora-marka berriagoa du.",
+                "conflict": "Bi aldeek dute sarrera, baina tamaina desberdina da denbora-marka konparagarriekin.",
+                "same": "Sarrerak bat datoz konparazio-irizpide aktiboaren arabera."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Tamaina soilik",
+                "mtimeOnly": "Denbora-marka soilik",
+                "sizeAndMtime": "Tamaina + denbora-marka"
+            },
+            "compareTable": {
+                "name": "Izena",
+                "leftSize": "Tamaina ezkerrean",
+                "rightSize": "Tamaina eskuinean",
+                "leftModified": "Aldatua ezkerrean",
+                "rightModified": "Aldatua eskuinean",
+                "folder": "karpeta",
+                "noEntries": "Ez dago sarrerarik.",
+                "countedNotListed": "Zenbatuta baina zerrendatu gabe: eskaneatzeak fitxategi berdinak guztizko gisa ematen ditu, bakoitza errenkada batean eman beharrean, zuhaitz handiak azkar ibil daitezen.",
+                "shown": "Erakutsita: {shown}, guztira {total}",
+                "moreNotListed": "Zenbatuta baina zerrendatu gabe: {count}"
+            },
             "compareUnavailable": "Ireki bigarren panela edo urruneko konexioa konparatzeko.",
             "planUnavailable": "Konparaketa emaitza behar da aurrezarpena hautatu aurretik. Ireki lehenik Konparatu fitxa.",
             "totalEntries": "Sarrera guztiak",
@@ -5144,7 +5217,7 @@
             "ignoredForMirror": "ISPILUARENTZAT BAZTERTUA",
             "versionedBackup": "Bertsiodun babeskopia",
             "enable": "Gaitu",
-            "versionedBackupHint": "Helmugako kopia direktorio honetan kapturatzen du gainidatzi edo ezabatu aurretik.",
+            "versionedBackupHint": "Fitxategi bat gainidatzi edo ezabatu aurretik, helmugako kopia {dir} karpetara mugitzen da, exekuzioaren data eta orduaren izena duen karpeta batean.",
             "actionable": "Egingarria",
             "reportCopiedRight": "Eskuinera kopiatuta",
             "reportCopiedLeft": "Ezkerrera kopiatuta",
@@ -5166,7 +5239,6 @@
             "executePreset": "Exekutatu aurrezarpena",
             "execute": "Exekutatu",
             "sync": {
-                "title": "AeroSync: lokaletik lokalera",
                 "description": "Iturburu-direktorio lokal bat helmuga lokal batera ispilatzen du. ≥ 1 MiB-eko fitxategiek prozesuko delta motorra erabiltzen dute; fitxategi txikiagoek kopia zuzena erabiltzen dute.",
                 "source": "Iturburua",
                 "destination": "Helmuga",
@@ -5222,7 +5294,7 @@
             "speedMode_fast": "Azkarra",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Muturrekoa",
-            "speedModeHint": "Korronte paraleloak + konpresio-aurrezarpena exekuzioari aplikatuta.",
+            "speedModeHint": "Berriz saiatzeko politika ezartzen du. Azkarra modutik gora, aldatutako fitxategiak delta gisa bidaltzen dira zerbitzariak onartzen duenean (SFTP rsync-ekin).",
             "verifyPolicy": "Egiaztapen-politika",
             "verifyPolicy_none": "Bat ere ez",
             "verifyPolicy_size_only": "Tamaina soilik",
@@ -5267,7 +5339,45 @@
             "errorCorrection": "Erroreen zuzenketa",
             "errorCorrectionHint": "Babeskopia fitxategi bakoitzaren ondoan .aerocorrect paritate-fitxategi txiki bat gordetzen du, bit-rot-ek hondatutako urruneko kopia bat hurrengo pull-ean konpondu ahal izateko, jatorrizkoa gabe.",
             "outOfSyncItemsPct": "Sinkronizatu gabeko elementuak",
-            "outOfSyncBytesPct": "Sinkronizatu gabeko byteak"
+            "outOfSyncBytesPct": "Sinkronizatu gabeko byteak",
+            "exclude": {
+                "label": "Bazterketa-ereduak",
+                "hint": "Komaz edo lerro berriz bereiziak, adibidez cache, *.tmp edo build/output. Beti baztertuak: {list}."
+            },
+            "cli": {
+                "title": "Exekuzio bera komando-lerrotik",
+                "copy": "Kopiatu",
+                "copied": "Kopiatua",
+                "copyFailed": "Ezin izan da kopiatu",
+                "none": "Ez dago CLI baliokide zehatzik: {reason}",
+                "reason": {
+                    "localPair": "bi karpeta lokaletarako CLIak bere ispilua exekutatzen du, eta horrek norabidea, ezabatzea eta gatazken ezarpenak alde batera uzten ditu.",
+                    "unsavedServer": "konexio hau ez da gordetako zerbitzari bat, eta CLIak bat behar du --profile bidez izendatzeko.",
+                    "overwritesNewer": "CLIak tamaina desberdineko helmugako kopia gainidazten du berriagoa denean ere, eta aurrezarpen honek ez du inoiz hori egiten.",
+                    "twoWay": "CLIak tamaina bereko eta ordu desberdineko bi kopia gatazkatzat hartzen ditu eta zaharrena gainidazten du; plan honek berdintzat hartzen ditu 30 segundoren barruan.",
+                    "canary": "CLIak ez du proba modurik.",
+                    "versionedBackup": "CLIak oraindik ez ditu babeskopiak egitura berean gordetzen.",
+                    "transferBudget": "aurrekontua agortzean plan hau gelditu egiten da, ezabaketak barne; CLIak transferentziak soilik mugatzen ditu eta ezabatzen jarraitzen du.",
+                    "remotePath": "CLIak urruneko karpeta gordetako zerbitzariaren hasierako karpetaren arabera ebazten du, eta beste batera iritsiko litzateke.",
+                    "exclusions": "CLIak bazterketa-ereduak beste modu batera aplikatzen ditu, beraz ez luke saltatuko plan honek saltatzen duen guztia (node_modules, .git eta gainerakoak)."
+                }
+            },
+            "rescan": "Eskaneatu berriro",
+            "rescanNeeded": "Konparaketa beste bazterketa batzuekin edo beste babeskopia-karpeta batekin egin zen. Eskaneatu berriro exekutatu aurretik.",
+            "backup": {
+                "checking": "Zerbitzari honek fitxategiak nola mugitzen dituen egiaztatzen...",
+                "serverCopy": "Zerbitzari honek ezin du mugitu: gordetako kopia bakoitza zerbitzarian kopiatu eta gero ezabatu egiten da. Horrek gordetako fitxategi bakoitzaren kopia oso bat kostatzen du, bi urrats bereizitan.",
+                "clientCopy": "Zerbitzari honek ezin du mugitu: gordetako kopia bakoitza deskargatu, babeskopien karpetara igo eta gero ezabatu egiten da. Gordetako fitxategi bakoitza bi aldiz igarotzen da ordenagailu honetatik, urrats bereizitan.",
+                "unsupported": "Zerbitzari honek ezin ditu fitxategiak beste karpeta batera mugitu, beraz ezin ditu kopia zaharrak gorde. Exekutatzeko, desaktibatu bertsiodun babeskopia.",
+                "checkFailed": "Ezin izan zaio zerbitzariari galdetu fitxategiak nola mugitzen dituen. Konektatu berriro, edo exekutatzeko desaktibatu bertsiodun babeskopia.",
+                "nested": "Babeskopien karpeta {folder} barruan dago, eta sinkronizazio honek bertan idazten du. Aukeratu haren kanpoko karpeta bat.",
+                "invalid": {
+                    "empty": "Idatzi babeskopien karpetaren izena.",
+                    "absolute": "Erabili helmugaren barruko karpeta bat, ez bide absolutu bat.",
+                    "parent": "Babeskopien karpetak ezin du '..' eduki.",
+                    "name": "Babeskopien karpetaren izen hau ez da baliozkoa."
+                }
+            }
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

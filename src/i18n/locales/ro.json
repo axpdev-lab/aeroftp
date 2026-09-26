@@ -327,7 +327,14 @@
             "protonCliTitle": "Folosește CLI-ul oficial Proton Drive",
             "protonCliBody": "Instalați CLI-ul Proton Drive de la proton.me/download/drive/cli, rulați apoi proton-drive auth login în terminal și finalizați în browser. AeroFTP nu vă vede niciodată parola; sesiunea rămâne în depozitul de secrete al OS.",
             "protonUnofficial": "Aceasta este o aplicație terță pe care Proton nu o suportă oficial.",
-            "protonConnectHint": "\"Conectare\" folosește CLI-ul deja autentificat pe această mașină. Un cont Proton per utilizator OS."
+            "protonConnectHint": "\"Conectare\" folosește CLI-ul deja autentificat pe această mașină. Un cont Proton per utilizator OS.",
+            "twakeInstance": "Adresă Twake",
+            "twakeInstanceHelp": "Adresa dumneavoastră, de exemplu yourname.twake.app. Puteți lipi și orice adresă a unei pagini Twake din browser.",
+            "twakeSignIn": "Conectare cu Twake",
+            "twakeSignInAgain": "Conectați-vă din nou",
+            "twakeSignedIn": "Conectat",
+            "twakeWaitingBrowser": "Finalizați conectarea în browser...",
+            "twakeSignInHelp": "AeroFTP deschide Twake în browserul dumneavoastră și solicită acces doar la fișierele dumneavoastră. Dacă Twake afișează o eroare prima dată, conectați-vă la Twake în browser și conectați-vă din nou. Puteți revoca accesul oricând din Setări Twake, Dispozitive conectate."
         },
         "browser": {
             "remote": "La distanță",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "Acest punct final oferă S3 prin HTTP necriptat printr-o rețea. Acceptați pentru acest profil: acreditările semnate și fiecare fișier traversează rețeaua necriptate.",
             "discoverFilebase": "Filebase: stocare de obiecte compatibilă cu S3 (5 GB gratuit)",
             "protonDesc": "Se conectează prin CLI-ul Proton Drive",
-            "protonTooltip": "Folosește CLI-ul Proton Drive - instalați, autentificați-vă în browser, AeroFTP este GUI-ul"
+            "protonTooltip": "Folosește CLI-ul Proton Drive - instalați, autentificați-vă în browser, AeroFTP este GUI-ul",
+            "twakeDesc": "Twake Drive (5 GB gratuit)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cloud francez open source (Cozy Cloud face acum parte din el) cu 5 GB gratuit",
+            "discoverTwake": "Cloud european open source de la Linagora, acum noua casă a Cozy Cloud (5 GB gratuit)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -2153,9 +2163,6 @@
                 "disk_error": "Eroare disc",
                 "unknown": "Necunoscut"
             },
-            "parallelStreams": "Fluxuri",
-            "parallelSequential": "Secvențial",
-            "parallelStreamLabel": "fluxuri",
             "schedulerTitle": "Programator sincronizare",
             "schedulerEnabled": "Activează programator",
             "schedulerResume": "Reia",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Număr mare de directoare - poate depăși limita inotify",
             "watcherPolling": "Folosește modul poll (mai lent dar universal)",
-            "compressionToggle": "Compresie",
-            "compressionAuto": "Auto",
-            "compressionOn": "Pornit",
-            "compressionOff": "Oprit",
             "multiPathAdd": "Adaugă pereche de căi",
             "multiPathEmpty": "Nicio pereche de căi configurată",
             "templateExport": "Exportă șablon",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "Restaurează",
             "rollbackEmpty": "Niciun instantaneu disponibil",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 fluxuri + TOATĂ securitatea dezactivată - fără jurnal, fără verificare, fără reîncercare",
+            "speedManiacTooltip": "Fără jurnal, fără verificare în timpul rulării, limitele de lățime de bandă ignorate, 2 reîncercări rapide. Fișierele descărcate sunt verificate după rulare.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Fără jurnal. Fără verificare. Fără reîncercare. Viteză brută maximă. Dacă ceva eșuează, este pierdut. O scanare completă de verificare va rula după finalizarea sincronizării.",
+            "maniacWarningBody": "Fără jurnal și fără verificare în timpul rulării, limitele de lățime de bandă sunt ignorate, iar un fișier eșuat primește doar 2 reîncercări rapide. După rulare, fișierele descărcate sunt verificate; cele încărcate nu.",
             "maniacConfirm": "Înțeleg, continuă",
             "maniacPostSyncReport": "Verificare post-sincronizare: {ok} OK, {mismatches} nepotriviri, {failed} eșuate",
             "rollback": "Restaurare",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "Salvează configurația de sincronizare curentă ca șablon .aerosync reutilizabil",
             "templateImportDesc": "Încarcă un șablon .aerosync pentru a aplica configurația de sincronizare",
             "maniacActive": "Activ",
-            "speedStreams": "{count} fluxuri",
             "actionUploaded": "Încărcat",
             "actionDownloaded": "Descărcat",
             "actionDeleted": "Șters",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "Câmpuri metadata nerecunoscute",
             "aerosyncScriptApplyButton": "Salvează ca preset",
             "aerosyncScriptAppliedToast": "Preset importat salvat. Deschide AeroSync pentru a-l folosi.",
-            "compressionHint": "Comprimă datele în timpul transferului pentru a-l accelera; nu stochează fișiere comprimate la destinație. Auto omite formatele deja comprimate (zip, jpg, mp4 și altele similare).",
             "canaryDryRun": "Nu se transferă nimic: aceasta previzualizează ce ar face o sincronizare completă, calculată din eșantion. Este echivalentul grafic al comenzii aeroftp-cli sync --dry-run (și al --dry-run din rclone).",
-            "templateImportPathPairs": "Numărul de perechi de căi utilizabile din acest șablon: {count}. AeroFTP aplică exact una, așa că nu s-a importat nimic. Editează șablonul astfel încât să rămână o singură pereche, apoi importă-l din nou.",
+            "templateImportPathPairs": "Perechi de căi (locală/la distanță) utilizabile în acest șablon: {count}. O fereastră AeroSync lucrează cu exact o pereche, așa că nu s-a importat nimic. Editează șablonul astfel încât să rămână o singură pereche, apoi importă-l din nou.",
             "templateNamePlaceholder": "de ex. Copie de rezervă nocturnă în S3",
             "templateDescPlaceholder": "La ce folosește acest șablon (opțional)"
         },
@@ -5081,7 +5082,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Compară",
             "tabPlan": "Plan",
-            "tabSync": "Sincronizează",
+            "tabSync": "Oglindă locală",
             "compareWontFitTitle": "Peste limitele {name}: {count}",
             "compareWontFitHint": "Aceste fișiere depășesc limita de dimensiune documentată a furnizorului, sau numele ori calea lor este mai lungă decât acceptă. O sincronizare ar eșua pentru ele: redenumiți-le, mutați-le sau împărțiți-le înainte.",
             "compareWontFitTooLarge": "{size}, limită {limit}",
@@ -5089,6 +5090,78 @@
             "compareWontFitNameChars": "nume de peste {count} caractere",
             "compareWontFitPathBytes": "cale de peste {count} octeți",
             "compareWontFitPathChars": "cale de peste {count} caractere",
+            "presetDefault": "Implicit",
+            "actionLabel": {
+                "skip": "Omite",
+                "copy-to-right": "Copiază → dreapta",
+                "copy-to-left": "Copiază ← stânga",
+                "overwrite-right": "Suprascrie în dreapta",
+                "overwrite-left": "Suprascrie în stânga",
+                "delete-right": "Șterge în dreapta",
+                "delete-left": "Șterge în stânga",
+                "rename-to-right": "Păstrează ambele → dreapta",
+                "rename-to-left": "Păstrează ambele ← stânga",
+                "conflict-skip": "Conflict (omite)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Omite",
+                    "tagline": "Lasă conflictele neatinse pe ambele părți."
+                },
+                "rename": {
+                    "label": "Păstrează ambele",
+                    "tagline": "Copiază versiunea din sursă cu un sufix de dată și oră."
+                },
+                "newer-wins": {
+                    "label": "Câștigă cel mai nou",
+                    "tagline": "Partea cu data modificării mai recentă o suprascrie pe cealaltă."
+                },
+                "older-wins": {
+                    "label": "Câștigă cel mai vechi",
+                    "tagline": "Partea mai veche o suprascrie pe cea mai nouă (pentru arhivare)."
+                },
+                "larger-wins": {
+                    "label": "Câștigă cel mai mare",
+                    "tagline": "Partea cu dimensiunea mai mare o suprascrie pe cea mai mică."
+                },
+                "smaller-wins": {
+                    "label": "Câștigă cel mai mic",
+                    "tagline": "Partea mai mică o suprascrie pe cea mai mare."
+                }
+            },
+            "bucketName": {
+                "only-left": "Doar în stânga",
+                "newer-left": "Mai nou în stânga",
+                "only-right": "Doar în dreapta",
+                "newer-right": "Mai nou în dreapta",
+                "conflict": "Conflict",
+                "same": "Identice"
+            },
+            "bucketDescription": {
+                "only-left": "Prezent în panoul sursă, lipsește din destinație.",
+                "newer-left": "Prezent pe ambele părți, copia din sursă are marcajul temporal mai recent.",
+                "only-right": "Prezent în destinație, lipsește din panoul sursă.",
+                "newer-right": "Prezent pe ambele părți, copia din destinație are marcajul temporal mai recent.",
+                "conflict": "Ambele părți au intrarea, dar dimensiunea diferă la marcaje temporale comparabile.",
+                "same": "Intrările coincid conform politicii de comparare active."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Doar dimensiunea",
+                "mtimeOnly": "Doar marcajul temporal",
+                "sizeAndMtime": "Dimensiune + marcaj temporal"
+            },
+            "compareTable": {
+                "name": "Nume",
+                "leftSize": "Dimensiune în stânga",
+                "rightSize": "Dimensiune în dreapta",
+                "leftModified": "Modificat în stânga",
+                "rightModified": "Modificat în dreapta",
+                "folder": "dosar",
+                "noEntries": "Nicio intrare.",
+                "countedNotListed": "Numărate, dar nelistate: scanarea raportează fișierele identice ca total în loc de câte un rând pentru fiecare, astfel încât arborii mari rămân rapizi.",
+                "shown": "Afișate: {shown} din {total}",
+                "moreNotListed": "Numărate, dar nelistate: {count}"
+            },
             "compareUnavailable": "Deschide un al doilea panou sau o conexiune la distanță pentru a compara.",
             "planUnavailable": "Este necesar un rezultat de comparare înainte de a alege o presetare. Deschide mai întâi fila Compară.",
             "totalEntries": "Total intrări",
@@ -5125,7 +5198,7 @@
             "ignoredForMirror": "IGNORAT PENTRU OGLINDIRE",
             "versionedBackup": "Backup cu versiuni",
             "enable": "Activează",
-            "versionedBackupHint": "Capturează copia destinației în acest director înainte de fiecare suprascriere sau ștergere.",
+            "versionedBackupHint": "Înainte ca un fișier să fie suprascris sau șters, copia lui din destinație este mutată în {dir}, într-un folder numit după data și ora rulării.",
             "actionable": "De executat",
             "reportCopiedRight": "Copiate la dreapta",
             "reportCopiedLeft": "Copiate la stânga",
@@ -5147,7 +5220,6 @@
             "executePreset": "Execută presetarea",
             "execute": "Execută",
             "sync": {
-                "title": "AeroSync: de la local la local",
                 "description": "Oglindește un director sursă local într-o destinație locală. Fișierele ≥ 1 MiB folosesc motorul delta integrat; fișierele mai mici folosesc copierea directă.",
                 "source": "Sursă",
                 "destination": "Destinație",
@@ -5203,7 +5275,7 @@
             "speedMode_fast": "Rapid",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extrem",
-            "speedModeHint": "Fluxuri paralele + presetare de compresie aplicate rulării.",
+            "speedModeHint": "Setează politica de reîncercări. De la Rapid în sus, fișierele modificate sunt trimise ca delte acolo unde serverul permite (SFTP cu rsync).",
             "verifyPolicy": "Politică de verificare",
             "verifyPolicy_none": "Niciuna",
             "verifyPolicy_size_only": "Doar dimensiunea",
@@ -5248,7 +5320,45 @@
             "errorCorrection": "Corectarea erorilor",
             "errorCorrectionHint": "Salvează un mic fișier de paritate .aerocorrect lângă fiecare fișier de backup, astfel încât o copie la distanță deteriorată de bit-rot să poată fi reparată la următoarea descărcare, fără original.",
             "outOfSyncItemsPct": "Elemente nesincronizate",
-            "outOfSyncBytesPct": "Octeți nesincronizați"
+            "outOfSyncBytesPct": "Octeți nesincronizați",
+            "exclude": {
+                "label": "Tipare de excludere",
+                "hint": "Separate prin virgulă sau linie nouă, de exemplu cache, *.tmp sau build/output. Excluse întotdeauna: {list}."
+            },
+            "cli": {
+                "title": "Aceeași rulare din linia de comandă",
+                "copy": "Copiază",
+                "copied": "Copiat",
+                "copyFailed": "Copierea a eșuat",
+                "none": "Niciun echivalent exact în CLI: {reason}",
+                "reason": {
+                    "localPair": "pentru două foldere locale, CLI rulează propria oglindire, care ignoră setările de direcție, ștergere și conflicte.",
+                    "unsavedServer": "această conexiune nu este un server salvat, iar CLI are nevoie de unul pentru a-l indica prin --profile.",
+                    "overwritesNewer": "CLI suprascrie o copie de destinație de altă dimensiune chiar și când este mai nouă, lucru pe care această presetare nu îl face niciodată.",
+                    "twoWay": "CLI tratează două copii de aceeași dimensiune cu ore diferite drept conflict și o suprascrie pe cea mai veche; acest plan le consideră identice în limita a 30 de secunde.",
+                    "canary": "CLI nu are rulare de probă Canary.",
+                    "versionedBackup": "CLI nu păstrează încă copiile de rezervă în aceeași structură.",
+                    "transferBudget": "când bugetul se epuizează, acest plan se oprește, inclusiv ștergerile; CLI limitează doar transferurile și tot șterge.",
+                    "remotePath": "CLI rezolvă folderul la distanță față de folderul de pornire al serverului salvat și ar ajunge în altul.",
+                    "exclusions": "CLI aplică tiparele de excludere diferit, deci nu ar omite tot ce omite acest plan (node_modules, .git și restul)."
+                }
+            },
+            "rescan": "Rescanează",
+            "rescanNeeded": "Compararea a fost făcută cu alte excluderi sau alt folder de backup. Rescanează înainte de rulare.",
+            "backup": {
+                "checking": "Se verifică modul în care acest server mută fișierele...",
+                "serverCopy": "Acest server nu poate muta: fiecare copie păstrată este copiată pe server și apoi ștearsă. Asta costă o copie completă a fiecărui fișier păstrat, în doi pași separați.",
+                "clientCopy": "Acest server nu poate muta: fiecare copie păstrată este descărcată, încărcată în folderul de backup și apoi ștearsă. Fiecare fișier păstrat trece de două ori prin acest computer, în pași separați.",
+                "unsupported": "Acest server nu poate muta fișiere în alt folder, așa că nu poate păstra copiile vechi. Dezactivați backup-ul cu versiuni pentru a rula.",
+                "checkFailed": "Serverul nu a putut fi întrebat cum mută fișierele. Reconectați-vă sau dezactivați backup-ul cu versiuni pentru a rula.",
+                "nested": "Folderul de backup se află în {folder}, unde scrie această sincronizare. Alegeți un folder din afara lui.",
+                "invalid": {
+                    "empty": "Introduceți un nume pentru folderul de backup.",
+                    "absolute": "Folosiți un folder din destinație, nu o cale absolută.",
+                    "parent": "Folderul de backup nu poate conține '..'.",
+                    "name": "Acest nume de folder de backup nu este valid."
+                }
+            }
         },
         "accountLock": {
             "title": "Alegeți un cont",

@@ -327,7 +327,14 @@
             "protonCliTitle": "使用官方 Proton Drive CLI",
             "protonCliBody": "从 proton.me/download/drive/cli 安装 Proton Drive CLI，然后在终端运行 proton-drive auth login 并在浏览器中完成。AeroFTP 绝不会看到你的密码；会话留在操作系统的密钥库中。",
             "protonUnofficial": "这是 Proton 未官方支持的第三方应用。",
-            "protonConnectHint": "\"连接\" 使用本机已登录的 CLI。每个操作系统用户一个 Proton 账户。"
+            "protonConnectHint": "\"连接\" 使用本机已登录的 CLI。每个操作系统用户一个 Proton 账户。",
+            "twakeInstance": "Twake 地址",
+            "twakeInstanceHelp": "您自己的地址,例如 yourname.twake.app。您也可以粘贴从浏览器中复制的任意 Twake 页面地址。",
+            "twakeSignIn": "使用 Twake 登录",
+            "twakeSignInAgain": "重新登录",
+            "twakeSignedIn": "已登录",
+            "twakeWaitingBrowser": "请在浏览器中完成登录...",
+            "twakeSignInHelp": "AeroFTP 会在浏览器中打开 Twake,并且只请求访问您的文件。如果 Twake 第一次显示错误,请在浏览器中登录 Twake,然后重新登录。您可以随时在 Twake 设置的“已连接设备”中撤销访问权限。"
         },
         "browser": {
             "remote": "远程",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "此端点通过网络以明文 HTTP 提供 S3。为此配置文件接受：签名凭据和每个文件都将以未加密方式穿越网络。",
             "discoverFilebase": "Filebase: S3 兼容对象存储（免费 5 GB）",
             "protonDesc": "通过 Proton Drive CLI 连接",
-            "protonTooltip": "使用 Proton Drive CLI - 安装，在浏览器中登录，AeroFTP 即为 GUI"
+            "protonTooltip": "使用 Proton Drive CLI - 安装，在浏览器中登录，AeroFTP 即为 GUI",
+            "twakeDesc": "Twake Drive(免费 5 GB)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace,法国开源云盘(Cozy Cloud 现已成为其一部分),免费 5 GB",
+            "discoverTwake": "Linagora 打造的欧洲开源云盘,现为 Cozy Cloud 的新家(免费 5 GB)"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -2153,9 +2163,6 @@
                 "disk_error": "磁盘错误",
                 "unknown": "未知"
             },
-            "parallelStreams": "流",
-            "parallelSequential": "顺序",
-            "parallelStreamLabel": "流",
             "schedulerTitle": "同步调度器",
             "schedulerEnabled": "启用调度器",
             "schedulerResume": "继续",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "后端",
             "watcherInotifyWarning": "目录数量较多 - 可能超出 inotify 限制",
             "watcherPolling": "使用轮询模式（较慢但通用）",
-            "compressionToggle": "压缩",
-            "compressionAuto": "自动",
-            "compressionOn": "开启",
-            "compressionOff": "关闭",
             "multiPathAdd": "添加路径对",
             "multiPathEmpty": "未配置路径对",
             "templateExport": "导出模板",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "恢复",
             "rollbackEmpty": "无可用快照",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 个流 + 禁用所有安全功能 - 无日志，无验证，无重试",
+            "speedManiacTooltip": "无日志，运行期间不验证，忽略带宽限制，2 次快速重试。下载的文件会在运行后验证。",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "无日志。无验证。无重试。最大原始速度。如果出现故障，数据将丢失。同步完成后将运行完整验证扫描。",
+            "maniacWarningBody": "运行期间无日志、无验证，忽略带宽限制，失败的文件只有 2 次快速重试。运行结束后，下载的文件会被验证；上传的文件则不会。",
             "maniacConfirm": "我明白，继续",
             "maniacPostSyncReport": "同步后验证：{ok} 正常，{mismatches} 不匹配，{failed} 失败",
             "rollback": "回滚",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "将当前同步配置保存为可重用的 .aerosync 模板",
             "templateImportDesc": "加载 .aerosync 模板以应用其同步配置",
             "maniacActive": "活动",
-            "speedStreams": "{count} 个流",
             "actionUploaded": "已上传",
             "actionDownloaded": "已下载",
             "actionDeleted": "已删除",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "无法识别的 metadata 字段",
             "aerosyncScriptApplyButton": "另存为 preset",
             "aerosyncScriptAppliedToast": "已保存导入的 preset。打开 AeroSync 即可使用。",
-            "compressionHint": "在传输过程中压缩数据以加快传输速度；不会在目标位置存储压缩文件。Auto 会跳过已压缩的格式（zip、jpg、mp4 等）。",
             "canaryDryRun": "不会传输任何内容：这会根据样本预览完整同步将执行的操作。它是 CLI 命令 aeroftp-cli sync --dry-run（以及 rclone 的 --dry-run）的图形界面对应功能。",
-            "templateImportPathPairs": "此模板定义了 {count} 个可用的路径对。AeroFTP 只应用其中一个，因此未导入任何内容。请编辑模板，只保留一个路径对，然后重新导入。",
+            "templateImportPathPairs": "此模板中可用的本地/远程路径对：{count}。一个 AeroSync 窗口恰好对应一个路径对，因此未导入任何内容。请编辑模板，只保留一个路径对，然后重新导入。",
             "templateNamePlaceholder": "例如：夜间备份到 S3",
             "templateDescPlaceholder": "此模板的用途（可选）"
         },
@@ -5081,7 +5082,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "比较",
             "tabPlan": "计划",
-            "tabSync": "同步",
+            "tabSync": "本地镜像",
             "compareWontFitTitle": "超出 {name} 的限制：{count}",
             "compareWontFitHint": "这些文件超过提供商文档中的大小限制，或其名称或路径超过允许的长度。同步这些文件会失败：请先重命名、移动或拆分。",
             "compareWontFitTooLarge": "{size}，上限 {limit}",
@@ -5089,6 +5090,78 @@
             "compareWontFitNameChars": "名称超过 {count} 个字符",
             "compareWontFitPathBytes": "路径超过 {count} 字节",
             "compareWontFitPathChars": "路径超过 {count} 个字符",
+            "presetDefault": "默认",
+            "actionLabel": {
+                "skip": "跳过",
+                "copy-to-right": "复制 → 右侧",
+                "copy-to-left": "复制 ← 左侧",
+                "overwrite-right": "覆盖右侧",
+                "overwrite-left": "覆盖左侧",
+                "delete-right": "删除右侧",
+                "delete-left": "删除左侧",
+                "rename-to-right": "保留两者 → 右侧",
+                "rename-to-left": "保留两者 ← 左侧",
+                "conflict-skip": "冲突（跳过）"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "跳过",
+                    "tagline": "两侧的冲突均保持不变。"
+                },
+                "rename": {
+                    "label": "保留两者",
+                    "tagline": "复制源端版本，并添加包含日期和时间的后缀。"
+                },
+                "newer-wins": {
+                    "label": "较新者优先",
+                    "tagline": "修改时间较新的一侧覆盖另一侧。"
+                },
+                "older-wins": {
+                    "label": "较旧者优先",
+                    "tagline": "较旧的一侧覆盖较新的一侧（适用于归档）。"
+                },
+                "larger-wins": {
+                    "label": "较大者优先",
+                    "tagline": "文件大小较大的一侧覆盖较小的一侧。"
+                },
+                "smaller-wins": {
+                    "label": "较小者优先",
+                    "tagline": "较小的一侧覆盖较大的一侧。"
+                }
+            },
+            "bucketName": {
+                "only-left": "仅左侧",
+                "newer-left": "左侧较新",
+                "only-right": "仅右侧",
+                "newer-right": "右侧较新",
+                "conflict": "冲突",
+                "same": "相同"
+            },
+            "bucketDescription": {
+                "only-left": "存在于源面板，目标中缺失。",
+                "newer-left": "两侧均存在，源端副本的时间戳较新。",
+                "only-right": "存在于目标中，源面板中缺失。",
+                "newer-right": "两侧均存在，目标端副本的时间戳较新。",
+                "conflict": "两侧都有该条目，但在时间戳相近的情况下大小不一致。",
+                "same": "按当前的比较策略，条目一致。"
+            },
+            "comparePolicy": {
+                "sizeOnly": "仅大小",
+                "mtimeOnly": "仅时间戳",
+                "sizeAndMtime": "大小 + 时间戳"
+            },
+            "compareTable": {
+                "name": "名称",
+                "leftSize": "左侧大小",
+                "rightSize": "右侧大小",
+                "leftModified": "左侧修改时间",
+                "rightModified": "右侧修改时间",
+                "folder": "文件夹",
+                "noEntries": "没有条目。",
+                "countedNotListed": "已计数但未列出：扫描将相同的文件汇总为一个总数，而不是每个文件占一行，从而让大型目录树保持快速。",
+                "shown": "已显示：{shown} / {total}",
+                "moreNotListed": "已计数但未列出：{count}"
+            },
             "compareUnavailable": "打开第二个面板或远程连接以进行比较。",
             "planUnavailable": "选择预设之前需要比较结果。请先打开比较选项卡。",
             "totalEntries": "条目总数",
@@ -5125,7 +5198,7 @@
             "ignoredForMirror": "镜像时忽略",
             "versionedBackup": "版本化备份",
             "enable": "启用",
-            "versionedBackupHint": "在每次覆盖或删除之前，将目标副本捕获到此目录中。",
+            "versionedBackupHint": "在文件被覆盖或删除之前，其目标副本会被移动到 {dir} 中一个以运行日期和时间命名的文件夹。",
             "actionable": "可执行",
             "reportCopiedRight": "已复制到右侧",
             "reportCopiedLeft": "已复制到左侧",
@@ -5147,7 +5220,6 @@
             "executePreset": "执行预设",
             "execute": "执行",
             "sync": {
-                "title": "AeroSync: 本地到本地",
                 "description": "将本地源目录镜像到本地目标。≥ 1 MiB 的文件使用内置 delta 引擎；较小的文件使用直接复制。",
                 "source": "源",
                 "destination": "目标",
@@ -5203,7 +5275,7 @@
             "speedMode_fast": "快速",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "极速",
-            "speedModeHint": "应用于本次运行的并行流 + 压缩预设。",
+            "speedModeHint": "设置重试策略。从“快速”模式起，在服务器支持的情况下 (SFTP 搭配 rsync)，已更改的文件以增量方式发送。",
             "verifyPolicy": "验证策略",
             "verifyPolicy_none": "无",
             "verifyPolicy_size_only": "仅大小",
@@ -5248,7 +5320,45 @@
             "errorCorrection": "纠错",
             "errorCorrectionHint": "在每个备份文件旁存储一个小的 .aerocorrect 校验文件，使因位衰减（bit-rot）损坏的远程副本能在下次拉取时无需原件即可修复。",
             "outOfSyncItemsPct": "未同步的项目",
-            "outOfSyncBytesPct": "未同步的字节"
+            "outOfSyncBytesPct": "未同步的字节",
+            "exclude": {
+                "label": "排除模式",
+                "hint": "用逗号或换行符分隔，例如 cache、*.tmp 或 build/output。始终排除：{list}。"
+            },
+            "cli": {
+                "title": "在命令行中执行相同操作",
+                "copy": "复制",
+                "copied": "已复制",
+                "copyFailed": "复制失败",
+                "none": "没有完全等效的 CLI 命令：{reason}",
+                "reason": {
+                    "localPair": "对于两个本地文件夹，CLI 会运行自己的镜像，忽略方向、删除和冲突设置。",
+                    "unsavedServer": "此连接不是已保存的服务器，而 CLI 需要通过 --profile 指定一个已保存的服务器。",
+                    "overwritesNewer": "即使目标副本更新，只要大小不同 CLI 也会覆盖它，而此预设从不这样做。",
+                    "twoWay": "CLI 会将大小相同但时间不同的两个副本视为冲突并覆盖较旧的一个；此计划在 30 秒以内将它们视为相同。",
+                    "canary": "CLI 没有 Canary 试运行。",
+                    "versionedBackup": "CLI 尚不能以相同的结构保存备份。",
+                    "transferBudget": "预算用尽时，此计划会停止，包括删除操作；CLI 仅限制传输，仍会执行删除。",
+                    "remotePath": "CLI 会相对于已保存服务器的起始文件夹解析远程文件夹，从而到达另一个文件夹。",
+                    "exclusions": "CLI 匹配排除模式的方式不同，因此不会跳过此计划跳过的所有内容（node_modules、.git 等）。"
+                }
+            },
+            "rescan": "重新扫描",
+            "rescanNeeded": "比较是使用其他排除规则或其他备份文件夹进行的。运行前请重新扫描。",
+            "backup": {
+                "checking": "正在检查此服务器如何移动文件...",
+                "serverCopy": "此服务器不支持移动：每个保留的副本都会先在服务器上复制，然后删除。这意味着每个保留的文件都要完整复制一次，分两个独立步骤进行。",
+                "clientCopy": "此服务器不支持移动：每个保留的副本都会先下载，再上传到备份文件夹，然后删除。每个保留的文件都要经过这台计算机两次，分步进行。",
+                "unsupported": "此服务器无法将文件移动到其他文件夹，因此无法保留旧副本。请关闭版本化备份后再运行。",
+                "checkFailed": "无法向服务器查询其移动文件的方式。请重新连接，或关闭版本化备份后再运行。",
+                "nested": "备份文件夹位于 {folder} 内，而此同步会写入该位置。请选择其外部的文件夹。",
+                "invalid": {
+                    "empty": "请输入备份文件夹的名称。",
+                    "absolute": "请使用目标内的文件夹，而不是绝对路径。",
+                    "parent": "备份文件夹不能包含 '..'。",
+                    "name": "此备份文件夹名称无效。"
+                }
+            }
         },
         "accountLock": {
             "title": "选择一个账户",

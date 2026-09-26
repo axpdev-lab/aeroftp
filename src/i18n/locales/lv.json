@@ -327,7 +327,14 @@
             "protonCliTitle": "Izmanto oficiālo Proton Drive CLI",
             "protonCliBody": "Instalējiet Proton Drive CLI no proton.me/download/drive/cli, pēc tam terminālī palaidiet proton-drive auth login un pabeidziet pārlūkā. AeroFTP nekad neredz jūsu paroli; sesija paliek OS noslēpumu krātuvē.",
             "protonUnofficial": "Šī ir trešās puses lietotne, ko Proton oficiāli neatbalsta.",
-            "protonConnectHint": "\"Savienot\" izmanto šajā datorā jau pierakstīto CLI. Viens Proton konts uz OS lietotāju."
+            "protonConnectHint": "\"Savienot\" izmanto šajā datorā jau pierakstīto CLI. Viens Proton konts uz OS lietotāju.",
+            "twakeInstance": "Twake adrese",
+            "twakeInstanceHelp": "Jūsu pašu adrese, piemēram, yourname.twake.app. Varat arī ielīmēt jebkuru Twake lapas adresi no pārlūkprogrammas.",
+            "twakeSignIn": "Pierakstīties ar Twake",
+            "twakeSignInAgain": "Pierakstieties vēlreiz",
+            "twakeSignedIn": "Pierakstījies",
+            "twakeWaitingBrowser": "Pabeidziet pierakstīšanos savā pārlūkprogrammā...",
+            "twakeSignInHelp": "AeroFTP atver Twake jūsu pārlūkprogrammā un pieprasa piekļuvi tikai jūsu failiem. Ja Twake pirmoreiz parāda kļūdu, piesakieties Twake pārlūkprogrammā un pierakstieties vēlreiz. Piekļuvi varat atsaukt jebkurā laikā Twake iestatījumos, Savienotās ierīces."
         },
         "browser": {
             "remote": "Attālināts",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "Šis galapunkts nodrošina S3 caur nešifrētu HTTP tīklā. Pieņemiet to šim profilam: parakstītie akreditācijas dati un katrs fails šķērso tīklu nešifrēti.",
             "discoverFilebase": "Filebase: ar S3 saderīga objektu glabātuve (5 GB bez maksas)",
             "protonDesc": "Savienojas, izmantojot Proton Drive CLI",
-            "protonTooltip": "Izmanto Proton Drive CLI - instalējiet, pierakstieties pārlūkā, AeroFTP ir GUI"
+            "protonTooltip": "Izmanto Proton Drive CLI - instalējiet, pierakstieties pārlūkā, AeroFTP ir GUI",
+            "twakeDesc": "Twake Drive (5 GB bez maksas)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, franču atvērtā koda mākonis (Cozy Cloud tagad ir tā daļa) ar 5 GB bez maksas",
+            "discoverTwake": "Linagora atvērtā koda Eiropas mākonis, tagad Cozy Cloud jaunās mājas (5 GB bez maksas)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -2153,9 +2163,6 @@
                 "disk_error": "Diska kļūda",
                 "unknown": "Nezināms"
             },
-            "parallelStreams": "Straumes",
-            "parallelSequential": "Secīgs",
-            "parallelStreamLabel": "straumes",
             "schedulerTitle": "Sinhronizācijas plānotājs",
             "schedulerEnabled": "Ieslēgt plānotāju",
             "schedulerResume": "Atsākt",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "Serveris",
             "watcherInotifyWarning": "Liels direktoriju skaits - var pārsniegt inotify limitu",
             "watcherPolling": "Izmanto aptaujas režīmu (lēnāks, bet universāls)",
-            "compressionToggle": "Saspiešana",
-            "compressionAuto": "Automātiski",
-            "compressionOn": "Ieslēgts",
-            "compressionOff": "Izslēgts",
             "multiPathAdd": "Pievienot ceļu pāri",
             "multiPathEmpty": "Nav konfigurētu ceļu pāru",
             "templateExport": "Eksportēt veidni",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "Atjaunot",
             "rollbackEmpty": "Nav pieejamu momentuzņēmumu",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 straumes + VISI drošības mehānismi atslēgti - bez žurnāla, bez pārbaudes, bez atkārtojuma",
+            "speedManiacTooltip": "Bez žurnāla, bez pārbaudes izpildes laikā, joslas platuma ierobežojumi ignorēti, 2 ātri atkārtojumi. Lejupielādētie faili tiek pārbaudīti pēc izpildes.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Nav žurnāla. Nav pārbaudes. Nav atkārtojuma. Maksimālais ātrums. Ja kaut kas neizdodas, tas ir zudis. Pilna pārbaudes skenēšana tiks veikta pēc sinhronizācijas pabeigšanas.",
+            "maniacWarningBody": "Izpildes laikā nav ne žurnāla, ne pārbaudes, joslas platuma ierobežojumi tiek ignorēti, un neizdevies fails saņem tikai 2 ātrus atkārtojumus. Pēc izpildes lejupielādētie faili tiek pārbaudīti; augšupielādētie ne.",
             "maniacConfirm": "Saprotu, turpināt",
             "maniacPostSyncReport": "Pārbaude pēc sinhronizācijas: {ok} labi, {mismatches} nesakrīt, {failed} neizdevās",
             "rollback": "Atgriešana",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "Saglabāt pašreizējo sinhronizācijas konfigurāciju kā atkārtoti lietojamu .aerosync veidni",
             "templateImportDesc": "Ielādēt .aerosync veidni, lai piemērotu tās sinhronizācijas konfigurāciju",
             "maniacActive": "Aktīvs",
-            "speedStreams": "{count} straumes",
             "actionUploaded": "Augšupielādēts",
             "actionDownloaded": "Lejupielādēts",
             "actionDeleted": "Dzēsts",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "Neatpazinti metadata lauki",
             "aerosyncScriptApplyButton": "Saglabāt kā preset",
             "aerosyncScriptAppliedToast": "Importētais preset saglabāts. Atveriet AeroSync, lai to izmantotu.",
-            "compressionHint": "Saspiež datus pārsūtīšanas laikā, lai paātrinātu pārsūtīšanu; tā nesaglabā saspiestus failus galamērķī. Auto izlaiž formātus, kas jau ir saspiesti (zip, jpg, mp4 un līdzīgus).",
             "canaryDryRun": "Nekas netiek pārsūtīts: tas parāda priekšskatījumu tam, ko darītu pilna sinhronizācija, aprēķinātu no izlases. Tas ir komandas aeroftp-cli sync --dry-run (un rclone --dry-run) grafiskais ekvivalents.",
-            "templateImportPathPairs": "Izmantojamo ceļu pāru skaits šajā veidnē: {count}. AeroFTP izmanto tieši vienu, tāpēc nekas netika importēts. Rediģējiet veidni tā, lai paliktu viens pāris, un importējiet to vēlreiz.",
+            "templateImportPathPairs": "Izmantojamie ceļu pāri (lokāls/attāls) šajā veidnē: {count}. AeroSync logs strādā ar tieši vienu pāri, tāpēc nekas netika importēts. Rediģējiet veidni tā, lai paliktu tikai viens pāris, un pēc tam importējiet to vēlreiz.",
             "templateNamePlaceholder": "piem. Nakts dublējums uz S3",
             "templateDescPlaceholder": "Kam paredzēta šī veidne (neobligāti)"
         },
@@ -5081,7 +5082,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Salīdzināt",
             "tabPlan": "Plāns",
-            "tabSync": "Sinhronizēt",
+            "tabSync": "Lokālais spogulis",
             "compareWontFitTitle": "Pāri {name} ierobežojumiem: {count}",
             "compareWontFitHint": "Šie faili pārsniedz pakalpojuma dokumentēto izmēra ierobežojumu, vai to nosaukums vai ceļš ir garāks, nekā tas pieļauj. Sinhronizācija ar tiem neizdotos: vispirms pārdēvējiet, pārvietojiet vai sadaliet tos.",
             "compareWontFitTooLarge": "{size}, ierobežojums {limit}",
@@ -5089,6 +5090,78 @@
             "compareWontFitNameChars": "nosaukums virs {count} rakstzīmēm",
             "compareWontFitPathBytes": "ceļš virs {count} baitiem",
             "compareWontFitPathChars": "ceļš virs {count} rakstzīmēm",
+            "presetDefault": "Noklusējums",
+            "actionLabel": {
+                "skip": "Izlaist",
+                "copy-to-right": "Kopēt → pa labi",
+                "copy-to-left": "Kopēt ← pa kreisi",
+                "overwrite-right": "Pārrakstīt labajā pusē",
+                "overwrite-left": "Pārrakstīt kreisajā pusē",
+                "delete-right": "Dzēst labajā pusē",
+                "delete-left": "Dzēst kreisajā pusē",
+                "rename-to-right": "Paturēt abus → pa labi",
+                "rename-to-left": "Paturēt abus ← pa kreisi",
+                "conflict-skip": "Konflikts (izlaist)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Izlaist",
+                    "tagline": "Atstāj konfliktus neskartus abās pusēs."
+                },
+                "rename": {
+                    "label": "Paturēt abus",
+                    "tagline": "Kopē avota versiju ar datuma un laika sufiksu."
+                },
+                "newer-wins": {
+                    "label": "Uzvar jaunākais",
+                    "tagline": "Puse ar vēlāku modificēšanas laiku pārraksta otru."
+                },
+                "older-wins": {
+                    "label": "Uzvar vecākais",
+                    "tagline": "Vecākā puse pārraksta jaunāko (arhivēšanai)."
+                },
+                "larger-wins": {
+                    "label": "Uzvar lielākais",
+                    "tagline": "Puse ar lielāku izmēru pārraksta mazāko."
+                },
+                "smaller-wins": {
+                    "label": "Uzvar mazākais",
+                    "tagline": "Mazākā puse pārraksta lielāko."
+                }
+            },
+            "bucketName": {
+                "only-left": "Tikai kreisajā pusē",
+                "newer-left": "Jaunāks kreisajā pusē",
+                "only-right": "Tikai labajā pusē",
+                "newer-right": "Jaunāks labajā pusē",
+                "conflict": "Konflikts",
+                "same": "Vienādi"
+            },
+            "bucketDescription": {
+                "only-left": "Ir avota panelī, trūkst galamērķī.",
+                "newer-left": "Ir abās pusēs, avota kopijai ir jaunāks laikspiedols.",
+                "only-right": "Ir galamērķī, trūkst avota panelī.",
+                "newer-right": "Ir abās pusēs, galamērķa kopijai ir jaunāks laikspiedols.",
+                "conflict": "Ieraksts ir abās pusēs, bet ar līdzīgiem laikspiedoliem atšķiras izmērs.",
+                "same": "Ieraksti sakrīt saskaņā ar aktīvo salīdzināšanas politiku."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Tikai izmērs",
+                "mtimeOnly": "Tikai laikspiedols",
+                "sizeAndMtime": "Izmērs + laikspiedols"
+            },
+            "compareTable": {
+                "name": "Nosaukums",
+                "leftSize": "Izmērs kreisajā pusē",
+                "rightSize": "Izmērs labajā pusē",
+                "leftModified": "Modificēts kreisajā pusē",
+                "rightModified": "Modificēts labajā pusē",
+                "folder": "mape",
+                "noEntries": "Nav ierakstu.",
+                "countedNotListed": "Saskaitīti, bet nav uzskaitīti: skenēšana identiskus failus norāda kā kopskaitu, nevis katru atsevišķā rindā, lai lieli koki paliktu ātri.",
+                "shown": "Parādīti: {shown} no {total}",
+                "moreNotListed": "Saskaitīti, bet nav uzskaitīti: {count}"
+            },
             "compareUnavailable": "Atveriet otru paneli vai attālu savienojumu, lai salīdzinātu.",
             "planUnavailable": "Pirms iepriekšējā iestatījuma izvēles ir nepieciešams salīdzināšanas rezultāts. Vispirms atveriet cilni Salīdzināt.",
             "totalEntries": "Kopā ierakstu",
@@ -5125,7 +5198,7 @@
             "ignoredForMirror": "IGNORETS SPOGULOSANAI",
             "versionedBackup": "Versionēts dublējums",
             "enable": "Iespējot",
-            "versionedBackupHint": "Saglabājiet mērķa kopiju šajā direktorijā pirms katras pārrakstīšanas vai dzēšanas.",
+            "versionedBackupHint": "Pirms fails tiek pārrakstīts vai izdzēsts, tā kopija galamērķī tiek pārvietota uz {dir}, mapē, kas nosaukta pēc izpildes datuma un laika.",
             "actionable": "Izpildams",
             "reportCopiedRight": "Kopēts pa labi",
             "reportCopiedLeft": "Kopēts pa kreisi",
@@ -5147,7 +5220,6 @@
             "executePreset": "Izpildīt iepriekšējo iestatījumu",
             "execute": "Izpildīt",
             "sync": {
-                "title": "AeroSync: no vietējā uz vietējo",
                 "description": "Atspoguļo vietējo avota direktoriju vietējā galamērķī. Faili ≥ 1 MiB izmanto iebūvēto delta dzinēju; mazāki faili izmanto tiešu kopēšanu.",
                 "source": "Avots",
                 "destination": "Galamērķis",
@@ -5203,7 +5275,7 @@
             "speedMode_fast": "Ātrs",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Ekstrēms",
-            "speedModeHint": "Paralēlas plūsmas + saspiešanas iepriekšiestatījums, ko piemēro izpildei.",
+            "speedModeHint": "Iestata atkārtojumu politiku. Sākot ar režīmu Ātrs, mainītie faili tiek sūtīti kā deltas, ja serveris to atbalsta (SFTP ar rsync).",
             "verifyPolicy": "Pārbaudes politika",
             "verifyPolicy_none": "Nav",
             "verifyPolicy_size_only": "Tikai izmērs",
@@ -5248,7 +5320,45 @@
             "errorCorrection": "Kļūdu labošana",
             "errorCorrectionHint": "Saglabā nelielu .aerocorrect paritātes failu blakus katram dublētajam failam, lai ar bit-rot bojātu attālo kopiju varētu salabot nākamajā lejupielādē bez oriģināla.",
             "outOfSyncItemsPct": "Nesinhronizēti vienumi",
-            "outOfSyncBytesPct": "Nesinhronizēti baiti"
+            "outOfSyncBytesPct": "Nesinhronizēti baiti",
+            "exclude": {
+                "label": "Izslēgšanas šabloni",
+                "hint": "Atdalīti ar komatu vai jaunu rindu, piemēram, cache, *.tmp vai build/output. Vienmēr izslēgti: {list}."
+            },
+            "cli": {
+                "title": "Tā pati palaišana no komandrindas",
+                "copy": "Kopēt",
+                "copied": "Nokopēts",
+                "copyFailed": "Kopēšana neizdevās",
+                "none": "Nav precīza CLI ekvivalenta: {reason}",
+                "reason": {
+                    "localPair": "divām lokālām mapēm CLI palaiž savu spoguļošanu, kas ignorē virziena, dzēšanas un konfliktu iestatījumus.",
+                    "unsavedServer": "šis savienojums nav saglabāts serveris, un CLI tas ir vajadzīgs, lai to norādītu ar --profile.",
+                    "overwritesNewer": "CLI pārraksta cita izmēra mērķa kopiju pat tad, ja tā ir jaunāka, ko šis iepriekšējais iestatījums nekad nedara.",
+                    "twoWay": "CLI divas vienāda izmēra kopijas ar atšķirīgu laiku uzskata par konfliktu un pārraksta vecāko; šis plāns 30 sekunžu robežās tās uzskata par vienādām.",
+                    "canary": "CLI nav Canary izmēģinājuma palaišanas.",
+                    "versionedBackup": "CLI vēl neglabā dublējumus tādā pašā struktūrā.",
+                    "transferBudget": "kad budžets ir izsmelts, šis plāns apstājas, ieskaitot dzēšanu; CLI ierobežo tikai pārsūtīšanu un tomēr dzēš.",
+                    "remotePath": "CLI attālo mapi nosaka attiecībā pret saglabātā servera sākuma mapi un nonāktu citā mapē.",
+                    "exclusions": "CLI izslēgšanas šablonus salīdzina citādi, tāpēc tas neizlaistu visu, ko izlaiž šis plāns (node_modules, .git un pārējo)."
+                }
+            },
+            "rescan": "Skenēt vēlreiz",
+            "rescanNeeded": "Salīdzināšana veikta ar citiem izslēgumiem vai citu dublējumu mapi. Pirms palaišanas skenējiet vēlreiz.",
+            "backup": {
+                "checking": "Pārbauda, kā šis serveris pārvieto failus...",
+                "serverCopy": "Šis serveris nevar pārvietot: katra saglabājamā kopija tiek nokopēta serverī un pēc tam izdzēsta. Tas maksā pilnu katra saglabātā faila kopiju, divos atsevišķos soļos.",
+                "clientCopy": "Šis serveris nevar pārvietot: katra saglabājamā kopija tiek lejupielādēta, augšupielādēta dublējumu mapē un pēc tam izdzēsta. Katrs saglabātais fails divreiz iziet caur šo datoru, atsevišķos soļos.",
+                "unsupported": "Šis serveris nevar pārvietot failus uz citu mapi, tāpēc nevar saglabāt vecās kopijas. Lai palaistu, izslēdziet versionēto dublējumu.",
+                "checkFailed": "Neizdevās pajautāt serverim, kā tas pārvieto failus. Pievienojieties atkārtoti vai, lai palaistu, izslēdziet versionēto dublējumu.",
+                "nested": "Dublējumu mape atrodas {folder} iekšpusē, kurā raksta šī sinhronizācija. Izvēlieties mapi ārpus tās.",
+                "invalid": {
+                    "empty": "Ievadiet dublējumu mapes nosaukumu.",
+                    "absolute": "Izmantojiet mapi galamērķa iekšpusē, nevis absolūto ceļu.",
+                    "parent": "Dublējumu mape nedrīkst saturēt '..'.",
+                    "name": "Šis dublējumu mapes nosaukums nav derīgs."
+                }
+            }
         },
         "accountLock": {
             "title": "Izvēlieties kontu",

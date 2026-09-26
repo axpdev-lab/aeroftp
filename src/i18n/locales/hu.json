@@ -327,7 +327,14 @@
             "protonCliTitle": "A hivatalos Proton Drive CLI-t használja",
             "protonCliBody": "Telepítse a Proton Drive CLI-t a proton.me/download/drive/cli címről, majd a terminálban futtassa a proton-drive auth login parancsot, és fejezze be a böngészőben. Az AeroFTP soha nem látja a jelszavát; a munkamenet az OS titkos tárában marad.",
             "protonUnofficial": "Ez egy harmadik féltől származó alkalmazás, amelyet a Proton hivatalosan nem támogat.",
-            "protonConnectHint": "A \"Csatlakozás\" az ezen a gépen már bejelentkezett CLI-t használja. Operációsrendszer-felhasználónként egy Proton-fiók."
+            "protonConnectHint": "A \"Csatlakozás\" az ezen a gépen már bejelentkezett CLI-t használja. Operációsrendszer-felhasználónként egy Proton-fiók.",
+            "twakeInstance": "Twake cím",
+            "twakeInstanceHelp": "A saját címed, például yourname.twake.app. Bármely Twake oldal címét is beillesztheted a böngésződből.",
+            "twakeSignIn": "Bejelentkezés Twake-kel",
+            "twakeSignInAgain": "Jelentkezz be újra",
+            "twakeSignedIn": "Bejelentkezve",
+            "twakeWaitingBrowser": "Fejezd be a bejelentkezést a böngésződben...",
+            "twakeSignInHelp": "Az AeroFTP megnyitja a Twake-et a böngésződben, és csak a fájljaidhoz kér hozzáférést. Ha a Twake először hibát jelez, jelentkezz be a Twake-be a böngészőben, majd jelentkezz be újra. A hozzáférést bármikor visszavonhatod a Twake beállításokban, a Csatlakoztatott eszközök menüpontban."
         },
         "browser": {
             "remote": "Távoli",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "Ez a végpont titkosítatlan HTTP-n keresztül, a hálózaton át szolgálja ki az S3-at. Fogadja el ehhez a profilhoz: az aláírt hitelesítő adatok és minden fájl titkosítatlanul halad át a hálózaton.",
             "discoverFilebase": "Filebase: S3-kompatibilis objektumtárhely (5 GB ingyen)",
             "protonDesc": "A Proton Drive CLI-n keresztül csatlakozik",
-            "protonTooltip": "A Proton Drive CLI-t használja - telepítse, jelentkezzen be a böngészőben, az AeroFTP a GUI"
+            "protonTooltip": "A Proton Drive CLI-t használja - telepítse, jelentkezzen be a böngészőben, az AeroFTP a GUI",
+            "twakeDesc": "Twake Drive (5 GB ingyen)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francia nyílt forráskódú felhő (a Cozy Cloud mostantól ennek része) 5 GB ingyen",
+            "discoverTwake": "Linagora nyílt forráskódú európai felhője, mostantól a Cozy Cloud új otthona (5 GB ingyen)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -2153,9 +2163,6 @@
                 "disk_error": "Lemezhiba",
                 "unknown": "Ismeretlen"
             },
-            "parallelStreams": "Adatfolyamok",
-            "parallelSequential": "Szekvenciális",
-            "parallelStreamLabel": "adatfolyam",
             "schedulerTitle": "Szinkronizálás ütemező",
             "schedulerEnabled": "Ütemező engedélyezése",
             "schedulerResume": "Folytatás",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Magas könyvtárszám - meghaladhatja az inotify korlátot",
             "watcherPolling": "Lekérdezési mód használata (lassabb, de univerzális)",
-            "compressionToggle": "Tömörítés",
-            "compressionAuto": "Automatikus",
-            "compressionOn": "Be",
-            "compressionOff": "Ki",
             "multiPathAdd": "Útvonalpár hozzáadása",
             "multiPathEmpty": "Nincs konfigurált útvonalpár",
             "templateExport": "Sablon exportálása",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "Visszaállítás",
             "rollbackEmpty": "Nincs elérhető pillanatfelvétel",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 adatfolyam + MINDEN biztonság kikapcsolva - nincs napló, nincs ellenőrzés, nincs újrapróbálkozás",
+            "speedManiacTooltip": "Nincs napló, nincs ellenőrzés futás közben, a sávszélesség-korlátok figyelmen kívül maradnak, 2 gyors újrapróbálkozás. A letöltött fájlok a futás után ellenőrzésre kerülnek.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Nincs napló. Nincs ellenőrzés. Nincs újrapróbálkozás. Maximum nyers sebesség. Ha valami sikertelen, az elveszett. A szinkronizálás befejezése után teljes ellenőrző szkennelés fog futni.",
+            "maniacWarningBody": "Futás közben nincs napló és nincs ellenőrzés, a sávszélesség-korlátok figyelmen kívül maradnak, és egy sikertelen fájl csak 2 gyors újrapróbálkozást kap. A futás után a letöltött fájlok ellenőrzésre kerülnek; a feltöltöttek nem.",
             "maniacConfirm": "Értem, folytatás",
             "maniacPostSyncReport": "Szinkronizálás utáni ellenőrzés: {ok} rendben, {mismatches} eltérés, {failed} sikertelen",
             "rollback": "Visszaállítás",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "Jelenlegi szinkronizálási konfiguráció mentése újrafelhasználható .aerosync sablonként",
             "templateImportDesc": ".aerosync sablon betöltése a szinkronizálási konfiguráció alkalmazásához",
             "maniacActive": "Aktív",
-            "speedStreams": "{count} stream",
             "actionUploaded": "Feltöltve",
             "actionDownloaded": "Letöltve",
             "actionDeleted": "Törölve",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "Ismeretlen metadata mezők",
             "aerosyncScriptApplyButton": "Mentés presetként",
             "aerosyncScriptAppliedToast": "Importált preset elmentve. Nyisd meg az AeroSync-et a használatához.",
-            "compressionHint": "Az adatokat átvitel közben tömöríti az átvitel felgyorsításához; a célhelyen nem tárol tömörített fájlokat. Az Auto kihagyja a már tömörített formátumokat (zip, jpg, mp4 és hasonlók).",
             "canaryDryRun": "Semmi sem kerül átvitelre: ez előnézetet ad arról, mit tenne egy teljes szinkronizálás, a mintából számítva. Ez a aeroftp-cli sync --dry-run parancs (és az rclone --dry-run) grafikus megfelelője.",
-            "templateImportPathPairs": "Ez a sablon {count} használható útvonalpárt határoz meg. Az AeroFTP pontosan egyet alkalmaz, ezért semmi sem lett importálva. Szerkessze a sablont úgy, hogy egyetlen útvonalpár maradjon, majd importálja újra.",
+            "templateImportPathPairs": "Használható helyi/távoli útvonalpárok ebben a sablonban: {count}. Egy AeroSync-ablak pontosan egy párral dolgozik, ezért semmi sem lett importálva. Szerkessze a sablont úgy, hogy csak egy pár maradjon, majd importálja újra.",
             "templateNamePlaceholder": "pl. Éjszakai mentés S3-ra",
             "templateDescPlaceholder": "Mire szolgál ez a sablon (nem kötelező)"
         },
@@ -5081,7 +5082,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Összehasonlítás",
             "tabPlan": "Terv",
-            "tabSync": "Szinkronizálás",
+            "tabSync": "Helyi tükör",
             "compareWontFitTitle": "{name} korlátain felül: {count}",
             "compareWontFitHint": "Ezek a fájlok nagyobbak a szolgáltató dokumentált méretkorlátjánál, vagy a nevük vagy útvonaluk hosszabb, mint amit elfogad. A szinkronizálás ezeknél hibára futna: előbb nevezze át, helyezze át vagy ossza fel őket.",
             "compareWontFitTooLarge": "{size}, korlát {limit}",
@@ -5089,6 +5090,78 @@
             "compareWontFitNameChars": "{count} karakternél hosszabb név",
             "compareWontFitPathBytes": "{count} bájtnál hosszabb útvonal",
             "compareWontFitPathChars": "{count} karakternél hosszabb útvonal",
+            "presetDefault": "Alapértelmezett",
+            "actionLabel": {
+                "skip": "Kihagyás",
+                "copy-to-right": "Másolás → jobbra",
+                "copy-to-left": "Másolás ← balra",
+                "overwrite-right": "Felülírás jobb oldalon",
+                "overwrite-left": "Felülírás bal oldalon",
+                "delete-right": "Törlés jobb oldalon",
+                "delete-left": "Törlés bal oldalon",
+                "rename-to-right": "Mindkettő megtartása → jobbra",
+                "rename-to-left": "Mindkettő megtartása ← balra",
+                "conflict-skip": "Ütközés (kihagyás)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Kihagyás",
+                    "tagline": "Az ütközéseket mindkét oldalon érintetlenül hagyja."
+                },
+                "rename": {
+                    "label": "Mindkettő megtartása",
+                    "tagline": "A forrásoldali változatot dátumot és időt tartalmazó utótaggal másolja."
+                },
+                "newer-wins": {
+                    "label": "Az újabb nyer",
+                    "tagline": "A későbbi módosítási idejű oldal felülírja a másikat."
+                },
+                "older-wins": {
+                    "label": "A régebbi nyer",
+                    "tagline": "A régebbi oldal felülírja az újabbat (archiválási célra)."
+                },
+                "larger-wins": {
+                    "label": "A nagyobb nyer",
+                    "tagline": "A nagyobb méretű oldal felülírja a kisebbet."
+                },
+                "smaller-wins": {
+                    "label": "A kisebb nyer",
+                    "tagline": "A kisebb oldal felülírja a nagyobbat."
+                }
+            },
+            "bucketName": {
+                "only-left": "Csak bal oldalon",
+                "newer-left": "Újabb bal oldalon",
+                "only-right": "Csak jobb oldalon",
+                "newer-right": "Újabb jobb oldalon",
+                "conflict": "Ütközés",
+                "same": "Azonos"
+            },
+            "bucketDescription": {
+                "only-left": "A forráspanelen megvan, a célból hiányzik.",
+                "newer-left": "Mindkét oldalon megvan, a forrásoldali másolat időbélyege újabb.",
+                "only-right": "A célban megvan, a forráspanelről hiányzik.",
+                "newer-right": "Mindkét oldalon megvan, a céloldali másolat időbélyege újabb.",
+                "conflict": "A bejegyzés mindkét oldalon megvan, de hasonló időbélyegek mellett a méret eltér.",
+                "same": "A bejegyzések az aktív összehasonlítási szabály szerint egyeznek."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Csak méret",
+                "mtimeOnly": "Csak időbélyeg",
+                "sizeAndMtime": "Méret + időbélyeg"
+            },
+            "compareTable": {
+                "name": "Név",
+                "leftSize": "Bal oldali méret",
+                "rightSize": "Jobb oldali méret",
+                "leftModified": "Bal oldali módosítás",
+                "rightModified": "Jobb oldali módosítás",
+                "folder": "mappa",
+                "noEntries": "Nincsenek bejegyzések.",
+                "countedNotListed": "Megszámolva, de nem listázva: a vizsgálat az azonos fájlokat összesítve jelenti, nem mindegyiket külön sorban, így a nagy fák is gyorsak maradnak.",
+                "shown": "Megjelenítve: {shown}, összesen {total}",
+                "moreNotListed": "Megszámolva, de nem listázva: {count}"
+            },
             "compareUnavailable": "Nyiss meg egy második panelt vagy egy távoli kapcsolatot az összehasonlításhoz.",
             "planUnavailable": "Egy összehasonlítási eredményre van szükség a preset kiválasztása előtt. Először nyisd meg az Összehasonlítás fület.",
             "totalEntries": "Összes bejegyzés",
@@ -5121,11 +5194,11 @@
                     "tagline": "A hiányzó és újabb fájlokat mindkét irányba átviszi. Kihagyja az ütközéseket."
                 }
             },
-            "conflictPolicy": "Utkozesi szabaly",
+            "conflictPolicy": "Ütközési szabály",
             "ignoredForMirror": "TUKROZESBOL KIHAGYVA",
             "versionedBackup": "Verziózott biztonsági mentés",
             "enable": "Engedélyezés",
-            "versionedBackupHint": "Mentsd a célpéldányt ebbe a könyvtárba minden felülírási vagy törlési művelet előtt.",
+            "versionedBackupHint": "Mielőtt egy fájl felülíródik vagy törlődik, a célban lévő példánya a(z) {dir} mappába kerül át, egy a futás dátumáról és időpontjáról elnevezett mappába.",
             "actionable": "Végrehajtható",
             "reportCopiedRight": "Jobbra másolva",
             "reportCopiedLeft": "Balra másolva",
@@ -5147,7 +5220,6 @@
             "executePreset": "Preset végrehajtása",
             "execute": "Végrehajtás",
             "sync": {
-                "title": "AeroSync: helyiről helyire",
                 "description": "Egy helyi forrásmappát tükröz egy helyi célmappába. Az ≥ 1 MiB méretű fájlok a beépített delta motort használják; a kisebb fájlok közvetlen másolást használnak.",
                 "source": "Forrás",
                 "destination": "Cél",
@@ -5203,7 +5275,7 @@
             "speedMode_fast": "Gyors",
             "speedMode_turbo": "Turbó",
             "speedMode_extreme": "Extrém",
-            "speedModeHint": "Párhuzamos folyamok + tömörítési előbeállítás alkalmazva a futtatásra.",
+            "speedModeHint": "Beállítja az újrapróbálkozási szabályt. A Gyors módtól felfelé a módosított fájlok deltaként mennek át, ahol a szerver támogatja (SFTP rsync-kel).",
             "verifyPolicy": "Ellenőrzési házirend",
             "verifyPolicy_none": "Nincs",
             "verifyPolicy_size_only": "Csak méret",
@@ -5248,7 +5320,45 @@
             "errorCorrection": "Hibajavítás",
             "errorCorrectionHint": "Egy kis .aerocorrect paritásfájlt ment minden mentett fájl mellé, így a bit-rot által károsodott távoli másolat a következő letöltéskor javítható az eredeti nélkül.",
             "outOfSyncItemsPct": "Nem szinkronizált elemek",
-            "outOfSyncBytesPct": "Nem szinkronizált bájtok"
+            "outOfSyncBytesPct": "Nem szinkronizált bájtok",
+            "exclude": {
+                "label": "Kizárási minták",
+                "hint": "Vesszővel vagy új sorral elválasztva, például cache, *.tmp vagy build/output. Mindig kizárva: {list}."
+            },
+            "cli": {
+                "title": "Ugyanez a futtatás parancssorból",
+                "copy": "Másolás",
+                "copied": "Másolva",
+                "copyFailed": "A másolás sikertelen",
+                "none": "Nincs pontos CLI-megfelelő: {reason}",
+                "reason": {
+                    "localPair": "két helyi mappa esetén a CLI saját tükrözést futtat, amely figyelmen kívül hagyja az irány, a törlés és az ütközések beállításait.",
+                    "unsavedServer": "ez a kapcsolat nem mentett szerver, a CLI-nek pedig szüksége van egyre, hogy a --profile kapcsolóval megnevezze.",
+                    "overwritesNewer": "a CLI felülírja az eltérő méretű célmásolatot akkor is, ha az újabb, amit ez a preset soha nem tesz.",
+                    "twoWay": "a CLI ütközésnek tekint két azonos méretű, de eltérő idejű másolatot, és felülírja a régebbit; ez a terv 30 másodpercen belül azonosnak tekinti őket.",
+                    "canary": "a CLI-ben nincs Canary próbafuttatás.",
+                    "versionedBackup": "a CLI még nem ugyanabban a szerkezetben tárolja a biztonsági mentéseket.",
+                    "transferBudget": "amikor a keret elfogy, ez a terv leáll, a törlésekkel együtt; a CLI csak az átviteleket korlátozza, és továbbra is töröl.",
+                    "remotePath": "a CLI a távoli mappát a mentett szerver kezdőmappájához képest értelmezi, és egy másik mappába jutna.",
+                    "exclusions": "a CLI másképp illeszti a kizárási mintákat, így nem hagyna ki mindent, amit ez a terv kihagy (node_modules, .git és a többi)."
+                }
+            },
+            "rescan": "Újraszkennelés",
+            "rescanNeeded": "Az összehasonlítás más kizárásokkal vagy másik biztonsági mentési mappával készült. Futtatás előtt szkenneld újra.",
+            "backup": {
+                "checking": "Annak ellenőrzése, hogyan helyez át fájlokat ez a szerver...",
+                "serverCopy": "Ez a szerver nem tud áthelyezni: minden megőrzött példányt a szerveren lemásol, majd töröl. Ez minden megőrzött fájl teljes másolatába kerül, két külön lépésben.",
+                "clientCopy": "Ez a szerver nem tud áthelyezni: minden megőrzött példány letöltésre, a biztonsági mentés mappájába feltöltésre, majd törlésre kerül. Minden megőrzött fájl kétszer halad át ezen a számítógépen, külön lépésekben.",
+                "unsupported": "Ez a szerver nem tud fájlokat másik mappába áthelyezni, ezért nem tudja megőrizni a régi példányokat. A futtatáshoz kapcsolja ki a verziózott biztonsági mentést.",
+                "checkFailed": "Nem sikerült megkérdezni a szervert, hogyan helyez át fájlokat. Csatlakozzon újra, vagy a futtatáshoz kapcsolja ki a verziózott biztonsági mentést.",
+                "nested": "A biztonsági mentés mappája a(z) {folder} mappán belül van, ahová ez a szinkronizálás ír. Válasszon rajta kívüli mappát.",
+                "invalid": {
+                    "empty": "Adjon nevet a biztonsági mentés mappájának.",
+                    "absolute": "A célon belüli mappát használjon, ne abszolút elérési utat.",
+                    "parent": "A biztonsági mentés mappája nem tartalmazhat '..' elemet.",
+                    "name": "Ez a biztonsági mentési mappanév nem érvényes."
+                }
+            }
         },
         "accountLock": {
             "title": "Válasszon fiókot",

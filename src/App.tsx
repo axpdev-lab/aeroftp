@@ -19,7 +19,7 @@ import {
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
   SyncDirection, VerifyPolicy, DeltaTransferStats,
-  CompareReport, RetryPolicy, SyncJournal, CompressionMode
+  CompareReport, RetryPolicy, SyncJournal
 } from './types';
 
 interface DownloadFolderParams {
@@ -51,8 +51,8 @@ interface ConnectedRemoteRunOptions {
   retryPolicy?: RetryPolicy;
   /** Stop transferring once this many bytes have moved. 0 = unlimited. */
   transferBudget?: number;
-  /** Archive-before-mutation strategy; null/"disabled" turns it off. */
-  versioningStrategy?: string | null;
+  /** Versioned backup folder (validated); null/undefined turns it off. */
+  versionedBackup?: { dir: string } | null;
   /** Resume an interrupted journal instead of starting fresh. */
   resumeJournal?: SyncJournal;
   /** Saved-server id, enables the CO-5 SFTP eligibility probe. */
@@ -64,14 +64,6 @@ interface ConnectedRemoteRunOptions {
    * caller (verify `none`, the maniac retry policy).
    */
   maniac?: boolean;
-  /**
-   * GAP-9b: parallel-streams + compression preset, threaded into
-   * RemoteSyncConfig as first-class config. The concurrent execution that
-   * consumes them is owned by APPENDIX-DAG-ENGINE Fase 2; until then the run
-   * stays sequential (legacy SyncPanel parity).
-   */
-  parallelStreams?: number;
-  compressionMode?: CompressionMode;
   /** P3 EC: from PlanTabContent onExecute via AeroSyncRuntime. */
   errorCorrection?: { enabled: boolean; pct: number } | null;
 }
@@ -88,8 +80,8 @@ interface LocalLocalRunOptions {
   retryPolicy?: RetryPolicy;
   /** Stop transferring once this many bytes have moved. 0 = unlimited. */
   transferBudget?: number;
-  /** Archive-before-mutation strategy; null/"disabled" turns it off. */
-  versioningStrategy?: string | null;
+  /** Versioned backup folder (validated); null/undefined turns it off. */
+  versionedBackup?: { dir: string } | null;
   /** Resume an interrupted journal instead of starting fresh. */
   resumeJournal?: SyncJournal;
   /** Maniac mode: drop the journal, run the mandatory post-sync verify sweep. */
@@ -240,6 +232,8 @@ import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDi
 import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
 import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
 import { CanaryResultDialog, type CanaryResult } from './components/Sync/CanaryResultDialog';
+import { SPEED_PRESETS } from './components/Sync/syncConstants';
+import { AEROSYNC_DEFAULT_BACKUP_DIR, aeroSyncCompareOptions, appliedCompareFilters } from './utils/aeroSyncExcludes';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -4252,6 +4246,9 @@ const App: React.FC = () => {
       protocol,
       providerId: connectionParams.providerId || activeSession?.providerId,
       initialPath: activeSession?.serverInitialPath || quickConnectDirs.remoteDir,
+      // From the session, not the global connectionParams, whose
+      // savedServerId can be stale (see resolveLiveProfile).
+      saved: !!(activeSession?.savedServerId || activeSession?.connectionParams?.savedServerId),
     };
   }, [isConnected, sessions, activeSessionId, connectionParams, quickConnectDirs.remoteDir]);
 
@@ -6541,6 +6538,12 @@ const App: React.FC = () => {
         username: params.username || 'api-key',
       };
     }
+    if (protocol === 'twake') {
+      return {
+        ...params,
+        port: params.port || 443,
+      };
+    }
     return params;
   };
 
@@ -7631,7 +7634,9 @@ const App: React.FC = () => {
                       ? `InfiniCLOUD ${effectiveParams.username}`
                       : protocol === 'immich'
                         ? (effectiveParams.providerId === 'pixelunion' ? 'PixelUnion' : effectiveParams.server.replace(/^https?:\/\//, ''))
-                        : effectiveParams.server.split(':')[0]);
+                        : protocol === 'twake'
+                          ? effectiveParams.server.replace(/^https?:\/\//, '')
+                          : effectiveParams.server.split(':')[0]);
       const protocolLabel = connectionViaLabel(effectiveParams);
       // SEC: mask credentials in log-only provider name to prevent data leakage
       const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)
@@ -10797,7 +10802,18 @@ const App: React.FC = () => {
   // dialog opens immediately with a scanning placeholder and is refreshed
   // when the async scan resolves. When no comparable pair is mounted the
   // dialog still opens (Sync tab is always usable).
-  const openAeroSync = useCallback((initialTab: AeroSyncTab = 'compare') => {
+  /**
+   * Open AeroSync on the current pair and start its compare. `userExcludes`
+   * are the Plan tab's own patterns, added to the defaults the compare always
+   * skips, and `backupDir` is the versioned-backup folder the compare leaves
+   * out on both sides; the Plan's Rescan calls this again with the edited
+   * values, and the result records which ones it was computed with.
+   */
+  const openAeroSync = useCallback((
+    initialTab: AeroSyncTab = 'compare',
+    userExcludes: string[] = [],
+    backupDir: string = AEROSYNC_DEFAULT_BACKUP_DIR,
+  ) => {
     // Bump the compare token: any recursive scan still in flight from a
     // previous open is now stale and will discard its own result.
     const mySeq = ++aeroSyncCompareSeqRef.current;
@@ -10839,29 +10855,23 @@ const App: React.FC = () => {
           pairKind: 'local-local',
           initialSource: leftPath,
           initialDestination: rightPath,
+          ...appliedCompareFilters(canRecurse ? 'recursive' : 'flat', userExcludes, backupDir),
         },
       });
 
       if (canRecurse) {
         void (async () => {
           let resolved: CompareResult;
+          // The flat fallback below classifies panel listings and applies no
+          // exclusions and no backup folder, so it must not be reported as
+          // having applied them: the Plan then blocks Execute until a rescan
+          // works, rather than let Mirror delete what the compare never hid.
+          let applied = appliedCompareFilters('recursive', userExcludes, backupDir);
           try {
             const report = await invoke<CompareReport>('compare_local_directories', {
               leftPath,
               rightPath,
-              options: {
-                compare_timestamp: true,
-                compare_size: true,
-                compare_checksum: false,
-                exclude_patterns: [
-                  'node_modules', '.git', '.DS_Store', 'Thumbs.db',
-                  '__pycache__', '*.pyc', '.env', 'target',
-                  // Never surface EC parity sidecars as orphan/data in AeroSync compare,
-                  // even when EC is off but sidecars from a prior EC-on run still exist.
-                  '*.aerocorrect',
-                ],
-                direction: 'bidirectional',
-              },
+              options: aeroSyncCompareOptions(userExcludes, backupDir),
               progressId: scanProgressId,
             });
             // Both sides are local: local_info = left, remote_info = right.
@@ -10878,6 +10888,7 @@ const App: React.FC = () => {
               notify.error(t('aerosync.title') || 'AeroSync', describeScanIncompleteError(err));
             } else {
               // Recursive scan failed: fall back to the flat top-level classify.
+              applied = appliedCompareFilters('flat', userExcludes, backupDir);
               resolved = compareEntries(
                 localFiles.map(toCompareEntry),
                 localFiles2.map(toCompareEntry),
@@ -10888,7 +10899,7 @@ const App: React.FC = () => {
           if (aeroSyncCompareSeqRef.current !== mySeq) return;
           setAeroSync((prev) =>
             prev
-              ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false } }
+              ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, ...applied } }
               : prev,
           );
         })();
@@ -10954,12 +10965,18 @@ const App: React.FC = () => {
           activeProfileName: activeUnifiedRemoteProfile?.name,
           isProvider: isProviderConn,
           excludePatterns: [],
+          compareExcludes: userExcludes,
+          compareBackupDir: backupDir,
           protocol: activeUnifiedRemoteProfile?.protocol,
+          activeProfileInitialPath: activeUnifiedRemoteProfile?.initialPath,
+          activeProfileSaved: activeUnifiedRemoteProfile?.saved,
         },
       });
 
       void (async () => {
         let resolved: CompareResult;
+        // See the local-local branch: the flat fallback applies no exclusions.
+        let applied = appliedCompareFilters('recursive', userExcludes, backupDir);
         try {
           const compareArgs: Record<string, unknown> = {
             localPath: currentLocalPath,
@@ -10967,19 +10984,7 @@ const App: React.FC = () => {
             ...(isProviderConn && cryptCompareActive && compareCryptVaultId
               ? { cryptVaultId: compareCryptVaultId, cryptKind: compareCryptKind }
               : {}),
-            options: {
-              compare_timestamp: true,
-              compare_size: true,
-              compare_checksum: false,
-              exclude_patterns: [
-                'node_modules', '.git', '.DS_Store', 'Thumbs.db',
-                '__pycache__', '*.pyc', '.env', 'target',
-                // Never surface EC parity sidecars as orphan/data in AeroSync compare,
-                // even when EC is off but sidecars from a prior EC-on run still exist.
-                '*.aerocorrect',
-              ],
-              direction: 'bidirectional',
-            },
+            options: aeroSyncCompareOptions(userExcludes, backupDir),
             progressId: scanProgressId,
           };
           const report = await invoke<CompareReport>(
@@ -11011,6 +11016,7 @@ const App: React.FC = () => {
           } else {
             // Recursive scan failed: fall back to the flat top-level
             // classify so the Compare tab still shows something actionable.
+            applied = appliedCompareFilters('flat', userExcludes, backupDir);
             const localEntries = localFiles.map(toCompareEntry);
             const remoteEntries = remoteFiles.map(toCompareEntry);
             resolved = leftLocal
@@ -11023,7 +11029,7 @@ const App: React.FC = () => {
         if (aeroSyncCompareSeqRef.current !== mySeq) return;
         setAeroSync((prev) =>
           prev
-            ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false } }
+            ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, ...applied } }
             : prev,
         );
       })();
@@ -11137,7 +11143,7 @@ const App: React.FC = () => {
       },
       verifyPolicy: opts.verifyPolicy,
       deltaSyncEnabled: opts.deltaSyncEnabled,
-      versioningStrategy: opts.versioningStrategy ?? null,
+      versionedBackup: opts.versionedBackup ?? null,
       transferBudget: opts.transferBudget ?? 0,
       direction: opts.direction,
       uploadLimitKbps: readLimit('aerosync.bandwidth.upload'),
@@ -11145,9 +11151,6 @@ const App: React.FC = () => {
       // GAP-9a: Maniac drops the journal and runs a post-sync verify sweep.
       journalEnabled: !opts.maniac,
       postSyncVerification: opts.maniac === true,
-      // GAP-9b: threaded config — consumed by APPENDIX-DAG-ENGINE Fase 2.
-      parallelStreams: opts.parallelStreams,
-      compressionMode: opts.compressionMode,
       // P3: EC control from Plan tab (Backup default) reaches runner unchanged.
       errorCorrection: opts.errorCorrection,
       authenticatedRemoteContent: isCryptOverlayActive(),
@@ -11310,7 +11313,7 @@ const App: React.FC = () => {
       verifyPolicy: opts.verifyPolicy,
       // `copy_local_file` is a plain filesystem copy: no delta path.
       deltaSyncEnabled: false,
-      versioningStrategy: opts.versioningStrategy ?? null,
+      versionedBackup: opts.versionedBackup ?? null,
       transferBudget: opts.transferBudget ?? 0,
       direction: opts.direction,
       // Maniac drops the journal and runs a post-sync verify sweep.
@@ -11525,7 +11528,7 @@ const App: React.FC = () => {
         verifyPolicy,
         retryPolicy: runtime.retryPolicy,
         transferBudget: runtime.transferBudget,
-        versioningStrategy: runtime.versioningStrategy,
+        versionedBackup: runtime.versionedBackup,
         maniac: runtime.speedMode === 'maniac',
       });
       return;
@@ -11553,15 +11556,13 @@ const App: React.FC = () => {
         closeAeroSync();
         runConnectedRemoteSync(runFiles, runDirs, {
           direction,
-          deltaSyncEnabled: runtime.speedMode !== 'normal',
+          deltaSyncEnabled: SPEED_PRESETS[runtime.speedMode].deltaSyncEnabled,
           verifyPolicy,
           retryPolicy: runtime.retryPolicy,
           transferBudget: runtime.transferBudget,
-          versioningStrategy: runtime.versioningStrategy,
+          versionedBackup: runtime.versionedBackup,
           profileId: context.activeProfileId,
           maniac: runtime.speedMode === 'maniac',
-          parallelStreams: runtime.parallelStreams,
-          compressionMode: runtime.compressionMode,
           // P3: thread EC (only populated for backup preset from Plan tab)
           errorCorrection: runtime.errorCorrection,
         });
@@ -15980,6 +15981,7 @@ const App: React.FC = () => {
             onExecutePreset={executeSyncPresetPlan}
             onResumeJournal={handleResumeJournal}
             onDismissJournal={handleDismissJournal}
+            onRescan={({ userExcludes, backupDir }) => openAeroSync('plan', userExcludes, backupDir)}
           />
         )}
         <DeltaEligibilityDialog
@@ -17213,7 +17215,9 @@ const App: React.FC = () => {
                           ? normalizedParams.username
                           : normalizedParams.protocol === 'immich'
                             ? (normalizedParams.providerId === 'pixelunion' ? 'PixelUnion' : normalizedParams.server.replace(/^https?:\/\//, ''))
-                            : normalizedParams.server.split(':')[0]);
+                            : normalizedParams.protocol === 'twake'
+                              ? normalizedParams.server.replace(/^https?:\/\//, '')
+                              : normalizedParams.server.split(':')[0]);
                   const protocolLabel = connectionViaLabel(normalizedParams);
                   // SEC: mask credentials in log-only provider name to prevent data leakage
                   const maskedProviderName = normalizedParams.username && providerName.includes(normalizedParams.username)

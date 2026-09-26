@@ -327,7 +327,14 @@
             "protonCliTitle": "Bruger den officielle Proton Drive CLI",
             "protonCliBody": "Installer Proton Drive CLI fra proton.me/download/drive/cli, kør derefter proton-drive auth login i en terminal og afslut i browseren. AeroFTP ser aldrig din adgangskode; sessionen bliver i OS'ets hemmelighedslager.",
             "protonUnofficial": "Dette er et tredjepartsprogram, som Proton ikke understøtter officielt.",
-            "protonConnectHint": "\"Opret forbindelse\" bruger den CLI, der allerede er logget ind på denne maskine. Én Proton-konto pr. OS-bruger."
+            "protonConnectHint": "\"Opret forbindelse\" bruger den CLI, der allerede er logget ind på denne maskine. Én Proton-konto pr. OS-bruger.",
+            "twakeInstance": "Twake-adresse",
+            "twakeInstanceHelp": "Din egen adresse, for eksempel yourname.twake.app. Du kan også indsætte en hvilken som helst Twake-sideadresse fra din browser.",
+            "twakeSignIn": "Log ind med Twake",
+            "twakeSignInAgain": "Log ind igen",
+            "twakeSignedIn": "Logget ind",
+            "twakeWaitingBrowser": "Afslut login i din browser...",
+            "twakeSignInHelp": "AeroFTP åbner Twake i din browser og beder kun om adgang til dine filer. Hvis Twake viser en fejl første gang, så log ind på Twake i browseren og log ind igen. Du kan til enhver tid tilbagekalde adgangen under Twake-indstillinger, Tilsluttede enheder."
         },
         "browser": {
             "remote": "Ekstern",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "Dette endepunkt leverer S3 over almindelig HTTP via et netværk. Accepter det for denne profil: de signerede legitimationsoplysninger og alle filer krydser netværket ukrypteret.",
             "discoverFilebase": "Filebase: S3-kompatibel objektlagring (5 GB gratis)",
             "protonDesc": "Opretter forbindelse via Proton Drive CLI",
-            "protonTooltip": "Bruger Proton Drive CLI - installer den, log ind i browseren, AeroFTP er GUI'en"
+            "protonTooltip": "Bruger Proton Drive CLI - installer den, log ind i browseren, AeroFTP er GUI'en",
+            "twakeDesc": "Twake Drive (5 GB gratis)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, fransk open source-sky (Cozy Cloud er nu en del af den) med 5 GB gratis",
+            "discoverTwake": "Europæisk open source-sky fra Linagora, nu hjemsted for Cozy Cloud (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -2153,9 +2163,6 @@
                 "disk_error": "Diskfejl",
                 "unknown": "Ukendt"
             },
-            "parallelStreams": "Streams",
-            "parallelSequential": "Sekventiel",
-            "parallelStreamLabel": "streams",
             "schedulerTitle": "Synkroniseringsplanlægger",
             "schedulerEnabled": "Aktivér planlægger",
             "schedulerResume": "Genoptag",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Højt antal mapper - kan overskride inotify grænse",
             "watcherPolling": "Bruger poll-tilstand (langsommere men universel)",
-            "compressionToggle": "Komprimering",
-            "compressionAuto": "Auto",
-            "compressionOn": "Til",
-            "compressionOff": "Fra",
             "multiPathAdd": "Tilføj stipar",
             "multiPathEmpty": "Ingen stipar konfigureret",
             "templateExport": "Eksportér skabelon",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "Gendan",
             "rollbackEmpty": "Ingen snapshots tilgængelige",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 streams + AL sikkerhed deaktiveret - ingen journal, ingen verifikation, ingen gentagelse",
+            "speedManiacTooltip": "Ingen journal, ingen verifikation under kørslen, båndbreddegrænser ignoreres, 2 hurtige gentagelser. Downloadede filer verificeres efter kørslen.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Ingen journal. Ingen verifikation. Ingen gentagelse. Maksimal hastighed. Hvis noget fejler, er det væk. En fuld verifikationsskanning vil køre efter synkronisering er færdig.",
+            "maniacWarningBody": "Ingen journal og ingen verifikation under kørslen, båndbreddegrænser ignoreres, og en mislykket fil får kun 2 hurtige gentagelser. Efter kørslen verificeres downloadede filer; uploadede filer gør ikke.",
             "maniacConfirm": "Jeg forstår, fortsæt",
             "maniacPostSyncReport": "Verificering efter synkronisering: {ok} OK, {mismatches} uoverensstemmelser, {failed} mislykkedes",
             "rollback": "Tilbage",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "Gem nuværende synkroniseringskonfiguration som en genanvendelig .aerosync skabelon",
             "templateImportDesc": "Indlæs en .aerosync skabelon for at anvende dens synkroniseringskonfiguration",
             "maniacActive": "Aktiv",
-            "speedStreams": "{count} streams",
             "actionUploaded": "Uploadet",
             "actionDownloaded": "Downloadet",
             "actionDeleted": "Slettet",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "Ukendte metadata-felter",
             "aerosyncScriptApplyButton": "Gem som preset",
             "aerosyncScriptAppliedToast": "Importeret preset gemt. Åbn AeroSync for at bruge det.",
-            "compressionHint": "Komprimerer data under overførslen for at gøre den hurtigere; den gemmer ikke komprimerede filer på destinationen. Auto springer formater over, der allerede er komprimerede (zip, jpg, mp4 og lignende).",
             "canaryDryRun": "Intet overføres: dette viser, hvad en fuld synkronisering ville gøre, beregnet ud fra stikprøven. Det er GUI-modstykket til CLI-kommandoen aeroftp-cli sync --dry-run (og rclones --dry-run).",
-            "templateImportPathPairs": "Antal brugbare stipar i denne skabelon: {count}. AeroFTP anvender præcis ét, så intet blev importeret. Redigér skabelonen, så der kun er ét stipar, og importér den igen.",
+            "templateImportPathPairs": "Brugbare stipar (lokal/fjern) i denne skabelon: {count}. Et AeroSync-vindue arbejder med præcis ét par, så intet blev importeret. Redigér skabelonen, så den kun indeholder ét par, og importér den derefter igen.",
             "templateNamePlaceholder": "f.eks. Natlig sikkerhedskopi til S3",
             "templateDescPlaceholder": "Hvad denne skabelon bruges til (valgfrit)"
         },
@@ -5081,7 +5082,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Sammenlign",
             "tabPlan": "Plan",
-            "tabSync": "Synkronisér",
+            "tabSync": "Lokalt spejl",
             "compareWontFitTitle": "Over grænserne for {name}: {count}",
             "compareWontFitHint": "Disse filer er større end udbyderens dokumenterede grænse, eller deres navn eller sti er længere end tilladt. En synkronisering ville fejle på dem: omdøb, flyt eller opdel dem først.",
             "compareWontFitTooLarge": "{size}, grænse {limit}",
@@ -5089,6 +5090,78 @@
             "compareWontFitNameChars": "navn over {count} tegn",
             "compareWontFitPathBytes": "sti over {count} bytes",
             "compareWontFitPathChars": "sti over {count} tegn",
+            "presetDefault": "Standard",
+            "actionLabel": {
+                "skip": "Spring over",
+                "copy-to-right": "Kopiér → højre",
+                "copy-to-left": "Kopiér ← venstre",
+                "overwrite-right": "Overskriv på højre side",
+                "overwrite-left": "Overskriv på venstre side",
+                "delete-right": "Slet på højre side",
+                "delete-left": "Slet på venstre side",
+                "rename-to-right": "Behold begge → højre",
+                "rename-to-left": "Behold begge ← venstre",
+                "conflict-skip": "Konflikt (spring over)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Spring over",
+                    "tagline": "Lader konflikter være urørte på begge sider."
+                },
+                "rename": {
+                    "label": "Behold begge",
+                    "tagline": "Kopierer kildens version med et suffiks med dato og klokkeslæt."
+                },
+                "newer-wins": {
+                    "label": "Nyeste vinder",
+                    "tagline": "Siden med det seneste ændringstidspunkt overskriver den anden."
+                },
+                "older-wins": {
+                    "label": "Ældste vinder",
+                    "tagline": "Den ældste side overskriver den nyeste (til arkivering)."
+                },
+                "larger-wins": {
+                    "label": "Største vinder",
+                    "tagline": "Siden med den største filstørrelse overskriver den mindste."
+                },
+                "smaller-wins": {
+                    "label": "Mindste vinder",
+                    "tagline": "Den mindste side overskriver den største."
+                }
+            },
+            "bucketName": {
+                "only-left": "Kun til venstre",
+                "newer-left": "Nyere til venstre",
+                "only-right": "Kun til højre",
+                "newer-right": "Nyere til højre",
+                "conflict": "Konflikt",
+                "same": "Ens"
+            },
+            "bucketDescription": {
+                "only-left": "Findes i kildepanelet, mangler i destinationen.",
+                "newer-left": "Findes på begge sider, kildens kopi har det nyeste tidsstempel.",
+                "only-right": "Findes i destinationen, mangler i kildepanelet.",
+                "newer-right": "Findes på begge sider, destinationens kopi har det nyeste tidsstempel.",
+                "conflict": "Begge sider har posten, men størrelsen er forskellig ved sammenlignelige tidsstempler.",
+                "same": "Posterne stemmer overens efter den aktive sammenligningspolitik."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Kun størrelse",
+                "mtimeOnly": "Kun tidsstempel",
+                "sizeAndMtime": "Størrelse + tidsstempel"
+            },
+            "compareTable": {
+                "name": "Navn",
+                "leftSize": "Størrelse venstre",
+                "rightSize": "Størrelse højre",
+                "leftModified": "Ændret venstre",
+                "rightModified": "Ændret højre",
+                "folder": "mappe",
+                "noEntries": "Ingen poster.",
+                "countedNotListed": "Talt, men ikke vist: scanningen rapporterer identiske filer som et samlet antal i stedet for en række for hver, så store træer forbliver hurtige.",
+                "shown": "Vist: {shown} af {total}",
+                "moreNotListed": "Talt, men ikke vist: {count}"
+            },
             "compareUnavailable": "Åbn et andet panel eller en fjernforbindelse for at sammenligne.",
             "planUnavailable": "Et sammenligningsresultat kræves, før du vælger en forudindstilling. Åbn først fanen Sammenlign.",
             "totalEntries": "Samlede poster",
@@ -5125,7 +5198,7 @@
             "ignoredForMirror": "IGNORERET FOR SPEJL",
             "versionedBackup": "Versioneret sikkerhedskopi",
             "enable": "Aktivér",
-            "versionedBackupHint": "Indfanger destinationskopien i denne mappe før hver overskrivning eller sletning.",
+            "versionedBackupHint": "Før en fil overskrives eller slettes, flyttes dens destinationskopi til {dir}, i en mappe navngivet efter kørslens dato og klokkeslæt.",
             "actionable": "Handlingsdygtig",
             "reportCopiedRight": "Kopieret til højre",
             "reportCopiedLeft": "Kopieret til venstre",
@@ -5147,7 +5220,6 @@
             "executePreset": "Udfør forudindstilling",
             "execute": "Udfør",
             "sync": {
-                "title": "AeroSync: lokal til lokal",
                 "description": "Spejler en lokal kildemappe til en lokal destinationsmappe. Filer ≥ 1 MiB bruger den indbyggede delta-motor; mindre filer bruger direkte kopiering.",
                 "source": "Kilde",
                 "destination": "Destination",
@@ -5203,7 +5275,7 @@
             "speedMode_fast": "Hurtig",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Ekstrem",
-            "speedModeHint": "Parallelle streams + komprimeringsforudindstilling anvendt på kørslen.",
+            "speedModeHint": "Angiver politikken for gentagelser. Fra Hurtig og op sendes ændrede filer som deltaer, hvor serveren understøtter det (SFTP med rsync).",
             "verifyPolicy": "Verificeringspolitik",
             "verifyPolicy_none": "Ingen",
             "verifyPolicy_size_only": "Kun størrelse",
@@ -5248,7 +5320,45 @@
             "errorCorrection": "Fejlkorrektion",
             "errorCorrectionHint": "Gemmer en lille .aerocorrect-paritetsfil ved siden af hver sikkerhedskopieret fil, så en fjernkopi ødelagt af bit-rot kan repareres ved næste pull, uden originalen.",
             "outOfSyncItemsPct": "Elementer ude af sync",
-            "outOfSyncBytesPct": "Bytes ude af sync"
+            "outOfSyncBytesPct": "Bytes ude af sync",
+            "exclude": {
+                "label": "Ekskluderingsmønstre",
+                "hint": "Adskilt med komma eller linjeskift, for eksempel cache, *.tmp eller build/output. Altid udelukket: {list}."
+            },
+            "cli": {
+                "title": "Samme kørsel fra kommandolinjen",
+                "copy": "Kopiér",
+                "copied": "Kopieret",
+                "copyFailed": "Kopiering mislykkedes",
+                "none": "Ingen præcis CLI-ækvivalent: {reason}",
+                "reason": {
+                    "localPair": "for to lokale mapper kører CLI'en sin egen spejling, som ignorerer indstillinger for retning, sletning og konflikter.",
+                    "unsavedServer": "denne forbindelse er ikke en gemt server, og CLI'en skal bruge en for at kunne angive den med --profile.",
+                    "overwritesNewer": "CLI'en overskriver en destinationskopi med en anden størrelse, selv når den er nyere, hvilket denne forudindstilling aldrig gør.",
+                    "twoWay": "CLI'en behandler to kopier af samme størrelse med forskellige tidspunkter som en konflikt og overskriver den ældste; denne plan regner dem som ens inden for 30 sekunder.",
+                    "canary": "CLI'en har ingen Canary-prøvekørsel.",
+                    "versionedBackup": "CLI'en gemmer endnu ikke sikkerhedskopier i samme struktur.",
+                    "transferBudget": "når budgettet er brugt op, stopper denne plan, inklusive sletninger; CLI'en begrænser kun overførsler og sletter stadig.",
+                    "remotePath": "CLI'en fortolker fjernmappen ud fra den gemte servers startmappe og ville ende i en anden.",
+                    "exclusions": "CLI'en matcher ekskluderingsmønstre anderledes, så den ville ikke springe alt over, som denne plan springer over (node_modules, .git og resten)."
+                }
+            },
+            "rescan": "Scan igen",
+            "rescanNeeded": "Sammenligningen blev lavet med andre udelukkelser eller en anden sikkerhedskopimappe. Scan igen før kørsel.",
+            "backup": {
+                "checking": "Tjekker hvordan denne server flytter filer...",
+                "serverCopy": "Denne server kan ikke flytte: hver bevaret kopi kopieres på serveren og slettes derefter. Det koster en fuld kopi af hver bevaret fil, i to separate trin.",
+                "clientCopy": "Denne server kan ikke flytte: hver bevaret kopi downloades, uploades til sikkerhedskopimappen og slettes derefter. Hver bevaret fil passerer gennem denne computer to gange, i separate trin.",
+                "unsupported": "Denne server kan ikke flytte filer til en anden mappe, så den kan ikke bevare gamle kopier. Slå versioneret sikkerhedskopi fra for at køre.",
+                "checkFailed": "Kunne ikke spørge serveren, hvordan den flytter filer. Forbind igen, eller slå versioneret sikkerhedskopi fra for at køre.",
+                "nested": "Sikkerhedskopimappen ligger i {folder}, som denne synkronisering skriver til. Vælg en mappe uden for den.",
+                "invalid": {
+                    "empty": "Angiv et navn til sikkerhedskopimappen.",
+                    "absolute": "Brug en mappe inde i destinationen, ikke en absolut sti.",
+                    "parent": "Sikkerhedskopimappen må ikke indeholde '..'.",
+                    "name": "Dette navn på sikkerhedskopimappen er ikke gyldigt."
+                }
+            }
         },
         "accountLock": {
             "title": "Vælg en konto",

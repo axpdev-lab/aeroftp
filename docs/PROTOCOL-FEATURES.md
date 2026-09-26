@@ -6,7 +6,7 @@
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
 > 1. **7 transport protocols** (FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift) - native wire-level support;
-> 2. **25 native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, Backblaze B2, Proton Drive, GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary);
+> 2. **26 native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Proton Drive, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, Backblaze B2, GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary, Twake Drive);
 > 3. **47 pre-configured presets** in the Discover catalog, generated into [`PROVIDER-INVENTORY.json`](PROVIDER-INVENTORY.json): S3-compatible (Amazon S3, Google Cloud Storage, Cloudflare R2, Backblaze B2 S3, Wasabi, DigitalOcean Spaces, IDrive e2, Filebase, MEGA S4, FileLu S5, Filen Desktop S3, Storj, S3Drive, Quotaless, MinIO, Oracle Cloud, Alibaba OSS, Tencent COS, Yandex Object Storage, IBM Cloud Object Storage), WebDAV-compatible (Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, CloudMe, DriveHQ, Jianguoyun, Mail.ru Cloud, Koofr WebDAV, FileLu WebDAV, Yandex Disk WebDAV, OpenDrive WebDAV, pCloud WebDAV, 4shared WebDAV, Quotaless WebDAV, MEGAcmd WebDAV, Filen Desktop WebDAV), FTP, FTPS and SFTP (Hetzner Storage Box, SourceForge, FileLu FTP, FileLu FTPS), MEGA, Blomp (Swift) and the media services (Cloudinary, ImageKit, Uploadcare).
 >
 > The feature matrix tables below cover the core production set. GitHub, GitLab, Immich, ImageKit, Uploadcare, and Cloudinary have repository / media-specific semantics and are documented inline in their dedicated sections.
@@ -259,6 +259,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | GitHub | Git blob SHA-1 | The git blob SHA-1, computed over `blob <len>\0` + content, so it does not match a plain SHA-1 of the same file. |
 | GitLab | - |  |
 | Immich | SHA-1 | The asset checksum Immich records at upload time. |
+| Twake Drive | MD5 |  |
 | MEGA | - |  |
 | Proton Drive | - |  |
 | Filen | - |  |
@@ -739,7 +740,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-The remote-facing tools route through the `StorageProvider` trait, so they behave identically across the 7 transport protocols and 25 native provider integrations. Local-only tools (file management, search, archives, clipboard, shell) act on the local filesystem.
+The remote-facing tools route through the `StorageProvider` trait, so they behave identically across the 7 transport protocols and 26 native provider integrations. Local-only tools (file management, search, archives, clipboard, shell) act on the local filesystem.
 
 **Remote tools (protocol-routed)**
 

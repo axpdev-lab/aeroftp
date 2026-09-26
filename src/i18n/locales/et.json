@@ -327,7 +327,14 @@
             "protonCliTitle": "Kasutab ametlikku Proton Drive CLI",
             "protonCliBody": "Installige Proton Drive CLI aadressilt proton.me/download/drive/cli, käivitage terminalis proton-drive auth login ja lõpetage brauseris. AeroFTP ei näe kunagi teie parooli; seanss jääb operatsioonisüsteemi saladuste salve.",
             "protonUnofficial": "See on kolmanda osapoole rakendus, mida Proton ametlikult ei toeta.",
-            "protonConnectHint": "\"Ühenda\" kasutab sellel masinal juba sisse logitud CLI-d. Üks Proton konto operatsioonisüsteemi kasutaja kohta."
+            "protonConnectHint": "\"Ühenda\" kasutab sellel masinal juba sisse logitud CLI-d. Üks Proton konto operatsioonisüsteemi kasutaja kohta.",
+            "twakeInstance": "Twake aadress",
+            "twakeInstanceHelp": "Teie enda aadress, näiteks yourname.twake.app. Samuti võite kleepida mis tahes Twake lehe aadressi oma brauserist.",
+            "twakeSignIn": "Logi sisse Twake'iga",
+            "twakeSignInAgain": "Logi uuesti sisse",
+            "twakeSignedIn": "Sisse logitud",
+            "twakeWaitingBrowser": "Lõpetage sisselogimine oma brauseris...",
+            "twakeSignInHelp": "AeroFTP avab Twake teie brauseris ja palub ligipääsu ainult teie failidele. Kui Twake näitab esimesel korral viga, logige brauseris Twake'i sisse ja logige uuesti sisse. Ligipääsu saate igal ajal tühistada Twake seadetes, Ühendatud seadmed."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "See lõpp-punkt pakub S3 krüptimata HTTP kaudu üle võrgu. Nõustu sellega selle profiili puhul: allkirjastatud mandaat ja iga fail liiguvad võrgus krüptimata.",
             "discoverFilebase": "Filebase: S3-ühilduv objektisalvestus (5 GB tasuta)",
             "protonDesc": "Ühendub Proton Drive CLI kaudu",
-            "protonTooltip": "Kasutab Proton Drive CLI - installige, logige brauseris sisse, AeroFTP on GUI"
+            "protonTooltip": "Kasutab Proton Drive CLI - installige, logige brauseris sisse, AeroFTP on GUI",
+            "twakeDesc": "Twake Drive (5 GB tasuta)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Prantsuse avatud lähtekoodiga pilv (Cozy Cloud on nüüd selle osa) 5 GB tasuta",
+            "discoverTwake": "Linagora avatud lähtekoodiga Euroopa pilv, nüüd Cozy Cloud'i uus kodu (5 GB tasuta)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -2153,9 +2163,6 @@
                 "disk_error": "Kettaviga",
                 "unknown": "Tundmatu"
             },
-            "parallelStreams": "Vood",
-            "parallelSequential": "Järjestikune",
-            "parallelStreamLabel": "voogu",
             "schedulerTitle": "Sünkroonimise ajastaja",
             "schedulerEnabled": "Luba ajastaja",
             "schedulerResume": "Jätka",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "Taustarakendus",
             "watcherInotifyWarning": "Suur kataloogide arv - võib ületada inotify limiiti",
             "watcherPolling": "Kasutatakse küsitlusrežiimi (aeglasem, kuid universaalne)",
-            "compressionToggle": "Tihendamine",
-            "compressionAuto": "Automaatne",
-            "compressionOn": "Sees",
-            "compressionOff": "Väljas",
             "multiPathAdd": "Lisa teepaar",
             "multiPathEmpty": "Ühtegi teepaari pole konfigureeritud",
             "templateExport": "Ekspordi mall",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "Taasta",
             "rollbackEmpty": "Hetktõmmiseid pole saadaval",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 voogu + KÕIK ohutus keelatud - ilma päevikuta, ilma kontrollimiseta, ilma uuesti proovimiseta",
+            "speedManiacTooltip": "Päevikut pole, jooksu ajal kontrolli pole, ribalaiuse piiranguid eiratakse, 2 kiiret uuesti proovimist. Allalaaditud failid kontrollitakse pärast jooksu.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Ilma päevikuta. Ilma kontrollimiseta. Ilma uuesti proovimiseta. Maksimaalne kiirus. Kui midagi ebaõnnestub, on see kadunud. Täielik kontrolliskaneerimine käivitatakse pärast sünkroonimise lõppu.",
+            "maniacWarningBody": "Jooksu ajal pole päevikut ega kontrolli, ribalaiuse piiranguid eiratakse ja nurjunud fail saab ainult 2 kiiret uuesti proovimist. Pärast jooksu kontrollitakse allalaaditud faile; üleslaaditud faile mitte.",
             "maniacConfirm": "Ma saan aru, jätka",
             "maniacPostSyncReport": "Sünkroonimise järgne kontrollimine: {ok} OK, {mismatches} mittevastavust, {failed} ebaõnnestunud",
             "rollback": "Taastamine",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "Salvesta praegune sünkroonimise konfiguratsioon taaskasutatava .aerosync mallina",
             "templateImportDesc": "Laadi .aerosync mall, et rakendada selle sünkroonimise konfiguratsioon",
             "maniacActive": "Aktiivne",
-            "speedStreams": "{count} voogu",
             "actionUploaded": "Üles laaditud",
             "actionDownloaded": "Alla laaditud",
             "actionDeleted": "Kustutatud",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "Tundmatud metadata väljad",
             "aerosyncScriptApplyButton": "Salvesta presetina",
             "aerosyncScriptAppliedToast": "Imporditud preset salvestatud. Ava AeroSync selle kasutamiseks.",
-            "compressionHint": "Tihendab andmeid edastamise ajal, et kiirendada ülekannet; sihtkohta ei salvestata tihendatud faile. Auto jätab vahele juba tihendatud vormingud (zip, jpg, mp4 ja sarnased).",
             "canaryDryRun": "Midagi ei edastata: see näitab eelvaadet, mida täielik sünkroonimine teeks, arvutatuna valimi põhjal. See on käsu aeroftp-cli sync --dry-run (ja rclone'i --dry-run) graafilise liidese vaste.",
-            "templateImportPathPairs": "Kasutatavaid teepaare selles mallis: {count}. AeroFTP rakendab täpselt ühe, seega ei imporditud midagi. Muuda malli nii, et alles jääb üks teepaar, ja impordi see uuesti.",
+            "templateImportPathPairs": "Kasutatavad teepaarid (kohalik/kaug) selles mallis: {count}. AeroSynci aken töötab täpselt ühe paariga, seega ei imporditud midagi. Muuda malli nii, et alles jääks ainult üks paar, ja impordi see seejärel uuesti.",
             "templateNamePlaceholder": "nt Öine varundus S3-sse",
             "templateDescPlaceholder": "Milleks see mall on mõeldud (valikuline)"
         },
@@ -5081,7 +5082,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Võrdle",
             "tabPlan": "Plaan",
-            "tabSync": "Sünkrooni",
+            "tabSync": "Kohalik peegel",
             "compareWontFitTitle": "Üle teenuse {name} piirangute: {count}",
             "compareWontFitHint": "Need failid on suuremad kui teenusepakkuja dokumenteeritud piirang või nende nimi või tee on lubatust pikem. Sünkroonimine nurjuks nende puhul: nimeta need ümber, teisalda või jaga osadeks enne.",
             "compareWontFitTooLarge": "{size}, piirang {limit}",
@@ -5089,6 +5090,78 @@
             "compareWontFitNameChars": "nimi üle {count} märgi",
             "compareWontFitPathBytes": "tee üle {count} baidi",
             "compareWontFitPathChars": "tee üle {count} märgi",
+            "presetDefault": "Vaikimisi",
+            "actionLabel": {
+                "skip": "Jäta vahele",
+                "copy-to-right": "Kopeeri → paremale",
+                "copy-to-left": "Kopeeri ← vasakule",
+                "overwrite-right": "Kirjuta üle paremal",
+                "overwrite-left": "Kirjuta üle vasakul",
+                "delete-right": "Kustuta paremal",
+                "delete-left": "Kustuta vasakul",
+                "rename-to-right": "Säilita mõlemad → paremale",
+                "rename-to-left": "Säilita mõlemad ← vasakule",
+                "conflict-skip": "Konflikt (jäta vahele)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Jäta vahele",
+                    "tagline": "Jätab konfliktid mõlemal poolel puutumata."
+                },
+                "rename": {
+                    "label": "Säilita mõlemad",
+                    "tagline": "Kopeerib lähteversiooni kuupäeva ja kellaajaga järelliitega."
+                },
+                "newer-wins": {
+                    "label": "Uuem võidab",
+                    "tagline": "Hilisema muutmisajaga pool kirjutab teise üle."
+                },
+                "older-wins": {
+                    "label": "Vanem võidab",
+                    "tagline": "Vanem pool kirjutab uuema üle (arhiveerimiseks)."
+                },
+                "larger-wins": {
+                    "label": "Suurem võidab",
+                    "tagline": "Suurema failisuurusega pool kirjutab väiksema üle."
+                },
+                "smaller-wins": {
+                    "label": "Väiksem võidab",
+                    "tagline": "Väiksem pool kirjutab suurema üle."
+                }
+            },
+            "bucketName": {
+                "only-left": "Ainult vasakul",
+                "newer-left": "Uuem vasakul",
+                "only-right": "Ainult paremal",
+                "newer-right": "Uuem paremal",
+                "conflict": "Konflikt",
+                "same": "Samad"
+            },
+            "bucketDescription": {
+                "only-left": "Olemas lähtepaneelil, sihtkohas puudub.",
+                "newer-left": "Olemas mõlemal poolel, lähtekoopial on hilisem ajatempel.",
+                "only-right": "Olemas sihtkohas, lähtepaneelil puudub.",
+                "newer-right": "Olemas mõlemal poolel, sihtkoha koopial on hilisem ajatempel.",
+                "conflict": "Kirje on mõlemal poolel, kuid võrreldavate ajatemplite juures erineb suurus.",
+                "same": "Kirjed ühtivad aktiivse võrdluspõhimõtte järgi."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Ainult suurus",
+                "mtimeOnly": "Ainult ajatempel",
+                "sizeAndMtime": "Suurus + ajatempel"
+            },
+            "compareTable": {
+                "name": "Nimi",
+                "leftSize": "Suurus vasakul",
+                "rightSize": "Suurus paremal",
+                "leftModified": "Muudetud vasakul",
+                "rightModified": "Muudetud paremal",
+                "folder": "kaust",
+                "noEntries": "Kirjeid pole.",
+                "countedNotListed": "Loendatud, kuid loetlemata: skannimine esitab identsed failid koguarvuna, mitte igaüht eraldi reana, et suured puud jääksid kiireks.",
+                "shown": "Kuvatud: {shown}, kokku {total}",
+                "moreNotListed": "Loendatud, kuid loetlemata: {count}"
+            },
             "compareUnavailable": "Võrdlemiseks avage teine paneel või kaugühendus.",
             "planUnavailable": "Enne eelseade valimist on vaja võrdlustulemust. Avage esmalt vahekaart Võrdle.",
             "totalEntries": "Kirjeid kokku",
@@ -5125,7 +5198,7 @@
             "ignoredForMirror": "PEEGLI JAOKS IGNOREERITUD",
             "versionedBackup": "Versioonidega varundus",
             "enable": "Luba",
-            "versionedBackupHint": "Salvestab sihtfaili koopia selles kataloogis enne iga ülekirjutamist või kustutamist.",
+            "versionedBackupHint": "Enne kui fail üle kirjutatakse või kustutatakse, teisaldatakse selle sihtkoha koopia kausta {dir}, alamkausta, mis on nimetatud jooksu kuupäeva ja kellaaja järgi.",
             "actionable": "Teostatav",
             "reportCopiedRight": "Kopeeritud paremale",
             "reportCopiedLeft": "Kopeeritud vasakule",
@@ -5147,7 +5220,6 @@
             "executePreset": "Käivita eelseade",
             "execute": "Käivita",
             "sync": {
-                "title": "AeroSync: kohalikust kohalikku",
                 "description": "Peegeldab kohaliku lähtekataloogi kohalikku sihtkohta. Failid ≥ 1 MiB kasutavad sisseehitatud delta-mootorit; väiksemad failid kasutavad otsest kopeerimist.",
                 "source": "Lähe",
                 "destination": "Sihtkoht",
@@ -5203,7 +5275,7 @@
             "speedMode_fast": "Kiire",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Äärmuslik",
-            "speedModeHint": "Paralleelsed vood + tihendamise eelseade rakendatud käivitusele.",
+            "speedModeHint": "Määrab uuesti proovimise poliitika. Alates režiimist Kiire saadetakse muudetud failid deltadena, kus server seda toetab (SFTP koos rsync'iga).",
             "verifyPolicy": "Kontrollipoliitika",
             "verifyPolicy_none": "Puudub",
             "verifyPolicy_size_only": "Ainult suurus",
@@ -5248,7 +5320,45 @@
             "errorCorrection": "Veaparandus",
             "errorCorrectionHint": "Salvestab iga varundatud faili kõrvale väikese .aerocorrect pariteedifaili, et bit-rot'i tõttu rikutud kaugkoopiat saaks järgmisel tõmbamisel parandada ilma originaalita.",
             "outOfSyncItemsPct": "Sünkroonimata üksused",
-            "outOfSyncBytesPct": "Sünkroonimata baidid"
+            "outOfSyncBytesPct": "Sünkroonimata baidid",
+            "exclude": {
+                "label": "Välistusmustrid",
+                "hint": "Eraldatud koma või reavahetusega, näiteks cache, *.tmp või build/output. Alati välistatud: {list}."
+            },
+            "cli": {
+                "title": "Sama käivitus käsurealt",
+                "copy": "Kopeeri",
+                "copied": "Kopeeritud",
+                "copyFailed": "Kopeerimine ebaõnnestus",
+                "none": "Täpset CLI vastet pole: {reason}",
+                "reason": {
+                    "localPair": "kahe kohaliku kausta puhul käivitab CLI oma peegelduse, mis eirab suuna, kustutamise ja konfliktide seadeid.",
+                    "unsavedServer": "see ühendus ei ole salvestatud server ja CLI vajab seda, et viidata sellele --profile abil.",
+                    "overwritesNewer": "CLI kirjutab erineva suurusega sihtkoopia üle ka siis, kui see on uuem, mida see eelseade kunagi ei tee.",
+                    "twoWay": "CLI käsitleb kahte sama suurusega, kuid erineva ajaga koopiat konfliktina ja kirjutab vanema üle; see plaan loeb need 30 sekundi piires samaks.",
+                    "canary": "CLI-l pole Canary-proovikäivitust.",
+                    "versionedBackup": "CLI ei hoia varukoopiaid veel samas struktuuris.",
+                    "transferBudget": "kui eelarve saab otsa, peatub see plaan koos kustutamistega; CLI piirab ainult edastusi ja kustutab ikkagi.",
+                    "remotePath": "CLI tuvastab kaugkausta salvestatud serveri algkausta suhtes ja jõuaks teise kausta.",
+                    "exclusions": "CLI rakendab välistusmustreid teisiti, seega ei jätaks see vahele kõike, mida see plaan vahele jätab (node_modules, .git ja ülejäänu)."
+                }
+            },
+            "rescan": "Skanni uuesti",
+            "rescanNeeded": "Võrdlus tehti teiste välistuste või teise varukoopiakaustaga. Skanni enne käivitamist uuesti.",
+            "backup": {
+                "checking": "Kontrollin, kuidas see server faile teisaldab...",
+                "serverCopy": "See server ei oska teisaldada: iga säilitatav koopia kopeeritakse serveris ja seejärel kustutatakse. See maksab iga säilitatava faili täieliku koopia, kahes eraldi etapis.",
+                "clientCopy": "See server ei oska teisaldada: iga säilitatav koopia laaditakse alla, laaditakse üles varunduskausta ja seejärel kustutatakse. Iga säilitatav fail liigub läbi selle arvuti kaks korda, eraldi etappides.",
+                "unsupported": "See server ei saa faile teise kausta teisaldada, seega ei saa see vanu koopiaid säilitada. Käivitamiseks lülita versioonidega varundus välja.",
+                "checkFailed": "Serverilt ei õnnestunud küsida, kuidas see faile teisaldab. Loo ühendus uuesti või lülita käivitamiseks versioonidega varundus välja.",
+                "nested": "Varunduskaust asub kaustas {folder}, kuhu see sünkroonimine kirjutab. Vali kaust väljaspool seda.",
+                "invalid": {
+                    "empty": "Sisesta varunduskausta nimi.",
+                    "absolute": "Kasuta kausta sihtkoha sees, mitte absoluutset teed.",
+                    "parent": "Varunduskaust ei tohi sisaldada '..'.",
+                    "name": "See varunduskausta nimi pole kehtiv."
+                }
+            }
         },
         "accountLock": {
             "title": "Vali konto",

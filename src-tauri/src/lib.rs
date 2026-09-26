@@ -241,6 +241,7 @@ mod speech;
 pub mod ssh_config_import;
 mod ssh_shell;
 pub mod sync;
+pub mod sync_backup;
 mod sync_badge;
 /// Class-level pin against `#[tauri::command]`s that block the main thread.
 /// Tests only; see the module docs for why it reads the sources instead of
@@ -248,6 +249,7 @@ mod sync_badge;
 #[cfg(test)]
 mod sync_command_audit;
 pub mod sync_core;
+pub mod sync_exclude;
 mod sync_ignore;
 mod sync_scheduler;
 pub mod sync_script;
@@ -4287,26 +4289,63 @@ async fn upload_files_batch(
 }
 
 /// Preserve remote file modification time on a downloaded local file.
-/// Parses common ISO 8601 / timestamp formats and sets the file's mtime via `filetime`.
+/// Parses the timestamp shapes providers report (see [`parse_remote_mtime`])
+/// and sets the file's mtime via `filetime`.
 /// Best-effort: silently ignores failures (e.g. permission denied, unparseable timestamp).
 pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
-    let Some(modified_str) = remote_modified else {
+    let Some(secs) = remote_modified.and_then(parse_remote_mtime) else {
         return;
     };
-    // Strip trailing 'Z' suffix (UTC marker added in v2.9.6) before NaiveDateTime parsing
-    let clean_str = modified_str.strip_suffix('Z').unwrap_or(modified_str);
-    let ts = chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
+    let ft = filetime::FileTime::from_unix_time(secs, 0);
+    let _ = filetime::set_file_mtime(local_path, ft);
+}
+
+/// Unix seconds of a provider-reported modification time: naive
+/// `YYYY-MM-DD HH:MM:SS` / ISO 8601 (read as UTC, optional trailing `Z` added
+/// in v2.9.6), RFC 3339 with an offset, and RFC 2822 (`Thu, 24 Sep 2026
+/// 19:41:46 GMT`), which is what WebDAV `getlastmodified` carries. Without the
+/// RFC 2822 arm no WebDAV download ever kept its remote mtime, and a later
+/// sync saw every downloaded file as changed.
+pub fn parse_remote_mtime(modified_str: &str) -> Option<i64> {
+    let trimmed = modified_str.trim();
+    // FTP MLSD-derived listings end in `Z` or `UTC` with no offset.
+    let clean_str = trimmed
+        .strip_suffix('Z')
+        .or_else(|| trimmed.strip_suffix("UTC"))
+        .unwrap_or(trimmed);
+    chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
-        .or_else(|_| {
-            // Try parsing full RFC 3339 (with timezone) → strip tz suffix
-            chrono::DateTime::parse_from_rfc3339(modified_str).map(|dt| dt.naive_utc())
-        })
-        .ok();
-    if let Some(ndt) = ts {
-        let secs = ndt.and_utc().timestamp();
-        let ft = filetime::FileTime::from_unix_time(secs, 0);
-        let _ = filetime::set_file_mtime(local_path, ft);
+        .map(|ndt| ndt.and_utc().timestamp())
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(trimmed).map(|dt| dt.timestamp()))
+        .or_else(|_| chrono::DateTime::parse_from_rfc2822(trimmed).map(|dt| dt.timestamp()))
+        .ok()
+}
+
+#[cfg(test)]
+mod parse_remote_mtime_tests {
+    use super::parse_remote_mtime;
+
+    // 2026-09-24T19:41:46Z
+    const EXPECTED: i64 = 1_790_278_906;
+
+    #[test]
+    fn reads_every_shape_providers_report() {
+        for s in [
+            "2026-09-24 19:41:46",
+            "2026-09-24T19:41:46",
+            "2026-09-24T19:41:46Z",
+            "2026-09-24T19:41:46.123456Z",
+            "2026-09-24T21:41:46+02:00",
+            "Thu, 24 Sep 2026 19:41:46 GMT",
+            "Thu, 24 Sep 2026 21:41:46 +0200",
+            "2026-09-24 19:41:46UTC",
+        ] {
+            assert_eq!(parse_remote_mtime(s), Some(EXPECTED), "{s}");
+        }
+        assert_eq!(parse_remote_mtime("yesterday"), None);
+        assert_eq!(parse_remote_mtime("?"), None);
+        assert_eq!(parse_remote_mtime(""), None);
     }
 }
 
@@ -11088,9 +11127,9 @@ use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use sync::{
     classify_sync_error, classify_with_summary, delete_sync_journal, journal_sig_filename,
     load_sync_index, load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample,
-    should_exclude, sign_journal, verify_local_file, CanaryResult, CanarySampleResult,
-    CanarySummary, CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus,
-    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+    sign_journal, verify_local_file, CanaryResult, CanarySampleResult, CanarySummary,
+    CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus, SyncErrorInfo, SyncIndex,
+    SyncJournal, VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -11345,6 +11384,8 @@ async fn compare_directories(
 ) -> Result<CompareReport, String> {
     let mut options = options.unwrap_or_default();
     sync::apply_error_correction_excludes(&mut options);
+    // A backup folder the archive would refuse must not quietly be compared.
+    options.parsed_backup_dir().map_err(|e| e.to_string())?;
 
     validate_path(&local_path)?;
     if remote_path.contains('\0') {
@@ -11500,6 +11541,8 @@ async fn compare_local_directories(
 ) -> Result<CompareReport, String> {
     let mut options = options.unwrap_or_default();
     sync::apply_error_correction_excludes(&mut options);
+    // A backup folder the archive would refuse must not quietly be compared.
+    options.parsed_backup_dir().map_err(|e| e.to_string())?;
 
     validate_path(&left_path)?;
     validate_path(&right_path)?;
@@ -11718,6 +11761,8 @@ pub async fn get_local_files_recursive_checked(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut files = HashMap::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
     let base = PathBuf::from(base_path);
@@ -11810,7 +11855,7 @@ pub async fn get_local_files_recursive_checked(
                 .unwrap_or_else(|_| name.clone());
 
             // Skip excluded paths
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -11955,6 +12000,8 @@ pub async fn get_local_files_recursive_parallel(
     max_concurrent_hashes: usize,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<HashMap<String, FileInfo>, String> {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let base = PathBuf::from(base_path);
     if !base.exists() {
         return Ok(HashMap::new());
@@ -11991,7 +12038,7 @@ pub async fn get_local_files_recursive_parallel(
                 .map(|p| p.to_string_lossy().to_string().replace('\\', "/"))
                 .unwrap_or_else(|_| name.clone());
 
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -12146,6 +12193,8 @@ async fn get_remote_files_recursive_with_progress(
     ),
     String,
 > {
+    // One compile per scan; an invalid pattern is an error, never dropped.
+    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
     let mut files = HashMap::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
     // (absolute_path, depth): depth limit prevents infinite loops on servers
@@ -12217,7 +12266,7 @@ async fn get_remote_files_recursive_with_progress(
                 }
             };
 
-            if should_exclude(&relative_path, exclude_patterns) {
+            if excludes.is_excluded(&relative_path) {
                 continue;
             }
 
@@ -12815,98 +12864,6 @@ async fn get_transfer_optimization_hints(
     let hints = with_documented_file_limits(hints, &requested, active_protocol.as_deref());
 
     Ok(hints)
-}
-
-#[tauri::command]
-async fn get_transfer_capabilities(
-    state: State<'_, provider_commands::ProviderState>,
-    provider_type: Option<String>,
-) -> Result<transfer_dag::TransferCapabilities, String> {
-    let requested = provider_type.unwrap_or_default().to_lowercase();
-    let active_protocol = {
-        let provider_lock = state.provider.lock().await;
-        provider_lock
-            .as_ref()
-            .map(|provider| format!("{:?}", provider.provider_type()).to_lowercase())
-    };
-
-    if let Some(active) = active_protocol.as_deref() {
-        if requested.is_empty() || requested == active {
-            let provider_lock = state.provider.lock().await;
-            return Ok(provider_lock
-                .as_ref()
-                .map(|provider| provider.transfer_capabilities())
-                .unwrap_or_else(|| {
-                    transfer_dag::TransferCapabilities::from_provider_hints(
-                        provider_type_from_string(active).unwrap_or(providers::ProviderType::Ftp),
-                        &default_transfer_optimization_hints(active),
-                        false,
-                    )
-                }));
-        }
-    }
-
-    let provider_type = provider_type_from_string(&requested).ok_or_else(|| {
-        if requested.is_empty() {
-            "No active provider is connected".to_string()
-        } else {
-            format!("Unknown provider type: {}", requested)
-        }
-    })?;
-
-    Ok(transfer_dag::TransferCapabilities::from_provider_hints(
-        provider_type,
-        &default_transfer_optimization_hints(&requested),
-        false,
-    ))
-}
-
-fn provider_type_from_string(value: &str) -> Option<providers::ProviderType> {
-    match value {
-        "ftp" => Some(providers::ProviderType::Ftp),
-        "ftps" => Some(providers::ProviderType::Ftps),
-        "sftp" => Some(providers::ProviderType::Sftp),
-        "webdav" | "web_dav" => Some(providers::ProviderType::WebDav),
-        "s3" => Some(providers::ProviderType::S3),
-        "aerocloud" | "aero_cloud" => Some(providers::ProviderType::AeroCloud),
-        "googledrive" | "google_drive" | "google drive" => {
-            Some(providers::ProviderType::GoogleDrive)
-        }
-        "dropbox" => Some(providers::ProviderType::Dropbox),
-        "onedrive" | "one_drive" | "one drive" => Some(providers::ProviderType::OneDrive),
-        "mega" => Some(providers::ProviderType::Mega),
-        "proton" | "protondrive" => Some(providers::ProviderType::Proton),
-        "box" => Some(providers::ProviderType::Box),
-        "pcloud" | "p_cloud" => Some(providers::ProviderType::PCloud),
-        "azure" => Some(providers::ProviderType::Azure),
-        "filen" => Some(providers::ProviderType::Filen),
-        "fourshared" | "four_shared" | "4shared" => Some(providers::ProviderType::FourShared),
-        "zohoworkdrive" | "zoho_workdrive" | "zoho workdrive" => {
-            Some(providers::ProviderType::ZohoWorkdrive)
-        }
-        "internxt" => Some(providers::ProviderType::Internxt),
-        "kdrive" | "k_drive" => Some(providers::ProviderType::KDrive),
-        "jottacloud" => Some(providers::ProviderType::Jottacloud),
-        "drimecloud" | "drime_cloud" => Some(providers::ProviderType::DrimeCloud),
-        "filelu" | "file_lu" => Some(providers::ProviderType::FileLu),
-        "koofr" => Some(providers::ProviderType::Koofr),
-        "opendrive" | "open_drive" => Some(providers::ProviderType::OpenDrive),
-        "yandexdisk" | "yandex_disk" | "yandex disk" => Some(providers::ProviderType::YandexDisk),
-        "github" => Some(providers::ProviderType::GitHub),
-        "gitlab" => Some(providers::ProviderType::GitLab),
-        "swift" => Some(providers::ProviderType::Swift),
-        "googlephotos" | "google_photos" | "google photos" => {
-            Some(providers::ProviderType::GooglePhotos)
-        }
-        "immich" => Some(providers::ProviderType::Immich),
-        "imagekit" | "image_kit" => Some(providers::ProviderType::ImageKit),
-        "uploadcare" => Some(providers::ProviderType::Uploadcare),
-        "backblaze" | "b2" | "backblazeb2" | "backblaze_b2" => {
-            Some(providers::ProviderType::Backblaze)
-        }
-        "cloudinary" => Some(providers::ProviderType::Cloudinary),
-        _ => None,
-    }
 }
 
 #[tauri::command]
@@ -15150,39 +15107,117 @@ fn versions_disk_usage_blocking() -> u64 {
     v.disk_usage()
 }
 
-/// Archive a local file before deleting it during sync (backup-before-delete safety net).
-/// Uses TrashCan strategy with 30-day retention, archiving to <sync_root>/.aeroversions/.
-#[tauri::command]
-async fn archive_before_sync_delete(
-    sync_root: String,
-    file_path: String,
-    versioning_strategy: Option<String>,
-) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || {
-        archive_before_sync_delete_blocking(sync_root, file_path, versioning_strategy)
-    })
-    .await
-    .unwrap_or_else(|err| Err(format!("archive_before_sync_delete task failed: {err}")))
+/// What the Plan tab learns about a backup folder before a run.
+#[derive(serde::Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum SyncBackupDirCheck {
+    /// The folder as it will be created, and the folders it sits in: the Plan
+    /// refuses a backup folder inside a folder the sync writes.
+    Valid {
+        dir: String,
+        ancestors: Vec<String>,
+    },
+    Invalid {
+        code: String,
+        message: String,
+    },
 }
 
-/// The body of `archive_before_sync_delete`, kept synchronous and run on the blocking pool.
-fn archive_before_sync_delete_blocking(
-    sync_root: String,
-    file_path: String,
-    versioning_strategy: Option<String>,
+/// Validate a versioned-backup folder with the rules the CLI applies too.
+#[tauri::command]
+async fn sync_backup_validate(dir: String) -> Result<SyncBackupDirCheck, String> {
+    Ok(match sync_backup::BackupDir::parse(&dir) {
+        Ok(parsed) => SyncBackupDirCheck::Valid {
+            ancestors: parsed.ancestors().into_iter().map(String::from).collect(),
+            dir: parsed.as_str().to_string(),
+        },
+        Err(e) => SyncBackupDirCheck::Invalid {
+            code: e.code().to_string(),
+            message: e.to_string(),
+        },
+    })
+}
+
+/// The stamp one run archives under (UTC, `YYYYMMDDTHHMMSSZ`).
+#[tauri::command]
+async fn sync_backup_run_stamp() -> Result<String, String> {
+    Ok(sync_backup::run_stamp(chrono::Utc::now()))
+}
+
+/// How the connected remote moves a file into another folder, asked before a
+/// run so the Plan can say it (or refuse) up front. `use_provider` picks the
+/// provider session; otherwise the answer is for the GUI's FTP session.
+#[tauri::command]
+async fn sync_backup_remote_move(
+    provider_state: State<'_, provider_commands::ProviderState>,
+    use_provider: bool,
 ) -> Result<String, String> {
-    // Security: validate file_path is within sync_root
-    let root = std::path::PathBuf::from(&sync_root);
-    let target = std::path::PathBuf::from(&file_path);
-    if file_path.contains("..") || !target.starts_with(&root) {
-        return Err("Invalid path: must be within sync root".to_string());
+    let support = if use_provider {
+        let lock = provider_state.provider.lock().await;
+        let provider = lock.as_ref().ok_or("Not connected to any provider")?;
+        sync_backup::remote_move_support(provider.provider_type())
+    } else {
+        sync_backup::RemoteMove::Native
+    };
+    Ok(match support {
+        sync_backup::RemoteMove::Native => "native",
+        sync_backup::RemoteMove::ServerCopyDelete => "server_copy",
+        sync_backup::RemoteMove::ClientCopyDelete => "client_copy",
+        sync_backup::RemoteMove::Unsupported(_) => "unsupported",
     }
-    let v = sync_versioning::SyncVersioning::new(
-        &root,
-        parse_versioning_strategy(versioning_strategy.as_deref()),
-    );
-    let archived = v.archive(&target)?;
-    Ok(archived.to_string_lossy().to_string())
+    .to_string())
+}
+
+/// Move `<root>/<rel>` into the backup folder on the local disk before the
+/// sync overwrites or deletes it. `None` when there was nothing to keep.
+#[tauri::command]
+async fn sync_backup_archive_local(
+    root: String,
+    dir: String,
+    stamp: String,
+    rel: String,
+) -> Result<Option<String>, String> {
+    validate_path(&root)?;
+    tokio::task::spawn_blocking(move || {
+        let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
+        sync::validate_relative_path(&rel)?;
+        sync_backup::archive_local(std::path::Path::new(&root), &dir, &stamp, &rel)
+            .map(|p| p.map(|p| p.to_string_lossy().to_string()))
+            .map_err(|e| format!("Backup of {} failed: {}", rel, e))
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("sync_backup_archive_local task failed: {err}")))
+}
+
+/// Move `<root>/<rel>` into the backup folder on the remote before the sync
+/// overwrites or deletes it. `None` when there was nothing to keep. Refuses
+/// before touching anything on a remote that cannot move across folders.
+#[tauri::command]
+async fn sync_backup_archive_remote(
+    app_state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    use_provider: bool,
+    root: String,
+    dir: String,
+    stamp: String,
+    rel: String,
+) -> Result<Option<String>, String> {
+    let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
+    sync::validate_relative_path(&rel)?;
+    let archived = if use_provider {
+        let source = format!("{}/{}", root.trim_end_matches('/'), rel);
+        let backup = format!("{}/{}", root.trim_end_matches('/'), dir.as_str());
+        // Same rule as every other write: no cleartext names through a raw
+        // backend while an encryption overlay should be in front of it.
+        provider_state.guard_no_raw_crypt_write_outside("Versioned backup", &[&source, &backup])?;
+        let mut lock = provider_state.provider.lock().await;
+        let provider = lock.as_mut().ok_or("Not connected to any provider")?;
+        sync_backup::archive_remote(provider.as_mut(), &root, &dir, &stamp, &rel).await
+    } else {
+        let mut ftp_manager = app_state.ftp_manager.lock().await;
+        sync_backup::archive_remote_on(&mut *ftp_manager, &root, &dir, &stamp, &rel).await
+    };
+    archived.map_err(|e| format!("Backup of {} failed: {}", rel, e))
 }
 
 /// List remote folder tree for the selective sync UI.
@@ -19376,7 +19411,6 @@ pub fn run() {
             save_sync_schedule_cmd,
             get_watcher_status_cmd,
             get_transfer_optimization_hints,
-            get_transfer_capabilities,
             sftp_probe_delta_eligibility,
             get_multi_path_config,
             save_multi_path_config_cmd,
@@ -19429,7 +19463,11 @@ pub fn run() {
             restore_file_version,
             cleanup_versions,
             versions_disk_usage,
-            archive_before_sync_delete,
+            sync_backup_validate,
+            sync_backup_run_stamp,
+            sync_backup_remote_move,
+            sync_backup_archive_local,
+            sync_backup_archive_remote,
             generate_share_link,
             generate_share_link_remote,
             generate_server_share_link,
@@ -19799,6 +19837,7 @@ pub fn run() {
             provider_commands::oauth2_complete_auth,
             provider_commands::oauth2_connect,
             provider_commands::oauth2_full_auth,
+            provider_commands::twake_sign_in,
             provider_commands::oauth2_redirect_uri,
             provider_commands::oauth2_has_tokens,
             provider_commands::oauth2_logout,
@@ -22672,5 +22711,25 @@ mod documented_file_limits_command_tests {
         assert_eq!(unknown.max_file_size, None);
         let ftp = with_documented_file_limits(base, "ftp", None);
         assert_eq!(ftp.max_file_size, None);
+    }
+}
+
+#[cfg(test)]
+mod sync_backup_archive_local_tests {
+    /// The local archive command joins `root` with `rel` and renames the
+    /// result, so `root` is held to the same shape check as every other local
+    /// path command: absolute, no `..`, no NUL.
+    #[tokio::test]
+    async fn a_root_that_is_not_a_clean_absolute_path_is_refused() {
+        for root in ["relative/dir", "/tmp/../etc", "/tmp/a\0b"] {
+            let outcome = super::sync_backup_archive_local(
+                root.to_string(),
+                ".aeroftp-versions".to_string(),
+                "20260925T070000Z".to_string(),
+                "a.txt".to_string(),
+            )
+            .await;
+            assert!(outcome.is_err(), "{root:?} was accepted: {outcome:?}");
+        }
     }
 }

@@ -327,7 +327,14 @@
             "protonCliTitle": "Používá oficiální Proton Drive CLI",
             "protonCliBody": "Nainstalujte Proton Drive CLI z proton.me/download/drive/cli, poté v terminálu spusťte proton-drive auth login a dokončete to v prohlížeči. AeroFTP nikdy nevidí vaše heslo; relace zůstane v úložišti tajemství OS.",
             "protonUnofficial": "Toto je aplikace třetí strany, kterou Proton oficiálně nepodporuje.",
-            "protonConnectHint": "\"Připojit\" použije CLI, které je na tomto počítači už přihlášené. Jeden účet Proton na uživatele OS."
+            "protonConnectHint": "\"Připojit\" použije CLI, které je na tomto počítači už přihlášené. Jeden účet Proton na uživatele OS.",
+            "twakeInstance": "Adresa Twake",
+            "twakeInstanceHelp": "Vaše vlastní adresa, například yourname.twake.app. Můžete také vložit jakoukoli adresu stránky Twake z prohlížeče.",
+            "twakeSignIn": "Přihlásit se přes Twake",
+            "twakeSignInAgain": "Přihlásit se znovu",
+            "twakeSignedIn": "Přihlášeno",
+            "twakeWaitingBrowser": "Dokončete přihlášení v prohlížeči...",
+            "twakeSignInHelp": "AeroFTP otevře Twake ve vašem prohlížeči a požádá pouze o přístup k vašim souborům. Pokud Twake poprvé zobrazí chybu, přihlaste se do Twake v prohlížeči a zkuste to znovu. Přístup můžete kdykoli zrušit v nastavení Twake, Připojená zařízení."
         },
         "browser": {
             "remote": "Vzdálený",
@@ -1966,7 +1973,10 @@
             "s3AllowCleartextEndpoint": "Tento koncový bod poskytuje S3 přes nešifrované HTTP po síti. Přijměte to pro tento profil: podepsané přihlašovací údaje i každý soubor procházejí sítí nezašifrované.",
             "discoverFilebase": "Filebase: objektové úložiště kompatibilní se S3 (5 GB zdarma)",
             "protonDesc": "Připojuje se přes Proton Drive CLI",
-            "protonTooltip": "Používá Proton Drive CLI - nainstalujte, přihlaste se v prohlížeči, AeroFTP je GUI"
+            "protonTooltip": "Používá Proton Drive CLI - nainstalujte, přihlaste se v prohlížeči, AeroFTP je GUI",
+            "twakeDesc": "Twake Drive (5 GB zdarma)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francouzský open-source cloud (Cozy Cloud je nyní jeho součástí) s 5 GB zdarma",
+            "discoverTwake": "Open-source evropský cloud od Linagora, nyní domov Cozy Cloud (5 GB zdarma)"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",
@@ -2153,9 +2163,6 @@
                 "disk_error": "Chyba disku",
                 "unknown": "Neznámý"
             },
-            "parallelStreams": "Streamy",
-            "parallelSequential": "Postupně",
-            "parallelStreamLabel": "streamů",
             "schedulerTitle": "Plánovač synchronizace",
             "schedulerEnabled": "Povolit plánovač",
             "schedulerResume": "Obnovit",
@@ -2170,10 +2177,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Vysoký počet adresářů - může překročit limit inotify",
             "watcherPolling": "Použití režimu poll (pomalejší, ale univerzální)",
-            "compressionToggle": "Komprese",
-            "compressionAuto": "Automaticky",
-            "compressionOn": "Zapnuto",
-            "compressionOff": "Vypnuto",
             "multiPathAdd": "Přidat dvojici cest",
             "multiPathEmpty": "Nejsou nakonfigurovány žádné dvojice cest",
             "templateExport": "Exportovat šablonu",
@@ -2186,9 +2189,9 @@
             "rollbackRestore": "Obnovit",
             "rollbackEmpty": "Nejsou dostupné žádné snímky",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 streamů + VŠECHNA bezpečnost vypnuta - bez deníku, bez ověření, bez opakování",
+            "speedManiacTooltip": "Bez deníku, bez ověření během běhu, limity šířky pásma ignorovány, 2 rychlá opakování. Stažené soubory se ověří po skončení běhu.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Žádný deník. Žádné ověření. Žádné opakování. Maximální rychlost. Pokud něco selže, je to pryč. Po dokončení synchronizace proběhne úplné ověřovací skenování.",
+            "maniacWarningBody": "Bez deníku a bez ověření během běhu, limity šířky pásma se ignorují a neúspěšný soubor dostane jen 2 rychlá opakování. Po skončení běhu se stažené soubory ověří; nahrané ne.",
             "maniacConfirm": "Rozumím, pokračovat",
             "maniacPostSyncReport": "Ověření po synchronizaci: {ok} OK, {mismatches} nesouhlasí, {failed} selhalo",
             "rollback": "Návrat zpět",
@@ -2199,7 +2202,6 @@
             "templateExportDesc": "Uložit aktuální konfiguraci synchronizace jako opakovaně použitelnou šablonu .aerosync",
             "templateImportDesc": "Načíst šablonu .aerosync pro použití její konfigurace synchronizace",
             "maniacActive": "Aktivní",
-            "speedStreams": "{count} proudy",
             "actionUploaded": "Nahráno",
             "actionDownloaded": "Staženo",
             "actionDeleted": "Smazáno",
@@ -2257,9 +2259,8 @@
             "aerosyncScriptUnmappedFields": "Nerozpoznana metadata pole",
             "aerosyncScriptApplyButton": "Uložit jako preset",
             "aerosyncScriptAppliedToast": "Importovaný preset uložen. Otevřete AeroSync pro jeho použití.",
-            "compressionHint": "Komprimuje data během přenosu pro jeho zrychlení; v cíli neukládá komprimované soubory. Auto přeskakuje formáty, které jsou již komprimované (zip, jpg, mp4 a podobné).",
             "canaryDryRun": "Nic se nepřenáší: zobrazí náhled toho, co by udělala úplná synchronizace, vypočtený ze vzorku. Je to grafický protějšek příkazu aeroftp-cli sync --dry-run (a --dry-run nástroje rclone).",
-            "templateImportPathPairs": "Počet použitelných dvojic cest v této šabloně: {count}. AeroFTP použije právě jednu, takže se nic neimportovalo. Ponechte v šabloně jedinou dvojici a importujte ji znovu.",
+            "templateImportPathPairs": "Použitelné dvojice cest (místní/vzdálená) v této šabloně: {count}. Okno AeroSync pracuje s právě jednou dvojicí, proto nebylo nic importováno. Upravte šablonu tak, aby v ní zůstala jediná dvojice, a poté ji importujte znovu.",
             "templateNamePlaceholder": "např. Noční záloha do S3",
             "templateDescPlaceholder": "K čemu tato šablona slouží (volitelné)"
         },
@@ -5081,7 +5082,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Porovnat",
             "tabPlan": "Plán",
-            "tabSync": "Synchronizovat",
+            "tabSync": "Místní zrcadlo",
             "compareWontFitTitle": "Nad limity {name}: {count}",
             "compareWontFitHint": "Tyto soubory překračují zdokumentovaný limit velikosti poskytovatele, nebo je jejich název či cesta delší, než přijímá. Synchronizace by u nich selhala: nejprve je přejmenujte, přesuňte nebo rozdělte.",
             "compareWontFitTooLarge": "{size}, limit {limit}",
@@ -5089,6 +5090,78 @@
             "compareWontFitNameChars": "název nad {count} znaků",
             "compareWontFitPathBytes": "cesta nad {count} bajtů",
             "compareWontFitPathChars": "cesta nad {count} znaků",
+            "presetDefault": "Výchozí",
+            "actionLabel": {
+                "skip": "Přeskočit",
+                "copy-to-right": "Kopírovat → doprava",
+                "copy-to-left": "Kopírovat ← doleva",
+                "overwrite-right": "Přepsat vpravo",
+                "overwrite-left": "Přepsat vlevo",
+                "delete-right": "Smazat vpravo",
+                "delete-left": "Smazat vlevo",
+                "rename-to-right": "Ponechat obě → doprava",
+                "rename-to-left": "Ponechat obě ← doleva",
+                "conflict-skip": "Konflikt (přeskočit)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Přeskočit",
+                    "tagline": "Ponechá konflikty na obou stranách beze změny."
+                },
+                "rename": {
+                    "label": "Ponechat obě",
+                    "tagline": "Zkopíruje verzi ze zdroje s příponou obsahující datum a čas."
+                },
+                "newer-wins": {
+                    "label": "Vyhrává novější",
+                    "tagline": "Strana s novějším časem změny přepíše druhou."
+                },
+                "older-wins": {
+                    "label": "Vyhrává starší",
+                    "tagline": "Starší strana přepíše novější (pro archivaci)."
+                },
+                "larger-wins": {
+                    "label": "Vyhrává větší",
+                    "tagline": "Strana s větší velikostí přepíše menší."
+                },
+                "smaller-wins": {
+                    "label": "Vyhrává menší",
+                    "tagline": "Menší strana přepíše větší."
+                }
+            },
+            "bucketName": {
+                "only-left": "Pouze vlevo",
+                "newer-left": "Novější vlevo",
+                "only-right": "Pouze vpravo",
+                "newer-right": "Novější vpravo",
+                "conflict": "Konflikt",
+                "same": "Shodné"
+            },
+            "bucketDescription": {
+                "only-left": "Existuje na zdrojovém panelu, v cíli chybí.",
+                "newer-left": "Existuje na obou stranách, kopie ve zdroji má novější časové razítko.",
+                "only-right": "Existuje v cíli, na zdrojovém panelu chybí.",
+                "newer-right": "Existuje na obou stranách, kopie v cíli má novější časové razítko.",
+                "conflict": "Položka je na obou stranách, ale při srovnatelných časových razítkách se liší velikostí.",
+                "same": "Položky se shodují podle aktivního pravidla porovnání."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Pouze velikost",
+                "mtimeOnly": "Pouze časové razítko",
+                "sizeAndMtime": "Velikost + časové razítko"
+            },
+            "compareTable": {
+                "name": "Název",
+                "leftSize": "Velikost vlevo",
+                "rightSize": "Velikost vpravo",
+                "leftModified": "Změněno vlevo",
+                "rightModified": "Změněno vpravo",
+                "folder": "složka",
+                "noEntries": "Žádné položky.",
+                "countedNotListed": "Započteno, ale nevypsáno: prohledávání uvádí shodné soubory jako souhrnný počet místo samostatného řádku pro každý, aby velké stromy zůstaly rychlé.",
+                "shown": "Zobrazeno: {shown} z {total}",
+                "moreNotListed": "Započteno, ale nevypsáno: {count}"
+            },
             "compareUnavailable": "Otevřete druhý panel nebo vzdálené připojení pro porovnání.",
             "planUnavailable": "Před výběrem předvolby je nutný výsledek porovnání. Nejprve otevřete kartu Porovnat.",
             "totalEntries": "Celkem položek",
@@ -5125,7 +5198,7 @@
             "ignoredForMirror": "IGNOROVÁNO PRO ZRCADLENÍ",
             "versionedBackup": "Verzovaná záloha",
             "enable": "Povolit",
-            "versionedBackupHint": "Před každým přepsáním nebo smazáním zachytí cílovou kopii v tomto adresáři.",
+            "versionedBackupHint": "Před přepsáním nebo smazáním souboru se jeho kopie v cíli přesune do {dir}, do složky pojmenované podle data a času běhu.",
             "actionable": "Proveditelné",
             "reportCopiedRight": "Zkopírováno doprava",
             "reportCopiedLeft": "Zkopírováno doleva",
@@ -5147,7 +5220,6 @@
             "executePreset": "Provést předvolbu",
             "execute": "Provést",
             "sync": {
-                "title": "AeroSync: místní na místní",
                 "description": "Zrcadlí místní zdrojový adresář do místního cílového adresáře. Soubory ≥ 1 MiB používají interní delta engine; menší soubory používají přímou kopii.",
                 "source": "Zdroj",
                 "destination": "Cíl",
@@ -5203,7 +5275,7 @@
             "speedMode_fast": "Rychlý",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extrémní",
-            "speedModeHint": "Paralelní streamy + přednastavená komprese aplikované na běh.",
+            "speedModeHint": "Nastavuje zásady opakování. Od režimu Rychlý výše se změněné soubory posílají jako delty, pokud to server podporuje (SFTP s rsync).",
             "verifyPolicy": "Zásada ověření",
             "verifyPolicy_none": "Žádné",
             "verifyPolicy_size_only": "Pouze velikost",
@@ -5248,7 +5320,45 @@
             "errorCorrection": "Oprava chyb",
             "errorCorrectionHint": "Uloží malý paritní soubor .aerocorrect vedle každého zálohovaného souboru, takže vzdálenou kopii poškozenou bit-rotem lze opravit při příštím stažení, bez originálu.",
             "outOfSyncItemsPct": "Nesynchronizované položky",
-            "outOfSyncBytesPct": "Nesynchronizované bajty"
+            "outOfSyncBytesPct": "Nesynchronizované bajty",
+            "exclude": {
+                "label": "Vzory pro vyloučení",
+                "hint": "Oddělené čárkou nebo novým řádkem, například cache, *.tmp nebo build/output. Vždy vyloučeno: {list}."
+            },
+            "cli": {
+                "title": "Stejný běh z příkazového řádku",
+                "copy": "Kopírovat",
+                "copied": "Zkopírováno",
+                "copyFailed": "Kopírování selhalo",
+                "none": "V CLI neexistuje přesný ekvivalent: {reason}",
+                "reason": {
+                    "localPair": "pro dvě místní složky spouští CLI vlastní zrcadlení, které ignoruje nastavení směru, mazání a konfliktů.",
+                    "unsavedServer": "toto připojení není uložený server a CLI jej potřebuje, aby ho mohlo zadat pomocí --profile.",
+                    "overwritesNewer": "CLI přepíše kopii v cíli s jinou velikostí, i když je novější, což tato předvolba nikdy nedělá.",
+                    "twoWay": "CLI považuje dvě kopie stejné velikosti s odlišným časem za konflikt a přepíše starší z nich; tento plán je v rozmezí 30 sekund považuje za shodné.",
+                    "canary": "CLI nemá zkušební běh Canary.",
+                    "versionedBackup": "CLI zatím neukládá zálohy ve stejné struktuře.",
+                    "transferBudget": "když se rozpočet vyčerpá, tento plán se zastaví, včetně mazání; CLI omezuje pouze přenosy a maže dál.",
+                    "remotePath": "CLI určuje vzdálenou složku vůči počáteční složce uloženého serveru a dostalo by se do jiné.",
+                    "exclusions": "CLI vyhodnocuje vzory pro vyloučení jinak, takže by nepřeskočilo vše, co přeskakuje tento plán (node_modules, .git a další)."
+                }
+            },
+            "rescan": "Znovu prohledat",
+            "rescanNeeded": "Porovnání bylo provedeno s jinými vyloučeními nebo jinou složkou záloh. Před spuštěním znovu prohledejte.",
+            "backup": {
+                "checking": "Zjišťuji, jak tento server přesouvá soubory...",
+                "serverCopy": "Tento server neumí přesun: každá uchovaná kopie se zkopíruje na serveru a pak smaže. To stojí úplnou kopii každého uchovaného souboru, ve dvou samostatných krocích.",
+                "clientCopy": "Tento server neumí přesun: každá uchovaná kopie se stáhne, nahraje do složky záloh a pak smaže. Každý uchovaný soubor projde tímto počítačem dvakrát, v samostatných krocích.",
+                "unsupported": "Tento server neumí přesouvat soubory do jiné složky, a proto nemůže uchovávat staré kopie. Pro spuštění vypněte verzovanou zálohu.",
+                "checkFailed": "Nepodařilo se zjistit od serveru, jak přesouvá soubory. Připojte se znovu, nebo pro spuštění vypněte verzovanou zálohu.",
+                "nested": "Složka záloh je uvnitř {folder}, do které tato synchronizace zapisuje. Vyberte složku mimo ni.",
+                "invalid": {
+                    "empty": "Zadejte název složky záloh.",
+                    "absolute": "Použijte složku uvnitř cíle, ne absolutní cestu.",
+                    "parent": "Složka záloh nemůže obsahovat '..'.",
+                    "name": "Tento název složky záloh není platný."
+                }
+            }
         },
         "accountLock": {
             "title": "Vyberte účet",

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AssumeRoleResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
+  <AssumeRoleResult>
+    <Credentials>
+      <AccessKeyId>ASIAEXAMPLE</AccessKeyId>
+      <SecretAccessKey>secretkey/EXAMPLE</SecretAccessKey>
+      <SessionToken>FQoGZXIvYXdzEXAMPLETOKEN</SessionToken>
+      <Expiration>2026-06-03T18:30:00Z</Expiration>
+    </Credentials>
+    <AssumedRoleUser>
+      <AssumedRoleId>AROAEXAMPLE:aeroftp</AssumedRoleId>
+      <Arn>arn:aws:sts::123456789012:assumed-role/Demo/aeroftp</Arn>
+    </AssumedRoleUser>
+  </AssumeRoleResult>
+  <ResponseMetadata>
+    <RequestId>01234567-89ab-cdef-0123-456789abcdef</RequestId>
+  </ResponseMetadata>
+</AssumeRoleResponse>

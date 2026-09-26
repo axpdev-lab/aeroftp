@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 855
+    "tauri_commands": 859
   },
   "mcp": {
     "count": 77,
@@ -951,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 482,
+    "name_matched_count": 485,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1153,6 +1153,7 @@
       "oauth2_start_auth",
       "oauth2_complete_auth",
       "oauth2_full_auth",
+      "twake_sign_in",
       "oauth2_redirect_uri",
       "oauth2_has_tokens",
       "oauth2_logout",
@@ -1327,7 +1328,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 373,
+    "name_unmatched_count": 374,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1430,7 +1431,6 @@
       "save_sync_schedule_cmd",
       "get_watcher_status_cmd",
       "get_transfer_optimization_hints",
-      "get_transfer_capabilities",
       "sftp_probe_delta_eligibility",
       "get_multi_path_config",
       "save_multi_path_config_cmd",
@@ -1480,7 +1480,11 @@
       "restore_file_version",
       "cleanup_versions",
       "versions_disk_usage",
-      "archive_before_sync_delete",
+      "sync_backup_validate",
+      "sync_backup_run_stamp",
+      "sync_backup_remote_move",
+      "sync_backup_archive_local",
+      "sync_backup_archive_remote",
       "generate_share_link",
       "generate_share_link_remote",
       "generate_server_share_link",
@@ -1817,6 +1821,7 @@
       "oauth2_complete_auth",
       "oauth2_connect",
       "oauth2_full_auth",
+      "twake_sign_in",
       "oauth2_redirect_uri",
       "oauth2_has_tokens",
       "oauth2_logout",
@@ -2189,6 +2194,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 855
+    "count": 859
   }
 }
