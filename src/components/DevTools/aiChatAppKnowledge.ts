@@ -124,37 +124,26 @@ export const APP_KNOWLEDGE: KBSection[] = [
             'two-way', 'backup', 'profile', 'speed mode', 'turbo', 'maniac',
             'scheduler', 'schedule', 'conflict', 'resolution', 'bandwidth',
             'compare', 'checksum', 'journal', 'resume', 'verify', 'delta',
-            'template', 'rollback', 'snapshot', 'watcher', 'multi-path',
+            'template', 'rollback', 'snapshot', 'multi-path', 'plan',
+            'update', 'canary', 'versioned backup', 'local mirror',
         ],
-        compact: 'AeroSync: file synchronization with 3 presets (Mirror/Two-way/Backup), 5 speed modes (Normal→Maniac), scheduler, conflict resolution, templates, and journal resume.',
-        full: `AeroSync is the file synchronization engine. Access via the Sync icon in the toolbar.
+        compact: 'AeroSync: compare two folders (local or remote), then run a preset (Mirror, Backup, Update, Two-way) from the Plan tab, with speed modes, verification, canary runs, versioned backup and templates. Two local folders also get the Local mirror tab.',
+        full: `AeroSync compares and synchronizes two folders. Open it with F4 (menu AeroSync...), the sync button in the toolbar, or the command palette. The two sides are the folders shown in the two panels: local and remote, or two local folders.
 
-**Quick Sync tab**: 3 preset cards for instant sync:
-- **Mirror**: One-way sync (local→remote or remote→local). Deletes orphans on target.
-- **Two-way**: Bidirectional sync. Keeps newest version of each file.
-- **Backup**: One-way, never deletes from target. Append-only safe backup.
+**Compare tab**: lists what differs between the two sides, grouped into buckets (only on the left, only on the right, newer on one side, conflicts, identical). Nothing is written from here.
 
-**Advanced tab**: Granular control with 4 accordion sections:
-- **Direction**: local→remote, remote→local, or bidirectional
-- **Compare**: by size, modification time, checksum (SHA-256), or all three
-- **Transfer**: retry policy (retries, backoff), verification (none/size/size+mtime/full), bandwidth limits
-- **Automation**: scheduler (interval + time window with day picker), filesystem watcher
+**Plan tab**: turns the comparison into actions with a preset:
+- **Mirror**: makes the destination identical to the source; deletes extra files and overwrites newer copies on the destination.
+- **Backup**: copies missing and newer files; never deletes, never overwrites a newer destination copy.
+- **Update**: copies missing and newer files; skips conflicts so you can resolve them yourself.
+- **Two-way**: propagates missing and newer files in both directions; a conflict policy decides files changed on both sides (skip, keep both, newer, older, larger or smaller wins).
+Other Plan controls: direction, speed mode, verification after each transfer, canary run (try a sample of files first), transfer budget, error-correction sidecars, and versioned backup (before a file is overwritten or deleted, the destination copy is moved to <backup folder>/<timestamp>/<path>; the Plan says before the run whether the connection can do that). Destructive plans need an explicit confirmation before Execute.
 
-**Speed Modes** (5 levels):
-- Normal (1 stream), Fast (2), Turbo (4), Extreme (8), Maniac (16: Cyber theme only, disables safety checks)
+**Local mirror tab**: only for two local folders. Mirrors a source folder into a destination folder; files of 1 MiB or more go through the AeroRsync delta engine. Has exclude patterns, dry run and bandwidth limits.
 
-**Conflict Resolution**:
-- When both local and remote changed, AeroSync shows a conflict dialog
-- Per-file: keep local, keep remote, or skip
-- Batch: Keep Newer All, Keep Local All, Keep Remote All, Skip All
+**Speed modes**: Normal, Fast, Turbo, Extreme set the retry policy; from Fast up, changed files are sent as deltas where the server supports it (SFTP with rsync). Files transfer one at a time in every mode. Maniac (Cyber theme only) turns off the journal and the per-file verification, ignores bandwidth limits and retries a failed file only twice; downloaded files are verified after the run.
 
-**Sync Journal**: Persistent journal tracks every sync operation. If interrupted, resume banner appears. Auto-cleanup after 30 days.
-
-**Profiles**: Save custom sync configurations as named profiles.
-**Templates**: Export/import sync configurations as .aerosync files for sharing or backup.
-**Rollback Snapshots**: Create/delete snapshots before risky sync operations (restore coming in v2.3).
-**Multi-Path**: Configure multiple local↔remote path pairs in a single sync profile.
-**Watcher**: Real-time filesystem watcher with health indicator (inotify capacity warnings on Linux).`,
+**Tools in the AeroSync window**: templates (export and import .aerosync files and .aeroftp-script scripts for aeroftp-cli), multi-path pairs, rollback snapshots, journal history (an interrupted run can be resumed), and the scheduler.`,
     },
 
     // 5: AeroVault

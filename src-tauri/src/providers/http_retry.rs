@@ -106,9 +106,22 @@ pub async fn send_with_retry(
         .map(bytes::Bytes::copy_from_slice);
     // The first attempt sends the request exactly as built, so a streaming
     // body (a multipart form over a file, for instance) goes out intact; only
-    // a retry rebuilds from the captured parts, and a body that could not be
-    // captured as bytes is not replayable, exactly as before this helper
-    // learned to rebuild.
+    // a retry rebuilds from the captured parts. A body that could not be
+    // captured as bytes is consumed by that first attempt and gets no retry:
+    // rebuilt from method, URL and headers alone it would go out empty under
+    // the original Content-Type and Content-Length, and a server could store
+    // that empty upload and acknowledge it.
+    let replayable = request.body().is_none() || body_bytes.is_some();
+    let single_attempt;
+    let config = if replayable {
+        config
+    } else {
+        single_attempt = HttpRetryConfig {
+            max_retries: 0,
+            ..config.clone()
+        };
+        &single_attempt
+    };
     let mut first = Some(request);
     send_with_retry_replayable(
         client,
@@ -339,5 +352,92 @@ mod tests {
         let result = send_with_retry(&client, request, &HttpRetryConfig::default()).await;
         assert!(result.is_err(), "a closed connection must surface an error");
         assert_eq!(guard.totals(), (0, 0), "no first byte, no sample");
+    }
+
+    /// A server that reads every request body to the end, answers 503 to the
+    /// first request and 200 to the others, and records the body length of
+    /// each request it received.
+    async fn busy_once_server() -> (String, std::sync::Arc<std::sync::Mutex<Vec<usize>>>) {
+        use futures_util::StreamExt;
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<usize>>> = Default::default();
+        let recorded = std::sync::Arc::clone(&seen);
+        let app = axum::Router::new().route(
+            "/up",
+            axum::routing::post(move |body: axum::body::Body| {
+                let recorded = std::sync::Arc::clone(&recorded);
+                async move {
+                    let mut stream = body.into_data_stream();
+                    let mut len = 0;
+                    while let Some(Ok(chunk)) = stream.next().await {
+                        len += chunk.len();
+                    }
+                    let mut seen = recorded.lock().unwrap();
+                    seen.push(len);
+                    if seen.len() == 1 {
+                        axum::http::StatusCode::SERVICE_UNAVAILABLE
+                    } else {
+                        axum::http::StatusCode::OK
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        (format!("http://{addr}/up"), seen)
+    }
+
+    fn fast_retries() -> HttpRetryConfig {
+        HttpRetryConfig {
+            max_retries: 2,
+            base_delay_ms: 1,
+            max_delay_ms: 5,
+            backoff_multiplier: 1.0,
+        }
+    }
+
+    /// A streamed body cannot be sent twice. The 503 is returned as it came,
+    /// after one request that carried the whole body; it used to be followed
+    /// by a retry with the same headers and no body, which the server
+    /// answered 200.
+    #[tokio::test]
+    async fn a_streamed_body_is_sent_once_and_never_retried_empty() {
+        let (url, seen) = busy_once_server().await;
+        let client = Client::new();
+        let chunks = futures_util::stream::iter([
+            Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"stre")),
+            Ok(bytes::Bytes::from_static(b"amed")),
+        ]);
+        let request = client
+            .post(&url)
+            .body(reqwest::Body::wrap_stream(chunks))
+            .build()
+            .unwrap();
+        let response = send_with_retry(&client, request, &fast_retries())
+            .await
+            .unwrap();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [8],
+            "requests and their body lengths"
+        );
+        assert_eq!(response.status(), 503);
+    }
+
+    /// Positive control: a body held as bytes is still retried, whole.
+    #[tokio::test]
+    async fn a_bytes_body_is_retried_with_its_payload() {
+        let (url, seen) = busy_once_server().await;
+        let client = Client::new();
+        let request = client.post(&url).body("payload").build().unwrap();
+        let response = send_with_retry(&client, request, &fast_retries())
+            .await
+            .unwrap();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [7, 7],
+            "requests and their body lengths"
+        );
+        assert_eq!(response.status(), 200);
     }
 }

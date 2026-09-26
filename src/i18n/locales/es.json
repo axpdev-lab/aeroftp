@@ -2142,9 +2142,6 @@
                 "disk_error": "Error de disco",
                 "unknown": "Desconocido"
             },
-            "parallelStreams": "Flujos",
-            "parallelSequential": "Secuencial",
-            "parallelStreamLabel": "flujos",
             "schedulerTitle": "Programador de sincronización",
             "schedulerEnabled": "Activar programador",
             "schedulerResume": "Reanudar",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Backend",
             "watcherInotifyWarning": "Alto recuento de directorios - puede exceder el límite de inotify",
             "watcherPolling": "Usando modo poll (más lento pero universal)",
-            "compressionToggle": "Compresión",
-            "compressionAuto": "Auto",
-            "compressionOn": "Activado",
-            "compressionOff": "Desactivado",
             "multiPathAdd": "Agregar par de rutas",
             "multiPathEmpty": "No hay pares de rutas configurados",
             "templateExport": "Exportar plantilla",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Restaurar",
             "rollbackEmpty": "No hay instantáneas disponibles",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 flujos + TODA la seguridad deshabilitada - sin registro, sin verificación, sin reintento",
+            "speedManiacTooltip": "Sin registro, sin verificación durante la ejecución, límites de ancho de banda ignorados, 2 reintentos rápidos. Los archivos descargados se verifican después de la ejecución.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Sin registro. Sin verificación. Sin reintento. Velocidad máxima. Si algo falla, se pierde. Se ejecutará un escaneo de verificación completo después de que se complete la sincronización.",
+            "maniacWarningBody": "Sin registro ni verificación durante la ejecución, los límites de ancho de banda se ignoran y un archivo fallido solo tiene 2 reintentos rápidos. Después de la ejecución, los archivos descargados se verifican; los subidos no.",
             "maniacConfirm": "Entiendo, continuar",
             "maniacPostSyncReport": "Verificación post-sincronización: {ok} OK, {mismatches} discrepancias, {failed} fallidos",
             "rollback": "Revertir",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Guardar la configuración de sincronización actual como plantilla .aerosync reutilizable",
             "templateImportDesc": "Cargar una plantilla .aerosync para aplicar su configuración de sincronización",
             "maniacActive": "Activo",
-            "speedStreams": "{count} flujos",
             "actionUploaded": "Subido",
             "actionDownloaded": "Descargado",
             "actionDeleted": "Eliminado",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Campos de metadata no reconocidos",
             "aerosyncScriptApplyButton": "Guardar como preset",
             "aerosyncScriptAppliedToast": "Preset importado guardado. Abre AeroSync para utilizarlo.",
-            "compressionHint": "Comprime los datos durante la transferencia para acelerarla; no almacena archivos comprimidos en el destino. Auto omite los formatos que ya están comprimidos (zip, jpg, mp4 y similares).",
             "canaryDryRun": "No se transfiere nada: muestra una vista previa de lo que haría una sincronización completa, calculada a partir de la muestra. Es el equivalente gráfico del comando aeroftp-cli sync --dry-run (y de --dry-run de rclone).",
-            "templateImportPathPairs": "Esta plantilla define {count} pares de rutas utilizables. AeroFTP aplica exactamente uno, así que no se ha importado nada. Edita la plantilla para dejar un solo par y vuelve a importarla.",
+            "templateImportPathPairs": "Pares de rutas (local/remota) utilizables en esta plantilla: {count}. Una ventana de AeroSync trabaja con exactamente un par, así que no se ha importado nada. Edita la plantilla para dejar un solo par y luego vuelve a importarla.",
             "templateNamePlaceholder": "p. ej. Copia de seguridad nocturna en S3",
             "templateDescPlaceholder": "Para qué sirve esta plantilla (opcional)"
         },
@@ -5070,7 +5061,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Comparar",
             "tabPlan": "Plan",
-            "tabSync": "Sincronizar",
+            "tabSync": "Espejo local",
             "compareWontFitTitle": "Por encima de los límites de {name}: {count}",
             "compareWontFitHint": "Estos archivos superan el límite de tamaño documentado del proveedor, o su nombre o ruta es más largo de lo que acepta. Una sincronización fallaría con ellos: renómbralos, muévelos o divídelos antes.",
             "compareWontFitTooLarge": "{size}, límite {limit}",
@@ -5078,6 +5069,78 @@
             "compareWontFitNameChars": "nombre de más de {count} caracteres",
             "compareWontFitPathBytes": "ruta de más de {count} bytes",
             "compareWontFitPathChars": "ruta de más de {count} caracteres",
+            "presetDefault": "Predeterminado",
+            "actionLabel": {
+                "skip": "Omitir",
+                "copy-to-right": "Copiar → derecha",
+                "copy-to-left": "Copiar ← izquierda",
+                "overwrite-right": "Sobrescribir a la derecha",
+                "overwrite-left": "Sobrescribir a la izquierda",
+                "delete-right": "Eliminar a la derecha",
+                "delete-left": "Eliminar a la izquierda",
+                "rename-to-right": "Conservar ambos → derecha",
+                "rename-to-left": "Conservar ambos ← izquierda",
+                "conflict-skip": "Conflicto (omitir)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Omitir",
+                    "tagline": "Deja los conflictos intactos en ambos lados."
+                },
+                "rename": {
+                    "label": "Conservar ambos",
+                    "tagline": "Copia la versión de origen con un sufijo de fecha y hora."
+                },
+                "newer-wins": {
+                    "label": "Gana el más reciente",
+                    "tagline": "El lado con la fecha de modificación más reciente sobrescribe al otro."
+                },
+                "older-wins": {
+                    "label": "Gana el más antiguo",
+                    "tagline": "El lado más antiguo sobrescribe al más reciente (para archivado)."
+                },
+                "larger-wins": {
+                    "label": "Gana el más grande",
+                    "tagline": "El lado con el tamaño mayor sobrescribe al menor."
+                },
+                "smaller-wins": {
+                    "label": "Gana el más pequeño",
+                    "tagline": "El lado más pequeño sobrescribe al más grande."
+                }
+            },
+            "bucketName": {
+                "only-left": "Solo a la izquierda",
+                "newer-left": "Más reciente a la izquierda",
+                "only-right": "Solo a la derecha",
+                "newer-right": "Más reciente a la derecha",
+                "conflict": "Conflicto",
+                "same": "Iguales"
+            },
+            "bucketDescription": {
+                "only-left": "Presente en el panel de origen, ausente en el destino.",
+                "newer-left": "Presente en ambos lados, la copia de origen tiene la marca de tiempo más reciente.",
+                "only-right": "Presente en el destino, ausente en el panel de origen.",
+                "newer-right": "Presente en ambos lados, la copia de destino tiene la marca de tiempo más reciente.",
+                "conflict": "Ambos lados tienen la entrada, pero el tamaño difiere con marcas de tiempo comparables.",
+                "same": "Las entradas coinciden según el criterio de comparación activo."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Solo tamaño",
+                "mtimeOnly": "Solo marca de tiempo",
+                "sizeAndMtime": "Tamaño + marca de tiempo"
+            },
+            "compareTable": {
+                "name": "Nombre",
+                "leftSize": "Tamaño a la izquierda",
+                "rightSize": "Tamaño a la derecha",
+                "leftModified": "Modificado a la izquierda",
+                "rightModified": "Modificado a la derecha",
+                "folder": "carpeta",
+                "noEntries": "No hay entradas.",
+                "countedNotListed": "Contados pero no listados: el análisis informa de los archivos idénticos como un total en lugar de una fila por cada uno, para que los árboles grandes sigan siendo rápidos.",
+                "shown": "Mostrados: {shown} de {total}",
+                "moreNotListed": "Contados pero no listados: {count}"
+            },
             "compareUnavailable": "Abre un segundo panel o una conexión remota para comparar.",
             "planUnavailable": "Se requiere un resultado de comparación antes de elegir un preset. Abre primero la pestaña Comparar.",
             "totalEntries": "Entradas totales",
@@ -5114,7 +5177,7 @@
             "ignoredForMirror": "IGNORADO PARA MIRROR",
             "versionedBackup": "Copia de seguridad versionada",
             "enable": "Habilitar",
-            "versionedBackupHint": "Captura la copia de destino en este directorio antes de cada sobrescritura o eliminación.",
+            "versionedBackupHint": "Antes de sobrescribir o eliminar un archivo, su copia en el destino se mueve a {dir}, en una carpeta con el nombre de la fecha y hora de la ejecución.",
             "actionable": "Accionable",
             "reportCopiedRight": "Copiados a la derecha",
             "reportCopiedLeft": "Copiados a la izquierda",
@@ -5136,7 +5199,6 @@
             "executePreset": "Ejecutar preset",
             "execute": "Ejecutar",
             "sync": {
-                "title": "AeroSync: de local a local",
                 "description": "Refleja un directorio de origen local en un destino local. Los archivos ≥ 1 MiB usan el motor delta integrado; los archivos más pequeños usan copia directa.",
                 "source": "Origen",
                 "destination": "Destino",
@@ -5192,7 +5254,7 @@
             "speedMode_fast": "Rápido",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extremo",
-            "speedModeHint": "Flujos paralelos + preset de compresión aplicado a la ejecución.",
+            "speedModeHint": "Define la política de reintentos. A partir de Rápido, los archivos modificados se envían como deltas donde el servidor lo admite (SFTP con rsync).",
             "verifyPolicy": "Política de verificación",
             "verifyPolicy_none": "Ninguna",
             "verifyPolicy_size_only": "Solo tamaño",
@@ -5237,7 +5299,45 @@
             "errorCorrection": "Corrección de errores",
             "errorCorrectionHint": "Guarda un pequeño archivo de paridad .aerocorrect junto a cada archivo de copia de seguridad, para que una copia remota dañada por bit-rot pueda repararse en el siguiente pull, sin el original.",
             "outOfSyncItemsPct": "Elementos sin sincronizar",
-            "outOfSyncBytesPct": "Bytes sin sincronizar"
+            "outOfSyncBytesPct": "Bytes sin sincronizar",
+            "exclude": {
+                "label": "Patrones de exclusión",
+                "hint": "Separados por coma o salto de línea, por ejemplo cache, *.tmp o build/output. Siempre excluidos: {list}."
+            },
+            "cli": {
+                "title": "La misma ejecución desde la línea de comandos",
+                "copy": "Copiar",
+                "copied": "Copiado",
+                "copyFailed": "Error al copiar",
+                "none": "Sin equivalente exacto en la CLI: {reason}",
+                "reason": {
+                    "localPair": "para dos carpetas locales la CLI ejecuta su propio espejo, que ignora la dirección, el borrado y la configuración de conflictos.",
+                    "unsavedServer": "esta conexión no es un servidor guardado, y la CLI necesita uno para indicarlo con --profile.",
+                    "overwritesNewer": "la CLI sobrescribe una copia de destino de distinto tamaño aunque sea más reciente, algo que este preset nunca hace.",
+                    "twoWay": "la CLI trata dos copias del mismo tamaño con horas distintas como conflicto y sobrescribe la más antigua; este plan las considera iguales dentro de 30 segundos.",
+                    "canary": "la CLI no tiene prueba Canary.",
+                    "versionedBackup": "la CLI aún no guarda las copias de seguridad con la misma estructura.",
+                    "transferBudget": "cuando se agota el presupuesto este plan se detiene, borrados incluidos; la CLI solo limita las transferencias y sigue borrando.",
+                    "remotePath": "la CLI resuelve la carpeta remota respecto a la carpeta inicial del servidor guardado y llegaría a otra distinta.",
+                    "exclusions": "la CLI aplica los patrones de exclusión de otra forma, así que no omitiría todo lo que omite este plan (node_modules, .git y el resto)."
+                }
+            },
+            "rescan": "Volver a escanear",
+            "rescanNeeded": "La comparación se hizo con otras exclusiones u otra carpeta de copia de seguridad. Vuelve a escanear antes de ejecutar.",
+            "backup": {
+                "checking": "Comprobando cómo mueve los archivos este servidor...",
+                "serverCopy": "Este servidor no puede mover: cada copia conservada se copia en el servidor y después se elimina. Eso cuesta una copia completa de cada archivo conservado, en dos pasos separados.",
+                "clientCopy": "Este servidor no puede mover: cada copia conservada se descarga, se sube a la carpeta de copia de seguridad y después se elimina. Cada archivo conservado pasa dos veces por este equipo, en pasos separados.",
+                "unsupported": "Este servidor no puede mover archivos a otra carpeta, así que no puede conservar copias antiguas. Desactiva la copia de seguridad versionada para ejecutar.",
+                "checkFailed": "No se pudo preguntar al servidor cómo mueve los archivos. Vuelve a conectar o desactiva la copia de seguridad versionada para ejecutar.",
+                "nested": "La carpeta de copia de seguridad está dentro de {folder}, donde escribe esta sincronización. Elige una carpeta fuera de ella.",
+                "invalid": {
+                    "empty": "Introduce un nombre para la carpeta de copia de seguridad.",
+                    "absolute": "Usa una carpeta dentro del destino, no una ruta absoluta.",
+                    "parent": "La carpeta de copia de seguridad no puede contener '..'.",
+                    "name": "Este nombre de carpeta de copia de seguridad no es válido."
+                }
+            }
         },
         "accountLock": {
             "title": "Elige una cuenta",

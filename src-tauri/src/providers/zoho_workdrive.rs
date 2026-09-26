@@ -612,6 +612,13 @@ pub struct ZohoWorkdriveProvider {
     /// Server profile identifier owning these OAuth tokens. Empty when the
     /// caller has not bound a profile (legacy singleton key path). Issue #214.
     profile_id: String,
+    /// Test-only base URL standing in for both the API domain and the upload
+    /// server (`http://127.0.0.1:port`). Production paths never set it.
+    #[cfg(test)]
+    endpoint_override: Option<String>,
+    /// Test-only access token for local HTTP fixtures (bypasses the vault).
+    #[cfg(test)]
+    test_access_token: Option<String>,
 }
 
 /// Pick rclone's `root_folder_id` from a completed `discover_team`.
@@ -666,6 +673,10 @@ impl ZohoWorkdriveProvider {
             team_user_id: None,
             team_folders: Vec::new(),
             profile_id: String::new(),
+            #[cfg(test)]
+            endpoint_override: None,
+            #[cfg(test)]
+            test_access_token: None,
         }
     }
 
@@ -713,6 +724,11 @@ impl ZohoWorkdriveProvider {
     /// Get authorization header with valid token
     async fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
         use secrecy::ExposeSecret;
+        #[cfg(test)]
+        if let Some(token) = &self.test_access_token {
+            return HeaderValue::from_str(&format!("Zoho-oauthtoken {token}"))
+                .map_err(|_| ProviderError::Other("Invalid token characters".into()));
+        }
         let token = self
             .oauth_manager
             .get_valid_token(&self.oauth_config())
@@ -724,7 +740,20 @@ impl ZohoWorkdriveProvider {
 
     /// API base URL
     fn api_base(&self) -> String {
+        #[cfg(test)]
+        if let Some(base) = &self.endpoint_override {
+            return format!("{base}/workdrive/api/v1");
+        }
         self.config.api_base()
+    }
+
+    /// Stream upload endpoint on the region's upload server.
+    fn stream_upload_url(&self, host: &str) -> String {
+        #[cfg(test)]
+        if let Some(base) = &self.endpoint_override {
+            return format!("{base}/workdrive-api/v1/stream/upload");
+        }
+        format!("https://{host}/workdrive-api/v1/stream/upload")
     }
 
     /// Upload through the stream API of the upload server (Upload Large File
@@ -740,7 +769,7 @@ impl ZohoWorkdriveProvider {
         total_size: u64,
         body: reqwest::Body,
     ) -> Result<(), ProviderError> {
-        let url = format!("https://{host}/workdrive-api/v1/stream/upload");
+        let url = self.stream_upload_url(host);
         let resp = self
             .client
             .post(&url)
@@ -2679,20 +2708,17 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
-        let stream = tokio_util::io::ReaderStream::new(file);
-        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
-            stream,
-            crate::transfer_dag::governor::TransferDirection::Upload,
-        ));
+        // Both routes stream the file and report the bytes as they go out;
+        // 100 percent waits for Zoho's answer (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
+        let body = progress.file_body(file);
 
         // #347: above 250 MB the single-request endpoint answers 413, so a
         // large file goes to the upload server's stream API instead.
         if let Some(host) = large_upload_host(&self.config, total_size) {
             self.stream_upload(host, &parent_id, file_name, total_size, body)
                 .await?;
-            if let Some(cb) = on_progress {
-                cb(total_size, total_size);
-            }
+            progress.complete();
             info!(
                 "Uploaded {} to {} via stream upload (parent_id={})",
                 local_path, remote_path, parent_id
@@ -2743,9 +2769,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             log_preview(&resp_text, 300)
         );
 
-        if let Some(cb) = on_progress {
-            cb(total_size, total_size);
-        }
+        progress.complete();
 
         info!(
             "Uploaded {} to {} (parent_id={})",
@@ -3710,6 +3734,78 @@ mod tests {
 
     fn config(region: &str) -> ZohoWorkdriveConfig {
         ZohoWorkdriveConfig::new("cid", "csec", region)
+    }
+
+    /// Upload `file` to a local fixture that answers `status` and `body` on
+    /// both upload routes; returns the outcome and every progress update.
+    async fn upload_against_fixture(
+        file: &std::path::Path,
+        remote: &str,
+        status: u16,
+        body: &str,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, Route};
+        let (base, server) = serve(vec![
+            Route::post("/workdrive/api/v1/upload", status, body),
+            Route::post("/workdrive-api/v1/stream/upload", status, body),
+        ])
+        .await;
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.endpoint_override = Some(base);
+        provider.test_access_token = Some("test-token".into());
+        provider.connected = true;
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.to_str().unwrap(), remote, Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// `POST /upload`, the single-request route: the file goes out in the
+    /// reader's chunks and the bar follows them. Before this, the callback ran
+    /// once, `(total, total)`, after the response.
+    #[tokio::test]
+    async fn single_request_upload_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), vec![3u8; 300 * 1024]).unwrap();
+        let (outcome, updates) =
+            upload_against_fixture(file.path(), "/small.bin", 200, r#"{"data":[]}"#).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) =
+            upload_against_fixture(file.path(), "/small.bin", 500, r#"{"errors":[]}"#).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
+    }
+
+    /// The stream route above 250 MB (#933), on a sparse file (no disk blocks,
+    /// read as zeros). 100 percent waits for the answer that lists the file:
+    /// a success status without it is a failed upload and must not show a
+    /// completed one.
+    #[tokio::test]
+    async fn stream_upload_over_250_mb_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let size = ZOHO_SINGLE_UPLOAD_MAX_BYTES + 1;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        file.as_file().set_len(size).unwrap();
+        let (outcome, updates) = upload_against_fixture(
+            file.path(),
+            "/big.bin",
+            200,
+            r#"{"data":[{"attributes":{"file_name":"big.bin"},"type":"files"}]}"#,
+        )
+        .await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_real_progress(&updates, size, true);
+
+        let (outcome, updates) =
+            upload_against_fixture(file.path(), "/big.bin", 200, r#"{"data":[]}"#).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, size, false);
     }
 
     /// #347: above the documented 250 MB of `POST /upload` (which answered a

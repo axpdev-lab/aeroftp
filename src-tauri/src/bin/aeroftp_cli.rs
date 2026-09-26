@@ -47782,6 +47782,15 @@ fn plan_sync_orphan_deletes<'a>(
     Ok(orphans)
 }
 
+/// With `--profile`, `sync LOCAL REMOTE` puts the paths in the first two
+/// positional slots (the URL slot and the local one). They move one slot
+/// along unless the first is a real URL or the `_` placeholder. The AeroSync
+/// Plan tab builds its command line for this rule; see
+/// `aerosync_plan_cli_line_tests`.
+fn profile_shifts_positionals(has_profile: bool, url: &str) -> bool {
+    has_profile && !url.contains("://") && url != "_"
+}
+
 // `use_aerorsync_batch` is only consumed inside an `aerorsync`-gated
 // block below; tolerate the dead argument when the feature is off.
 #[cfg_attr(not(feature = "aerorsync"), allow(unused_variables))]
@@ -61254,7 +61263,7 @@ async fn dispatch_sync(
                 5
             }
             Ok(error_correction_pct) => {
-                let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                let (u, l, r) = if profile_shifts_positionals(cli.profile.is_some(), url) {
                     ("_", url.as_str(), local.as_str())
                 } else {
                     (url.as_str(), local.as_str(), remote.as_str())
@@ -80442,5 +80451,152 @@ mod tests {
         )
         .await;
         assert_eq!(code, None, "--no-clobber keeps its fail-open reading");
+    }
+}
+
+/// The AeroSync Plan tab shows an `aeroftp-cli sync` line for the run it is
+/// about to do (`src/utils/aeroSyncCliCommand.ts`). This parses every fixture
+/// command with the real clap definition and checks it lands in the fields
+/// the Plan meant: the two paths in the slots `cmd_sync` reads them from
+/// under `--profile`, the direction, `--delete`, every exclusion and the
+/// error-correction level. The same fixture is asserted on the TypeScript
+/// side, so a change on either side that breaks the line fails here.
+#[cfg(test)]
+mod aerosync_plan_cli_line_tests {
+    use super::*;
+
+    /// Parsing the full `Cli` needs more stack than a test thread has, as for
+    /// the other parse tests in this file. A panic inside is re-raised as is.
+    fn on_big_stack(body: impl FnOnce() + Send + 'static) {
+        let handle = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(body)
+            .unwrap();
+        if let Err(panic) = handle.join() {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    #[test]
+    fn every_fixture_command_parses_into_the_run_the_plan_meant() {
+        on_big_stack(every_fixture_command_parses);
+    }
+
+    fn every_fixture_command_parses() {
+        let cases: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/aerosync/cli-commands.json"
+        ))
+        .expect("fixture is JSON");
+        let cases = cases.as_array().expect("fixture is a list");
+        assert!(cases.len() >= 2, "an empty fixture proves nothing");
+        for case in cases {
+            let name = case["name"].as_str().unwrap();
+            let input = &case["input"];
+            let argv: Vec<String> = case["argv"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect();
+            let cli = Cli::try_parse_from(&argv)
+                .unwrap_or_else(|e| panic!("{name}: clap refused the Plan's command: {e}"));
+            assert_eq!(
+                cli.profile.as_deref(),
+                input["profileName"].as_str(),
+                "{name}"
+            );
+            let Commands::Sync {
+                url,
+                local,
+                remote,
+                direction,
+                delete,
+                exclude,
+                error_correction,
+                dry_run,
+                ..
+            } = &cli.command
+            else {
+                panic!("{name}: not a sync command");
+            };
+            // The slots cmd_sync reads, by the rule the dispatch applies.
+            let (l, r) = if profile_shifts_positionals(cli.profile.is_some(), url) {
+                (url.as_str(), local.as_str())
+            } else {
+                (local.as_str(), remote.as_str())
+            };
+            assert_eq!(
+                l,
+                input["localPath"].as_str().unwrap(),
+                "{name}: local path"
+            );
+            assert_eq!(
+                r,
+                input["remotePath"].as_str().unwrap(),
+                "{name}: remote path"
+            );
+            let local_is_left = input["pairKind"] == "local-remote";
+            let towards_right = input["direction"] == "left-to-right";
+            let expected_direction = if towards_right == local_is_left {
+                "upload"
+            } else {
+                "download"
+            };
+            assert_eq!(direction, expected_direction, "{name}");
+            assert!(*delete, "{name}: Mirror deletes");
+            assert!(!*dry_run, "{name}");
+            let expected_excludes: Vec<String> = input["excludes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect();
+            assert_eq!(exclude, &expected_excludes, "{name}");
+            let expected_ec = if expected_direction == "upload" {
+                input["errorCorrectionPct"].as_u64().map(|p| p.to_string())
+            } else {
+                None
+            };
+            assert_eq!(error_correction, &expected_ec, "{name}: error correction");
+            if let Some(level) = error_correction {
+                assert_eq!(
+                    parse_sync_error_correction_level_pct(Some(level)),
+                    Ok(Some(expected_ec.as_deref().unwrap().parse().unwrap())),
+                    "{name}: the CLI reads the level as the percentage the Plan set"
+                );
+            }
+        }
+    }
+
+    /// Without the equals sign clap takes the flag's default level and hands
+    /// the number to the next free positional, which is why the Plan writes
+    /// `--error-correction=15` as one word.
+    #[test]
+    fn error_correction_needs_the_equals_sign() {
+        on_big_stack(error_correction_spaced);
+    }
+
+    fn error_correction_spaced() {
+        let spaced = Cli::try_parse_from([
+            "aeroftp-cli",
+            "--profile",
+            "S",
+            "sync",
+            "/l",
+            "/r",
+            "--error-correction",
+            "15",
+        ])
+        .unwrap();
+        let Commands::Sync {
+            remote,
+            error_correction,
+            ..
+        } = &spaced.command
+        else {
+            panic!("not a sync command");
+        };
+        assert_eq!(error_correction.as_deref(), Some("medium"));
+        assert_eq!(remote, "15");
     }
 }

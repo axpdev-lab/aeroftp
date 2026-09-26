@@ -2142,9 +2142,6 @@
                 "disk_error": "Disk hatası",
                 "unknown": "Bilinmiyor"
             },
-            "parallelStreams": "Akışlar",
-            "parallelSequential": "Sıralı",
-            "parallelStreamLabel": "akış",
             "schedulerTitle": "Senkronizasyon Zamanlayıcı",
             "schedulerEnabled": "Zamanlayıcıyı Etkinleştir",
             "schedulerResume": "Devam Et",
@@ -2159,10 +2156,6 @@
             "watcherBackend": "Arka Uç",
             "watcherInotifyWarning": "Yüksek dizin sayısı - inotify sınırını aşabilir",
             "watcherPolling": "Yoklama modu kullanılıyor (daha yavaş ama evrensel)",
-            "compressionToggle": "Sıkıştırma",
-            "compressionAuto": "Otomatik",
-            "compressionOn": "Açık",
-            "compressionOff": "Kapalı",
             "multiPathAdd": "Yol Çifti Ekle",
             "multiPathEmpty": "Yapılandırılmış yol çifti yok",
             "templateExport": "Şablonu Dışa Aktar",
@@ -2175,9 +2168,9 @@
             "rollbackRestore": "Geri Yükle",
             "rollbackEmpty": "Kullanılabilir anlık görüntü yok",
             "speedManiac": "Maniac",
-            "speedManiacTooltip": "8 akış + TÜM güvenlik devre dışı - günlük yok, doğrulama yok, yeniden deneme yok",
+            "speedManiacTooltip": "Günlük yok, çalışma sırasında doğrulama yok, bant genişliği sınırları yok sayılır, 2 hızlı yeniden deneme. İndirilen dosyalar çalışmadan sonra doğrulanır.",
             "maniacWarningTitle": "MANIAC MODE",
-            "maniacWarningBody": "Günlük yok. Doğrulama yok. Yeniden deneme yok. Maksimum ham hız. Bir şey başarısız olursa kaybolur. Senkronizasyon tamamlandıktan sonra tam bir doğrulama taraması çalışacak.",
+            "maniacWarningBody": "Çalışma sırasında günlük ve doğrulama yok, bant genişliği sınırları yok sayılır ve başarısız bir dosya yalnızca 2 hızlı yeniden deneme hakkı alır. Çalışmadan sonra indirilen dosyalar doğrulanır; yüklenen dosyalar doğrulanmaz.",
             "maniacConfirm": "Anlıyorum, devam et",
             "maniacPostSyncReport": "Senkronizasyon sonrası doğrulama: {ok} tamam, {mismatches} uyumsuz, {failed} başarısız",
             "rollback": "Geri Al",
@@ -2188,7 +2181,6 @@
             "templateExportDesc": "Mevcut senkronizasyon yapılandırmasını yeniden kullanılabilir .aerosync şablonu olarak kaydet",
             "templateImportDesc": "Senkronizasyon yapılandırmasını uygulamak için bir .aerosync şablonu yükle",
             "maniacActive": "Etkin",
-            "speedStreams": "{count} akış",
             "actionUploaded": "Yüklendi",
             "actionDownloaded": "İndirildi",
             "actionDeleted": "Silindi",
@@ -2246,9 +2238,8 @@
             "aerosyncScriptUnmappedFields": "Tanimlanmayan metadata alanlari",
             "aerosyncScriptApplyButton": "Preset olarak kaydet",
             "aerosyncScriptAppliedToast": "İçe aktarılan preset kaydedildi. Kullanmak için AeroSync'i açın.",
-            "compressionHint": "Aktarımı hızlandırmak için verileri aktarım sırasında sıkıştırır; hedefte sıkıştırılmış dosyalar saklamaz. Auto, zaten sıkıştırılmış biçimleri atlar (zip, jpg, mp4 ve benzerleri).",
             "canaryDryRun": "Hiçbir şey aktarılmaz: bu, tam bir eşitlemenin ne yapacağının örnekten hesaplanan bir önizlemesidir. CLI komutu aeroftp-cli sync --dry-run (ve rclone'un --dry-run) komutunun grafik karşılığıdır.",
-            "templateImportPathPairs": "Bu şablon {count} kullanılabilir yol çifti tanımlıyor. AeroFTP tam olarak bir tanesini uygular, bu yüzden hiçbir şey içe aktarılmadı. Şablonu tek bir yol çifti kalacak şekilde düzenleyin, sonra yeniden içe aktarın.",
+            "templateImportPathPairs": "Bu şablondaki kullanılabilir yerel/uzak yol çiftleri: {count}. Bir AeroSync penceresi tam olarak bir çiftle çalışır, bu yüzden hiçbir şey içe aktarılmadı. Şablonu tek bir çift kalacak şekilde düzenleyin, ardından yeniden içe aktarın.",
             "templateNamePlaceholder": "ör. S3'e gecelik yedekleme",
             "templateDescPlaceholder": "Bu şablonun ne için olduğu (isteğe bağlı)"
         },
@@ -5070,7 +5061,7 @@
             "toolbarButton": "AeroSync",
             "tabCompare": "Karşılaştır",
             "tabPlan": "Plan",
-            "tabSync": "Senkronize Et",
+            "tabSync": "Yerel ayna",
             "compareWontFitTitle": "{name} sınırlarının üstünde: {count}",
             "compareWontFitHint": "Bu dosyalar sağlayıcının belgelenmiş boyut sınırını aşıyor ya da adları veya yolları kabul edilenden uzun. Eşitleme bunlarda başarısız olur: önce yeniden adlandırın, taşıyın veya bölün.",
             "compareWontFitTooLarge": "{size}, sınır {limit}",
@@ -5078,6 +5069,78 @@
             "compareWontFitNameChars": "ad {count} karakteri aşıyor",
             "compareWontFitPathBytes": "yol {count} baytı aşıyor",
             "compareWontFitPathChars": "yol {count} karakteri aşıyor",
+            "presetDefault": "Varsayılan",
+            "actionLabel": {
+                "skip": "Atla",
+                "copy-to-right": "Kopyala → sağa",
+                "copy-to-left": "Kopyala ← sola",
+                "overwrite-right": "Sağdakinin üzerine yaz",
+                "overwrite-left": "Soldakinin üzerine yaz",
+                "delete-right": "Sağdakini sil",
+                "delete-left": "Soldakini sil",
+                "rename-to-right": "İkisini de koru → sağa",
+                "rename-to-left": "İkisini de koru ← sola",
+                "conflict-skip": "Çakışma (atla)"
+            },
+            "conflictPolicyOption": {
+                "skip": {
+                    "label": "Atla",
+                    "tagline": "Çakışmaları her iki tarafta da olduğu gibi bırakır."
+                },
+                "rename": {
+                    "label": "İkisini de koru",
+                    "tagline": "Kaynak taraftaki sürümü tarih ve saat içeren bir sonekle kopyalar."
+                },
+                "newer-wins": {
+                    "label": "Yeni olan kazanır",
+                    "tagline": "Değiştirilme zamanı daha yeni olan taraf diğerinin üzerine yazar."
+                },
+                "older-wins": {
+                    "label": "Eski olan kazanır",
+                    "tagline": "Daha eski taraf yeni olanın üzerine yazar (arşivleme amaçlı)."
+                },
+                "larger-wins": {
+                    "label": "Büyük olan kazanır",
+                    "tagline": "Boyutu daha büyük olan taraf küçük olanın üzerine yazar."
+                },
+                "smaller-wins": {
+                    "label": "Küçük olan kazanır",
+                    "tagline": "Daha küçük taraf büyük olanın üzerine yazar."
+                }
+            },
+            "bucketName": {
+                "only-left": "Yalnızca solda",
+                "newer-left": "Solda daha yeni",
+                "only-right": "Yalnızca sağda",
+                "newer-right": "Sağda daha yeni",
+                "conflict": "Çakışma",
+                "same": "Aynı"
+            },
+            "bucketDescription": {
+                "only-left": "Kaynak panelde var, hedefte yok.",
+                "newer-left": "Her iki tarafta da var, kaynaktaki kopyanın zaman damgası daha yeni.",
+                "only-right": "Hedefte var, kaynak panelde yok.",
+                "newer-right": "Her iki tarafta da var, hedefteki kopyanın zaman damgası daha yeni.",
+                "conflict": "Giriş her iki tarafta da var, ancak zaman damgaları benzer olduğu hâlde boyutlar farklı.",
+                "same": "Girişler etkin karşılaştırma politikasına göre eşleşiyor."
+            },
+            "comparePolicy": {
+                "sizeOnly": "Yalnızca boyut",
+                "mtimeOnly": "Yalnızca zaman damgası",
+                "sizeAndMtime": "Boyut + zaman damgası"
+            },
+            "compareTable": {
+                "name": "Ad",
+                "leftSize": "Sol boyut",
+                "rightSize": "Sağ boyut",
+                "leftModified": "Sol değiştirilme tarihi",
+                "rightModified": "Sağ değiştirilme tarihi",
+                "folder": "klasör",
+                "noEntries": "Giriş yok.",
+                "countedNotListed": "Sayıldı ancak listelenmedi: büyük ağaçların hızlı kalması için tarama, aynı dosyaları her biri için ayrı bir satır yerine toplam olarak bildirir.",
+                "shown": "Gösterilen: {total} içinden {shown}",
+                "moreNotListed": "Sayıldı ancak listelenmedi: {count}"
+            },
             "compareUnavailable": "Karşılaştırmak için ikinci bir panel veya uzak bağlantı açın.",
             "planUnavailable": "Bir önayar seçmeden önce karşılaştırma sonucu gerekir. Önce Karşılaştır sekmesini açın.",
             "totalEntries": "Toplam giriş",
@@ -5114,7 +5177,7 @@
             "ignoredForMirror": "YANSITMA İÇİN YOK SAYILDI",
             "versionedBackup": "Sürümlü yedekleme",
             "enable": "Etkinleştir",
-            "versionedBackupHint": "Her üzerine yazma veya silme işleminden önce hedef kopyasını bu dizinde yakalayın.",
+            "versionedBackupHint": "Bir dosyanın üzerine yazılmadan veya silinmeden önce, hedefteki kopyası {dir} içine, çalıştırmanın tarih ve saatiyle adlandırılmış bir klasöre taşınır.",
             "actionable": "Yapılabilir",
             "reportCopiedRight": "Sağa kopyalandı",
             "reportCopiedLeft": "Sola kopyalandı",
@@ -5136,7 +5199,6 @@
             "executePreset": "Önayarı yürüt",
             "execute": "Yürüt",
             "sync": {
-                "title": "AeroSync: yerelden yerele",
                 "description": "Yerel bir kaynak dizini yerel bir hedefe yansıtır. ≥ 1 MiB boyutundaki dosyalar yerleşik delta motorunu kullanır; daha küçük dosyalar doğrudan kopyalama kullanır.",
                 "source": "Kaynak",
                 "destination": "Hedef",
@@ -5192,7 +5254,7 @@
             "speedMode_fast": "Hızlı",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Aşırı",
-            "speedModeHint": "Çalıştırmaya uygulanan paralel akışlar + sıkıştırma ön ayarı.",
+            "speedModeHint": "Yeniden deneme politikasını belirler. Hızlı ve üzerinde, sunucunun desteklediği yerlerde (rsync ile SFTP) değişen dosyalar delta olarak gönderilir.",
             "verifyPolicy": "Doğrulama politikası",
             "verifyPolicy_none": "Yok",
             "verifyPolicy_size_only": "Yalnızca boyut",
@@ -5237,7 +5299,45 @@
             "errorCorrection": "Hata Düzeltme",
             "errorCorrectionHint": "Her yedeklenen dosyanın yanına küçük bir .aerocorrect eşlik dosyası kaydeder, böylece bit-rot nedeniyle bozulmuş uzak bir kopya, orijinali olmadan bir sonraki pull işleminde onarılabilir.",
             "outOfSyncItemsPct": "Eşitlenmemiş öğeler",
-            "outOfSyncBytesPct": "Eşitlenmemiş baytlar"
+            "outOfSyncBytesPct": "Eşitlenmemiş baytlar",
+            "exclude": {
+                "label": "Hariç tutma kalıpları",
+                "hint": "Virgül veya yeni satırla ayrılmış, örneğin cache, *.tmp veya build/output. Her zaman hariç tutulanlar: {list}."
+            },
+            "cli": {
+                "title": "Komut satırından aynı çalıştırma",
+                "copy": "Kopyala",
+                "copied": "Kopyalandı",
+                "copyFailed": "Kopyalama başarısız",
+                "none": "Tam bir CLI karşılığı yok: {reason}",
+                "reason": {
+                    "localPair": "iki yerel klasör için CLI kendi aynalamasını çalıştırır ve yön, silme ve çakışma ayarlarını yok sayar.",
+                    "unsavedServer": "bu bağlantı kayıtlı bir sunucu değil ve CLI, --profile ile belirtmek için kayıtlı bir sunucuya ihtiyaç duyar.",
+                    "overwritesNewer": "CLI, boyutu farklı bir hedef kopyanın daha yeni olsa bile üzerine yazar; bu önayar bunu asla yapmaz.",
+                    "twoWay": "CLI, aynı boyutta ama zamanları farklı iki kopyayı çakışma sayar ve eskisinin üzerine yazar; bu plan 30 saniye içindekileri aynı kabul eder.",
+                    "canary": "CLI, Canary denemesi sunmaz.",
+                    "versionedBackup": "CLI yedekleri henüz aynı düzende tutmuyor.",
+                    "transferBudget": "bütçe bittiğinde bu plan silmeler dahil durur; CLI yalnızca transferleri sınırlar ve yine de siler.",
+                    "remotePath": "CLI uzak klasörü kayıtlı sunucunun başlangıç klasörüne göre çözümler ve farklı bir klasöre ulaşır.",
+                    "exclusions": "CLI hariç tutma kalıplarını farklı eşleştirir, bu yüzden bu planın atladığı her şeyi atlamaz (node_modules, .git ve diğerleri)."
+                }
+            },
+            "rescan": "Yeniden tara",
+            "rescanNeeded": "Karşılaştırma başka hariç tutmalarla veya başka bir yedekleme klasörüyle yapıldı. Çalıştırmadan önce yeniden tarayın.",
+            "backup": {
+                "checking": "Bu sunucunun dosyaları nasıl taşıdığı denetleniyor...",
+                "serverCopy": "Bu sunucu taşıma yapamıyor: saklanan her kopya sunucuda kopyalanır ve ardından silinir. Bu, saklanan her dosya için iki ayrı adımda tam bir kopyaya mal olur.",
+                "clientCopy": "Bu sunucu taşıma yapamıyor: saklanan her kopya indirilir, yedek klasörüne yüklenir ve ardından silinir. Saklanan her dosya ayrı adımlarla bu bilgisayardan iki kez geçer.",
+                "unsupported": "Bu sunucu dosyaları başka bir klasöre taşıyamaz, bu yüzden eski kopyaları saklayamaz. Çalıştırmak için sürümlü yedeklemeyi kapatın.",
+                "checkFailed": "Sunucuya dosyaları nasıl taşıdığı sorulamadı. Yeniden bağlanın veya çalıştırmak için sürümlü yedeklemeyi kapatın.",
+                "nested": "Yedek klasörü, bu senkronizasyonun yazdığı {folder} içinde. Bunun dışında bir klasör seçin.",
+                "invalid": {
+                    "empty": "Yedek klasörü için bir ad girin.",
+                    "absolute": "Mutlak yol değil, hedefin içindeki bir klasörü kullanın.",
+                    "parent": "Yedek klasörü '..' içeremez.",
+                    "name": "Bu yedek klasörü adı geçerli değil."
+                }
+            }
         },
         "accountLock": {
             "title": "Bir hesap seçin",
