@@ -673,6 +673,12 @@ impl CloudinaryProvider {
             Err(ProviderError::NotFound(_)) => None,
             Err(e) => return Err(e),
         };
+        // A replace puts a file in place of a file and a folder in place of
+        // a folder: a file onto a folder took the public id of an image
+        // named like the folder and overwrote it.
+        if let Some(occupant) = &displaced {
+            super::refuse_replace_across_types(to, entry.is_dir, occupant.is_dir)?;
+        }
         let dynamic_folders = self.dynamic_folder_mode.lock().ok().and_then(|m| *m) == Some(true);
         if !entry.is_dir && dynamic_folders {
             self.update_asset_place(&entry, &source, &target).await?;
@@ -735,12 +741,19 @@ impl CloudinaryProvider {
                 }
                 _ => {
                     let named = target.trim_matches('/');
-                    match (kind.as_str(), entry.metadata.get("format")) {
-                        ("image" | "video", Some(format)) if !format.is_empty() => named
-                            .strip_suffix(&format!(".{format}"))
-                            .unwrap_or(named)
-                            .to_string(),
-                        _ => named.to_string(),
+                    let stem = match (kind.as_str(), entry.metadata.get("format")) {
+                        ("image" | "video", Some(format)) if !format.is_empty() => {
+                            named.strip_suffix(&format!(".{format}")).unwrap_or(named)
+                        }
+                        _ => named,
+                    };
+                    // `a.jpg` (public id `a.jpg`) renamed to `a.jpg.jpg`: the
+                    // stem is the source's own id, so the name keeps its
+                    // format.
+                    if stem == from_pid {
+                        named.to_string()
+                    } else {
+                        stem.to_string()
                     }
                 }
             };
@@ -752,12 +765,13 @@ impl CloudinaryProvider {
             if displaced.is_none() {
                 let parent = parent_segments(&target);
                 let dynamic = self.dynamic_folders();
-                if let Some(holder) = self
-                    .list_files(&parent)
-                    .await?
-                    .into_iter()
-                    .find(|f| f.public_id == to_pid)
-                {
+                // Public ids are unique per resource type: an image `b` and a
+                // video `b` coexist. The source itself is no holder.
+                if let Some(holder) = self.list_files(&parent).await?.into_iter().find(|f| {
+                    f.public_id == to_pid
+                        && f.public_id != from_pid
+                        && self.primary_resource_type(f) == kind
+                }) {
                     return Err(ProviderError::AlreadyExists(format!(
                         "{to}: its public id `{to_pid}` belongs to {}, a different asset",
                         resource_name(&holder, dynamic)
@@ -774,7 +788,12 @@ impl CloudinaryProvider {
                 urlencoding::encode(&from_pid),
                 urlencoding::encode(&to_pid)
             );
-            if overwrite && displaced.is_some() {
+            let replaces_the_occupant = displaced.as_ref().is_some_and(|occupant| {
+                !occupant.is_dir
+                    && occupant.metadata.get("public_id").map(String::as_str)
+                        == Some(to_pid.as_str())
+            });
+            if overwrite && replaces_the_occupant {
                 url.push_str("&overwrite=true");
             }
             let resp = self
@@ -2296,6 +2315,140 @@ mod tests {
             renames.lock().unwrap().is_empty(),
             "{:?}",
             renames.lock().unwrap()
+        );
+    }
+
+    /// A fixed-folder Cloudinary double holding `resources` (public id,
+    /// format, resource type) and the folders `folders` at the root. Returns
+    /// a provider on it and every rename query.
+    async fn provider_on_fixed_folders(
+        resources: &'static [(&'static str, &'static str, &'static str)],
+        folders: &'static [&'static str],
+    ) -> (CloudinaryProvider, CloudinaryCalls) {
+        use axum::response::IntoResponse;
+        use std::sync::Arc;
+        let renames: CloudinaryCalls = Arc::default();
+        let seen = Arc::clone(&renames);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    if req.method() == axum::http::Method::POST && path.ends_with("/rename") {
+                        seen.lock().unwrap().push(query);
+                        return axum::Json(serde_json::json!({ "public_id": "x" })).into_response();
+                    }
+                    if path == "/resources/by_asset_folder" {
+                        return (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            r#"{"error":{"message":"Unknown parameter asset_folder"}}"#,
+                        )
+                            .into_response();
+                    }
+                    if path == "/folders" {
+                        let listed: Vec<serde_json::Value> = folders
+                            .iter()
+                            .map(|f| serde_json::json!({ "name": f, "path": f }))
+                            .collect();
+                        return axum::Json(serde_json::json!({ "folders": listed }))
+                            .into_response();
+                    }
+                    if path.starts_with("/folders/") {
+                        return axum::Json(serde_json::json!({ "folders": [] })).into_response();
+                    }
+                    let kind = path.trim_start_matches("/resources/");
+                    let listed: Vec<serde_json::Value> = resources
+                        .iter()
+                        .filter(|(_, _, resource_type)| *resource_type == kind)
+                        .map(|(public_id, format, resource_type)| {
+                            serde_json::json!({
+                                "asset_id": format!("AID_{public_id}"), "public_id": public_id,
+                                "format": format, "bytes": 3, "resource_type": resource_type,
+                                "type": "upload",
+                            })
+                        })
+                        .collect();
+                    axum::Json(serde_json::json!({ "resources": listed })).into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = CloudinaryProvider::new(CloudinaryConfig {
+            cloud_name: "test".to_string(),
+            api_key: "test".to_string(),
+            api_secret: SecretString::from("test".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, renames)
+    }
+
+    /// A replace of a file onto a folder took the public id of an image
+    /// named like the folder (`photos.png`, public id `photos`) and asked
+    /// for the overwrite: the image was replaced. A replace across file and
+    /// folder is refused before any call.
+    #[tokio::test]
+    async fn a_file_replaced_onto_a_folder_overwrites_no_image_named_like_it() {
+        let (mut provider, renames) = provider_on_fixed_folders(
+            &[("a", "jpg", "image"), ("photos", "png", "image")],
+            &["photos"],
+        )
+        .await;
+        let outcome = provider.replace("/a.jpg", "/photos").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            renames.lock().unwrap().is_empty(),
+            "{:?}",
+            renames.lock().unwrap()
+        );
+    }
+
+    /// A replace onto a free name asks for no overwrite: there is nothing to
+    /// replace, and an overwrite would take whatever holds the public id.
+    #[tokio::test]
+    async fn a_replace_onto_a_free_name_asks_for_no_overwrite() {
+        let (mut provider, renames) =
+            provider_on_fixed_folders(&[("a", "jpg", "image")], &[]).await;
+        provider.replace("/a.jpg", "/c.jpg").await.expect("replace");
+        let renames = renames.lock().unwrap().clone();
+        assert_eq!(renames.len(), 1, "{renames:?}");
+        assert_eq!(
+            query_value(&renames[0], "to_public_id").as_deref(),
+            Some("c")
+        );
+        assert_eq!(query_value(&renames[0], "overwrite"), None, "{renames:?}");
+    }
+
+    /// Public ids are unique per resource type: with a video `b` (`b.mp4`),
+    /// the image `a.jpg` may still become `b.jpg`. And `a.jpg` whose public
+    /// id is `a.jpg` may become `a.jpg.jpg`: its own id is no holder.
+    #[tokio::test]
+    async fn only_an_asset_of_the_same_type_other_than_the_source_holds_the_id() {
+        let (mut provider, renames) =
+            provider_on_fixed_folders(&[("a", "jpg", "image"), ("b", "mp4", "video")], &[]).await;
+        provider
+            .rename("/a.jpg", "/b.jpg")
+            .await
+            .expect("an image b is free");
+        let (mut provider, own) =
+            provider_on_fixed_folders(&[("a.jpg", "jpg", "image")], &[]).await;
+        provider
+            .rename("/a.jpg", "/a.jpg.jpg")
+            .await
+            .expect("the source is no holder");
+        assert_eq!(
+            query_value(&renames.lock().unwrap()[0], "to_public_id").as_deref(),
+            Some("b")
+        );
+        assert_eq!(
+            query_value(&own.lock().unwrap()[0], "to_public_id").as_deref(),
+            Some("a.jpg.jpg")
         );
     }
 
