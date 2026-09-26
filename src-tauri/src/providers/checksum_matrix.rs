@@ -58,7 +58,7 @@ pub fn caveat_text(token: &str) -> &str {
         S3_ETAG => "The ETag is the object MD5 only for single-part objects that are not SSE-KMS or SSE-C encrypted. A multipart ETag carries a `-N` suffix and is omitted rather than guessed. An SSE-KMS or SSE-C ETag can still be 32 hex characters and then passes the same shape check as a real digest, so a reported ETag is advisory for such an object.",
         B2_UNVERIFIED => "Large files and uploads B2 recorded as `unverified:` carry no usable `contentSha1`; those are omitted.",
         SFTP_SHA256SUM => "Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`.",
-        FTP_NEGOTIATED => "Depends on what the server advertises in FEAT: `HASH` (algorithm chosen by the server), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest.",
+        FTP_NEGOTIATED => "Depends on what the server advertises in FEAT: `HASH` (algorithm selected per request with `OPTS HASH`, from the list the server gives), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest.",
         WEBDAV_OC => "Only ownCloud and Nextcloud publish the `oc:checksums` property, and only for files uploaded by a client that sent one. Every other WebDAV server omits it.",
         DRIVE_WORKSPACE => "Native Google Workspace documents have no byte stream and therefore no digest.",
         ONEDRIVE_HASHES => "Which of the three is present depends on the account: personal OneDrive publishes QuickXorHash, business and SharePoint typically SHA-1 and SHA-256.",
@@ -108,9 +108,10 @@ fn negotiated(algorithms: &[&str], caveat: &str) -> ChecksumCapability {
 pub fn capability(kind: ProviderType) -> ChecksumCapability {
     match kind {
         // ── Transport protocols ──────────────────────────────────────────
-        ProviderType::Ftp | ProviderType::Ftps => {
-            negotiated(&["md5", "sha1", "sha256", "crc32"], FTP_NEGOTIATED)
-        }
+        ProviderType::Ftp | ProviderType::Ftps => negotiated(
+            &["md5", "sha1", "sha256", "sha512", "crc32"],
+            FTP_NEGOTIATED,
+        ),
         ProviderType::Sftp => cap(&["sha256"], Some(SFTP_SHA256SUM)),
         ProviderType::WebDav => negotiated(&["sha1", "md5", "adler32"], WEBDAV_OC),
         ProviderType::S3 => cap(&["md5"], Some(S3_ETAG)),

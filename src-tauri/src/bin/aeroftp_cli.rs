@@ -41428,7 +41428,7 @@ async fn lsjson_server_hash(
     }
     // 2. Server-side checksum: HEAD / exec / API, never a content download.
     if provider.supports_checksum() {
-        if let Ok(map) = provider.checksum(&entry.path).await {
+        if let Ok(map) = provider.checksum_for(&entry.path, key).await {
             if let Some(v) = map.get(key) {
                 return wrap(v);
             }
@@ -58130,8 +58130,9 @@ async fn hashsum_digest(
     // Falls through to download+digest for sha512/blake3 (never
     // server-side) and for multipart/SSE objects with no usable hash.
     if !download && provider.supports_checksum() {
-        if let Ok(map) = provider.checksum(path).await {
-            if let Some(h) = map.get(hash_algo_key(algorithm)) {
+        let key = hash_algo_key(algorithm);
+        if let Ok(map) = provider.checksum_for(path, key).await {
+            if let Some(h) = map.get(key) {
                 let hash = h.trim().to_ascii_lowercase();
                 let size = provider.stat(path).await.map(|e| e.size).unwrap_or(0);
                 return Ok((hash, size));

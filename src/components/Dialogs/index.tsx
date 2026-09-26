@@ -20,6 +20,7 @@ import { PasswordStrengthBar } from '../vault/PasswordStrengthBar';
 import { PasswordMatchHint } from '../common/PasswordMatchHint';
 import { MODAL_Z } from '../../utils/modalLayers';
 import { copyText } from '../../utils/clipboard';
+import { checksumRowState } from '../../utils/checksumRowState';
 
 // ============ Alert Dialog ============
 interface AlertDialogProps {
@@ -452,6 +453,12 @@ const BACKEND_NATIVE_DIGESTS: ReadonlyArray<{
     { key: 'adler32', label: 'Adler-32' },
 ];
 
+/** What the Checksum tab can ask for: a standard algorithm, or a backend's own
+ *  digest when the capability says the backend can produce it. */
+export type ChecksumAlgorithm =
+    | 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3'
+    | (typeof BACKEND_NATIVE_DIGESTS)[number]['key'];
+
 /// What the connected backend can produce for this path without downloading
 /// it: the `provider_checksum_capability` reply, mirrored from
 /// `src-tauri/src/providers/checksum_matrix.rs`.
@@ -519,7 +526,7 @@ interface PropertiesDialogProps {
      *  opens on a remote file. Absent for local files, which AeroFTP reads
      *  itself and can therefore hash with every algorithm. */
     checksumCapability?: ChecksumCapability | null;
-    onCalculateChecksum?: (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3') => void;
+    onCalculateChecksum?: (algorithm: ChecksumAlgorithm) => void;
     onCalculateFolderSize?: () => void;
     folderSize?: { total_bytes: number; file_count: number; dir_count: number } | null;
     folderSizeCalculating?: boolean;
@@ -776,9 +783,6 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
         return new Set(checksumCapability?.algorithms ?? []);
     }, [file.isRemote, checksumCapability]);
 
-    const canCalculate = (algorithm: string) =>
-        availableAlgorithms === null || availableAlgorithms.has(algorithm);
-
     // Checksum row helper. Hash is rendered with `break-all` so the full digest
     // is readable without truncation; the dialog widens (see modal class) to
     // accommodate SHA-512 (128 hex) and BLAKE3 (64 hex) on a single line where
@@ -789,53 +793,58 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     // all, and send them elsewhere to find out. Instead the "Calculate" button
     // is replaced by the reason, so the answer is on screen before the click.
     // `serverOnly` rows (QuickXor, Dropbox, Koofr, git SHA) cannot be computed
-    // locally by definition: they exist only when the backend returns them.
+    // locally by definition: they exist only when the backend returns them,
+    // and can be asked for when the capability lists them. FTP computes each
+    // digest on request, so a CRC32 it advertises has to be asked for by name.
     const ChecksumRow: React.FC<{
         label: string;
         value?: string;
-        algorithm?: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3';
+        algorithm?: ChecksumAlgorithm;
         serverOnly?: boolean;
-    }> = ({ label, value, algorithm, serverOnly }) => (
-        <div className="flex items-start gap-2 mb-2">
-            <span className="text-xs text-gray-500 w-20 shrink-0 pt-1">{label}:</span>
-            {value ? (
-                <code
-                    className="flex-1 text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded break-all leading-relaxed"
-                    title={value}
-                >
-                    {value}
-                </code>
-            ) : serverOnly ? (
-                <span className="flex-1 text-xs text-gray-400 italic pt-1">
-                    {t('properties.checksumServerOnly')}
-                </span>
-            ) : algorithm && !canCalculate(algorithm) ? (
-                <span className="flex-1 text-xs text-gray-400 italic pt-1">
-                    {t('properties.checksumNotOnBackend', { backend: backendLabel })}
-                </span>
-            ) : (
-                <button
-                    onClick={() => algorithm && onCalculateChecksum?.(algorithm)}
-                    disabled={file.checksum?.calculating}
-                    className="text-xs text-blue-500 hover:text-blue-600 disabled:text-gray-400"
-                >
-                    {file.checksum?.calculating ? t('properties.calculating') : t('properties.calculate')}
-                </button>
-            )}
-            {value && (
-                <button
-                    onClick={() => copyToClipboard(value, label)}
-                    className="text-gray-400 hover:text-blue-500 shrink-0 pt-1"
-                >
-                    {copiedField === label ? (
-                        <span className="text-green-500 text-[10px]">{t('common.copied')}</span>
-                    ) : (
-                        <Copy size={12} />
-                    )}
-                </button>
-            )}
-        </div>
-    );
+    }> = ({ label, value, algorithm, serverOnly }) => {
+        const state = checksumRowState(algorithm, !!serverOnly, availableAlgorithms);
+        return (
+            <div className="flex items-start gap-2 mb-2">
+                <span className="text-xs text-gray-500 w-20 shrink-0 pt-1">{label}:</span>
+                {value ? (
+                    <code
+                        className="flex-1 text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded break-all leading-relaxed"
+                        title={value}
+                    >
+                        {value}
+                    </code>
+                ) : state === 'server-only' ? (
+                    <span className="flex-1 text-xs text-gray-400 italic pt-1">
+                        {t('properties.checksumServerOnly')}
+                    </span>
+                ) : state === 'not-on-backend' ? (
+                    <span className="flex-1 text-xs text-gray-400 italic pt-1">
+                        {t('properties.checksumNotOnBackend', { backend: backendLabel })}
+                    </span>
+                ) : (
+                    <button
+                        onClick={() => algorithm && onCalculateChecksum?.(algorithm)}
+                        disabled={file.checksum?.calculating}
+                        className="text-xs text-blue-500 hover:text-blue-600 disabled:text-gray-400"
+                    >
+                        {file.checksum?.calculating ? t('properties.calculating') : t('properties.calculate')}
+                    </button>
+                )}
+                {value && (
+                    <button
+                        onClick={() => copyToClipboard(value, label)}
+                        className="text-gray-400 hover:text-blue-500 shrink-0 pt-1"
+                    >
+                        {copiedField === label ? (
+                            <span className="text-green-500 text-[10px]">{t('common.copied')}</span>
+                        ) : (
+                            <Copy size={12} />
+                        )}
+                    </button>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={file.name} onClick={onClose}>
@@ -1231,6 +1240,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                             key={d.key}
                                             label={d.label}
                                             value={file.checksum?.[d.key]}
+                                            algorithm={d.key}
                                             serverOnly
                                         />
                                     ))}

@@ -1367,6 +1367,23 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("checksum".to_string()))
     }
 
+    /// [`checksum`](Self::checksum) for a caller that wants one algorithm,
+    /// named by its canonical key (`md5`, `sha1`, `sha256`, ...).
+    ///
+    /// A backend that answers from digests it already stores returns what it
+    /// has, so the default ignores the hint and the caller looks its key up in
+    /// the map. A backend that computes the digest on request and lets the
+    /// client choose the algorithm overrides it: FTP selects it with
+    /// `OPTS HASH` before `HASH`, and would otherwise hash with whatever the
+    /// server has selected.
+    async fn checksum_for(
+        &mut self,
+        path: &str,
+        _algorithm: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        self.checksum(path).await
+    }
+
     /// Which digests this backend can produce without downloading the file.
     ///
     /// Describes the backend for a surface that has to decide what to offer;
@@ -1404,6 +1421,17 @@ pub trait StorageProvider: Send + Sync {
         path: &str,
     ) -> Result<HashMap<String, String>, ProviderError> {
         self.checksum(path).await
+    }
+
+    /// [`stored_checksum`](Self::stored_checksum) with the algorithm hint of
+    /// [`checksum_for`](Self::checksum_for). A wrapper that overrides
+    /// `stored_checksum` overrides this too, or the hint stops at the wrapper.
+    async fn stored_checksum_for(
+        &mut self,
+        path: &str,
+        algorithm: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        self.checksum_for(path, algorithm).await
     }
 
     /// Whether this provider supports remote/URL upload (server fetches a URL)

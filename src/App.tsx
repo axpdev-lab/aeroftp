@@ -465,7 +465,7 @@ import { describeScanIncompleteError, isScanIncompleteError } from './utils/scan
 import { useTranslation } from './i18n';
 
 // Components
-import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, ChecksumCapability, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
+import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, ChecksumAlgorithm, ChecksumCapability, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, toggleTransferToast } from './components/Transfer/TransferToastContainer';
 import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
@@ -16165,7 +16165,7 @@ const App: React.FC = () => {
               }
               setPropertiesDialog(null);
             }}
-            onCalculateChecksum={async (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3') => {
+            onCalculateChecksum={async (algorithm: ChecksumAlgorithm) => {
               if (!propertiesDialog) return;
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
               try {
@@ -16183,7 +16183,10 @@ const App: React.FC = () => {
                   // engine still never sees these: the overlay keeps
                   // `supports_checksum()` false, so no comparison against a
                   // local plaintext hash can be built on them.
-                  const map = await invoke<Record<string, string>>('provider_checksum', { path: propertiesDialog.path });
+                  // The algorithm is passed because FTP computes the digest on
+                  // request and must select it with OPTS HASH first; every
+                  // other backend returns what it stores regardless.
+                  const map = await invoke<Record<string, string>>('provider_checksum', { path: propertiesDialog.path, algorithm });
                   setPropertiesDialog(prev => {
                     if (!prev) return null;
                     const next = { ...prev.checksum, calculating: false };

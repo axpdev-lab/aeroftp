@@ -5455,10 +5455,15 @@ pub async fn provider_checksum_capability(
 /// the sync engine must not compare against a local hash but this surface can
 /// legitimately show, provided it labels it. The capability reply carries that
 /// label.
+///
+/// `algorithm` is the canonical key the user asked for. Most backends return
+/// every digest they store whatever it says; FTP computes the digest on
+/// request and needs it to select the algorithm with `OPTS HASH`.
 #[tauri::command]
 pub async fn provider_checksum(
     state: State<'_, ProviderState>,
     path: String,
+    algorithm: Option<String>,
 ) -> Result<std::collections::HashMap<String, String>, String> {
     let mut provider_lock = state.provider.lock().await;
 
@@ -5470,10 +5475,11 @@ pub async fn provider_checksum(
         return Ok(std::collections::HashMap::new());
     }
 
-    provider
-        .stored_checksum(&path)
-        .await
-        .map_err(|e| format!("Failed to get server-side checksum: {}", e))
+    match algorithm.as_deref() {
+        Some(algorithm) => provider.stored_checksum_for(&path, algorithm).await,
+        None => provider.stored_checksum(&path).await,
+    }
+    .map_err(|e| format!("Failed to get server-side checksum: {}", e))
 }
 
 /// Keep connection alive (NOOP equivalent)
