@@ -1354,9 +1354,13 @@ fn write_profile_secret(
             Ok(()) => return Ok(()),
             // A locked passphrase account cannot take the row; removing the
             // old one lets the app fall back to the vault value just stored.
-            Err(e) => tracing::warn!(
-                "Import: partition row {key} not writable ({e}); removed so the vault copy applies"
+            Err(e) if e == "USER_LOCKED" => tracing::warn!(
+                "Import: partition row {key} not writable (account locked); removed so the vault copy applies"
             ),
+            // Any other failure is reported, so the caller puts back what it
+            // wrote: removing the row here would delete the user's own value
+            // and report the write as done.
+            Err(e) => return Err(format!("partition row not written: {e}")),
         }
     }
     crate::user_partitions::delete_active_user_credential(&conn, key)
@@ -3327,6 +3331,42 @@ mod tests {
         assert!(err.contains("server_srv_drive"), "{err}");
         assert_eq!(store.get("server_srv_drive").unwrap(), "local-password");
         assert_eq!(store.get("config_server_profiles").unwrap(), blob_before);
+    }
+
+    /// Only a locked account may lose its partition row. Any other failure to
+    /// write it, here a DEK that this vault key does not unwrap, is reported,
+    /// so the profile step puts back what it wrote instead of recording the
+    /// decision with the user's own value deleted and the vault's in its place.
+    #[test]
+    fn a_partition_row_that_cannot_be_written_is_kept_and_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        set_partition_secret(&store, &cfg, "server_srv_drive", "partition-password");
+        let other_path = dir.path().join("other-vault.db");
+        std::fs::write(
+            &other_path,
+            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
+        )
+        .unwrap();
+        let other_key =
+            crate::credential_store::CredentialStore::from_verified_key(&other_path, &[0x17; 32]);
+
+        let written = write_profile_secret(
+            &other_key,
+            Some(&cfg.join("user_partitions.db")),
+            "server_srv_drive",
+            Some("backup-password"),
+        );
+
+        assert!(
+            written.is_err(),
+            "a partition row that was not written was reported as written"
+        );
+        assert_eq!(
+            effective_secret(&store, &cfg, "server_srv_drive").as_deref(),
+            Some("partition-password"),
+            "the user's partition row was deleted"
+        );
     }
 
     /// No decisions: the import behaves as before this change.
