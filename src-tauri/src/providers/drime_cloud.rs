@@ -568,11 +568,18 @@ impl DrimeCloudProvider {
         file_id: &str,
         path: &str,
     ) -> Result<(), ProviderError> {
-        match self.find_file_in_folder(folder_id, name).await? {
-            Some((id, _, _)) if id != file_id => Err(ProviderError::AlreadyExists(format!(
+        // The exact name, and any item but the one moving: a first match
+        // that ignores the case took an `A.txt` beside the way back for its
+        // holder, and a lagging listing that still shows the item there hid
+        // a real one.
+        let holder = self
+            .find_entry_in_folder(folder_id, |found, id| found == name && id != file_id)
+            .await?;
+        match holder {
+            Some(_) => Err(ProviderError::AlreadyExists(format!(
                 "{path} was taken by another item, so the first step was not undone"
             ))),
-            _ => Ok(()),
+            None => Ok(()),
         }
     }
 
@@ -630,6 +637,17 @@ impl DrimeCloudProvider {
         &self,
         folder_id: &str,
         filename: &str,
+    ) -> Result<Option<(String, bool, Option<String>)>, ProviderError> {
+        self.find_entry_in_folder(folder_id, |name, _| name.eq_ignore_ascii_case(filename))
+            .await
+    }
+
+    /// The first entry of the folder `folder_id` whose name and id satisfy
+    /// `wanted`, read page by page (see [`Self::find_file_in_folder`]).
+    async fn find_entry_in_folder(
+        &self,
+        folder_id: &str,
+        wanted: impl Fn(&str, &str) -> bool,
     ) -> Result<Option<(String, bool, Option<String>)>, ProviderError> {
         const MAX_ATTEMPTS: u32 = 4;
         const RETRY_DELAYS_MS: [u64; 3] = [200, 500, 2000];
@@ -697,7 +715,7 @@ impl DrimeCloudProvider {
 
             for file in &files {
                 if let (Some(ref name), Some(id)) = (&file.name, file.id_str()) {
-                    if name.eq_ignore_ascii_case(filename) {
+                    if wanted(name, &id) {
                         let is_dir = file.file_type.as_deref() == Some("folder");
                         return Ok(Some((id, is_dir, file.hash.clone())));
                     }
@@ -3040,6 +3058,31 @@ mod tests {
             other => panic!("{other:?}"),
         }
         assert_eq!(*changes.lock().unwrap(), ["move 11 2"], "no move back");
+    }
+
+    /// The way back is `/d/a.txt`: an `A.txt` beside it is another name,
+    /// and the undo goes on. A first match that ignored the case took it
+    /// for the holder and left the item moved.
+    #[tokio::test]
+    async fn an_item_of_another_letter_case_does_not_block_the_undo() {
+        let (mut provider, store, changes) = provider_on_drime_entries(&[
+            (1, "d", "", "folder"),
+            (2, "e", "", "folder"),
+            (11, "a.txt", "1", "file"),
+            (10, "A.txt", "1", "file"),
+        ])
+        .await;
+        let outcome = provider.rename("/d/a.txt", "/e/fail.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(*changes.lock().unwrap(), ["move 11 2", "move 11 1"]);
+        let a = store
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|e| e.0 == 11)
+            .cloned()
+            .unwrap();
+        assert_eq!((a.1.as_str(), a.2.as_str()), ("a.txt", "1"));
     }
 
     /// A second step refused for a name taken since the look, with the first
