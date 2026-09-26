@@ -1282,9 +1282,17 @@ impl StorageProvider for KDriveProvider {
         Ok(())
     }
 
+    /// One move to the destination folder under the new name. kDrive's move
+    /// names no conflict behaviour, so the destination is looked up first
+    /// and a taken one refused; a name taken since then is refused by kDrive
+    /// (409) and reported as AlreadyExists too.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let resolved_from = self.resolve_path(from);
         let resolved_to = self.resolve_path(to);
+        if resolved_from == resolved_to {
+            return Ok(());
+        }
+        super::refuse_occupied_destination(self, &resolved_from, &resolved_to).await?;
         let (from_parent, from_name) = Self::split_path(&resolved_from);
         let (to_parent, to_name) = Self::split_path(&resolved_to);
         let from_parent_id = self.resolve_folder_id(from_parent).await?;
@@ -1312,12 +1320,26 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
+            let lower = body.to_ascii_lowercase();
+            if status == reqwest::StatusCode::CONFLICT
+                || lower.contains("conflict")
+                || lower.contains("already_exist")
+            {
+                return Err(ProviderError::AlreadyExists(resolved_to));
+            }
             return Err(api_failure("Rename failed", Some(status), &body));
         }
 
         // Update cache
         self.dir_cache.remove(&resolved_from);
         Ok(())
+    }
+
+    /// No: kDrive's move has no documented overwrite, so there is no
+    /// one-step replace, and the callers that need one refuse before they
+    /// write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -2130,6 +2152,15 @@ mod api_failure_tests {
 mod tests {
     use super::*;
 
+    /// kDrive's move has no documented overwrite, so there is no one-step
+    /// replace. The answer is no, so the callers that need one (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write.
+    #[tokio::test]
+    async fn kdrive_does_not_claim_an_atomic_replace() {
+        let mut p = test_provider();
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
+
     #[test]
     fn drive_discovery_reads_numeric_or_string_current_account_id() {
         let numeric = serde_json::json!({
@@ -2305,6 +2336,101 @@ mod tests {
             initial_path: None,
         };
         KDriveProvider::new(config)
+    }
+
+    /// A kDrive double whose root (id 1) holds `a.txt` (11) and, when
+    /// `b_taken`, `b.txt` (12). A move answers 409 `conflict_error` when
+    /// `move_conflicts` (a name taken since the look), success otherwise.
+    /// Returns a provider on it and the path of every move.
+    async fn provider_on_kdrive_root(
+        b_taken: bool,
+        move_conflicts: bool,
+    ) -> (
+        KDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let moves: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&moves);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let file = |id: i64, name: &str| {
+                        serde_json::json!({ "id": id, "name": name, "type": "file", "size": 3 })
+                    };
+                    if path.contains("/move/") {
+                        seen.lock().unwrap().push(path);
+                        return if move_conflicts {
+                            (
+                                axum::http::StatusCode::CONFLICT,
+                                r#"{"result":"error","error":{"code":"conflict_error","description":"A file with this name already exists"}}"#,
+                            )
+                                .into_response()
+                        } else {
+                            axum::Json(serde_json::json!({ "result": "success", "data": {} }))
+                                .into_response()
+                        };
+                    }
+                    let body = match path.as_str() {
+                        "/3/drive/987654/files/1/files" => {
+                            let mut data = vec![file(11, "a.txt")];
+                            if b_taken {
+                                data.push(file(12, "b.txt"));
+                            }
+                            serde_json::json!({ "result": "success", "data": data })
+                        }
+                        "/3/drive/987654/files/11" => {
+                            serde_json::json!({ "result": "success", "data": file(11, "a.txt") })
+                        }
+                        "/3/drive/987654/files/12" => {
+                            serde_json::json!({ "result": "success", "data": file(12, "b.txt") })
+                        }
+                        _ => serde_json::json!({ "result": "error" }),
+                    };
+                    axum::Json(body).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, moves)
+    }
+
+    /// kDrive's move names no conflict behaviour, so the destination is
+    /// looked up first and a taken one refused before any move.
+    #[tokio::test]
+    async fn rename_refuses_a_taken_destination_before_moving() {
+        let (mut provider, moves) = provider_on_kdrive_root(true, false).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            moves.lock().unwrap().is_empty(),
+            "{:?}",
+            moves.lock().unwrap()
+        );
+    }
+
+    /// A name taken between the look and the move is refused by kDrive with
+    /// 409; that is AlreadyExists, not a server error.
+    #[tokio::test]
+    async fn a_move_kdrive_refuses_for_a_taken_name_is_already_exists() {
+        let (mut provider, moves) = provider_on_kdrive_root(false, true).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(moves.lock().unwrap().len(), 1);
     }
 
     /// Upload a 300 KB file to the v3 upload route of a local fixture that
