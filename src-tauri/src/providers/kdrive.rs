@@ -37,7 +37,6 @@ struct ApiResponse<T> {
     #[allow(dead_code)]
     result: Option<String>,
     data: Option<T>,
-    #[allow(dead_code)]
     error: Option<ApiError>,
 }
 
@@ -87,9 +86,7 @@ fn explain_root_refusal(err: ProviderError, parent: &str) -> ProviderError {
 
 #[derive(Debug, Deserialize)]
 struct ApiError {
-    #[allow(dead_code)]
     code: Option<String>,
-    #[allow(dead_code)]
     description: Option<String>,
 }
 
