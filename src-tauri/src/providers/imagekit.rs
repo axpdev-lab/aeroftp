@@ -192,6 +192,17 @@ struct BulkFolderRequest<'a> {
     include_file_versions: bool,
 }
 
+/// How the wait for a folder job ended.
+#[derive(Debug)]
+enum FolderJob {
+    Completed,
+    /// Still pending, or not seen: it may complete, and asking again for the
+    /// same move waits for it.
+    Unfinished(ProviderError),
+    /// Over for good without completing, as far as this session can tell.
+    Over(ProviderError),
+}
+
 pub struct ImageKitProvider {
     config: ImageKitConfig,
     client: reqwest::Client,
@@ -596,18 +607,27 @@ impl ImageKitProvider {
         Some(self.wait_remembering(&key, &job_id).await)
     }
 
-    /// Wait for `job_id`; remember it under `key` when it could not be seen
-    /// to finish, forget it when it did.
+    /// Wait for `job_id`. Remember it under `key` only while it may still
+    /// complete (still pending, or a poll that failed in transport or with a
+    /// server error); forget it once it completed or is over for good (a job
+    /// ImageKit does not know, a status it does not document), so a later
+    /// call queues a job of its own instead of polling a dead one forever.
     async fn wait_remembering(&self, key: &str, job_id: &str) -> Result<(), ProviderError> {
         let outcome = self.wait_for_folder_job(job_id, FOLDER_JOB_WAIT).await;
         if let Ok(mut jobs) = self.unfinished_folder_jobs.lock() {
-            if outcome.is_ok() {
-                jobs.remove(key);
-            } else {
-                jobs.insert(key.to_string(), job_id.to_string());
+            match &outcome {
+                FolderJob::Unfinished(_) => {
+                    jobs.insert(key.to_string(), job_id.to_string());
+                }
+                FolderJob::Completed | FolderJob::Over(_) => {
+                    jobs.remove(key);
+                }
             }
         }
-        outcome
+        match outcome {
+            FolderJob::Completed => Ok(()),
+            FolderJob::Unfinished(e) | FolderJob::Over(e) => Err(e),
+        }
     }
 
     async fn start_folder_job(
@@ -661,23 +681,20 @@ impl ImageKitProvider {
     /// the job is `Completed`. A job still `Pending` after `budget` is an
     /// error that says so: the folder may yet finish moving, and the caller
     /// must not take it as done.
-    async fn wait_for_folder_job(
-        &self,
-        job_id: &str,
-        budget: std::time::Duration,
-    ) -> Result<(), ProviderError> {
+    async fn wait_for_folder_job(&self, job_id: &str, budget: std::time::Duration) -> FolderJob {
         let started = std::time::Instant::now();
         let mut interval = FOLDER_JOB_FIRST_POLL;
-        // The job is queued before the first poll: a poll that fails says
-        // nothing about the job, which may still complete.
+        // The job is queued before the first poll: a poll that fails in
+        // transport or with a server error says nothing about the job, which
+        // may still complete.
         let unknown = |e: ProviderError| {
-            ProviderError::Other(format!(
+            FolderJob::Unfinished(ProviderError::Other(format!(
                 "ImageKit folder job {job_id} was queued, but checking on it failed ({e}); it \
                  may still complete, check the destination before retrying"
-            ))
+            )))
         };
         loop {
-            let resp = self
+            let resp = match self
                 .auth(self.client.get(format!(
                     "{}/bulkJobs/{}",
                     self.api_base(),
@@ -685,26 +702,42 @@ impl ImageKitProvider {
                 )))
                 .send()
                 .await
-                .map_err(|e| unknown(ProviderError::NetworkError(e.to_string())))?;
-            if !resp.status().is_success() {
-                return Err(unknown(self.parse_error(resp).await));
+            {
+                Ok(resp) => resp,
+                Err(e) => return unknown(ProviderError::NetworkError(e.to_string())),
+            };
+            let status = resp.status();
+            if !status.is_success() {
+                let retryable = status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS;
+                let error = self.parse_error(resp).await;
+                if retryable {
+                    return unknown(error);
+                }
+                // A job ImageKit does not know (404) or will not show is over
+                // for this session: nothing is left to wait for.
+                return FolderJob::Over(ProviderError::Other(format!(
+                    "ImageKit no longer reports folder job {job_id} ({error}); check the \
+                     destination to see whether it ran"
+                )));
             }
-            let job = resp
-                .json::<IkBulkJobStatus>()
-                .await
-                .map_err(|e| unknown(ProviderError::ParseError(format!("bulk job status: {e}"))))?;
+            let job = match resp.json::<IkBulkJobStatus>().await {
+                Ok(job) => job,
+                Err(e) => {
+                    return unknown(ProviderError::ParseError(format!("bulk job status: {e}")))
+                }
+            };
             match job.status.as_str() {
-                "Completed" => return Ok(()),
+                "Completed" => return FolderJob::Completed,
                 "Pending" if started.elapsed() < budget => {}
                 "Pending" => {
-                    return Err(ProviderError::Other(format!(
+                    return FolderJob::Unfinished(ProviderError::Other(format!(
                         "ImageKit folder job {job_id} is still pending after {} s; \
                          it may complete later, check the destination before retrying",
                         budget.as_secs()
                     )))
                 }
                 other => {
-                    return Err(ProviderError::ServerError(format!(
+                    return FolderJob::Over(ProviderError::ServerError(format!(
                         "ImageKit folder job {job_id} reports the unknown status {other:?}"
                     )))
                 }
@@ -1134,6 +1167,16 @@ impl StorageProvider for ImageKitProvider {
         self.move_entry(from, to, true).await
     }
 
+    /// No. The callers that need atomicity (CLI `edit`, MCP `remote_edit`,
+    /// the crypt marker paths) stage their temporary next to the target, and
+    /// in one folder ImageKit only renames, which refuses a taken name: the
+    /// edit uploaded its temporary and then failed on the replace (found
+    /// live on 2026-09-26). Answering no makes them refuse before they write
+    /// anything. A replace across folders still lands in one step.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1472,7 +1515,7 @@ mod tests {
             .wait_for_folder_job("J", std::time::Duration::ZERO)
             .await;
         assert!(
-            matches!(outcome, Err(ProviderError::Other(ref m)) if m.contains("still pending")),
+            matches!(outcome, FolderJob::Unfinished(ProviderError::Other(ref m)) if m.contains("still pending")),
             "{outcome:?}"
         );
     }
@@ -1656,6 +1699,39 @@ mod tests {
             .filter(|c| c.starts_with("POST /bulkJobs/moveFolder"))
             .count();
         assert_eq!(posts, 1, "{:?}", calls.lock().unwrap());
+    }
+
+    /// A job ImageKit no longer knows (404) is over: remembering it made
+    /// every later move of that folder poll the dead job again, so the folder
+    /// could not be moved for the rest of the session. The next attempt
+    /// queues a job of its own.
+    #[tokio::test]
+    async fn a_job_imagekit_does_not_know_is_forgotten() {
+        let (mut provider, calls) = provider_on_tree(&["/src", "/src/photos"], &[404]).await;
+        let first = provider.rename("/src/photos", "/dst/photos").await;
+        assert!(first.is_err(), "{first:?}");
+        provider
+            .rename("/src/photos", "/dst/photos")
+            .await
+            .expect("a new job, which completes");
+        let posts = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("POST /bulkJobs/moveFolder"))
+            .count();
+        assert_eq!(posts, 2, "{:?}", calls.lock().unwrap());
+    }
+
+    /// Every caller that needs atomicity stages its temporary next to the
+    /// target, and in one folder ImageKit can only rename, which refuses a
+    /// taken name (409): the edit uploaded its temporary and then failed on
+    /// the replace (found live on 2026-09-26, the temporary left behind). The
+    /// answer is no, so those callers refuse before writing anything.
+    #[tokio::test]
+    async fn imagekit_does_not_claim_an_atomic_replace() {
+        let mut provider = empty_provider();
+        assert!(!provider.supports_atomic_replace().await.unwrap());
     }
 
     fn empty_provider() -> ImageKitProvider {
