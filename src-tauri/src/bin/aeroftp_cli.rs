@@ -29936,6 +29936,16 @@ fn extract_destination_relative(headers: &HeaderMap) -> Result<String, StatusCod
     sanitize_served_relative_path(path_part).map_err(|_| StatusCode::BAD_REQUEST)
 }
 
+/// Whether a MOVE may replace an existing destination. RFC 4918 section
+/// 10.6: `Overwrite: F` forbids it, and a request without the header is
+/// treated as `Overwrite: T`.
+fn webdav_move_may_overwrite(headers: &HeaderMap) -> bool {
+    !headers
+        .get("Overwrite")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("F"))
+}
+
 async fn webdav_dispatch(
     state: ServeHttpState,
     method: Method,
@@ -30128,12 +30138,29 @@ async fn webdav_dispatch(
                 }
             };
             let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
+            let overwrite = webdav_move_may_overwrite(&headers);
             let mut provider = state.provider.lock().await;
-            match provider.rename(&remote_path, &dest_remote).await {
+            // `rename` first: it refuses an occupied destination, which is
+            // what `Overwrite: F` asks for, and a plain move onto a free name
+            // stays one call on every backend. Only a refusal with
+            // `Overwrite: T` goes on to `replace`, the verb that is allowed to
+            // put one item over another.
+            let outcome = match provider.rename(&remote_path, &dest_remote).await {
+                Err(ProviderError::AlreadyExists(_)) if overwrite => {
+                    provider.replace(&remote_path, &dest_remote).await
+                }
+                other => other,
+            };
+            match outcome {
                 Ok(()) => {
                     let mut response = Response::new(Body::empty());
                     *response.status_mut() = StatusCode::NO_CONTENT;
                     response
+                }
+                // RFC 4918 section 9.9.4: a destination that exists under
+                // `Overwrite: F` is 412, not a server failure.
+                Err(ProviderError::AlreadyExists(message)) => {
+                    serve_error_response(StatusCode::PRECONDITION_FAILED, &message)
                 }
                 Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
             }
@@ -78965,6 +78992,84 @@ mod tests {
             "temp path must be gone after successful rename"
         );
         assert!(provider.deleted.is_empty());
+    }
+
+    /// A served WebDAV MOVE of `/a.txt` onto the existing `/b.txt`, with
+    /// `overwrite` as the Overwrite header when given. Returns the status and
+    /// the fake the handler worked on.
+    async fn served_move_onto_an_existing_file(
+        overwrite: Option<&'static str>,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"new".to_vec());
+        fake.remote_files
+            .insert("/b.txt".to_string(), b"old".to_vec());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let state = ServeHttpState {
+            provider: Arc::new(AsyncMutex::new(provider)),
+            provider_label: "fake".to_string(),
+            base_path: "/".to_string(),
+            auth_token: None,
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Destination",
+            HeaderValue::from_static("http://127.0.0.1:8080/b.txt"),
+        );
+        if let Some(value) = overwrite {
+            headers.insert("Overwrite", HeaderValue::from_static(value));
+        }
+        let response = webdav_dispatch(
+            state.clone(),
+            Method::from_bytes(b"MOVE").unwrap(),
+            "a.txt".to_string(),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake");
+        let fake = std::mem::replace(fake, CliEditFakeProvider::new());
+        (response.status(), fake)
+    }
+
+    /// Office and most WebDAV editors save by writing a temporary and
+    /// MOVEing it over the document with `Overwrite: T` (or no header, which
+    /// RFC 4918 reads as T). The handler always called `rename`, which
+    /// refuses an occupied destination, so every such save failed with 500.
+    #[tokio::test]
+    async fn served_webdav_move_with_overwrite_t_replaces_the_destination() {
+        for overwrite in [Some("T"), None] {
+            let (status, fake) = served_move_onto_an_existing_file(overwrite).await;
+            assert_eq!(status, StatusCode::NO_CONTENT, "{overwrite:?}");
+            assert_eq!(
+                fake.replaces,
+                vec![("/a.txt".to_string(), "/b.txt".to_string())],
+                "{overwrite:?}"
+            );
+            assert_eq!(
+                fake.remote_files.get("/b.txt").map(Vec::as_slice),
+                Some(&b"new"[..]),
+                "{overwrite:?}"
+            );
+        }
+    }
+
+    /// `Overwrite: F` onto an existing destination is 412 (RFC 4918 section
+    /// 9.9.4), and nothing moves.
+    #[tokio::test]
+    async fn served_webdav_move_with_overwrite_f_is_412_and_moves_nothing() {
+        let (status, fake) = served_move_onto_an_existing_file(Some("F")).await;
+        assert_eq!(status, StatusCode::PRECONDITION_FAILED);
+        assert!(fake.replaces.is_empty() && fake.renames.is_empty());
+        assert_eq!(
+            fake.remote_files.get("/b.txt").map(Vec::as_slice),
+            Some(&b"old"[..])
+        );
     }
 
     #[tokio::test]
