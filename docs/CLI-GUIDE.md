@@ -2242,7 +2242,7 @@ ECHO Deployment complete
 DISCONNECT
 ```
 
-A saved profile connects with `CONNECT --profile "<name>"`, resolved exactly as `--profile` on the command line. A line ending in `\` continues on the next line, so a long `SYNC` reads like the command it is:
+A saved profile connects with `CONNECT --profile "<name>"`, resolved exactly as `--profile` on the command line. A line ending in a space and then `\` continues on the next line, so a long `SYNC` reads like the command it is. A backslash glued to the last word is part of that word, as at the end of a Windows path (`SET DEST=C:\Backup\`), and the next line is a command of its own:
 
 ```
 SET LOCAL="/home/me/Local Copy"

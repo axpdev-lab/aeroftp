@@ -782,22 +782,27 @@ fn expand_variables(
 
 /// Collect a logical line that may span multiple physical lines via
 /// trailing `\` continuations. Advances `idx` past the joined region.
+/// The line without its continuation mark, when it has one. A line
+/// continues only when it ends in whitespace and then `\\`, the form the
+/// export and CLI-GUIDE write: a backslash glued to a word is the end of a
+/// Windows path (`SET DEST=C:\\Backup\\`), and reading it as a continuation
+/// swallowed the next command. One rule for the GUI import and the CLI batch.
+pub fn continuation_head(line: &str) -> Option<&str> {
+    let head = line.strip_suffix('\\')?;
+    head.ends_with(char::is_whitespace).then(|| head.trim_end())
+}
+
 fn collect_continued_line(first: &str, lines: &[&str], idx: &mut usize) -> String {
     let mut joined = first.trim().to_string();
     *idx += 1;
-    loop {
-        if joined.ends_with('\\') {
-            joined.pop(); // strip the trailing backslash
-            joined.push(' ');
-            if *idx >= lines.len() {
-                break;
-            }
-            let next = lines[*idx].trim();
-            joined.push_str(next);
-            *idx += 1;
-            continue;
+    while let Some(head_len) = continuation_head(&joined).map(str::len) {
+        joined.truncate(head_len);
+        joined.push(' ');
+        if *idx >= lines.len() {
+            break;
         }
-        break;
+        joined.push_str(lines[*idx].trim());
+        *idx += 1;
     }
     joined
 }
@@ -1019,6 +1024,22 @@ pub fn tokenize_script_line(body: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only ` \\` continues a line: a SYNC whose last path ends in a
+    /// backslash is complete, and the next line is not glued onto it.
+    #[test]
+    fn a_path_ending_in_a_backslash_does_not_continue_the_sync_line() {
+        assert_eq!(continuation_head("SYNC /a /b \\"), Some("SYNC /a /b"));
+        assert_eq!(continuation_head("SYNC /a /b\t\\"), Some("SYNC /a /b"));
+        assert_eq!(continuation_head("SYNC /a C:\\dest\\"), None);
+        assert_eq!(continuation_head("SET DEST=C:\\Backup\\"), None);
+        assert_eq!(continuation_head("\\"), None);
+        let lines = ["SYNC /a C:\\dest\\", "--direction download"];
+        let mut idx = 0;
+        let joined = collect_continued_line("/a C:\\dest\\", &lines, &mut idx);
+        assert_eq!(joined, "/a C:\\dest\\");
+        assert_eq!(idx, 1, "the next line is not consumed");
+    }
 
     fn sample(profile: SyncProfile) -> AerosyncScriptProfile {
         AerosyncScriptProfile {

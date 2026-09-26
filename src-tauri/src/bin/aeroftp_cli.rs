@@ -61453,10 +61453,10 @@ fn batch_logical_lines(content: &str) -> Result<Vec<(usize, String)>, (usize, St
                     "a line ending in '\\' must be followed by its continuation, not by a blank or comment line".to_string(),
                 ));
             }
-            match line.strip_suffix('\\') {
+            match ftp_client_gui_lib::sync_script::continuation_head(line) {
                 Some(head) => {
                     acc.push(' ');
-                    acc.push_str(head.trim_end());
+                    acc.push_str(head);
                     pending = Some((start, acc));
                 }
                 None => {
@@ -61470,8 +61470,8 @@ fn batch_logical_lines(content: &str) -> Result<Vec<(usize, String)>, (usize, St
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        match line.strip_suffix('\\') {
-            Some(head) => pending = Some((idx, head.trim_end().to_string())),
+        match ftp_client_gui_lib::sync_script::continuation_head(line) {
+            Some(head) => pending = Some((idx, head.to_string())),
             None => out.push((idx, line.to_string())),
         }
     }
@@ -62388,6 +62388,28 @@ DISCONNECT\n";
             assert!(delete);
             assert_eq!(exclude, vec!["*.tmp".to_string()]);
         });
+    }
+
+    /// A backslash that ends a Windows path is not a continuation. Every
+    /// line ending in `\` used to be joined to the next one, so the GET below
+    /// became part of the SET value, never ran, and the script exited 0.
+    /// Only ` \` (a space, then the backslash, as the export and CLI-GUIDE
+    /// write it) continues a line.
+    #[test]
+    fn a_trailing_backslash_in_a_path_does_not_swallow_the_next_line() {
+        let lines =
+            read_batch_script("SET DEST=C:\\Backup\\\nCONNECT sftp://h/\nGET /db.sql ${DEST}\n")
+                .expect("script reads");
+        let cmds: Vec<&str> = lines.iter().map(|l| l.cmd.as_str()).collect();
+        assert_eq!(cmds, ["SET", "CONNECT", "GET"]);
+        assert_eq!(lines[2].args, ["/db.sql", "C:\\Backup\\"]);
+
+        let lines =
+            read_batch_script("CONNECT sftp://h/\nECHO Saved to C:\\Backup\\\nRM -r /staging\n")
+                .expect("script reads");
+        let cmds: Vec<&str> = lines.iter().map(|l| l.cmd.as_str()).collect();
+        assert_eq!(cmds, ["CONNECT", "ECHO", "RM"]);
+        assert_eq!(lines[2].args, ["/staging"]);
     }
 
     #[test]
