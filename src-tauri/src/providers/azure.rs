@@ -18,7 +18,7 @@ use futures_util::StreamExt;
 use hmac::{Hmac, Mac};
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE, IF_NONE_MATCH};
 use secrecy::ExposeSecret;
 use sha2::Sha256;
 use tokio::io::AsyncReadExt;
@@ -376,8 +376,15 @@ impl AzureProvider {
             .map(|(k, v)| format!("\n{}:{}", k, v))
             .collect::<String>();
 
+        // Shared Key signs If-None-Match in its own slot: a request that
+        // carries the header (the destination condition of a rename's Copy
+        // Blob) and signs an empty slot is refused with 403.
+        let if_none_match = headers
+            .get(IF_NONE_MATCH)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
         let string_to_sign = format!(
-            "{}\n\n\n{}\n\n{}\n\n\n\n\n\n\n{}{}{}",
+            "{}\n\n\n{}\n\n{}\n\n\n\n{}\n\n\n{}{}{}",
             method,
             if content_length > 0 {
                 content_length.to_string()
@@ -385,6 +392,7 @@ impl AzureProvider {
                 String::new()
             },
             content_type,
+            if_none_match,
             canonical_headers,
             canonicalized_resource,
             query_str,
@@ -403,6 +411,98 @@ impl AzureProvider {
             "SharedKey {}:{}",
             self.config.account_name, signature
         ))
+    }
+
+    /// Rename or replace by Copy Blob, polled to completion when the copy
+    /// is asynchronous, then a delete of the source (Azure has no rename).
+    /// With `overwrite` false the copy carries `If-None-Match: *`, so the
+    /// server refuses an existing destination (the `rename` contract); with
+    /// it true the copy lands over it (the `replace` contract).
+    async fn copy_then_delete(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        let from_blob = self.resolve_blob_path(from);
+        let to_blob = self.resolve_blob_path(to);
+        // Onto itself a copy-then-delete would delete the only copy.
+        if from_blob == to_blob {
+            return Ok(());
+        }
+
+        let source_url = self.blob_url(&from_blob);
+        let dest_url = self.blob_url(&to_blob);
+
+        let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        headers.insert(
+            "x-ms-copy-source",
+            HeaderValue::from_str(&source_url)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        // Azure requires explicit Content-Length: 0 for PUT Copy Blob
+        headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
+        // The trait promises no overwrite, and Copy Blob replaces the
+        // destination. The destination condition makes the server refuse an
+        // existing blob in the same request that copies, so there is no
+        // window between a look and the write.
+        if !overwrite {
+            headers.insert(IF_NONE_MATCH, HeaderValue::from_static("*"));
+        }
+
+        // AZ-005: Use retry for copy request
+        let resp = self
+            .send_with_auth_and_retry(reqwest::Method::PUT, &dest_url, headers, 0, None)
+            .await?;
+
+        if !overwrite
+            && matches!(
+                resp.status(),
+                reqwest::StatusCode::PRECONDITION_FAILED | reqwest::StatusCode::CONFLICT
+            )
+        {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+        if !resp.status().is_success() {
+            return Err(ProviderError::Other(format!(
+                "Copy failed: {}",
+                resp.status()
+            )));
+        }
+
+        // AZ-016: Check copy status: may be async for large blobs
+        let copy_status = resp
+            .headers()
+            .get("x-ms-copy-status")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("success")
+            .to_lowercase();
+
+        if copy_status == "pending" {
+            debug!("Azure copy is async (pending), polling for completion");
+            self.poll_copy_status(&dest_url).await?;
+        } else if copy_status == "failed" {
+            let desc = resp
+                .headers()
+                .get("x-ms-copy-status-description")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("unknown reason");
+            return Err(ProviderError::Other(format!("Copy failed: {}", desc)));
+        }
+
+        // Delete original only after copy is confirmed
+        self.delete(from).await?;
+
+        Ok(())
     }
 
     /// AZ-005/AZ-006: Send a request with retry logic for transient errors (429/5xx).
@@ -1657,71 +1757,16 @@ impl StorageProvider for AzureProvider {
         Ok(())
     }
 
-    /// AZ-016: Rename via Copy + Delete with async copy polling.
-    /// Azure Copy Blob can be async for large blobs. After issuing the copy,
-    /// we check `x-ms-copy-status` and poll until completion before deleting the source.
+    /// AZ-016: Rename via Copy + Delete with async copy polling: see
+    /// `copy_then_delete`.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        // Azure doesn't have native rename - must copy then delete
-        let from_blob = self.resolve_blob_path(from);
-        let to_blob = self.resolve_blob_path(to);
+        self.copy_then_delete(from, to, false).await
+    }
 
-        let source_url = self.blob_url(&from_blob);
-        let dest_url = self.blob_url(&to_blob);
-
-        let mut headers = HeaderMap::new();
-        let now = chrono::Utc::now()
-            .format("%a, %d %b %Y %H:%M:%S GMT")
-            .to_string();
-        headers.insert(
-            "x-ms-date",
-            HeaderValue::from_str(&now)
-                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
-        );
-        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-        headers.insert(
-            "x-ms-copy-source",
-            HeaderValue::from_str(&source_url)
-                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
-        );
-        // Azure requires explicit Content-Length: 0 for PUT Copy Blob
-        headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
-
-        // AZ-005: Use retry for copy request
-        let resp = self
-            .send_with_auth_and_retry(reqwest::Method::PUT, &dest_url, headers, 0, None)
-            .await?;
-
-        if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!(
-                "Copy failed: {}",
-                resp.status()
-            )));
-        }
-
-        // AZ-016: Check copy status: may be async for large blobs
-        let copy_status = resp
-            .headers()
-            .get("x-ms-copy-status")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("success")
-            .to_lowercase();
-
-        if copy_status == "pending" {
-            debug!("Azure copy is async (pending), polling for completion");
-            self.poll_copy_status(&dest_url).await?;
-        } else if copy_status == "failed" {
-            let desc = resp
-                .headers()
-                .get("x-ms-copy-status-description")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("unknown reason");
-            return Err(ProviderError::Other(format!("Copy failed: {}", desc)));
-        }
-
-        // Delete original only after copy is confirmed
-        self.delete(from).await?;
-
-        Ok(())
+    /// Copy Blob puts the new blob over the old one in one step, so a
+    /// replace is the rename without its destination condition.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.copy_then_delete(from, to, true).await
     }
 
     /// AZ-007: Extracts Content-Type from HEAD response to populate mime_type.
@@ -2517,6 +2562,100 @@ mod tests {
             sas_token: None,
             endpoint: None,
         }
+    }
+
+    /// A blob service double for container `mycontainer` holding `existing`
+    /// (blob names). A Copy Blob onto an existing blob under
+    /// `If-None-Match: *` answers 412, as Azure does; any other copy lands
+    /// and completes at once; a delete succeeds. Returns a provider pointed at
+    /// it and every request as `METHOD path if-none-match`.
+    async fn provider_on_blob_service(
+        existing: &'static [&'static str],
+    ) -> (AzureProvider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let condition = req
+                        .headers()
+                        .get("if-none-match")
+                        .map(|v| v.to_str().unwrap().to_string())
+                        .unwrap_or_default();
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{} {path} {condition}", req.method()));
+                    let blob = path.trim_start_matches("/mycontainer/");
+                    let status = match req.method().as_str() {
+                        "PUT" if condition == "*" && existing.contains(&blob) => 412,
+                        "PUT" | "DELETE" => 202,
+                        _ => 404,
+                    };
+                    axum::response::Response::builder()
+                        .status(status)
+                        .header("x-ms-copy-status", "success")
+                        .body(axum::body::Body::empty())
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut config = test_config();
+        config.endpoint = Some(format!("http://{addr}"));
+        let mut provider = AzureProvider::new(config);
+        provider.connected = true;
+        (provider, log)
+    }
+
+    /// Copy Blob overwrote the destination: a rename onto an existing blob
+    /// replaced it and reported success. The copy now carries
+    /// `If-None-Match: *`, so the refusal comes from the same request that
+    /// would write, with no window between a look and the copy.
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination_in_the_copy_itself() {
+        let (mut provider, log) = provider_on_blob_service(&["b.txt"]).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        let log = log.lock().unwrap().clone();
+        assert_eq!(log, ["PUT /mycontainer/b.txt *"], "{log:?}");
+    }
+
+    /// `replace` is the verb for "put this over that" and copies without
+    /// the condition, then deletes the source.
+    #[tokio::test]
+    async fn replace_copies_over_an_existing_destination() {
+        let (mut provider, log) = provider_on_blob_service(&["b.txt"]).await;
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        let log = log.lock().unwrap().clone();
+        assert_eq!(
+            log,
+            ["PUT /mycontainer/b.txt ", "DELETE /mycontainer/a.txt "],
+            "{log:?}"
+        );
+    }
+
+    /// Shared Key signs If-None-Match in its own slot of the string to sign;
+    /// sending the header with the slot left empty is a 403 from Azure.
+    #[test]
+    fn shared_key_signs_the_if_none_match_header() {
+        let provider = AzureProvider::new(test_config());
+        let url = "https://myacc.blob.core.windows.net/mycontainer/b.txt";
+        let mut headers = HeaderMap::new();
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        let unconditional = provider.sign_request("PUT", url, &headers, 0).unwrap();
+        headers.insert(
+            reqwest::header::IF_NONE_MATCH,
+            HeaderValue::from_static("*"),
+        );
+        let conditional = provider.sign_request("PUT", url, &headers, 0).unwrap();
+        assert_ne!(unconditional, conditional);
     }
 
     #[test]
