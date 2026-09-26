@@ -2338,6 +2338,47 @@ mod baseline_tests {
         );
     }
 
+    /// m4 (third review of #949): after an upload the provider path stamps
+    /// the local file with the server's time, and the baseline kept the time
+    /// the file had before: the next cycle saw both sides differ from it and
+    /// raised a conflict every cycle (AskUser asking again, KeepBoth making
+    /// copies, PreferLocal uploading again). The baseline takes the local
+    /// file's time as it is on disk after the upload.
+    #[test]
+    fn an_upload_records_the_local_time_after_the_stamp() {
+        let root = tempfile::tempdir().expect("local root");
+        let file = root.path().join("f.txt");
+        std::fs::write(&file, b"payload").unwrap();
+        let stamped = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_800_000_000);
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_modified(stamped)
+            .unwrap();
+        let uploaded = cmp(
+            SyncStatus::LocalNewer,
+            Some(fi(7, 1_700_000_000)),
+            Some(fi(3, 1)),
+            true,
+            false,
+        );
+        let mut config = cfg(
+            CompareDirection::Bidirectional,
+            false,
+            ConflictStrategy::AskUser,
+        );
+        config.local_folder = root.path().to_path_buf();
+        let files = CloudService::new().post_sync_baseline(&[uploaded], &config, None);
+        let entry = files.get("f.txt").expect("the upload is recorded");
+        assert_eq!(entry.size, 7);
+        assert_eq!(
+            entry.modified,
+            DateTime::<Utc>::from_timestamp(1_800_000_000, 0),
+            "the time the file has now, not the one before the stamp"
+        );
+    }
+
     /// The size-only window is stated once per folder pair and process, not
     /// every cycle of a folder synced every minute.
     #[test]

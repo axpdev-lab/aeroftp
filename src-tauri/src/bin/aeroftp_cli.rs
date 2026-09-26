@@ -73818,25 +73818,6 @@ mod tests {
         );
     }
 
-    /// The snapshot reads the local side with `--modify-window` as given: a
-    /// local copy a minute off its snapshot time is unchanged under a
-    /// two-minute window, and the remote side is then the one that changed.
-    #[test]
-    fn the_snapshot_reads_the_local_side_with_the_requested_window() {
-        let snapshot = BisyncSnapshot {
-            synced_at: "2020-01-01T00:00:00Z".to_string(),
-            files: HashMap::from([("a.txt".to_string(), (10, T0.to_string()))]),
-        };
-        let read = |window| {
-            bisync_changed_side(Some(&snapshot), "a.txt", 10, Some(T0_PLUS_60), 12, window)
-        };
-        assert_eq!(
-            read(local_pair_window(Some(std::time::Duration::from_secs(120)))),
-            Some(ChangedSide::Remote)
-        );
-        assert_eq!(read(local_pair_window(None)), None, "both sides changed");
-    }
-
     /// The `sync-doctor` EC estimate for `both` takes the decision `sync`
     /// takes, the snapshot included: a pair the dates cannot order is an
     /// upload when the snapshot says the local side changed, and nothing
@@ -78523,6 +78504,9 @@ mod tests {
         files: Arc<Mutex<std::collections::BTreeMap<String, Vec<u8>>>>,
         /// The precision its times are listed with (`None`: size only).
         precision: Option<std::time::Duration>,
+        /// Runs with the local path after each download has written it: a
+        /// test's way to act while the run is still going.
+        after_download: Option<Arc<dyn Fn(&str) + Send + Sync>>,
     }
 
     impl SharedTreeProvider {
@@ -78608,7 +78592,11 @@ mod tests {
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
             let bytes = self.download_to_bytes(remote_path).await?;
-            std::fs::write(local_path, bytes).map_err(|e| ProviderError::Other(e.to_string()))
+            std::fs::write(local_path, bytes).map_err(|e| ProviderError::Other(e.to_string()))?;
+            if let Some(hook) = &self.after_download {
+                hook(local_path);
+            }
+            Ok(())
         }
         async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
             self.files
@@ -80229,6 +80217,164 @@ mod tests {
             (second.uploaded, second.downloaded),
             (0, 1),
             "the undo is the change, not the file the last run downloaded"
+        );
+    }
+
+    /// N2 (third review of #949): the downloads were read back when the
+    /// snapshot was saved, after the rest of the run. A local edit landing in
+    /// between was recorded as the synced state, and the next run, seeing the
+    /// remote side differ from it, downloaded over the edit. A download is
+    /// recorded as it was when it completed.
+    #[test]
+    fn a_local_edit_after_a_download_completes_is_not_recorded_as_synced() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 5120);
+        fixture.local_file("b.txt", 5120);
+        let local = fixture.local();
+        std::fs::write(
+            Path::new(&local).join(BISYNC_SNAPSHOT_FILE),
+            format!(
+                r#"{{"synced_at":"2020-01-01T00:00:00Z","files":{{"a.txt":[5120,"{FIXTURE_MTIME}"],"b.txt":[5120,"{FIXTURE_MTIME}"]}}}}"#
+            ),
+        )
+        .unwrap();
+        let mut remote =
+            SharedTreeProvider::with_files(&[("a.txt", &[b'r'; 5200]), ("b.txt", &[b'r'; 5200])]);
+        // When the second download lands, the file downloaded first is edited,
+        // as a user saving it while the run goes on.
+        let edited = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&edited);
+        remote.after_download = Some(Arc::new(move |just_written: &str| {
+            let dir = Path::new(just_written).parent().unwrap();
+            for other in ["a.txt", "b.txt"] {
+                let path = dir.join(other);
+                if path.to_str() != Some(just_written)
+                    && std::fs::metadata(&path).ok().map(|m| m.len()) == Some(5200)
+                    && !flag.swap(true, Ordering::SeqCst)
+                {
+                    let mut file = std::fs::OpenOptions::new()
+                        .append(true)
+                        .open(&path)
+                        .unwrap();
+                    std::io::Write::write_all(&mut file, b"edit").unwrap();
+                }
+            }
+        }));
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let first = run_sync_shared(&remote, &local, false, NEWER_WINS, &cli);
+        assert_eq!((first.exit_code, first.downloaded), (0, 2));
+        assert!(
+            edited.load(Ordering::SeqCst),
+            "the edit landed during the run"
+        );
+        let second = run_sync_shared(&remote, &local, true, NEWER_WINS, &cli);
+        assert_eq!(
+            (second.uploaded, second.downloaded),
+            (1, 0),
+            "the edited file is the newer copy"
+        );
+    }
+
+    /// N3 (third review of #949): with no comparable time, `--direction both`
+    /// read a pair of the same size as current, so a same-size local edit was
+    /// never uploaded (and a later remote change downloaded over it). The
+    /// snapshot says the local side changed.
+    #[test]
+    fn a_same_size_local_edit_without_comparable_times_is_uploaded() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 100);
+        let local = fixture.local();
+        std::fs::File::options()
+            .write(true)
+            .open(Path::new(&local).join("a.txt"))
+            .unwrap()
+            .set_modified(
+                std::time::UNIX_EPOCH
+                    + std::time::Duration::from_secs(FIXTURE_MTIME_EPOCH_SECS + 3600),
+            )
+            .unwrap();
+        std::fs::write(
+            Path::new(&local).join(BISYNC_SNAPSHOT_FILE),
+            format!(
+                r#"{{"synced_at":"2020-01-01T00:00:00Z","files":{{"a.txt":[100,"{FIXTURE_MTIME}"]}}}}"#
+            ),
+        )
+        .unwrap();
+        let mut remote = MemTreeProvider::root_files(&[("a.txt", 100)]);
+        remote.precision = Some(None);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = run_sync_rule(remote, &local, "both", true, false, &[], NEWER_WINS, &cli);
+        assert_eq!((stats.uploaded, stats.downloaded), (1, 0));
+    }
+
+    /// N1 (third review of #949): the snapshot's local side was read with
+    /// `--modify-window`. Two local clocks have no skew, but a large window is
+    /// normal (3600 for a server in another zone): a same-size local edit a
+    /// minute after the snapshot read as unchanged, and the remote change was
+    /// downloaded over it. Both sides changed: the pair is left open.
+    #[test]
+    fn the_snapshot_reads_the_local_side_with_the_local_clock() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 100);
+        let local = fixture.local();
+        std::fs::File::options()
+            .write(true)
+            .open(Path::new(&local).join("a.txt"))
+            .unwrap()
+            .set_modified(
+                std::time::UNIX_EPOCH
+                    + std::time::Duration::from_secs(FIXTURE_MTIME_EPOCH_SECS + 60),
+            )
+            .unwrap();
+        std::fs::write(
+            Path::new(&local).join(BISYNC_SNAPSHOT_FILE),
+            format!(
+                r#"{{"synced_at":"2020-01-01T00:00:00Z","files":{{"a.txt":[100,"{FIXTURE_MTIME}"]}}}}"#
+            ),
+        )
+        .unwrap();
+        let mut remote = MemTreeProvider::root_files(&[("a.txt", 120)]);
+        remote.precision = Some(None);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let rule = SyncPairRule {
+            modify_window: Some(3600),
+            ..NEWER_WINS
+        };
+        let stats = run_sync_rule(remote, &local, "both", true, false, &[], rule, &cli);
+        assert_eq!((stats.uploaded, stats.downloaded), (0, 0));
+        assert_eq!(stats.conflicts_open, vec!["a.txt".to_string()]);
+    }
+
+    /// The pairs left open are listed in a stable order, not the order a hash
+    /// map happens to give.
+    #[test]
+    fn the_pairs_left_open_are_listed_in_order() {
+        let fixture = FilesFromFixture::new();
+        let names = ["e.txt", "b.txt", "d.txt", "a.txt", "c.txt"];
+        for name in names {
+            fixture.local_file(name, 5000);
+        }
+        let local = fixture.local();
+        let files: Vec<(&str, u64)> = names.iter().map(|name| (*name, 5120)).collect();
+        let mut remote = MemTreeProvider::root_files(&files);
+        remote.precision = Some(None);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = run_sync_rule(remote, &local, "both", true, false, &[], NEWER_WINS, &cli);
+        assert_eq!(
+            stats.conflicts_open,
+            vec!["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]
         );
     }
 
