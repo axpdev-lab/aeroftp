@@ -129,13 +129,23 @@ export function buildCliSyncCommand(input: CliCommandInput): CliCommandResult {
 const SAFE_BARE = /^[A-Za-z0-9_\/.:=+-]+$/;
 
 /**
+ * Every character PowerShell's tokenizer reads as a single quote: the ASCII
+ * apostrophe and U+2018, U+2019, U+201A, U+201B. Inside a single-quoted
+ * string each one ends the string unless it is doubled.
+ */
+const POWERSHELL_SINGLE_QUOTES = /['\u2018\u2019\u201A\u201B]/g;
+
+/**
  * Quote one argument for the shell the user will paste into. Single quotes
  * are literal in both shells; only the quote itself needs escaping, and the
- * two shells escape it differently.
+ * two shells escape it differently. PowerShell also closes the string on the
+ * typographic quotes, so each of those is doubled as well (CWE-78: a path
+ * with a curly apostrophe would otherwise end the argument early and hand
+ * the rest to the shell).
  */
 export function quoteArg(arg: string, shell: CliShell): string {
     if (SAFE_BARE.test(arg)) return arg;
     return shell === 'powershell'
-        ? `'${arg.replace(/'/g, "''")}'`
+        ? `'${arg.replace(POWERSHELL_SINGLE_QUOTES, '$&$&')}'`
         : `'${arg.replace(/'/g, `'\\''`)}'`;
 }

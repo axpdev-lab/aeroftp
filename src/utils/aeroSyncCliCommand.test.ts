@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import cases from '../../src-tauri/tests/fixtures/aerosync/cli-commands.json';
-import { buildCliSyncCommand, CLI_EXCLUDES_MATCH_PLAN, type CliCommandInput } from './aeroSyncCliCommand';
+import { buildCliSyncCommand, CLI_EXCLUDES_MATCH_PLAN, quoteArg, type CliCommandInput } from './aeroSyncCliCommand';
 import { AEROSYNC_DEFAULT_EXCLUDES } from './aeroSyncExcludes';
 
 /**
@@ -36,6 +36,29 @@ function splitPosix(text: string): string[] {
     }
     if (inWord) words.push(current);
     return words;
+}
+
+/**
+ * PowerShell's reading of one single-quoted argument. Its tokenizer takes
+ * U+2018, U+2019, U+201A and U+201B as single quotes too, and two quote
+ * characters in a row as one literal quote.
+ */
+const PS_QUOTES = new Set(["'", '\u2018', '\u2019', '\u201A', '\u201B']);
+function readPowerShellSingleQuoted(text: string): { value: string; rest: string } {
+    if (!PS_QUOTES.has(text[0])) throw new Error(`not quoted: ${text}`);
+    let value = '';
+    for (let i = 1; i < text.length; i++) {
+        if (PS_QUOTES.has(text[i])) {
+            if (PS_QUOTES.has(text[i + 1] ?? '')) {
+                value += text[i];
+                i++;
+                continue;
+            }
+            return { value, rest: text.slice(i + 1) };
+        }
+        value += text[i];
+    }
+    throw new Error(`unterminated quote in ${text}`);
 }
 
 const mirrorUpload: CliCommandInput = {
@@ -100,6 +123,19 @@ describe('aeroftp-cli sync line for the Plan tab', () => {
     ])('names the difference instead of a command: %o', (patch, reason) => {
         expect(buildCliSyncCommand({ ...mirrorUpload, ...patch })).toEqual({ kind: 'none', reason });
     });
+
+    it.each(["it's", 'it\u2018s', 'it\u2019s', 'it\u201As', 'it\u201Bs', "a\u2019'\u2018b"])(
+        'keeps a PowerShell argument whole when it contains a quote character: %s',
+        (arg) => {
+            // CWE-78: a typographic quote left single used to close the
+            // argument early, and the rest of the path became shell input.
+            const quoted = quoteArg(`/data/${arg}; Remove-Item x`, 'powershell');
+            expect(readPowerShellSingleQuoted(quoted)).toEqual({
+                value: `/data/${arg}; Remove-Item x`,
+                rest: '',
+            });
+        },
+    );
 
     it('adds --error-correction to an upload only', () => {
         const up = buildCliSyncCommand({ ...mirrorUpload, errorCorrectionPct: 25 });
