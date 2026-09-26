@@ -1678,7 +1678,9 @@ async fn scan_remote_dir(
             }
         }
         let (checksum_alg, checksum_hex) = if want_remote_checksum {
-            match provider.checksum(&entry.path).await {
+            // SHA-256 is the only digest the comparison uses; naming it lets
+            // a backend that computes on request (FTP) skip the others.
+            match provider.checksum_for(&entry.path, "sha256").await {
                 Ok(map) => pick_preferred_checksum(&map),
                 Err(_) => (None, None),
             }

@@ -58,6 +58,8 @@ mod archive_browse;
 #[cfg(target_os = "linux")]
 mod localhost_security;
 mod openai_responses;
+#[cfg(target_os = "linux")]
+mod ui_server;
 
 /// Registered Tauri (GUI) command names, generated at build time from the
 /// `tauri::generate_handler!` block in this file. Consumed by `aeroftp-cli
@@ -202,6 +204,7 @@ mod health_check;
 mod host_key_check;
 mod infinicloud;
 pub mod keystore_export;
+pub mod keystore_profile_plan;
 mod local_panel_watcher;
 mod master_password;
 pub mod mc_import;
@@ -17593,7 +17596,15 @@ async fn import_keystore(
     import_sqlite: Option<bool>,
     import_files: Option<bool>,
     import_local_storage: Option<bool>,
+    // #347: per-profile decisions from the import preview. Absent keeps the
+    // import as it was (the first-run wizard and older callers).
+    profile_decisions: Option<Vec<keystore_profile_plan::ProfileDecisionInput>>,
+    // The `fingerprint` of the preview those decisions were made on.
+    profile_fingerprint: Option<String>,
 ) -> Result<keystore_export::KeystoreImportResult, String> {
+    if profile_decisions.is_some() && profile_fingerprint.is_none() {
+        return Err("Profile decisions need the fingerprint of their preview".to_string());
+    }
     let progress_app = app.clone();
     let progress_cb = move |phase: &str, current: u32, total: u32| {
         let _ = progress_app.emit(
@@ -17628,6 +17639,13 @@ async fn import_keystore(
             sections,
             config_dir.as_deref(),
             Some(&progress_cb),
+            profile_decisions
+                .as_deref()
+                .zip(profile_fingerprint.as_deref())
+                .map(|(decisions, fingerprint)| keystore_export::ProfileChoices {
+                    decisions,
+                    fingerprint,
+                }),
         )
         .map_err(|e| e.to_string())
     })
@@ -17649,6 +17667,30 @@ async fn import_keystore(
         );
     }
     Ok(result)
+}
+
+/// Decrypt a backup and list what importing it would change in the server
+/// profile list, per profile, without writing anything (#347).
+#[tauri::command]
+async fn preview_keystore_import(
+    app: tauri::AppHandle,
+    password: String,
+    file_path: String,
+    merge_strategy: String,
+) -> Result<keystore_profile_plan::ProfilePreview, String> {
+    let config_dir = portable::app_config_dir(&app).ok();
+    tokio::task::spawn_blocking(move || {
+        keystore_export::preview_keystore_import(
+            &password,
+            std::path::Path::new(&file_path),
+            &merge_strategy,
+            keystore_export::ImportSections::default(),
+            config_dir.as_deref(),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("preview_keystore_import join error: {e}"))?
 }
 
 #[tauri::command]
@@ -18159,7 +18201,8 @@ pub fn run() {
     //   - Another local account can reserve the fixed port before this app starts
     //   - Tauri IPC commands are available to the UI, so server ownership is verified
     //     before any webview loads this origin
-    //   - tauri-plugin-localhost is explicitly bound to 127.0.0.1
+    //   - `ui_server` binds 127.0.0.1 only and answers only a `Host` naming this
+    //     origin, so a DNS-rebound page cannot read it
     // This cannot be changed to HTTPS without a local TLS certificate infrastructure that
     // would add complexity with minimal security benefit for localhost-only traffic.
     //
@@ -18173,19 +18216,6 @@ pub fn run() {
     let localhost_nonce = uuid::Uuid::new_v4().to_string();
 
     let mut builder = tauri::Builder::default();
-
-    #[cfg(target_os = "linux")]
-    {
-        let response_nonce = localhost_nonce.clone();
-        builder = builder.plugin(
-            tauri_plugin_localhost::Builder::new(port)
-                .host("127.0.0.1")
-                .on_request(move |_, response| {
-                    response.add_header("X-AeroFTP-UI-Nonce", response_nonce.as_str());
-                })
-                .build(),
-        );
-    }
 
     builder = builder
         .plugin(tauri_plugin_fs::init())
@@ -18369,11 +18399,33 @@ pub fn run() {
             // frontend events without threading a handle through every call.
             crate::app_events::register_app_handle(app.handle().clone());
 
-            // The plugin binds on a background thread. A plain TCP connect
-            // would also accept another user's server that reserved the fixed
-            // port first. Verify a fresh response nonce before creating any
-            // webview, including the cold-start extract window. Our listener
-            // then keeps the unchanged origin reserved while the app runs.
+            // Serve the frontend on the fixed loopback origin. `ui_server`
+            // replaced tauri-plugin-localhost, whose tiny_http core could leave
+            // a cold-start request unread until another connection closed (a
+            // blank main window); the module doc has the measurement. A dev
+            // build does not start it: it embeds no frontend and its webviews
+            // load the Vite server (`devUrl`), so it would serve nobody, and
+            // it would hold the port an installed release needs.
+            #[cfg(target_os = "linux")]
+            if !cfg!(dev) {
+                if let Err(error) = ui_server::start(
+                    app.asset_resolver(),
+                    std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+                    localhost_nonce.clone(),
+                    ui_server::Limits::APP,
+                ) {
+                    // Not fatal here: the ownership check below names the
+                    // problem to the user (usually another process holding the
+                    // port).
+                    log::error!("AeroFTP UI server could not bind 127.0.0.1:{port}: {error}");
+                }
+            }
+
+            // A plain TCP connect would also accept another user's server that
+            // reserved the fixed port first. Verify a fresh response nonce
+            // before creating any webview, including the cold-start extract
+            // window. Our listener then keeps the unchanged origin reserved
+            // while the app runs.
             #[cfg(target_os = "linux")]
             if !cfg!(dev) {
                 if let Err(reason) =
@@ -18551,9 +18603,9 @@ pub fn run() {
 
             // === Main window ===
             // Built programmatically (not via tauri.conf.json) so the URL can
-            // be platform-specific and the window is created AFTER the
-            // tauri-plugin-localhost bind wait, with the final URL up-front
-            // and no post-creation navigation.
+            // be platform-specific and the window is created AFTER the UI
+            // server ownership check, with the final URL up-front and no
+            // post-creation navigation.
             //
             // On Linux production we load directly from the localhost server
             // because WebKitGTK has historically had rendering issues with
@@ -19557,6 +19609,7 @@ pub fn run() {
             export_keystore,
             import_keystore,
             read_keystore_metadata,
+            preview_keystore_import,
             // Debug & dependencies commands
             dependency_index::get_dependencies,
             dependency_index::check_dependency_updates,

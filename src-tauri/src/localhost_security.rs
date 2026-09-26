@@ -5,9 +5,10 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
-/// A successful TCP connect proves only that someone owns the port. The plugin
-/// marks its embedded assets with a fresh secret that a prior listener cannot
-/// know. Once verified, its listener keeps the fixed origin reserved.
+/// A successful TCP connect proves only that someone owns the port.
+/// `ui_server` marks every asset it serves with a fresh secret that a prior
+/// listener cannot know. Once verified, its listener keeps the fixed origin
+/// reserved.
 pub(crate) fn wait_for_owned_server(port: u16, nonce: &str) -> Result<(), String> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -75,8 +76,9 @@ fn verify_owned_response(stream: &mut TcpStream, port: u16, nonce: &str) -> Resu
             "Port 127.0.0.1:{port} is occupied by another process, so AeroFTP cannot safely load its UI"
         ));
     }
-    // The plugin treats a failed response write as a fatal error. Read the
-    // complete asset before closing so this startup probe cannot kill it.
+    // Read the whole asset before closing. `ui_server` survives an early close
+    // (tiny_http, under the plugin it replaced, did not), but a body that stops
+    // short of its Content-Length is not a response from it.
     let mut remaining = content_length
         .ok_or_else(|| format!("Port {port} returned an incomplete UI response"))?
         .saturating_sub(headers.len() - header_end - 4);
