@@ -2072,7 +2072,10 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     /// Yes for files: a replace uploads the new content as a revision of the
-    /// file already there, in one request.
+    /// file already there, in one request. A folder replace sets the old
+    /// folder aside first, so it is not atomic; the callers that ask this
+    /// (CLI `edit`, MCP `remote_edit`, the crypt marker paths) only ever
+    /// replace a file.
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
         Ok(true)
     }
