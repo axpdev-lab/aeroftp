@@ -63,12 +63,12 @@ async fn answer_tool_call(
     let (result, is_error) = match outcome {
         Ok(pair) => pair,
         Err(_) => {
-            // Timeout: the dispatch task may still be running inside the
-            // provider (we cannot cancel it mid-IO without risking half-
-            // written state), but we release the caller's response slot
-            // so stdin keeps flowing. The pool connection is left in
-            // whatever state the provider produces; the pool eviction
-            // task will reap it on the next idle sweep.
+            // Timeout: the call's future was dropped at the await it had
+            // reached, which may leave the provider mid-operation (a
+            // half-written upload), and the caller's response slot is
+            // released so stdin keeps flowing. The pool connection is left
+            // in whatever state the provider was in; the pool eviction task
+            // will reap it on the next idle sweep.
             let mut error = json!({
                 "code": -32000,
                 "message": format!(
@@ -111,18 +111,20 @@ async fn answer_tool_call(
 
 /// Run a request's `answer` unless `token` is cancelled first. What the
 /// call reports is kept per call ([`crate::providers::CallWarnings`]): a
-/// tool call puts it in its answer, and a cancelled call, which gets no
-/// answer, hands it back. It stayed in the queue, for the next call's
-/// result.
+/// tool call puts it in its answer. Returns the answer (none when
+/// cancelled) and what no answer took: a cancelled call's warnings, or
+/// those of a method whose answer does not carry them. They stayed in the
+/// queue, for the next call's result, or were dropped with the scope.
 async fn answer_unless_cancelled(
     token: &CancellationToken,
     answer: impl std::future::Future<Output = Option<Value>>,
-) -> Result<Option<Value>, Vec<String>> {
+) -> (Option<Value>, Vec<String>) {
     let warnings = crate::providers::CallWarnings::default();
-    tokio::select! {
-        _ = token.cancelled() => Err(warnings.take()),
-        answered = warnings.scope(answer) => Ok(answered),
-    }
+    let answered = tokio::select! {
+        _ = token.cancelled() => None,
+        answered = warnings.scope(answer) => answered,
+    };
+    (answered, warnings.take())
 }
 
 fn mcp_tool_timeout() -> Duration {
@@ -377,18 +379,14 @@ impl McpServerCore {
             let response_future =
                 process_request(req, profiles, vault_error, pool, rate_limiter, notifier);
 
-            match answer_unless_cancelled(&token, response_future).await {
-                Ok(Some(resp)) => {
-                    let _ = writer.write_message(&resp).await;
-                }
-                Ok(None) => {}
-                // No answer goes out for a cancelled request: what it left
-                // for the user goes to stderr, the server's log.
-                Err(warnings) => {
-                    for warning in warnings {
-                        eprintln!("[mcp] warning from cancelled request {request_id}: {warning}");
-                    }
-                }
+            let (answer, untaken) = answer_unless_cancelled(&token, response_future).await;
+            if let Some(resp) = answer {
+                let _ = writer.write_message(&resp).await;
+            }
+            // What the request left for the user and no answer carried (a
+            // cancelled request gets none) goes to stderr, the server's log.
+            for warning in untaken {
+                eprintln!("[mcp] warning from request {request_id}: {warning}");
             }
 
             in_flight.lock().await.remove(&request_id);
@@ -881,13 +879,23 @@ mod tests {
             crate::providers::report_warning("left /d/.a.txt.aeroftp-replaced-2".to_string());
             std::future::pending::<(serde_json::Value, bool)>().await
         };
-        let answer = answer_tool_call(json!(12), "slow", slow, Duration::from_millis(20)).await;
+        // Inside the per-call scope, as the server runs every request.
+        let scope = crate::providers::CallWarnings::default();
+        let answer = scope
+            .scope(answer_tool_call(
+                json!(12),
+                "slow",
+                slow,
+                Duration::from_millis(20),
+            ))
+            .await;
         assert_eq!(answer["error"]["code"], json!(-32000), "{answer}");
         assert_eq!(
             answer["error"]["data"]["warnings"],
             json!(["left /d/.a.txt.aeroftp-replaced-2"]),
             "{answer}"
         );
+        assert!(scope.take().is_empty(), "taken with the answer");
         assert!(crate::providers::take_warnings().is_empty(), "drained");
     }
 
@@ -903,15 +911,28 @@ mod tests {
             cancel.cancel();
             std::future::pending::<Option<serde_json::Value>>().await
         };
-        let outcome = answer_unless_cancelled(&token, answer).await;
-        assert_eq!(
-            outcome,
-            Err(vec!["left /d/.a.txt.aeroftp-replaced-3".to_string()])
-        );
+        let (answer, untaken) = answer_unless_cancelled(&token, answer).await;
+        assert_eq!(answer, None);
+        assert_eq!(untaken, ["left /d/.a.txt.aeroftp-replaced-3"]);
         assert!(
             crate::providers::take_warnings().is_empty(),
             "nothing stays for the next call"
         );
+    }
+
+    /// A request answered without taking its warnings (a method whose answer
+    /// does not carry them) dropped them with its scope, silently. They are
+    /// handed back with the answer, for the server's log.
+    #[tokio::test]
+    async fn an_answer_that_does_not_take_its_warnings_hands_them_back() {
+        let token = tokio_util::sync::CancellationToken::new();
+        let answer = async {
+            crate::providers::report_warning("left /d/.a.txt.aeroftp-replaced-4".to_string());
+            Some(json!({ "jsonrpc": "2.0", "id": 13, "result": {} }))
+        };
+        let (answer, untaken) = answer_unless_cancelled(&token, answer).await;
+        assert_eq!(answer.map(|a| a["id"].clone()), Some(json!(13)));
+        assert_eq!(untaken, ["left /d/.a.txt.aeroftp-replaced-4"]);
     }
 
     #[tokio::test]
