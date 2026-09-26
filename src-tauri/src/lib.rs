@@ -51,6 +51,7 @@ pub mod aerovault_v3;
 pub mod agent_memory_db;
 pub mod ai;
 pub mod ai_core;
+pub mod ai_native;
 pub mod ai_stream;
 mod ai_tools;
 pub mod app_events;

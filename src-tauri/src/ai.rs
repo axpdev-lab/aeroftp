@@ -127,6 +127,9 @@ pub struct ToolCallEcho {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
+    /// Opaque provider output, scoped to one foreground turn. Never persisted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_turn: Option<crate::ai_native::NativeTurn>,
     pub role: String,
     pub content: String,
     /// Optional image attachments for vision-capable models
@@ -169,6 +172,10 @@ fn provider_test_path(provider_type: &AIProviderType) -> &'static str {
 // AI Request from frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_scope: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
     pub provider_type: AIProviderType,
     pub model: String,
     #[serde(default, deserialize_with = "deserialize_api_key")]
@@ -206,6 +213,8 @@ pub struct AIRequest {
 // AI Response to frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_turn: Option<crate::ai_native::NativeTurn>,
     pub content: String,
     pub model: String,
     pub tokens_used: Option<u32>,
@@ -651,6 +660,7 @@ mod gemini {
         };
 
         Ok(AIResponse {
+            native_turn: None,
             content: if content.is_empty() {
                 String::new()
             } else {
@@ -1021,6 +1031,7 @@ mod openai_compat {
         });
 
         Ok(AIResponse {
+            native_turn: None,
             content: choice.message.content.unwrap_or_default(),
             model: request.model.clone(),
             tokens_used: openai_response.usage.as_ref().and_then(|u| u.total_tokens),
@@ -1300,6 +1311,7 @@ mod anthropic {
         };
 
         Ok(AIResponse {
+            native_turn: None,
             content,
             model: request.model.clone(),
             tokens_used: total,
@@ -1323,7 +1335,11 @@ pub async fn call_ai(request: AIRequest) -> Result<AIResponse, AIError> {
         ..request
     };
 
+    crate::ai_native::validate_history(&request)?;
     let client = &*AI_HTTP_CLIENT;
+    if crate::ai_native::modern_anthropic(&request) || crate::ai_native::modern_chat(&request) {
+        return crate::ai_native::call(client, &request).await;
+    }
 
     match request.provider_type {
         AIProviderType::Google => gemini::call(client, &request).await,

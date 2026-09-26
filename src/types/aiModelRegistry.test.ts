@@ -326,18 +326,18 @@ describe('provider contracts and implemented adapter support', () => {
     });
 
     it.each(['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'claude-opus-5-5', 'claude-fable-5-1', 'grok-4.7', 'kimi-k3'])
-    ('does not auto-enable %s until its adapter requirements are implemented', name => {
+    ('enables %s after its foreground adapter and replay contract are implemented', name => {
         const result = applyDiscoveredModelDefaults({ name, isEnabled: true, isDefault: true });
         expect(result.capabilitySource).toBe('registry');
-        expect(result.isEnabled).toBe(false);
-        expect(result.isDefault).toBe(false);
+        expect(result.isEnabled).toBe(true);
+        expect(result.isDefault).toBe(true);
         const runtime = resolveModelRuntimeSupport(name);
-        expect(runtime.discoveryReady).toBe(false);
-        expect(runtime.pendingAdapterRequirements.length).toBeGreaterThan(0);
+        expect(runtime.discoveryReady).toBe(true);
+        expect(runtime.pendingAdapterRequirements).toEqual([]);
         expect(runtime.subagents).toBe(false);
         expect(runtime.toolSearch).toBe(false);
-        expect(runtime.nativeTurnState).toBe(false);
-        expect(shouldUseOpenAIResponses('openai', result, true)).toBe(false);
+        expect(runtime.nativeTurnState).toBe(true);
+        expect(shouldUseOpenAIResponses('openai', result, true)).toBe(name.startsWith('gpt-'));
     });
 
     it('preserves existing explicit enablement, but refreshes stale native metadata', () => {
@@ -361,14 +361,14 @@ describe('provider contracts and implemented adapter support', () => {
         result.nativeCapabilities?.reasoningEfforts?.push('none');
         expect(MODEL_REGISTRY['gpt-6-astra'].nativeCapabilities?.reasoningEfforts).not.toContain('none');
         const runtime = resolveModelRuntimeSupport('gpt-6-astra');
-        runtime.pendingAdapterRequirements.length = 0;
-        expect(resolveModelRuntimeSupport('gpt-6-astra').discoveryReady).toBe(false);
+        runtime.pendingAdapterRequirements.push('native-turn-state');
+        expect(resolveModelRuntimeSupport('gpt-6-astra').pendingAdapterRequirements).toEqual([]);
     });
 
     it('does not promote provider features to local runtime features', () => {
         expect(MODEL_REGISTRY['gpt-5.6-sol'].nativeCapabilities?.multiAgent).toBe(true);
         expect(resolveModelRuntimeSupport('gpt-5.6-sol')).toMatchObject({
-            discoveryReady: true, subagents: false, toolSearch: false, nativeTurnState: false,
+            discoveryReady: true, subagents: false, toolSearch: false, nativeTurnState: true,
         });
         expect(resolveModelRuntimeSupport('private-model').discoveryReady).toBe(false);
         expect(applyDiscoveredModelDefaults({ name: 'grok-3', isEnabled: true }).isEnabled).toBe(false);

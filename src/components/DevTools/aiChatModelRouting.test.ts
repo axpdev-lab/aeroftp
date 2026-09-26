@@ -32,7 +32,18 @@ describe('resolveRoutedModels', () => {
             modelId: 'm1', modelName: 'llama-3.3-70b', displayName: 'Llama 3.3 70B',
         };
         const routed = resolveRoutedModels(picked, settingsWith([{ taskType: 'code_generation', preferredModelId: 'm2', fallbackModelId: 'm1' }]), CODE_PROMPT);
-        expect(routed.primary).toBe(picked);
+        expect(routed.primary).toEqual(picked);
+        expect(routed.fallback).toBeNull();
+    });
+
+    it('resolves a stored pick against current model identity after an edit', () => {
+        const settings = settingsWith([], 'm1');
+        const picked = {
+            providerId: 'p1', providerName: 'Groq', providerType: 'groq' as const,
+            modelId: 'm1', modelName: 'old-name', displayName: 'Old display name',
+        };
+        const routed = resolveRoutedModels(picked, settings, CODE_PROMPT);
+        expect(routed.primary?.modelName).toBe('llama-3.3-70b');
         expect(routed.fallback).toBeNull();
     });
 

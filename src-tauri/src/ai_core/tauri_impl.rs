@@ -43,6 +43,7 @@ pub struct TauriEventSink {
 /// to emit a coalesced batch of text deltas.
 fn content_only_chunk(content: String) -> StreamChunk {
     StreamChunk {
+        native_turn: None,
         content,
         done: false,
         tool_calls: None,

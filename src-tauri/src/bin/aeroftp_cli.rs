@@ -61878,7 +61878,7 @@ fn detect_ai_provider() -> Option<(String, String, String)> {
         (
             "anthropic",
             "ANTHROPIC_API_KEY",
-            "https://api.anthropic.com",
+            "https://api.anthropic.com/v1",
         ),
         ("openai", "OPENAI_API_KEY", "https://api.openai.com/v1"),
         (
@@ -61978,7 +61978,7 @@ fn resolve_vault_ai_provider(
 
     let base_url_for = |ptype: &str| -> &str {
         match ptype {
-            "anthropic" => "https://api.anthropic.com",
+            "anthropic" => "https://api.anthropic.com/v1",
             "openai" => "https://api.openai.com/v1",
             "google" => "https://generativelanguage.googleapis.com",
             "xai" => "https://api.x.ai/v1",
@@ -63442,6 +63442,7 @@ struct CollectingCliSink {
 
 #[derive(Default)]
 struct CollectingSinkState {
+    native_turn: Option<ftp_client_gui_lib::ai_native::NativeTurn>,
     content: String,
     thinking: String,
     tool_calls: Option<Vec<ftp_client_gui_lib::ai::AIToolCall>>,
@@ -63465,6 +63466,7 @@ impl CollectingCliSink {
     fn into_response(self, model: &str) -> ftp_client_gui_lib::ai::AIResponse {
         let state = self.inner.into_inner().unwrap_or_else(|e| e.into_inner());
         ftp_client_gui_lib::ai::AIResponse {
+            native_turn: state.native_turn,
             content: state.content,
             model: model.to_string(),
             tokens_used: state.tokens_used.or_else(|| {
@@ -63518,6 +63520,9 @@ impl ftp_client_gui_lib::ai_core::EventSink for CollectingCliSink {
             if chunk.tool_calls.is_some() {
                 state.tool_calls = chunk.tool_calls.clone();
             }
+            if chunk.native_turn.is_some() {
+                state.native_turn = chunk.native_turn.clone();
+            }
             if let Some(v) = chunk.input_tokens {
                 state.input_tokens = Some(v);
             }
@@ -63563,9 +63568,17 @@ async fn agent_tool_loop(
     let tools = cli_tool_definitions();
     let mut steps = 0u32;
 
+    // Opaque output lives only in this foreground run, never in saved messages.
+    let turn_scope = uuid::Uuid::new_v4().to_string();
+    let mut native_turns: std::collections::HashMap<
+        usize,
+        ftp_client_gui_lib::ai_native::NativeTurn,
+    > = std::collections::HashMap::new();
+
     loop {
         // Build request with tool definitions
         let mut all_messages = vec![ChatMessage {
+            native_turn: None,
             role: "system".to_string(),
             content: cfg.system.clone(),
             images: None,
@@ -63573,8 +63586,15 @@ async fn agent_tool_loop(
             tool_call_id: None,
         }];
         all_messages.extend_from_slice(messages);
+        for (index, native) in &native_turns {
+            if let Some(message) = all_messages.get_mut(index + 1) {
+                message.native_turn = Some(native.clone());
+            }
+        }
 
         let request = AIRequest {
+            turn_scope: Some(turn_scope.clone()),
+            reasoning_effort: None,
             provider_type: cfg.provider_type.clone(),
             model: cfg.model.clone(),
             api_key: Some(cfg.api_key.clone()),
@@ -63589,7 +63609,14 @@ async fn agent_tool_loop(
             top_k: None,
             cached_content: None,
             web_search: None,
-            use_responses_api: None,
+            use_responses_api: Some(
+                cfg.provider_type == ftp_client_gui_lib::ai::AIProviderType::OpenAI
+                    && matches!(
+                        cfg.model.as_str(),
+                        "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna"
+                    )
+                    && cfg.base_url.trim_end_matches('/') == "https://api.openai.com/v1",
+            ),
         };
 
         // T4: stream the assistant response token-by-token via ai_chat_stream_with_sink.
@@ -63685,6 +63712,7 @@ async fn agent_tool_loop(
                 if steps > cfg.max_steps {
                     if !response.content.is_empty() {
                         messages.push(ChatMessage {
+                            native_turn: None,
                             role: "assistant".to_string(),
                             content: response.content.clone(),
                             images: None,
@@ -63717,7 +63745,11 @@ async fn agent_tool_loop(
                     })
                     .collect();
 
+                if let Some(native) = response.native_turn.clone() {
+                    native_turns.insert(messages.len(), native);
+                }
                 messages.push(ChatMessage {
+                    native_turn: None,
                     role: "assistant".to_string(),
                     content: response.content.clone(),
                     images: None,
@@ -63788,6 +63820,7 @@ async fn agent_tool_loop(
 
                     // Add tool result as conversation message with tool_call_id
                     messages.push(ChatMessage {
+                        native_turn: None,
                         role: "tool".to_string(),
                         content: result_content,
                         images: None,
@@ -63831,7 +63864,7 @@ async fn cmd_agent(
         let env_key = format!("{}_API_KEY", name.to_uppercase());
         let key = std::env::var(&env_key).unwrap_or_default();
         let url = match name.as_str() {
-            "anthropic" => "https://api.anthropic.com",
+            "anthropic" => "https://api.anthropic.com/v1",
             "openai" => "https://api.openai.com/v1",
             "gemini" | "google" => "https://generativelanguage.googleapis.com",
             "ollama" => "http://localhost:11434",
@@ -64014,6 +64047,7 @@ async fn cmd_agent_oneshot(message: &str, cfg: &AgentConfig, format: OutputForma
     use ftp_client_gui_lib::ai::ChatMessage;
 
     let mut messages = vec![ChatMessage {
+        native_turn: None,
         role: "user".to_string(),
         content: message.to_string(),
         images: None,
@@ -64197,6 +64231,7 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
 
         // Add user message
         conversation.push(ChatMessage {
+            native_turn: None,
             role: "user".to_string(),
             content: input,
             images: None,
@@ -64223,6 +64258,7 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
                     println!("\n{}\n", response);
                 }
                 conversation.push(ChatMessage {
+                    native_turn: None,
                     role: "assistant".to_string(),
                     content: response,
                     images: None,
@@ -64378,6 +64414,7 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
                 }
 
                 conversation.push(ChatMessage {
+                    native_turn: None,
                     role: "user".to_string(),
                     content: msg.to_string(),
                     images: None,
@@ -64398,6 +64435,7 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
                 match agent_tool_loop(cfg, &mut conversation, false).await {
                     Ok(response) => {
                         conversation.push(ChatMessage {
+                            native_turn: None,
                             role: "assistant".to_string(),
                             content: response.clone(),
                             images: None,

@@ -3,11 +3,9 @@
 
 //! OpenAI Responses API adapter.
 //!
-//! This first slice is deliberately stateless (`store: false`). It supports
-//! foreground text/image input, custom function tools, non-streaming output and
-//! the corresponding SSE events. Durable response chaining belongs to the
-//! conversation-state lane; callers must not pretend Chat Completions history
-//! preserves opaque Responses reasoning items.
+//! Foreground text/image/tool requests use `store: false` and replay complete
+//! output items, including opaque encrypted reasoning, within one scoped turn.
+//! Durable conversation storage belongs to the separate persistence lane.
 
 use std::collections::BTreeMap;
 
@@ -15,17 +13,6 @@ use reqwest::Client;
 use serde_json::{json, Value};
 
 use crate::ai::{truncate_safe, AIError, AIRequest, AIResponse, AIToolCall};
-
-fn reasoning_effort(thinking_budget: Option<u32>) -> Option<&'static str> {
-    Some(match thinking_budget? {
-        0 => "none",
-        1..=5_000 => "low",
-        5_001..=20_000 => "medium",
-        20_001..=50_000 => "high",
-        50_001..=99_999 => "xhigh",
-        _ => "max",
-    })
-}
 
 fn append_output_part(text: &mut String, part: &Value) {
     match part.get("type").and_then(Value::as_str) {
@@ -90,6 +77,7 @@ fn input_message(message: &crate::ai::ChatMessage) -> Value {
 
 /// Build the provider-native request without logging credentials or content.
 pub(crate) fn build_request_body(request: &AIRequest, stream: bool) -> Result<Value, AIError> {
+    crate::ai_native::validate_history(request)?;
     let instructions = request
         .messages
         .iter()
@@ -105,6 +93,14 @@ pub(crate) fn build_request_body(request: &AIRequest, stream: bool) -> Result<Va
         .iter()
         .filter(|message| message.role != "system" && message.role != "developer")
     {
+        if let Some(turn) = &message.native_turn {
+            let output = crate::ai_native::replay(request, turn)?;
+            let items = output
+                .as_array()
+                .ok_or_else(|| AIError::InvalidResponse("Invalid Responses replay items".into()))?;
+            input.extend(items.iter().cloned());
+            continue;
+        }
         if message.role == "tool" {
             if let Some(call_id) = message.tool_call_id.as_ref() {
                 input.push(json!({
@@ -153,6 +149,7 @@ pub(crate) fn build_request_body(request: &AIRequest, stream: bool) -> Result<Va
                 }
                 json!({
                     "type": "function",
+                    "strict": false,
                     "name": definition.name,
                     "description": definition.description,
                     "parameters": parameters,
@@ -176,7 +173,7 @@ pub(crate) fn build_request_body(request: &AIRequest, stream: bool) -> Result<Va
     if !instructions.is_empty() {
         body["instructions"] = json!(instructions);
     }
-    if let Some(effort) = reasoning_effort(request.thinking_budget) {
+    if let Some(effort) = crate::ai_native::effort(request)? {
         body["reasoning"] = json!({ "effort": effort, "context": "current_turn" });
     }
 
@@ -212,16 +209,20 @@ pub(crate) async fn call(client: &Client, request: &AIRequest) -> Result<AIRespo
             .unwrap_or_else(|| truncate_safe(&response_body, 500).to_string());
         return Err(AIError::Api(format!("[{}] {}", status, detail)));
     }
-    parse_response_body(&response_body, &request.model)
+    let mut parsed = parse_response_body(&response_body, &request.model)?;
+    if parsed.finish_reason.as_deref() == Some("completed") {
+        let raw: Value = serde_json::from_str(&response_body)
+            .map_err(|_| AIError::InvalidResponse("Invalid Responses JSON".into()))?;
+        if let Some(output) = raw.get("output").filter(|v| v.is_array()) {
+            parsed.native_turn = crate::ai_native::capture(request, output.clone());
+        }
+    }
+    Ok(parsed)
 }
 
 pub(crate) fn parse_response_body(body: &str, fallback_model: &str) -> Result<AIResponse, AIError> {
     let response: Value = serde_json::from_str(body).map_err(|error| {
-        AIError::InvalidResponse(format!(
-            "Responses JSON parse error: {}: body: {}",
-            error,
-            truncate_safe(body, 200)
-        ))
+        AIError::InvalidResponse(format!("Responses JSON parse error: {error}"))
     })?;
 
     if let Some(message) = response.pointer("/error/message").and_then(Value::as_str) {
@@ -254,21 +255,35 @@ pub(crate) fn parse_response_body(body: &str, fallback_model: &str) -> Result<AI
                     append_output_part(&mut text, item);
                 }
                 Some("function_call") => {
-                    if let (Some(id), Some(name)) = (
-                        item.get("call_id").and_then(Value::as_str),
-                        item.get("name").and_then(Value::as_str),
-                    ) {
-                        let arguments = item
-                            .get("arguments")
-                            .and_then(Value::as_str)
-                            .and_then(|arguments| serde_json::from_str(arguments).ok())
-                            .unwrap_or_else(|| json!({}));
-                        tool_calls.push(AIToolCall {
-                            id: id.to_string(),
-                            name: name.to_string(),
-                            arguments,
-                        });
+                    let id = item["call_id"]
+                        .as_str()
+                        .filter(|id| !id.is_empty())
+                        .ok_or_else(|| {
+                            AIError::InvalidResponse("Missing Responses tool ID".into())
+                        })?;
+                    let name = item["name"]
+                        .as_str()
+                        .filter(|name| !name.is_empty())
+                        .ok_or_else(|| {
+                            AIError::InvalidResponse("Missing Responses tool name".into())
+                        })?;
+                    let arguments: Value = item["arguments"]
+                        .as_str()
+                        .and_then(|arguments| serde_json::from_str(arguments).ok())
+                        .filter(Value::is_object)
+                        .ok_or_else(|| {
+                            AIError::InvalidResponse("Invalid Responses tool arguments".into())
+                        })?;
+                    if tool_calls.iter().any(|call: &AIToolCall| call.id == id) {
+                        return Err(AIError::InvalidResponse(
+                            "Duplicate Responses tool ID".into(),
+                        ));
                     }
+                    tool_calls.push(AIToolCall {
+                        id: id.to_owned(),
+                        name: name.to_owned(),
+                        arguments,
+                    });
                 }
                 _ => {}
             }
@@ -304,6 +319,7 @@ pub(crate) fn parse_response_body(body: &str, fallback_model: &str) -> Result<AI
         });
 
     Ok(AIResponse {
+        native_turn: None,
         content: text,
         model: response
             .get("model")
@@ -317,7 +333,7 @@ pub(crate) fn parse_response_body(body: &str, fallback_model: &str) -> Result<AI
             .get("status")
             .and_then(Value::as_str)
             .map(str::to_owned),
-        tool_calls: (!tool_calls.is_empty()).then_some(tool_calls),
+        tool_calls: (status == "completed" && !tool_calls.is_empty()).then_some(tool_calls),
         cache_creation_input_tokens: None,
         cache_read_input_tokens: None,
     })
@@ -332,6 +348,7 @@ struct PartialFunctionCall {
 
 #[derive(Debug, Default)]
 pub(crate) struct ResponsesStreamUpdate {
+    pub output: Option<Value>,
     pub content: Option<String>,
     pub done: bool,
     pub tool_calls: Option<Vec<AIToolCall>>,
@@ -341,6 +358,9 @@ pub(crate) struct ResponsesStreamUpdate {
 
 #[derive(Debug, Default)]
 pub(crate) struct ResponsesStreamAccumulator {
+    bytes: usize,
+    output: BTreeMap<u64, Value>,
+    incomplete: bool,
     function_calls: BTreeMap<u64, PartialFunctionCall>,
     input_tokens: Option<u32>,
     output_tokens: Option<u32>,
@@ -377,6 +397,10 @@ impl ResponsesStreamAccumulator {
         &mut self,
         event: &Value,
     ) -> Result<Option<ResponsesStreamUpdate>, String> {
+        self.bytes += event.to_string().len();
+        if self.bytes > 16 * 1024 * 1024 {
+            return Err("Responses output exceeds 16 MiB".into());
+        }
         let event_type = event
             .get("type")
             .and_then(Value::as_str)
@@ -395,13 +419,16 @@ impl ResponsesStreamAccumulator {
                 let Some(item) = event.get("item") else {
                     return Ok(None);
                 };
-                if item.get("type").and_then(Value::as_str) != Some("function_call") {
-                    return Ok(None);
-                }
                 let index = event
                     .get("output_index")
                     .and_then(Value::as_u64)
                     .unwrap_or(0);
+                if event_type.ends_with(".done") {
+                    self.output.insert(index, item.clone());
+                }
+                if item.get("type").and_then(Value::as_str) != Some("function_call") {
+                    return Ok(None);
+                }
                 let call = self.function_calls.entry(index).or_default();
                 if let Some(call_id) = item.get("call_id").and_then(Value::as_str) {
                     call.call_id = call_id.to_string();
@@ -443,11 +470,45 @@ impl ResponsesStreamAccumulator {
             "response.completed" => {
                 if let Some(response) = event.get("response") {
                     self.read_usage(response);
+                    if let Some(output) = response.get("output").and_then(Value::as_array) {
+                        self.output = output
+                            .iter()
+                            .enumerate()
+                            .map(|(i, v)| (i as u64, v.clone()))
+                            .collect();
+                        self.function_calls.clear();
+                        for (index, item) in output
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, item)| item["type"] == "function_call")
+                        {
+                            self.function_calls.insert(
+                                index as u64,
+                                PartialFunctionCall {
+                                    call_id: item["call_id"].as_str().unwrap_or("").to_owned(),
+                                    name: item["name"].as_str().unwrap_or("").to_owned(),
+                                    arguments: item["arguments"].as_str().unwrap_or("").to_owned(),
+                                },
+                            );
+                        }
+                    }
+                }
+                let mut ids = std::collections::BTreeSet::new();
+                for call in self.function_calls.values() {
+                    if call.call_id.is_empty()
+                        || call.name.is_empty()
+                        || !ids.insert(&call.call_id)
+                        || !serde_json::from_str::<Value>(&call.arguments)
+                            .is_ok_and(|value| value.is_object())
+                    {
+                        return Err("Invalid completed Responses tool call".into());
+                    }
                 }
                 self.completed = true;
                 Ok(Some(self.finish()))
             }
             "response.incomplete" => {
+                self.incomplete = true;
                 if let Some(response) = event.get("response") {
                     self.read_usage(response);
                 }
@@ -472,9 +533,15 @@ impl ResponsesStreamAccumulator {
 
     pub(crate) fn finish(&self) -> ResponsesStreamUpdate {
         ResponsesStreamUpdate {
+            output: (self.completed && !self.incomplete && !self.output.is_empty())
+                .then(|| json!(self.output.values().collect::<Vec<_>>())),
             content: None,
             done: true,
-            tool_calls: self.collected_tool_calls(),
+            tool_calls: if self.completed && !self.incomplete {
+                self.collected_tool_calls()
+            } else {
+                None
+            },
             input_tokens: self.input_tokens,
             output_tokens: self.output_tokens,
         }
@@ -492,12 +559,15 @@ mod tests {
 
     fn request() -> AIRequest {
         AIRequest {
+            turn_scope: None,
+            reasoning_effort: None,
             provider_type: AIProviderType::OpenAI,
             model: "gpt-5.6-sol".to_string(),
             api_key: Some("secret".to_string()),
             base_url: "https://api.openai.com/v1".to_string(),
             messages: vec![
                 ChatMessage {
+                    native_turn: None,
                     role: "system".to_string(),
                     content: "Be precise.".to_string(),
                     images: None,
@@ -505,6 +575,7 @@ mod tests {
                     tool_call_id: None,
                 },
                 ChatMessage {
+                    native_turn: None,
                     role: "user".to_string(),
                     content: "Inspect this".to_string(),
                     images: Some(vec![ImageAttachment {
@@ -551,8 +622,8 @@ mod tests {
         assert_eq!(body["tools"][0]["name"], "read_file");
         // AeroAgent schemas contain optional fields. Strict mode requires every
         // property to be required (nullable for optional semantics), which is a
-        // separate schema migration; do not make a false strictness claim.
-        assert!(body["tools"][0].get("strict").is_none());
+        // separate schema migration. Disable automatic schema normalization.
+        assert_eq!(body["tools"][0]["strict"], false);
         assert_eq!(
             body["tools"][0]["parameters"]["additionalProperties"],
             false
@@ -563,6 +634,7 @@ mod tests {
     fn serializes_function_echo_and_output_with_responses_call_ids() {
         let mut request = request();
         request.messages.push(ChatMessage {
+            native_turn: None,
             role: "assistant".to_string(),
             content: String::new(),
             images: None,
@@ -574,6 +646,7 @@ mod tests {
             tool_call_id: None,
         });
         request.messages.push(ChatMessage {
+            native_turn: None,
             role: "tool".to_string(),
             content: "contents".to_string(),
             images: None,

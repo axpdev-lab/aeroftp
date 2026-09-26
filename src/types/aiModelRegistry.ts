@@ -63,7 +63,6 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
         metadataReviewedAt: '2026-09-26',
         metadataSource: 'https://developers.openai.com/api/docs/models/gpt-6-astra',
-        pendingAdapterRequirements: ['model-aware-reasoning', 'native-turn-state'],
         nativeCapabilities: {
             responses: true,
             hostedTools: true,
@@ -86,7 +85,6 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
         metadataReviewedAt: '2026-09-26',
         metadataSource: 'https://developers.openai.com/api/docs/models/gpt-6-sol',
-        pendingAdapterRequirements: ['model-aware-reasoning', 'native-turn-state'],
         nativeCapabilities: {
             responses: true,
             hostedTools: true,
@@ -109,7 +107,6 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
         metadataReviewedAt: '2026-09-26',
         metadataSource: 'https://developers.openai.com/api/docs/models/gpt-6-luna',
-        pendingAdapterRequirements: ['model-aware-reasoning', 'native-turn-state'],
         nativeCapabilities: {
             responses: true,
             hostedTools: true,
@@ -311,7 +308,6 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
         metadataReviewedAt: '2026-09-26',
         metadataSource: 'https://platform.claude.com/docs/en/models/opus-5-5/overview',
-        pendingAdapterRequirements: ['adaptive-thinking', 'native-turn-state', 'fixed-sampling'],
         nativeCapabilities: {
             adaptiveThinking: true,
             thinkingAlwaysOn: true,
@@ -335,7 +331,6 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
         metadataReviewedAt: '2026-09-26',
         metadataSource: 'https://platform.claude.com/docs/en/models/fable-5-1/overview',
-        pendingAdapterRequirements: ['adaptive-thinking', 'native-turn-state', 'fixed-sampling'],
         nativeCapabilities: {
             thinkingAlwaysOn: true,
             forcedToolChoice: false,
@@ -562,7 +557,6 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
         metadataReviewedAt: '2026-09-26',
         metadataSource: 'https://docs.x.ai/developers/models/grok-4.7',
-        pendingAdapterRequirements: ['model-aware-reasoning'],
         nativeCapabilities: {
             reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
             thinkingAlwaysOn: true,
@@ -742,7 +736,6 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
         metadataReviewedAt: '2026-09-26',
         metadataSource: 'https://platform.kimi.ai/docs/guide/kimi-k3-quickstart',
-        pendingAdapterRequirements: ['model-aware-reasoning', 'native-turn-state', 'fixed-sampling'],
         nativeCapabilities: {
             thinkingAlwaysOn: true,
             hostedTools: true,
@@ -836,7 +829,9 @@ export function resolveModelRuntimeSupport(modelName: string) {
         // No provider's multiAgent/toolSearch flag turns these local features on.
         subagents: false,
         toolSearch: false,
-        nativeTurnState: false,
+        // Foreground replay only; durable conversation state is a separate lane.
+        nativeTurnState: !!spec?.nativeCapabilities?.responses
+            || ['claude-opus-5-5', 'claude-fable-5-1', 'grok-4.7', 'kimi-k3'].includes(modelName),
         pendingAdapterRequirements: [...(spec?.pendingAdapterRequirements ?? [])],
         discoveryReady: !!spec && spec.lifecycleStatus !== 'retired'
             && !spec.pendingAdapterRequirements?.length,

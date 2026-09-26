@@ -6,7 +6,7 @@ import { SelectedModel } from './aiChatTypes';
 import { detectTaskType } from './aiChatUtils';
 
 /** Resolve a stored model id into the shape the send path needs, or null when
- *  the model or its provider no longer exists. */
+ *  the model or its provider no longer exists or is disabled. */
 export function resolveModelById(settings: AISettings, modelId?: string): SelectedModel | null {
     if (!modelId) return null;
     const model = settings.models.find(m => m.id === modelId);
@@ -48,7 +48,7 @@ export function resolveRoutedModels(
 ): RoutedModels {
     if (selectedModel) {
         return {
-            primary: resolveModelById(settings, selectedModel.modelId) ? selectedModel : null,
+            primary: resolveModelById(settings, selectedModel.modelId),
             fallback: null,
         };
     }
