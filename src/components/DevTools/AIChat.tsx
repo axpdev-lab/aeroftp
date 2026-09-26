@@ -9,6 +9,7 @@ import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaI
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType } from '../../types/ai';
 import { reconcilePersistedModel, reconcilePersistedModels, resolveModelContext, shouldUseOpenAIResponses } from '../../types/aiModelRegistry';
+import { AEROAGENT_VERSION } from '../../utils/aeroagentVersion';
 import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByName, getToolByNameFromAll } from '../../types/tools';
 import { PluginManifest, allPluginTools, findPluginForTool } from '../../types/plugins';
 import { ToolApproval } from './ToolApproval';
@@ -2875,7 +2876,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             <div className="w-11 h-11 rounded-full bg-purple-600/20 flex items-center justify-center">
                                 <Sparkles size={22} className="text-purple-400" />
                             </div>
-                            <h3 className={`text-lg font-semibold ${ct.text}`}>{t('ai.aeroAgent')}</h3>
+                            <h3 className={`text-lg font-semibold ${ct.text}`}>
+                                {t('ai.aeroAgent')}{' '}
+                                <span className={`text-sm font-normal ${ct.textSecondary}`}>{AEROAGENT_VERSION}</span>
+                            </h3>
                             <p className={`text-xs ${ct.textSecondary} max-w-xs`}>
                                 {availableModels.length === 0 ? t('ai.welcomeSubtitleSetup') : t('ai.welcomeSubtitle')}
                             </p>

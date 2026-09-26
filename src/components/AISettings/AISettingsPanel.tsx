@@ -19,6 +19,7 @@ import { ProviderMarketplace } from './ProviderMarketplace';
 import { PluginBrowser } from './PluginBrowser';
 import { applyDiscoveredModelDefaults, buildSavedModelRecord, getModelCapabilitySource, lookupModelSpec, reconcilePersistedModels } from '../../types/aiModelRegistry';
 import { useTranslation } from '../../i18n';
+import { AEROAGENT_VERSION } from '../../utils/aeroagentVersion';
 import { createTauriListener } from '../../hooks/useTauriListener';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 
@@ -1915,9 +1916,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 {/* Footer */}
                 <div className="px-6 py-4 border-t border-gray-700 flex justify-between items-center">
                     <div className="text-sm text-gray-500">
-                        {t('ai.settings.providersEnabled', {
-                            count: settings.providers.filter((p) => p.isEnabled).length,
-                        })}
+                        <div>{t('ai.aeroAgent')} {AEROAGENT_VERSION}</div>
+                        <div className="text-xs">
+                            {t('ai.settings.providersEnabled', {
+                                count: settings.providers.filter((p) => p.isEnabled).length,
+                            })}
+                        </div>
                     </div>
                     <button onClick={onClose} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm transition-colors">
                         {t('ai.settings.done')}
