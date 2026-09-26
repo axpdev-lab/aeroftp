@@ -63650,9 +63650,11 @@ DISCONNECT\n";
                 let one_way = want_direction != "both";
                 let want_on_line = want_conflict
                     .clone()
-                    .filter(|mode| !one_way || mode == "skip");
+                    .filter(|mode| !one_way || mode == "skip" || mode == "source");
                 assert_eq!(conflict_mode, want_on_line, "{}", profile.id);
-                if let Some(mode) = want_conflict.filter(|mode| one_way && mode != "skip") {
+                if let Some(mode) =
+                    want_conflict.filter(|mode| one_way && mode != "skip" && mode != "source")
+                {
                     assert!(
                         script.contains(&format!("#   conflict mode: {mode} ")),
                         "{script}"
