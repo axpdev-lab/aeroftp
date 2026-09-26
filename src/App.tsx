@@ -471,7 +471,7 @@ import { describeScanIncompleteError, isScanIncompleteError } from './utils/scan
 import { useTranslation } from './i18n';
 
 // Components
-import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, ChecksumCapability, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
+import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, ChecksumAlgorithm, ChecksumCapability, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, toggleTransferToast } from './components/Transfer/TransferToastContainer';
 import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
@@ -16171,7 +16171,7 @@ const App: React.FC = () => {
               }
               setPropertiesDialog(null);
             }}
-            onCalculateChecksum={async (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3') => {
+            onCalculateChecksum={async (algorithm: ChecksumAlgorithm) => {
               if (!propertiesDialog) return;
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
               try {
