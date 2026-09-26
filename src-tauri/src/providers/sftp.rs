@@ -2765,15 +2765,34 @@ impl StorageProvider for SftpProvider {
         let from_path = self.normalize_path(from);
         let to_path = self.normalize_path(to);
 
+        if from_path == to_path {
+            // OpenSSH answers a rename onto itself with an error; everywhere
+            // else it is a no-op.
+            return Ok(());
+        }
+
         tracing::info!("SFTP: Renaming {} to {}", from_path, to_path);
 
-        sftp.rename(&from_path, &to_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to rename: {}", s))
-            })
-        })?;
-
-        Ok(())
+        let refusal = match sftp.rename(&from_path, &to_path).await {
+            Ok(()) => return Ok(()),
+            Err(e) => e,
+        };
+        // SFTP v3 refuses a taken destination with the bare SSH_FX_FAILURE,
+        // which says nothing more. The destination being there is what makes
+        // it AlreadyExists (the CLI's exit 9); anything else stays the
+        // server's refusal.
+        let failure = matches!(
+            &refusal,
+            russh_sftp::client::error::Error::Status(status)
+                if status.status_code == russh_sftp::protocol::StatusCode::Failure
+        );
+        let error = classify_russh_err(refusal, |s| {
+            ProviderError::ServerError(format!("Failed to rename: {}", s))
+        });
+        if failure && map_sftp_try_exists(sftp.try_exists(&to_path).await).unwrap_or(false) {
+            return Err(ProviderError::AlreadyExists(to_path));
+        }
+        Err(error)
     }
 
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
