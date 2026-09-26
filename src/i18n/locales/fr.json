@@ -5254,7 +5254,7 @@
             "speedMode_fast": "Rapide",
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extrême",
-            "speedModeHint": "Définit la politique de nouvelles tentatives. À partir de Rapide, les fichiers modifiés sont envoyés en delta lorsque le serveur le prend en charge (SFTP avec rsync).",
+            "speedModeHint": "Définit la politique de nouvelles tentatives. À partir de Rapide, les fichiers modifiés sont transférés en delta lorsque le serveur le prend en charge (SFTP avec rsync).",
             "verifyPolicy": "Politique de vérification",
             "verifyPolicy_none": "Aucune",
             "verifyPolicy_size_only": "Taille uniquement",
