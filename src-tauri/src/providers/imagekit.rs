@@ -708,13 +708,19 @@ impl ImageKitProvider {
             };
             let status = resp.status();
             if !status.is_success() {
-                let retryable = status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS;
+                // A refusal to show the job (401, 403: a key that expired or
+                // lost a permission) says nothing about the job itself, which
+                // may still be running: like a server error, it is unknown.
+                let unknown_status = status.is_server_error()
+                    || status == StatusCode::TOO_MANY_REQUESTS
+                    || status == StatusCode::UNAUTHORIZED
+                    || status == StatusCode::FORBIDDEN;
                 let error = self.parse_error(resp).await;
-                if retryable {
+                if unknown_status {
                     return unknown(error);
                 }
-                // A job ImageKit does not know (404) or will not show is over
-                // for this session: nothing is left to wait for.
+                // A job ImageKit does not know (404) is over for this
+                // session: nothing is left to wait for.
                 return FolderJob::Over(ProviderError::Other(format!(
                     "ImageKit no longer reports folder job {job_id} ({error}); check the \
                      destination to see whether it ran"
@@ -1517,6 +1523,35 @@ mod tests {
         assert!(
             matches!(outcome, FolderJob::Unfinished(ProviderError::Other(ref m)) if m.contains("still pending")),
             "{outcome:?}"
+        );
+    }
+
+    /// A poll refused with 403 (a key that lost a permission) says nothing
+    /// about the job, which may still run: it was forgotten as over, and a
+    /// retry queued a second job. It is unfinished, and remembered.
+    #[tokio::test]
+    async fn a_job_poll_refused_by_permissions_is_unfinished() {
+        let (provider, _) = provider_on_tree(&[], &[403]).await;
+        let outcome = provider
+            .wait_for_folder_job("J", std::time::Duration::ZERO)
+            .await;
+        assert!(matches!(outcome, FolderJob::Unfinished(_)), "{outcome:?}");
+    }
+
+    /// A file moved onto a folder at the destination is refused, like a move
+    /// onto a file: ImageKit's rename would put a file `d` beside the folder.
+    #[tokio::test]
+    async fn a_file_move_onto_an_existing_folder_is_refused() {
+        let (mut provider, calls) = provider_on_tree(&["/D", "/D/c.txt", "/D/d"], &[]).await;
+        let outcome = provider.rename("/D/c.txt", "/D/d").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
         );
     }
 
