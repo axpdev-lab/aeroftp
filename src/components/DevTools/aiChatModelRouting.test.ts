@@ -127,3 +127,25 @@ describe('isFailoverWorthy', () => {
         expect(isFailoverWorthy('HTTP 400: model not found')).toBe(true);
     });
 });
+
+
+describe('disabled model routing', () => {
+    it('skips a disabled preferred model and uses the enabled rule fallback', () => {
+        const settings = settingsWith([{ taskType: 'code_generation', preferredModelId: 'm2', fallbackModelId: 'm1' }]);
+        settings.models[1].isEnabled = false;
+        expect(resolveRoutedModels(null, settings, CODE_PROMPT).primary?.modelId).toBe('m1');
+    });
+
+    it('never sends to a disabled provider, including a stored default', () => {
+        const settings = settingsWith([], 'm1');
+        settings.providers[0].isEnabled = false;
+        expect(resolveRoutedModels(null, settings, CODE_PROMPT).primary).toBeNull();
+    });
+
+    it('does not use a stale explicit selection after its model is disabled', () => {
+        const settings = settingsWith([], 'm1');
+        const selected = resolveRoutedModels(null, settings, CODE_PROMPT).primary;
+        settings.models[0].isEnabled = false;
+        expect(resolveRoutedModels(selected, settings, CODE_PROMPT)).toEqual({ primary: null, fallback: null });
+    });
+});

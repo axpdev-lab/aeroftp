@@ -14,6 +14,7 @@ import {
     lookupModelSpec,
     reconcilePersistedModel,
     resolveModelContext,
+    resolveModelRuntimeSupport,
     shouldUseOpenAIResponses,
 } from './aiModelRegistry';
 
@@ -33,12 +34,15 @@ const baseModel = (overrides: Partial<AIModel> = {}): AIModel => ({
 
 describe('current provider model profiles', () => {
     it('keeps the registry review date parseable and current for this lane', () => {
-        expect(MODEL_REGISTRY_REVIEWED_AT).toBe('2026-09-02');
+        expect(MODEL_REGISTRY_REVIEWED_AT).toBe('2026-09-26');
         const reviewedAt = Date.parse(`${MODEL_REGISTRY_REVIEWED_AT}T00:00:00Z`);
         expect(Number.isNaN(reviewedAt)).toBe(false);
-        const ageDays = (Date.now() - reviewedAt) / 86_400_000;
-        expect(ageDays).toBeGreaterThanOrEqual(0);
-        expect(ageDays).toBeLessThanOrEqual(120);
+        // Fixtures validate provenance, not the machine clock or a future expiry.
+        for (const spec of Object.values(MODEL_REGISTRY)) {
+            if (spec.metadataReviewedAt) {
+                expect(Date.parse(`${spec.metadataReviewedAt}T00:00:00Z`)).toBeLessThanOrEqual(reviewedAt);
+            }
+        }
     });
 
     it('describes the GPT-5.6 family from verified provider metadata', () => {
@@ -53,7 +57,8 @@ describe('current provider model profiles', () => {
             expect(spec.nativeCapabilities?.reasoningEfforts).toEqual([
                 'none', 'low', 'medium', 'high', 'xhigh', 'max',
             ]);
-            expect(spec.metadataReviewedAt).toBe(MODEL_REGISTRY_REVIEWED_AT);
+            // A partial registry sweep must not re-certify older provider entries.
+            expect(spec.metadataReviewedAt).toBe('2026-09-02');
             expect(spec.metadataSource).toMatch(/^https:\/\/developers\.openai\.com\//);
         }
     });
@@ -81,7 +86,7 @@ describe('current provider model profiles', () => {
         expect(MODEL_REGISTRY['kimi-k3'].nativeCapabilities?.responses).toBeUndefined();
 
         for (const name of ['claude-opus-5', 'grok-4.6', 'kimi-k3']) {
-            expect(MODEL_REGISTRY[name].metadataReviewedAt).toBe(MODEL_REGISTRY_REVIEWED_AT);
+            expect(MODEL_REGISTRY[name].metadataReviewedAt).toBe(name === 'kimi-k3' ? '2026-09-26' : '2026-09-02');
             expect(MODEL_REGISTRY[name].metadataSource).toMatch(/^https:\/\//);
         }
     });
@@ -93,9 +98,13 @@ describe('current provider model profiles', () => {
 });
 
 describe('model capability resolution', () => {
-    it('matches exact IDs and provider snapshot suffixes without loose prefixes', () => {
+    it('matches only reviewed IDs, never inferred snapshots or prototype keys', () => {
         expect(lookupModelSpec('gpt-5.6-sol')).toBe(MODEL_REGISTRY['gpt-5.6-sol']);
-        expect(lookupModelSpec('gpt-5.6-sol-2026-08-01')).toBe(MODEL_REGISTRY['gpt-5.6-sol']);
+        expect(lookupModelSpec('gpt-5.6-sol-2026-08-01')).toBeNull();
+        expect(lookupModelSpec('gpt-6-astra-2026-09-26')).toBeNull();
+        for (const name of ['toString', 'constructor', '__proto__']) {
+            expect(lookupModelSpec(name)).toBeNull();
+        }
         expect(lookupModelSpec('gpt-5.60')).toBeNull();
         expect(lookupModelSpec('gpt-5.6-sol-preview')).toBeNull();
         expect(lookupModelSpec('gpt-5.6-sol-2026-08-01-preview')).toBeNull();
@@ -145,7 +154,7 @@ describe('model capability resolution', () => {
         expect(applied.maxTokens).toBe(16_000);
         expect(applied.maxContextTokens).toBe(1_050_000);
         expect(applied.capabilitySource).toBe('registry');
-        expect(applied.capabilitiesVerifiedAt).toBe(MODEL_REGISTRY_REVIEWED_AT);
+        expect(applied.capabilitiesVerifiedAt).toBe(MODEL_REGISTRY['gpt-5.6-sol'].metadataReviewedAt);
         expect(applied.nativeCapabilities?.reasoningEfforts).not.toBe(
             MODEL_REGISTRY['gpt-5.6-sol'].nativeCapabilities?.reasoningEfforts,
         );
@@ -274,5 +283,112 @@ describe('model capability resolution', () => {
         expect(saved.nativeCapabilities).toBeUndefined();
         expect(saved.capabilitySource).not.toBe('registry');
         expect(shouldUseOpenAIResponses('openai', saved, true)).toBe(false);
+    });
+});
+
+
+describe('provider contracts and implemented adapter support', () => {
+    it.each([
+        ['gpt-6-astra', 'responses', ['low', 'medium', 'high', 'xhigh', 'max']],
+        ['gpt-6-sol', 'responses-or-chat-without-reasoning', ['none', 'low', 'medium', 'high', 'xhigh', 'max']],
+        ['gpt-6-luna', 'responses-or-chat-without-reasoning', ['none', 'low', 'medium', 'high', 'xhigh', 'max']],
+    ])('records the verified API contract for %s without borrowing Codex effort levels', (name, transport, efforts) => {
+        const spec = MODEL_REGISTRY[name as string];
+        expect(spec.maxContextTokens).toBe(1_050_000);
+        expect(spec.maxTokens).toBe(128_000);
+        expect(spec.nativeCapabilities?.toolCallingTransport).toBe(transport);
+        expect(spec.nativeCapabilities?.reasoningEfforts).toEqual(efforts);
+        expect(spec.metadataReviewedAt).toBe('2026-09-26');
+        // Flat prices would undercount requests above the documented threshold.
+        expect(spec.inputCostPer1k).toBeUndefined();
+        expect(spec.outputCostPer1k).toBeUndefined();
+    });
+
+    it.each(['claude-opus-5-5', 'claude-fable-5-1'])('preserves the modern Anthropic constraints for %s', name => {
+        expect(MODEL_REGISTRY[name].nativeCapabilities).toMatchObject({
+            adaptiveThinking: true,
+            thinkingAlwaysOn: true,
+            forcedToolChoice: false,
+            requiresFullAssistantReplay: true,
+            fixedSamplingParameters: true,
+        });
+        expect(MODEL_REGISTRY[name].maxContextTokens).toBe(1_000_000);
+        expect(MODEL_REGISTRY[name].maxTokens).toBe(128_000);
+    });
+
+    it('records Grok and Kimi effort differences without broadening their adapters', () => {
+        expect(MODEL_REGISTRY['grok-4.7'].nativeCapabilities?.reasoningEfforts).toEqual(['low', 'medium', 'high', 'xhigh']);
+        expect(MODEL_REGISTRY['kimi-k3'].nativeCapabilities?.reasoningEfforts).toEqual(['low', 'high', 'max']);
+        expect(MODEL_REGISTRY['grok-4.7'].maxContextTokens).toBe(500_000);
+        expect(MODEL_REGISTRY['grok-4.7'].inputCostPer1k).toBeUndefined();
+        expect(MODEL_REGISTRY['kimi-k3'].nativeCapabilities?.requiresFullAssistantReplay).toBe(true);
+        expect(MODEL_REGISTRY['kimi-k3'].nativeCapabilities?.fixedSamplingParameters).toBe(true);
+    });
+
+    it.each(['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'claude-opus-5-5', 'claude-fable-5-1', 'grok-4.7', 'kimi-k3'])
+    ('does not auto-enable %s until its adapter requirements are implemented', name => {
+        const result = applyDiscoveredModelDefaults({ name, isEnabled: true, isDefault: true });
+        expect(result.capabilitySource).toBe('registry');
+        expect(result.isEnabled).toBe(false);
+        expect(result.isDefault).toBe(false);
+        const runtime = resolveModelRuntimeSupport(name);
+        expect(runtime.discoveryReady).toBe(false);
+        expect(runtime.pendingAdapterRequirements.length).toBeGreaterThan(0);
+        expect(runtime.subagents).toBe(false);
+        expect(runtime.toolSearch).toBe(false);
+        expect(runtime.nativeTurnState).toBe(false);
+        expect(shouldUseOpenAIResponses('openai', result, true)).toBe(false);
+    });
+
+    it('preserves existing explicit enablement, but refreshes stale native metadata', () => {
+        const model = baseModel({
+            name: 'claude-fable-5-1', isEnabled: true,
+            nativeCapabilities: { responses: true, forcedToolChoice: true },
+            capabilitiesVerifiedAt: '2026-01-01', lifecycleStatus: 'retired',
+        });
+        const result = reconcilePersistedModel(model);
+        expect(result.isEnabled).toBe(true);
+        expect(result.nativeCapabilities?.forcedToolChoice).toBe(false);
+        expect(result.nativeCapabilities?.responses).toBeUndefined();
+        expect(result.lifecycleStatus).toBe('active');
+        expect(result.capabilitiesVerifiedAt).toBe('2026-09-26');
+        expect(reconcilePersistedModel(result as AIModel)).toEqual(result);
+        expect(model.nativeCapabilities?.forcedToolChoice).toBe(true);
+    });
+
+    it('does not let a persisted or returned object mutate registry contract arrays', () => {
+        const result = applyRegistryDefaults({ name: 'gpt-6-astra', nativeCapabilities: { reasoningEfforts: ['none'] } });
+        result.nativeCapabilities?.reasoningEfforts?.push('none');
+        expect(MODEL_REGISTRY['gpt-6-astra'].nativeCapabilities?.reasoningEfforts).not.toContain('none');
+        const runtime = resolveModelRuntimeSupport('gpt-6-astra');
+        runtime.pendingAdapterRequirements.length = 0;
+        expect(resolveModelRuntimeSupport('gpt-6-astra').discoveryReady).toBe(false);
+    });
+
+    it('does not promote provider features to local runtime features', () => {
+        expect(MODEL_REGISTRY['gpt-5.6-sol'].nativeCapabilities?.multiAgent).toBe(true);
+        expect(resolveModelRuntimeSupport('gpt-5.6-sol')).toMatchObject({
+            discoveryReady: true, subagents: false, toolSearch: false, nativeTurnState: false,
+        });
+        expect(resolveModelRuntimeSupport('private-model').discoveryReady).toBe(false);
+        expect(applyDiscoveredModelDefaults({ name: 'grok-3', isEnabled: true }).isEnabled).toBe(false);
+    });
+
+    it('rejects forged native capability metadata and cross-provider Responses claims', () => {
+        for (const name of ['private-model', 'grok-4.6', 'claude-opus-5']) {
+            const forged = { name, capabilitySource: 'registry' as const, nativeCapabilities: { responses: true } };
+            expect(shouldUseOpenAIResponses('openai', forged, true)).toBe(false);
+        }
+    });
+
+    it.each([
+        'http://api.openai.com/v1', 'https://api.openai.com.evil.test/v1',
+        'https://proxy.openai.com/v1', 'https://api.openai.com:444/v1',
+        'https://user:secret@api.openai.com/v1', 'https://api.openai.com/v1?proxy=1',
+        'https://api.openai.com/v1#proxy', 'https://api.openai.com/other',
+        'https://proxy.example/v1',
+    ])('does not promote endpoint %s to the first-party adapter', endpoint => {
+        const model = applyRegistryDefaults({ name: 'gpt-5.6-sol' });
+        expect(shouldUseOpenAIResponses('openai', model, true, endpoint)).toBe(false);
     });
 });

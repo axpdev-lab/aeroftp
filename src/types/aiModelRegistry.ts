@@ -3,7 +3,7 @@
 
 import { AIModel, AIModelNativeCapabilities, AIProviderType } from './ai';
 
-export const MODEL_REGISTRY_REVIEWED_AT = '2026-09-02';
+export const MODEL_REGISTRY_REVIEWED_AT = '2026-09-26';
 export const UNKNOWN_MODEL_CONTEXT_BUDGET = 8192;
 
 export type ModelCapabilitySource = 'registry' | 'user' | 'unknown';
@@ -34,6 +34,8 @@ export interface KnownModelSpec {
     metadataSource?: string;
     nativeCapabilities?: AIModelNativeCapabilities;
     lifecycleStatus?: 'active' | 'deprecated' | 'retired';
+    /** Adapter work required before discovery can enable this profile by default. */
+    pendingAdapterRequirements?: Array<'model-aware-reasoning' | 'adaptive-thinking' | 'native-turn-state' | 'fixed-sampling'>;
 }
 
 // FEAT-01: best-effort metadata layer for pricing/capability hints. The live
@@ -42,11 +44,80 @@ export interface KnownModelSpec {
 // and DO NOT guess pricing: an entry with a wrong price shows the user a wrong
 // cost (worse than the "no cost shown" fallback for an unknown model). Verify
 // per-1k pricing against the provider's published rates before adding a model.
-// Registry sweep last reviewed: 2026-09-02. Each newly verified provider entry
+// Registry sweep last reviewed: 2026-09-26. Each newly verified provider entry
 // should carry its own metadataReviewedAt + metadataSource; the sweep date does
 // not silently certify older entries whose provider metadata was not rechecked.
 export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
-    // OpenAI
+    // OpenAI. Provider facts do not certify adapter readiness.
+    'gpt-6-astra': {
+        displayName: 'GPT-6 Astra',
+        maxTokens: 128000,
+        maxContextTokens: 1050000,
+        // Tiered pricing cannot be represented by the current flat cost estimator.
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-26',
+        metadataSource: 'https://developers.openai.com/api/docs/models/gpt-6-astra',
+        pendingAdapterRequirements: ['model-aware-reasoning', 'native-turn-state'],
+        nativeCapabilities: {
+            responses: true,
+            hostedTools: true,
+            toolSearch: true,
+            toolCallingTransport: 'responses',
+            reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        },
+    },
+    'gpt-6-sol': {
+        displayName: 'GPT-6 Sol',
+        maxTokens: 128000,
+        maxContextTokens: 1050000,
+        // Tiered pricing cannot be represented by the current flat cost estimator.
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-26',
+        metadataSource: 'https://developers.openai.com/api/docs/models/gpt-6-sol',
+        pendingAdapterRequirements: ['model-aware-reasoning', 'native-turn-state'],
+        nativeCapabilities: {
+            responses: true,
+            hostedTools: true,
+            toolSearch: true,
+            toolCallingTransport: 'responses-or-chat-without-reasoning',
+            reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+        },
+    },
+    'gpt-6-luna': {
+        displayName: 'GPT-6 Luna',
+        maxTokens: 128000,
+        maxContextTokens: 1050000,
+        // Tiered pricing cannot be represented by the current flat cost estimator.
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-26',
+        metadataSource: 'https://developers.openai.com/api/docs/models/gpt-6-luna',
+        pendingAdapterRequirements: ['model-aware-reasoning', 'native-turn-state'],
+        nativeCapabilities: {
+            responses: true,
+            hostedTools: true,
+            toolSearch: true,
+            toolCallingTransport: 'responses-or-chat-without-reasoning',
+            reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+        },
+    },
     // Official model pages, reviewed 2026-09-02:
     // https://developers.openai.com/api/docs/models/gpt-5.6-sol
     // https://developers.openai.com/api/docs/models/gpt-5.6-terra
@@ -225,6 +296,30 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
     // Anthropic. Current model table and Models API, reviewed 2026-09-02:
     // https://platform.claude.com/docs/en/models/overview
     // https://platform.claude.com/docs/en/api/models/retrieve
+    'claude-opus-5-5': {
+        displayName: 'Claude Opus 5.5',
+        maxTokens: 128000,
+        maxContextTokens: 1000000,
+        inputCostPer1k: 0.004,
+        outputCostPer1k: 0.02,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-26',
+        metadataSource: 'https://platform.claude.com/docs/en/models/opus-5-5/overview',
+        pendingAdapterRequirements: ['adaptive-thinking', 'native-turn-state', 'fixed-sampling'],
+        nativeCapabilities: {
+            adaptiveThinking: true,
+            thinkingAlwaysOn: true,
+            forcedToolChoice: false,
+            requiresFullAssistantReplay: true,
+            fixedSamplingParameters: true,
+        },
+    },
     'claude-fable-5-1': {
         displayName: 'Claude Fable 5.1',
         maxTokens: 128000,
@@ -238,9 +333,14 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         supportsParallelTools: true,
         toolCallQuality: 5,
         bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
-        metadataReviewedAt: '2026-09-02',
-        metadataSource: 'https://platform.claude.com/docs/en/models/overview',
+        metadataReviewedAt: '2026-09-26',
+        metadataSource: 'https://platform.claude.com/docs/en/models/fable-5-1/overview',
+        pendingAdapterRequirements: ['adaptive-thinking', 'native-turn-state', 'fixed-sampling'],
         nativeCapabilities: {
+            thinkingAlwaysOn: true,
+            forcedToolChoice: false,
+            requiresFullAssistantReplay: true,
+            fixedSamplingParameters: true,
             adaptiveThinking: true,
             contextManagement: true,
             modelCapabilitiesApi: true,
@@ -447,6 +547,27 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
 
     // xAI, reviewed 2026-09-02:
     // https://docs.x.ai/developers/models/grok-4.6
+    'grok-4.7': {
+        displayName: 'Grok 4.7',
+        // Conservative app output cap: the model card publishes context, not an output maximum.
+        maxTokens: 8192,
+        maxContextTokens: 500000,
+        // No flat price: the provider applies higher rates above 200K context.
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-26',
+        metadataSource: 'https://docs.x.ai/developers/models/grok-4.7',
+        pendingAdapterRequirements: ['model-aware-reasoning'],
+        nativeCapabilities: {
+            reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+            thinkingAlwaysOn: true,
+        },
+    },
     'grok-4.6': {
         displayName: 'Grok 4.6',
         // xAI documents the 500K context window but not a separate maximum
@@ -609,6 +730,7 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
     // provider-specific reasoning and dynamic tool declarations.
     'kimi-k3': {
         displayName: 'Kimi K3',
+        // Provider default output budget; deliberately below its 1M maximum.
         maxTokens: 131072,
         maxContextTokens: 1048576,
         supportsStreaming: true,
@@ -618,9 +740,11 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         supportsParallelTools: true,
         toolCallQuality: 5,
         bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
-        metadataReviewedAt: '2026-09-02',
+        metadataReviewedAt: '2026-09-26',
         metadataSource: 'https://platform.kimi.ai/docs/guide/kimi-k3-quickstart',
+        pendingAdapterRequirements: ['model-aware-reasoning', 'native-turn-state', 'fixed-sampling'],
         nativeCapabilities: {
+            thinkingAlwaysOn: true,
             hostedTools: true,
             dynamicToolLoading: true,
             automaticPromptCaching: true,
@@ -683,44 +807,40 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
     'Qwen/QwQ-32B': { displayName: 'QwQ 32B (Together)', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.0003, outputCostPer1k: 0.0003, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: true, supportsParallelTools: false, toolCallQuality: 3, bestFor: ['reasoning', 'code'] },
 };
 
-/**
- * Lookup a model spec by name. Tries exact match first, then a documented
- * dated snapshot suffix (e.g. "gpt-4o-2024-11-20" matches "gpt-4o").
- * Family lookalikes such as "gpt-5.6-sol-preview" must not inherit Responses.
- */
+/** Only explicitly reviewed IDs are verified, never inferred date or family suffixes. */
 export function lookupModelSpec(modelName: string): KnownModelSpec | null {
-    if (MODEL_REGISTRY[modelName]) return MODEL_REGISTRY[modelName];
-    const keys = Object.keys(MODEL_REGISTRY).sort((a, b) => b.length - a.length);
-    for (const key of keys) {
-        if (isDocumentedSnapshotId(modelName, key)) return MODEL_REGISTRY[key];
-    }
-    return null;
-}
-
-/** True when `modelName` is exactly `key-YYYY-MM-DD` with a real calendar date. */
-function isDocumentedSnapshotId(modelName: string, key: string): boolean {
-    if (!modelName.startsWith(`${key}-`)) return false;
-    const suffix = modelName.slice(key.length + 1);
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(suffix);
-    if (!match) return false;
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    const date = new Date(Date.UTC(year, month - 1, day));
-    return date.getUTCFullYear() === year
-        && date.getUTCMonth() === month - 1
-        && date.getUTCDate() === day;
+    return Object.prototype.hasOwnProperty.call(MODEL_REGISTRY, modelName)
+        ? MODEL_REGISTRY[modelName]
+        : null;
 }
 
 /** First-party OpenAI hosts only. A custom OpenAI-compatible proxy is not Responses. */
 export function isFirstPartyOpenAIBaseUrl(baseUrl?: string | null): boolean {
     if (!baseUrl || !baseUrl.trim()) return true;
     try {
-        const host = new URL(baseUrl).hostname.toLowerCase();
-        return host === 'api.openai.com' || host.endsWith('.openai.com');
+        const url = new URL(baseUrl);
+        return url.protocol === 'https:'
+            && url.hostname.toLowerCase() === 'api.openai.com'
+            && !url.username && !url.password && !url.port
+            && /^\/v1\/?$/.test(url.pathname)
+            && !url.search && !url.hash;
     } catch {
         return false;
     }
+}
+
+/** Local implementation status, recomputed from code rather than persisted model flags. */
+export function resolveModelRuntimeSupport(modelName: string) {
+    const spec = lookupModelSpec(modelName);
+    return {
+        // No provider's multiAgent/toolSearch flag turns these local features on.
+        subagents: false,
+        toolSearch: false,
+        nativeTurnState: false,
+        pendingAdapterRequirements: [...(spec?.pendingAdapterRequirements ?? [])],
+        discoveryReady: !!spec && spec.lifecycleStatus !== 'retired'
+            && !spec.pendingAdapterRequirements?.length,
+    };
 }
 
 /** Resolve how much context AeroAgent may safely budget without confusing output tokens for context. */
@@ -763,9 +883,14 @@ export function shouldUseOpenAIResponses(
     enabled: boolean,
     baseUrl?: string | null,
 ): boolean {
+    const spec = model?.name ? lookupModelSpec(model.name) : null;
     return enabled
         && providerType === 'openai'
         && isFirstPartyOpenAIBaseUrl(baseUrl)
+        && !!model?.name && model.name.startsWith('gpt-')
+        && spec?.nativeCapabilities?.responses === true
+        && !spec.pendingAdapterRequirements?.length
+        && getModelCapabilitySource(model) === 'registry'
         && model?.nativeCapabilities?.responses === true;
 }
 
@@ -871,16 +996,13 @@ export function applyRegistryDefaults(model: Partial<AIModel> & { name: string }
         supportsParallelTools: spec.supportsParallelTools,
         toolCallQuality: spec.toolCallQuality,
         bestFor: [...spec.bestFor],
+        ...model,
+        // Persisted capability snapshots are not user overrides. A registry refresh
+        // must replace them, including fields removed since the previous review.
         nativeCapabilities: spec.nativeCapabilities
-            ? {
-                ...spec.nativeCapabilities,
-                reasoningEfforts: spec.nativeCapabilities.reasoningEfforts
-                    ? [...spec.nativeCapabilities.reasoningEfforts]
-                    : undefined,
-            }
+            ? structuredClone(spec.nativeCapabilities)
             : undefined,
         lifecycleStatus: spec.lifecycleStatus || 'active',
-        ...model,
         maxContextTokens: explicitContext,
         capabilitySource: 'registry',
         capabilitiesVerifiedAt: spec.metadataReviewedAt,
@@ -896,7 +1018,14 @@ export function applyRegistryDefaults(model: Partial<AIModel> & { name: string }
 export function applyDiscoveredModelDefaults(
     model: Partial<AIModel> & { name: string },
 ): Partial<AIModel> {
-    if (lookupModelSpec(model.name)) return applyRegistryDefaults(model);
+    if (lookupModelSpec(model.name)) {
+        const resolved = applyRegistryDefaults(model);
+        // Discovery proves availability, not that our adapter satisfies the contract.
+        // Existing user enablement is preserved by reconcilePersistedModel instead.
+        return resolveModelRuntimeSupport(model.name).discoveryReady
+            ? resolved
+            : { ...resolved, isEnabled: false, isDefault: false };
+    }
 
     return {
         ...model,

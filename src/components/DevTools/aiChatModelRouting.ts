@@ -10,9 +10,9 @@ import { detectTaskType } from './aiChatUtils';
 export function resolveModelById(settings: AISettings, modelId?: string): SelectedModel | null {
     if (!modelId) return null;
     const model = settings.models.find(m => m.id === modelId);
-    if (!model) return null;
+    if (!model?.isEnabled) return null;
     const provider = settings.providers.find(p => p.id === model.providerId);
-    if (!provider) return null;
+    if (!provider?.isEnabled) return null;
     return {
         providerId: provider.id,
         providerName: provider.name,
@@ -47,7 +47,10 @@ export function resolveRoutedModels(
     prompt: string,
 ): RoutedModels {
     if (selectedModel) {
-        return { primary: selectedModel, fallback: null };
+        return {
+            primary: resolveModelById(settings, selectedModel.modelId) ? selectedModel : null,
+            fallback: null,
+        };
     }
     if (!settings.autoRouting?.enabled) {
         return { primary: resolveModelById(settings, settings.defaultModelId ?? undefined), fallback: null };

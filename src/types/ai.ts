@@ -46,6 +46,10 @@ export type AIReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | '
 
 /** Provider-native features. Availability here does not mean AeroAgent has wired the feature yet. */
 export interface AIModelNativeCapabilities {
+    /** Provider contract only; the current adapter may not implement it. */
+    toolCallingTransport?: 'responses' | 'responses-or-chat-without-reasoning';
+    thinkingAlwaysOn?: boolean;
+    forcedToolChoice?: boolean;
     responses?: boolean;
     hostedTools?: boolean;
     toolSearch?: boolean;
