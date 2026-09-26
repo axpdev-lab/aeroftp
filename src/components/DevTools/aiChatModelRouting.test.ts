@@ -32,7 +32,18 @@ describe('resolveRoutedModels', () => {
             modelId: 'm1', modelName: 'llama-3.3-70b', displayName: 'Llama 3.3 70B',
         };
         const routed = resolveRoutedModels(picked, settingsWith([{ taskType: 'code_generation', preferredModelId: 'm2', fallbackModelId: 'm1' }]), CODE_PROMPT);
-        expect(routed.primary).toBe(picked);
+        expect(routed.primary).toEqual(picked);
+        expect(routed.fallback).toBeNull();
+    });
+
+    it('resolves a stored pick against current model identity after an edit', () => {
+        const settings = settingsWith([], 'm1');
+        const picked = {
+            providerId: 'p1', providerName: 'Groq', providerType: 'groq' as const,
+            modelId: 'm1', modelName: 'old-name', displayName: 'Old display name',
+        };
+        const routed = resolveRoutedModels(picked, settings, CODE_PROMPT);
+        expect(routed.primary?.modelName).toBe('llama-3.3-70b');
         expect(routed.fallback).toBeNull();
     });
 
@@ -125,5 +136,27 @@ describe('isFailoverWorthy', () => {
         expect(isFailoverWorthy('HTTP 404 model_not_found')).toBe(true);
         expect(isFailoverWorthy('HTTP 400 Bad Request: model does not exist')).toBe(true);
         expect(isFailoverWorthy('HTTP 400: model not found')).toBe(true);
+    });
+});
+
+
+describe('disabled model routing', () => {
+    it('skips a disabled preferred model and uses the enabled rule fallback', () => {
+        const settings = settingsWith([{ taskType: 'code_generation', preferredModelId: 'm2', fallbackModelId: 'm1' }]);
+        settings.models[1].isEnabled = false;
+        expect(resolveRoutedModels(null, settings, CODE_PROMPT).primary?.modelId).toBe('m1');
+    });
+
+    it('never sends to a disabled provider, including a stored default', () => {
+        const settings = settingsWith([], 'm1');
+        settings.providers[0].isEnabled = false;
+        expect(resolveRoutedModels(null, settings, CODE_PROMPT).primary).toBeNull();
+    });
+
+    it('does not use a stale explicit selection after its model is disabled', () => {
+        const settings = settingsWith([], 'm1');
+        const selected = resolveRoutedModels(null, settings, CODE_PROMPT).primary;
+        settings.models[0].isEnabled = false;
+        expect(resolveRoutedModels(selected, settings, CODE_PROMPT)).toEqual({ primary: null, fallback: null });
     });
 });

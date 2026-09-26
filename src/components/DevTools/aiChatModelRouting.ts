@@ -6,13 +6,13 @@ import { SelectedModel } from './aiChatTypes';
 import { detectTaskType } from './aiChatUtils';
 
 /** Resolve a stored model id into the shape the send path needs, or null when
- *  the model or its provider no longer exists. */
+ *  the model or its provider no longer exists or is disabled. */
 export function resolveModelById(settings: AISettings, modelId?: string): SelectedModel | null {
     if (!modelId) return null;
     const model = settings.models.find(m => m.id === modelId);
-    if (!model) return null;
+    if (!model?.isEnabled) return null;
     const provider = settings.providers.find(p => p.id === model.providerId);
-    if (!provider) return null;
+    if (!provider?.isEnabled) return null;
     return {
         providerId: provider.id,
         providerName: provider.name,
@@ -47,7 +47,10 @@ export function resolveRoutedModels(
     prompt: string,
 ): RoutedModels {
     if (selectedModel) {
-        return { primary: selectedModel, fallback: null };
+        return {
+            primary: resolveModelById(settings, selectedModel.modelId),
+            fallback: null,
+        };
     }
     if (!settings.autoRouting?.enabled) {
         return { primary: resolveModelById(settings, settings.defaultModelId ?? undefined), fallback: null };

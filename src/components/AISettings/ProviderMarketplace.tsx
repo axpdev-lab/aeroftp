@@ -273,7 +273,7 @@ export const ProviderMarketplace: React.FC<ProviderMarketplaceProps> = ({
                                 <ProviderCard
                                     key={provider.type}
                                     provider={provider}
-                                    isAdded={addedProviderTypes.has(provider.type)}
+                                    isAdded={provider.type !== 'custom' && addedProviderTypes.has(provider.type)}
                                     onAdd={() => handleAdd(provider)}
                                     t={t}
                                 />
