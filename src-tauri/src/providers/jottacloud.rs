@@ -782,8 +782,8 @@ impl JottacloudProvider {
             JfsLook::Entry(found) => Ok(Some(*found)),
             JfsLook::Absent => Ok(None),
             JfsLook::IncompleteUpload => Err(ProviderError::AlreadyExists(format!(
-                "{to}: an upload that has not completed holds the name; `rm` it, or `put` \
-                 the file again to complete it"
+                "{to}: an upload that has not completed holds the name; delete it, or \
+                 upload the file again to complete it"
             ))),
         }
     }
@@ -1847,8 +1847,8 @@ impl StorageProvider for JottacloudProvider {
             }
             JfsLook::IncompleteUpload => {
                 return Err(ProviderError::AlreadyExists(format!(
-                    "{to}: an upload that has not completed holds the name; `rm` it, or \
-                     `put` the file again to complete it"
+                    "{to}: an upload that has not completed holds the name; delete it, or \
+                     upload the file again to complete it"
                 )));
             }
             JfsLook::Absent => {}
@@ -3491,7 +3491,7 @@ mod tests {
         let (mut provider, posts) = provider_on_jfs().await;
         let incomplete = provider.rename("/a.txt", "/incomplete.txt").await;
         assert!(
-            matches!(incomplete, Err(ProviderError::AlreadyExists(ref m)) if m.contains("has not completed")),
+            matches!(incomplete, Err(ProviderError::AlreadyExists(ref m)) if m.contains("has not completed") && m.contains("delete it")),
             "the error names what holds the name: {incomplete:?}"
         );
         let garbage = provider.rename("/a.txt", "/garbage.txt").await;
