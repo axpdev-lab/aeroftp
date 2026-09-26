@@ -126,6 +126,17 @@ struct WalkedFile {
     revision: Option<(u64, String, String, String)>,
 }
 
+/// What a look at one JFS path found.
+enum JfsLook {
+    /// A folder, or a completed file.
+    Entry(Box<RemoteEntry>),
+    /// Nothing there (a 404, or a file in the trash).
+    Absent,
+    /// A file whose upload has not completed: not listed, but its name is
+    /// taken.
+    IncompleteUpload,
+}
+
 pub struct JottacloudProvider {
     config: JottacloudConfig,
     client: reqwest::Client,
@@ -687,6 +698,96 @@ impl JottacloudProvider {
         Ok(())
     }
 
+    /// What JFS holds at `resolved`: a listed item, nothing, or an upload
+    /// that has not completed.
+    ///
+    /// Only a 404 says the path is absent. Any other refusal (an expired
+    /// token, a 5xx) says nothing about it, and read as absent it made the
+    /// look before a rename report a taken name as free. A 200 without a
+    /// completed live file is a tombstone (a file in the trash, still
+    /// answered at its old path: absent), an upload in progress, or a body
+    /// this look cannot read (an error).
+    async fn look_at(&mut self, resolved: &str) -> Result<JfsLook, ProviderError> {
+        let url = self.jfs_url(resolved);
+        let resp = self.get_with_retry(&url).await?;
+        let status = resp.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(JfsLook::Absent);
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            let detail = format!(
+                "Stat {resolved} failed ({status}): {}",
+                sanitize_api_error(&body)
+            );
+            return Err(match status.as_u16() {
+                401 => ProviderError::AuthenticationFailed(detail),
+                403 => ProviderError::PermissionDenied(detail),
+                _ => ProviderError::ServerError(detail),
+            });
+        }
+
+        let xml = resp
+            .text()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to read response: {}", e)))?;
+
+        // Check if response is a folder or file
+        let (_, name) = Self::split_path(resolved);
+        let is_dir = xml.contains("<folders>") || xml.contains("<folder ");
+        if is_dir {
+            return Ok(JfsLook::Entry(Box::new(RemoteEntry {
+                name,
+                path: resolved.to_string(),
+                is_dir: true,
+                size: 0,
+                modified: None,
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                metadata: HashMap::new(),
+                mime_type: None,
+            })));
+        }
+        // Try to parse as file listing (parent folder containing the file)
+        if let Some(entry) = Self::parse_folder_xml(&xml, resolved).into_iter().next() {
+            return Ok(JfsLook::Entry(Box::new(entry)));
+        }
+        if Self::jfs_root_file_is_tombstone(&xml) {
+            return Ok(JfsLook::Absent);
+        }
+        if Self::jfs_root_element(&xml).as_deref() == Some("file") {
+            return Ok(JfsLook::IncompleteUpload);
+        }
+        Err(ProviderError::ParseError(format!(
+            "Cannot tell what is at {resolved}: JFS answered 200 without a file or a folder"
+        )))
+    }
+
+    /// The look before a rename or a replace onto `to`, also taken by an
+    /// upload that has not completed, which no listing shows.
+    async fn look_before_moving_onto(
+        &mut self,
+        from: &str,
+        to: &str,
+    ) -> Result<Option<RemoteEntry>, ProviderError> {
+        match self.look_at(to).await? {
+            JfsLook::Entry(found)
+                if super::is_the_source_under_another_case(from, to, &found.name) =>
+            {
+                Ok(None)
+            }
+            JfsLook::Entry(found) => Ok(Some(*found)),
+            JfsLook::Absent => Ok(None),
+            JfsLook::IncompleteUpload => Err(ProviderError::AlreadyExists(format!(
+                "{to}: an upload that has not completed holds the name"
+            ))),
+        }
+    }
+
+    // ─── Path Helpers ───────────────────────────────────────────────────
     // ─── Path Helpers ───────────────────────────────────────────────────
 
     /// Build full JFS URL: /jfs/{username}/{device}/{mountpoint}/{path}
@@ -1701,7 +1802,13 @@ impl StorageProvider for JottacloudProvider {
         if resolved_from == resolved_to {
             return Ok(());
         }
-        super::refuse_occupied_destination(self, &resolved_from, &resolved_to).await?;
+        if self
+            .look_before_moving_onto(&resolved_from, &resolved_to)
+            .await?
+            .is_some()
+        {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
         self.move_on_server(&resolved_from, &resolved_to).await
     }
 
@@ -1718,8 +1825,8 @@ impl StorageProvider for JottacloudProvider {
             return Ok(());
         }
         let source = self.stat(&resolved_from).await?;
-        match self.stat(&resolved_to).await {
-            Ok(occupant)
+        match self.look_at(&resolved_to).await? {
+            JfsLook::Entry(occupant)
                 if super::is_the_source_under_another_case(
                     &resolved_from,
                     &resolved_to,
@@ -1728,15 +1835,21 @@ impl StorageProvider for JottacloudProvider {
             {
                 return self.rename(from, to).await;
             }
-            Ok(occupant) if source.is_dir && occupant.is_dir => {
+            JfsLook::Entry(occupant) if source.is_dir && occupant.is_dir => {
                 return Err(ProviderError::AlreadyExists(format!(
                     "{to} is a folder, and JFS does not document moving a folder over \
                      another: nothing was changed"
                 )));
             }
-            Ok(occupant) => super::refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?,
-            Err(ProviderError::NotFound(_)) => {}
-            Err(e) => return Err(e),
+            JfsLook::Entry(occupant) => {
+                super::refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?
+            }
+            JfsLook::IncompleteUpload => {
+                return Err(ProviderError::AlreadyExists(format!(
+                    "{to}: an upload that has not completed holds the name"
+                )));
+            }
+            JfsLook::Absent => {}
         }
         self.move_on_server(&resolved_from, &resolved_to).await
     }
@@ -1748,76 +1861,14 @@ impl StorageProvider for JottacloudProvider {
         Ok(false)
     }
 
+    /// An upload that has not completed is not listed, so stat does not
+    /// find it; only the look before a rename or a replace counts it as
+    /// holding the name (see [`JottacloudProvider::look_at`]).
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = self.jfs_url(&resolved);
-
-        let resp = self.get_with_retry(&url).await?;
-
-        // Only a 404 says the path is absent. Any other refusal (an expired
-        // token, a 5xx) says nothing about it, and read as NotFound it made
-        // the look before a rename report a taken name as free.
-        let status = resp.status();
-        if status == reqwest::StatusCode::NOT_FOUND {
-            return Err(ProviderError::NotFound(resolved.clone()));
-        }
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            let detail = format!(
-                "Stat {resolved} failed ({status}): {}",
-                sanitize_api_error(&body)
-            );
-            return Err(match status.as_u16() {
-                401 => ProviderError::AuthenticationFailed(detail),
-                403 => ProviderError::PermissionDenied(detail),
-                _ => ProviderError::ServerError(detail),
-            });
-        }
-
-        let xml = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to read response: {}", e)))?;
-
-        // Check if response is a folder or file
-        let (_, name) = Self::split_path(&resolved);
-        let is_dir = xml.contains("<folders>") || xml.contains("<folder ");
-
-        if is_dir {
-            Ok(RemoteEntry {
-                name,
-                path: resolved,
-                is_dir: true,
-                size: 0,
-                modified: None,
-                permissions: None,
-                owner: None,
-                group: None,
-                is_symlink: false,
-                link_target: None,
-                metadata: HashMap::new(),
-                mime_type: None,
-            })
-        } else {
-            // Try to parse as file listing (parent folder containing the file)
-            let entries = Self::parse_folder_xml(&xml, &resolved);
-            if let Some(entry) = entries.into_iter().next() {
-                return Ok(entry);
-            }
-            // A 200 without a completed live file. A tombstone (a file in the
-            // trash, still answered at its old path) is not there. A file
-            // whose upload has not completed is: its name is taken. Anything
-            // else is a body this look cannot read, and read as NotFound it
-            // made a taken name look free.
-            if Self::jfs_root_file_is_tombstone(&xml) {
-                return Err(ProviderError::NotFound(resolved));
-            }
-            if Self::jfs_root_element(&xml).as_deref() == Some("file") {
-                return Ok(RemoteEntry::file(name, resolved, 0));
-            }
-            Err(ProviderError::ParseError(format!(
-                "Cannot tell what is at {resolved}: JFS answered 200 without a file or a folder"
-            )))
+        match self.look_at(&resolved).await? {
+            JfsLook::Entry(entry) => Ok(*entry),
+            JfsLook::Absent | JfsLook::IncompleteUpload => Err(ProviderError::NotFound(resolved)),
         }
     }
 
@@ -3267,10 +3318,11 @@ mod tests {
     }
 
     /// A JFS double for `test_provider()` holding the files `a.txt` and
-    /// `b.txt`, the folders `d` and `e`, and `incomplete.txt`, whose upload
-    /// has not completed, in the mount root; a look at `busy.txt` answers
-    /// 503 and one at `garbage.txt` a body that is not XML. Every POST (a
-    /// move) succeeds. Returns a provider on it and every POST query.
+    /// `b.txt`, the folders `d` and `e`, `incomplete.txt`, whose upload has
+    /// not completed, and `trashed.txt`, a file in the trash, in the mount
+    /// root; a look at `busy.txt` answers 503 and one at `garbage.txt` a body
+    /// that is not XML. Every POST (a move) succeeds. Returns a provider on
+    /// it and every POST query.
     async fn provider_on_jfs() -> (
         JottacloudProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
@@ -3316,6 +3368,12 @@ mod tests {
                                 .into_response()
                         }
                         "/user123/Jotta/Archive/garbage.txt" => "not a JFS answer".into_response(),
+                        "/user123/Jotta/Archive/trashed.txt" => {
+                            "<file name=\"trashed.txt\" deleted=\"2026-09-26-T10:00:00Z\">\
+                             <currentRevision><state>COMPLETED</state><size>3</size>\
+                             </currentRevision></file>"
+                                .into_response()
+                        }
                         _ => axum::http::StatusCode::NOT_FOUND.into_response(),
                     }
                 }
@@ -3378,6 +3436,32 @@ mod tests {
         ));
     }
 
+    /// An upload that has not completed is not listed, so stat says it is
+    /// not there, and `put --no-clobber` re-uploads it; only the look before
+    /// a rename counts it as holding the name. A file in the trash, still
+    /// answered at its old path, is not there for either, and a rename onto
+    /// its name goes out.
+    #[tokio::test]
+    async fn stat_misses_an_incomplete_upload_and_a_trashed_file_is_free() {
+        let (mut provider, posts) = provider_on_jfs().await;
+        assert!(
+            matches!(
+                provider.stat("/incomplete.txt").await,
+                Err(ProviderError::NotFound(_))
+            ),
+            "an upload in progress is not listed"
+        );
+        assert!(matches!(
+            provider.stat("/trashed.txt").await,
+            Err(ProviderError::NotFound(_))
+        ));
+        provider
+            .rename("/a.txt", "/trashed.txt")
+            .await
+            .expect("a trashed file's name is free");
+        assert_eq!(posts.lock().unwrap().len(), 1);
+    }
+
     /// A 200 without a completed file read as NotFound: a file still being
     /// uploaded, or a body that is not a JFS answer, made the look report
     /// the name as free and the move went out. The first is a taken name,
@@ -3387,8 +3471,8 @@ mod tests {
         let (mut provider, posts) = provider_on_jfs().await;
         let incomplete = provider.rename("/a.txt", "/incomplete.txt").await;
         assert!(
-            matches!(incomplete, Err(ProviderError::AlreadyExists(_))),
-            "{incomplete:?}"
+            matches!(incomplete, Err(ProviderError::AlreadyExists(ref m)) if m.contains("has not completed")),
+            "the error names what holds the name: {incomplete:?}"
         );
         let garbage = provider.rename("/a.txt", "/garbage.txt").await;
         assert!(
