@@ -38221,6 +38221,7 @@ async fn cmd_keystore_import(
             sections,
             cfg_clone.as_deref(),
             Some(&progress_cb),
+            None,
         )
     })
     .await;
@@ -39118,11 +39119,12 @@ async fn cmd_aerorsync_probe(
 fn classify_keystore_error(err: &ftp_client_gui_lib::keystore_export::KeystoreExportError) -> i32 {
     use ftp_client_gui_lib::keystore_export::KeystoreExportError as E;
     match err {
-        E::InvalidPassword => 6,       // auth failure
-        E::VaultNotReady => 5,         // configuration / vault-locked
-        E::UnsupportedVersion(_) => 7, // not-supported / unsupported version
-        E::UnsupportedCodec(_) => 7,   // same family: this build cannot read it
-        E::Io(_) => 11,                // I/O
+        E::InvalidPassword => 6,          // auth failure
+        E::VaultNotReady => 5,            // configuration / vault-locked
+        E::UnsupportedVersion(_) => 7,    // not-supported / unsupported version
+        E::UnsupportedCodec(_) => 7,      // same family: this build cannot read it
+        E::StaleProfileDecisions(_) => 5, // usage: the choices do not fit this backup
+        E::Io(_) => 11,                   // I/O
         // Both cover too many distinct causes for one code to say anything
         // useful, so they say nothing rather than something false.
         E::Serialization(_) | E::Encryption(_) => 99,
@@ -41426,7 +41428,7 @@ async fn lsjson_server_hash(
     }
     // 2. Server-side checksum: HEAD / exec / API, never a content download.
     if provider.supports_checksum() {
-        if let Ok(map) = provider.checksum(&entry.path).await {
+        if let Ok(map) = provider.checksum_for(&entry.path, key).await {
             if let Some(v) = map.get(key) {
                 return wrap(v);
             }
@@ -58128,8 +58130,9 @@ async fn hashsum_digest(
     // Falls through to download+digest for sha512/blake3 (never
     // server-side) and for multipart/SSE objects with no usable hash.
     if !download && provider.supports_checksum() {
-        if let Ok(map) = provider.checksum(path).await {
-            if let Some(h) = map.get(hash_algo_key(algorithm)) {
+        let key = hash_algo_key(algorithm);
+        if let Ok(map) = provider.checksum_for(path, key).await {
+            if let Some(h) = map.get(key) {
                 let hash = h.trim().to_ascii_lowercase();
                 let size = provider.stat(path).await.map(|e| e.size).unwrap_or(0);
                 return Ok((hash, size));

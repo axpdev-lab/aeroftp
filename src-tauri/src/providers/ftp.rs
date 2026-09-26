@@ -70,8 +70,9 @@ pub struct FtpProvider {
     mlsd_broken: bool,
     /// Whether server supports MFMT (RFC 3659) for setting remote file mtime
     mfmt_supported: bool,
-    /// Whether server supports HASH, XMD5, XCRC, or XSHA1 for remote checksums
-    hash_supported: Option<String>,
+    /// Remote digest commands the server advertised in FEAT, and the
+    /// algorithm `HASH` has selected on this session.
+    hash: FtpHashSupport,
     /// Set to true if ExplicitIfAvailable mode fell back to plaintext
     pub tls_downgraded: bool,
     /// Buffer size for download/upload (default: 8 KB)
@@ -105,7 +106,7 @@ impl FtpProvider {
             mlst_supported: false,
             mlsd_broken: false,
             mfmt_supported: false,
-            hash_supported: None,
+            hash: FtpHashSupport::default(),
             tls_downgraded: false,
             buffer_size: FTP_DOWNLOAD_BUFFER_DEFAULT,
             connection_spec: None,
@@ -1246,30 +1247,19 @@ impl StorageProvider for FtpProvider {
                 self.mlsd_supported = server_supports_mlsd && !self.mlsd_broken;
                 self.mlst_supported = features.contains_key("MLST");
                 self.mfmt_supported = features.contains_key("MFMT");
-                // B3: Detect hash/checksum commands (prefer HASH > XMD5 > XCRC > XSHA1)
-                self.hash_supported = if features.contains_key("HASH") {
-                    Some("HASH".to_string())
-                } else if features.contains_key("XMD5") {
-                    Some("XMD5".to_string())
-                } else if features.contains_key("XCRC") {
-                    Some("XCRC".to_string())
-                } else if features.contains_key("XSHA1") {
-                    Some("XSHA1".to_string())
-                } else {
-                    None
-                };
+                self.hash = FtpHashSupport::from_features(&features);
                 tracing::debug!(
-                    "FTP FEAT: MLSD={}, MFMT={}, HASH={:?}",
+                    "FTP FEAT: MLSD={}, MFMT={}, digests={:?}",
                     self.mlsd_supported,
                     self.mfmt_supported,
-                    self.hash_supported
+                    self.hash
                 );
             }
             Err(_) => {
                 self.mlsd_supported = false;
                 self.mlst_supported = false;
                 self.mfmt_supported = false;
-                self.hash_supported = None;
+                self.hash = FtpHashSupport::default();
             }
         };
 
@@ -2058,47 +2048,44 @@ impl StorageProvider for FtpProvider {
     }
 
     fn supports_checksum(&self) -> bool {
-        self.hash_supported.is_some()
+        self.hash.any()
     }
 
     /// Narrowed to what THIS server advertised in FEAT, which is the whole
-    /// point on FTP: the matrix lists the four algorithms the protocol can
-    /// carry, but a server offering only `XCRC` can produce CRC32 and nothing
-    /// else, and the user should read that instead of clicking to find out.
-    /// `HASH` alone is negotiated per request (the server picks the
-    /// algorithm), so it keeps the flag and the full list.
+    /// point on FTP: the matrix lists the algorithms the protocol can carry,
+    /// but a server whose `HASH` line lists SHA-1 and SHA-256, or which
+    /// offers only `XCRC`, can produce those and nothing else, and the user
+    /// should read that instead of clicking to find out. A `HASH` line that
+    /// lists no algorithm says nothing about them, so the matrix stands.
     fn checksum_capability(&self, _path: &str) -> ChecksumCapability {
-        let Some(cmd) = self.hash_supported.as_deref() else {
+        if !self.hash.any() {
             return ChecksumCapability::default();
-        };
+        }
         let base = checksum_matrix::capability(self.provider_type());
-        match cmd {
-            "HASH" => base,
-            "XMD5" => ChecksumCapability {
-                algorithms: vec!["md5".to_string()],
-                negotiated: false,
-                ..base
-            },
-            "XSHA1" => ChecksumCapability {
-                algorithms: vec!["sha1".to_string()],
-                negotiated: false,
-                ..base
-            },
-            "XCRC" => ChecksumCapability {
-                algorithms: vec!["crc32".to_string()],
-                negotiated: false,
-                ..base
-            },
-            _ => ChecksumCapability::default(),
+        match self.hash.offered() {
+            Some(algorithms) => ChecksumCapability { algorithms, ..base },
+            None => base,
         }
     }
 
+    /// With no algorithm asked for, SHA-256 when the server offers it, since
+    /// that is the one the sync engine compares; otherwise whatever the
+    /// server has selected for `HASH`, or its first legacy verb.
     async fn checksum(
         &mut self,
         path: &str,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
-        self.remote_checksum(path).await
+        self.remote_checksum(path, None).await
+    }
+
+    async fn checksum_for(
+        &mut self,
+        path: &str,
+        algorithm: &str,
+    ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
+        self.remote_checksum(path, Some(algorithm)).await
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
@@ -2319,6 +2306,248 @@ fn canonical_hash_key(server_algo: &str) -> String {
         _ => return norm.to_ascii_lowercase(),
     }
     .to_string()
+}
+
+/// The legacy digest verbs, each bound to one algorithm, in the order a
+/// caller with no preference is served by them.
+const LEGACY_HASH_VERBS: &[(&str, &str)] = &[("XMD5", "md5"), ("XCRC", "crc32"), ("XSHA1", "sha1")];
+
+/// The algorithms the digest tab can show, in the order it lists them.
+/// Anything else a server advertises is left out of the capability.
+const FTP_OFFERED_ORDER: &[&str] = &["md5", "sha1", "sha256", "sha512", "crc32"];
+
+/// How draft-bryan-ftp-hash spells an algorithm, for a `HASH` line that
+/// lists none and so gives no spelling of its own.
+fn draft_hash_label(key: &str) -> Option<&'static str> {
+    match key {
+        "md5" => Some("MD5"),
+        "sha1" => Some("SHA-1"),
+        "sha256" => Some("SHA-256"),
+        "sha512" => Some("SHA-512"),
+        "crc32" => Some("CRC32"),
+        _ => None,
+    }
+}
+
+/// What a server offers for remote digests, read from FEAT.
+///
+/// `HASH` (draft-bryan-ftp-hash) computes with the algorithm the CLIENT has
+/// selected with `OPTS HASH`, from the list the FEAT line gives, with the
+/// current one marked `*`: `HASH SHA-1;SHA-256*;SHA-512;MD5`. A client that
+/// never selects gets the server's current algorithm for every request,
+/// whatever it wanted. The legacy verbs (`XMD5`, `XSHA1`, `XCRC`) take no
+/// selection: each computes its own algorithm.
+#[derive(Debug, Clone, Default)]
+struct FtpHashSupport {
+    /// `HASH` is advertised.
+    hash: bool,
+    /// The algorithms its FEAT line lists, in the server's own spelling,
+    /// which is what `OPTS HASH` has to send back. Empty when the line lists
+    /// none.
+    hash_algorithms: Vec<String>,
+    /// The algorithm `HASH` uses right now on this session: the one FEAT
+    /// marks `*`, then the last one `OPTS HASH` selected. `None` when not
+    /// known, and then the algorithm is always selected before hashing.
+    /// Reset with the rest of this struct at every `connect()`, which reads
+    /// FEAT again on the new session.
+    hash_selected: Option<String>,
+    /// The legacy verbs advertised, from [`LEGACY_HASH_VERBS`].
+    legacy: Vec<&'static str>,
+}
+
+/// How one digest request goes on the wire.
+#[derive(Debug, PartialEq)]
+enum HashRoute {
+    /// `HASH`, after `OPTS HASH <select>` when `select` is set.
+    Hash { select: Option<String> },
+    /// A legacy verb and the canonical key of the algorithm it computes.
+    Legacy(&'static str, &'static str),
+}
+
+impl FtpHashSupport {
+    fn from_features(features: &suppaftp::types::Features) -> Self {
+        let (hash_algorithms, hash_selected) = features
+            .get("HASH")
+            .and_then(|value| value.as_deref())
+            .map(parse_hash_feat)
+            .unwrap_or_default();
+        Self {
+            hash: features.contains_key("HASH"),
+            hash_algorithms,
+            hash_selected,
+            legacy: LEGACY_HASH_VERBS
+                .iter()
+                .map(|(verb, _)| *verb)
+                .filter(|verb| features.contains_key(*verb))
+                .collect(),
+        }
+    }
+
+    fn any(&self) -> bool {
+        self.hash || !self.legacy.is_empty()
+    }
+
+    /// The canonical keys this server can produce, in the digest tab's
+    /// order, or `None` when a `HASH` line without a list leaves that
+    /// unknown.
+    fn offered(&self) -> Option<Vec<String>> {
+        if self.hash && self.hash_algorithms.is_empty() {
+            return None;
+        }
+        let mut keys: Vec<String> = self
+            .hash_algorithms
+            .iter()
+            .map(|label| canonical_hash_key(label))
+            .collect();
+        keys.extend(
+            LEGACY_HASH_VERBS
+                .iter()
+                .filter(|(verb, _)| self.legacy.contains(verb))
+                .map(|(_, key)| key.to_string()),
+        );
+        Some(
+            FTP_OFFERED_ORDER
+                .iter()
+                .filter(|key| keys.iter().any(|k| k == *key))
+                .map(|key| key.to_string())
+                .collect(),
+        )
+    }
+
+    /// How to compute the algorithm with canonical key `key`: `HASH` when its
+    /// FEAT line lists it, the legacy verb bound to it otherwise, and `HASH`
+    /// in the draft's spelling when the line lists nothing, letting the
+    /// server refuse. `None` when the server has no way to compute it.
+    fn route(&self, key: &str) -> Option<HashRoute> {
+        let listed = if self.hash {
+            self.hash_algorithms
+                .iter()
+                .find(|label| canonical_hash_key(label) == key)
+                .cloned()
+        } else {
+            None
+        };
+        let label = match listed {
+            Some(label) => label,
+            None => {
+                if let Some(&(verb, key)) = LEGACY_HASH_VERBS
+                    .iter()
+                    .find(|(verb, k)| *k == key && self.legacy.contains(verb))
+                {
+                    return Some(HashRoute::Legacy(verb, key));
+                }
+                if !(self.hash && self.hash_algorithms.is_empty()) {
+                    return None;
+                }
+                draft_hash_label(key)?.to_string()
+            }
+        };
+        let already_selected = self
+            .hash_selected
+            .as_deref()
+            .is_some_and(|selected| selected.eq_ignore_ascii_case(&label));
+        Some(HashRoute::Hash {
+            select: (!already_selected).then_some(label),
+        })
+    }
+
+    /// The route for a caller with no preference: SHA-256 when the server
+    /// lists it or has it selected, because that is the digest the sync
+    /// engine compares; otherwise `HASH` with whatever the server has
+    /// selected, or the first legacy verb.
+    fn default_route(&self) -> Option<HashRoute> {
+        let sha256_known = self
+            .hash_algorithms
+            .iter()
+            .chain(self.hash_selected.iter())
+            .any(|label| canonical_hash_key(label) == "sha256");
+        if self.hash && sha256_known {
+            return self.route("sha256");
+        }
+        if self.hash {
+            return Some(HashRoute::Hash { select: None });
+        }
+        LEGACY_HASH_VERBS
+            .iter()
+            .find(|(verb, _)| self.legacy.contains(verb))
+            .map(|&(verb, key)| HashRoute::Legacy(verb, key))
+    }
+}
+
+/// The algorithms a FEAT `HASH` line lists, in the server's spelling, and the
+/// one it marks `*` as currently selected.
+fn parse_hash_feat(value: &str) -> (Vec<String>, Option<String>) {
+    let mut algorithms = Vec::new();
+    let mut selected = None;
+    for entry in value.split(';') {
+        let entry = entry.trim();
+        let (label, is_selected) = match entry.strip_suffix('*') {
+            Some(label) => (label.trim(), true),
+            None => (entry, false),
+        };
+        if label.is_empty() {
+            continue;
+        }
+        if is_selected {
+            selected = Some(label.to_string());
+        }
+        algorithms.push(label.to_string());
+    }
+    (algorithms, selected)
+}
+
+/// The lines of an FTP reply without their status code, last line first.
+/// suppaftp hands a custom command's reply back whole, `213 ` and line
+/// endings included, and a multi-line reply puts its answer on the final
+/// line: ProFTPD's mod_digest opens with `213-Computing SHA-1 digest`.
+fn reply_lines(body: &[u8]) -> Vec<String> {
+    String::from_utf8_lossy(body)
+        .lines()
+        .map(|line| {
+            let line = line.trim();
+            let bytes = line.as_bytes();
+            let coded = bytes.len() >= 4
+                && bytes[..3].iter().all(u8::is_ascii_digit)
+                && matches!(bytes[3], b' ' | b'-');
+            if coded {
+                line[4..].trim().to_string()
+            } else {
+                line.to_string()
+            }
+        })
+        .filter(|line| !line.is_empty())
+        .rev()
+        .collect()
+}
+
+fn is_hex_digest(token: &str) -> bool {
+    !token.is_empty() && token.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// A `HASH` reply, `<algo> <start>-<end> <hex> <path>`, as the canonical key
+/// of the algorithm it names and the lowercase digest. `None` for anything
+/// else, rather than a field taken from the wrong position.
+fn parse_hash_reply(body: &[u8]) -> Option<(String, String)> {
+    reply_lines(body).iter().find_map(|line| {
+        let fields: Vec<&str> = line.splitn(4, ' ').collect();
+        let (algo, hex) = match fields.as_slice() {
+            [algo, _range, hex, ..] => (*algo, *hex),
+            _ => return None,
+        };
+        is_hex_digest(hex).then(|| (canonical_hash_key(algo), hex.to_ascii_lowercase()))
+    })
+}
+
+/// A legacy verb's reply, `<code> <HEX>`, some servers appending the path.
+fn parse_legacy_reply(body: &[u8]) -> Option<String> {
+    reply_lines(body).iter().find_map(|line| {
+        let token = line.split_whitespace().next()?;
+        let token = token
+            .strip_prefix("0x")
+            .or_else(|| token.strip_prefix("0X"))
+            .unwrap_or(token);
+        is_hex_digest(token).then(|| token.to_ascii_lowercase())
+    })
 }
 
 /// How long a data transfer may go without a single byte arriving.
@@ -3486,63 +3715,85 @@ impl FtpProvider {
         Ok(())
     }
 
-    /// Compute a remote file checksum using the best available command.
-    /// Returns a map like {"MD5": "abc123..."} or {"CRC32": "..."} etc.
+    /// Compute a remote file checksum on the server, never by downloading.
+    ///
+    /// `wanted` is a canonical key (`md5`, `sha256`, ...). It is served by
+    /// `HASH` when the server lists it, after selecting it with `OPTS HASH`
+    /// unless the session already has it selected, or else by the legacy
+    /// verb bound to it. An algorithm the server does not offer yields an
+    /// empty map, without sending anything: hashing with another one would
+    /// cost the server a full read of the file for an answer nobody asked
+    /// for. With no `wanted`, see [`FtpHashSupport::default_route`].
+    ///
+    /// The digest is keyed by the algorithm the reply names, not by the one
+    /// asked for, so a server that ignores the selection cannot pass one
+    /// digest off as another.
     pub async fn remote_checksum(
         &mut self,
         path: &str,
+        wanted: Option<&str>,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
-        let hash_cmd = self.hash_supported.clone().ok_or_else(|| {
-            ProviderError::Other("Server does not support hash commands".to_string())
-        })?;
-
-        let stream = self.stream_mut()?;
-
-        let (cmd_str, default_algo) = match hash_cmd.as_str() {
-            "HASH" => (format!("HASH {}", path), "SHA-256"),
-            "XMD5" => (format!("XMD5 {}", path), "MD5"),
-            "XCRC" => (format!("XCRC {}", path), "CRC32"),
-            "XSHA1" => (format!("XSHA1 {}", path), "SHA-1"),
-            _ => {
-                return Err(ProviderError::Other(format!(
-                    "Unknown hash command: {}",
-                    hash_cmd
-                )))
-            }
+        if !self.hash.any() {
+            return Err(ProviderError::Other(
+                "Server does not support hash commands".to_string(),
+            ));
+        }
+        let route = match wanted {
+            Some(key) => self.hash.route(key),
+            None => self.hash.default_route(),
+        };
+        let mut result = std::collections::HashMap::new();
+        let Some(route) = route else {
+            return Ok(result);
         };
 
-        let response = stream
-            .custom_command(
-                &cmd_str,
-                &[suppaftp::Status::File, suppaftp::Status::CommandOk],
-            )
-            .await
-            .map_err(|e| Self::classify_data_failure("hashing", path, e))?;
-
-        let body = String::from_utf8_lossy(&response.body).into_owned();
-        let mut result = std::collections::HashMap::new();
-
-        if hash_cmd == "HASH" {
-            // RFC draft HASH response: "<algo> <range> <hash> <path>"
-            // e.g. "SHA-256 0-EOF abc123def456 /path/to/file.txt"
-            let parts: Vec<&str> = body.splitn(4, ' ').collect();
-            if parts.len() >= 3 {
-                result.insert(
-                    canonical_hash_key(parts[0]),
-                    parts[2].trim().to_ascii_lowercase(),
-                );
-            } else {
-                result.insert(
-                    canonical_hash_key(default_algo),
-                    body.trim().to_ascii_lowercase(),
-                );
+        match route {
+            HashRoute::Hash { select } => {
+                if let Some(label) = select {
+                    self.stream_mut()?
+                        .custom_command(format!("OPTS HASH {label}"), &[Status::CommandOk])
+                        .await
+                        .map_err(|e| {
+                            ProviderError::ServerError(format!(
+                                "The server refused OPTS HASH {label}: {e}"
+                            ))
+                        })?;
+                    self.hash.hash_selected = Some(label);
+                }
+                let response = self
+                    .stream_mut()?
+                    .custom_command(format!("HASH {path}"), &[Status::File, Status::CommandOk])
+                    .await
+                    .map_err(|e| Self::classify_data_failure("hashing", path, e))?;
+                let (key, hex) = parse_hash_reply(&response.body).ok_or_else(|| {
+                    ProviderError::ServerError(format!(
+                        "Unrecognised HASH reply: {}",
+                        String::from_utf8_lossy(&response.body).trim()
+                    ))
+                })?;
+                result.insert(key, hex);
             }
-        } else {
-            // XMD5/XCRC/XSHA1: response is just the hex hash
-            result.insert(
-                canonical_hash_key(default_algo),
-                body.trim().to_ascii_lowercase(),
-            );
+            HashRoute::Legacy(verb, key) => {
+                let response = self
+                    .stream_mut()?
+                    .custom_command(
+                        format!("{verb} {path}"),
+                        &[
+                            Status::File,
+                            Status::CommandOk,
+                            Status::RequestedFileActionOk,
+                        ],
+                    )
+                    .await
+                    .map_err(|e| Self::classify_data_failure("hashing", path, e))?;
+                let hex = parse_legacy_reply(&response.body).ok_or_else(|| {
+                    ProviderError::ServerError(format!(
+                        "Unrecognised {verb} reply: {}",
+                        String::from_utf8_lossy(&response.body).trim()
+                    ))
+                })?;
+                result.insert(key.to_string(), hex);
+            }
         }
 
         Ok(result)
@@ -4460,6 +4711,126 @@ MLSD "no-facts-here" @ "/"
     }
 
     #[test]
+    fn hash_feat_line_gives_the_list_and_the_selected_algorithm() {
+        let (algorithms, selected) = parse_hash_feat("SHA-1;SHA-256*;SHA-512;MD5");
+        assert_eq!(algorithms, vec!["SHA-1", "SHA-256", "SHA-512", "MD5"]);
+        assert_eq!(selected.as_deref(), Some("SHA-256"));
+
+        // Spacing and a trailing separator are tolerated; no `*` means the
+        // selection is unknown, not the first entry.
+        let (algorithms, selected) = parse_hash_feat(" SHA-1 ; MD5 ;");
+        assert_eq!(algorithms, vec!["SHA-1", "MD5"]);
+        assert_eq!(selected, None);
+    }
+
+    #[test]
+    fn hash_reply_is_parsed_past_its_code_and_by_position() {
+        assert_eq!(
+            parse_hash_reply(b"213 SHA-256 0-49 169CD22282DA7F147CB491E559E9DD a file.txt\r\n"),
+            Some((
+                "sha256".to_string(),
+                "169cd22282da7f147cb491e559e9dd".to_string()
+            ))
+        );
+        // The shape that used to come back as {"213": "0-49"}: the range is
+        // not a digest, so a reply missing its digest is refused, not read.
+        assert_eq!(parse_hash_reply(b"213 SHA-256 0-49\r\n"), None);
+        assert_eq!(parse_hash_reply(b"213 SHA-256 0-49 not-hex file\r\n"), None);
+    }
+
+    /// The replies of ProFTPD 1.3.8 with mod_digest, verbatim: both digest
+    /// replies are multi-line, and the answer is on the last line.
+    #[test]
+    fn proftpd_mod_digest_replies_are_read_from_their_final_line() {
+        assert_eq!(
+            parse_hash_reply(
+                b"213-Computing SHA-1 digest\r\n213 SHA-1 0-11 2aae6c35c94fcfb415dbe95f408b9ce91ee846ed hello.txt\r\n"
+            ),
+            Some(("sha1".to_string(), "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed".to_string()))
+        );
+        assert_eq!(
+            parse_legacy_reply(b"250-Computing CRC32 digest\r\n250 0D4A1185\r\n").as_deref(),
+            Some("0d4a1185")
+        );
+        let (algorithms, selected) = parse_hash_feat("CRC32;MD5;SHA-1*;SHA-256;SHA-512;");
+        assert_eq!(
+            algorithms,
+            vec!["CRC32", "MD5", "SHA-1", "SHA-256", "SHA-512"]
+        );
+        assert_eq!(selected.as_deref(), Some("SHA-1"));
+    }
+
+    #[test]
+    fn legacy_reply_is_the_bare_digest() {
+        assert_eq!(
+            parse_legacy_reply(b"250 5EB63BBBE01EEED093CB22BB8F5ACDC3\r\n").as_deref(),
+            Some("5eb63bbbe01eeed093cb22bb8f5acdc3")
+        );
+        assert_eq!(
+            parse_legacy_reply(b"213 0x0D4A1185 /hello.txt\r\n").as_deref(),
+            Some("0d4a1185")
+        );
+        assert_eq!(parse_legacy_reply(b"250 File not found\r\n"), None);
+    }
+
+    fn hash_support(feat: &[(&str, Option<&str>)]) -> FtpHashSupport {
+        let features: suppaftp::types::Features = feat
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.map(str::to_string)))
+            .collect();
+        FtpHashSupport::from_features(&features)
+    }
+
+    #[test]
+    fn a_listed_algorithm_is_selected_in_the_servers_spelling_unless_already_selected() {
+        let support = hash_support(&[("HASH", Some("sha-1;sha-256*;md5"))]);
+        assert_eq!(
+            support.route("sha1"),
+            Some(HashRoute::Hash {
+                select: Some("sha-1".to_string())
+            })
+        );
+        assert_eq!(
+            support.route("sha256"),
+            Some(HashRoute::Hash { select: None })
+        );
+        assert_eq!(support.route("sha512"), None);
+        assert_eq!(
+            support.default_route(),
+            Some(HashRoute::Hash { select: None })
+        );
+    }
+
+    #[test]
+    fn an_unlisted_hash_line_asks_in_the_drafts_spelling_after_the_legacy_verbs() {
+        let support = hash_support(&[("HASH", None), ("XMD5", None)]);
+        assert_eq!(support.route("md5"), Some(HashRoute::Legacy("XMD5", "md5")));
+        assert_eq!(
+            support.route("sha512"),
+            Some(HashRoute::Hash {
+                select: Some("SHA-512".to_string())
+            })
+        );
+        assert_eq!(support.route("blake3"), None);
+        // No list and nothing selected: the server's own choice, unselected.
+        assert_eq!(
+            support.default_route(),
+            Some(HashRoute::Hash { select: None })
+        );
+        assert_eq!(support.offered(), None);
+    }
+
+    #[test]
+    fn without_hash_the_default_is_the_first_legacy_verb() {
+        let support = hash_support(&[("XSHA1", None), ("XCRC", None)]);
+        assert_eq!(
+            support.default_route(),
+            Some(HashRoute::Legacy("XCRC", "crc32"))
+        );
+        assert!(!hash_support(&[("MLSD", None)]).any());
+    }
+
+    #[test]
     fn captured_connection_spec_unlocks_pool_kind_and_strict_range_capability() {
         // Speed-button audit contract (PD-FTP-1): before connect() the
         // provider must NOT overclaim intra-file parallelism (LockedSingle,
@@ -5282,5 +5653,409 @@ mod late_reply_guard_tests {
             .await
             .expect("the second connection must be dialed")
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod hash_negotiation_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::{TcpListener, TcpStream};
+
+    /// Digests of `hello world`, one per algorithm, so a digest computed with
+    /// the wrong algorithm cannot pass for the one that was asked for.
+    const DIGESTS: &[(&str, &str)] = &[
+        ("MD5", "5eb63bbbe01eeed093cb22bb8f5acdc3"),
+        ("SHA-1", "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed"),
+        (
+            "SHA-256",
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+        ),
+        (
+            "SHA-512",
+            "309ecc489c12d6eb4cc40f50c902f2b4d0ed77ee511a7c7a9bcd3ca86d4cd86f989dd35bc5ff499670da34255b45b0cfd830e81f605dcf7dc5542e93ae9cd76f",
+        ),
+        ("CRC32", "0d4a1185"),
+    ];
+
+    /// Every command line the scripted server received, in order.
+    type CommandLog = Arc<Mutex<Vec<String>>>;
+
+    fn digest(label: &str) -> &'static str {
+        DIGESTS
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(label))
+            .map(|(_, hex)| *hex)
+            .expect("a digest for every algorithm the script offers")
+    }
+
+    /// What the scripted server advertises and how it answers.
+    #[derive(Clone, Copy)]
+    struct Script {
+        /// FEAT lines, verbatim.
+        feat: &'static [&'static str],
+        /// What `OPTS HASH` accepts.
+        hash_algos: &'static [&'static str],
+        /// What `HASH` uses before any `OPTS HASH`.
+        selected: &'static str,
+        /// The code the legacy verbs answer with: `250` for ProFTPD's
+        /// mod_digest and Serv-U, `213` for others.
+        legacy_code: &'static str,
+    }
+
+    const HASH_SERVER: Script = Script {
+        feat: &["HASH SHA-1;SHA-256*;MD5"],
+        hash_algos: &["SHA-1", "SHA-256", "MD5"],
+        selected: "SHA-256",
+        legacy_code: "250",
+    };
+
+    /// One scripted control connection speaking draft-bryan-ftp-hash.
+    /// `OPTS HASH <algo>` selects one of the script's algorithms and answers
+    /// `501` for anything else; `HASH <path>` answers in the draft's shape,
+    /// `213 <algo> <range> <hex> <path>`, with whichever algorithm is
+    /// selected. The legacy verbs answer `<code> <HEX>`. Every command line
+    /// is logged, so a test can read the conversation.
+    async fn serve(stream: TcpStream, script: Script, log: CommandLog) {
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        if write.write_all(b"220 ready\r\n").await.is_err() {
+            return;
+        }
+        let mut selected = script.selected;
+        loop {
+            let line = match lines.next_line().await {
+                Ok(Some(line)) => line,
+                _ => return,
+            };
+            log.lock().unwrap().push(line.clone());
+            let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+            let legacy = |label: &str| {
+                format!(
+                    "{} {}\r\n",
+                    script.legacy_code,
+                    digest(label).to_ascii_uppercase()
+                )
+            };
+            let reply = match cmd.to_ascii_uppercase().as_str() {
+                "USER" => "331 password please\r\n".to_string(),
+                "PASS" => "230 logged in\r\n".to_string(),
+                "PWD" => "257 \"/\" is current\r\n".to_string(),
+                "FEAT" => {
+                    let mut reply = "211-Features:\r\n".to_string();
+                    for line in script.feat {
+                        reply.push_str(&format!(" {line}\r\n"));
+                    }
+                    reply.push_str("211 End\r\n");
+                    reply
+                }
+                "OPTS" => match argument.split_once(' ') {
+                    Some((option, algo)) if option.eq_ignore_ascii_case("HASH") => match script
+                        .hash_algos
+                        .iter()
+                        .find(|a| a.eq_ignore_ascii_case(algo))
+                    {
+                        Some(found) => {
+                            selected = found;
+                            format!("200 {found}\r\n")
+                        }
+                        None => "501 Unknown algorithm\r\n".to_string(),
+                    },
+                    _ => "200 ok\r\n".to_string(),
+                },
+                "HASH" => format!("213 {selected} 0-10 {} {argument}\r\n", digest(selected)),
+                "XMD5" => legacy("MD5"),
+                "XSHA1" => legacy("SHA-1"),
+                "XCRC" => legacy("CRC32"),
+                "QUIT" => {
+                    let _ = write.write_all(b"221 bye\r\n").await;
+                    return;
+                }
+                _ => "200 ok\r\n".to_string(),
+            };
+            if write.write_all(reply.as_bytes()).await.is_err() {
+                return;
+            }
+        }
+    }
+
+    /// Connect a provider to a fresh scripted server. The log is returned
+    /// cleared of the login exchange, so it holds only what the test caused.
+    async fn connected(script: Script) -> (FtpProvider, CommandLog, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let server_log = Arc::clone(&log);
+        let server = tokio::spawn(async move {
+            if let Ok((stream, _)) = listener.accept().await {
+                serve(stream, script, server_log).await;
+            }
+        });
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port: addr.port(),
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider
+            .connect()
+            .await
+            .expect("the scripted server accepts the login");
+        log.lock().unwrap().clear();
+        (provider, log, server)
+    }
+
+    async fn finish(mut provider: FtpProvider, server: tokio::task::JoinHandle<()>) {
+        let _ = provider.disconnect().await;
+        tokio::time::timeout(std::time::Duration::from_secs(5), server)
+            .await
+            .expect("the scripted server ends when the client hangs up")
+            .unwrap();
+    }
+
+    fn digest_commands(log: &CommandLog) -> Vec<String> {
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|line| {
+                let upper = line.to_ascii_uppercase();
+                upper.starts_with("OPTS HASH")
+                    || upper.starts_with("HASH ")
+                    || upper.starts_with('X')
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// The reply to `HASH` starts with its status code. Read as the first
+    /// field it became the algorithm, and the range became the digest, so a
+    /// server answering in the draft's own shape produced `{"213": "0-10"}`
+    /// and no algorithm at all, not even the one the server had selected.
+    #[tokio::test]
+    async fn the_hash_reply_is_read_past_its_status_code() {
+        let (mut provider, _log, server) = connected(HASH_SERVER).await;
+
+        let map = provider.checksum("/hello.txt").await.expect("HASH answers");
+
+        assert_eq!(
+            map.get("sha256").map(String::as_str),
+            Some(digest("SHA-256")),
+            "the selected algorithm's digest, under its own key: {map:?}"
+        );
+        assert!(
+            !map.contains_key("213"),
+            "the status code is not an algorithm: {map:?}"
+        );
+        finish(provider, server).await;
+    }
+
+    /// What the reporting user saw: every algorithm failed because AeroFTP
+    /// never selected one. Each request must select its algorithm with
+    /// `OPTS HASH` before `HASH`, in the server's own spelling, and skip the
+    /// selection when the session already has that algorithm selected.
+    #[tokio::test]
+    async fn each_algorithm_is_selected_with_opts_hash_before_hash() {
+        let (mut provider, log, server) = connected(HASH_SERVER).await;
+
+        for (key, label) in [("md5", "MD5"), ("sha1", "SHA-1"), ("sha256", "SHA-256")] {
+            let map = provider
+                .checksum_for("/hello.txt", key)
+                .await
+                .expect("HASH answers");
+            assert_eq!(
+                map.get(key).map(String::as_str),
+                Some(digest(label)),
+                "{key} must come back as the {label} digest: {map:?}"
+            );
+        }
+        // SHA-256 is selected now: asking again must not select it again.
+        provider
+            .checksum_for("/hello.txt", "sha256")
+            .await
+            .expect("HASH answers");
+
+        assert_eq!(
+            digest_commands(&log),
+            vec![
+                "OPTS HASH MD5",
+                "HASH /hello.txt",
+                "OPTS HASH SHA-1",
+                "HASH /hello.txt",
+                "OPTS HASH SHA-256",
+                "HASH /hello.txt",
+                "HASH /hello.txt",
+            ]
+        );
+        finish(provider, server).await;
+    }
+
+    /// The legacy verbs answer `<code> <HEX>`. With `213` the whole reply
+    /// line used to come back as the digest, `213 5eb6...`, which the
+    /// Properties dialog displayed as the file's MD5: a wrong value presented
+    /// as a correct one. With `250`, the code ProFTPD's mod_digest and Serv-U
+    /// use, the reply was refused outright. Each verb must also serve its own
+    /// algorithm, not the one the server happened to be probed for first.
+    #[tokio::test]
+    async fn legacy_verbs_return_the_bare_digest_of_the_algorithm_asked_for() {
+        // Every shape is tried before anything is asserted, so a failure
+        // reports all of them rather than the first.
+        let mut wrong = Vec::new();
+        for legacy_code in ["250", "213"] {
+            let (mut provider, log, server) = connected(Script {
+                feat: &["XMD5", "XSHA1", "XCRC"],
+                hash_algos: &[],
+                selected: "MD5",
+                legacy_code,
+            })
+            .await;
+
+            for (key, label, verb) in [
+                ("md5", "MD5", "XMD5"),
+                ("sha1", "SHA-1", "XSHA1"),
+                ("crc32", "CRC32", "XCRC"),
+            ] {
+                match provider.checksum_for("/hello.txt", key).await {
+                    Ok(map) if map.get(key).map(String::as_str) == Some(digest(label)) => {}
+                    other => wrong.push(format!(
+                        "{verb} answering {legacy_code} must yield the bare {label} digest, got {other:?}"
+                    )),
+                }
+            }
+            let sent = digest_commands(&log);
+            if sent != ["XMD5 /hello.txt", "XSHA1 /hello.txt", "XCRC /hello.txt"] {
+                wrong.push(format!("answering {legacy_code}, the client sent {sent:?}"));
+            }
+            finish(provider, server).await;
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    /// An algorithm the server does not offer is not requested at all:
+    /// hashing with another one costs the server a full read of the file for
+    /// an answer nobody asked for. A legacy verb covering it is used instead
+    /// when the server advertises one.
+    #[tokio::test]
+    async fn an_algorithm_the_server_does_not_offer_is_never_requested() {
+        let without_md5 = Script {
+            feat: &["HASH SHA-1;SHA-256*"],
+            hash_algos: &["SHA-1", "SHA-256"],
+            ..HASH_SERVER
+        };
+        let (mut provider, log, server) = connected(without_md5).await;
+        let map = provider
+            .checksum_for("/hello.txt", "md5")
+            .await
+            .expect("an unoffered algorithm is an empty answer, not an error");
+        assert!(
+            map.is_empty(),
+            "nothing computed for an unoffered algorithm: {map:?}"
+        );
+        assert!(
+            digest_commands(&log).is_empty(),
+            "nothing sent: {:?}",
+            digest_commands(&log)
+        );
+        finish(provider, server).await;
+
+        let (mut provider, log, server) = connected(Script {
+            feat: &["HASH SHA-1;SHA-256*", "XMD5"],
+            ..without_md5
+        })
+        .await;
+        let map = provider
+            .checksum_for("/hello.txt", "md5")
+            .await
+            .expect("XMD5 answers");
+        assert_eq!(map.get("md5").map(String::as_str), Some(digest("MD5")));
+        assert_eq!(digest_commands(&log), vec!["XMD5 /hello.txt"]);
+        finish(provider, server).await;
+    }
+
+    /// The Checksum tab offers what FEAT advertised, not what the protocol
+    /// could carry: a server listing SHA-1, SHA-256 and SHA-512 has no MD5
+    /// row to click, and a server offering only legacy verbs has exactly
+    /// their algorithms.
+    #[tokio::test]
+    async fn the_capability_is_what_feat_advertised() {
+        let (provider, _log, server) = connected(Script {
+            feat: &["HASH SHA-1;SHA-256*;SHA-512"],
+            hash_algos: &["SHA-1", "SHA-256", "SHA-512"],
+            ..HASH_SERVER
+        })
+        .await;
+        assert_eq!(
+            provider.checksum_capability("/hello.txt").algorithms,
+            vec!["sha1", "sha256", "sha512"]
+        );
+        finish(provider, server).await;
+
+        let (provider, _log, server) = connected(Script {
+            feat: &["XCRC", "XMD5"],
+            hash_algos: &[],
+            ..HASH_SERVER
+        })
+        .await;
+        assert_eq!(
+            provider.checksum_capability("/hello.txt").algorithms,
+            vec!["md5", "crc32"]
+        );
+        finish(provider, server).await;
+    }
+
+    /// The same contract against a real `HASH` implementation: ProFTPD with
+    /// mod_digest, whose replies are multi-line and whose legacy verbs answer
+    /// `250`. A lab that reproduces it: `debian:bookworm-slim` with
+    /// `proftpd-core`, `LoadModule mod_digest.c`, `DigestEngine on`,
+    /// `DigestAlgorithms all`, and a user whose home holds `hello.txt`
+    /// containing `hello world` without a newline. Run with
+    /// `AEROFTP_FTP_HASH_LIVE_HOST`, `_USER` and `_PASS` set.
+    #[tokio::test]
+    #[ignore = "live FTP HASH test against a ProFTPD mod_digest lab; run explicitly"]
+    async fn live_proftpd_mod_digest_serves_each_algorithm_asked_for() {
+        let env = |name: &str| {
+            std::env::var(name).unwrap_or_else(|_| panic!("{name} must be set for the live test"))
+        };
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: env("AEROFTP_FTP_HASH_LIVE_HOST"),
+            port: 21,
+            username: env("AEROFTP_FTP_HASH_LIVE_USER"),
+            password: env("AEROFTP_FTP_HASH_LIVE_PASS").into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider.connect().await.expect("the lab accepts the login");
+
+        assert_eq!(
+            provider.checksum_capability("hello.txt").algorithms,
+            vec!["md5", "sha1", "sha256", "sha512", "crc32"]
+        );
+        for (key, label) in [
+            ("md5", "MD5"),
+            ("sha256", "SHA-256"),
+            ("sha512", "SHA-512"),
+            ("crc32", "CRC32"),
+            ("sha1", "SHA-1"),
+        ] {
+            let map = provider
+                .checksum_for("hello.txt", key)
+                .await
+                .unwrap_or_else(|e| panic!("{key}: {e}"));
+            assert_eq!(
+                map.get(key).map(String::as_str),
+                Some(digest(label)),
+                "{key}: {map:?}"
+            );
+        }
+        let map = provider.checksum("hello.txt").await.expect("HASH answers");
+        assert_eq!(
+            map.get("sha256").map(String::as_str),
+            Some(digest("SHA-256"))
+        );
+        let _ = provider.disconnect().await;
     }
 }
