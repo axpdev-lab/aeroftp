@@ -510,10 +510,16 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
         | ProviderType::Jottacloud
         | ProviderType::DrimeCloud
         | ProviderType::OpenDrive
-        | ProviderType::GitHub
         | ProviderType::ImageKit
         | ProviderType::Uploadcare
         | ProviderType::Twake => DocumentedFileLimits::default(),
+        // Two write paths with two limits: a repository file goes through the
+        // Contents API (100 MB, refused by the provider itself before the
+        // upload, github/mod.rs MAX_CONTENT_SIZE), a release asset has 2 GiB.
+        // One number per provider type would warn wrongly on one of them.
+        // https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents
+        // https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
+        ProviderType::GitHub => DocumentedFileLimits::default(),
         // Not a remote a sync uploads to through this path.
         ProviderType::AeroCloud
         | ProviderType::AeroVaultMount
