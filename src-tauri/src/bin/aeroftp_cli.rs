@@ -58040,6 +58040,14 @@ async fn cmd_sync_watch(
                 if stats.over_budget > 0 {
                     payload["over_budget"] = serde_json::json!(stats.over_budget);
                 }
+                // The same for the pairs a cycle left open and the emptied
+                // directories it could not remove: named only when there are.
+                if !stats.conflicts_open.is_empty() {
+                    payload["conflicts_open"] = serde_json::json!(stats.conflicts_open);
+                }
+                if stats.dirs_kept > 0 {
+                    payload["dirs_kept"] = serde_json::json!(stats.dirs_kept);
+                }
                 if error_correction_pct.is_some() {
                     payload["ec_generated"] = serde_json::json!(stats.ec_generated);
                     payload["ec_skipped_too_large"] =
@@ -58055,7 +58063,12 @@ async fn cmd_sync_watch(
                 print_json(&payload);
             } else if !quiet {
                 let ts = chrono::Local::now().format("%H:%M:%S");
-                if total_changes == 0 && stats.error_count == 0 {
+                let left_open = if stats.conflicts_open.is_empty() {
+                    String::new()
+                } else {
+                    format!(", {} left open", stats.conflicts_open.len())
+                };
+                if total_changes == 0 && stats.error_count == 0 && left_open.is_empty() {
                     eprintln!(
                         "[{}] Sync #{} ({}) -- no changes ({}s)",
                         ts, cycle, trigger_label,
@@ -58063,7 +58076,7 @@ async fn cmd_sync_watch(
                     );
                 } else {
                     eprintln!(
-                        "[{}] Sync #{} ({}) -- {} up, {} down, {} del{} ({}s)",
+                        "[{}] Sync #{} ({}) -- {} up, {} down, {} del{}{} ({}s)",
                         ts, cycle, trigger_label,
                         stats.uploaded, stats.downloaded, stats.deleted,
                         if stats.error_count > 0 {
@@ -58071,6 +58084,7 @@ async fn cmd_sync_watch(
                         } else {
                             String::new()
                         },
+                        left_open,
                         format!("{:.1}", elapsed.as_secs_f64()),
                     );
                 }
