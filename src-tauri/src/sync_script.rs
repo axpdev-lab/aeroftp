@@ -998,8 +998,11 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
 /// - whitespace separates arguments outside quotes;
 /// - inside double quotes `\\` is a backslash and `\"` a quote, the two
 ///   escapes the exporter writes; any other backslash is kept, so a Windows
-///   path written by hand (`"C:\Users\me"`) reads as written;
-/// - inside single quotes every character is literal;
+///   path written by hand (`"C:\Users\me"`) reads as written, but the
+///   leading `\\` of a UNC path reads as one backslash: write it doubled or
+///   between single quotes;
+/// - inside single quotes every character is literal (variables have already
+///   been expanded by [`expand_script_variables`]);
 /// - `""` or `''` is an empty argument, and an unclosed quote is an error.
 pub fn tokenize_script_line(body: &str) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = Vec::new();
@@ -1372,6 +1375,11 @@ mod tests {
                 "{value}"
             );
         }
+        // A UNC path: doubled between double quotes, or single-quoted.
+        assert_eq!(
+            tokenize_script_line(r#""\\\\nas\\share" '\\nas\share'"#).unwrap(),
+            vec![r"\\nas\share", r"\\nas\share"]
+        );
         assert!(tokenize_script_line("\"open").is_err());
         assert!(tokenize_script_line("'open").is_err());
     }

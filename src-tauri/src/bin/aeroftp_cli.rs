@@ -61651,8 +61651,18 @@ fn read_batch_script(content: &str) -> Result<Vec<BatchLine>, (usize, String)> {
                         ),
                     )
                 })?;
-        let parts = ftp_client_gui_lib::sync_script::tokenize_script_line(&expanded)
-            .map_err(|e| (line_num, e))?;
+        let Some(word) = expanded.split_whitespace().next() else {
+            continue;
+        };
+        // ECHO and SET take the rest of the line as text, so an apostrophe
+        // in a message or a value is not an opening quote; every other line
+        // is split into arguments.
+        let parts = if matches!(word.to_uppercase().as_str(), "ECHO" | "SET") {
+            vec![word.to_string()]
+        } else {
+            ftp_client_gui_lib::sync_script::tokenize_script_line(&expanded)
+                .map_err(|e| (line_num, e))?
+        };
         let Some(first) = parts.first() else {
             continue;
         };
@@ -62574,6 +62584,34 @@ DISCONNECT\n";
             };
             assert_eq!(local, "/data/$weird/a$$b");
             assert_eq!(remote, "/r/${HOME}");
+        });
+    }
+
+    /// ECHO and SET take the rest of the line as text: an apostrophe in a
+    /// message or a value stopped the whole script with "unmatched quote".
+    /// A command that takes arguments still reads quotes, so a URL with an
+    /// apostrophe is written between double quotes.
+    #[test]
+    fn an_apostrophe_in_echo_or_set_is_text() {
+        on_big_stack(|| {
+            let lines = read_batch_script(
+                "SET MSG=it's done\nCONNECT \"sftp://u:pa'ss@h/\"\nECHO Don't forget: ${MSG}\n",
+            )
+            .unwrap_or_else(|e| panic!("{}", e.1));
+            let echo = lines
+                .iter()
+                .find(|l| l.cmd == "ECHO")
+                .expect("an ECHO line");
+            assert!(
+                echo.expanded.ends_with("Don't forget: it's done"),
+                "{}",
+                echo.expanded
+            );
+            let connect = lines.iter().find(|l| l.cmd == "CONNECT").unwrap();
+            assert_eq!(
+                connect.target,
+                Some(BatchTarget::Url("sftp://u:pa'ss@h/".into()))
+            );
         });
     }
 
