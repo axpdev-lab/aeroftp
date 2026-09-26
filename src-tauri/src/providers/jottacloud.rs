@@ -147,6 +147,9 @@ pub struct JottacloudProvider {
     /// when the caller has not bound a profile (legacy singleton key path).
     /// Issue #214.
     profile_id: String,
+    /// The JFS base of a local double, in tests.
+    #[cfg(test)]
+    jfs_base_override: Option<String>,
 }
 
 impl JottacloudProvider {
@@ -169,7 +172,18 @@ impl JottacloudProvider {
             refresh_source_account: None,
             current_path: "/".to_string(),
             profile_id: String::new(),
+            #[cfg(test)]
+            jfs_base_override: None,
         }
+    }
+
+    /// `JFS_BASE`, pointed at a local double in tests.
+    fn jfs_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(base) = &self.jfs_base_override {
+            return base;
+        }
+        JFS_BASE
     }
 
     /// Bind this provider to a server profile so the persisted Jotta refresh
@@ -601,6 +615,78 @@ impl JottacloudProvider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
+    /// JFS `mv` (a file) or `mvDir` (a folder) from `resolved_from` to
+    /// `resolved_to`.
+    async fn move_on_server(
+        &mut self,
+        resolved_from: &str,
+        resolved_to: &str,
+    ) -> Result<(), ProviderError> {
+        // Use move operation for rename. Encode the destination path segments
+        // (not the account identifiers) before building the move target.
+        let encoded_to_path: String = resolved_to
+            .trim_start_matches('/')
+            .split('/')
+            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
+            .collect::<Vec<_>>()
+            .join("/");
+        let to_jfs = format!(
+            "/{}/{}/{}/{}",
+            self.username, self.config.device, self.config.mountpoint, encoded_to_path
+        );
+        // JFS: files take `mv`, directories take `mvDir` (and a trailing slash
+        // on the source). `?mv=` on a folder 404s (#397).
+        let is_dir = self
+            .stat(resolved_from)
+            .await
+            .map(|e| e.is_dir)
+            .unwrap_or(false);
+        let mut from_url = self.jfs_url(resolved_from);
+        if is_dir && !from_url.ends_with('/') {
+            from_url.push('/');
+        }
+        let url = format!(
+            "{}?{}={}",
+            from_url,
+            if is_dir { "mvDir" } else { "mv" },
+            urlencoding::encode(&to_jfs)
+        );
+
+        let resp = self.post_command_with_retry(&url).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            // A live 404 is "not found here", not "exists only in Trash".
+            // Retrying as a Trash-to-Trash rename can move a homonym in
+            // Trash and return Ok while the live object was never touched
+            // (F-652-2), so the status is reported as it came.
+            //
+            // A Trash-to-Trash rename exists as `rename_in_trash`, but
+            // NOTHING calls it yet: there is no Tauri command and no button
+            // in JottacloudTrashManager, so it must not be described as
+            // reachable.
+            //
+            // Keeping it is a DECLARED exception to the house rule "remove
+            // dead code immediately" (CLAUDE.md). The reason: issue #397
+            // reports this exact operation failing for a user, and this is
+            // its implementation with its tests. Deleting it would throw away
+            // the only answer to that report and make whoever takes #397
+            // write it again. The exception lasts as long as the reason: if
+            // #397 does not wire it during this release cycle, it goes.
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Rename {} → {} failed ({}): {}",
+                resolved_from,
+                resolved_to,
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+
+        jotta_log(&format!("Renamed {} → {}", resolved_from, resolved_to));
+        Ok(())
+    }
+
     // ─── Path Helpers ───────────────────────────────────────────────────
 
     /// Build full JFS URL: /jfs/{username}/{device}/{mountpoint}/{path}
@@ -610,7 +696,7 @@ impl JottacloudProvider {
         let device = urlencoding::encode(&self.config.device);
         let mount = urlencoding::encode(&self.config.mountpoint);
         if clean.is_empty() {
-            format!("{}/{}/{}/{}", JFS_BASE, user, device, mount)
+            format!("{}/{}/{}/{}", self.jfs_base(), user, device, mount)
         } else {
             // Reversible restricted-character encoding goes BEFORE URL
             // percent-encoding on the way out (decoding happens after the name
@@ -626,7 +712,11 @@ impl JottacloudProvider {
                 .join("/");
             format!(
                 "{}/{}/{}/{}/{}",
-                JFS_BASE, user, device, mount, encoded_path
+                self.jfs_base(),
+                user,
+                device,
+                mount,
+                encoded_path
             )
         }
     }
@@ -1602,73 +1692,41 @@ impl StorageProvider for JottacloudProvider {
         self.move_to_trash(path).await
     }
 
+    /// A JFS `mv` (a file) or `mvDir` (a folder) to the new path. What JFS
+    /// does with an existing destination is not documented, so the
+    /// destination is looked up first and a taken one refused.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let resolved_from = self.resolve_path(from);
         let resolved_to = self.resolve_path(to);
-
-        // Use move operation for rename. Encode the destination path segments
-        // (not the account identifiers) before building the move target.
-        let encoded_to_path: String = resolved_to
-            .trim_start_matches('/')
-            .split('/')
-            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
-            .collect::<Vec<_>>()
-            .join("/");
-        let to_jfs = format!(
-            "/{}/{}/{}/{}",
-            self.username, self.config.device, self.config.mountpoint, encoded_to_path
-        );
-        // JFS: files take `mv`, directories take `mvDir` (and a trailing slash
-        // on the source). `?mv=` on a folder 404s (#397).
-        let is_dir = self
-            .stat(&resolved_from)
-            .await
-            .map(|e| e.is_dir)
-            .unwrap_or(false);
-        let mut from_url = self.jfs_url(&resolved_from);
-        if is_dir && !from_url.ends_with('/') {
-            from_url.push('/');
+        if resolved_from == resolved_to {
+            return Ok(());
         }
-        let url = format!(
-            "{}?{}={}",
-            from_url,
-            if is_dir { "mvDir" } else { "mv" },
-            urlencoding::encode(&to_jfs)
-        );
+        super::refuse_occupied_destination(self, &resolved_from, &resolved_to).await?;
+        self.move_on_server(&resolved_from, &resolved_to).await
+    }
 
-        let resp = self.post_command_with_retry(&url).await?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            // A live 404 is "not found here", not "exists only in Trash".
-            // Retrying as a Trash-to-Trash rename can move a homonym in
-            // Trash and return Ok while the live object was never touched
-            // (F-652-2), so the status is reported as it came.
-            //
-            // A Trash-to-Trash rename exists as `rename_in_trash`, but
-            // NOTHING calls it yet: there is no Tauri command and no button
-            // in JottacloudTrashManager, so it must not be described as
-            // reachable.
-            //
-            // Keeping it is a DECLARED exception to the house rule "remove
-            // dead code immediately" (CLAUDE.md). The reason: issue #397
-            // reports this exact operation failing for a user, and this is
-            // its implementation with its tests. Deleting it would throw away
-            // the only answer to that report and make whoever takes #397
-            // write it again. The exception lasts as long as the reason: if
-            // #397 does not wire it during this release cycle, it goes.
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Rename {} → {} failed ({}): {}",
-                resolved_from,
-                resolved_to,
-                status,
-                sanitize_api_error(&body)
-            )));
+    /// The JFS `mv` without the look, as before the look existed: whatever
+    /// JFS does with the file at the destination. Never across types.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let resolved_from = self.resolve_path(from);
+        let resolved_to = self.resolve_path(to);
+        if resolved_from == resolved_to {
+            return Ok(());
         }
+        let source = self.stat(&resolved_from).await?;
+        match self.stat(&resolved_to).await {
+            Ok(occupant) => super::refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?,
+            Err(ProviderError::NotFound(_)) => {}
+            Err(e) => return Err(e),
+        }
+        self.move_on_server(&resolved_from, &resolved_to).await
+    }
 
-        jotta_log(&format!("Renamed {} → {}", resolved_from, resolved_to));
-        Ok(())
+    /// No: JFS does not document whether `mv` onto an existing file swaps
+    /// the two in one step, so the callers that need atomicity refuse before
+    /// they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -3134,6 +3192,16 @@ impl JottacloudProvider {
 mod tests {
     use super::*;
 
+    /// JFS does not document whether `mv` onto a file swaps the two in one
+    /// step, so a one-step replace cannot be claimed. The answer is no, so the
+    /// callers that need one (CLI `edit`, MCP `remote_edit`, the crypt marker
+    /// paths) refuse before they write.
+    #[tokio::test]
+    async fn jottacloud_does_not_claim_an_atomic_replace() {
+        let mut p = test_provider();
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
+
     /// A byte cut inside a multibyte character panics: masking must cut on a
     /// character boundary (an email or a name is not always ASCII).
     #[test]
@@ -3148,6 +3216,104 @@ mod tests {
             let masked = mask_credential(value);
             assert!(masked.contains("***"), "{value} -> {masked}");
         }
+    }
+
+    /// A JFS double for `test_provider()` holding the files `a.txt` and
+    /// `b.txt` and the folder `d` in the mount root. Every POST (a move)
+    /// succeeds. Returns a provider on it and every POST query.
+    async fn provider_on_jfs() -> (
+        JottacloudProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let posts: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&posts);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    if req.method() == axum::http::Method::POST {
+                        let query = urlencoding::decode(req.uri().query().unwrap_or(""))
+                            .unwrap()
+                            .to_string();
+                        seen.lock().unwrap().push(query);
+                        return "<file/>".into_response();
+                    }
+                    let file = |name: &str| {
+                        format!(
+                            "<file name=\"{name}\"><currentRevision><state>COMPLETED</state>\
+                             <size>3</size></currentRevision></file>"
+                        )
+                    };
+                    match req.uri().path() {
+                        "/user123/Jotta/Archive/a.txt" => file("a.txt").into_response(),
+                        "/user123/Jotta/Archive/b.txt" => file("b.txt").into_response(),
+                        "/user123/Jotta/Archive/d" | "/user123/Jotta/Archive/d/" => {
+                            "<folder name=\"d\"><folders/><files/></folder>".into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.token_expiry = Instant::now() + std::time::Duration::from_secs(3600);
+        provider.jfs_base_override = Some(format!("http://{addr}"));
+        (provider, posts)
+    }
+
+    /// What JFS `mv` does with an existing destination is not documented,
+    /// and the move went out without a look: onto a file it could replace
+    /// it, onto a folder put the source inside it. A rename onto either is
+    /// refused before any move.
+    #[tokio::test]
+    async fn rename_refuses_a_taken_destination_before_moving() {
+        let (mut provider, posts) = provider_on_jfs().await;
+        for to in ["/b.txt", "/d"] {
+            let outcome = provider.rename("/a.txt", to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{to}: {outcome:?}"
+            );
+        }
+        assert!(
+            posts.lock().unwrap().is_empty(),
+            "{:?}",
+            posts.lock().unwrap()
+        );
+        provider
+            .rename("/a.txt", "/c.txt")
+            .await
+            .expect("free name");
+        assert_eq!(posts.lock().unwrap().len(), 1);
+    }
+
+    /// `replace` keeps the move without the look (whatever JFS does with the
+    /// file there), but never puts a file in place of a folder.
+    #[tokio::test]
+    async fn replace_moves_over_a_file_but_not_onto_a_folder() {
+        let (mut provider, posts) = provider_on_jfs().await;
+        let outcome = provider.replace("/a.txt", "/d").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            posts.lock().unwrap().is_empty(),
+            "{:?}",
+            posts.lock().unwrap()
+        );
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        let posts = posts.lock().unwrap().clone();
+        assert_eq!(posts.len(), 1, "{posts:?}");
+        assert!(
+            posts[0].starts_with("mv=") && posts[0].ends_with("/b.txt"),
+            "{posts:?}"
+        );
     }
 
     fn test_provider() -> JottacloudProvider {
