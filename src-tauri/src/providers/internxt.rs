@@ -2179,65 +2179,72 @@ impl StorageProvider for InternxtProvider {
         };
 
         let renames = from_name != to_name;
-        if from_parent == to_parent {
-            if renames {
-                self.rename_item(kind, &uuid, &to_name, &to_resolved)
-                    .await?;
-            }
-        } else {
-            let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
-            let moved_to = join(&to_parent, &from_name);
-            let rename_first = renames && self.exists(&moved_to).await?;
-            if rename_first {
-                let renamed_at = join(&from_parent, &to_name);
-                if self.exists(&renamed_at).await? {
-                    return Err(ProviderError::Other(format!(
-                        "Cannot move {from_resolved} to {to_resolved} in two steps without two \
-                         items sharing a name: {moved_to} and {renamed_at} both exist"
-                    )));
-                }
-                self.rename_item(kind, &uuid, &to_name, &renamed_at).await?;
-                if let Err(e) = self
-                    .move_item(kind, &uuid, &to_parent_uuid, &to_resolved)
-                    .await
-                {
-                    let undone = self
-                        .rename_item(kind, &uuid, &from_name, &from_resolved)
-                        .await;
-                    return Err(super::second_step_failed(
-                        &from_resolved,
-                        &to_resolved,
-                        &renamed_at,
-                        e,
-                        undone,
-                    ));
+        let outcome: Result<(), ProviderError> = async {
+            if from_parent == to_parent {
+                if renames {
+                    self.rename_item(kind, &uuid, &to_name, &to_resolved)
+                        .await?;
                 }
             } else {
-                self.move_item(kind, &uuid, &to_parent_uuid, &moved_to)
-                    .await?;
-                if renames {
-                    if let Err(e) = self.rename_item(kind, &uuid, &to_name, &to_resolved).await {
+                let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
+                let moved_to = join(&to_parent, &from_name);
+                let rename_first = renames && self.exists(&moved_to).await?;
+                if rename_first {
+                    let renamed_at = join(&from_parent, &to_name);
+                    if self.exists(&renamed_at).await? {
+                        return Err(ProviderError::Other(format!(
+                            "Cannot move {from_resolved} to {to_resolved} in two steps without two \
+                             items sharing a name: {moved_to} and {renamed_at} both exist"
+                        )));
+                    }
+                    self.rename_item(kind, &uuid, &to_name, &renamed_at).await?;
+                    if let Err(e) = self
+                        .move_item(kind, &uuid, &to_parent_uuid, &to_resolved)
+                        .await
+                    {
                         let undone = self
-                            .move_item(kind, &uuid, &from_parent_uuid, &from_resolved)
+                            .rename_item(kind, &uuid, &from_name, &from_resolved)
                             .await;
                         return Err(super::second_step_failed(
                             &from_resolved,
                             &to_resolved,
-                            &moved_to,
+                            &renamed_at,
                             e,
                             undone,
                         ));
                     }
+                } else {
+                    self.move_item(kind, &uuid, &to_parent_uuid, &moved_to)
+                        .await?;
+                    if renames {
+                        if let Err(e) = self.rename_item(kind, &uuid, &to_name, &to_resolved).await
+                        {
+                            let undone = self
+                                .move_item(kind, &uuid, &from_parent_uuid, &from_resolved)
+                                .await;
+                            return Err(super::second_step_failed(
+                                &from_resolved,
+                                &to_resolved,
+                                &moved_to,
+                                e,
+                                undone,
+                            ));
+                        }
+                    }
                 }
             }
+            Ok(())
         }
+        .await;
 
-        if kind == "folders" {
-            // Invalidate the old entries, re-cache at the new path
-            super::forget_cached_subtree(&mut self.dir_cache, &from_resolved);
+        // Whatever happened, the ids cached for either path, and for
+        // everything under them, may now point at a moved folder.
+        super::forget_cached_subtree(&mut self.dir_cache, &from_resolved);
+        super::forget_cached_subtree(&mut self.dir_cache, &to_resolved);
+        if outcome.is_ok() && kind == "folders" {
             self.dir_cache_insert(to_resolved, DirInfo { uuid });
         }
-        Ok(())
+        outcome
     }
 
     /// No: Internxt refuses a taken name (409) and has no overwrite on
@@ -2754,7 +2761,8 @@ mod tests {
     /// `src` (`S`) and `dst` (`D`), and `files` (uuid, name, folder) kept in
     /// memory. A move (PATCH) or a rename (PUT `/meta`) onto a name its
     /// folder holds answers 409, as Internxt does; a rename to a name
-    /// starting with `fail` answers 403. Returns a provider on it, the files,
+    /// starting with `fail`, and any change to a folder, answers 403.
+    /// Returns a provider on it, the files,
     /// and every change as `METHOD path`.
     #[allow(clippy::type_complexity)]
     async fn provider_on_drive(
@@ -2819,6 +2827,9 @@ mod tests {
                         return axum::Json(body).into_response();
                     }
                     seen.lock().unwrap().push(format!("{method} {path}"));
+                    if path.starts_with("/drive/folders/") {
+                        return axum::http::StatusCode::FORBIDDEN.into_response();
+                    }
                     let uuid = path
                         .trim_start_matches("/drive/files/")
                         .trim_end_matches("/meta")
@@ -2892,6 +2903,33 @@ mod tests {
         );
         let moved = store.lock().unwrap()[0].clone();
         assert_eq!((moved.1.as_str(), moved.2.as_str()), ("c.txt", "D"));
+    }
+
+    /// A folder rename that failed kept the ids cached under the old path:
+    /// only a success forgot them. After a first step that went through and
+    /// an undo that did not, `ls`, `mkdir` or `delete` under the old path
+    /// then acted on the moved folder. They are forgotten after every
+    /// outcome.
+    #[tokio::test]
+    async fn a_failed_folder_rename_forgets_the_ids_cached_under_it() {
+        let (mut provider, _, _) = provider_on_drive(&[]).await;
+        for (path, uuid) in [
+            ("/src/sub", "SUB"),
+            ("/src/sub/deep", "DEEP"),
+            ("/src/keep", "K"),
+        ] {
+            provider.dir_cache_insert(
+                path.to_string(),
+                DirInfo {
+                    uuid: uuid.to_string(),
+                },
+            );
+        }
+        let outcome = provider.rename("/src/sub", "/dst/sub2").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(!provider.dir_cache.contains_key("/src/sub"));
+        assert!(!provider.dir_cache.contains_key("/src/sub/deep"));
+        assert!(provider.dir_cache.contains_key("/src/keep"));
     }
 
     /// When the rename after the move failed, the file stayed in the new
