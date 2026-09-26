@@ -2802,12 +2802,14 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         });
     }
 
-    // Compile glob matchers (best-effort: invalid patterns are skipped silently
-    // so a single typo doesn't kill the whole call).
-    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
-        .iter()
-        .filter_map(|p| globset::Glob::new(p).ok().map(|g| g.compile_matcher()))
-        .collect();
+    // The matcher every sync surface shares (the one `aeroftp sync-doctor`
+    // uses): an invalid pattern is reported, never skipped, so the tool never
+    // answers for a narrower exclude list than the one it was given.
+    let exclude_matchers =
+        crate::sync::compile_excludes(&exclude).map_err(|reason| ToolError::InvalidArgs {
+            tool: "aeroftp_sync_doctor".to_string(),
+            reason,
+        })?;
 
     // Local scan (walkdir).
     let mut local_files: usize = 0;
@@ -2815,6 +2817,17 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     for entry in walkdir::WalkDir::new(local_path)
         .follow_links(false)
         .max_depth(MAX_BFS_DEPTH)
+        .into_iter()
+        .filter_entry(|e| {
+            e.depth() == 0
+                || !exclude_matchers.is_excluded(
+                    &e.path()
+                        .strip_prefix(local_path)
+                        .unwrap_or(e.path())
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                )
+        })
     {
         let Ok(entry) = entry else { continue };
         if !entry.file_type().is_file() {
@@ -2826,11 +2839,7 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             .unwrap_or(entry.path())
             .to_string_lossy()
             .replace('\\', "/");
-        let fname = entry.file_name().to_string_lossy().to_string();
-        if exclude_matchers
-            .iter()
-            .any(|m| m.is_match(&relative) || m.is_match(&fname))
-        {
+        if exclude_matchers.is_excluded(&relative) {
             continue;
         }
         local_files += 1;
@@ -2851,7 +2860,15 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             if let Ok(entries) = backend.list(&dir).await {
                 for e in entries {
                     if e.is_dir {
-                        if e.is_walkable_dir() {
+                        if e.is_walkable_dir()
+                            && !exclude_matchers.is_excluded_entry(
+                                e.path
+                                    .strip_prefix(remote_dir.as_str())
+                                    .unwrap_or(&e.path)
+                                    .trim_start_matches('/'),
+                                &e.name,
+                            )
+                        {
                             queue.push((e.path.clone(), depth + 1));
                         }
                     } else {
@@ -2861,10 +2878,7 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
                             .unwrap_or(&e.path)
                             .trim_start_matches('/')
                             .to_string();
-                        if exclude_matchers
-                            .iter()
-                            .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                        {
+                        if exclude_matchers.is_excluded_entry(&relative, &e.name) {
                             continue;
                         }
                         remote_files += 1;
@@ -3324,10 +3338,12 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         });
     }
 
-    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
-        .iter()
-        .filter_map(|p| globset::Glob::new(p).ok().map(|g| g.compile_matcher()))
-        .collect();
+    // Same matcher and same rule for invalid patterns as `aeroftp reconcile`.
+    let exclude_matchers =
+        crate::sync::compile_excludes(&exclude).map_err(|reason| ToolError::InvalidArgs {
+            tool: "aeroftp_reconcile".to_string(),
+            reason,
+        })?;
 
     let started = std::time::Instant::now();
 
@@ -3337,6 +3353,17 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     for entry in walkdir::WalkDir::new(local_path)
         .follow_links(false)
         .max_depth(MAX_BFS_DEPTH)
+        .into_iter()
+        .filter_entry(|e| {
+            e.depth() == 0
+                || !exclude_matchers.is_excluded(
+                    &e.path()
+                        .strip_prefix(local_path)
+                        .unwrap_or(e.path())
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                )
+        })
     {
         let Ok(entry) = entry else { continue };
         if !entry.file_type().is_file() {
@@ -3351,11 +3378,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         if rel.is_empty() {
             continue;
         }
-        let fname = entry.file_name().to_string_lossy().to_string();
-        if exclude_matchers
-            .iter()
-            .any(|m| m.is_match(&rel) || m.is_match(&fname))
-        {
+        if exclude_matchers.is_excluded(&rel) {
             continue;
         }
         let metadata = match entry.metadata() {
@@ -3385,7 +3408,15 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         };
         for e in entries {
             if e.is_dir {
-                if e.is_walkable_dir() {
+                if e.is_walkable_dir()
+                    && !exclude_matchers.is_excluded_entry(
+                        e.path
+                            .strip_prefix(remote_dir.as_str())
+                            .unwrap_or(&e.path)
+                            .trim_start_matches('/'),
+                        &e.name,
+                    )
+                {
                     queue.push((e.path.clone(), depth + 1));
                 }
             } else {
@@ -3398,10 +3429,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
                 if rel.is_empty() {
                     continue;
                 }
-                if exclude_matchers
-                    .iter()
-                    .any(|m| m.is_match(&rel) || m.is_match(&e.name))
-                {
+                if exclude_matchers.is_excluded_entry(&rel, &e.name) {
                     continue;
                 }
                 remote_map.insert(rel, (e.size, e.modified));

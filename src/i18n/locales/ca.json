@@ -327,7 +327,14 @@
             "protonCliTitle": "Utilitza el CLI oficial de Proton Drive",
             "protonCliBody": "Instal·leu el CLI de Proton Drive des de proton.me/download/drive/cli, executeu proton-drive auth login al terminal i acabeu al navegador. AeroFTP no veu mai la contrasenya; la sessió resta al magatzem de secrets del sistema.",
             "protonUnofficial": "Aquesta és una aplicació de tercers no admesa oficialment per Proton.",
-            "protonConnectHint": "\"Connecta\" usa el CLI ja iniciat en aquesta màquina. Un compte Proton per usuari del sistema."
+            "protonConnectHint": "\"Connecta\" usa el CLI ja iniciat en aquesta màquina. Un compte Proton per usuari del sistema.",
+            "twakeInstance": "Adreça de Twake",
+            "twakeInstanceHelp": "La teva pròpia adreça, per exemple yourname.twake.app. També pots enganxar qualsevol adreça d'una pàgina de Twake des del navegador.",
+            "twakeSignIn": "Inicia sessió amb Twake",
+            "twakeSignInAgain": "Torna a iniciar sessió",
+            "twakeSignedIn": "Sessió iniciada",
+            "twakeWaitingBrowser": "Acaba d'iniciar sessió al navegador...",
+            "twakeSignInHelp": "AeroFTP obre Twake al teu navegador i sol·licita accés només als teus fitxers. Si Twake mostra un error la primera vegada, inicia sessió a Twake al navegador i torna-ho a provar. Pots revocar l'accés en qualsevol moment a Configuració de Twake, Dispositius connectats."
         },
         "browser": {
             "remote": "Remot",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Aquest punt final serveix S3 per HTTP en text clar a través d'una xarxa. Accepta-ho per a aquest perfil: les credencials signades i tots els fitxers travessen la xarxa sense xifrar.",
             "discoverFilebase": "Filebase: emmagatzematge d'objectes compatible amb S3 (5 GB gratis)",
             "protonDesc": "Es connecta a través del CLI de Proton Drive",
-            "protonTooltip": "Utilitza el CLI de Proton Drive - instal·leu-lo, inicieu sessió al navegador, AeroFTP és la GUI"
+            "protonTooltip": "Utilitza el CLI de Proton Drive - instal·leu-lo, inicieu sessió al navegador, AeroFTP és la GUI",
+            "twakeDesc": "Twake Drive (5 GB gratis)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, núvol francès de codi obert (Cozy Cloud ara en forma part) amb 5 GB gratuïts",
+            "discoverTwake": "Núvol europeu de codi obert de Linagora, ara la nova llar de Cozy Cloud (5 GB gratuïts)"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Binari",
             "hashOutputLength": "Longitud de sortida BLAKE3 (bytes)",
             "hashOutputLengthHint": "1-1024 · per defecte 32",
-            "hashDropHint": "Deixa anar un fitxer en aquesta pestanya per calcular-ne el hash"
+            "hashDropHint": "Deixa anar un fitxer en aquesta pestanya per calcular-ne el hash",
+            "hashBlake3Mode": "Mode BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Amb clau",
+            "hashBlake3ModeDerive": "Derivar clau",
+            "hashBlake3Key": "Clau (32 bytes en hexadecimal)",
+            "hashBlake3Context": "Cadena de context",
+            "hashBlake3ContextHint": "Fixa i única per a una aplicació. El text o fitxer del qual es calcula el hash és el material de la clau.",
+            "hashRandom": "Aleatòria",
+            "argon2PasswordPlaceholder": "Contrasenya o frase de pas...",
+            "argon2Salt": "Sal",
+            "argon2SaltHint": "Almenys 8 bytes, se'n recomanen 16",
+            "argon2Memory": "Memòria (KiB)",
+            "argon2Iterations": "Iteracions",
+            "argon2Parallelism": "Paral·lelisme",
+            "argon2OutputLength": "Longitud (bytes)",
+            "argon2DefaultsHint": "Valors per defecte: la segona opció recomanada per la RFC 9106, per a memòria limitada (64 MiB, 3 iteracions, 4 carrils, sal de 16 bytes). Memòria fins a 2 GiB.",
+            "argon2Derive": "Derivar",
+            "argon2Phc": "Cadena PHC"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",
@@ -5062,6 +5090,13 @@
             "tabCompare": "Comparar",
             "tabPlan": "Pla",
             "tabSync": "Sincronitzar",
+            "compareWontFitTitle": "Per sobre dels límits de {name}: {count}",
+            "compareWontFitHint": "Aquests fitxers superen el límit de mida documentat del proveïdor, o el seu nom o camí és més llarg del que accepta. Una sincronització hi fallaria: canvia'ls el nom, mou-los o divideix-los abans.",
+            "compareWontFitTooLarge": "{size}, límit {limit}",
+            "compareWontFitNameBytes": "nom de més de {count} bytes",
+            "compareWontFitNameChars": "nom de més de {count} caràcters",
+            "compareWontFitPathBytes": "camí de més de {count} bytes",
+            "compareWontFitPathChars": "camí de més de {count} caràcters",
             "compareUnavailable": "Obre un segon tauler o una connexió remota per comparar.",
             "planUnavailable": "Cal un resultat de comparació abans d'escollir un preset. Obre primer la pestanya Comparar.",
             "totalEntries": "Entrades totals",

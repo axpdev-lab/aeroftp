@@ -43,12 +43,12 @@ fn mask_credential(value: &str) -> String {
     if let Some(at) = value.find('@') {
         let local = &value[..at];
         let domain = &value[at..];
-        let visible = local.len().min(3);
+        let visible = local.floor_char_boundary(3);
         format!("{}***{}", &local[..visible], domain)
     } else if value.len() <= 3 {
         "***".to_string()
     } else {
-        format!("{}***", &value[..3])
+        format!("{}***", &value[..value.floor_char_boundary(3)])
     }
 }
 
@@ -693,7 +693,7 @@ impl JottacloudProvider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
                     match tag.as_str() {
                         "devices" => in_devices = true,
                         "device" if in_devices => in_device = true,
@@ -705,7 +705,7 @@ impl JottacloudProvider {
                     }
                 }
                 Ok(Event::End(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
                     match tag.as_str() {
                         "devices" => {
                             in_devices = false;
@@ -723,7 +723,7 @@ impl JottacloudProvider {
                     }
                 }
                 Ok(Event::Text(ref e)) if in_name => {
-                    current_name.push_str(&String::from_utf8_lossy(e.as_ref()));
+                    current_name.push_str(e.as_ref());
                 }
                 Ok(Event::GeneralRef(ref e)) if in_name => {
                     if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
@@ -763,11 +763,11 @@ impl JottacloudProvider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
                     if tag == "mountPoint" {
                         in_mount_point = true;
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"name" {
+                            if attr.key.as_ref() == "name" {
                                 // Account-level mountpoint name: an identifier,
                                 // not a user filename, so it is NOT decoded.
                                 let name = super::xml_text::attr_value(&attr);
@@ -782,7 +782,7 @@ impl JottacloudProvider {
                     }
                 }
                 Ok(Event::Text(ref e)) if in_name => {
-                    current_name.push_str(&String::from_utf8_lossy(e.as_ref()));
+                    current_name.push_str(e.as_ref());
                 }
                 Ok(Event::GeneralRef(ref e)) if in_name => {
                     if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
@@ -790,7 +790,7 @@ impl JottacloudProvider {
                     }
                 }
                 Ok(Event::End(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
                     if tag == "mountPoint" {
                         in_mount_point = false;
                     } else if tag == "name" {
@@ -824,7 +824,7 @@ impl JottacloudProvider {
                 jotta_log(&format!(
                     "Device discovery XML ({} bytes): {}",
                     xml.len(),
-                    &xml[..xml.len().min(500)]
+                    &xml[..xml.floor_char_boundary(500)]
                 ));
                 let devices = Self::parse_device_names(&xml);
                 jotta_log(&format!("Available devices: {:?}", devices));
@@ -850,7 +850,7 @@ impl JottacloudProvider {
                 jotta_log(&format!(
                     "Mountpoint discovery XML ({} bytes): {}",
                     xml.len(),
-                    &xml[..xml.len().min(500)]
+                    &xml[..xml.floor_char_boundary(500)]
                 ));
                 let mountpoints = Self::parse_mountpoint_names(&xml);
                 jotta_log(&format!(
@@ -918,7 +918,7 @@ impl JottacloudProvider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
                     depth += 1;
 
                     match tag.as_str() {
@@ -941,13 +941,13 @@ impl JottacloudProvider {
                             let mut name = String::new();
                             let mut is_deleted = false;
                             for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"name" {
+                                if attr.key.as_ref() == "name" {
                                     name = crate::restricted_chars::decode_leaf(
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
                                     );
                                 }
-                                if attr.key.as_ref() == b"deleted" {
+                                if attr.key.as_ref() == "deleted" {
                                     is_deleted = true;
                                 }
                             }
@@ -984,7 +984,7 @@ impl JottacloudProvider {
                             current_state.clear();
                             current_deleted = false;
                             for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"name" {
+                                if attr.key.as_ref() == "name" {
                                     current_name = crate::restricted_chars::decode_leaf(
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
@@ -997,7 +997,7 @@ impl JottacloudProvider {
                                 // here, so a file moved to the recycle bin kept
                                 // showing as live and the delete looked like a
                                 // no-op (#397).
-                                if attr.key.as_ref() == b"deleted" {
+                                if attr.key.as_ref() == "deleted" {
                                     current_deleted = true;
                                 }
                             }
@@ -1011,7 +1011,7 @@ impl JottacloudProvider {
                     }
                 }
                 Ok(Event::Empty(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
 
                     if tag == "folder"
                         && child_folder_depth.is_none()
@@ -1022,13 +1022,13 @@ impl JottacloudProvider {
                         let mut name = String::new();
                         let mut is_deleted = false;
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"name" {
+                            if attr.key.as_ref() == "name" {
                                 name = crate::restricted_chars::decode_leaf(
                                     ProviderType::Jottacloud,
                                     &super::xml_text::attr_value(&attr),
                                 );
                             }
-                            if attr.key.as_ref() == b"deleted" {
+                            if attr.key.as_ref() == "deleted" {
                                 is_deleted = true;
                             }
                         }
@@ -1056,7 +1056,7 @@ impl JottacloudProvider {
                     }
                 }
                 Ok(Event::End(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
 
                     match tag.as_str() {
                         "folders" if in_folders_section && depth == folders_section_depth => {
@@ -1115,7 +1115,7 @@ impl JottacloudProvider {
                     current_tag.clear();
                 }
                 Ok(Event::Text(ref e)) => {
-                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                    let text = e.as_ref().trim().to_string();
                     if in_file {
                         // <deleted> tag at file level (outside revision) marks trashed files
                         if current_tag == "deleted" && !text.is_empty() {
@@ -1371,7 +1371,7 @@ impl StorageProvider for JottacloudProvider {
             "List XML for '{}' ({} bytes): {}",
             resolved,
             xml.len(),
-            &xml[..xml.len().min(2000)]
+            &xml[..xml.floor_char_boundary(2000)]
         ));
 
         let entries = Self::parse_folder_xml(&xml, &resolved);
@@ -1555,7 +1555,7 @@ impl StorageProvider for JottacloudProvider {
             let body = resp.text().await.unwrap_or_default();
             jotta_log(&format!(
                 "Upload error response: {}",
-                &body[..body.len().min(1000)]
+                &body[..body.floor_char_boundary(1000)]
             ));
             return Err(ProviderError::TransferFailed(format!(
                 "Upload failed ({}): {}",
@@ -1964,7 +1964,7 @@ impl JottacloudProvider {
         jotta_log(&format!(
             "Trash XML ({} bytes): {}",
             xml.len(),
-            &xml[..xml.len().min(2000)]
+            &xml[..xml.floor_char_boundary(2000)]
         ));
 
         // Parse trash listing: include ALL items (even "deleted" ones, since they ARE trash)
@@ -2045,7 +2045,7 @@ impl JottacloudProvider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                    return Some(String::from_utf8_lossy(e.name().as_ref()).to_string());
+                    return Some(e.name().as_ref().to_string());
                 }
                 Ok(Event::Eof) | Err(_) => return None,
                 _ => {}
@@ -2066,11 +2066,11 @@ impl JottacloudProvider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                    if e.name().as_ref() != b"file" {
+                    if e.name().as_ref() != "file" {
                         return false;
                     }
                     for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"deleted"
+                        if attr.key.as_ref() == "deleted"
                             && !super::xml_text::attr_value(&attr).is_empty()
                         {
                             return true;
@@ -2129,7 +2129,7 @@ impl JottacloudProvider {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => {
                     depth += 1;
-                    let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let name = e.name().as_ref().to_string();
                     if depth == 1 {
                         root_is_file = name == "file";
                     }
@@ -2139,14 +2139,14 @@ impl JottacloudProvider {
                     tag = name;
                 }
                 Ok(Event::End(ref e)) => {
-                    if e.name().as_ref() == b"currentRevision" {
+                    if e.name().as_ref() == "currentRevision" {
                         in_revision = false;
                     }
                     depth = depth.saturating_sub(1);
                     tag.clear();
                 }
                 Ok(Event::Text(ref e)) if in_revision => {
-                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                    let text = e.as_ref().trim().to_string();
                     match tag.as_str() {
                         "size" => size = text.parse().unwrap_or(0),
                         "md5" => md5 = text,
@@ -2202,19 +2202,19 @@ impl JottacloudProvider {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => {
                     depth += 1;
-                    let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let name = e.name().as_ref().to_string();
                     // Children live exactly one level below <folders>/<files>.
                     if depth == 3 && name == "folder" {
                         let mut fname = String::new();
                         let mut deleted = false;
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"name" {
+                            if attr.key.as_ref() == "name" {
                                 fname = crate::restricted_chars::decode_leaf(
                                     ProviderType::Jottacloud,
                                     &super::xml_text::attr_value(&attr),
                                 );
                             }
-                            if attr.key.as_ref() == b"deleted"
+                            if attr.key.as_ref() == "deleted"
                                 && !super::xml_text::attr_value(&attr).is_empty()
                             {
                                 deleted = true;
@@ -2235,13 +2235,13 @@ impl JottacloudProvider {
                         cur_created.clear();
                         cur_modified.clear();
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"name" {
+                            if attr.key.as_ref() == "name" {
                                 cur_name = crate::restricted_chars::decode_leaf(
                                     ProviderType::Jottacloud,
                                     &super::xml_text::attr_value(&attr),
                                 );
                             }
-                            if attr.key.as_ref() == b"deleted"
+                            if attr.key.as_ref() == "deleted"
                                 && !super::xml_text::attr_value(&attr).is_empty()
                             {
                                 cur_deleted = true;
@@ -2254,17 +2254,17 @@ impl JottacloudProvider {
                 }
                 Ok(Event::Empty(ref e)) => {
                     // Live folders arrive as `<folder name="x"/>`.
-                    if depth == 2 && e.name().as_ref() == b"folder" {
+                    if depth == 2 && e.name().as_ref() == "folder" {
                         let mut fname = String::new();
                         let mut deleted = false;
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"name" {
+                            if attr.key.as_ref() == "name" {
                                 fname = crate::restricted_chars::decode_leaf(
                                     ProviderType::Jottacloud,
                                     &super::xml_text::attr_value(&attr),
                                 );
                             }
-                            if attr.key.as_ref() == b"deleted"
+                            if attr.key.as_ref() == "deleted"
                                 && !super::xml_text::attr_value(&attr).is_empty()
                             {
                                 deleted = true;
@@ -2280,8 +2280,8 @@ impl JottacloudProvider {
                 }
                 Ok(Event::End(ref e)) => {
                     match e.name().as_ref() {
-                        b"currentRevision" => in_revision = false,
-                        b"file" if in_file => {
+                        "currentRevision" => in_revision = false,
+                        "file" if in_file => {
                             in_file = false;
                             in_revision = false;
                             if !cur_name.is_empty() {
@@ -2313,7 +2313,7 @@ impl JottacloudProvider {
                     tag.clear();
                 }
                 Ok(Event::Text(ref e)) if in_revision => {
-                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                    let text = e.as_ref().trim().to_string();
                     match tag.as_str() {
                         "size" => cur_size = text.parse().unwrap_or(0),
                         "md5" => cur_md5 = text,
@@ -2341,11 +2341,11 @@ impl JottacloudProvider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                    if e.name().as_ref() != b"folder" {
+                    if e.name().as_ref() != "folder" {
                         return false;
                     }
                     for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"deleted"
+                        if attr.key.as_ref() == "deleted"
                             && !super::xml_text::attr_value(&attr).is_empty()
                         {
                             return true;
@@ -2900,7 +2900,7 @@ impl JottacloudProvider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
                     depth += 1;
 
                     match tag.as_str() {
@@ -2923,13 +2923,13 @@ impl JottacloudProvider {
                             pending_folder_deleted.clear();
                             pending_folder_abspath.clear();
                             for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"name" {
+                                if attr.key.as_ref() == "name" {
                                     pending_folder_name = crate::restricted_chars::decode_leaf(
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
                                     );
                                 }
-                                if attr.key.as_ref() == b"deleted" {
+                                if attr.key.as_ref() == "deleted" {
                                     pending_folder_deleted =
                                         Self::parse_jotta_time(&super::xml_text::attr_value(&attr));
                                 }
@@ -2945,13 +2945,13 @@ impl JottacloudProvider {
                             current_abspath.clear();
                             current_state.clear();
                             for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"name" {
+                                if attr.key.as_ref() == "name" {
                                     current_name = crate::restricted_chars::decode_leaf(
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
                                     );
                                 }
-                                if attr.key.as_ref() == b"deleted" {
+                                if attr.key.as_ref() == "deleted" {
                                     current_deleted_at =
                                         Self::parse_jotta_time(&super::xml_text::attr_value(&attr));
                                 }
@@ -2966,7 +2966,7 @@ impl JottacloudProvider {
                     }
                 }
                 Ok(Event::Empty(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
                     if tag == "folder"
                         && child_folder_depth.is_none()
                         && (in_folders_section
@@ -2975,13 +2975,13 @@ impl JottacloudProvider {
                         let mut name = String::new();
                         let mut deleted_at = String::new();
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"name" {
+                            if attr.key.as_ref() == "name" {
                                 name = crate::restricted_chars::decode_leaf(
                                     ProviderType::Jottacloud,
                                     &super::xml_text::attr_value(&attr),
                                 );
                             }
-                            if attr.key.as_ref() == b"deleted" {
+                            if attr.key.as_ref() == "deleted" {
                                 deleted_at =
                                     Self::parse_jotta_time(&super::xml_text::attr_value(&attr));
                             }
@@ -3009,7 +3009,7 @@ impl JottacloudProvider {
                     }
                 }
                 Ok(Event::End(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
                     match tag.as_str() {
                         "folders" if in_folders_section && depth == folders_section_depth => {
                             in_folders_section = false;
@@ -3088,14 +3088,14 @@ impl JottacloudProvider {
                         // entity arrives as Text + GeneralRef + Text, and
                         // assigning the last chunk silently truncates the
                         // original parent (the shape we just closed).
-                        let chunk = String::from_utf8_lossy(e.as_ref());
+                        let chunk = e.as_ref();
                         if in_file && !in_revision {
-                            current_abspath.push_str(&chunk);
+                            current_abspath.push_str(chunk);
                         } else if child_folder_depth == Some(depth.saturating_sub(1)) {
-                            pending_folder_abspath.push_str(&chunk);
+                            pending_folder_abspath.push_str(chunk);
                         }
                     } else if in_revision && in_file {
-                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                        let text = e.as_ref().trim().to_string();
                         match current_tag.as_str() {
                             "size" => {
                                 current_size = text.parse().unwrap_or(0);
@@ -3133,6 +3133,22 @@ impl JottacloudProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A byte cut inside a multibyte character panics: masking must cut on a
+    /// character boundary (an email or a name is not always ASCII).
+    #[test]
+    fn mask_credential_never_splits_a_character() {
+        for value in [
+            "aaé@example.com",
+            "ééé@x.it",
+            "abécdef",
+            "日本語テスト",
+            "a😀b@x",
+        ] {
+            let masked = mask_credential(value);
+            assert!(masked.contains("***"), "{value} -> {masked}");
+        }
+    }
 
     fn test_provider() -> JottacloudProvider {
         let config = JottacloudConfig {
@@ -4262,5 +4278,27 @@ mod tests {
                 "empty_trash step SKIPPED: set JOTTA_TEST_ALLOW_EMPTY_TRASH=1 to purge the whole bin"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod recorded_folder_fixture {
+    use super::JottacloudProvider;
+
+    #[test]
+    fn parses_recorded_folder_listing() {
+        let xml = include_str!("fixtures/quickxml/jotta-folder.xml");
+        let entries = JottacloudProvider::parse_folder_xml(xml, "/Backup");
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"Photos"), "{names:?}");
+        assert!(names.contains(&"report.pdf"), "{names:?}");
+        assert!(names.contains(&"a&b.pdf"), "{names:?}");
+        assert!(!names.contains(&"Old"), "{names:?}");
+        assert!(!names.contains(&"uploading.bin"), "{names:?}");
+        let file = entries.iter().find(|e| e.name == "report.pdf").unwrap();
+        assert_eq!(file.size, 2048);
+        assert_eq!(file.path, "/Backup/report.pdf");
+        let escaped = entries.iter().find(|e| e.name == "a&b.pdf").unwrap();
+        assert_eq!(escaped.size, 9);
     }
 }

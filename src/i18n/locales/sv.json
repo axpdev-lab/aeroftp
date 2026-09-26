@@ -327,7 +327,14 @@
             "protonCliTitle": "Använder den officiella Proton Drive CLI",
             "protonCliBody": "Installera Proton Drive CLI från proton.me/download/drive/cli, kör sedan proton-drive auth login i en terminal och slutför i webbläsaren. AeroFTP ser aldrig ditt lösenord; sessionen stannar i OS:ets hemlighetslager.",
             "protonUnofficial": "Detta är ett tredjepartsprogram som Proton inte stöder officiellt.",
-            "protonConnectHint": "\"Anslut\" använder den CLI som redan är inloggad på den här maskinen. Ett Proton-konto per OS-användare."
+            "protonConnectHint": "\"Anslut\" använder den CLI som redan är inloggad på den här maskinen. Ett Proton-konto per OS-användare.",
+            "twakeInstance": "Twake-adress",
+            "twakeInstanceHelp": "Din egen adress, till exempel yourname.twake.app. Du kan även klistra in vilken Twake-sidadress som helst från din webbläsare.",
+            "twakeSignIn": "Logga in med Twake",
+            "twakeSignInAgain": "Logga in igen",
+            "twakeSignedIn": "Inloggad",
+            "twakeWaitingBrowser": "Slutför inloggningen i din webbläsare...",
+            "twakeSignInHelp": "AeroFTP öppnar Twake i din webbläsare och begär endast åtkomst till dina filer. Om Twake visar ett fel första gången, logga in på Twake i webbläsaren och logga in igen. Du kan när som helst återkalla åtkomsten i Twake-inställningar, Anslutna enheter."
         },
         "browser": {
             "remote": "Fjärr",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Den här slutpunkten levererar S3 över okrypterad HTTP via ett nätverk. Acceptera det för den här profilen: de signerade autentiseringsuppgifterna och varje fil passerar nätverket okrypterade.",
             "discoverFilebase": "Filebase: S3-kompatibel objektlagring (5 GB gratis)",
             "protonDesc": "Ansluter via Proton Drive CLI",
-            "protonTooltip": "Använder Proton Drive CLI - installera, logga in i webbläsaren, AeroFTP är GUI:t"
+            "protonTooltip": "Använder Proton Drive CLI - installera, logga in i webbläsaren, AeroFTP är GUI:t",
+            "twakeDesc": "Twake Drive (5 GB gratis)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, fransk open source-molntjänst (Cozy Cloud är nu en del av den) med 5 GB gratis",
+            "discoverTwake": "Europeisk molntjänst med öppen källkod från Linagora, nu hem för Cozy Cloud (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Binär",
             "hashOutputLength": "BLAKE3-utdatalängd (byte)",
             "hashOutputLengthHint": "1-1024 · standard 32",
-            "hashDropHint": "Släpp en fil på den här fliken för att hasha den"
+            "hashDropHint": "Släpp en fil på den här fliken för att hasha den",
+            "hashBlake3Mode": "BLAKE3-läge",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Med nyckel",
+            "hashBlake3ModeDerive": "Härled nyckel",
+            "hashBlake3Key": "Nyckel (32 byte som hex)",
+            "hashBlake3Context": "Kontextsträng",
+            "hashBlake3ContextHint": "Fast och unik för ett program. Texten eller filen som hashas är nyckelmaterialet.",
+            "hashRandom": "Slumpmässig",
+            "argon2PasswordPlaceholder": "Lösenord eller lösenfras...",
+            "argon2Salt": "Salt",
+            "argon2SaltHint": "Minst 8 byte, 16 rekommenderas",
+            "argon2Memory": "Minne (KiB)",
+            "argon2Iterations": "Iterationer",
+            "argon2Parallelism": "Parallellism",
+            "argon2OutputLength": "Längd (byte)",
+            "argon2DefaultsHint": "Standardvärden: det andra rekommenderade alternativet i RFC 9106, för begränsat minne (64 MiB, 3 iterationer, 4 banor, 16-byte salt). Minne upp till 2 GiB.",
+            "argon2Derive": "Härled",
+            "argon2Phc": "PHC-sträng"
         },
         "dialog": {
             "deleteFile": "Radera \"{name}\"?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Jämför",
             "tabPlan": "Plan",
             "tabSync": "Synkronisera",
+            "compareWontFitTitle": "Över gränserna för {name}: {count}",
+            "compareWontFitHint": "Dessa filer är större än leverantörens dokumenterade gräns, eller så är deras namn eller sökväg längre än tillåtet. En synkronisering skulle misslyckas för dem: byt namn, flytta eller dela upp dem först.",
+            "compareWontFitTooLarge": "{size}, gräns {limit}",
+            "compareWontFitNameBytes": "namn över {count} byte",
+            "compareWontFitNameChars": "namn över {count} tecken",
+            "compareWontFitPathBytes": "sökväg över {count} byte",
+            "compareWontFitPathChars": "sökväg över {count} tecken",
             "compareUnavailable": "Öppna en andra panel eller en fjärranslutning för att jämföra.",
             "planUnavailable": "Ett jämförelseresultat krävs innan du väljer en förinställning. Öppna fliken Jämför först.",
             "totalEntries": "Totalt antal poster",

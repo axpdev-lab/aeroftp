@@ -327,7 +327,14 @@
             "protonCliTitle": "Kasutab ametlikku Proton Drive CLI",
             "protonCliBody": "Installige Proton Drive CLI aadressilt proton.me/download/drive/cli, käivitage terminalis proton-drive auth login ja lõpetage brauseris. AeroFTP ei näe kunagi teie parooli; seanss jääb operatsioonisüsteemi saladuste salve.",
             "protonUnofficial": "See on kolmanda osapoole rakendus, mida Proton ametlikult ei toeta.",
-            "protonConnectHint": "\"Ühenda\" kasutab sellel masinal juba sisse logitud CLI-d. Üks Proton konto operatsioonisüsteemi kasutaja kohta."
+            "protonConnectHint": "\"Ühenda\" kasutab sellel masinal juba sisse logitud CLI-d. Üks Proton konto operatsioonisüsteemi kasutaja kohta.",
+            "twakeInstance": "Twake aadress",
+            "twakeInstanceHelp": "Teie enda aadress, näiteks yourname.twake.app. Samuti võite kleepida mis tahes Twake lehe aadressi oma brauserist.",
+            "twakeSignIn": "Logi sisse Twake'iga",
+            "twakeSignInAgain": "Logi uuesti sisse",
+            "twakeSignedIn": "Sisse logitud",
+            "twakeWaitingBrowser": "Lõpetage sisselogimine oma brauseris...",
+            "twakeSignInHelp": "AeroFTP avab Twake teie brauseris ja palub ligipääsu ainult teie failidele. Kui Twake näitab esimesel korral viga, logige brauseris Twake'i sisse ja logige uuesti sisse. Ligipääsu saate igal ajal tühistada Twake seadetes, Ühendatud seadmed."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "See lõpp-punkt pakub S3 krüptimata HTTP kaudu üle võrgu. Nõustu sellega selle profiili puhul: allkirjastatud mandaat ja iga fail liiguvad võrgus krüptimata.",
             "discoverFilebase": "Filebase: S3-ühilduv objektisalvestus (5 GB tasuta)",
             "protonDesc": "Ühendub Proton Drive CLI kaudu",
-            "protonTooltip": "Kasutab Proton Drive CLI - installige, logige brauseris sisse, AeroFTP on GUI"
+            "protonTooltip": "Kasutab Proton Drive CLI - installige, logige brauseris sisse, AeroFTP on GUI",
+            "twakeDesc": "Twake Drive (5 GB tasuta)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Prantsuse avatud lähtekoodiga pilv (Cozy Cloud on nüüd selle osa) 5 GB tasuta",
+            "discoverTwake": "Linagora avatud lähtekoodiga Euroopa pilv, nüüd Cozy Cloud'i uus kodu (5 GB tasuta)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Binaarne",
             "hashOutputLength": "BLAKE3 väljundi pikkus (baiti)",
             "hashOutputLengthHint": "1-1024 · vaikimisi 32",
-            "hashDropHint": "Räsi arvutamiseks lohista fail sellele vahekaardile"
+            "hashDropHint": "Räsi arvutamiseks lohista fail sellele vahekaardile",
+            "hashBlake3Mode": "BLAKE3 režiim",
+            "hashBlake3ModeHash": "Räsi",
+            "hashBlake3ModeKeyed": "Võtmega",
+            "hashBlake3ModeDerive": "Tuleta võti",
+            "hashBlake3Key": "Võti (32 baiti kuueteistkümnendsüsteemis)",
+            "hashBlake3Context": "Kontekstistring",
+            "hashBlake3ContextHint": "Fikseeritud ja ainulaadne ühele rakendusele. Räsitav tekst või fail on võtmematerjal.",
+            "hashRandom": "Juhuslik",
+            "argon2PasswordPlaceholder": "Parool või paroolifraas...",
+            "argon2Salt": "Sool",
+            "argon2SaltHint": "Vähemalt 8 baiti, soovitatav 16",
+            "argon2Memory": "Mälu (KiB)",
+            "argon2Iterations": "Iteratsioonid",
+            "argon2Parallelism": "Paralleelsus",
+            "argon2OutputLength": "Pikkus (baiti)",
+            "argon2DefaultsHint": "Vaikeväärtused: RFC 9106 teine soovitatud valik piiratud mälu jaoks (64 MiB, 3 iteratsiooni, 4 rada, 16-baidine sool). Mälu kuni 2 GiB.",
+            "argon2Derive": "Tuleta",
+            "argon2Phc": "PHC-string"
         },
         "dialog": {
             "deleteFile": "Kustuta \"{name}\"?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Võrdle",
             "tabPlan": "Plaan",
             "tabSync": "Sünkrooni",
+            "compareWontFitTitle": "Üle teenuse {name} piirangute: {count}",
+            "compareWontFitHint": "Need failid on suuremad kui teenusepakkuja dokumenteeritud piirang või nende nimi või tee on lubatust pikem. Sünkroonimine nurjuks nende puhul: nimeta need ümber, teisalda või jaga osadeks enne.",
+            "compareWontFitTooLarge": "{size}, piirang {limit}",
+            "compareWontFitNameBytes": "nimi üle {count} baidi",
+            "compareWontFitNameChars": "nimi üle {count} märgi",
+            "compareWontFitPathBytes": "tee üle {count} baidi",
+            "compareWontFitPathChars": "tee üle {count} märgi",
             "compareUnavailable": "Võrdlemiseks avage teine paneel või kaugühendus.",
             "planUnavailable": "Enne eelseade valimist on vaja võrdlustulemust. Avage esmalt vahekaart Võrdle.",
             "totalEntries": "Kirjeid kokku",

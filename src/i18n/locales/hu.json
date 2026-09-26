@@ -327,7 +327,14 @@
             "protonCliTitle": "A hivatalos Proton Drive CLI-t használja",
             "protonCliBody": "Telepítse a Proton Drive CLI-t a proton.me/download/drive/cli címről, majd a terminálban futtassa a proton-drive auth login parancsot, és fejezze be a böngészőben. Az AeroFTP soha nem látja a jelszavát; a munkamenet az OS titkos tárában marad.",
             "protonUnofficial": "Ez egy harmadik féltől származó alkalmazás, amelyet a Proton hivatalosan nem támogat.",
-            "protonConnectHint": "A \"Csatlakozás\" az ezen a gépen már bejelentkezett CLI-t használja. Operációsrendszer-felhasználónként egy Proton-fiók."
+            "protonConnectHint": "A \"Csatlakozás\" az ezen a gépen már bejelentkezett CLI-t használja. Operációsrendszer-felhasználónként egy Proton-fiók.",
+            "twakeInstance": "Twake cím",
+            "twakeInstanceHelp": "A saját címed, például yourname.twake.app. Bármely Twake oldal címét is beillesztheted a böngésződből.",
+            "twakeSignIn": "Bejelentkezés Twake-kel",
+            "twakeSignInAgain": "Jelentkezz be újra",
+            "twakeSignedIn": "Bejelentkezve",
+            "twakeWaitingBrowser": "Fejezd be a bejelentkezést a böngésződben...",
+            "twakeSignInHelp": "Az AeroFTP megnyitja a Twake-et a böngésződben, és csak a fájljaidhoz kér hozzáférést. Ha a Twake először hibát jelez, jelentkezz be a Twake-be a böngészőben, majd jelentkezz be újra. A hozzáférést bármikor visszavonhatod a Twake beállításokban, a Csatlakoztatott eszközök menüpontban."
         },
         "browser": {
             "remote": "Távoli",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Ez a végpont titkosítatlan HTTP-n keresztül, a hálózaton át szolgálja ki az S3-at. Fogadja el ehhez a profilhoz: az aláírt hitelesítő adatok és minden fájl titkosítatlanul halad át a hálózaton.",
             "discoverFilebase": "Filebase: S3-kompatibilis objektumtárhely (5 GB ingyen)",
             "protonDesc": "A Proton Drive CLI-n keresztül csatlakozik",
-            "protonTooltip": "A Proton Drive CLI-t használja - telepítse, jelentkezzen be a böngészőben, az AeroFTP a GUI"
+            "protonTooltip": "A Proton Drive CLI-t használja - telepítse, jelentkezzen be a böngészőben, az AeroFTP a GUI",
+            "twakeDesc": "Twake Drive (5 GB ingyen)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francia nyílt forráskódú felhő (a Cozy Cloud mostantól ennek része) 5 GB ingyen",
+            "discoverTwake": "Linagora nyílt forráskódú európai felhője, mostantól a Cozy Cloud új otthona (5 GB ingyen)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Bináris",
             "hashOutputLength": "BLAKE3 kimenet hossza (bájt)",
             "hashOutputLengthHint": "1-1024 · alapértelmezett 32",
-            "hashDropHint": "Húzzon ide egy fájlt a hash kiszámításához"
+            "hashDropHint": "Húzzon ide egy fájlt a hash kiszámításához",
+            "hashBlake3Mode": "BLAKE3 mód",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Kulccsal",
+            "hashBlake3ModeDerive": "Kulcs származtatása",
+            "hashBlake3Key": "Kulcs (32 bájt hexadecimálisan)",
+            "hashBlake3Context": "Kontextus-karakterlánc",
+            "hashBlake3ContextHint": "Rögzített és egyedi egy alkalmazáshoz. A hashelt szöveg vagy fájl a kulcsanyag.",
+            "hashRandom": "Véletlen",
+            "argon2PasswordPlaceholder": "Jelszó vagy jelmondat...",
+            "argon2Salt": "Só",
+            "argon2SaltHint": "Legalább 8 bájt, 16 ajánlott",
+            "argon2Memory": "Memória (KiB)",
+            "argon2Iterations": "Iterációk",
+            "argon2Parallelism": "Párhuzamosság",
+            "argon2OutputLength": "Hossz (bájt)",
+            "argon2DefaultsHint": "Alapértékek: az RFC 9106 második ajánlott beállítása korlátozott memóriához (64 MiB, 3 iteráció, 4 sáv, 16 bájtos só). Memória legfeljebb 2 GiB.",
+            "argon2Derive": "Származtatás",
+            "argon2Phc": "PHC karakterlánc"
         },
         "dialog": {
             "deleteFile": "Törli a \"{name}\" fájlt?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Összehasonlítás",
             "tabPlan": "Terv",
             "tabSync": "Szinkronizálás",
+            "compareWontFitTitle": "{name} korlátain felül: {count}",
+            "compareWontFitHint": "Ezek a fájlok nagyobbak a szolgáltató dokumentált méretkorlátjánál, vagy a nevük vagy útvonaluk hosszabb, mint amit elfogad. A szinkronizálás ezeknél hibára futna: előbb nevezze át, helyezze át vagy ossza fel őket.",
+            "compareWontFitTooLarge": "{size}, korlát {limit}",
+            "compareWontFitNameBytes": "{count} bájtnál hosszabb név",
+            "compareWontFitNameChars": "{count} karakternél hosszabb név",
+            "compareWontFitPathBytes": "{count} bájtnál hosszabb útvonal",
+            "compareWontFitPathChars": "{count} karakternél hosszabb útvonal",
             "compareUnavailable": "Nyiss meg egy második panelt vagy egy távoli kapcsolatot az összehasonlításhoz.",
             "planUnavailable": "Egy összehasonlítási eredményre van szükség a preset kiválasztása előtt. Először nyisd meg az Összehasonlítás fület.",
             "totalEntries": "Összes bejegyzés",

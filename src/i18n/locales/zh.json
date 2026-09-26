@@ -327,7 +327,14 @@
             "protonCliTitle": "使用官方 Proton Drive CLI",
             "protonCliBody": "从 proton.me/download/drive/cli 安装 Proton Drive CLI，然后在终端运行 proton-drive auth login 并在浏览器中完成。AeroFTP 绝不会看到你的密码；会话留在操作系统的密钥库中。",
             "protonUnofficial": "这是 Proton 未官方支持的第三方应用。",
-            "protonConnectHint": "\"连接\" 使用本机已登录的 CLI。每个操作系统用户一个 Proton 账户。"
+            "protonConnectHint": "\"连接\" 使用本机已登录的 CLI。每个操作系统用户一个 Proton 账户。",
+            "twakeInstance": "Twake 地址",
+            "twakeInstanceHelp": "您自己的地址,例如 yourname.twake.app。您也可以粘贴从浏览器中复制的任意 Twake 页面地址。",
+            "twakeSignIn": "使用 Twake 登录",
+            "twakeSignInAgain": "重新登录",
+            "twakeSignedIn": "已登录",
+            "twakeWaitingBrowser": "请在浏览器中完成登录...",
+            "twakeSignInHelp": "AeroFTP 会在浏览器中打开 Twake,并且只请求访问您的文件。如果 Twake 第一次显示错误,请在浏览器中登录 Twake,然后重新登录。您可以随时在 Twake 设置的“已连接设备”中撤销访问权限。"
         },
         "browser": {
             "remote": "远程",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "此端点通过网络以明文 HTTP 提供 S3。为此配置文件接受：签名凭据和每个文件都将以未加密方式穿越网络。",
             "discoverFilebase": "Filebase: S3 兼容对象存储（免费 5 GB）",
             "protonDesc": "通过 Proton Drive CLI 连接",
-            "protonTooltip": "使用 Proton Drive CLI - 安装，在浏览器中登录，AeroFTP 即为 GUI"
+            "protonTooltip": "使用 Proton Drive CLI - 安装，在浏览器中登录，AeroFTP 即为 GUI",
+            "twakeDesc": "Twake Drive(免费 5 GB)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace,法国开源云盘(Cozy Cloud 现已成为其一部分),免费 5 GB",
+            "discoverTwake": "Linagora 打造的欧洲开源云盘,现为 Cozy Cloud 的新家(免费 5 GB)"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "二进制",
             "hashOutputLength": "BLAKE3 输出长度（字节）",
             "hashOutputLengthHint": "1-1024 · 默认 32",
-            "hashDropHint": "将文件拖放到此标签页以计算哈希"
+            "hashDropHint": "将文件拖放到此标签页以计算哈希",
+            "hashBlake3Mode": "BLAKE3 模式",
+            "hashBlake3ModeHash": "哈希",
+            "hashBlake3ModeKeyed": "带密钥",
+            "hashBlake3ModeDerive": "派生密钥",
+            "hashBlake3Key": "密钥（32 字节十六进制）",
+            "hashBlake3Context": "上下文字符串",
+            "hashBlake3ContextHint": "固定且对单个应用唯一。被哈希的文本或文件即为密钥材料。",
+            "hashRandom": "随机",
+            "argon2PasswordPlaceholder": "密码或口令短语...",
+            "argon2Salt": "盐值",
+            "argon2SaltHint": "至少 8 字节，建议 16",
+            "argon2Memory": "内存 (KiB)",
+            "argon2Iterations": "迭代次数",
+            "argon2Parallelism": "并行度",
+            "argon2OutputLength": "长度（字节）",
+            "argon2DefaultsHint": "默认值：RFC 9106 针对内存受限情况的第二推荐选项（64 MiB、3 次迭代、4 条通道、16 字节盐值）。内存最高 2 GiB。",
+            "argon2Derive": "派生",
+            "argon2Phc": "PHC 字符串"
         },
         "dialog": {
             "deleteFile": "删除\"{name}\"？",
@@ -5043,6 +5071,13 @@
             "tabCompare": "比较",
             "tabPlan": "计划",
             "tabSync": "同步",
+            "compareWontFitTitle": "超出 {name} 的限制：{count}",
+            "compareWontFitHint": "这些文件超过提供商文档中的大小限制，或其名称或路径超过允许的长度。同步这些文件会失败：请先重命名、移动或拆分。",
+            "compareWontFitTooLarge": "{size}，上限 {limit}",
+            "compareWontFitNameBytes": "名称超过 {count} 字节",
+            "compareWontFitNameChars": "名称超过 {count} 个字符",
+            "compareWontFitPathBytes": "路径超过 {count} 字节",
+            "compareWontFitPathChars": "路径超过 {count} 个字符",
             "compareUnavailable": "打开第二个面板或远程连接以进行比较。",
             "planUnavailable": "选择预设之前需要比较结果。请先打开比较选项卡。",
             "totalEntries": "条目总数",

@@ -327,7 +327,14 @@
             "protonCliTitle": "Proton Drive CLI ofiziala erabiltzen du",
             "protonCliBody": "Instalatu Proton Drive CLI proton.me/download/drive/cli helbidetik, exekutatu proton-drive auth login terminalean eta amaitu nabigatzailean. AeroFTP-k ez du inoiz zure pasahitza ikusten; saioa sistema eragilearen sekretu-biltegian geratzen da.",
             "protonUnofficial": "Hirugarrenen aplikazioa da hau, Proton-ek ofizialki onartzen ez duena.",
-            "protonConnectHint": "\"Konektatu\" botoiak makina honetan dagoeneko hasitako CLI erabiltzen du. Proton kontu bat sistema eragileko erabiltzaile bakoitzeko."
+            "protonConnectHint": "\"Konektatu\" botoiak makina honetan saioa hasita duen CLI erabiltzen du. Proton kontu bat sistema eragileko erabiltzaile bakoitzeko.",
+            "twakeInstance": "Twake helbidea",
+            "twakeInstanceHelp": "Zure helbidea, adibidez yourname.twake.app. Zure nabigatzailetik edozein Twake orriren helbidea itsatsi dezakezu.",
+            "twakeSignIn": "Hasi saioa Twakerekin",
+            "twakeSignInAgain": "Hasi saioa berriro",
+            "twakeSignedIn": "Saioa hasita",
+            "twakeWaitingBrowser": "Amaitu saioa hastea zure nabigatzailean...",
+            "twakeSignInHelp": "AeroFTPk Twake zure nabigatzailean irekitzen du eta zure fitxategietarako sarbidea baino ez du eskatzen. Twakek lehen aldiz errorea erakusten badu, hasi saioa Twaken nabigatzailean eta saiatu berriro. Sarbidea edonoiz ken dezakezu Twakeren ezarpenetan, Konektatutako gailuak."
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Amaiera-puntu honek S3 zerbitzatzen du HTTP soilaren bidez, sarea zeharkatuz. Onartu profil honetarako: sinatutako kredentzialak eta fitxategi guztiak zifratu gabe zeharkatzen dute sarea.",
             "discoverFilebase": "Filebase: S3-rekin bateragarria den objektu-biltegia (5 GB doan)",
             "protonDesc": "Proton Drive CLI bidez konektatzen da",
-            "protonTooltip": "Proton Drive CLI erabiltzen du - instalatu, hasi saioa nabigatzailean, AeroFTP da GUI"
+            "protonTooltip": "Proton Drive CLI erabiltzen du - instalatu, hasi saioa nabigatzailean, AeroFTP da GUI",
+            "twakeDesc": "Twake Drive (5 GB doan)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, iturburu irekiko hodei frantsesa (Cozy Cloud orain horren zati da) 5 GB doan",
+            "discoverTwake": "Linagoraren iturburu irekiko hodei europarra, orain Cozy Cloud-en etxe berria (5 GB doan)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Bitarra",
             "hashOutputLength": "BLAKE3 irteeraren luzera (byte)",
             "hashOutputLengthHint": "1-1024 · lehenetsia 32",
-            "hashDropHint": "Jaregin fitxategi bat fitxa honetan hash-a kalkulatzeko"
+            "hashDropHint": "Jaregin fitxategi bat fitxa honetan hash-a kalkulatzeko",
+            "hashBlake3Mode": "BLAKE3 modua",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Gakoarekin",
+            "hashBlake3ModeDerive": "Gakoa eratorri",
+            "hashBlake3Key": "Gakoa (32 byte hamaseitarrean)",
+            "hashBlake3Context": "Testuinguru-katea",
+            "hashBlake3ContextHint": "Finkoa eta aplikazio bakarrarentzat bakarra. Hash-a kalkulatzen zaion testua edo fitxategia da gakoaren materiala.",
+            "hashRandom": "Ausazkoa",
+            "argon2PasswordPlaceholder": "Pasahitza edo pasaesaldia...",
+            "argon2Salt": "Gatza",
+            "argon2SaltHint": "Gutxienez 8 byte, 16 gomendatzen dira",
+            "argon2Memory": "Memoria (KiB)",
+            "argon2Iterations": "Iterazioak",
+            "argon2Parallelism": "Paralelismoa",
+            "argon2OutputLength": "Luzera (byte)",
+            "argon2DefaultsHint": "Balio lehenetsiak: RFC 9106 arauaren bigarren aukera gomendatua, memoria mugatuetarako (64 MiB, 3 iterazio, 4 errei, 16 byteko gatza). Memoria 2 GiB arte.",
+            "argon2Derive": "Eratorri",
+            "argon2Phc": "PHC katea"
         },
         "dialog": {
             "deleteFile": "\"{name}\" ezabatu?",
@@ -5062,6 +5090,13 @@
             "tabCompare": "Konparatu",
             "tabPlan": "Plana",
             "tabSync": "Sinkronizatu",
+            "compareWontFitTitle": "{name} zerbitzuaren mugetatik gora: {count}",
+            "compareWontFitHint": "Fitxategi hauek hornitzaileak dokumentatutako tamaina-muga gainditzen dute, edo haien izena edo bidea onartzen duena baino luzeagoa da. Sinkronizazioak huts egingo luke haiekin: aldatu izena, mugitu edo zatitu lehenago.",
+            "compareWontFitTooLarge": "{size}, muga {limit}",
+            "compareWontFitNameBytes": "{count} byte baino gehiagoko izena",
+            "compareWontFitNameChars": "{count} karaktere baino gehiagoko izena",
+            "compareWontFitPathBytes": "{count} byte baino gehiagoko bidea",
+            "compareWontFitPathChars": "{count} karaktere baino gehiagoko bidea",
             "compareUnavailable": "Ireki bigarren panela edo urruneko konexioa konparatzeko.",
             "planUnavailable": "Konparaketa emaitza behar da aurrezarpena hautatu aurretik. Ireki lehenik Konparatu fitxa.",
             "totalEntries": "Sarrera guztiak",

@@ -327,7 +327,14 @@
             "protonCliTitle": "Käyttää virallista Proton Drive CLI:tä",
             "protonCliBody": "Asenna Proton Drive CLI osoitteesta proton.me/download/drive/cli, suorita sitten proton-drive auth login päätteessä ja viimeistele selaimessa. AeroFTP ei koskaan näe salasanaasi; istunto jää käyttöjärjestelmän salaisuussäilöön.",
             "protonUnofficial": "Tämä on kolmannen osapuolen sovellus, jota Proton ei virallisesti tue.",
-            "protonConnectHint": "\"Yhdistä\" käyttää tällä koneella jo sisäänkirjautunutta CLI:tä. Yksi Proton-tili käyttöjärjestelmän käyttäjää kohden."
+            "protonConnectHint": "\"Yhdistä\" käyttää tällä koneella jo sisäänkirjautunutta CLI:tä. Yksi Proton-tili käyttöjärjestelmän käyttäjää kohden.",
+            "twakeInstance": "Twake-osoite",
+            "twakeInstanceHelp": "Oma osoitteesi, esimerkiksi yourname.twake.app. Voit myös liittää minkä tahansa Twake-sivun osoitteen selaimestasi.",
+            "twakeSignIn": "Kirjaudu sisään Twakella",
+            "twakeSignInAgain": "Kirjaudu sisään uudelleen",
+            "twakeSignedIn": "Kirjauduttu sisään",
+            "twakeWaitingBrowser": "Viimeistele kirjautuminen selaimessasi...",
+            "twakeSignInHelp": "AeroFTP avaa Twaken selaimessasi ja pyytää pääsyä vain tiedostoihisi. Jos Twake näyttää virheen ensimmäisellä kerralla, kirjaudu Twakeen selaimessa ja kirjaudu sisään uudelleen. Voit peruuttaa käyttöoikeuden milloin tahansa Twaken asetuksista, Yhdistetyt laitteet."
         },
         "browser": {
             "remote": "Etä",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Tämä päätepiste tarjoaa S3:n salaamattoman HTTP:n kautta verkon yli. Hyväksy se tälle profiilille: allekirjoitetut tunnistetiedot ja jokainen tiedosto kulkevat verkon läpi salaamattomina.",
             "discoverFilebase": "Filebase: S3-yhteensopiva objektitallennus (5 GB ilmaiseksi)",
             "protonDesc": "Yhdistää Proton Drive CLI:n kautta",
-            "protonTooltip": "Käyttää Proton Drive CLI:tä - asenna, kirjaudu selaimessa, AeroFTP on GUI"
+            "protonTooltip": "Käyttää Proton Drive CLI:tä - asenna, kirjaudu selaimessa, AeroFTP on GUI",
+            "twakeDesc": "Twake Drive (5 Gt ilmaiseksi)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, ranskalainen avoimen lähdekoodin pilvi (Cozy Cloud on nyt osa sitä) 5 Gt ilmaiseksi",
+            "discoverTwake": "Linagoran avoimen lähdekoodin eurooppalainen pilvi, nyt Cozy Cloudin uusi koti (5 Gt ilmaiseksi)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Binääri",
             "hashOutputLength": "BLAKE3-tulosteen pituus (tavua)",
             "hashOutputLengthHint": "1-1024 · oletus 32",
-            "hashDropHint": "Pudota tiedosto tälle välilehdelle laskeaksesi sen tiivisteen"
+            "hashDropHint": "Pudota tiedosto tälle välilehdelle laskeaksesi sen tiivisteen",
+            "hashBlake3Mode": "BLAKE3-tila",
+            "hashBlake3ModeHash": "Tiiviste",
+            "hashBlake3ModeKeyed": "Avaimella",
+            "hashBlake3ModeDerive": "Johda avain",
+            "hashBlake3Key": "Avain (32 tavua heksana)",
+            "hashBlake3Context": "Kontekstimerkkijono",
+            "hashBlake3ContextHint": "Kiinteä ja yksilöllinen yhdelle sovellukselle. Tiivistettävä teksti tai tiedosto on avainmateriaali.",
+            "hashRandom": "Satunnainen",
+            "argon2PasswordPlaceholder": "Salasana tai tunnuslause...",
+            "argon2Salt": "Suola",
+            "argon2SaltHint": "Vähintään 8 tavua, suositus 16",
+            "argon2Memory": "Muisti (KiB)",
+            "argon2Iterations": "Iteraatiot",
+            "argon2Parallelism": "Rinnakkaisuus",
+            "argon2OutputLength": "Pituus (tavua)",
+            "argon2DefaultsHint": "Oletukset: RFC 9106:n toinen suositeltu vaihtoehto rajalliselle muistille (64 MiB, 3 iteraatiota, 4 kaistaa, 16 tavun suola). Muistia enintään 2 GiB.",
+            "argon2Derive": "Johda",
+            "argon2Phc": "PHC-merkkijono"
         },
         "dialog": {
             "deleteFile": "Poista \"{name}\"?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Vertaa",
             "tabPlan": "Suunnitelma",
             "tabSync": "Synkronoi",
+            "compareWontFitTitle": "Palvelun {name} rajojen yli: {count}",
+            "compareWontFitHint": "Nämä tiedostot ovat suurempia kuin palveluntarjoajan dokumentoitu raja, tai niiden nimi tai polku on pidempi kuin se sallii. Synkronointi epäonnistuisi niiden kohdalla: nimeä, siirrä tai jaa ne ensin.",
+            "compareWontFitTooLarge": "{size}, raja {limit}",
+            "compareWontFitNameBytes": "nimi yli {count} tavua",
+            "compareWontFitNameChars": "nimi yli {count} merkkiä",
+            "compareWontFitPathBytes": "polku yli {count} tavua",
+            "compareWontFitPathChars": "polku yli {count} merkkiä",
             "compareUnavailable": "Avaa toinen paneeli tai etäyhteys vertailua varten.",
             "planUnavailable": "Vertailutulos vaaditaan ennen esiasetuksen valintaa. Avaa ensin Vertaa-välilehti.",
             "totalEntries": "Merkintöjä yhteensä",

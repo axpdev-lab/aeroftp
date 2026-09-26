@@ -327,7 +327,14 @@
             "protonCliTitle": "Utiliza o CLI oficial do Proton Drive",
             "protonCliBody": "Instale o CLI do Proton Drive em proton.me/download/drive/cli, execute proton-drive auth login no terminal e conclua no navegador. O AeroFTP nunca vê a sua palavra-passe; a sessão fica no cofre de segredos do sistema.",
             "protonUnofficial": "Esta é uma aplicação de terceiros não suportada oficialmente pela Proton.",
-            "protonConnectHint": "O \"Conectar\" usa o CLI já autenticado nesta máquina. Uma conta Proton por utilizador do sistema."
+            "protonConnectHint": "O \"Conectar\" usa o CLI já autenticado nesta máquina. Uma conta Proton por utilizador do sistema.",
+            "twakeInstance": "Endereço Twake",
+            "twakeInstanceHelp": "O seu próprio endereço, por exemplo yourname.twake.app. Também pode colar qualquer endereço de página do Twake a partir do seu navegador.",
+            "twakeSignIn": "Iniciar sessão com Twake",
+            "twakeSignInAgain": "Iniciar sessão novamente",
+            "twakeSignedIn": "Sessão iniciada",
+            "twakeWaitingBrowser": "Termine o início de sessão no seu navegador...",
+            "twakeSignInHelp": "O AeroFTP abre o Twake no seu navegador e pede acesso apenas aos seus ficheiros. Se o Twake mostrar um erro da primeira vez, inicie sessão no Twake no navegador e inicie sessão novamente. Pode revogar o acesso a qualquer momento nas Definições do Twake, Dispositivos ligados."
         },
         "browser": {
             "remote": "Remoto",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Este ponto de extremidade serve S3 por HTTP sem encriptação através de uma rede. Aceite para este perfil: as credenciais assinadas e todos os ficheiros atravessam a rede sem encriptação.",
             "discoverFilebase": "Filebase: armazenamento de objetos compatível com S3 (5 GB grátis)",
             "protonDesc": "Liga-se através do CLI do Proton Drive",
-            "protonTooltip": "Utiliza o CLI do Proton Drive - instale, inicie sessão no navegador, o AeroFTP é a GUI"
+            "protonTooltip": "Utiliza o CLI do Proton Drive - instale, inicie sessão no navegador, o AeroFTP é a GUI",
+            "twakeDesc": "Twake Drive (5 GB grátis)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, nuvem francesa de código aberto (o Cozy Cloud agora faz parte dela) com 5 GB grátis",
+            "discoverTwake": "Nuvem europeia de código aberto da Linagora, agora o novo lar do Cozy Cloud (5 GB grátis)"
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",
@@ -3871,7 +3881,7 @@
                 "downloadMessage": "Baixe o PDF para visualizá-lo no seu leitor preferido.",
                 "loading": "Carregando PDF...",
                 "open": "Abrir PDF",
-                "page": "Pagina",
+                "page": "Página",
                 "zoom": "Zoom"
             },
             "text": {
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Binário",
             "hashOutputLength": "Comprimento da saída BLAKE3 (bytes)",
             "hashOutputLengthHint": "1-1024 · padrão 32",
-            "hashDropHint": "Largue um ficheiro neste separador para calcular o seu hash"
+            "hashDropHint": "Largue um ficheiro neste separador para calcular o seu hash",
+            "hashBlake3Mode": "Modo BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Com chave",
+            "hashBlake3ModeDerive": "Derivar chave",
+            "hashBlake3Key": "Chave (32 bytes em hexadecimal)",
+            "hashBlake3Context": "String de contexto",
+            "hashBlake3ContextHint": "Fixa e única para uma aplicação. O texto ou arquivo em hash é o material da chave.",
+            "hashRandom": "Aleatória",
+            "argon2PasswordPlaceholder": "Senha ou frase secreta...",
+            "argon2Salt": "Sal",
+            "argon2SaltHint": "Pelo menos 8 bytes, 16 recomendados",
+            "argon2Memory": "Memória (KiB)",
+            "argon2Iterations": "Iterações",
+            "argon2Parallelism": "Paralelismo",
+            "argon2OutputLength": "Comprimento (bytes)",
+            "argon2DefaultsHint": "Padrões: a segunda opção recomendada pela RFC 9106, para memória limitada (64 MiB, 3 iterações, 4 faixas, sal de 16 bytes). Memória até 2 GiB.",
+            "argon2Derive": "Derivar",
+            "argon2Phc": "String PHC"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Comparar",
             "tabPlan": "Plano",
             "tabSync": "Sincronizar",
+            "compareWontFitTitle": "Acima dos limites de {name}: {count}",
+            "compareWontFitHint": "Estes arquivos excedem o limite de tamanho documentado do provedor, ou o nome ou caminho deles é mais longo do que ele aceita. Uma sincronização falharia neles: renomeie, mova ou divida-os antes.",
+            "compareWontFitTooLarge": "{size}, limite {limit}",
+            "compareWontFitNameBytes": "nome acima de {count} bytes",
+            "compareWontFitNameChars": "nome acima de {count} caracteres",
+            "compareWontFitPathBytes": "caminho acima de {count} bytes",
+            "compareWontFitPathChars": "caminho acima de {count} caracteres",
             "compareUnavailable": "Abra um segundo painel ou uma conexão remota para comparar.",
             "planUnavailable": "É necessário um resultado de comparação antes de escolher um preset. Abra primeiro a aba Comparar.",
             "totalEntries": "Total de entradas",

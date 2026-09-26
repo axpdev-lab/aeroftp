@@ -298,6 +298,27 @@
       "folded": "connecte",
       "twin": "connecté",
       "reason": "Correct as written. 'Se connecte' is the third person singular present of the reflexive verb 'se connecter' (it connects), which takes no accent. The form the detector prefers, the past participle with an acute accent (connected), is the commoner word in this file because status labels use it, but with the reflexive pronoun and no auxiliary it is not a French sentence."
+    },
+    "da\u001fsettings.bridgeSecretLimited\u001fKun en del af loginoplysningerne kan gendannes; du skal muligvis indtaste nogle hemmeligheder igen.": {
+      "locale": "da",
+      "key": "settings.bridgeSecretLimited",
+      "folded": "nogle",
+      "twin": "nøgle",
+      "reason": "Danish 'nogle' means 'some' and has no ø; it surfaced when the Hash Forge strings added 'nøgle' (key) to da.json."
+    },
+    "da\u001fvaultSync.errorsOccurred\u001fDer opstod nogle fejl": {
+      "locale": "da",
+      "key": "vaultSync.errorsOccurred",
+      "folded": "nogle",
+      "twin": "nøgle",
+      "reason": "Danish 'nogle' means 'some' and has no ø; it surfaced when the Hash Forge strings added 'nøgle' (key) to da.json."
+    },
+    "lt\u001fcyberTools.hashBlake3ModeKeyed\u001fSu raktu": {
+      "locale": "lt",
+      "key": "cyberTools.hashBlake3ModeKeyed",
+      "folded": "raktu",
+      "twin": "raktų",
+      "reason": "'Su raktu' is the instrumental singular ('with a key'); 'raktų' is the genitive plural and would be wrong here."
     }
   }
 }

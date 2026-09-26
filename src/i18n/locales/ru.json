@@ -327,7 +327,14 @@
             "protonCliTitle": "Использует официальный Proton Drive CLI",
             "protonCliBody": "Установите Proton Drive CLI с proton.me/download/drive/cli, затем выполните proton-drive auth login в терминале и завершите вход в браузере. AeroFTP никогда не видит ваш пароль; сессия остаётся в хранилище секретов ОС.",
             "protonUnofficial": "Это стороннее приложение, которое Proton официально не поддерживает.",
-            "protonConnectHint": "\"Подключиться\" использует уже вошедший на этой машине CLI. Одна учётная запись Proton на пользователя ОС."
+            "protonConnectHint": "\"Подключиться\" использует уже вошедший на этой машине CLI. Одна учётная запись Proton на пользователя ОС.",
+            "twakeInstance": "Адрес Twake",
+            "twakeInstanceHelp": "Ваш собственный адрес, например yourname.twake.app. Вы также можете вставить адрес любой страницы Twake из браузера.",
+            "twakeSignIn": "Войти через Twake",
+            "twakeSignInAgain": "Войти снова",
+            "twakeSignedIn": "Вход выполнен",
+            "twakeWaitingBrowser": "Завершите вход в браузере...",
+            "twakeSignInHelp": "AeroFTP открывает Twake в вашем браузере и запрашивает доступ только к вашим файлам. Если Twake покажет ошибку в первый раз, войдите в Twake в браузере и повторите вход. Вы можете отозвать доступ в любой момент в настройках Twake, раздел Подключённые устройства."
         },
         "browser": {
             "remote": "Удалённый",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Эта конечная точка предоставляет S3 по незашифрованному HTTP через сеть. Примите это для данного профиля: подписанные учётные данные и каждый файл проходят по сети незашифрованными.",
             "discoverFilebase": "Filebase: S3-совместимое объектное хранилище (5 ГБ бесплатно)",
             "protonDesc": "Подключается через Proton Drive CLI",
-            "protonTooltip": "Использует Proton Drive CLI - установите, войдите в браузере, AeroFTP - это GUI"
+            "protonTooltip": "Использует Proton Drive CLI - установите, войдите в браузере, AeroFTP - это GUI",
+            "twakeDesc": "Twake Drive (5 ГБ бесплатно)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, французское облако с открытым исходным кодом (Cozy Cloud теперь является его частью), 5 ГБ бесплатно",
+            "discoverTwake": "Европейское облако с открытым исходным кодом от Linagora, теперь новый дом Cozy Cloud (5 ГБ бесплатно)"
         },
         "shortcuts": {
             "title": "Горячие клавиши",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Двоичный",
             "hashOutputLength": "Длина вывода BLAKE3 (байты)",
             "hashOutputLengthHint": "1-1024 · по умолчанию 32",
-            "hashDropHint": "Перетащите файл на эту вкладку, чтобы вычислить его хеш"
+            "hashDropHint": "Перетащите файл на эту вкладку, чтобы вычислить его хеш",
+            "hashBlake3Mode": "Режим BLAKE3",
+            "hashBlake3ModeHash": "Хеш",
+            "hashBlake3ModeKeyed": "С ключом",
+            "hashBlake3ModeDerive": "Вывод ключа",
+            "hashBlake3Key": "Ключ (32 байта в шестнадцатеричном виде)",
+            "hashBlake3Context": "Строка контекста",
+            "hashBlake3ContextHint": "Фиксированная и уникальная для одного приложения. Хешируемый текст или файл является материалом ключа.",
+            "hashRandom": "Случайный",
+            "argon2PasswordPlaceholder": "Пароль или парольная фраза...",
+            "argon2Salt": "Соль",
+            "argon2SaltHint": "Не менее 8 байт, рекомендуется 16",
+            "argon2Memory": "Память (KiB)",
+            "argon2Iterations": "Итерации",
+            "argon2Parallelism": "Параллелизм",
+            "argon2OutputLength": "Длина (байт)",
+            "argon2DefaultsHint": "По умолчанию: второй рекомендуемый вариант RFC 9106 для ограниченной памяти (64 MiB, 3 итерации, 4 полосы, соль 16 байт). Память до 2 GiB.",
+            "argon2Derive": "Вывести",
+            "argon2Phc": "Строка PHC"
         },
         "dialog": {
             "deleteFile": "Удалить \"{name}\"?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Сравнить",
             "tabPlan": "План",
             "tabSync": "Синхронизировать",
+            "compareWontFitTitle": "Сверх лимитов {name}: {count}",
+            "compareWontFitHint": "Эти файлы больше документированного лимита размера провайдера, либо их имя или путь длиннее допустимого. Синхронизация для них завершится ошибкой: сначала переименуйте, переместите или разделите их.",
+            "compareWontFitTooLarge": "{size}, лимит {limit}",
+            "compareWontFitNameBytes": "имя длиннее {count} байт",
+            "compareWontFitNameChars": "имя длиннее {count} символов",
+            "compareWontFitPathBytes": "путь длиннее {count} байт",
+            "compareWontFitPathChars": "путь длиннее {count} символов",
             "compareUnavailable": "Откройте вторую панель или удаленное подключение для сравнения.",
             "planUnavailable": "Перед выбором пресета требуется результат сравнения. Сначала откройте вкладку Сравнить.",
             "totalEntries": "Всего записей",

@@ -327,7 +327,14 @@
             "protonCliTitle": "Používá oficiální Proton Drive CLI",
             "protonCliBody": "Nainstalujte Proton Drive CLI z proton.me/download/drive/cli, poté v terminálu spusťte proton-drive auth login a dokončete to v prohlížeči. AeroFTP nikdy nevidí vaše heslo; relace zůstane v úložišti tajemství OS.",
             "protonUnofficial": "Toto je aplikace třetí strany, kterou Proton oficiálně nepodporuje.",
-            "protonConnectHint": "\"Připojit\" použije CLI, které je na tomto počítači už přihlášené. Jeden účet Proton na uživatele OS."
+            "protonConnectHint": "\"Připojit\" použije CLI, které je na tomto počítači už přihlášené. Jeden účet Proton na uživatele OS.",
+            "twakeInstance": "Adresa Twake",
+            "twakeInstanceHelp": "Vaše vlastní adresa, například yourname.twake.app. Můžete také vložit jakoukoli adresu stránky Twake z prohlížeče.",
+            "twakeSignIn": "Přihlásit se přes Twake",
+            "twakeSignInAgain": "Přihlásit se znovu",
+            "twakeSignedIn": "Přihlášeno",
+            "twakeWaitingBrowser": "Dokončete přihlášení v prohlížeči...",
+            "twakeSignInHelp": "AeroFTP otevře Twake ve vašem prohlížeči a požádá pouze o přístup k vašim souborům. Pokud Twake poprvé zobrazí chybu, přihlaste se do Twake v prohlížeči a zkuste to znovu. Přístup můžete kdykoli zrušit v nastavení Twake, Připojená zařízení."
         },
         "browser": {
             "remote": "Vzdálený",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Tento koncový bod poskytuje S3 přes nešifrované HTTP po síti. Přijměte to pro tento profil: podepsané přihlašovací údaje i každý soubor procházejí sítí nezašifrované.",
             "discoverFilebase": "Filebase: objektové úložiště kompatibilní se S3 (5 GB zdarma)",
             "protonDesc": "Připojuje se přes Proton Drive CLI",
-            "protonTooltip": "Používá Proton Drive CLI - nainstalujte, přihlaste se v prohlížeči, AeroFTP je GUI"
+            "protonTooltip": "Používá Proton Drive CLI - nainstalujte, přihlaste se v prohlížeči, AeroFTP je GUI",
+            "twakeDesc": "Twake Drive (5 GB zdarma)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francouzský open-source cloud (Cozy Cloud je nyní jeho součástí) s 5 GB zdarma",
+            "discoverTwake": "Open-source evropský cloud od Linagora, nyní domov Cozy Cloud (5 GB zdarma)"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Binární",
             "hashOutputLength": "Délka výstupu BLAKE3 (bajty)",
             "hashOutputLengthHint": "1-1024 · výchozí 32",
-            "hashDropHint": "Přetáhněte sem soubor a vypočítá se jeho hash"
+            "hashDropHint": "Přetáhněte sem soubor a vypočítá se jeho hash",
+            "hashBlake3Mode": "Režim BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "S klíčem",
+            "hashBlake3ModeDerive": "Odvodit klíč",
+            "hashBlake3Key": "Klíč (32 bajtů hexadecimálně)",
+            "hashBlake3Context": "Kontextový řetězec",
+            "hashBlake3ContextHint": "Pevný a jedinečný pro jednu aplikaci. Hašovaný text nebo soubor je materiál klíče.",
+            "hashRandom": "Náhodný",
+            "argon2PasswordPlaceholder": "Heslo nebo přístupová fráze...",
+            "argon2Salt": "Sůl",
+            "argon2SaltHint": "Alespoň 8 bajtů, doporučeno 16",
+            "argon2Memory": "Paměť (KiB)",
+            "argon2Iterations": "Iterace",
+            "argon2Parallelism": "Paralelismus",
+            "argon2OutputLength": "Délka (bajty)",
+            "argon2DefaultsHint": "Výchozí hodnoty: druhá doporučená možnost RFC 9106 pro omezenou paměť (64 MiB, 3 iterace, 4 dráhy, 16bajtová sůl). Paměť až 2 GiB.",
+            "argon2Derive": "Odvodit",
+            "argon2Phc": "Řetězec PHC"
         },
         "dialog": {
             "deleteFile": "Odstranit \"{name}\"?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Porovnat",
             "tabPlan": "Plán",
             "tabSync": "Synchronizovat",
+            "compareWontFitTitle": "Nad limity {name}: {count}",
+            "compareWontFitHint": "Tyto soubory překračují zdokumentovaný limit velikosti poskytovatele, nebo je jejich název či cesta delší, než přijímá. Synchronizace by u nich selhala: nejprve je přejmenujte, přesuňte nebo rozdělte.",
+            "compareWontFitTooLarge": "{size}, limit {limit}",
+            "compareWontFitNameBytes": "název nad {count} bajtů",
+            "compareWontFitNameChars": "název nad {count} znaků",
+            "compareWontFitPathBytes": "cesta nad {count} bajtů",
+            "compareWontFitPathChars": "cesta nad {count} znaků",
             "compareUnavailable": "Otevřete druhý panel nebo vzdálené připojení pro porovnání.",
             "planUnavailable": "Před výběrem předvolby je nutný výsledek porovnání. Nejprve otevřete kartu Porovnat.",
             "totalEntries": "Celkem položek",

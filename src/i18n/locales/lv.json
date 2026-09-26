@@ -327,7 +327,14 @@
             "protonCliTitle": "Izmanto oficiālo Proton Drive CLI",
             "protonCliBody": "Instalējiet Proton Drive CLI no proton.me/download/drive/cli, pēc tam terminālī palaidiet proton-drive auth login un pabeidziet pārlūkā. AeroFTP nekad neredz jūsu paroli; sesija paliek OS noslēpumu krātuvē.",
             "protonUnofficial": "Šī ir trešās puses lietotne, ko Proton oficiāli neatbalsta.",
-            "protonConnectHint": "\"Savienot\" izmanto šajā datorā jau pierakstīto CLI. Viens Proton konts uz OS lietotāju."
+            "protonConnectHint": "\"Savienot\" izmanto šajā datorā jau pierakstīto CLI. Viens Proton konts uz OS lietotāju.",
+            "twakeInstance": "Twake adrese",
+            "twakeInstanceHelp": "Jūsu pašu adrese, piemēram, yourname.twake.app. Varat arī ielīmēt jebkuru Twake lapas adresi no pārlūkprogrammas.",
+            "twakeSignIn": "Pierakstīties ar Twake",
+            "twakeSignInAgain": "Pierakstieties vēlreiz",
+            "twakeSignedIn": "Pierakstījies",
+            "twakeWaitingBrowser": "Pabeidziet pierakstīšanos savā pārlūkprogrammā...",
+            "twakeSignInHelp": "AeroFTP atver Twake jūsu pārlūkprogrammā un pieprasa piekļuvi tikai jūsu failiem. Ja Twake pirmoreiz parāda kļūdu, piesakieties Twake pārlūkprogrammā un pierakstieties vēlreiz. Piekļuvi varat atsaukt jebkurā laikā Twake iestatījumos, Savienotās ierīces."
         },
         "browser": {
             "remote": "Attālināts",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Šis galapunkts nodrošina S3 caur nešifrētu HTTP tīklā. Pieņemiet to šim profilam: parakstītie akreditācijas dati un katrs fails šķērso tīklu nešifrēti.",
             "discoverFilebase": "Filebase: ar S3 saderīga objektu glabātuve (5 GB bez maksas)",
             "protonDesc": "Savienojas, izmantojot Proton Drive CLI",
-            "protonTooltip": "Izmanto Proton Drive CLI - instalējiet, pierakstieties pārlūkā, AeroFTP ir GUI"
+            "protonTooltip": "Izmanto Proton Drive CLI - instalējiet, pierakstieties pārlūkā, AeroFTP ir GUI",
+            "twakeDesc": "Twake Drive (5 GB bez maksas)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, franču atvērtā koda mākonis (Cozy Cloud tagad ir tā daļa) ar 5 GB bez maksas",
+            "discoverTwake": "Linagora atvērtā koda Eiropas mākonis, tagad Cozy Cloud jaunās mājas (5 GB bez maksas)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Binārs",
             "hashOutputLength": "BLAKE3 izvades garums (baiti)",
             "hashOutputLengthHint": "1-1024 · noklusējums 32",
-            "hashDropHint": "Nometiet failu šajā cilnē, lai aprēķinātu tā jaucējkodu"
+            "hashDropHint": "Nometiet failu šajā cilnē, lai aprēķinātu tā jaucējkodu",
+            "hashBlake3Mode": "BLAKE3 režīms",
+            "hashBlake3ModeHash": "Jaucējkods",
+            "hashBlake3ModeKeyed": "Ar atslēgu",
+            "hashBlake3ModeDerive": "Atvasināt atslēgu",
+            "hashBlake3Key": "Atslēga (32 baiti heksadecimāli)",
+            "hashBlake3Context": "Konteksta virkne",
+            "hashBlake3ContextHint": "Fiksēta un unikāla vienai lietotnei. Jaucamais teksts vai fails ir atslēgas materiāls.",
+            "hashRandom": "Nejauša",
+            "argon2PasswordPlaceholder": "Parole vai paroles frāze...",
+            "argon2Salt": "Sāls",
+            "argon2SaltHint": "Vismaz 8 baiti, ieteicams 16",
+            "argon2Memory": "Atmiņa (KiB)",
+            "argon2Iterations": "Iterācijas",
+            "argon2Parallelism": "Paralēlisms",
+            "argon2OutputLength": "Garums (baiti)",
+            "argon2DefaultsHint": "Noklusējumi: RFC 9106 otrā ieteiktā iespēja ierobežotai atmiņai (64 MiB, 3 iterācijas, 4 joslas, 16 baitu sāls). Atmiņa līdz 2 GiB.",
+            "argon2Derive": "Atvasināt",
+            "argon2Phc": "PHC virkne"
         },
         "dialog": {
             "deleteFile": "Dzēst \"{name}\"?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Salīdzināt",
             "tabPlan": "Plāns",
             "tabSync": "Sinhronizēt",
+            "compareWontFitTitle": "Pāri {name} ierobežojumiem: {count}",
+            "compareWontFitHint": "Šie faili pārsniedz pakalpojuma dokumentēto izmēra ierobežojumu, vai to nosaukums vai ceļš ir garāks, nekā tas pieļauj. Sinhronizācija ar tiem neizdotos: vispirms pārdēvējiet, pārvietojiet vai sadaliet tos.",
+            "compareWontFitTooLarge": "{size}, ierobežojums {limit}",
+            "compareWontFitNameBytes": "nosaukums virs {count} baitiem",
+            "compareWontFitNameChars": "nosaukums virs {count} rakstzīmēm",
+            "compareWontFitPathBytes": "ceļš virs {count} baitiem",
+            "compareWontFitPathChars": "ceļš virs {count} rakstzīmēm",
             "compareUnavailable": "Atveriet otru paneli vai attālu savienojumu, lai salīdzinātu.",
             "planUnavailable": "Pirms iepriekšējā iestatījuma izvēles ir nepieciešams salīdzināšanas rezultāts. Vispirms atveriet cilni Salīdzināt.",
             "totalEntries": "Kopā ierakstu",

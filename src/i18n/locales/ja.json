@@ -327,7 +327,14 @@
             "protonCliTitle": "公式 Proton Drive CLI を使用します",
             "protonCliBody": "proton.me/download/drive/cli から Proton Drive CLI をインストールし、ターミナルで proton-drive auth login を実行してブラウザーで完了してください。AeroFTP がパスワードを見ることはありません。セッションは OS のシークレットストアに残ります。",
             "protonUnofficial": "これは Proton が公式にサポートしていないサードパーティー製アプリです。",
-            "protonConnectHint": "\"接続\" はこのマシンですでにサインイン済みの CLI を使います。OS ユーザーあたり Proton アカウントは 1 つです。"
+            "protonConnectHint": "\"接続\" はこのマシンですでにサインイン済みの CLI を使います。OS ユーザーあたり Proton アカウントは 1 つです。",
+            "twakeInstance": "Twakeアドレス",
+            "twakeInstanceHelp": "ご自身のアドレス、例えばyourname.twake.appなど。ブラウザからTwakeの任意のページアドレスを貼り付けることもできます。",
+            "twakeSignIn": "Twakeでサインイン",
+            "twakeSignInAgain": "再度サインイン",
+            "twakeSignedIn": "サインイン済み",
+            "twakeWaitingBrowser": "ブラウザでサインインを完了してください...",
+            "twakeSignInHelp": "AeroFTPはブラウザでTwakeを開き、ファイルへのアクセスのみを要求します。初回にTwakeでエラーが表示された場合は、ブラウザでTwakeにログインしてから再度サインインしてください。アクセス権はいつでもTwakeの設定の「接続済みデバイス」から取り消せます。"
         },
         "browser": {
             "remote": "リモート",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "このエンドポイントはネットワーク越しに S3 を平文の HTTP で提供します。このプロファイルで許可します: 署名済みの認証情報とすべてのファイルが暗号化されずにネットワークを通過します。",
             "discoverFilebase": "Filebase: S3 互換オブジェクトストレージ（5 GB 無料）",
             "protonDesc": "Proton Drive CLI 経由で接続します",
-            "protonTooltip": "Proton Drive CLI を使用します - インストールし、ブラウザーでサインイン、AeroFTP が GUI です"
+            "protonTooltip": "Proton Drive CLI を使用します - インストールし、ブラウザーでサインイン、AeroFTP が GUI です",
+            "twakeDesc": "Twake Drive(無料5GB)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace、フランス発のオープンソースクラウド(Cozy Cloud は現在その一部)、5 GB 無料",
+            "discoverTwake": "Linagora によるオープンソースの欧州製クラウド、現在は Cozy Cloud の新たな拠点(5 GB 無料)"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -4030,7 +4040,25 @@
             "hashEncodingBinary": "バイナリ",
             "hashOutputLength": "BLAKE3出力長（バイト）",
             "hashOutputLengthHint": "1-1024 · 既定 32",
-            "hashDropHint": "このタブにファイルをドロップするとハッシュを計算します"
+            "hashDropHint": "このタブにファイルをドロップするとハッシュを計算します",
+            "hashBlake3Mode": "BLAKE3 モード",
+            "hashBlake3ModeHash": "ハッシュ",
+            "hashBlake3ModeKeyed": "鍵付き",
+            "hashBlake3ModeDerive": "鍵導出",
+            "hashBlake3Key": "鍵 (32 バイトの16進数)",
+            "hashBlake3Context": "コンテキスト文字列",
+            "hashBlake3ContextHint": "アプリケーションごとに固定かつ一意の値。ハッシュ対象のテキストまたはファイルが鍵素材になります。",
+            "hashRandom": "ランダム",
+            "argon2PasswordPlaceholder": "パスワードまたはパスフレーズ...",
+            "argon2Salt": "ソルト",
+            "argon2SaltHint": "8 バイト以上、推奨は 16",
+            "argon2Memory": "メモリ (KiB)",
+            "argon2Iterations": "反復回数",
+            "argon2Parallelism": "並列度",
+            "argon2OutputLength": "長さ (バイト)",
+            "argon2DefaultsHint": "既定値: RFC 9106 の 2 番目の推奨オプション (メモリが限られる場合向け、64 MiB、反復 3 回、4 レーン、16 バイトのソルト)。メモリは最大 2 GiB。",
+            "argon2Derive": "導出",
+            "argon2Phc": "PHC 文字列"
         },
         "dialog": {
             "deleteFile": "「{name}」を削除しますか？",
@@ -5043,6 +5071,13 @@
             "tabCompare": "比較",
             "tabPlan": "プラン",
             "tabSync": "同期",
+            "compareWontFitTitle": "{name} の上限を超えるもの: {count}",
+            "compareWontFitHint": "これらのファイルはプロバイダーが文書化しているサイズ上限を超えているか、名前またはパスが許容より長くなっています。このまま同期すると失敗します。先に名前を変えるか、移動するか、分割してください。",
+            "compareWontFitTooLarge": "{size}、上限 {limit}",
+            "compareWontFitNameBytes": "名前が {count} バイトを超えています",
+            "compareWontFitNameChars": "名前が {count} 文字を超えています",
+            "compareWontFitPathBytes": "パスが {count} バイトを超えています",
+            "compareWontFitPathChars": "パスが {count} 文字を超えています",
             "compareUnavailable": "比較するには、もう一つのパネルまたはリモート接続を開いてください。",
             "planUnavailable": "プリセットを選択する前に比較結果が必要です。まず比較タブを開いてください。",
             "totalEntries": "総エントリ数",

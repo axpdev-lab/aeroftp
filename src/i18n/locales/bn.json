@@ -327,7 +327,14 @@
             "protonCliTitle": "অফিসিয়াল Proton Drive CLI ব্যবহার করে",
             "protonCliBody": "proton.me/download/drive/cli থেকে Proton Drive CLI ইনস্টল করুন, তারপর টার্মিনালে proton-drive auth login চালিয়ে ব্রাউজারে শেষ করুন। AeroFTP কখনো আপনার পাসওয়ার্ড দেখে না; সেশন OS সিক্রেট স্টোরে থাকে।",
             "protonUnofficial": "এটি একটি তৃতীয় পক্ষের অ্যাপ, Proton অফিসিয়ালি সাপোর্ট করে না।",
-            "protonConnectHint": "\"সংযোগ করুন\" এই মেশিনে ইতিমধ্যে সাইন-ইন করা CLI ব্যবহার করে। প্রতি OS ব্যবহারকারীতে একটি Proton অ্যাকাউন্ট।"
+            "protonConnectHint": "\"সংযোগ করুন\" এই মেশিনে ইতিমধ্যে সাইন-ইন করা CLI ব্যবহার করে। প্রতি OS ব্যবহারকারীতে একটি Proton অ্যাকাউন্ট।",
+            "twakeInstance": "Twake ঠিকানা",
+            "twakeInstanceHelp": "আপনার নিজের ঠিকানা, যেমন yourname.twake.app। আপনি আপনার ব্রাউজার থেকে যেকোনো Twake পেজের ঠিকানাও পেস্ট করতে পারেন।",
+            "twakeSignIn": "Twake দিয়ে সাইন ইন করুন",
+            "twakeSignInAgain": "আবার সাইন ইন করুন",
+            "twakeSignedIn": "সাইন ইন করা হয়েছে",
+            "twakeWaitingBrowser": "আপনার ব্রাউজারে সাইন ইন শেষ করুন...",
+            "twakeSignInHelp": "AeroFTP আপনার ব্রাউজারে Twake খোলে এবং শুধুমাত্র আপনার ফাইলের অ্যাক্সেস চায়। প্রথমবার Twake ত্রুটি দেখালে, ব্রাউজারে Twake-এ লগ ইন করুন এবং আবার সাইন ইন করুন। আপনি যেকোনো সময় Twake সেটিংসে, সংযুক্ত ডিভাইসে অ্যাক্সেস প্রত্যাহার করতে পারেন।"
         },
         "browser": {
             "remote": "রিমোট",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "এই এন্ডপয়েন্ট নেটওয়ার্কের উপর দিয়ে সাধারণ HTTP-এর মাধ্যমে S3 সরবরাহ করে। এই প্রোফাইলের জন্য এটি গ্রহণ করুন: স্বাক্ষরিত শংসাপত্র এবং প্রতিটি ফাইল এনক্রিপশন ছাড়াই নেটওয়ার্ক অতিক্রম করে।",
             "discoverFilebase": "Filebase: S3-সামঞ্জস্যপূর্ণ অবজেক্ট স্টোরেজ (5 GB ফ্রি)",
             "protonDesc": "Proton Drive CLI-এর মাধ্যমে সংযোগ করে",
-            "protonTooltip": "Proton Drive CLI ব্যবহার করে - ইনস্টল করুন, ব্রাউজারে সাইন ইন করুন, AeroFTP হলো GUI"
+            "protonTooltip": "Proton Drive CLI ব্যবহার করে - ইনস্টল করুন, ব্রাউজারে সাইন ইন করুন, AeroFTP হলো GUI",
+            "twakeDesc": "Twake Drive (৫ GB বিনামূল্যে)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, একটি ফরাসি ওপেন-সোর্স ক্লাউড (Cozy Cloud এখন এর অংশ) 5 GB ফ্রি সহ",
+            "discoverTwake": "Linagora-এর ওপেন-সোর্স ইউরোপীয় ক্লাউড, এখন Cozy Cloud-এর নতুন ঠিকানা (5 GB ফ্রি)"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "বাইনারি",
             "hashOutputLength": "BLAKE3 আউটপুট দৈর্ঘ্য (বাইট)",
             "hashOutputLengthHint": "1-1024 · ডিফল্ট 32",
-            "hashDropHint": "হ্যাশ করতে এই ট্যাবে একটি ফাইল ফেলুন"
+            "hashDropHint": "হ্যাশ করতে এই ট্যাবে একটি ফাইল ফেলুন",
+            "hashBlake3Mode": "BLAKE3 মোড",
+            "hashBlake3ModeHash": "হ্যাশ",
+            "hashBlake3ModeKeyed": "কী সহ",
+            "hashBlake3ModeDerive": "কী ডিরাইভ করুন",
+            "hashBlake3Key": "কী (হেক্সে 32 বাইট)",
+            "hashBlake3Context": "কনটেক্সট স্ট্রিং",
+            "hashBlake3ContextHint": "একটি অ্যাপ্লিকেশনের জন্য স্থির ও অনন্য। যে লেখা বা ফাইলের হ্যাশ হচ্ছে সেটিই কী-এর উপাদান।",
+            "hashRandom": "এলোমেলো",
+            "argon2PasswordPlaceholder": "পাসওয়ার্ড বা পাসফ্রেজ...",
+            "argon2Salt": "সল্ট",
+            "argon2SaltHint": "কমপক্ষে 8 বাইট, 16 প্রস্তাবিত",
+            "argon2Memory": "মেমরি (KiB)",
+            "argon2Iterations": "পুনরাবৃত্তি",
+            "argon2Parallelism": "সমান্তরালতা",
+            "argon2OutputLength": "দৈর্ঘ্য (বাইট)",
+            "argon2DefaultsHint": "ডিফল্ট: সীমিত মেমরির জন্য RFC 9106-এর দ্বিতীয় প্রস্তাবিত বিকল্প (64 MiB, 3 পুনরাবৃত্তি, 4 লেন, 16 বাইট সল্ট)। মেমরি 2 GiB পর্যন্ত।",
+            "argon2Derive": "ডিরাইভ করুন",
+            "argon2Phc": "PHC স্ট্রিং"
         },
         "dialog": {
             "deleteFile": "\"{name}\" মুছে ফেলবেন?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "তুলনা",
             "tabPlan": "পরিকল্পনা",
             "tabSync": "সিঙ্ক",
+            "compareWontFitTitle": "{name}-এর সীমার ওপরে: {count}",
+            "compareWontFitHint": "এই ফাইলগুলো সরবরাহকারীর নথিভুক্ত আকারের সীমার চেয়ে বড়, বা এদের নাম বা পাথ গ্রহণযোগ্য দৈর্ঘ্যের চেয়ে লম্বা। এগুলোতে সিঙ্ক ব্যর্থ হবে: আগে নাম বদলান, সরান বা ভাগ করুন।",
+            "compareWontFitTooLarge": "{size}, সীমা {limit}",
+            "compareWontFitNameBytes": "নাম {count} বাইটের বেশি",
+            "compareWontFitNameChars": "নাম {count} অক্ষরের বেশি",
+            "compareWontFitPathBytes": "পাথ {count} বাইটের বেশি",
+            "compareWontFitPathChars": "পাথ {count} অক্ষরের বেশি",
             "compareUnavailable": "তুলনা করতে দ্বিতীয় প্যানেল বা রিমোট সংযোগ খুলুন।",
             "planUnavailable": "প্রিসেট নির্বাচন করার আগে তুলনার ফলাফল প্রয়োজন। প্রথমে তুলনা ট্যাব খুলুন।",
             "totalEntries": "মোট এন্ট্রি",

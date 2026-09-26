@@ -3624,7 +3624,7 @@ fn mask_authorize_secrets(body: &str) -> String {
     };
     let value_end = value_start + end_offset;
     let value = &body[value_start..value_end];
-    let head_len = value.len().min(6);
+    let head_len = value.floor_char_boundary(6);
     let masked = format!(
         "{}…<{}B redacted>",
         &value[..head_len],

@@ -327,7 +327,14 @@
             "protonCliTitle": "Χρησιμοποιεί το επίσημο Proton Drive CLI",
             "protonCliBody": "Εγκαταστήστε το Proton Drive CLI από το proton.me/download/drive/cli, εκτελέστε proton-drive auth login στο τερματικό και ολοκληρώστε στον φυλλομετρητή. Το AeroFTP δεν βλέπει ποτέ τον κωδικό σας· η συνεδρία μένει στο μυστικό κατάστημα του λειτουργικού.",
             "protonUnofficial": "Αυτή είναι εφαρμογή τρίτου, χωρίς επίσημη υποστήριξη από την Proton.",
-            "protonConnectHint": "Το \"Σύνδεση\" χρησιμοποιεί το CLI που είναι ήδη συνδεδεμένο σε αυτόν τον υπολογιστή. Ένας λογαριασμός Proton ανά χρήστη λειτουργικού."
+            "protonConnectHint": "Το \"Σύνδεση\" χρησιμοποιεί το CLI που είναι ήδη συνδεδεμένο σε αυτόν τον υπολογιστή. Ένας λογαριασμός Proton ανά χρήστη λειτουργικού.",
+            "twakeInstance": "Διεύθυνση Twake",
+            "twakeInstanceHelp": "Η δική σας διεύθυνση, για παράδειγμα yourname.twake.app. Μπορείτε επίσης να επικολλήσετε οποιαδήποτε διεύθυνση σελίδας Twake από το πρόγραμμα περιήγησής σας.",
+            "twakeSignIn": "Σύνδεση με Twake",
+            "twakeSignInAgain": "Συνδεθείτε ξανά",
+            "twakeSignedIn": "Συνδεδεμένος",
+            "twakeWaitingBrowser": "Ολοκληρώστε τη σύνδεση στο πρόγραμμα περιήγησής σας...",
+            "twakeSignInHelp": "Το AeroFTP ανοίγει το Twake στο πρόγραμμα περιήγησής σας και ζητά πρόσβαση μόνο στα αρχεία σας. Αν το Twake εμφανίσει σφάλμα την πρώτη φορά, συνδεθείτε στο Twake στο πρόγραμμα περιήγησης και συνδεθείτε ξανά. Μπορείτε να ανακαλέσετε την πρόσβαση οποιαδήποτε στιγμή στις Ρυθμίσεις Twake, Συνδεδεμένες συσκευές."
         },
         "browser": {
             "remote": "Απομακρυσμένο",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Αυτό το τελικό σημείο παρέχει S3 μέσω απλού HTTP στο δίκτυο. Αποδεχτείτε το για αυτό το προφίλ: τα υπογεγραμμένα διαπιστευτήρια και κάθε αρχείο διασχίζουν το δίκτυο χωρίς κρυπτογράφηση.",
             "discoverFilebase": "Filebase: αποθήκευση αντικειμένων συμβατή με S3 (5 GB δωρεάν)",
             "protonDesc": "Συνδέεται μέσω του Proton Drive CLI",
-            "protonTooltip": "Χρησιμοποιεί το Proton Drive CLI - εγκαταστήστε το, συνδεθείτε στον φυλλομετρητή, το AeroFTP είναι το GUI"
+            "protonTooltip": "Χρησιμοποιεί το Proton Drive CLI - εγκαταστήστε το, συνδεθείτε στον φυλλομετρητή, το AeroFTP είναι το GUI",
+            "twakeDesc": "Twake Drive (5 GB δωρεάν)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, γαλλικό cloud ανοιχτού κώδικα (το Cozy Cloud είναι πλέον μέρος του) με 5 GB δωρεάν",
+            "discoverTwake": "Ευρωπαϊκό cloud ανοιχτού κώδικα από τη Linagora, πλέον σπίτι του Cozy Cloud (5 GB δωρεάν)"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Δυαδικό",
             "hashOutputLength": "Μήκος εξόδου BLAKE3 (bytes)",
             "hashOutputLengthHint": "1-1024 · προεπιλογή 32",
-            "hashDropHint": "Αποθέστε ένα αρχείο σε αυτήν την καρτέλα για υπολογισμό hash"
+            "hashDropHint": "Αποθέστε ένα αρχείο σε αυτήν την καρτέλα για υπολογισμό hash",
+            "hashBlake3Mode": "Λειτουργία BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Με κλειδί",
+            "hashBlake3ModeDerive": "Παραγωγή κλειδιού",
+            "hashBlake3Key": "Κλειδί (32 byte σε δεκαεξαδική μορφή)",
+            "hashBlake3Context": "Συμβολοσειρά πλαισίου",
+            "hashBlake3ContextHint": "Σταθερή και μοναδική για μία εφαρμογή. Το κείμενο ή το αρχείο που κατακερματίζεται είναι το υλικό του κλειδιού.",
+            "hashRandom": "Τυχαίο",
+            "argon2PasswordPlaceholder": "Κωδικός ή φράση πρόσβασης...",
+            "argon2Salt": "Αλάτι",
+            "argon2SaltHint": "Τουλάχιστον 8 byte, συνιστώνται 16",
+            "argon2Memory": "Μνήμη (KiB)",
+            "argon2Iterations": "Επαναλήψεις",
+            "argon2Parallelism": "Παραλληλισμός",
+            "argon2OutputLength": "Μήκος (byte)",
+            "argon2DefaultsHint": "Προεπιλογές: η δεύτερη προτεινόμενη επιλογή του RFC 9106 για περιορισμένη μνήμη (64 MiB, 3 επαναλήψεις, 4 λωρίδες, αλάτι 16 byte). Μνήμη έως 2 GiB.",
+            "argon2Derive": "Παραγωγή",
+            "argon2Phc": "Συμβολοσειρά PHC"
         },
         "dialog": {
             "deleteFile": "Διαγραφή του \"{name}\";",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Σύγκριση",
             "tabPlan": "Σχέδιο",
             "tabSync": "Συγχρονισμός",
+            "compareWontFitTitle": "Πέρα από τα όρια του {name}: {count}",
+            "compareWontFitHint": "Αυτά τα αρχεία υπερβαίνουν το τεκμηριωμένο όριο μεγέθους του παρόχου ή το όνομα ή η διαδρομή τους είναι μεγαλύτερη από όσο δέχεται. Ο συγχρονισμός θα αποτύχει σε αυτά: μετονομάστε, μετακινήστε ή χωρίστε τα πρώτα.",
+            "compareWontFitTooLarge": "{size}, όριο {limit}",
+            "compareWontFitNameBytes": "όνομα πάνω από {count} byte",
+            "compareWontFitNameChars": "όνομα πάνω από {count} χαρακτήρες",
+            "compareWontFitPathBytes": "διαδρομή πάνω από {count} byte",
+            "compareWontFitPathChars": "διαδρομή πάνω από {count} χαρακτήρες",
             "compareUnavailable": "Ανοίξτε δεύτερο πίνακα ή απομακρυσμένη σύνδεση για σύγκριση.",
             "planUnavailable": "Απαιτείται αποτέλεσμα σύγκρισης πριν επιλέξετε προρύθμιση. Ανοίξτε πρώτα την καρτέλα Σύγκριση.",
             "totalEntries": "Συνολικές καταχωρήσεις",

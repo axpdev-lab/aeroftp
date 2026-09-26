@@ -327,7 +327,14 @@
             "protonCliTitle": "Koristi službeni Proton Drive CLI",
             "protonCliBody": "Instalirajte Proton Drive CLI s proton.me/download/drive/cli, zatim u terminalu pokrenite proton-drive auth login i dovršite u pregledniku. AeroFTP nikad ne vidi vašu lozinku; sesija ostaje u spremištu tajni operacijskog sustava.",
             "protonUnofficial": "Ovo je aplikacija treće strane koju Proton službeno ne podržava.",
-            "protonConnectHint": "\"Poveži se\" koristi CLI koji je na ovom računalu već prijavljen. Jedan Proton račun po korisniku operacijskog sustava."
+            "protonConnectHint": "\"Poveži se\" koristi CLI koji je na ovom računalu već prijavljen. Jedan Proton račun po korisniku operacijskog sustava.",
+            "twakeInstance": "Twake adresa",
+            "twakeInstanceHelp": "Vaša vlastita adresa, na primjer yourname.twake.app. Također možete zalijepiti bilo koju adresu Twake stranice iz preglednika.",
+            "twakeSignIn": "Prijava putem Twakea",
+            "twakeSignInAgain": "Prijavite se ponovno",
+            "twakeSignedIn": "Prijavljeni ste",
+            "twakeWaitingBrowser": "Dovršite prijavu u pregledniku...",
+            "twakeSignInHelp": "AeroFTP otvara Twake u vašem pregledniku i traži pristup samo vašim datotekama. Ako Twake prvi put prikaže pogrešku, prijavite se u Twake u pregledniku i prijavite se ponovno. Pristup možete opozvati bilo kada u Twake postavkama, Povezani uređaji."
         },
         "browser": {
             "remote": "Udaljeno",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Ova krajnja točka poslužuje S3 preko nešifriranog HTTP-a putem mreže. Prihvatite to za ovaj profil: potpisani pristupni podaci i svaka datoteka prelaze mrežu nešifrirani.",
             "discoverFilebase": "Filebase: objektna pohrana kompatibilna sa S3 (5 GB besplatno)",
             "protonDesc": "Povezuje se preko Proton Drive CLI-ja",
-            "protonTooltip": "Koristi Proton Drive CLI - instalirajte, prijavite se u pregledniku, AeroFTP je GUI"
+            "protonTooltip": "Koristi Proton Drive CLI - instalirajte, prijavite se u pregledniku, AeroFTP je GUI",
+            "twakeDesc": "Twake Drive (5 GB besplatno)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, francuski open source oblak (Cozy Cloud je sada dio njega) s 5 GB besplatno",
+            "discoverTwake": "Europski open source oblak tvrtke Linagora, sada dom Cozy Clouda (5 GB besplatno)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Binarno",
             "hashOutputLength": "Duljina BLAKE3 izlaza (bajtovi)",
             "hashOutputLengthHint": "1-1024 · zadano 32",
-            "hashDropHint": "Ispustite datoteku na ovu karticu za izračun hasha"
+            "hashDropHint": "Ispustite datoteku na ovu karticu za izračun hasha",
+            "hashBlake3Mode": "BLAKE3 način",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "S ključem",
+            "hashBlake3ModeDerive": "Izvedi ključ",
+            "hashBlake3Key": "Ključ (32 bajta heksadecimalno)",
+            "hashBlake3Context": "Niz konteksta",
+            "hashBlake3ContextHint": "Fiksan i jedinstven za jednu aplikaciju. Tekst ili datoteka koja se hashira materijal je ključa.",
+            "hashRandom": "Nasumično",
+            "argon2PasswordPlaceholder": "Lozinka ili fraza lozinke...",
+            "argon2Salt": "Sol",
+            "argon2SaltHint": "Najmanje 8 bajtova, preporučeno 16",
+            "argon2Memory": "Memorija (KiB)",
+            "argon2Iterations": "Iteracije",
+            "argon2Parallelism": "Paralelizam",
+            "argon2OutputLength": "Duljina (bajtovi)",
+            "argon2DefaultsHint": "Zadano: druga preporučena opcija RFC 9106 za ograničenu memoriju (64 MiB, 3 iteracije, 4 trake, sol od 16 bajtova). Memorija do 2 GiB.",
+            "argon2Derive": "Izvedi",
+            "argon2Phc": "PHC niz"
         },
         "dialog": {
             "deleteFile": "Obrisati \"{name}\"?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Usporedi",
             "tabPlan": "Plan",
             "tabSync": "Sinkroniziraj",
+            "compareWontFitTitle": "Iznad ograničenja {name}: {count}",
+            "compareWontFitHint": "Ove datoteke premašuju dokumentirano ograničenje veličine pružatelja ili je njihov naziv ili putanja dulja nego što prihvaća. Sinkronizacija bi za njih zakazala: prvo ih preimenujte, premjestite ili podijelite.",
+            "compareWontFitTooLarge": "{size}, ograničenje {limit}",
+            "compareWontFitNameBytes": "naziv preko {count} bajtova",
+            "compareWontFitNameChars": "naziv preko {count} znakova",
+            "compareWontFitPathBytes": "putanja preko {count} bajtova",
+            "compareWontFitPathChars": "putanja preko {count} znakova",
             "compareUnavailable": "Otvori drugi panel ili udaljenu vezu za usporedbu.",
             "planUnavailable": "Potreban je rezultat usporedbe prije odabira presetа. Najprije otvori karticu Usporedi.",
             "totalEntries": "Ukupno stavki",

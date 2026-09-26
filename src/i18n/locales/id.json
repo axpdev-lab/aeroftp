@@ -327,7 +327,14 @@
             "protonCliTitle": "Menggunakan CLI resmi Proton Drive",
             "protonCliBody": "Pasang Proton Drive CLI dari proton.me/download/drive/cli, lalu jalankan proton-drive auth login di terminal dan selesaikan di peramban. AeroFTP tidak pernah melihat kata sandi Anda; sesi tetap di penyimpanan rahasia OS.",
             "protonUnofficial": "Ini aplikasi pihak ketiga yang tidak didukung secara resmi oleh Proton.",
-            "protonConnectHint": "\"Hubungkan\" memakai CLI yang sudah masuk di mesin ini. Satu akun Proton per pengguna OS."
+            "protonConnectHint": "\"Hubungkan\" memakai CLI yang sudah masuk di mesin ini. Satu akun Proton per pengguna OS.",
+            "twakeInstance": "Alamat Twake",
+            "twakeInstanceHelp": "Alamat Anda sendiri, misalnya yourname.twake.app. Anda juga bisa menempelkan alamat halaman Twake mana pun dari browser Anda.",
+            "twakeSignIn": "Masuk dengan Twake",
+            "twakeSignInAgain": "Masuk lagi",
+            "twakeSignedIn": "Sudah masuk",
+            "twakeWaitingBrowser": "Selesaikan proses masuk di browser Anda...",
+            "twakeSignInHelp": "AeroFTP membuka Twake di browser Anda dan hanya meminta akses ke file Anda. Jika Twake menampilkan error pertama kali, masuk ke Twake di browser lalu masuk lagi. Anda dapat mencabut akses kapan saja di Pengaturan Twake, Perangkat Tersambung."
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Endpoint ini menyajikan S3 melalui HTTP biasa lewat jaringan. Terima untuk profil ini: kredensial bertanda tangan dan setiap berkas melintasi jaringan tanpa enkripsi.",
             "discoverFilebase": "Filebase: penyimpanan objek kompatibel S3 (5 GB gratis)",
             "protonDesc": "Terhubung melalui CLI Proton Drive",
-            "protonTooltip": "Menggunakan CLI Proton Drive - pasang, masuk di peramban, AeroFTP adalah GUI"
+            "protonTooltip": "Menggunakan CLI Proton Drive - pasang, masuk di peramban, AeroFTP adalah GUI",
+            "twakeDesc": "Twake Drive (5 GB gratis)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, cloud open source asal Prancis (Cozy Cloud kini menjadi bagiannya) dengan 5 GB gratis",
+            "discoverTwake": "Cloud Eropa open source dari Linagora, kini menjadi rumah baru Cozy Cloud (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Biner",
             "hashOutputLength": "Panjang keluaran BLAKE3 (byte)",
             "hashOutputLengthHint": "1-1024 · bawaan 32",
-            "hashDropHint": "Jatuhkan berkas ke tab ini untuk menghitung hash-nya"
+            "hashDropHint": "Jatuhkan berkas ke tab ini untuk menghitung hash-nya",
+            "hashBlake3Mode": "Mode BLAKE3",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Dengan kunci",
+            "hashBlake3ModeDerive": "Turunkan kunci",
+            "hashBlake3Key": "Kunci (32 byte dalam heksadesimal)",
+            "hashBlake3Context": "String konteks",
+            "hashBlake3ContextHint": "Tetap dan unik untuk satu aplikasi. Teks atau file yang di-hash adalah materi kunci.",
+            "hashRandom": "Acak",
+            "argon2PasswordPlaceholder": "Kata sandi atau frasa sandi...",
+            "argon2Salt": "Garam",
+            "argon2SaltHint": "Minimal 8 byte, disarankan 16",
+            "argon2Memory": "Memori (KiB)",
+            "argon2Iterations": "Iterasi",
+            "argon2Parallelism": "Paralelisme",
+            "argon2OutputLength": "Panjang (byte)",
+            "argon2DefaultsHint": "Bawaan: opsi rekomendasi kedua RFC 9106 untuk memori terbatas (64 MiB, 3 iterasi, 4 jalur, garam 16 byte). Memori hingga 2 GiB.",
+            "argon2Derive": "Turunkan",
+            "argon2Phc": "String PHC"
         },
         "dialog": {
             "deleteFile": "Hapus \"{name}\"?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Bandingkan",
             "tabPlan": "Rencana",
             "tabSync": "Sinkronkan",
+            "compareWontFitTitle": "Melebihi batas {name}: {count}",
+            "compareWontFitHint": "File ini melebihi batas ukuran yang didokumentasikan penyedia, atau nama atau jalurnya lebih panjang dari yang diterima. Sinkronisasi akan gagal untuk file ini: ganti nama, pindahkan, atau pecah dulu.",
+            "compareWontFitTooLarge": "{size}, batas {limit}",
+            "compareWontFitNameBytes": "nama lebih dari {count} byte",
+            "compareWontFitNameChars": "nama lebih dari {count} karakter",
+            "compareWontFitPathBytes": "jalur lebih dari {count} byte",
+            "compareWontFitPathChars": "jalur lebih dari {count} karakter",
             "compareUnavailable": "Buka panel kedua atau koneksi jarak jauh untuk membandingkan.",
             "planUnavailable": "Hasil perbandingan diperlukan sebelum memilih preset. Buka tab Bandingkan terlebih dahulu.",
             "totalEntries": "Total entri",

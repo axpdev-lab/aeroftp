@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 853
+    "tauri_commands": 855
   },
   "mcp": {
     "count": 77,
@@ -951,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 480,
+    "name_matched_count": 481,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1153,6 +1153,7 @@
       "oauth2_start_auth",
       "oauth2_complete_auth",
       "oauth2_full_auth",
+      "twake_sign_in",
       "oauth2_redirect_uri",
       "oauth2_has_tokens",
       "oauth2_logout",
@@ -1327,7 +1328,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 373,
+    "name_unmatched_count": 374,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1816,6 +1817,7 @@
       "oauth2_complete_auth",
       "oauth2_connect",
       "oauth2_full_auth",
+      "twake_sign_in",
       "oauth2_redirect_uri",
       "oauth2_has_tokens",
       "oauth2_logout",
@@ -2109,6 +2111,7 @@
       "stage_hash_drop",
       "discard_hash_drop",
       "compare_hashes",
+      "argon2id_hash",
       "crypto_encrypt_text",
       "crypto_decrypt_text",
       "generate_password",
@@ -2187,6 +2190,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 853
+    "count": 855
   }
 }

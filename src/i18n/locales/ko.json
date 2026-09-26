@@ -327,7 +327,14 @@
             "protonCliTitle": "공식 Proton Drive CLI를 사용합니다",
             "protonCliBody": "proton.me/download/drive/cli에서 Proton Drive CLI를 설치한 뒤 터미널에서 proton-drive auth login을 실행하고 브라우저에서 마칩니다. AeroFTP는 비밀번호를 보지 않습니다. 세션은 OS 비밀 저장소에 남습니다.",
             "protonUnofficial": "Proton이 공식적으로 지원하지 않는 타사 앱입니다.",
-            "protonConnectHint": "\"연결\" 버튼은 이 컴퓨터에 이미 로그인한 CLI를 사용합니다. OS 사용자당 Proton 계정 하나."
+            "protonConnectHint": "\"연결\" 버튼은 이 컴퓨터에 이미 로그인한 CLI를 사용합니다. OS 사용자당 Proton 계정 하나.",
+            "twakeInstance": "Twake 주소",
+            "twakeInstanceHelp": "본인의 주소, 예를 들어 yourname.twake.app. 브라우저에서 복사한 Twake 페이지 주소를 붙여넣을 수도 있습니다.",
+            "twakeSignIn": "Twake로 로그인",
+            "twakeSignInAgain": "다시 로그인",
+            "twakeSignedIn": "로그인됨",
+            "twakeWaitingBrowser": "브라우저에서 로그인을 완료하세요...",
+            "twakeSignInHelp": "AeroFTP는 브라우저에서 Twake를 열고 파일에 대한 액세스만 요청합니다. Twake가 처음에 오류를 표시하면 브라우저에서 Twake에 로그인한 후 다시 로그인하세요. Twake 설정의 연결된 기기에서 언제든지 액세스를 취소할 수 있습니다."
         },
         "browser": {
             "remote": "원격",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "이 엔드포인트는 네트워크를 통해 일반 HTTP로 S3를 제공합니다. 이 프로필에서 허용합니다: 서명된 자격 증명과 모든 파일이 암호화되지 않은 채 네트워크를 통과합니다.",
             "discoverFilebase": "Filebase: S3 호환 객체 스토리지 (5 GB 무료)",
             "protonDesc": "Proton Drive CLI를 통해 연결합니다",
-            "protonTooltip": "Proton Drive CLI를 사용합니다 - 설치하고 브라우저에서 로그인한 뒤, AeroFTP가 GUI입니다"
+            "protonTooltip": "Proton Drive CLI를 사용합니다 - 설치하고 브라우저에서 로그인한 뒤, AeroFTP가 GUI입니다",
+            "twakeDesc": "Twake Drive(무료 5GB)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, 프랑스의 오픈소스 클라우드(Cozy Cloud가 이제 그 일부입니다), 5 GB 무료 제공",
+            "discoverTwake": "Linagora의 오픈소스 유럽 클라우드, 이제 Cozy Cloud의 새로운 보금자리 (5 GB 무료)"
         },
         "shortcuts": {
             "title": "단축키",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "이진",
             "hashOutputLength": "BLAKE3 출력 길이(바이트)",
             "hashOutputLengthHint": "1-1024 · 기본값 32",
-            "hashDropHint": "이 탭에 파일을 끌어다 놓으면 해시를 계산합니다"
+            "hashDropHint": "이 탭에 파일을 끌어다 놓으면 해시를 계산합니다",
+            "hashBlake3Mode": "BLAKE3 모드",
+            "hashBlake3ModeHash": "해시",
+            "hashBlake3ModeKeyed": "키 사용",
+            "hashBlake3ModeDerive": "키 파생",
+            "hashBlake3Key": "키 (32바이트 16진수)",
+            "hashBlake3Context": "컨텍스트 문자열",
+            "hashBlake3ContextHint": "애플리케이션마다 고정되고 고유한 값입니다. 해시하는 텍스트나 파일이 키 재료입니다.",
+            "hashRandom": "무작위",
+            "argon2PasswordPlaceholder": "비밀번호 또는 암호 문구...",
+            "argon2Salt": "솔트",
+            "argon2SaltHint": "최소 8바이트, 16바이트 권장",
+            "argon2Memory": "메모리 (KiB)",
+            "argon2Iterations": "반복 횟수",
+            "argon2Parallelism": "병렬 처리",
+            "argon2OutputLength": "길이 (바이트)",
+            "argon2DefaultsHint": "기본값: 메모리가 제한된 환경을 위한 RFC 9106의 두 번째 권장 옵션 (64 MiB, 반복 3회, 레인 4개, 16바이트 솔트). 메모리 최대 2 GiB.",
+            "argon2Derive": "파생",
+            "argon2Phc": "PHC 문자열"
         },
         "dialog": {
             "deleteFile": "\"{name}\"을(를) 삭제하시겠습니까?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "비교",
             "tabPlan": "계획",
             "tabSync": "동기화",
+            "compareWontFitTitle": "{name} 한도 초과: {count}",
+            "compareWontFitHint": "이 파일들은 제공업체가 문서화한 크기 한도를 넘거나 이름 또는 경로가 허용 길이보다 깁니다. 동기화하면 실패합니다. 먼저 이름을 바꾸거나, 옮기거나, 나누세요.",
+            "compareWontFitTooLarge": "{size}, 한도 {limit}",
+            "compareWontFitNameBytes": "이름이 {count}바이트 초과",
+            "compareWontFitNameChars": "이름이 {count}자 초과",
+            "compareWontFitPathBytes": "경로가 {count}바이트 초과",
+            "compareWontFitPathChars": "경로가 {count}자 초과",
             "compareUnavailable": "비교하려면 두 번째 패널 또는 원격 연결을 여세요.",
             "planUnavailable": "프리셋을 선택하기 전에 비교 결과가 필요합니다. 먼저 비교 탭을 여세요.",
             "totalEntries": "총 항목",

@@ -327,7 +327,14 @@
             "protonCliTitle": "Користи службен Proton Drive CLI",
             "protonCliBody": "Инсталирајте го Proton Drive CLI од proton.me/download/drive/cli, потоа во терминал извршете proton-drive auth login и завршете во прелистувачот. AeroFTP никогаш не ја гледа вашата лозинка; сесијата останува во складиштето за тајни на ОС.",
             "protonUnofficial": "Ова е апликација од трета страна што Proton официјално не ја поддржува.",
-            "protonConnectHint": "\"Поврзи се\" го користи CLI што веќе е најавен на оваа машина. Една Proton сметка по корисник на ОС."
+            "protonConnectHint": "\"Поврзи се\" го користи CLI што веќе е најавен на оваа машина. Една Proton сметка по корисник на ОС.",
+            "twakeInstance": "Twake адреса",
+            "twakeInstanceHelp": "Вашата сопствена адреса, на пример yourname.twake.app. Исто така можете да залепите која било адреса на страница на Twake од вашиот прелистувач.",
+            "twakeSignIn": "Најавете се со Twake",
+            "twakeSignInAgain": "Најавете се повторно",
+            "twakeSignedIn": "Најавени сте",
+            "twakeWaitingBrowser": "Завршете ја најавата во вашиот прелистувач...",
+            "twakeSignInHelp": "AeroFTP го отвора Twake во вашиот прелистувач и бара пристап само до вашите датотеки. Ако Twake прикаже грешка првиот пат, најавете се на Twake во прелистувачот и најавете се повторно. Пристапот можете да го отповикате во секое време во Поставки на Twake, Поврзани уреди."
         },
         "browser": {
             "remote": "Далечински",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Оваа крајна точка го опслужува S3 преку обичен HTTP низ мрежата. Прифатете ја за овој профил: потпишаните податоци за пристап и секоја датотека минуваат низ мрежата некриптирани.",
             "discoverFilebase": "Filebase: S3-компатибилно складирање објекти (5 GB бесплатно)",
             "protonDesc": "Се поврзува преку Proton Drive CLI",
-            "protonTooltip": "Користи Proton Drive CLI - инсталирајте, најавете се во прелистувачот, AeroFTP е GUI"
+            "protonTooltip": "Користи Proton Drive CLI - инсталирајте, најавете се во прелистувачот, AeroFTP е GUI",
+            "twakeDesc": "Twake Drive (5 GB бесплатно)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, француски облак со отворен код (Cozy Cloud сега е дел од него) со 5 GB бесплатно",
+            "discoverTwake": "Европски облак со отворен код од Linagora, сега дом на Cozy Cloud (5 GB бесплатно)"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Бинарно",
             "hashOutputLength": "Должина на BLAKE3 излезот (бајти)",
             "hashOutputLengthHint": "1-1024 · стандардно 32",
-            "hashDropHint": "Пуштете датотека на ова јазиче за да се пресмета хешот"
+            "hashDropHint": "Пуштете датотека на ова јазиче за да се пресмета хешот",
+            "hashBlake3Mode": "BLAKE3 режим",
+            "hashBlake3ModeHash": "Хеш",
+            "hashBlake3ModeKeyed": "Со клуч",
+            "hashBlake3ModeDerive": "Изведи клуч",
+            "hashBlake3Key": "Клуч (32 бајти хексадецимално)",
+            "hashBlake3Context": "Низа на контекст",
+            "hashBlake3ContextHint": "Фиксна и единствена за една апликација. Текстот или датотеката што се хешира е материјалот на клучот.",
+            "hashRandom": "Случајно",
+            "argon2PasswordPlaceholder": "Лозинка или фраза за лозинка...",
+            "argon2Salt": "Сол",
+            "argon2SaltHint": "Најмалку 8 бајти, препорачано 16",
+            "argon2Memory": "Меморија (KiB)",
+            "argon2Iterations": "Итерации",
+            "argon2Parallelism": "Паралелизам",
+            "argon2OutputLength": "Должина (бајти)",
+            "argon2DefaultsHint": "Стандардно: втората препорачана опција од RFC 9106 за ограничена меморија (64 MiB, 3 итерации, 4 ленти, сол од 16 бајти). Меморија до 2 GiB.",
+            "argon2Derive": "Изведи",
+            "argon2Phc": "PHC низа"
         },
         "dialog": {
             "deleteFile": "Избриши \"{name}\"?",
@@ -5062,6 +5090,13 @@
             "tabCompare": "Спореди",
             "tabPlan": "План",
             "tabSync": "Синхронизирај",
+            "compareWontFitTitle": "Над ограничувањата на {name}: {count}",
+            "compareWontFitHint": "Овие датотеки го надминуваат документираното ограничување на големина на давателот или нивното име или патека е подолга отколку што прифаќа. Синхронизацијата би пропаднала за нив: прво преименувајте ги, преместете ги или поделете ги.",
+            "compareWontFitTooLarge": "{size}, ограничување {limit}",
+            "compareWontFitNameBytes": "име над {count} бајти",
+            "compareWontFitNameChars": "име над {count} знаци",
+            "compareWontFitPathBytes": "патека над {count} бајти",
+            "compareWontFitPathChars": "патека над {count} знаци",
             "compareUnavailable": "Отвори втор панел или далечинска врска за споредба.",
             "planUnavailable": "Потребен е резултат од споредба пред да изберете претходна поставка. Прво отворете го табот Спореди.",
             "totalEntries": "Вкупно записи",

@@ -327,7 +327,14 @@
             "protonCliTitle": "Gebruikt de officiële Proton Drive CLI",
             "protonCliBody": "Installeer de Proton Drive CLI van proton.me/download/drive/cli, voer daarna proton-drive auth login uit in een terminal en rond af in de browser. AeroFTP ziet uw wachtwoord nooit; de sessie blijft in de geheimenopslag van het OS.",
             "protonUnofficial": "Dit is een toepassing van derden die Proton niet officieel ondersteunt.",
-            "protonConnectHint": "\"Verbinden\" gebruikt de CLI die op deze machine al is aangemeld. Eén Proton-account per OS-gebruiker."
+            "protonConnectHint": "\"Verbinden\" gebruikt de CLI die op deze machine al is aangemeld. Eén Proton-account per OS-gebruiker.",
+            "twakeInstance": "Twake-adres",
+            "twakeInstanceHelp": "Uw eigen adres, bijvoorbeeld yourname.twake.app. U kunt ook elk Twake-pagina-adres uit uw browser plakken.",
+            "twakeSignIn": "Inloggen met Twake",
+            "twakeSignInAgain": "Opnieuw inloggen",
+            "twakeSignedIn": "Ingelogd",
+            "twakeWaitingBrowser": "Rond het inloggen in uw browser af...",
+            "twakeSignInHelp": "AeroFTP opent Twake in uw browser en vraagt alleen toegang tot uw bestanden. Als Twake de eerste keer een fout toont, log dan in bij Twake in de browser en log opnieuw in. U kunt toegang op elk moment intrekken via Twake-instellingen, Verbonden apparaten."
         },
         "browser": {
             "remote": "Extern",
@@ -1945,7 +1952,10 @@
             "s3AllowCleartextEndpoint": "Dit eindpunt levert S3 via onversleutelde HTTP over een netwerk. Accepteer dit voor dit profiel: de ondertekende inloggegevens en elk bestand gaan onversleuteld over het netwerk.",
             "discoverFilebase": "Filebase: S3-compatibele objectopslag (5 GB gratis)",
             "protonDesc": "Verbindt via de Proton Drive CLI",
-            "protonTooltip": "Gebruikt de Proton Drive CLI - installeer, meld u aan in de browser, AeroFTP is de GUI"
+            "protonTooltip": "Gebruikt de Proton Drive CLI - installeer, meld u aan in de browser, AeroFTP is de GUI",
+            "twakeDesc": "Twake Drive (5 GB gratis)",
+            "twakeTooltip": "Twake Drive - Linagora Twake Workplace, Franse open source cloud (Cozy Cloud maakt er nu deel van uit) met 5 GB gratis",
+            "discoverTwake": "Europese open source cloud van Linagora, nu de nieuwe thuisbasis van Cozy Cloud (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -4065,7 +4075,25 @@
             "hashEncodingBinary": "Binair",
             "hashOutputLength": "BLAKE3-uitvoerlengte (bytes)",
             "hashOutputLengthHint": "1-1024 · standaard 32",
-            "hashDropHint": "Sleep een bestand naar dit tabblad om het te hashen"
+            "hashDropHint": "Sleep een bestand naar dit tabblad om het te hashen",
+            "hashBlake3Mode": "BLAKE3-modus",
+            "hashBlake3ModeHash": "Hash",
+            "hashBlake3ModeKeyed": "Met sleutel",
+            "hashBlake3ModeDerive": "Sleutel afleiden",
+            "hashBlake3Key": "Sleutel (32 bytes als hex)",
+            "hashBlake3Context": "Contexttekenreeks",
+            "hashBlake3ContextHint": "Vast en uniek voor één toepassing. De tekst of het bestand dat gehasht wordt is het sleutelmateriaal.",
+            "hashRandom": "Willekeurig",
+            "argon2PasswordPlaceholder": "Wachtwoord of wachtzin...",
+            "argon2Salt": "Salt",
+            "argon2SaltHint": "Minstens 8 bytes, 16 aanbevolen",
+            "argon2Memory": "Geheugen (KiB)",
+            "argon2Iterations": "Iteraties",
+            "argon2Parallelism": "Parallelisme",
+            "argon2OutputLength": "Lengte (bytes)",
+            "argon2DefaultsHint": "Standaardwaarden: de tweede aanbevolen optie van RFC 9106, voor beperkt geheugen (64 MiB, 3 iteraties, 4 lanes, salt van 16 bytes). Geheugen tot 2 GiB.",
+            "argon2Derive": "Afleiden",
+            "argon2Phc": "PHC-tekenreeks"
         },
         "dialog": {
             "deleteFile": "\"{name}\" verwijderen?",
@@ -5043,6 +5071,13 @@
             "tabCompare": "Vergelijken",
             "tabPlan": "Plan",
             "tabSync": "Synchroniseren",
+            "compareWontFitTitle": "Boven de limieten van {name}: {count}",
+            "compareWontFitHint": "Deze bestanden zijn groter dan de gedocumenteerde limiet van de provider, of hun naam of pad is langer dan toegestaan. Een synchronisatie zou hierop mislukken: hernoem, verplaats of splits ze eerst.",
+            "compareWontFitTooLarge": "{size}, limiet {limit}",
+            "compareWontFitNameBytes": "naam boven {count} bytes",
+            "compareWontFitNameChars": "naam boven {count} tekens",
+            "compareWontFitPathBytes": "pad boven {count} bytes",
+            "compareWontFitPathChars": "pad boven {count} tekens",
             "compareUnavailable": "Open een tweede paneel of een externe verbinding om te vergelijken.",
             "planUnavailable": "Een vergelijkingsresultaat is vereist voordat u een preset kiest. Open eerst het tabblad Vergelijken.",
             "totalEntries": "Totaal items",
