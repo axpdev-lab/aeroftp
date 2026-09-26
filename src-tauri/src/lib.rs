@@ -15176,6 +15176,7 @@ async fn sync_backup_archive_local(
     stamp: String,
     rel: String,
 ) -> Result<Option<String>, String> {
+    validate_path(&root)?;
     tokio::task::spawn_blocking(move || {
         let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
         sync::validate_relative_path(&rel)?;
@@ -22669,5 +22670,25 @@ mod documented_file_limits_command_tests {
         assert_eq!(unknown.max_file_size, None);
         let ftp = with_documented_file_limits(base, "ftp", None);
         assert_eq!(ftp.max_file_size, None);
+    }
+}
+
+#[cfg(test)]
+mod sync_backup_archive_local_tests {
+    /// The local archive command joins `root` with `rel` and renames the
+    /// result, so `root` is held to the same shape check as every other local
+    /// path command: absolute, no `..`, no NUL.
+    #[tokio::test]
+    async fn a_root_that_is_not_a_clean_absolute_path_is_refused() {
+        for root in ["relative/dir", "/tmp/../etc", "/tmp/a\0b"] {
+            let outcome = super::sync_backup_archive_local(
+                root.to_string(),
+                ".aeroftp-versions".to_string(),
+                "20260925T070000Z".to_string(),
+                "a.txt".to_string(),
+            )
+            .await;
+            assert!(outcome.is_err(), "{root:?} was accepted: {outcome:?}");
+        }
     }
 }
