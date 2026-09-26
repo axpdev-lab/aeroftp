@@ -2252,6 +2252,7 @@ CONNECT --profile "My NAS"
 SYNC ${LOCAL} ${REMOTE} \
   --direction download \
   --delete \
+  --max-delete 50% \
   --exclude "*.tmp"
 DISCONNECT
 ```

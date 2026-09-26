@@ -8293,6 +8293,73 @@ const FIND_DEFAULT_PATTERN: &str = "*";
 /// this many files unattended. Override with `--max-delete N` (or a percentage).
 const DEFAULT_SYNC_MAX_DELETE: usize = 100;
 
+/// A `--max-delete` cap: a whole number of files, or a percentage of the
+/// files the plan counts. Anything else is refused: an unreadable value used
+/// to mean no cap at all (`0.5`, `50pct`, `half`), or 100 percent for a bad
+/// percentage.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum MaxDeleteCap {
+    Count(usize),
+    Percent(f64),
+}
+
+impl MaxDeleteCap {
+    fn parse(value: &str) -> Result<Self, String> {
+        let bad = || {
+            format!("invalid --max-delete '{value}': expected a whole number N or a percentage N% from 0% to 100%")
+        };
+        let value = value.trim();
+        match value.strip_suffix('%') {
+            Some(pct) => {
+                let pct: f64 = pct.trim().parse().map_err(|_| bad())?;
+                if pct.is_finite() && (0.0..=100.0).contains(&pct) {
+                    Ok(Self::Percent(pct))
+                } else {
+                    Err(bad())
+                }
+            }
+            None => value.parse::<usize>().map(Self::Count).map_err(|_| bad()),
+        }
+    }
+
+    /// The number of deletions the cap allows over `total` counted files.
+    fn limit(self, total: usize) -> usize {
+        match self {
+            Self::Count(n) => n,
+            Self::Percent(pct) => ((pct / 100.0) * total as f64).ceil() as usize,
+        }
+    }
+}
+
+/// Every spelling `--conflict-mode` understands. Anything else used to fall
+/// back to "skip" without a word.
+const SYNC_CONFLICT_MODES: &[&str] = &[
+    "newer", "newest", "older", "oldest", "larger", "largest", "smaller", "smallest", "rename",
+    "skip",
+];
+
+/// The `sync` values given as free text, checked before anything connects.
+fn check_sync_values(
+    direction: &str,
+    conflict_mode: &str,
+    max_delete: Option<&str>,
+) -> Result<(), String> {
+    if !is_valid_sync_direction(direction) {
+        return Err(format!(
+            "invalid --direction '{direction}': expected upload, download or both"
+        ));
+    }
+    if !SYNC_CONFLICT_MODES.contains(&conflict_mode) {
+        return Err(format!(
+            "invalid --conflict-mode '{conflict_mode}': expected newer, older, larger, smaller, rename or skip"
+        ));
+    }
+    if let Some(value) = max_delete {
+        MaxDeleteCap::parse(value)?;
+    }
+    Ok(())
+}
+
 /// Validate a relative path component is safe (no path traversal).
 /// Returns the sanitized path or None if it contains traversal attempts.
 fn validate_relative_path(relative: &str) -> Option<&str> {
@@ -46400,12 +46467,13 @@ async fn cmd_dedupe(
         // Safety cap: bound the number of destructive actions. Percentages are
         // taken against the total scanned files. Default cap when --max-delete is
         // omitted; an explicit value raises (or lowers) it.
-        let limit = match max_delete {
-            Some(v) if v.ends_with('%') => {
-                let pct: f64 = v.trim_end_matches('%').parse().unwrap_or(100.0);
-                ((pct / 100.0) * files.len() as f64).ceil() as usize
+        let limit = match max_delete.map(MaxDeleteCap::parse) {
+            Some(Ok(cap)) => cap.limit(files.len()),
+            Some(Err(err)) => {
+                print_error(format, &err, 5);
+                let _ = provider.disconnect().await;
+                return 5;
             }
-            Some(v) => v.parse::<usize>().unwrap_or(usize::MAX),
             None => DEFAULT_SYNC_MAX_DELETE,
         };
         if planned_actions > limit {
@@ -48504,11 +48572,13 @@ async fn cmd_sync(
     if let Some(max_del) = effective_max_delete.as_deref() {
         let delete_count = to_delete_remote.len() + to_delete_local.len();
         let total_files = local_map.len() + remote_map.len();
-        let limit = if max_del.ends_with('%') {
-            let pct: f64 = max_del.trim_end_matches('%').parse().unwrap_or(100.0);
-            ((pct / 100.0) * total_files as f64).ceil() as usize
-        } else {
-            max_del.parse::<usize>().unwrap_or(usize::MAX)
+        let limit = match MaxDeleteCap::parse(max_del) {
+            Ok(cap) => cap.limit(total_files),
+            Err(err) => {
+                print_error(format, &err, 5);
+                let _ = provider.disconnect().await;
+                return 5.into();
+            }
         };
         if delete_count > limit {
             let defaulted = max_delete.is_none();
@@ -61135,6 +61205,9 @@ async fn dispatch_sync(
         )
         .await;
         stats.exit_code
+    } else if let Err(err) = check_sync_values(direction, conflict_mode, max_delete.as_deref()) {
+        print_error(format, &err, 5);
+        5
     } else {
         match parse_sync_error_correction_level_pct(error_correction.as_deref()) {
             Err(err) => {
@@ -61434,9 +61507,38 @@ fn parse_batch_sync(url: &str, tokens: &[String]) -> Result<Commands, String> {
                 .to_string(),
         );
     }
-    BatchSyncLine::from_arg_matches(&matches)
+    // A script says which way it syncs: the CLI default (both) is what turned
+    // the 4.2.0 export into a bidirectional run.
+    if sub.value_source("direction") != Some(ValueSource::CommandLine) {
+        return Err(
+            "SYNC needs --direction upload, download or both: a script states which way it syncs"
+                .to_string(),
+        );
+    }
+    let command = BatchSyncLine::from_arg_matches(&matches)
         .map(|line| line.command)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let Commands::Sync {
+        direction,
+        conflict_mode,
+        max_delete,
+        delete,
+        dry_run,
+        ..
+    } = &command
+    else {
+        return Err("not a sync command".to_string());
+    };
+    check_sync_values(direction, conflict_mode, max_delete.as_deref())?;
+    // A batch run is never interactive, and `sync` refuses an unattended
+    // --delete without a cap: refuse it now, before line 1 runs.
+    if *delete && !*dry_run && max_delete.is_none() {
+        return Err(
+            "--delete in a script needs --max-delete N or N%: a batch run is never interactive"
+                .to_string(),
+        );
+    }
+    Ok(command)
 }
 
 /// Join a physical line ending in `\` with the next one. Returns the logical
@@ -62349,7 +62451,9 @@ mod batch_script_tests {
 
     /// The script L2 ran against Koofr with v4.2.0: a download sync written on
     /// continuation lines. It ran as a bidirectional sync without delete or
-    /// exclude, then failed on the orphaned "--direction" line.
+    /// exclude, then failed on the orphaned "--direction" line. Here with the
+    /// `--max-delete 50%` the export now writes, since a script's --delete
+    /// needs a cap.
     const EXPORTED_DOWNLOAD: &str = "# @aerosync:1\n\
 SET LOCAL=\"/home/me/Local Copy\"\n\
 SET REMOTE=\"/Backup\"\n\
@@ -62359,6 +62463,7 @@ CONNECT --profile \"Koofr\"\n\
 SYNC ${LOCAL} ${REMOTE} \\\n\
   --direction download \\\n\
   --delete \\\n\
+  --max-delete 50% \\\n\
   --exclude \"*.tmp\"\n\
 \n\
 DISCONNECT\n";
@@ -62387,6 +62492,12 @@ DISCONNECT\n";
             assert_eq!(direction, "download");
             assert!(delete);
             assert_eq!(exclude, vec!["*.tmp".to_string()]);
+
+            // The 4.2.0 export, with no cap, stops before line 1 runs.
+            let uncapped = EXPORTED_DOWNLOAD.replace("--max-delete 50% \\\n", "");
+            assert_ne!(uncapped, EXPORTED_DOWNLOAD);
+            let err = read_batch_script(&uncapped).expect_err("an uncapped --delete");
+            assert!(err.1.contains("needs --max-delete"), "{}", err.1);
         });
     }
 
@@ -62410,6 +62521,72 @@ DISCONNECT\n";
         let cmds: Vec<&str> = lines.iter().map(|l| l.cmd.as_str()).collect();
         assert_eq!(cmds, ["CONNECT", "ECHO", "RM"]);
         assert_eq!(lines[2].args, ["/staging"]);
+    }
+
+    /// SYNC values are checked while the script is read, not when the line
+    /// runs: a typo in --direction failed only after the lines before it had
+    /// run, an unknown --conflict-mode became "skip" in silence, a
+    /// --max-delete that is neither a count nor a percentage meant no cap at
+    /// all, and an unattended --delete without a cap was refused only at run
+    /// time. A script also says which way it syncs.
+    #[test]
+    fn sync_values_are_checked_before_the_script_runs() {
+        on_big_stack(|| {
+            for (sync, needle) in [
+                ("--direction dowload", "--direction 'dowload'"),
+                (
+                    "--direction upload --conflict-mode renmae",
+                    "--conflict-mode 'renmae'",
+                ),
+                (
+                    "--direction upload --delete --max-delete 0.5",
+                    "--max-delete '0.5'",
+                ),
+                (
+                    "--direction upload --delete --max-delete 50pct",
+                    "--max-delete '50pct'",
+                ),
+                (
+                    "--direction upload --delete --max-delete half",
+                    "--max-delete 'half'",
+                ),
+                (
+                    "--direction upload --delete --max-delete 150%",
+                    "--max-delete '150%'",
+                ),
+                ("--direction upload --delete", "needs --max-delete"),
+                ("--delete --max-delete 10", "needs --direction"),
+            ] {
+                let script = format!("CONNECT sftp://h/\nSYNC /a /b {sync}\n");
+                let err = read_batch_script(&script).expect_err(&script);
+                assert!(err.1.contains(needle), "{script:?}: {}", err.1);
+            }
+            for sync in [
+                "--direction upload --delete --max-delete 10",
+                "--direction download --delete --max-delete 50%",
+                "--direction both --delete --dry-run",
+                "--direction both --conflict-mode rename",
+            ] {
+                read_batch_script(&format!("CONNECT sftp://h/\nSYNC /a /b {sync}\n"))
+                    .unwrap_or_else(|e| panic!("{sync}: {}", e.1));
+            }
+        });
+    }
+
+    #[test]
+    fn max_delete_is_a_count_or_a_percentage() {
+        assert_eq!(MaxDeleteCap::parse("10"), Ok(MaxDeleteCap::Count(10)));
+        assert_eq!(MaxDeleteCap::parse("0"), Ok(MaxDeleteCap::Count(0)));
+        assert_eq!(MaxDeleteCap::parse("50%"), Ok(MaxDeleteCap::Percent(50.0)));
+        assert_eq!(
+            MaxDeleteCap::parse("12.5%"),
+            Ok(MaxDeleteCap::Percent(12.5))
+        );
+        for bad in ["", "0.5", "50pct", "half", "150%", "-1", "-5%", "NaN%", "%"] {
+            assert!(MaxDeleteCap::parse(bad).is_err(), "{bad:?} was accepted");
+        }
+        assert_eq!(MaxDeleteCap::Percent(50.0).limit(7), 4);
+        assert_eq!(MaxDeleteCap::Count(3).limit(100), 3);
     }
 
     #[test]
