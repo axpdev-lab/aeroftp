@@ -15,6 +15,7 @@
 //! together: `LIST` in its Unix and DOS dialects, and RFC 3659 `MLSD`.
 
 use super::types::RemoteEntry;
+use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime};
 
 /// Byte offset where whitespace-separated field `n` (0-based) begins.
 ///
@@ -51,6 +52,16 @@ fn field_tail(line: &str, n: usize) -> Option<&str> {
 }
 
 pub(crate) fn parse_listing(line: &str, base_path: &str) -> Option<RemoteEntry> {
+    parse_listing_at(line, base_path, chrono::Utc::now().naive_utc())
+}
+
+/// [`parse_listing`] with the present given, which decides the year of a Unix
+/// date that omits it.
+pub(crate) fn parse_listing_at(
+    line: &str,
+    base_path: &str,
+    now: NaiveDateTime,
+) -> Option<RemoteEntry> {
     // Dispatch on the shape of the first token, and try ONE parser.
     //
     // Trying Unix and falling back to DOS made the FAILURE of the first parser
@@ -68,7 +79,7 @@ pub(crate) fn parse_listing(line: &str, base_path: &str) -> Option<RemoteEntry> 
     if is_dos_date(first) {
         parse_dos_listing(line, base_path)
     } else {
-        parse_unix_listing(line, base_path)
+        parse_unix_listing(line, base_path, now)
     }
 }
 
@@ -292,7 +303,11 @@ pub(crate) fn normalize_mlsd_name(name: &str) -> String {
 }
 
 /// Parse Unix-style listing (ls -l format)
-pub(crate) fn parse_unix_listing(line: &str, base_path: &str) -> Option<RemoteEntry> {
+pub(crate) fn parse_unix_listing(
+    line: &str,
+    base_path: &str,
+    now: NaiveDateTime,
+) -> Option<RemoteEntry> {
     let parts: Vec<&str> = line.split_whitespace().collect();
     if parts.len() < 9 {
         return None;
@@ -327,12 +342,9 @@ pub(crate) fn parse_unix_listing(line: &str, base_path: &str) -> Option<RemoteEn
 
     let path = join_remote_path(base_path, &actual_name);
 
-    // Parse date (parts[5..8] typically contain month day time/year)
-    let modified = if parts.len() >= 8 {
-        Some(format!("{} {} {}", parts[5], parts[6], parts[7]))
-    } else {
-        None
-    };
+    // parts[5..8]: month, day, and a time (recent) or a year (older).
+    let modified = unix_list_date(parts[5], parts[6], parts[7], now)
+        .or_else(|| Some(format!("{} {} {}", parts[5], parts[6], parts[7])));
 
     let mut entry = RemoteEntry {
         name: actual_name,
@@ -401,7 +413,8 @@ pub(crate) fn parse_dos_listing(line: &str, base_path: &str) -> Option<RemoteEnt
 
     let path = join_remote_path(base_path, &name);
 
-    let modified = Some(format!("{} {}", parts[0], parts[1]));
+    let modified =
+        dos_list_date(parts[0], parts[1]).or_else(|| Some(format!("{} {}", parts[0], parts[1])));
 
     let mut entry = RemoteEntry {
         name,
@@ -419,6 +432,105 @@ pub(crate) fn parse_dos_listing(line: &str, base_path: &str) -> Option<RemoteEnt
     };
     mark_size_unreadable(&mut entry, size_read);
     Some(entry)
+}
+
+/// A `LIST` date as the server gave it, with no precision it did not give:
+/// `YYYY-MM-DD HH:MM` for a time, `YYYY-MM-DD` for a date alone.
+///
+/// A `LIST` time is the server's local time and carries no zone, so it is not
+/// an instant: [`crate::parse_remote_mtime`] reads only stamps with seconds and
+/// refuses these on purpose. That keeps a `LIST` date out of every comparison
+/// and out of the mtime written on a download, where read as UTC it would be
+/// wrong by the server's offset and still look exact. It serves display and
+/// ordering, which is all a zoneless minute can serve.
+fn list_date_text(date: NaiveDate, time: Option<NaiveTime>) -> String {
+    match time {
+        Some(t) => format!("{} {}", date.format("%Y-%m-%d"), t.format("%H:%M")),
+        None => date.format("%Y-%m-%d").to_string(),
+    }
+}
+
+fn month_number(name: &str) -> Option<u32> {
+    const MONTHS: [&str; 12] = [
+        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    ];
+    let lower = name.to_ascii_lowercase();
+    MONTHS
+        .iter()
+        .position(|m| *m == lower)
+        .map(|i| i as u32 + 1)
+}
+
+/// The Unix `ls -l` date: `Sep 24 19:41` or `Sep 24  2025`.
+///
+/// `ls` prints the time instead of the year for a file changed in the last six
+/// months, so a date without a year is the most recent one that is not in the
+/// future. A day of slack absorbs the server being ahead of this clock (zones
+/// included); beyond it the date belongs to the year before. `None` when a
+/// field does not read (a localized month name, for one), and the caller keeps
+/// the raw text.
+fn unix_list_date(
+    month: &str,
+    day: &str,
+    time_or_year: &str,
+    now: NaiveDateTime,
+) -> Option<String> {
+    let month = month_number(month)?;
+    let day: u32 = day.parse().ok()?;
+    if let Some((h, m)) = time_or_year.split_once(':') {
+        let time = NaiveTime::from_hms_opt(h.parse().ok()?, m.parse().ok()?, 0)?;
+        let latest = now + chrono::Duration::days(1);
+        let date = [now.year(), now.year() - 1]
+            .into_iter()
+            .filter_map(|year| NaiveDate::from_ymd_opt(year, month, day))
+            .find(|date| date.and_time(time) <= latest)?;
+        Some(list_date_text(date, Some(time)))
+    } else {
+        let year: i32 = time_or_year.parse().ok()?;
+        Some(list_date_text(
+            NaiveDate::from_ymd_opt(year, month, day)?,
+            None,
+        ))
+    }
+}
+
+/// The DOS date and time: `09-24-26  07:41PM` (also a 4-digit year and a
+/// 24-hour time). A 2-digit year below 70 is in the 2000s, as IIS means it.
+fn dos_list_date(date: &str, time: &str) -> Option<String> {
+    let mut fields = date.split('-');
+    let month: u32 = fields.next()?.parse().ok()?;
+    let day: u32 = fields.next()?.parse().ok()?;
+    let year_field = fields.next()?;
+    let year: i32 = year_field.parse().ok()?;
+    let year = match (year_field.len(), year) {
+        (2, y) if y < 70 => 2000 + y,
+        (2, y) => 1900 + y,
+        (_, y) => y,
+    };
+    let upper = time.to_ascii_uppercase();
+    let (clock, meridiem) = match (upper.strip_suffix("AM"), upper.strip_suffix("PM")) {
+        (Some(c), _) => (c.to_string(), Some(false)),
+        (_, Some(c)) => (c.to_string(), Some(true)),
+        _ => (upper.clone(), None),
+    };
+    let (h, m) = clock.split_once(':')?;
+    let (mut hour, minute): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
+    if let Some(pm) = meridiem {
+        if !(1..=12).contains(&hour) {
+            return None;
+        }
+        hour = match (hour, pm) {
+            (12, false) => 0,
+            (12, true) => 12,
+            (h, true) => h + 12,
+            (h, false) => h,
+        };
+    }
+    let time = NaiveTime::from_hms_opt(hour, minute, 0)?;
+    Some(list_date_text(
+        NaiveDate::from_ymd_opt(year, month, day)?,
+        Some(time),
+    ))
 }
 
 /// Parse MLSD/MLST line (RFC 3659 machine-readable format)
@@ -780,5 +892,142 @@ mod tests {
         )
         .expect("a Unix row");
         assert_eq!(entry.name, "trailing ");
+    }
+
+    fn at(text: &str) -> NaiveDateTime {
+        NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M").unwrap()
+    }
+
+    fn unix_row(date: &str) -> String {
+        format!("-rw-r--r--    1 user     group         123 {date} f.txt")
+    }
+
+    fn unix_date(date: &str, now: &str) -> Option<String> {
+        parse_unix_listing(&unix_row(date), "/", at(now)).and_then(|e| e.modified)
+    }
+
+    #[test]
+    fn a_unix_date_without_a_year_is_the_latest_one_not_in_the_future() {
+        let now = "2026-09-25 12:00";
+        assert_eq!(
+            unix_date("Sep 24 19:41", now).as_deref(),
+            Some("2026-09-24 19:41")
+        );
+        assert_eq!(
+            unix_date("Jan 20 10:00", now).as_deref(),
+            Some("2026-01-20 10:00")
+        );
+        // Past the day of slack: last year's.
+        assert_eq!(
+            unix_date("Oct 20 10:00", now).as_deref(),
+            Some("2025-10-20 10:00")
+        );
+        // Inside the slack (a server ahead of this clock): this year.
+        assert_eq!(
+            unix_date("Sep 26 08:00", now).as_deref(),
+            Some("2026-09-26 08:00")
+        );
+        // Across New Year.
+        assert_eq!(
+            unix_date("Dec 31 23:59", "2027-01-01 00:30").as_deref(),
+            Some("2026-12-31 23:59")
+        );
+        // Feb 29 is read in this year or the one before, whichever has it;
+        // when neither does the raw text stays.
+        assert_eq!(
+            unix_date("Feb 29 10:00", "2028-03-01 00:00").as_deref(),
+            Some("2028-02-29 10:00")
+        );
+        assert_eq!(
+            unix_date("Feb 29 10:00", "2029-03-01 00:00").as_deref(),
+            Some("2028-02-29 10:00")
+        );
+        assert_eq!(
+            unix_date("Feb 29 10:00", "2030-03-01 00:00").as_deref(),
+            Some("Feb 29 10:00")
+        );
+    }
+
+    #[test]
+    fn a_unix_date_with_a_year_keeps_only_the_day() {
+        let now = "2026-09-25 12:00";
+        assert_eq!(
+            unix_date("Sep 24  2025", now).as_deref(),
+            Some("2025-09-24")
+        );
+        assert_eq!(unix_date("sep 24 2025", now).as_deref(), Some("2025-09-24"));
+        // A date that does not read keeps its raw text, as before.
+        assert_eq!(
+            unix_date("set 24 2025", now).as_deref(),
+            Some("set 24 2025")
+        );
+        assert_eq!(
+            unix_date("Sep 31 2025", now).as_deref(),
+            Some("Sep 31 2025")
+        );
+    }
+
+    #[test]
+    fn a_dos_date_reads_both_years_and_both_clocks() {
+        let dos = |row: &str| parse_dos_listing(row, "/").and_then(|e| e.modified);
+        assert_eq!(
+            dos("09-24-26  07:41PM       12345 f.txt").as_deref(),
+            Some("2026-09-24 19:41")
+        );
+        assert_eq!(
+            dos("09-24-2026  07:41AM     12345 f.txt").as_deref(),
+            Some("2026-09-24 07:41")
+        );
+        assert_eq!(
+            dos("01-01-26  12:05AM       12345 f.txt").as_deref(),
+            Some("2026-01-01 00:05")
+        );
+        assert_eq!(
+            dos("01-01-26  12:05PM       12345 f.txt").as_deref(),
+            Some("2026-01-01 12:05")
+        );
+        assert_eq!(
+            dos("01-01-99  23:05         12345 f.txt").as_deref(),
+            Some("1999-01-01 23:05")
+        );
+        assert_eq!(
+            dos("01-01-26  13:05PM       12345 f.txt").as_deref(),
+            Some("01-01-26 13:05PM")
+        );
+    }
+
+    /// A `LIST` time is the server's local time with no zone. Read as UTC and
+    /// written on a downloaded file, it would be off by the server's offset and
+    /// look exact, which is worse than the current time: every later comparison,
+    /// ours or another tool's, would trust it. So neither a `LIST` date nor the
+    /// comparison reads it as an instant.
+    #[test]
+    fn a_download_from_list_does_not_take_the_list_date_as_its_mtime() {
+        let now = at("2026-09-25 12:00");
+        let rows = [
+            unix_row("Sep 24 19:41"),
+            unix_row("Sep 24  2025"),
+            "09-24-26  07:41PM       12345 f.txt".to_string(),
+        ];
+        for row in &rows {
+            let entry = parse_listing_at(row, "/", now).expect("a LIST row");
+            let modified = entry.modified.clone().expect("a date");
+            assert_eq!(crate::parse_remote_mtime(&modified), None, "{row}");
+
+            let dir = tempfile::tempdir().unwrap();
+            let file = dir.path().join("f.txt");
+            std::fs::write(&file, b"x").unwrap();
+            let before = filetime::FileTime::from_unix_time(1_000_000_000, 0);
+            filetime::set_file_mtime(&file, before).unwrap();
+            crate::preserve_remote_mtime(file.to_str().unwrap(), entry.modified.as_deref());
+            let after =
+                filetime::FileTime::from_last_modification_time(&std::fs::metadata(&file).unwrap());
+            assert_eq!(after, before, "{row}: the LIST date must not be written");
+        }
+        // The MLSD stamp is UTC by RFC 3659, and it is written.
+        let mlsd = parse_mlsd_entry("type=file;size=1;modify=20260924194146; f.txt", "/")
+            .and_then(|e| e.modified)
+            .expect("an MLSD date");
+        assert_eq!(crate::parse_remote_mtime(&mlsd), Some(1_790_278_906));
     }
 }

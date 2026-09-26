@@ -33,9 +33,41 @@ const KNOWN_META_FIELDS: &[&str] = &[
     "compare_timestamp",
     "compare_size",
     "compare_checksum",
+    "conflict_mode",
 ];
 
 const CONFLICT_MODES: &[&str] = &["newer", "older", "larger", "smaller", "rename", "skip"];
+
+/// The modes `sync` applies in a one-way run: `source` (the source copy wins)
+/// is one-way only, `skip` fits both directions.
+const ONE_WAY_CONFLICT_MODES: &[&str] = &["source", "skip"];
+
+/// The conflict mode the script's `SYNC` line carries, if any: the modes
+/// `sync` applies in the script's direction. A one-way template's two-way mode
+/// (the GUI Plan policy) is not written on the line, where `sync` would refuse
+/// it: it is named in the comment above it and kept in the metadata for the
+/// import ([`conflict_mode_kept_in_metadata`]). `source` means nothing in a
+/// two-way script and is dropped there.
+fn conflict_mode_on_sync_line(profile: &AerosyncScriptProfile) -> Option<&str> {
+    let mode = profile.conflict_mode.as_deref()?;
+    let applies = if profile.profile.direction == CompareDirection::Bidirectional {
+        CONFLICT_MODES.contains(&mode)
+    } else {
+        ONE_WAY_CONFLICT_MODES.contains(&mode)
+    };
+    applies.then_some(mode)
+}
+
+/// A one-way template's two-way conflict mode, which `sync` does not apply
+/// there: kept in the metadata so the GUI import restores it, and named in
+/// the script comment.
+fn conflict_mode_kept_in_metadata(profile: &AerosyncScriptProfile) -> Option<&str> {
+    let mode = profile.conflict_mode.as_deref()?;
+    (profile.profile.direction != CompareDirection::Bidirectional
+        && CONFLICT_MODES.contains(&mode)
+        && !ONE_WAY_CONFLICT_MODES.contains(&mode))
+    .then_some(mode)
+}
 
 /// Preset settings `aeroftp-cli sync` has no flag for yet. The exported script
 /// names each one, with the preset's value, in a comment above its `SYNC`
@@ -220,6 +252,11 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
                 not_applied_setting_value(&profile.profile, setting)
             ));
         }
+        if let Some(mode) = conflict_mode_kept_in_metadata(profile) {
+            out.push_str(&format!(
+                "#   conflict mode: {mode} (a one-way sync applies skip only)\n"
+            ));
+        }
     }
     if profile.profile.delete_orphans {
         out.push_str(&format!(
@@ -255,11 +292,9 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
     if profile.watch {
         out.push_str(" \\\n  --watch");
     }
-    if let Some(mode) = profile.conflict_mode.as_deref() {
-        if CONFLICT_MODES.contains(&mode) {
-            out.push_str(" \\\n  --conflict-mode ");
-            out.push_str(mode);
-        }
+    if let Some(mode) = conflict_mode_on_sync_line(profile) {
+        out.push_str(" \\\n  --conflict-mode ");
+        out.push_str(mode);
     }
     for pattern in &profile.profile.exclude_patterns {
         // A pattern that starts with `-` would read as a flag after a space;
@@ -535,7 +570,17 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
         connect_profile,
         connect_url,
         dry_run: parsed_sync.dry_run,
-        conflict_mode: parsed_sync.conflict_mode,
+        // The SYNC line wins; a one-way template's two-way mode rides in the
+        // metadata, and is restored only while the script is still one-way (a
+        // script edited to `--direction both` would otherwise turn it into
+        // the two-way policy on the next export).
+        conflict_mode: parsed_sync.conflict_mode.or_else(|| {
+            (parsed_sync.direction != CompareDirection::Bidirectional)
+                .then(|| metadata_json.get("conflict_mode").and_then(|v| v.as_str()))
+                .flatten()
+                .filter(|mode| CONFLICT_MODES.contains(mode))
+                .map(str::to_string)
+        }),
         track_renames: parsed_sync.track_renames,
         skip_matching: parsed_sync.skip_matching,
         resync: parsed_sync.resync,
@@ -700,6 +745,12 @@ fn build_metadata_json(profile: &AerosyncScriptProfile, app_version: &str) -> se
         "compare_checksum".to_string(),
         serde_json::Value::Bool(profile.profile.compare_checksum),
     );
+    if let Some(mode) = conflict_mode_kept_in_metadata(profile) {
+        map.insert(
+            "conflict_mode".to_string(),
+            serde_json::Value::String(mode.to_string()),
+        );
+    }
     serde_json::Value::Object(map)
 }
 
@@ -960,7 +1011,9 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
             "--watch" => watch = true,
             "--conflict-mode" => {
                 let v = flag_value(inline, &mut it, "--conflict-mode", "a value", line)?;
-                if !CONFLICT_MODES.contains(&v.as_str()) {
+                if !CONFLICT_MODES.contains(&v.as_str())
+                    && !ONE_WAY_CONFLICT_MODES.contains(&v.as_str())
+                {
                     return Err(ParseError::MalformedSync {
                         line,
                         message: format!("unknown conflict mode '{}'", v),
@@ -1009,6 +1062,12 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
         line,
         message: "missing --direction".to_string(),
     })?;
+    if direction == CompareDirection::Bidirectional && conflict_mode.as_deref() == Some("source") {
+        return Err(ParseError::MalformedSync {
+            line,
+            message: "conflict mode 'source' needs --direction upload or download".to_string(),
+        });
+    }
     let local = positional[0].clone();
     let remote = positional[1].clone();
     Ok(ParsedSyncLine {
@@ -1104,12 +1163,8 @@ mod tests {
         };
         let err = parse_script(&with("--exclude -tmp")).unwrap_err();
         assert!(err.to_string().contains("--exclude=<value>"), "{err}");
-        assert!(script.contains("--conflict-mode newer"), "{script}");
-        let parsed = parse_script(
-            &with("--backup-dir old --delta")
-                .replace("--conflict-mode newer", "--conflict-mode=rename"),
-        )
-        .expect("imports");
+        let parsed = parse_script(&with("--backup-dir old --delta --conflict-mode=rename"))
+            .expect("imports");
         assert_eq!(parsed.profile.conflict_mode.as_deref(), Some("rename"));
         for flag in ["--backup-dir", "--delta"] {
             assert!(
@@ -1211,6 +1266,86 @@ mod tests {
         assert_eq!(parsed.profile.connect_profile, original.connect_profile);
         assert_eq!(parsed.profile.conflict_mode, original.conflict_mode);
         assert!(parsed.unmapped_fields.is_empty());
+    }
+
+    /// `sync` applies `skip` in a one-way run and refuses the two-way modes
+    /// there, so a one-way template's other mode is not written on the SYNC
+    /// line (the script would stop): it is named in the comment above it and
+    /// kept in the metadata, and the import restores it. A two-way template
+    /// keeps every mode on the line.
+    #[test]
+    fn a_one_way_conflict_mode_the_cli_cannot_apply_stays_off_the_sync_line() {
+        let sync_line =
+            |script: &str| script[script.find("SYNC ").expect("a SYNC line")..].to_string();
+        for mode in ["rename", "newer", "older"] {
+            let mut mirror = sample(SyncProfile::mirror());
+            mirror.conflict_mode = Some(mode.to_string());
+            let script = generate_script(&mirror, "test");
+            assert!(!sync_line(&script).contains("--conflict-mode"), "{script}");
+            assert!(
+                script.contains(&format!("#   conflict mode: {mode} ")),
+                "{script}"
+            );
+            let parsed = parse_script(&script).expect("imports");
+            assert_eq!(parsed.profile.conflict_mode.as_deref(), Some(mode));
+            assert!(
+                parsed.unmapped_fields.is_empty(),
+                "{:?}",
+                parsed.unmapped_fields
+            );
+        }
+        let mut mirror = sample(SyncProfile::mirror());
+        mirror.conflict_mode = Some("skip".to_string());
+        let script = generate_script(&mirror, "test");
+        assert!(
+            sync_line(&script).contains("--conflict-mode skip"),
+            "{script}"
+        );
+        assert!(!script.contains("#   conflict mode:"), "{script}");
+
+        let mut two_way = sample(SyncProfile::two_way());
+        two_way.conflict_mode = Some("rename".to_string());
+        let script = generate_script(&two_way, "test");
+        assert!(
+            sync_line(&script).contains("--conflict-mode rename"),
+            "{script}"
+        );
+        assert!(!script.contains("#   conflict mode:"), "{script}");
+    }
+
+    /// `source` is the one-way mode `sync` applies (the source copy wins): a
+    /// one-way script keeps it on its SYNC line and the import reads it back;
+    /// a two-way script refuses it on import and never writes it.
+    #[test]
+    fn the_one_way_source_mode_round_trips_and_stays_one_way() {
+        let mut mirror = sample(SyncProfile::mirror());
+        mirror.conflict_mode = Some("source".to_string());
+        let script = generate_script(&mirror, "test");
+        assert!(script.contains("--conflict-mode source"), "{script}");
+        let parsed = parse_script(&script).expect("imports");
+        assert_eq!(parsed.profile.conflict_mode.as_deref(), Some("source"));
+
+        let two_way_line = script.replace("--direction upload", "--direction both");
+        let err = parse_script(&two_way_line).unwrap_err();
+        assert!(err.to_string().contains("'source'"), "{err}");
+
+        let mut two_way = sample(SyncProfile::two_way());
+        two_way.conflict_mode = Some("source".to_string());
+        let script = generate_script(&two_way, "test");
+        assert!(!script.contains("--conflict-mode"), "{script}");
+    }
+
+    /// The metadata keeps a one-way script's two-way mode for the GUI, but a
+    /// script edited to `--direction both` does not get it back: the next
+    /// export would write it on a two-way SYNC line and change what it does.
+    #[test]
+    fn a_metadata_conflict_mode_is_not_restored_into_a_two_way_script() {
+        let mut mirror = sample(SyncProfile::mirror());
+        mirror.conflict_mode = Some("rename".to_string());
+        let script = generate_script(&mirror, "test");
+        let edited = script.replace("--direction upload", "--direction both");
+        let parsed = parse_script(&edited).expect("imports");
+        assert_eq!(parsed.profile.conflict_mode, None);
     }
 
     #[test]

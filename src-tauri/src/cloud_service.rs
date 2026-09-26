@@ -528,6 +528,7 @@ impl CloudService {
             // The scans read `.aeroignore`; the compare reads the same rule.
             aeroignore: crate::sync_ignore::AeroIgnore::load(&config.local_folder)
                 .map(std::sync::Arc::new),
+            modify_window: crate::sync_core::mtime::ModifyWindow::LEGACY_FTP,
             ..Default::default()
         };
 
@@ -783,6 +784,9 @@ impl CloudService {
             // The scans read `.aeroignore`; the compare reads the same rule.
             aeroignore: crate::sync_ignore::AeroIgnore::load(&config.local_folder)
                 .map(std::sync::Arc::new),
+            modify_window: crate::sync_core::mtime::ModifyWindow::against_provider(
+                None, &*provider,
+            ),
             ..Default::default()
         };
 
@@ -1407,28 +1411,10 @@ impl CloudService {
                             name: entry.name.clone(),
                             path: format!("{}/{}", current_path, entry.name),
                             size: entry.size.unwrap_or(0),
-                            modified: entry.modified.and_then(|s| {
-                                // Try RFC 3339 first (with T separator)
-                                DateTime::parse_from_rfc3339(&s)
-                                    .ok()
-                                    .map(|dt| dt.with_timezone(&Utc))
-                                    .or_else(|| {
-                                        // Fallback: replace space with T for timestamps like "2026-03-12 00:00:00Z"
-                                        let fixed = s.replacen(' ', "T", 1);
-                                        DateTime::parse_from_rfc3339(&fixed)
-                                            .ok()
-                                            .map(|dt| dt.with_timezone(&Utc))
-                                    })
-                                    .or_else(|| {
-                                        // Fallback: parse without timezone (assume UTC)
-                                        chrono::NaiveDateTime::parse_from_str(
-                                            &s,
-                                            "%Y-%m-%d %H:%M:%S",
-                                        )
-                                        .ok()
-                                        .map(|naive| naive.and_utc())
-                                    })
-                            }),
+                            modified: entry
+                                .modified
+                                .as_deref()
+                                .and_then(crate::parse_remote_datetime),
                             is_dir: entry.is_dir,
                             checksum_alg: None,
                             checksum: None,
@@ -1712,28 +1698,10 @@ impl CloudService {
                             name: entry.name.clone(),
                             path: format!("{}/{}", current_path, entry.name),
                             size: entry.size,
-                            modified: entry.modified.and_then(|s| {
-                                // Try RFC 3339 first (with T separator)
-                                DateTime::parse_from_rfc3339(&s)
-                                    .ok()
-                                    .map(|dt| dt.with_timezone(&Utc))
-                                    .or_else(|| {
-                                        // Fallback: replace space with T for timestamps like "2026-03-12 00:00:00Z"
-                                        let fixed = s.replacen(' ', "T", 1);
-                                        DateTime::parse_from_rfc3339(&fixed)
-                                            .ok()
-                                            .map(|dt| dt.with_timezone(&Utc))
-                                    })
-                                    .or_else(|| {
-                                        // Fallback: parse without timezone (assume UTC)
-                                        chrono::NaiveDateTime::parse_from_str(
-                                            &s,
-                                            "%Y-%m-%d %H:%M:%S",
-                                        )
-                                        .ok()
-                                        .map(|naive| naive.and_utc())
-                                    })
-                            }),
+                            modified: entry
+                                .modified
+                                .as_deref()
+                                .and_then(crate::parse_remote_datetime),
                             is_dir: entry.is_dir,
                             // Use provider-supplied content hash if available (e.g. FileLu).
                             // Enables hash-based comparison for providers that don't preserve mtime.
@@ -1833,23 +1801,7 @@ impl CloudService {
                         Ok(remote_entry) => {
                             if let Some(mtime_str) = &remote_entry.modified {
                                 // Parse and apply remote mtime to local file
-                                let remote_dt = chrono::DateTime::parse_from_rfc3339(mtime_str)
-                                    .ok()
-                                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                                    .or_else(|| {
-                                        let fixed = mtime_str.replacen(' ', "T", 1);
-                                        chrono::DateTime::parse_from_rfc3339(&fixed)
-                                            .ok()
-                                            .map(|dt| dt.with_timezone(&chrono::Utc))
-                                    })
-                                    .or_else(|| {
-                                        chrono::NaiveDateTime::parse_from_str(
-                                            mtime_str,
-                                            "%Y-%m-%d %H:%M:%S",
-                                        )
-                                        .ok()
-                                        .map(|naive| naive.and_utc())
-                                    });
+                                let remote_dt = crate::parse_remote_datetime(mtime_str);
                                 if let Some(dt) = remote_dt {
                                     let local_path = std::path::Path::new(&local_info.path);
                                     crate::preserve_remote_mtime_dt(local_path, Some(dt));

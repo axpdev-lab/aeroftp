@@ -86,6 +86,7 @@ use ftp_client_gui_lib::providers::{
 };
 use ftp_client_gui_lib::sftp_download_tuning::SftpDownloadPreset;
 use ftp_client_gui_lib::shell_quote::shell_arg;
+use ftp_client_gui_lib::sync_core::mtime::ModifyWindow;
 use ftp_client_gui_lib::user_partitions;
 use ftp_client_gui_lib::util::shutdown_signal;
 use futures_util::StreamExt;
@@ -2590,12 +2591,31 @@ enum Commands {
         /// Consume a reconcile JSON file instead of re-scanning local and remote trees
         #[arg(long)]
         from_reconcile: Option<String>,
-        /// Conflict resolution for --direction both: newer, older, larger, smaller, rename, skip (default: newer)
-        #[arg(long, default_value = "newer")]
-        conflict_mode: String,
-        /// Trust size-only matches and skip transfers even when mtimes differ
+        /// What to do with a file that differs on both sides and neither copy is clearly newer.
+        /// --direction both: newer (default), older, larger, smaller, rename, skip.
+        /// --direction upload|download: source (default, the source copy wins) or skip (leave the destination alone).
         #[arg(long)]
+        conflict_mode: Option<String>,
+        /// Trust size-only matches and skip transfers even when mtimes differ
+        #[arg(long, alias = "size-only")]
         skip_matching: bool,
+        /// One-way sync: never overwrite a destination copy that is newer than the source
+        /// (beyond --modify-window), like rsync --update. The GUI Backup and Update presets
+        /// sync this way.
+        #[arg(long)]
+        update: bool,
+        /// Seconds within which two modification times are the same instant (default 2).
+        /// Raised to the backend's own precision; a backend that keeps no comparable time
+        /// (FTP without MLSD included) is compared by size only, and the run says so. The
+        /// same rule as the GUI compare.
+        #[arg(long, value_name = "SECS")]
+        modify_window: Option<u64>,
+        /// Compare files of the same size by checksum instead of modification time: a file
+        /// whose checksum matches is left alone whatever its date, one that differs is
+        /// synced. Uses the backend's server-side checksums; a file without one is compared
+        /// by size and time, and the run counts it.
+        #[arg(long, conflicts_with = "skip_matching")]
+        checksum: bool,
         /// Discard previous bisync snapshot and rebuild from scratch
         #[arg(long)]
         resync: bool,
@@ -5989,6 +6009,25 @@ struct CliSyncResult {
     /// Requested stream policy passed to the shared executor, with origin.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     download_segments: Option<ftp_client_gui_lib::transfer_settings::ResolvedDownloadSegments>,
+    /// `sync`: how modification times were compared (within a window, or
+    /// size only with the reason), the field the GUI compare and MCP
+    /// `sync_tree` report too. Absent on the get/put commands, which compare
+    /// nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    modify_window: Option<ModifyWindow>,
+    /// `sync --delete`: directories the deletes left empty and removed.
+    #[serde(default, skip_serializing_if = "sync_over_budget_is_zero")]
+    dirs_deleted: u32,
+    /// `sync --checksum`: the same-size pairs compared by checksum, and those
+    /// that had no checksum both sides could compute.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checksum: Option<CliSyncChecksumSummary>,
+}
+
+#[derive(Serialize)]
+struct CliSyncChecksumSummary {
+    compared: u32,
+    unverifiable: u32,
 }
 
 /// Single plan entry surfaced in `sync --dry-run --json`.
@@ -7690,6 +7729,7 @@ where
 fn sync_doctor_planned_upload_sizes(
     direction: &str,
     conflict_mode: &str,
+    window: ModifyWindow,
     local_entries: &HashMap<String, (u64, Option<String>)>,
     remote_entries: &HashMap<String, (u64, Option<String>)>,
     default_time: Option<&str>,
@@ -7697,6 +7737,15 @@ fn sync_doctor_planned_upload_sizes(
     if !matches!(direction, "upload" | "both") {
         return Vec::new();
     }
+    // The rule `sync` runs with the doctor's flags: no --update, no
+    // --skip-matching, no --checksum.
+    let rule = SyncPairRule {
+        conflict_mode,
+        skip_matching: false,
+        update: false,
+        modify_window: None,
+        checksum: false,
+    };
     local_entries
         .iter()
         .filter_map(
@@ -7705,18 +7754,29 @@ fn sync_doctor_planned_upload_sizes(
                 Some((remote_size, remote_mtime)) => {
                     let lm = apply_default_time(local_mtime.as_deref(), default_time);
                     let rm = apply_default_time(remote_mtime.as_deref(), default_time);
+                    if direction == "upload" {
+                        return match plan_one_way_pair(
+                            &rule,
+                            window,
+                            *local_size,
+                            lm,
+                            *remote_size,
+                            rm,
+                            None,
+                        ) {
+                            OneWayPair::Transfer => Some(*local_size),
+                            OneWayPair::Skip => None,
+                        };
+                    }
                     if local_size == remote_size
-                        && compare_mtime(lm, rm) == std::cmp::Ordering::Equal
+                        && compare_mtime(lm, rm, window) == std::cmp::Ordering::Equal
                     {
                         return None;
                     }
-                    if direction == "both" {
-                        match resolve_conflict(conflict_mode, *local_size, lm, *remote_size, rm) {
-                            "upload" | "rename" => Some(*local_size),
-                            _ => None,
-                        }
-                    } else {
-                        Some(*local_size)
+                    match resolve_conflict(conflict_mode, *local_size, lm, *remote_size, rm, window)
+                    {
+                        "upload" | "rename" => Some(*local_size),
+                        _ => None,
                     }
                 }
             },
@@ -8341,25 +8401,22 @@ const SYNC_CONFLICT_MODES: &[&str] = &[
 ];
 
 /// The `sync` values given as free text, checked before anything connects.
+/// Returns the conflict policy the run uses ([`resolve_sync_conflict_mode`]).
 fn check_sync_values(
     direction: &str,
-    conflict_mode: &str,
+    conflict_mode: Option<&str>,
     max_delete: Option<&str>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     if !is_valid_sync_direction(direction) {
         return Err(format!(
             "invalid --direction '{direction}': expected upload, download or both"
         ));
     }
-    if !SYNC_CONFLICT_MODES.contains(&conflict_mode) {
-        return Err(format!(
-            "invalid --conflict-mode '{conflict_mode}': expected newer, older, larger, smaller, rename or skip"
-        ));
-    }
+    let conflict_mode = resolve_sync_conflict_mode(conflict_mode, direction)?;
     if let Some(value) = max_delete {
         MaxDeleteCap::parse(value)?;
     }
-    Ok(())
+    Ok(conflict_mode)
 }
 
 /// Validate a relative path component is safe (no path traversal).
@@ -30492,16 +30549,13 @@ mod serve_ftp_backend {
             Ok(AeroFtpMeta {
                 size: entry.size,
                 is_dir: entry.is_dir,
-                modified: entry.modified.as_deref().and_then(|s| {
-                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                        .ok()
-                        .map(|dt| {
-                            std::time::UNIX_EPOCH
-                                + std::time::Duration::from_secs(
-                                    dt.and_utc().timestamp().max(0) as u64
-                                )
-                        })
-                }),
+                modified: entry
+                    .modified
+                    .as_deref()
+                    .and_then(ftp_client_gui_lib::parse_remote_mtime)
+                    .map(|secs| {
+                        std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs.max(0) as u64)
+                    }),
             })
         }
 
@@ -30520,16 +30574,14 @@ mod serve_ftp_backend {
                     metadata: AeroFtpMeta {
                         size: e.size,
                         is_dir: e.is_dir,
-                        modified: e.modified.as_deref().and_then(|s| {
-                            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                                .ok()
-                                .map(|dt| {
-                                    std::time::UNIX_EPOCH
-                                        + std::time::Duration::from_secs(
-                                            dt.and_utc().timestamp().max(0) as u64,
-                                        )
-                                })
-                        }),
+                        modified: e
+                            .modified
+                            .as_deref()
+                            .and_then(ftp_client_gui_lib::parse_remote_mtime)
+                            .map(|secs| {
+                                std::time::UNIX_EPOCH
+                                    + std::time::Duration::from_secs(secs.max(0) as u64)
+                            }),
                     },
                 })
                 .collect())
@@ -33115,6 +33167,9 @@ async fn cmd_get_recursive(
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
                 download_segments,
+                modify_window: None,
+                dirs_deleted: 0,
+                checksum: None,
             });
         }
     }
@@ -33368,6 +33423,9 @@ async fn cmd_get_glob(
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
                 download_segments,
+                modify_window: None,
+                dirs_deleted: 0,
+                checksum: None,
             });
         }
     }
@@ -34052,6 +34110,9 @@ async fn cmd_put_recursive(
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
                 download_segments: None,
+                modify_window: None,
+                dirs_deleted: 0,
+                checksum: None,
             });
         }
     }
@@ -34400,7 +34461,7 @@ impl RmFilter {
     fn matches_file(&self, name: &str, path: &str, size: u64, modified: Option<&str>) -> bool {
         if let Some(ref predicate) = self.predicate {
             let mtime = modified
-                .and_then(parse_iso8601_to_unix)
+                .and_then(ftp_client_gui_lib::parse_remote_mtime)
                 .and_then(|ts| u64::try_from(ts).ok());
             if !predicate(name, size, mtime) {
                 return false;
@@ -46714,14 +46775,21 @@ async fn dedupe_hash_remote_sha256(
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// The exact order of two mtimes for `dedupe --mode newest|oldest`: a file
+/// with a date that reads orders after one without.
+fn dedupe_mtime_order(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
+    a.and_then(ftp_client_gui_lib::parse_remote_mtime)
+        .cmp(&b.and_then(ftp_client_gui_lib::parse_remote_mtime))
+}
+
 /// Sort a dedupe group so index 0 is the file to keep, based on mode.
 fn dedupe_sort_group(group: &mut [(String, u64, Option<String>)], mode: &str) {
     match mode {
         "newest" => {
-            group.sort_by(|a, b| compare_mtime(b.2.as_deref(), a.2.as_deref()));
+            group.sort_by(|a, b| dedupe_mtime_order(b.2.as_deref(), a.2.as_deref()));
         }
         "oldest" => {
-            group.sort_by(|a, b| compare_mtime(a.2.as_deref(), b.2.as_deref()));
+            group.sort_by(|a, b| dedupe_mtime_order(a.2.as_deref(), b.2.as_deref()));
         }
         "largest" => {
             group.sort_by_key(|b| std::cmp::Reverse(b.1));
@@ -46883,45 +46951,335 @@ fn apply_default_time<'a>(mtime: Option<&'a str>, default: Option<&'a str>) -> O
     mtime.or(default)
 }
 
-/// Tolerance for "same instant" decisions between two stores: FAT and FTP
-/// `MDTM` keep 2-second granularity, and clocks on two machines are never
-/// exactly aligned.
-const SYNC_MTIME_TOLERANCE_SECS: i64 = 2;
-
 /// One-way sync, sizes already equal: is the destination copy current?
 ///
 /// The destination is current when its mtime is not older than the source's
-/// (within tolerance): a copy written after the source last changed already
-/// holds that content. Backends that do not preserve mtime (S3 reports the
-/// upload time) therefore stop re-uploading every file on every run, and a
-/// source edited after the last sync (newer than the destination) is still
-/// transferred. When either timestamp cannot be parsed the rule falls back to
-/// the exact comparison the planner always used.
-fn destination_is_current(src_mtime: Option<&str>, dst_mtime: Option<&str>) -> bool {
-    match (
-        src_mtime.and_then(ftp_client_gui_lib::parse_remote_mtime),
-        dst_mtime.and_then(ftp_client_gui_lib::parse_remote_mtime),
-    ) {
-        (Some(src), Some(dst)) => dst + SYNC_MTIME_TOLERANCE_SECS >= src,
-        _ => compare_mtime(src_mtime, dst_mtime) == std::cmp::Ordering::Equal,
+/// (within `window`, see [`ModifyWindow`]): a copy written after the source
+/// last changed already holds that content. Backends that do not preserve
+/// mtime (S3 reports the upload time) therefore stop re-uploading every file
+/// on every run, and a source edited after the last sync (newer than the
+/// destination) is still transferred. A size-only window, or a date that is
+/// missing or cannot be read, leaves the equal sizes to decide.
+fn destination_is_current(
+    src_mtime: Option<&str>,
+    dst_mtime: Option<&str>,
+    window: ModifyWindow,
+) -> bool {
+    !matches!(
+        window.order_text(src_mtime, dst_mtime),
+        Some(std::cmp::Ordering::Greater)
+    )
+}
+
+/// Order two mtimes under `window` for `--direction both`. A date that is
+/// missing or cannot be read is unknown, and an unknown date orders as equal,
+/// as does every pair under a size-only window: it used to fall back to
+/// comparing the raw strings, so an FTP `LIST` date (`Sep 24 19:41`) ranked
+/// against an ISO one by its first letter and a conflict was settled at
+/// random.
+fn compare_mtime(a: Option<&str>, b: Option<&str>, window: ModifyWindow) -> std::cmp::Ordering {
+    window.order_text(a, b).unwrap_or(std::cmp::Ordering::Equal)
+}
+
+/// The conflict policy `sync` runs with: `newer` by default in `--direction
+/// both`, `source` (the source copy wins, what one-way sync always did) in
+/// `upload` / `download`. A value a direction cannot honour is a usage error,
+/// with one exception: `newer` in a one-way sync has no effect and runs as
+/// `source` (see [`one_way_newer_notice`]), because the GUI script export
+/// writes `--conflict-mode newer` whatever the direction (4.2.0 included), and
+/// refusing it would stop every exported Mirror and Backup script.
+fn resolve_sync_conflict_mode(requested: Option<&str>, direction: &str) -> Result<String, String> {
+    let one_way = direction == "upload" || direction == "download";
+    match (requested, one_way) {
+        (None, false) => Ok("newer".to_string()),
+        (None, true) => Ok("source".to_string()),
+        (Some(mode @ ("source" | "skip")), true) => Ok(mode.to_string()),
+        (Some("newer" | "newest"), true) => Ok("source".to_string()),
+        (Some(mode), true) if SYNC_CONFLICT_MODES.contains(&mode) => Err(format!(
+            "--conflict-mode {mode} needs --direction both; one-way sync accepts source or skip"
+        )),
+        (Some("source"), false) => {
+            Err("--conflict-mode source needs --direction upload or download".to_string())
+        }
+        (Some(mode), false) if SYNC_CONFLICT_MODES.contains(&mode) => Ok(mode.to_string()),
+        (Some(mode), _) => Err(format!(
+            "invalid --conflict-mode '{mode}': expected newer, older, larger, smaller, rename or skip with --direction both, source or skip with --direction upload or download"
+        )),
     }
 }
 
-fn compare_mtime(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
-    match (a, b) {
-        (Some(a), Some(b)) => {
-            match (
-                ftp_client_gui_lib::parse_remote_mtime(a),
-                ftp_client_gui_lib::parse_remote_mtime(b),
-            ) {
-                (Some(ta), Some(tb)) => ta.cmp(&tb),
-                _ => a.cmp(b), // fallback to lexicographic
+/// The line `sync` prints when a one-way run was given `--conflict-mode
+/// newer`, which it accepts and does not apply.
+fn one_way_newer_notice(requested: Option<&str>, direction: &str) -> Option<&'static str> {
+    let one_way = direction == "upload" || direction == "download";
+    (one_way && matches!(requested, Some("newer" | "newest"))).then_some(
+        "Note: --conflict-mode newer applies to --direction both only; in a one-way sync the source copy wins (--update keeps a destination copy that is newer)",
+    )
+}
+
+/// What a one-way sync does with a file present on both sides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OneWayPair {
+    Skip,
+    Transfer,
+}
+
+/// How `sync` decides whether a file present on both sides moves: the flags
+/// `--conflict-mode`, `--skip-matching`, `--update`, `--modify-window` and
+/// `--checksum`, resolved once and carried together.
+#[derive(Debug, Clone, Copy)]
+struct SyncPairRule<'a> {
+    /// Resolved by [`resolve_sync_conflict_mode`]: never absent.
+    conflict_mode: &'a str,
+    skip_matching: bool,
+    update: bool,
+    /// `--modify-window` as given; the run raises it to the backend's
+    /// precision ([`ModifyWindow::against_provider`]).
+    modify_window: Option<u64>,
+    checksum: bool,
+}
+
+impl SyncPairRule<'_> {
+    fn requested_window(&self) -> Option<std::time::Duration> {
+        self.modify_window.map(std::time::Duration::from_secs)
+    }
+}
+
+/// The one-way decision, the CLI form of the GUI Mirror / Backup / Update
+/// buckets. `same_content` is the `--checksum` verdict when there is one: a
+/// match is current whatever the dates, a mismatch is a changed file even at
+/// the same size. Without it, same size and a destination at least as new is
+/// current (skipped). A changed file whose source is newer beyond the window is
+/// transferred; one whose destination is newer beyond the window is skipped
+/// with `--update` and transferred otherwise (Mirror: the source wins).
+/// Anything else (a change inside the window, a date that is unknown, or a
+/// size-only window) is a conflict: `--conflict-mode skip` leaves it, `source`
+/// transfers it.
+fn plan_one_way_pair(
+    rule: &SyncPairRule<'_>,
+    window: ModifyWindow,
+    src_size: u64,
+    src_mtime: Option<&str>,
+    dst_size: u64,
+    dst_mtime: Option<&str>,
+    same_content: Option<bool>,
+) -> OneWayPair {
+    let current = match same_content {
+        Some(same) => same,
+        None => {
+            src_size == dst_size
+                && (rule.skip_matching || destination_is_current(src_mtime, dst_mtime, window))
+        }
+    };
+    if current {
+        return OneWayPair::Skip;
+    }
+    match window.order_text(src_mtime, dst_mtime) {
+        Some(std::cmp::Ordering::Greater) => OneWayPair::Transfer,
+        Some(std::cmp::Ordering::Less) if rule.update => OneWayPair::Skip,
+        Some(std::cmp::Ordering::Less) => OneWayPair::Transfer,
+        _ if rule.conflict_mode == "skip" => OneWayPair::Skip,
+        _ => OneWayPair::Transfer,
+    }
+}
+
+/// The `sync --checksum` verdicts: for each file present on both sides with the
+/// same size, whether the two copies hold the same bytes. A pair missing here
+/// had no checksum both sides could produce and is decided by size and time;
+/// `unverifiable` counts those, so the run can say how many.
+#[derive(Debug, Default)]
+struct SyncChecksumVerdicts {
+    same: HashMap<String, bool>,
+    unverifiable: u32,
+}
+
+impl SyncChecksumVerdicts {
+    fn get(&self, path: &str) -> Option<bool> {
+        self.same.get(path).copied()
+    }
+}
+
+/// The digest `sync --checksum` compares for one remote file: the first of the
+/// backend's checksums that a local file can be hashed with, strongest first.
+/// Provider maps spell the keys inconsistently (`sha256`, `SHA-256`, `sha_256`).
+fn sync_checksum_pick(checksums: &HashMap<String, String>) -> Option<(HashAlgorithm, String)> {
+    const ORDER: &[(HashAlgorithm, &[&str])] = &[
+        (HashAlgorithm::Sha256, &["sha256", "sha-256", "sha_256"]),
+        (HashAlgorithm::Sha512, &["sha512", "sha-512", "sha_512"]),
+        (HashAlgorithm::Blake3, &["blake3"]),
+        (HashAlgorithm::Sha1, &["sha1", "sha-1", "sha_1"]),
+        (HashAlgorithm::Md5, &["md5"]),
+    ];
+    let lower: HashMap<String, &String> = checksums
+        .iter()
+        .map(|(k, v)| (k.to_ascii_lowercase(), v))
+        .collect();
+    ORDER.iter().find_map(|(algo, keys)| {
+        keys.iter().find_map(|key| {
+            lower
+                .get(*key)
+                .map(|value| (*algo, value.trim().to_ascii_lowercase()))
+        })
+    })
+}
+
+/// Read the `--checksum` verdict of every same-size pair: the backend's
+/// server-side checksum against a local digest of the same algorithm. A
+/// backend without server-side checksums (or a crypt overlay, whose stored
+/// digests are of the ciphertext) gives no verdict at all.
+async fn sync_checksum_verdicts(
+    provider: &mut dyn StorageProvider,
+    local: &str,
+    remote: &str,
+    local_map: &HashMap<&str, (u64, Option<&str>)>,
+    remote_map: &HashMap<&str, (u64, Option<&str>)>,
+    cancelled: &AtomicBool,
+) -> SyncChecksumVerdicts {
+    let mut verdicts = SyncChecksumVerdicts::default();
+    let mut pairs: Vec<&str> = local_map
+        .iter()
+        .filter(|(path, (size, _))| {
+            remote_map
+                .get(*path)
+                .is_some_and(|(rsize, _)| rsize == size)
+        })
+        .map(|(path, _)| *path)
+        .collect();
+    pairs.sort_unstable();
+    if !provider.supports_checksum() {
+        verdicts.unverifiable = pairs.len() as u32;
+        return verdicts;
+    }
+    for path in pairs {
+        if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
+        let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
+        let picked = match provider.checksum(&remote_path).await {
+            Ok(map) => sync_checksum_pick(&map),
+            Err(_) => None,
+        };
+        let Some((algo, remote_digest)) = picked else {
+            verdicts.unverifiable += 1;
+            continue;
+        };
+        let local_path = Path::new(local).join(path);
+        let local_digest =
+            tokio::task::spawn_blocking(move || hash_file_streaming_algo(algo, &local_path))
+                .await
+                .ok()
+                .and_then(Result::ok);
+        match local_digest {
+            Some(digest) => {
+                verdicts.same.insert(
+                    path.to_string(),
+                    digest.eq_ignore_ascii_case(&remote_digest),
+                );
+            }
+            None => verdicts.unverifiable += 1,
+        }
+    }
+    verdicts
+}
+
+/// Every parent directory of a relative path, deepest first
+/// (`a/b/c.txt` gives `a/b`, then `a`).
+fn relative_parent_dirs(path: &str) -> impl Iterator<Item = &str> {
+    path.rmatch_indices('/').map(move |(at, _)| &path[..at])
+}
+
+/// The directories a one-way `sync --delete` may remove once its orphan files
+/// are gone, deepest first: each parent directory of a deleted orphan that no
+/// source file lives under, that the exclude list does not name, and that the
+/// scans did not leave out (`unseen`). The run still checks that the source
+/// has no directory of that name, and lists each one again right before it
+/// removes it, keeping it unless that listing is empty: a file the scan did not
+/// see (an excluded one, one written since) keeps its directory.
+fn sync_orphan_dir_candidates<'a>(
+    deleted: &[&'a str],
+    source_paths: impl IntoIterator<Item = &'a str>,
+    excludes: &SyncExcludes,
+    unseen: impl Fn(&str) -> bool,
+) -> Vec<String> {
+    let source_dirs: std::collections::HashSet<&str> = source_paths
+        .into_iter()
+        .flat_map(relative_parent_dirs)
+        .collect();
+    let mut dirs: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for path in deleted {
+        for dir in relative_parent_dirs(path) {
+            if !source_dirs.contains(dir) && !excludes.is_excluded(dir) && !unseen(dir) {
+                dirs.insert(dir);
             }
         }
-        (Some(_), None) => std::cmp::Ordering::Greater,
-        (None, Some(_)) => std::cmp::Ordering::Less,
-        (None, None) => std::cmp::Ordering::Equal,
     }
+    let mut out: Vec<String> = dirs.into_iter().map(str::to_string).collect();
+    out.sort_by(|a, b| {
+        b.matches('/')
+            .count()
+            .cmp(&a.matches('/').count())
+            .then_with(|| a.cmp(b))
+    });
+    out
+}
+
+/// Whether `dir` is the `--backup-dir` directory or inside it: the empty
+/// directories a `sync --delete` removes never include the backups.
+fn sync_backup_dir_holds(backup_dir: Option<&str>, dir: &Path) -> bool {
+    let Some(backup) = backup_dir else {
+        return false;
+    };
+    let (Ok(backup), Ok(dir)) = (std::fs::canonicalize(backup), std::fs::canonicalize(dir)) else {
+        return false;
+    };
+    dir.starts_with(backup)
+}
+
+/// The local-to-local flags `sync --local` would otherwise ignore.
+struct LocalToLocalFlags<'a> {
+    direction: &'a str,
+    delete: bool,
+    track_renames: bool,
+    max_delete: bool,
+    backup_dir: bool,
+    compare_dest: bool,
+    copy_dest: bool,
+    from_reconcile: bool,
+    conflict_mode: bool,
+    skip_matching: bool,
+    update: bool,
+    modify_window: bool,
+    checksum: bool,
+    resync: bool,
+    watch: bool,
+}
+
+fn local_to_local_ignored_flags(f: &LocalToLocalFlags) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if f.direction != "both" {
+        out.push("--direction");
+    }
+    for (set, name) in [
+        (f.delete, "--delete"),
+        (f.track_renames, "--track-renames"),
+        (f.max_delete, "--max-delete"),
+        (f.backup_dir, "--backup-dir"),
+        (f.compare_dest, "--compare-dest"),
+        (f.copy_dest, "--copy-dest"),
+        (f.from_reconcile, "--from-reconcile"),
+        (f.conflict_mode, "--conflict-mode"),
+        (f.skip_matching, "--skip-matching"),
+        (f.update, "--update"),
+        (f.modify_window, "--modify-window"),
+        (f.checksum, "--checksum"),
+        (f.resync, "--resync"),
+        (f.watch, "--watch"),
+    ] {
+        if set {
+            out.push(name);
+        }
+    }
+    out
 }
 
 /// Resolve a conflict between local and remote file for --direction both.
@@ -46932,9 +47290,10 @@ fn resolve_conflict(
     local_mtime: Option<&str>,
     remote_size: u64,
     remote_mtime: Option<&str>,
+    window: ModifyWindow,
 ) -> &'static str {
     match conflict_mode {
-        "newer" | "newest" => match compare_mtime(local_mtime, remote_mtime) {
+        "newer" | "newest" => match compare_mtime(local_mtime, remote_mtime, window) {
             std::cmp::Ordering::Greater => "upload",
             std::cmp::Ordering::Less => "download",
             std::cmp::Ordering::Equal => {
@@ -46948,7 +47307,7 @@ fn resolve_conflict(
                 }
             }
         },
-        "older" | "oldest" => match compare_mtime(local_mtime, remote_mtime) {
+        "older" | "oldest" => match compare_mtime(local_mtime, remote_mtime, window) {
             std::cmp::Ordering::Less => "upload",
             std::cmp::Ordering::Greater => "download",
             std::cmp::Ordering::Equal => {
@@ -47813,8 +48172,7 @@ async fn cmd_sync(
     compare_dest: Option<&str>,
     copy_dest: Option<&str>,
     from_reconcile: Option<&str>,
-    conflict_mode: &str,
-    skip_matching: bool,
+    pair_rule: SyncPairRule<'_>,
     resync: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -47825,6 +48183,11 @@ async fn cmd_sync(
     // when the provider does not expose a delta transport.
     use_aerorsync_batch: bool,
 ) -> SyncCycleStats {
+    let SyncPairRule {
+        conflict_mode,
+        skip_matching,
+        ..
+    } = pair_rule;
     if !is_valid_sync_direction(direction) {
         print_error(
             format,
@@ -48141,6 +48504,43 @@ async fn cmd_sync(
     let local_map = sync_entry_map(local_entries);
     let remote_map = sync_entry_map(&remote_entries);
 
+    // One rule for "the same modification time", the GUI compare's: the
+    // requested window (2 s) raised to the backend's precision, or size only
+    // when the backend keeps no comparable time. Read after the scan: an FTP
+    // session whose MLSD broke lists with LIST from then on.
+    let modify_window = ModifyWindow::against_provider(pair_rule.requested_window(), &*provider);
+    if !modify_window.compares_times() && !quiet {
+        eprintln!("Note: {}", modify_window.describe());
+    }
+    // `--checksum`: the verdict of every same-size pair, read before the plan
+    // so each direction decides on it.
+    let checksum_verdicts = if pair_rule.checksum && reconcile_plan.is_none() {
+        if !quiet {
+            eprintln!("Comparing checksums of the files present on both sides...");
+        }
+        sync_checksum_verdicts(
+            provider.as_mut(),
+            local,
+            remote,
+            &local_map,
+            &remote_map,
+            &cancelled,
+        )
+        .await
+    } else {
+        SyncChecksumVerdicts::default()
+    };
+    let checksum_summary = pair_rule.checksum.then_some(CliSyncChecksumSummary {
+        compared: checksum_verdicts.same.len() as u32,
+        unverifiable: checksum_verdicts.unverifiable,
+    });
+    if checksum_verdicts.unverifiable > 0 && !quiet {
+        eprintln!(
+            "Note: --checksum: {} file(s) of the same size have no checksum both sides can compute; compared by size and time",
+            checksum_verdicts.unverifiable
+        );
+    }
+
     // Load previous snapshot for bisync delta detection (--direction both only)
     let prev_snapshot = if direction == "both" && !resync {
         load_bisync_snapshot(local)
@@ -48237,23 +48637,43 @@ async fn cmd_sync(
             if let Some((rsize, rmtime)) = remote_map.get(path) {
                 let lm = apply_default_time(*mtime, default_time_ref);
                 let rm = apply_default_time(*rmtime, default_time_ref);
-                // One-way upload: the remote copy is current when it is at
-                // least as new as the local file (it was written after the
-                // local file last changed). Exact equality is impossible on
-                // backends that do not preserve mtime (S3 reports the upload
-                // time), and demanding it re-uploaded every file on every run.
-                // Bidirectional sync keeps exact equality: a difference there
-                // is a conflict to resolve, not a copy to skip.
-                let current = if direction == "upload" {
-                    skip_matching || destination_is_current(lm, rm)
-                } else {
-                    skip_matching || compare_mtime(lm, rm) == std::cmp::Ordering::Equal
+                // One-way upload: `plan_one_way_pair` (a remote copy at least as
+                // new as the local file is current, since exact equality is
+                // impossible on backends that do not preserve mtime; --update
+                // and --conflict-mode skip leave the destination alone).
+                if direction == "upload" {
+                    match plan_one_way_pair(
+                        &pair_rule,
+                        modify_window,
+                        *size,
+                        lm,
+                        *rsize,
+                        rm,
+                        checksum_verdicts.get(path),
+                    ) {
+                        OneWayPair::Skip => skipped += 1,
+                        OneWayPair::Transfer => to_upload.push(path),
+                    }
+                    continue;
+                }
+                // Bidirectional sync: the same pair under the same window is
+                // current; a difference is a conflict to resolve, not a copy
+                // to skip.
+                let current = match checksum_verdicts.get(path) {
+                    Some(same) => same,
+                    None => {
+                        size == rsize
+                            && (skip_matching
+                                || compare_mtime(lm, rm, modify_window)
+                                    == std::cmp::Ordering::Equal)
+                    }
                 };
-                if size == rsize && current {
+                if current {
                     skipped += 1;
-                } else if direction == "both" {
+                } else {
                     // Conflict: file exists on both sides with different content
-                    let action = resolve_conflict(conflict_mode, *size, lm, *rsize, rm);
+                    let action =
+                        resolve_conflict(conflict_mode, *size, lm, *rsize, rm, modify_window);
                     match action {
                         "upload" => {
                             to_upload.push(path);
@@ -48280,9 +48700,6 @@ async fn cmd_sync(
                             conflicts_resolved += 1;
                         }
                     }
-                } else {
-                    // upload-only: local always wins
-                    to_upload.push(path);
                 }
             } else {
                 // File only on local side
@@ -48312,22 +48729,22 @@ async fn cmd_sync(
             if let Some((lsize, lmtime)) = local_map.get(path) {
                 let rm = apply_default_time(*mtime, default_time_ref);
                 let lm = apply_default_time(*lmtime, default_time_ref);
-                // Mirror of the upload rule: in one-way download the local copy
-                // is current when it is at least as new as the remote file.
-                let current = if direction == "download" {
-                    skip_matching || destination_is_current(rm, lm)
-                } else {
-                    skip_matching || compare_mtime(rm, lm) == std::cmp::Ordering::Equal
-                };
-                if size == lsize && current {
-                    if direction == "download" {
-                        skipped += 1;
+                // Mirror of the upload rule, with the remote file as the source.
+                // In "both" mode the pair was already decided in the upload pass.
+                if direction == "download" {
+                    match plan_one_way_pair(
+                        &pair_rule,
+                        modify_window,
+                        *size,
+                        rm,
+                        *lsize,
+                        lm,
+                        checksum_verdicts.get(path),
+                    ) {
+                        OneWayPair::Skip => skipped += 1,
+                        OneWayPair::Transfer => to_download.push(path),
                     }
-                    // In "both" mode, already handled above
-                } else if direction == "download" {
-                    to_download.push(path);
                 }
-                // In "both" mode, conflicts already resolved in upload pass
             } else {
                 // File only on remote side
                 if direction == "both" {
@@ -48501,6 +48918,13 @@ async fn cmd_sync(
             }
         };
         let cdir_ref = cdir_canonical.to_str().unwrap_or(cdir);
+        // Both copies are local files: the local window on both sides.
+        let local_window = ModifyWindow::resolve(
+            pair_rule.requested_window(),
+            ftp_client_gui_lib::sync_core::mtime::LOCAL_MTIME_PRECISION,
+            ftp_client_gui_lib::sync_core::mtime::LOCAL_MTIME_PRECISION,
+            ftp_client_gui_lib::sync_core::mtime::SizeOnlyReason::NoComparableTime,
+        );
         let is_copy = copy_dest.is_some();
         let before = to_upload.len();
         let mut retained = Vec::new();
@@ -48525,7 +48949,8 @@ async fn cmd_sync(
                 if let Some((lsize, lmtime)) = local_map.get(path) {
                     let lm = apply_default_time(*lmtime, default_time_ref);
                     if csize == *lsize
-                        && compare_mtime(cmtime.as_deref(), lm) == std::cmp::Ordering::Equal
+                        && compare_mtime(cmtime.as_deref(), lm, local_window)
+                            == std::cmp::Ordering::Equal
                     {
                         if is_copy {
                             // Copy from compare-dest to local instead of downloading
@@ -48651,16 +49076,51 @@ async fn cmd_sync(
         }
     }
 
+    // The directories a one-way --delete leaves empty on the destination:
+    // candidates now (for the dry run too), each removed after the file
+    // deletes only when it lists empty then.
+    let orphan_dirs: Vec<String> =
+        if delete && reconcile_plan.is_none() && matches!(direction, "upload" | "download") {
+            let (deleted, source_paths): (&[&str], Vec<&str>) = if direction == "upload" {
+                (&to_delete_remote, local_map.keys().copied().collect())
+            } else {
+                (&to_delete_local, remote_map.keys().copied().collect())
+            };
+            let mut dirs = Vec::new();
+            for dir in sync_orphan_dir_candidates(deleted, source_paths, &exclude_matchers, |d| {
+                bound.covers(d)
+            }) {
+                if validate_relative_path(&dir).is_none() {
+                    continue;
+                }
+                // A directory the source has, empty or not, stays. On a remote
+                // source only a NotFound answer counts as absent.
+                let source_has_it = if direction == "upload" {
+                    Path::new(local).join(&dir).is_dir()
+                } else {
+                    let remote_dir = format!("{}/{}", remote.trim_end_matches('/'), dir);
+                    !matches!(
+                        provider.stat(&remote_dir).await,
+                        Err(ProviderError::NotFound(_))
+                    )
+                };
+                if !source_has_it {
+                    dirs.push(dir);
+                }
+            }
+            dirs
+        } else {
+            Vec::new()
+        };
+
     // KE-A5: Apply --order-by to the transfer queue BEFORE the dry-run
     // gate so the printed/JSON plan reflects the order that the live
     // run would dispatch. The local_map / remote_map carry (size,
     // Option<mtime_string>) for every candidate; ModtimeAsc/Desc parse
     // the mtime as RFC 3339; entries without a parseable timestamp are
     // sorted to the end via OrderBy::sort_in_place.
-    let mtime_to_epoch = |raw: Option<&str>| -> Option<i64> {
-        raw.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-            .map(|d| d.timestamp())
-    };
+    let mtime_to_epoch =
+        |raw: Option<&str>| -> Option<i64> { raw.and_then(ftp_client_gui_lib::parse_remote_mtime) };
     cli.order_by.sort_in_place(
         &mut to_upload,
         |p| *p,
@@ -48688,6 +49148,14 @@ async fn cmd_sync(
                 }
                 for p in &to_delete_local {
                     println!("  DELETE (local)  {}", p);
+                }
+                let side = if direction == "upload" {
+                    "remote"
+                } else {
+                    "local"
+                };
+                for d in &orphan_dirs {
+                    println!("  RMDIR ({side}, if empty after the deletes)  {d}/");
                 }
                 for (orig, conflict) in &to_conflict_upload {
                     println!("  CONFLICT-RENAME  {} -> {}", orig, conflict);
@@ -48743,6 +49211,17 @@ async fn cmd_sync(
                         conflict_path: None,
                     });
                 }
+                for d in &orphan_dirs {
+                    plan.push(CliSyncPlanEntry {
+                        op: if direction == "upload" {
+                            "rmdir_remote"
+                        } else {
+                            "rmdir_local"
+                        },
+                        path: d.clone(),
+                        ..Default::default()
+                    });
+                }
                 for (orig, conflict) in &to_conflict_upload {
                     plan.push(CliSyncPlanEntry {
                         op: "conflict_rename",
@@ -48777,6 +49256,10 @@ async fn cmd_sync(
                     // Dry run performs no transfer, so there is no engine job.
                     stats: None,
                     download_segments: None,
+                    modify_window: Some(modify_window),
+                    // A dry run removes nothing; the plan lists the candidates.
+                    dirs_deleted: 0,
+                    checksum: checksum_summary,
                 });
             }
         }
@@ -49512,6 +49995,47 @@ async fn cmd_sync(
         }
     }
 
+    // Directories the deletes left empty, deepest first. Each is listed again
+    // and removed only when that listing is empty, with a call that does not
+    // recurse, so nothing the scan did not see goes with it.
+    let mut dirs_deleted: u32 = 0;
+    for dir in &orphan_dirs {
+        if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
+        if direction == "upload" {
+            let remote_dir = format!("{}/{}", remote.trim_end_matches('/'), dir);
+            if !matches!(provider.list(&remote_dir).await, Ok(entries) if entries.is_empty()) {
+                continue;
+            }
+            match provider.rmdir(&remote_dir).await {
+                Ok(()) => dirs_deleted += 1,
+                Err(ProviderError::NotFound(_)) => {}
+                Err(e) => errors.push(format!("remove empty remote directory {}: {}", dir, e)),
+            }
+        } else {
+            let local_dir = Path::new(local).join(dir);
+            if sync_backup_dir_holds(backup_dir, &local_dir) {
+                continue;
+            }
+            let empty = std::fs::read_dir(&local_dir).is_ok_and(|mut it| it.next().is_none());
+            if !empty {
+                continue;
+            }
+            match std::fs::remove_dir(&local_dir) {
+                Ok(()) => dirs_deleted += 1,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => errors.push(format!("remove empty local directory {}: {}", dir, e)),
+            }
+        }
+    }
+    if dirs_deleted > 0 && !quiet {
+        eprintln!(
+            "Removed {} empty director(ies) left by --delete",
+            dirs_deleted
+        );
+    }
+
     // Save bisync snapshot after successful sync (--direction both)
     if direction == "both" && errors.is_empty() && !dry_run {
         save_bisync_snapshot(
@@ -49605,6 +50129,9 @@ async fn cmd_sync(
                 unseen_paths: unseen_paths.clone(),
                 stats: engine_stats,
                 download_segments,
+                modify_window: Some(modify_window),
+                dirs_deleted,
+                checksum: checksum_summary,
             });
         }
     }
@@ -56728,6 +57255,9 @@ async fn cmd_put_glob(
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
                 download_segments: None,
+                modify_window: None,
+                dirs_deleted: 0,
+                checksum: None,
             });
         }
     }
@@ -57008,8 +57538,7 @@ async fn cmd_sync_watch(
     compare_dest: Option<&str>,
     copy_dest: Option<&str>,
     from_reconcile: Option<&str>,
-    conflict_mode: &str,
-    skip_matching: bool,
+    pair_rule: SyncPairRule<'_>,
     resync: bool,
     watch_mode: &str,
     watch_debounce_ms: u64,
@@ -57129,8 +57658,7 @@ async fn cmd_sync_watch(
                 compare_dest,
                 copy_dest,
                 from_reconcile,
-                conflict_mode,
-                skip_matching,
+                pair_rule,
                 resync && cycle == 1, // resync only on first cycle
                 cli,
                 format,
@@ -57490,6 +58018,14 @@ async fn sync_doctor_report(
         );
         return Err(5);
     }
+    // The conflict policy `sync` would run with (one-way: source or skip).
+    let conflict_mode = match resolve_sync_conflict_mode(Some(conflict_mode), direction) {
+        Ok(mode) => mode,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return Err(5);
+        }
+    };
 
     let doctor_cfg = if let Some(profile_name) = cli.profile.as_deref() {
         match profile_to_provider_config(profile_name, cli, format) {
@@ -57585,10 +58121,13 @@ async fn sync_doctor_report(
     let ec_max_file_size = ftp_client_gui_lib::sync::AEROSYNC_EC_MAX_FILE_SIZE_BYTES;
     let default_time_val = resolve_default_time(cli);
     let default_time_ref = default_time_val.as_deref();
+    // The window `sync` would run with, read after the scan as `sync` does.
+    let window = ModifyWindow::against_provider(None, provider.as_ref());
     let ec_estimate = error_correction_pct.map(|pct| {
         let upload_sizes = sync_doctor_planned_upload_sizes(
             direction,
-            conflict_mode,
+            &conflict_mode,
+            window,
             &local_entries,
             &remote_entries,
             default_time_ref,
@@ -60692,20 +61231,6 @@ fn quota_pct(used: u64, total: u64) -> Option<f64> {
     }
 }
 
-/// Parse an ISO 8601 / RFC 3339 timestamp into UNIX seconds. Falls back to
-/// `None` for unparseable input.
-fn parse_iso8601_to_unix(s: &str) -> Option<i64> {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|dt| dt.timestamp())
-        .or_else(|| {
-            // Tolerate trailing space or Z-less variants used by some providers.
-            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                .ok()
-                .map(|ndt| ndt.and_utc().timestamp())
-        })
-}
-
 /// Convert UNIX seconds to RFC 3339 string for inclusion in audit details.
 fn unix_to_rfc3339(ts: i64) -> Option<String> {
     chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0).map(|dt| dt.to_rfc3339())
@@ -60974,7 +61499,11 @@ async fn run_audit_backup_freshness(
                         let mut newest_unix: Option<i64> = None;
                         let mut newest_name: Option<String> = None;
                         for e in &filtered {
-                            if let Some(m) = e.modified.as_deref().and_then(parse_iso8601_to_unix) {
+                            if let Some(m) = e
+                                .modified
+                                .as_deref()
+                                .and_then(ftp_client_gui_lib::parse_remote_mtime)
+                            {
                                 if newest_unix.is_none_or(|cur| m > cur) {
                                     newest_unix = Some(m);
                                     newest_name = Some(e.name.clone());
@@ -61197,6 +61726,9 @@ async fn dispatch_sync(
         from_reconcile,
         conflict_mode,
         skip_matching,
+        update,
+        modify_window,
+        checksum,
         resync,
         watch,
         watch_mode,
@@ -61238,6 +61770,37 @@ async fn dispatch_sync(
     }
 
     if local_to_local_match {
+        // The local-to-local copier does not plan: it copies every file.
+        // A flag it cannot honour is refused instead of ignored, so a
+        // `--delete` or a conflict policy never reads as applied.
+        let ignored = local_to_local_ignored_flags(&LocalToLocalFlags {
+            direction,
+            delete: *delete,
+            track_renames: *track_renames,
+            max_delete: max_delete.is_some(),
+            backup_dir: backup_dir.is_some(),
+            compare_dest: compare_dest.is_some(),
+            copy_dest: copy_dest.is_some(),
+            from_reconcile: from_reconcile.is_some(),
+            conflict_mode: conflict_mode.is_some(),
+            skip_matching: *skip_matching,
+            update: *update,
+            modify_window: modify_window.is_some(),
+            checksum: *checksum,
+            resync: *resync,
+            watch: *watch,
+        });
+        if !ignored.is_empty() {
+            print_error(
+                format,
+                &format!(
+                    "local-to-local sync copies every file and does not support: {}",
+                    ignored.join(", ")
+                ),
+                5,
+            );
+            return 5;
+        }
         if error_correction.is_some() && !cli.quiet {
             eprintln!("Warning: --error-correction is ignored for local-to-local sync");
         }
@@ -61253,10 +61816,26 @@ async fn dispatch_sync(
         )
         .await;
         stats.exit_code
-    } else if let Err(err) = check_sync_values(direction, conflict_mode, max_delete.as_deref()) {
-        print_error(format, &err, 5);
-        5
     } else {
+        let notice = one_way_newer_notice(conflict_mode.as_deref(), direction);
+        let conflict_mode =
+            match check_sync_values(direction, conflict_mode.as_deref(), max_delete.as_deref()) {
+                Ok(mode) => mode,
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    return 5;
+                }
+            };
+        if let (Some(notice), false) = (notice, cli.quiet) {
+            eprintln!("{notice}");
+        }
+        let pair_rule = SyncPairRule {
+            conflict_mode: &conflict_mode,
+            skip_matching: *skip_matching,
+            update: *update,
+            modify_window: *modify_window,
+            checksum: *checksum,
+        };
         match parse_sync_error_correction_level_pct(error_correction.as_deref()) {
             Err(err) => {
                 print_error(format, &err, 5);
@@ -61288,8 +61867,7 @@ async fn dispatch_sync(
                         compare_dest.as_deref(),
                         copy_dest.as_deref(),
                         from_reconcile.as_deref(),
-                        conflict_mode,
-                        *skip_matching,
+                        pair_rule,
                         *resync,
                         watch_mode,
                         *watch_debounce_ms,
@@ -61325,8 +61903,7 @@ async fn dispatch_sync(
                             compare_dest.as_deref(),
                             copy_dest.as_deref(),
                             from_reconcile.as_deref(),
-                            conflict_mode,
-                            *skip_matching,
+                            pair_rule,
                             *resync,
                             cli,
                             format,
@@ -61586,7 +62163,7 @@ fn parse_batch_sync(url: &str, tokens: &[String]) -> Result<Commands, String> {
     else {
         return Err("not a sync command".to_string());
     };
-    check_sync_values(direction, conflict_mode, max_delete.as_deref())?;
+    check_sync_values(direction, conflict_mode.as_deref(), max_delete.as_deref())?;
     // A batch run is never interactive, and `sync` refuses an unattended
     // --delete without a cap: refuse it now, before line 1 runs.
     if *delete && !*dry_run && max_delete.is_none() {
@@ -63068,10 +63645,21 @@ DISCONNECT\n";
                 assert_eq!(skip_matching, want_skip);
                 assert_eq!(resync, want_resync);
                 assert_eq!(watch, want_watch);
-                assert_eq!(
-                    conflict_mode,
-                    want_conflict.unwrap_or_else(|| "newer".into())
-                );
+                // A one-way run applies `skip` only; another mode stays off
+                // the line and is named in the comment (sync_script).
+                let one_way = want_direction != "both";
+                let want_on_line = want_conflict
+                    .clone()
+                    .filter(|mode| !one_way || mode == "skip" || mode == "source");
+                assert_eq!(conflict_mode, want_on_line, "{}", profile.id);
+                if let Some(mode) =
+                    want_conflict.filter(|mode| one_way && mode != "skip" && mode != "source")
+                {
+                    assert!(
+                        script.contains(&format!("#   conflict mode: {mode} ")),
+                        "{script}"
+                    );
+                }
 
                 // Every setting `sync` cannot apply yet is named, never dropped.
                 for setting in SETTINGS_NOT_APPLIED_BY_CLI {
@@ -71929,7 +72517,8 @@ mod tests {
 
         let mut upload_sizes = sync_doctor_planned_upload_sizes(
             "upload",
-            "newer",
+            "source",
+            ModifyWindow::default(),
             &local_entries,
             &remote_entries,
             None,
@@ -71940,6 +72529,7 @@ mod tests {
         let mut both_sizes = sync_doctor_planned_upload_sizes(
             "both",
             "newer",
+            ModifyWindow::default(),
             &local_entries,
             &remote_entries,
             None,
@@ -71949,7 +72539,8 @@ mod tests {
 
         assert!(sync_doctor_planned_upload_sizes(
             "download",
-            "newer",
+            "source",
+            ModifyWindow::default(),
             &local_entries,
             &remote_entries,
             None
@@ -72557,24 +73148,401 @@ mod tests {
 
     #[test]
     fn destination_is_current_when_not_older_than_the_source() {
+        let w = ModifyWindow::default();
         let src = Some("2026-09-05T04:36:40Z");
         // Written after the source last changed (S3 upload time): current.
-        assert!(destination_is_current(src, Some("2026-09-05T06:11:32Z")));
+        assert!(destination_is_current(src, Some("2026-09-05T06:11:32Z"), w));
         // Same second: current.
-        assert!(destination_is_current(src, Some("2026-09-05T04:36:40Z")));
-        // Within the 2 s tolerance either way: current.
-        assert!(destination_is_current(src, Some("2026-09-05T04:36:38Z")));
+        assert!(destination_is_current(src, Some("2026-09-05T04:36:40Z"), w));
+        // Within the 2 s window either way: current.
+        assert!(destination_is_current(src, Some("2026-09-05T04:36:38Z"), w));
         // Source edited after the destination was written: not current, transfer.
-        assert!(!destination_is_current(src, Some("2026-09-05T04:36:37Z")));
+        assert!(!destination_is_current(
+            src,
+            Some("2026-09-05T04:36:37Z"),
+            w
+        ));
         assert!(!destination_is_current(
             Some("2026-09-05T07:00:00Z"),
-            Some("2026-09-05T06:11:32Z")
+            Some("2026-09-05T06:11:32Z"),
+            w
         ));
-        // Unparsable or missing timestamps fall back to exact equality.
-        assert!(!destination_is_current(src, None));
-        assert!(destination_is_current(None, None));
-        assert!(destination_is_current(Some("weird"), Some("weird")));
-        assert!(!destination_is_current(Some("weird"), Some("other")));
+        // A wider window (a backend that keeps coarser times) takes more in.
+        let minute = ModifyWindow::Seconds { secs: 60 };
+        assert!(destination_is_current(
+            src,
+            Some("2026-09-05T04:35:41Z"),
+            minute
+        ));
+        // A date that is missing or does not read leaves the equal sizes to
+        // decide, as the GUI compare does; it used to compare the raw strings,
+        // so `weird` against `other` was a transfer and `weird` against itself
+        // was not.
+        assert!(destination_is_current(src, None, w));
+        assert!(destination_is_current(None, None, w));
+        assert!(destination_is_current(Some("weird"), Some("other"), w));
+        // A size-only window never reads the dates.
+        let size_only = ModifyWindow::SizeOnly {
+            reason: ftp_client_gui_lib::sync_core::mtime::SizeOnlyReason::FtpListDates,
+        };
+        assert!(destination_is_current(
+            Some("2026-09-05T07:00:00Z"),
+            Some("2020-01-01T00:00:00Z"),
+            size_only
+        ));
+    }
+
+    fn one_way_rule(conflict_mode: &str, update: bool) -> SyncPairRule<'_> {
+        SyncPairRule {
+            conflict_mode,
+            skip_matching: false,
+            update,
+            modify_window: None,
+            checksum: false,
+        }
+    }
+
+    const T0: &str = "2026-09-05T10:00:00Z";
+    const T0_PLUS_1: &str = "2026-09-05T10:00:01Z";
+    const T0_PLUS_60: &str = "2026-09-05T10:01:00Z";
+
+    /// One-way sync decides its conflicts with `source` (the old behaviour,
+    /// now named) or `skip`; the two-way policies are refused there instead of
+    /// being ignored, `newer` excepted because every exported script carries
+    /// it. `source` means nothing in `both` and is refused there.
+    #[test]
+    fn conflict_mode_is_checked_against_the_direction() {
+        assert_eq!(
+            resolve_sync_conflict_mode(None, "upload").unwrap(),
+            "source"
+        );
+        assert_eq!(
+            resolve_sync_conflict_mode(None, "download").unwrap(),
+            "source"
+        );
+        assert_eq!(resolve_sync_conflict_mode(None, "both").unwrap(), "newer");
+        assert_eq!(
+            resolve_sync_conflict_mode(Some("skip"), "upload").unwrap(),
+            "skip"
+        );
+        assert_eq!(
+            resolve_sync_conflict_mode(Some("newer"), "download").unwrap(),
+            "source"
+        );
+        for mode in ["older", "larger", "smaller", "rename", "largest"] {
+            let err = resolve_sync_conflict_mode(Some(mode), "upload").unwrap_err();
+            assert!(err.contains("needs --direction both"), "{mode}: {err}");
+        }
+        let err = resolve_sync_conflict_mode(Some("source"), "both").unwrap_err();
+        assert!(err.contains("upload or download"), "{err}");
+        assert!(resolve_sync_conflict_mode(Some("bogus"), "both").is_err());
+        assert!(resolve_sync_conflict_mode(Some("bogus"), "upload").is_err());
+        assert!(one_way_newer_notice(Some("newer"), "upload").is_some());
+        assert!(one_way_newer_notice(Some("newer"), "both").is_none());
+        assert!(one_way_newer_notice(Some("source"), "upload").is_none());
+        assert!(one_way_newer_notice(None, "download").is_none());
+    }
+
+    /// `--update`: a destination copy newer than the source beyond the window
+    /// is left alone; without it the source wins (Mirror). A source newer
+    /// than the destination moves either way.
+    #[test]
+    fn update_leaves_a_newer_destination_alone() {
+        let w = ModifyWindow::default();
+        let mirror = one_way_rule("source", false);
+        let update = one_way_rule("source", true);
+        // Destination newer by a minute, different size.
+        assert_eq!(
+            plan_one_way_pair(&mirror, w, 10, Some(T0), 12, Some(T0_PLUS_60), None),
+            OneWayPair::Transfer
+        );
+        assert_eq!(
+            plan_one_way_pair(&update, w, 10, Some(T0), 12, Some(T0_PLUS_60), None),
+            OneWayPair::Skip
+        );
+        // Source newer: transferred with and without --update.
+        for rule in [&mirror, &update] {
+            assert_eq!(
+                plan_one_way_pair(rule, w, 10, Some(T0_PLUS_60), 12, Some(T0), None),
+                OneWayPair::Transfer
+            );
+        }
+    }
+
+    /// A change the dates cannot order (a different size inside the window, or
+    /// a date that is unknown) is a conflict: `source` transfers it, `skip`
+    /// leaves the destination as it is.
+    #[test]
+    fn conflict_mode_skip_leaves_a_one_way_conflict_alone() {
+        let w = ModifyWindow::default();
+        let source = one_way_rule("source", false);
+        let skip = one_way_rule("skip", false);
+        assert_eq!(
+            plan_one_way_pair(&source, w, 10, Some(T0), 12, Some(T0_PLUS_1), None),
+            OneWayPair::Transfer
+        );
+        assert_eq!(
+            plan_one_way_pair(&skip, w, 10, Some(T0), 12, Some(T0_PLUS_1), None),
+            OneWayPair::Skip
+        );
+        assert_eq!(
+            plan_one_way_pair(&skip, w, 10, None, 12, Some(T0), None),
+            OneWayPair::Skip
+        );
+        // A size-only window orders nothing: every changed size is a conflict,
+        // and --update cannot tell which copy is newer.
+        let size_only = ModifyWindow::SizeOnly {
+            reason: ftp_client_gui_lib::sync_core::mtime::SizeOnlyReason::FtpListDates,
+        };
+        assert_eq!(
+            plan_one_way_pair(&skip, size_only, 10, Some(T0_PLUS_60), 12, Some(T0), None),
+            OneWayPair::Skip
+        );
+        assert_eq!(
+            plan_one_way_pair(
+                &one_way_rule("source", true),
+                size_only,
+                10,
+                Some(T0),
+                12,
+                Some(T0_PLUS_60),
+                None
+            ),
+            OneWayPair::Transfer
+        );
+        // The same size under a size-only window is current.
+        assert_eq!(
+            plan_one_way_pair(&source, size_only, 12, Some(T0_PLUS_60), 12, Some(T0), None),
+            OneWayPair::Skip
+        );
+    }
+
+    /// `--checksum`: a matching checksum is current whatever the dates; a
+    /// mismatch at the same size is a changed file, ordered by the dates like
+    /// any other.
+    #[test]
+    fn a_checksum_verdict_decides_a_same_size_pair() {
+        let w = ModifyWindow::default();
+        let mirror = one_way_rule("source", false);
+        let update = one_way_rule("source", true);
+        assert_eq!(
+            plan_one_way_pair(&mirror, w, 12, Some(T0_PLUS_60), 12, Some(T0), Some(true)),
+            OneWayPair::Skip
+        );
+        // Same size, same second, different bytes: a size and time rule calls
+        // it current, the checksum does not.
+        assert_eq!(
+            plan_one_way_pair(&mirror, w, 12, Some(T0), 12, Some(T0), None),
+            OneWayPair::Skip
+        );
+        assert_eq!(
+            plan_one_way_pair(&mirror, w, 12, Some(T0), 12, Some(T0), Some(false)),
+            OneWayPair::Transfer
+        );
+        assert_eq!(
+            plan_one_way_pair(&update, w, 12, Some(T0), 12, Some(T0_PLUS_60), Some(false)),
+            OneWayPair::Skip
+        );
+    }
+
+    /// `--modify-window` is the same-instant window of `--direction both` too:
+    /// it used to demand the exact second there.
+    #[test]
+    fn both_compares_times_within_the_window() {
+        let w = ModifyWindow::default();
+        assert_eq!(
+            compare_mtime(Some(T0), Some(T0_PLUS_1), w),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            compare_mtime(Some(T0_PLUS_60), Some(T0), w),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_mtime(
+                Some(T0_PLUS_60),
+                Some(T0),
+                ModifyWindow::Seconds { secs: 120 }
+            ),
+            std::cmp::Ordering::Equal
+        );
+        // An FTP LIST date is not an instant: unknown, so equal.
+        assert_eq!(
+            compare_mtime(Some("Sep 24 19:41"), Some(T0), w),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    /// `sync --local` copies every file and plans nothing: each planning flag
+    /// is named in the refusal instead of being ignored.
+    #[test]
+    fn local_to_local_names_every_flag_it_would_ignore() {
+        let none = LocalToLocalFlags {
+            direction: "both",
+            delete: false,
+            track_renames: false,
+            max_delete: false,
+            backup_dir: false,
+            compare_dest: false,
+            copy_dest: false,
+            from_reconcile: false,
+            conflict_mode: false,
+            skip_matching: false,
+            update: false,
+            modify_window: false,
+            checksum: false,
+            resync: false,
+            watch: false,
+        };
+        assert!(local_to_local_ignored_flags(&none).is_empty());
+        let all = LocalToLocalFlags {
+            direction: "upload",
+            delete: true,
+            track_renames: true,
+            max_delete: true,
+            backup_dir: true,
+            compare_dest: true,
+            copy_dest: true,
+            from_reconcile: true,
+            conflict_mode: true,
+            skip_matching: true,
+            update: true,
+            modify_window: true,
+            checksum: true,
+            resync: true,
+            watch: true,
+        };
+        assert_eq!(
+            local_to_local_ignored_flags(&all),
+            vec![
+                "--direction",
+                "--delete",
+                "--track-renames",
+                "--max-delete",
+                "--backup-dir",
+                "--compare-dest",
+                "--copy-dest",
+                "--from-reconcile",
+                "--conflict-mode",
+                "--skip-matching",
+                "--update",
+                "--modify-window",
+                "--checksum",
+                "--resync",
+                "--watch",
+            ]
+        );
+    }
+
+    /// The directories `sync --delete` may remove: parents of the deleted
+    /// orphans that hold no source file, the exclude list does not name and
+    /// the scans saw; deepest first.
+    #[test]
+    fn orphan_dir_candidates_are_the_emptied_parents_deepest_first() {
+        let excludes = compile_sync_excludes(&["cache".to_string()], OutputFormat::Json)
+            .expect("patterns compile");
+        let deleted = [
+            "old/sub/x.txt",
+            "old/y.txt",
+            "keep/z.txt",
+            "cache/c.bin",
+            "u/v/w.txt",
+        ];
+        let source = ["keep/a.txt", "top.txt"];
+        let got = sync_orphan_dir_candidates(&deleted, source, &excludes, |d| d == "u/v");
+        assert_eq!(got, vec!["old/sub", "old", "u"]);
+    }
+
+    #[test]
+    fn checksum_pick_takes_the_strongest_locally_computable_digest() {
+        let map = |pairs: &[(&str, &str)]| -> HashMap<String, String> {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        };
+        assert_eq!(
+            sync_checksum_pick(&map(&[("MD5", "AB"), ("SHA-256", "CD")])),
+            Some((HashAlgorithm::Sha256, "cd".to_string()))
+        );
+        assert_eq!(
+            sync_checksum_pick(&map(&[("sha1", " ef ")])),
+            Some((HashAlgorithm::Sha1, "ef".to_string()))
+        );
+        // Proprietary digests cannot be computed locally.
+        assert_eq!(
+            sync_checksum_pick(&map(&[("quickxor", "x"), ("dropbox", "y")])),
+            None
+        );
+        assert_eq!(sync_checksum_pick(&HashMap::new()), None);
+    }
+
+    /// `dedupe --mode newest` keeps the file with a date over one without,
+    /// and no longer orders two unreadable dates by their text.
+    #[test]
+    fn dedupe_orders_a_dated_file_after_an_undated_one() {
+        assert_eq!(
+            dedupe_mtime_order(Some(T0), None),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            dedupe_mtime_order(Some(T0), Some(T0_PLUS_1)),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            dedupe_mtime_order(Some("zzz"), Some("aaa")),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn sync_parses_the_parity_flags() {
+        // clap builds the whole command tree: more stack than a test thread has.
+        on_big_stack(|| {
+            let parsed = Cli::try_parse_from([
+                "aeroftp-cli",
+                "sync",
+                "sftp://h",
+                "/l",
+                "/r",
+                "--direction",
+                "upload",
+                "--update",
+                "--size-only",
+                "--modify-window",
+                "5",
+                "--conflict-mode",
+                "skip",
+            ])
+            .expect("parses");
+            let Commands::Sync {
+                update,
+                skip_matching,
+                modify_window,
+                conflict_mode,
+                checksum,
+                ..
+            } = parsed.command
+            else {
+                panic!("not a sync");
+            };
+            assert!(update && skip_matching && !checksum);
+            assert_eq!(modify_window, Some(5));
+            assert_eq!(conflict_mode.as_deref(), Some("skip"));
+            let conflict = Cli::try_parse_from([
+                "aeroftp-cli",
+                "sync",
+                "sftp://h",
+                "/l",
+                "/r",
+                "--checksum",
+                "--size-only",
+            ]);
+            assert!(
+                matches!(&conflict, Err(e) if e.kind() == clap::error::ErrorKind::ArgumentConflict),
+                "--checksum and --size-only contradict each other"
+            );
+        });
     }
 
     #[test]
@@ -76209,21 +77177,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_iso8601_to_unix_handles_rfc3339_and_naive() {
-        // Z-suffix RFC 3339
-        let ts = parse_iso8601_to_unix("2025-01-01T00:00:00Z").unwrap();
-        assert_eq!(ts, 1735689600);
-        // With timezone offset
-        let ts = parse_iso8601_to_unix("2025-01-01T01:00:00+01:00").unwrap();
-        assert_eq!(ts, 1735689600);
-        // Naive variant (no tz, no Z)
-        let ts = parse_iso8601_to_unix("2025-01-01T00:00:00").unwrap();
-        assert_eq!(ts, 1735689600);
-        // Garbage returns None
-        assert!(parse_iso8601_to_unix("not-a-date").is_none());
-    }
-
-    #[test]
     fn audit_report_serializes_status_lowercase_and_flattens_details() {
         let r = AuditResult {
             server: "s1".into(),
@@ -76787,9 +77740,19 @@ mod tests {
     /// run that tried to change the tree fails instead of passing on a no-op.
     /// Deletes are also recorded, refused or not, so a test can tell a delete
     /// the run attempted from one it never planned.
+    #[derive(Default)]
     struct MemTreeProvider {
         dirs: HashMap<String, Vec<RemoteEntry>>,
         delete_attempts: Arc<Mutex<Vec<String>>>,
+        /// Opt-in: a delete removes the file, and `rmdir` removes a directory
+        /// that lists empty (and refuses one that does not), instead of every
+        /// mutation being refused.
+        mutable: bool,
+        /// Every `rmdir` the run attempted, removed or refused.
+        rmdir_attempts: Arc<Mutex<Vec<String>>>,
+        /// Server-side checksums by full path; none means the backend offers
+        /// none (`supports_checksum` is false).
+        checksums: HashMap<String, HashMap<String, String>>,
     }
 
     impl MemTreeProvider {
@@ -76826,7 +77789,7 @@ mod tests {
             }
             Self {
                 dirs,
-                delete_attempts: Arc::default(),
+                ..Default::default()
             }
         }
     }
@@ -76896,10 +77859,51 @@ mod tests {
                 .lock()
                 .expect("delete log")
                 .push(path.to_string());
-            Err(ProviderError::NotSupported("delete".to_string()))
+            if !self.mutable {
+                return Err(ProviderError::NotSupported("delete".to_string()));
+            }
+            let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
+            let listing = self
+                .dirs
+                .get_mut(parent)
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            let before = listing.len();
+            listing.retain(|entry| entry.path != path || entry.is_dir);
+            if listing.len() == before {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            Ok(())
         }
-        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
-            Err(ProviderError::NotSupported("rmdir".to_string()))
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.rmdir_attempts
+                .lock()
+                .expect("rmdir log")
+                .push(path.to_string());
+            if !self.mutable {
+                return Err(ProviderError::NotSupported("rmdir".to_string()));
+            }
+            match self.dirs.get(path) {
+                None => return Err(ProviderError::NotFound(path.to_string())),
+                Some(listing) if !listing.is_empty() => {
+                    return Err(ProviderError::Other(format!("{path}: not empty")))
+                }
+                Some(_) => {}
+            }
+            self.dirs.remove(path);
+            let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
+            if let Some(listing) = self.dirs.get_mut(parent) {
+                listing.retain(|entry| entry.path != path);
+            }
+            Ok(())
+        }
+        fn supports_checksum(&self) -> bool {
+            !self.checksums.is_empty()
+        }
+        async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
+            self.checksums
+                .get(path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
         }
         async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
             Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
@@ -77875,8 +78879,17 @@ mod tests {
                 None,
                 None,
                 from_reconcile,
-                "newer",
-                false,
+                SyncPairRule {
+                    conflict_mode: if direction == "both" {
+                        "newer"
+                    } else {
+                        "source"
+                    },
+                    skip_matching: false,
+                    update: false,
+                    modify_window: None,
+                    checksum: false,
+                },
                 false,
                 cli,
                 OutputFormat::Json,
@@ -77885,6 +78898,173 @@ mod tests {
                 false,
             )
         })
+    }
+
+    /// The real `cmd_sync` against `remote` with the planning flags of `rule`.
+    #[allow(clippy::too_many_arguments)]
+    fn run_sync_rule(
+        remote: MemTreeProvider,
+        local: &str,
+        direction: &str,
+        dry_run: bool,
+        delete: bool,
+        exclude: &[String],
+        rule: SyncPairRule<'static>,
+        cli: &Cli,
+    ) -> SyncCycleStats {
+        run_against_remote(remote, move || {
+            cmd_sync(
+                "memory://",
+                local,
+                "/root",
+                direction,
+                dry_run,
+                delete,
+                exclude,
+                None,
+                0,
+                false,
+                delete.then_some("1000"),
+                None,
+                "",
+                false,
+                None,
+                None,
+                None,
+                rule,
+                false,
+                cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+                None,
+                false,
+            )
+        })
+    }
+
+    const SOURCE_WINS: SyncPairRule<'static> = SyncPairRule {
+        conflict_mode: "source",
+        skip_matching: false,
+        update: false,
+        modify_window: None,
+        checksum: false,
+    };
+
+    /// `sync --direction upload --delete` removed the orphan files and left
+    /// their directories behind, empty. Now a directory the deletes emptied
+    /// goes too, deepest first; one that still holds a file the scan did not
+    /// see (an excluded one), and one the source has (even empty), stay.
+    #[test]
+    fn upload_delete_removes_the_directories_it_emptied() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir_all(Path::new(&local).join("keep")).unwrap();
+        std::fs::create_dir_all(Path::new(&local).join("emptydir")).unwrap();
+        fixture.local_file("keep/a.txt", 1);
+        let mut remote = MemTreeProvider::tree(&[
+            ("keep/a.txt", 1),
+            ("old/sub/x.txt", 1),
+            ("old/y.txt", 1),
+            ("mixed/a.txt", 1),
+            ("mixed/b.log", 1),
+            ("emptydir/o.txt", 1),
+        ]);
+        remote.mutable = true;
+        let rmdirs = Arc::clone(&remote.rmdir_attempts);
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = run_sync_rule(
+            remote,
+            &local,
+            "upload",
+            false,
+            true,
+            &["*.log".to_string()],
+            SOURCE_WINS,
+            &cli,
+        );
+        assert_eq!(stats.exit_code, 0);
+        let mut deleted = deletes.lock().unwrap().clone();
+        deleted.sort();
+        assert_eq!(
+            deleted,
+            vec![
+                "/root/emptydir/o.txt",
+                "/root/mixed/a.txt",
+                "/root/old/sub/x.txt",
+                "/root/old/y.txt"
+            ]
+        );
+        assert_eq!(
+            *rmdirs.lock().unwrap(),
+            vec!["/root/old/sub".to_string(), "/root/old".to_string()]
+        );
+    }
+
+    /// `sync --checksum`: a file of the same size and the same date whose
+    /// bytes changed is transferred; without the flag size and time call it
+    /// current. A checksum that matches is current whatever the dates.
+    #[test]
+    fn checksum_transfers_a_same_size_file_whose_bytes_changed() {
+        use sha2::Digest;
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 3);
+        let local = fixture.local();
+        let remote_with = |content: &[u8]| {
+            let mut remote = MemTreeProvider::root_files(&[("a.txt", 3)]);
+            remote.checksums = HashMap::from([(
+                "/root/a.txt".to_string(),
+                HashMap::from([(
+                    "sha256".to_string(),
+                    format!("{:x}", sha2::Sha256::digest(content)),
+                )]),
+            )]);
+            remote
+        };
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let plain = run_sync_rule(
+            remote_with(b"yyy"),
+            &local,
+            "upload",
+            true,
+            false,
+            &[],
+            SOURCE_WINS,
+            &cli,
+        );
+        assert_eq!((plain.uploaded, plain.skipped), (0, 1));
+        let checksum = SyncPairRule {
+            checksum: true,
+            ..SOURCE_WINS
+        };
+        let changed = run_sync_rule(
+            remote_with(b"yyy"),
+            &local,
+            "upload",
+            true,
+            false,
+            &[],
+            checksum,
+            &cli,
+        );
+        assert_eq!((changed.uploaded, changed.skipped), (1, 0));
+        let same = run_sync_rule(
+            remote_with(b"xxx"),
+            &local,
+            "upload",
+            true,
+            false,
+            &[],
+            checksum,
+            &cli,
+        );
+        assert_eq!((same.uploaded, same.skipped), (0, 1));
     }
 
     /// The data-loss case: `sync --direction upload --delete --files-from`
@@ -79126,7 +80306,7 @@ mod tests {
                     "/root/broken".to_string(),
                 )],
             )]),
-            delete_attempts: Arc::default(),
+            ..Default::default()
         }
     }
 
@@ -79414,7 +80594,7 @@ mod tests {
         link.is_symlink = true;
         MemTreeProvider {
             dirs: HashMap::from([("/root".to_string(), vec![link])]),
-            delete_attempts: Arc::default(),
+            ..Default::default()
         }
     }
 
@@ -79671,7 +80851,7 @@ mod tests {
                     "/root/unlisted".to_string(),
                 )],
             )]),
-            delete_attempts: Arc::default(),
+            ..Default::default()
         };
 
         let report = doctor_report_against(remote, &fixture.local());
@@ -79698,7 +80878,7 @@ mod tests {
                 ("/root".to_string(), vec![a, link]),
                 ("/root/link".to_string(), vec![x]),
             ]),
-            delete_attempts: Arc::default(),
+            ..Default::default()
         }
     }
 
@@ -79833,7 +81013,7 @@ mod tests {
                     RemoteEntry::directory("d1".to_string(), "/root/d1".to_string()),
                 ],
             )]),
-            delete_attempts: Arc::default(),
+            ..Default::default()
         };
         let cli = Cli {
             quiet: true,
@@ -79861,7 +81041,7 @@ mod tests {
         let stats = plan_sync_with_delete(
             MemTreeProvider {
                 dirs: HashMap::new(),
-                delete_attempts: Arc::default(),
+                ..Default::default()
             },
             &fixture.local(),
             "download",
@@ -79894,7 +81074,7 @@ mod tests {
         let stats = plan_sync_with_delete(
             MemTreeProvider {
                 dirs: HashMap::new(),
-                delete_attempts: Arc::default(),
+                ..Default::default()
             },
             &fixture.local(),
             "upload",
@@ -79933,8 +81113,13 @@ mod tests {
                 None,
                 None,
                 None,
-                "newer",
-                false,
+                SyncPairRule {
+                    conflict_mode: "source",
+                    skip_matching: false,
+                    update: false,
+                    modify_window: None,
+                    checksum: false,
+                },
                 false,
                 cli,
                 OutputFormat::Json,

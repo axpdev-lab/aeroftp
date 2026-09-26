@@ -854,11 +854,30 @@ aeroftp-cli sync --profile "Backup" ./photos/ /backup/photos/ --direction upload
 
 # Pick an overhead level: low=7, medium=15, quartile=25, high=30, or 5-50
 aeroftp-cli sync --profile "Backup" ./photos/ /backup/photos/ --direction upload --ec=quartile
+
+# GUI Backup / Update preset: never overwrite a destination copy that is newer
+aeroftp-cli sync --profile "server" ./local/ /remote/ --direction upload --update --conflict-mode skip
+
+# Compare same-size files by checksum instead of modification time
+aeroftp-cli sync --profile "server" ./local/ /remote/ --direction upload --checksum --dry-run
+
+# A wider same-instant window (seconds) for a store whose clock drifts
+aeroftp-cli sync --profile "server" ./local/ /remote/ --direction download --modify-window 60
 ```
 
-How an unchanged file is recognised: in one-way sync (`--direction upload` or `download`) a file is skipped when the sizes match and the destination copy is not older than the source (2 s tolerance). This is what lets `sync` converge on backends whose listings report the upload time as the object's mtime (S3 and compatible stores). Objects uploaded by AeroFTP or rclone also carry the source mtime as `x-amz-meta-mtime`, which `stat` and downloads use, so a per-object comparison is exact; listings do not expose metadata, hence the rule above for the scan. The trade-off is the same as rclone's `--update`: a destination edited later than the source with content of the same size is treated as current; when that can happen, run `sync --direction both` (exact mtime equality, conflicts surfaced) or `check` afterwards. `--skip-matching` skips on size alone.
+How an unchanged file is recognised: in one-way sync (`--direction upload` or `download`) a file is skipped when the sizes match and the destination copy is not older than the source, within the modification window. This is what lets `sync` converge on backends whose listings report the upload time as the object's mtime (S3 and compatible stores). Objects uploaded by AeroFTP or rclone also carry the source mtime as `x-amz-meta-mtime`, which `stat` and downloads use, so a per-object comparison is exact; listings do not expose metadata, hence the rule above for the scan. The trade-off is the same as rclone's `--update`: a destination edited later than the source with content of the same size is treated as current; when that can happen, add `--checksum` or run `check` afterwards. `--skip-matching` (alias `--size-only`) skips on size alone.
 
-Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete` (in a non-interactive shell, a pipeline or an agent run, `--delete` is refused unless `--max-delete N` or `N%` caps it or `--dry-run` previews it: rclone deletes by default, AeroFTP asks for the ceiling first), `--exclude`, `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`, `--conflict-mode`, `--resync`.
+The modification window is the one rule the GUI compare, the CLI and MCP `sync_tree` share: two times within 2 s (or `--modify-window SECS`) are the same instant, and the window is raised to the precision the backend keeps its times with. A backend whose listing carries no comparable time is compared by size only, and the run says so on stderr and in the JSON result (`modify_window`): an FTP server without MLSD is the common case, since `LIST` dates are server-local with no zone. A date that is missing or does not read leaves the sizes to decide, as the GUI does.
+
+A file present on both sides with a different size, or a newer date, is a change. In one-way sync the source copy wins (the GUI Mirror preset). `--update` leaves a destination copy that is newer than the source beyond the window alone, as rsync's `--update` does (the GUI Backup and Update presets). A change the dates cannot order (a different size inside the window, a date that is unknown, a size-only window) is a conflict: `--conflict-mode source` (the one-way default) transfers it, `--conflict-mode skip` leaves the destination as it is. The two-way modes (`older`, `larger`, `smaller`, `rename`) are refused in a one-way sync instead of being ignored; `newer` is accepted there and has no effect (the source copy wins), because scripts exported by the GUI carry it whatever the direction.
+
+`--checksum` compares the files of the same size by content: the backend's server-side checksum against a local digest of the same algorithm (SHA-256, SHA-512, BLAKE3, SHA-1 or MD5, strongest first). A match is current whatever the dates; a mismatch is a change and is decided like one. A file without a checksum both sides can compute (a backend without server-side checksums, a crypt overlay) is compared by size and time, and the run counts those (`checksum.unverifiable` in the JSON result). It cannot be combined with `--skip-matching`.
+
+With `--delete`, a one-way sync also removes the destination directories its deletes left empty, deepest first. A directory is removed only when the source has no directory of that name, the exclude list does not name it, and a fresh listing right before the removal shows it empty, with a call that does not recurse: a file the scan did not see (an excluded one, one written since) keeps its directory. The dry run lists them as `RMDIR (..., if empty after the deletes)`; the JSON result counts them in `dirs_deleted`.
+
+`sync --local` (local-to-local) copies every file without planning, so it refuses the planning flags (`--direction`, `--delete`, `--max-delete`, `--conflict-mode`, `--update`, `--checksum`, `--modify-window`, `--skip-matching`, `--track-renames`, `--backup-dir`, `--compare-dest`, `--copy-dest`, `--from-reconcile`, `--resync`, `--watch`) with exit 5 instead of ignoring them.
+
+Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete` (in a non-interactive shell, a pipeline or an agent run, `--delete` is refused unless `--max-delete N` or `N%` caps it or `--dry-run` previews it: rclone deletes by default, AeroFTP asks for the ceiling first), `--exclude`, `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`, `--conflict-mode`, `--update`, `--checksum`, `--modify-window`, `--skip-matching` / `--size-only`, `--resync`.
 
 `--error-correction` is opt-in for CLI sync and protects uploaded remote files at rest by writing a sibling `<remote>.aerorec` sidecar after each successful upload. If no level is supplied the CLI uses `medium` (15% target overhead). When enabled, sync automatically excludes `*.aerorec` from comparisons so parity sidecars are not mirrored back as user data or deleted as orphans. Remote deletes best-effort remove the protected file's companion sidecar after the primary delete succeeds; missing sidecars are ignored and sidecar delete failures do not fail the file delete. Phase 1 sidecar generation is capped at 256 MiB per source file; larger files are uploaded normally and counted as `ec_skipped_too_large`. JSON sync reports include `ec_generated`, `ec_skipped_too_large`, `ec_generate_failed`, `ec_sidecar_deleted`, and `ec_sidecar_delete_failed` when EC is enabled. Local-to-local sync ignores this flag.
 
@@ -871,7 +890,7 @@ aeroftp-cli sync --profile "server" ./local/ /remote/
 # Conflict resolution: newer file wins (default)
 aeroftp-cli sync --profile "server" ./local/ /remote/ --conflict-mode newer
 
-# Other modes: older, larger, smaller, skip
+# Other modes: older, larger, smaller, skip (two-way only; one-way takes source or skip)
 aeroftp-cli sync --profile "server" ./local/ /remote/ --conflict-mode skip --dry-run
 
 # Rename mode: keep both versions (local uploaded as .conflict-{timestamp})
