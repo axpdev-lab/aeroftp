@@ -88,6 +88,15 @@ pub struct FileComparison {
     /// means the OTHER side deleted it (vs being a genuinely new file).
     #[serde(default)]
     pub previously_synced: bool,
+    /// With a sync index: how each side changed since the last sync, the
+    /// input of the two-way engine ([`crate::sync_core::two_way`]). Not sent
+    /// to the frontend.
+    #[serde(skip)]
+    pub two_way: Option<crate::sync_core::two_way::TwoWayState>,
+    /// What the run's safety checks allow this row (set by the caller after
+    /// the compare; open by default).
+    #[serde(skip)]
+    pub two_way_gate: crate::sync_core::two_way::TwoWayGate,
 }
 
 /// How many entries (and bytes) a compare classified, including the identical
@@ -124,6 +133,14 @@ pub struct CompareReport {
     /// How modification times were compared: within a window, or not at all
     /// (size only, with the reason). The GUI states the size-only case.
     pub modify_window: ModifyWindow,
+    /// With a sync index: the files in sync now whose baseline entry is
+    /// missing or no longer describes them (created on both sides with the
+    /// same content, changed on both sides the same way, an entry written
+    /// before the sides were kept apart). They are not rows, since nothing
+    /// moves, but a two-way sync records them, or a later delete on one side
+    /// would read as a file created on the other.
+    #[serde(skip)]
+    pub baseline_refresh: Vec<(String, crate::sync_core::two_way::PairBaseline)>,
 }
 
 fn default_error_correction_pct() -> u32 {
@@ -1224,6 +1241,8 @@ pub fn build_comparison_results(
                 is_dir,
                 sync_reason,
                 previously_synced: false,
+                two_way: None,
+                two_way_gate: Default::default(),
             });
         }
     }
@@ -2974,9 +2993,42 @@ fn join_clean_remote(root: &str, rel: &str) -> String {
 /// Snapshot of a file's state at the time of last successful sync
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncIndexEntry {
+    /// The local side (and the remote side of an entry without `remote`).
     pub size: u64,
     pub modified: Option<DateTime<Utc>>,
     pub is_dir: bool,
+    /// The remote side, kept apart from the local one: a backend that
+    /// reports the upload time, or rounds times, never agrees with the local
+    /// mtime, and read against one shared value its side looked changed on
+    /// every run. Absent in entries written before the two-way engine (and by
+    /// writers that do not know the remote side): both sides then read `size`
+    /// and `modified`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<crate::sync_core::two_way::SideBaseline>,
+}
+
+impl SyncIndexEntry {
+    /// The baseline of each side this entry records.
+    pub fn pair(&self) -> crate::sync_core::two_way::PairBaseline {
+        let local = crate::sync_core::two_way::SideBaseline {
+            size: self.size,
+            modified: self.modified,
+        };
+        crate::sync_core::two_way::PairBaseline {
+            local,
+            remote: self.remote.unwrap_or(local),
+        }
+    }
+
+    /// The entry recording `pair`.
+    pub fn from_pair(pair: crate::sync_core::two_way::PairBaseline, is_dir: bool) -> Self {
+        Self {
+            size: pair.local.size,
+            modified: pair.local.modified,
+            is_dir,
+            remote: Some(pair.remote),
+        }
+    }
 }
 
 /// Current `SyncIndex` schema version.
@@ -3129,7 +3181,6 @@ pub struct SyncIndex {
 }
 
 impl SyncIndex {
-    #[allow(dead_code)]
     pub fn new(local_path: String, remote_path: String) -> Self {
         Self {
             version: SYNC_INDEX_VERSION,
@@ -3271,6 +3322,7 @@ pub fn classify_with_summary(
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
     let excludes = options.excludes_or_everything();
+    let mut baseline_refresh = Vec::new();
 
     for path in all_paths {
         // Reject paths with traversal components
@@ -3301,58 +3353,75 @@ pub fn classify_with_summary(
         let is_dir =
             local.map(|f| f.is_dir).unwrap_or(false) || remote.map(|f| f.is_dir).unwrap_or(false);
 
-        // Check if we can use the index for conflict detection
-        let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
-            if l.is_dir && r.is_dir {
-                // The rule compare_file_pair applies, which this branch used
-                // to bypass: a directory present on both sides is identical.
-                // Its size and mtime are not content and never agree across
-                // sides (0 locally, 4096 on a typical SFTP server), so against
-                // the baseline one side always looked changed, and a synced
-                // folder flipped between upload and download every cycle.
-                //
-                // This test comes FIRST, before the index is consulted at all:
-                // a directory needs no baseline to be judged, so asking the
-                // index about one can only produce a wrong answer.
-                SyncStatus::Identical
-            // A key the migration could not vouch for is compared as if absent,
-            // here and in `previously_synced` below.
-            } else if let Some(cached) = idx
-                .files
+        // With an index, each side is read against its own baseline: the two-way
+        // engine's input, and the status of a file present on both sides.
+        // A key the migration could not vouch for is read as never synced,
+        // here and in `previously_synced` below.
+        let cached = index.and_then(|idx| {
+            idx.files
                 .get(&path)
                 .filter(|_| !idx.unverified_keys.contains(&path))
-            {
-                // Honor compare_size: a deferred-size crypt overlay reports
-                // compare_size=false (plaintext local size never equals on-wire
-                // ciphertext size), so size is not a reliable change signal for
-                // it and comparing it would flag every file as changed every
-                // cycle. Such providers fall back to timestamp only.
-                let local_changed = (options.compare_size && l.size != cached.size)
-                    || (l.modified.is_some()
-                        && cached.modified.is_some()
-                        && !timestamps_equal(l.modified, cached.modified, options.modify_window));
-                let remote_changed = (options.compare_size && r.size != cached.size)
-                    || (r.modified.is_some()
-                        && cached.modified.is_some()
-                        && !timestamps_equal(r.modified, cached.modified, options.modify_window));
-
-                if local_changed && remote_changed {
-                    // Both sides changed since last sync → true conflict
-                    SyncStatus::Conflict
-                } else if !local_changed && !remote_changed {
-                    SyncStatus::Identical
-                } else if local_changed {
-                    SyncStatus::LocalNewer
-                } else {
-                    SyncStatus::RemoteNewer
-                }
-            } else {
-                // File not in index → fall back to normal comparison
-                compare_file_pair(local, remote, options)
+        });
+        let two_way = index.filter(|_| !is_dir).map(|_| {
+            use crate::sync_core::two_way::{side_change, Side, TwoWayState};
+            let baseline = cached.map(|entry| entry.pair());
+            TwoWayState {
+                local: side_change(
+                    local.map(Side::of_file),
+                    baseline.map(|b| b.local.side()),
+                    options.modify_window,
+                    options.compare_size,
+                ),
+                remote: side_change(
+                    remote.map(Side::of_file),
+                    baseline.map(|b| b.remote.side()),
+                    options.modify_window,
+                    options.compare_size,
+                ),
             }
-        } else {
-            compare_file_pair(local, remote, options)
+        });
+        let status = match (local, remote) {
+            // The rule compare_file_pair applies, which the index branch used
+            // to bypass: a directory present on both sides is identical. Its
+            // size and mtime are not content and never agree across sides (0
+            // locally, 4096 on a typical SFTP server), so against the baseline
+            // one side always looked changed, and a synced folder flipped
+            // between upload and download every cycle. It comes FIRST, before
+            // the index is consulted at all.
+            (Some(l), Some(r)) if l.is_dir && r.is_dir => SyncStatus::Identical,
+            (Some(_), Some(_)) if cached.is_some() => {
+                use crate::sync_core::two_way::SideChange::{Modified, Unchanged};
+                match two_way.map(|state| (state.local, state.remote)) {
+                    Some((Unchanged, Unchanged)) => SyncStatus::Identical,
+                    Some((Modified, Unchanged)) => SyncStatus::LocalNewer,
+                    Some((Unchanged, Modified)) => SyncStatus::RemoteNewer,
+                    // Changed on both sides: in sync if both now hold the
+                    // same content, a true conflict otherwise.
+                    _ => match compare_file_pair(local, remote, options) {
+                        SyncStatus::Identical => SyncStatus::Identical,
+                        _ => SyncStatus::Conflict,
+                    },
+                }
+            }
+            // Not in the index: the two sides compared with each other.
+            _ => compare_file_pair(local, remote, options),
         };
+        if let (Some(state), Some(l), Some(r)) = (two_way, local, remote) {
+            use crate::sync_core::two_way::{PairBaseline, SideBaseline, SideChange};
+            let refresh = status == SyncStatus::Identical
+                && (cached.is_none_or(|entry| entry.remote.is_none())
+                    || state.local != SideChange::Unchanged
+                    || state.remote != SideChange::Unchanged);
+            if refresh {
+                baseline_refresh.push((
+                    path.clone(),
+                    PairBaseline {
+                        local: SideBaseline::of_file(l),
+                        remote: SideBaseline::of_file(r),
+                    },
+                ));
+            }
+        }
 
         // Check if this file was in the sync index (previously synced).
         // For bidirectional sync: a local_only/remote_only file that was previously synced
@@ -3374,6 +3443,8 @@ pub fn classify_with_summary(
                 is_dir,
                 sync_reason,
                 previously_synced,
+                two_way,
+                two_way_gate: Default::default(),
             });
         }
 
@@ -3389,10 +3460,12 @@ pub fn classify_with_summary(
     }
 
     results.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    baseline_refresh.sort_by(|a, b| a.0.cmp(&b.0));
     CompareReport {
         differences: results,
         summary,
         modify_window: options.modify_window,
+        baseline_refresh,
     }
 }
 
@@ -6940,6 +7013,7 @@ mod tests {
                 size: 1,
                 modified: None,
                 is_dir: false,
+                remote: None,
             },
         );
 
@@ -6975,6 +7049,7 @@ mod tests {
                 size: 11,
                 modified: None,
                 is_dir: false,
+                remote: None,
             },
         );
         index.files.insert(
@@ -6983,6 +7058,7 @@ mod tests {
                 size: 22,
                 modified: None,
                 is_dir: false,
+                remote: None,
             },
         );
         index
@@ -7081,6 +7157,7 @@ mod tests {
                 size: 7,
                 modified: None,
                 is_dir: false,
+                remote: None,
             },
         );
         migrate_sync_index(&mut index);
@@ -7155,6 +7232,7 @@ mod tests {
                 size: 7,
                 modified: None,
                 is_dir: false,
+                remote: None,
             },
         );
         migrate_sync_index(&mut index);
@@ -7190,6 +7268,7 @@ mod tests {
                 size: 1,
                 modified: None,
                 is_dir: false,
+                remote: None,
             },
         );
 
@@ -7217,6 +7296,7 @@ mod tests {
                 size: 1024,
                 modified: Some(Utc::now()),
                 is_dir: false,
+                remote: None,
             },
         );
 
@@ -8257,6 +8337,7 @@ mod tests {
                 size: 0,
                 modified: DateTime::<Utc>::from_timestamp(1_000, 0),
                 is_dir: true,
+                remote: None,
             },
         );
         let comparisons = build_comparison_results_with_index(
@@ -8288,6 +8369,7 @@ mod tests {
                 size: 123,
                 modified: Some(now),
                 is_dir: false,
+                remote: None,
             },
         );
 
@@ -8359,6 +8441,7 @@ mod tests {
                 size: 100,
                 modified: Some(t1),
                 is_dir: false,
+                remote: None,
             },
         );
 

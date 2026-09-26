@@ -16053,6 +16053,7 @@ async fn background_sync_worker(app: AppHandle) {
                     errors: vec![],
                     duration_secs: 0,
                     file_details: vec![],
+                    completed_paths: Default::default(),
                 })
             } else if let Some(_guard) = CloudSyncGuard::acquire() {
                 // We acquired (previous was false): run the batch under guard.
@@ -16068,6 +16069,7 @@ async fn background_sync_worker(app: AppHandle) {
                     errors: vec![],
                     duration_secs: 0,
                     file_details: vec![],
+                    completed_paths: Default::default(),
                 };
                 let store = credential_store::CredentialStore::from_cache();
                 // Vault locked: sync_one_config now fail-closes per pair (audit
@@ -16118,6 +16120,7 @@ async fn background_sync_worker(app: AppHandle) {
                     errors: vec![],
                     duration_secs: 0,
                     file_details: vec![],
+                    completed_paths: Default::default(),
                 })
             };
 

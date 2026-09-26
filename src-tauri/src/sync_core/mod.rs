@@ -16,6 +16,7 @@
 pub mod compare;
 pub mod mtime;
 pub mod scan;
+pub mod two_way;
 
 pub use crate::sync::{
     sync_tree_core, ConflictMode, DeltaPolicy, DeltaSavingsSummary, DeltaTransferStats,

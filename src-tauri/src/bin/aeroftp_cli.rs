@@ -13714,6 +13714,7 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 errors: Vec::new(),
                 duration_secs: 0,
                 file_details: Vec::new(),
+                completed_paths: Default::default(),
             };
             for pair in targets {
                 // Build a CloudConfig from the (protocol-resolved) pair.

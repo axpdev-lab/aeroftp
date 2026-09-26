@@ -18,10 +18,12 @@ use crate::crypt_overlay_provider;
 use crate::ftp::FtpManager;
 use crate::providers::{ProviderError, RemoteEntry as ProviderRemoteEntry, StorageProvider};
 use crate::sync::{
-    build_comparison_results_with_index, decide_sync_action, load_sync_index,
-    normalize_relative_key, save_sync_index, validate_relative_path, CompareDirection,
-    CompareOptions, FileComparison, FileInfo, SyncAction, SyncIndex, SyncIndexEntry, SyncStatus,
-    SYNC_INDEX_VERSION,
+    classify_with_summary, decide_sync_action, load_sync_index, normalize_relative_key,
+    save_sync_index, validate_relative_path, CompareDirection, CompareOptions, FileComparison,
+    FileInfo, SyncAction, SyncIndex, SyncIndexEntry, SyncStatus, SYNC_INDEX_VERSION,
+};
+use crate::sync_core::two_way::{
+    self, PairBaseline, ScanHealth, SideBaseline, TwoWayAction, TwoWayGate,
 };
 // file_watcher module available for Phase 3A+ watcher integration
 use chrono::{DateTime, Utc};
@@ -132,12 +134,19 @@ pub struct SyncOperationResult {
     pub errors: Vec<String>,
     pub duration_secs: u64,
     pub file_details: Vec<SyncedFileDetail>,
+    /// The rows whose action ran to completion this cycle: only these advance
+    /// the baseline. A row that failed, or that a cycle aborted before it,
+    /// keeps its prior entry and is decided again next cycle.
+    #[serde(skip)]
+    pub completed_paths: std::collections::HashSet<String>,
 }
 
 /// The scanned + compared sync plan produced by `build_sync_plan_with_provider`.
 /// Internal seam shared by the real executor and the `--dry-run` preview.
 struct SyncPlan {
     comparisons: Vec<FileComparison>,
+    /// The files in sync whose baseline a two-way cycle records.
+    baseline_refresh: Vec<(String, PairBaseline)>,
     index: Option<SyncIndex>,
     local_str: String,
     remote_str: String,
@@ -271,22 +280,25 @@ impl CloudService {
         if comparison.relative_path.contains('\\') {
             return SyncAction::Skip;
         }
-        let action = match &comparison.status {
-            SyncStatus::Conflict | SyncStatus::SizeMismatch => match config.conflict_strategy {
-                ConflictStrategy::AskUser => SyncAction::AskUser,
-                ConflictStrategy::KeepBoth => SyncAction::KeepBoth,
-                ConflictStrategy::PreferLocal => SyncAction::Upload,
-                ConflictStrategy::PreferRemote => SyncAction::Download,
-                ConflictStrategy::PreferNewer => {
-                    let local_time = comparison.local_info.as_ref().and_then(|i| i.modified);
-                    let remote_time = comparison.remote_info.as_ref().and_then(|i| i.modified);
-                    match (local_time, remote_time) {
-                        (Some(l), Some(r)) if l > r => SyncAction::Upload,
-                        (Some(l), Some(r)) if r > l => SyncAction::Download,
-                        _ => SyncAction::AskUser,
-                    }
+        // A two-way folder decides a file with the two-way engine: each side
+        // against its baseline, a delete against a modification keeping the
+        // modification, the run's gate held.
+        if let Some(action) = Self::two_way_action(config, comparison) {
+            return match action {
+                TwoWayAction::CopyToRemote => SyncAction::Upload,
+                TwoWayAction::CopyToLocal => SyncAction::Download,
+                TwoWayAction::DeleteRemote => SyncAction::DeleteRemote,
+                TwoWayAction::DeleteLocal => SyncAction::DeleteLocal,
+                TwoWayAction::InSync | TwoWayAction::Forget | TwoWayAction::Hold => {
+                    SyncAction::Skip
                 }
-            },
+                TwoWayAction::Conflict(_) => Self::conflict_strategy_action(config, comparison),
+            };
+        }
+        let action = match &comparison.status {
+            SyncStatus::Conflict | SyncStatus::SizeMismatch => {
+                Self::conflict_strategy_action(config, comparison)
+            }
             _ => decide_sync_action(
                 &comparison.status,
                 &config.sync_direction,
@@ -299,6 +311,80 @@ impl CloudService {
             return SyncAction::Skip;
         }
         action
+    }
+
+    /// The two-way engine's action for a file of a bidirectional folder the
+    /// compare read against a baseline, `None` otherwise (a directory, a
+    /// one-way folder, a compare without an index).
+    fn two_way_action(config: &CloudConfig, comparison: &FileComparison) -> Option<TwoWayAction> {
+        if config.sync_direction != CompareDirection::Bidirectional || comparison.is_dir {
+            return None;
+        }
+        let state = comparison.two_way?;
+        Some(two_way::resolve(
+            state,
+            comparison.status == SyncStatus::Identical,
+            comparison.two_way_gate,
+        ))
+    }
+
+    /// The index a compare reads. A two-way folder reads an empty one on its
+    /// first cycle, so the engine runs from the start: nothing is deleted
+    /// without a baseline, and the files already identical on both sides are
+    /// recorded, so a later delete on one side is not read as a new file.
+    fn two_way_index(config: &CloudConfig, index: Option<&SyncIndex>) -> Option<SyncIndex> {
+        match index {
+            Some(index) => Some(index.clone()),
+            None if config.sync_direction == CompareDirection::Bidirectional => {
+                Some(SyncIndex::new(
+                    config.local_folder.to_string_lossy().to_string(),
+                    config.remote_folder.clone(),
+                ))
+            }
+            None => None,
+        }
+    }
+
+    /// The configured conflict strategy applied to a file changed on both
+    /// sides.
+    fn conflict_strategy_action(config: &CloudConfig, comparison: &FileComparison) -> SyncAction {
+        match config.conflict_strategy {
+            ConflictStrategy::AskUser => SyncAction::AskUser,
+            ConflictStrategy::KeepBoth => SyncAction::KeepBoth,
+            ConflictStrategy::PreferLocal => SyncAction::Upload,
+            ConflictStrategy::PreferRemote => SyncAction::Download,
+            ConflictStrategy::PreferNewer => {
+                let local_time = comparison.local_info.as_ref().and_then(|i| i.modified);
+                let remote_time = comparison.remote_info.as_ref().and_then(|i| i.modified);
+                match (local_time, remote_time) {
+                    (Some(l), Some(r)) if l > r => SyncAction::Upload,
+                    (Some(l), Some(r)) if r > l => SyncAction::Download,
+                    _ => SyncAction::AskUser,
+                }
+            }
+        }
+    }
+
+    /// Apply the run's safety verdict to its rows. A two-way folder holds the
+    /// rows instead of turning deletes into copies: an absence a scan could not
+    /// vouch for decides nothing, and after a mass disappearance no delete is
+    /// propagated nor undone. A one-way folder keeps its rule: a one-sided file
+    /// is read as never synced, so it is copied instead of deleted.
+    fn apply_safety_gate(
+        config: &CloudConfig,
+        comparisons: &mut [FileComparison],
+        health: ScanHealth,
+    ) {
+        for c in comparisons {
+            if config.sync_direction == CompareDirection::Bidirectional {
+                c.two_way_gate.health = health;
+                c.two_way_gate.hold_local_deletes = true;
+                c.two_way_gate.hold_remote_deletes = true;
+            }
+            if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
+                c.previously_synced = false;
+            }
+        }
     }
 
     /// How many files would have a delete propagated this cycle.
@@ -350,20 +436,19 @@ impl CloudService {
     /// Persist the post-sync baseline so the NEXT cycle can tell a deleted file
     /// (was baselined, now gone on one side) from a genuinely new file (never
     /// baselined). See [`Self::post_sync_baseline`] for how it is computed.
+    #[allow(clippy::too_many_arguments)]
     fn save_post_sync_index(
         &self,
         local: &str,
         remote: &str,
         comparisons: &[FileComparison],
+        baseline_refresh: &[(String, PairBaseline)],
         result: &SyncOperationResult,
         config: &CloudConfig,
         prior_index: Option<&SyncIndex>,
     ) {
-        // Only persist on a clean run (no errors) to avoid advancing the
-        // "last known good" snapshot on a partial/broken cycle.
-        if !result.errors.is_empty() {
-            return;
-        }
+        // Only the rows that completed advance the baseline (see
+        // `post_sync_baseline`): a failed or aborted row keeps its prior entry.
         let idx = SyncIndex {
             // Carried over from #854 when the two branches met here: the index
             // this writes is a v2 index, and a freshly written one has nothing
@@ -373,7 +458,13 @@ impl CloudService {
             last_sync: Utc::now(),
             local_path: local.to_string(),
             remote_path: remote.to_string(),
-            files: self.post_sync_baseline(comparisons, config, prior_index),
+            files: self.post_sync_baseline(
+                comparisons,
+                baseline_refresh,
+                &result.completed_paths,
+                config,
+                prior_index,
+            ),
             unverified_keys: Default::default(),
         };
         if let Err(e) = save_sync_index(&idx) {
@@ -398,12 +489,51 @@ impl CloudService {
     fn post_sync_baseline(
         &self,
         comparisons: &[FileComparison],
+        baseline_refresh: &[(String, PairBaseline)],
+        completed: &std::collections::HashSet<String>,
         config: &CloudConfig,
         prior_index: Option<&SyncIndex>,
     ) -> HashMap<String, SyncIndexEntry> {
         let mut index_files: HashMap<String, SyncIndexEntry> =
             prior_index.map(|i| i.files.clone()).unwrap_or_default();
+        // A two-way folder records the files already in sync the compare named.
+        if config.sync_direction == CompareDirection::Bidirectional {
+            for (path, pair) in baseline_refresh {
+                index_files.insert(path.clone(), SyncIndexEntry::from_pair(*pair, false));
+            }
+        }
         for c in comparisons {
+            if !completed.contains(&c.relative_path) {
+                continue;
+            }
+            if let Some(action) = Self::two_way_action(config, c) {
+                let action = match action {
+                    TwoWayAction::Conflict(_) => match Self::conflict_strategy_action(config, c) {
+                        SyncAction::Upload => TwoWayAction::CopyToRemote,
+                        SyncAction::Download => TwoWayAction::CopyToLocal,
+                        _ => TwoWayAction::Hold,
+                    },
+                    action => action,
+                };
+                let prior = index_files.get(&c.relative_path).map(SyncIndexEntry::pair);
+                match two_way::baseline_after(
+                    action,
+                    c.local_info.as_ref().map(SideBaseline::of_file),
+                    c.remote_info.as_ref().map(SideBaseline::of_file),
+                    prior,
+                ) {
+                    Some(pair) => {
+                        index_files.insert(
+                            c.relative_path.clone(),
+                            SyncIndexEntry::from_pair(pair, false),
+                        );
+                    }
+                    None => {
+                        index_files.remove(&c.relative_path);
+                    }
+                }
+                continue;
+            }
             let action = self.resolve_action(config, c);
             if matches!(action, SyncAction::DeleteLocal | SyncAction::DeleteRemote) {
                 index_files.remove(&c.relative_path);
@@ -467,6 +597,7 @@ impl CloudService {
                 size: fi.size,
                 modified: fi.modified,
                 is_dir,
+                remote: None,
             }),
             // A kept directory carries no size/mtime but must stay tracked so it
             // is not treated as new (and re-created) every cycle.
@@ -474,6 +605,7 @@ impl CloudService {
                 size: 0,
                 modified: None,
                 is_dir: true,
+                remote: None,
             }),
             None => None,
         }
@@ -532,12 +664,21 @@ impl CloudService {
             ..Default::default()
         };
 
-        let mut comparisons = build_comparison_results_with_index(
+        // A two-way folder whose side lists nothing while the last sync left
+        // files there stops before any action.
+        if config.sync_direction == CompareDirection::Bidirectional {
+            if let Some(refusal) = two_way::refuse_plan(prior_count, local_len, remote_len) {
+                return Err(refusal.describe().to_string());
+            }
+        }
+        let report = classify_with_summary(
             local_files,
             remote_files,
             &options,
-            index.as_ref(),
+            Self::two_way_index(&config, index.as_ref()).as_ref(),
         );
+        let baseline_refresh = report.baseline_refresh;
+        let mut comparisons = report.differences;
 
         // Safety gate: refuse to propagate deletes when a mass disappearance
         // looks like a transient/partial listing failure (a whole side empty,
@@ -560,11 +701,14 @@ impl CloudService {
                 local_complete,
                 remote_complete
             );
-            for c in &mut comparisons {
-                if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
-                    c.previously_synced = false;
-                }
-            }
+            Self::apply_safety_gate(
+                &config,
+                &mut comparisons,
+                ScanHealth {
+                    local_complete,
+                    remote_complete,
+                },
+            );
         }
 
         let total_files = comparisons.len() as u32;
@@ -578,6 +722,7 @@ impl CloudService {
             errors: Vec::new(),
             duration_secs: 0,
             file_details: Vec::new(),
+            completed_paths: Default::default(),
         };
 
         // Process each comparison
@@ -604,6 +749,9 @@ impl CloudService {
             {
                 Ok(action) => match action {
                     SyncAction::AskUser => {
+                        result
+                            .completed_paths
+                            .insert(comparison.relative_path.clone());
                         result.conflicts += 1;
                         // Add to conflicts list (capped at 10K to prevent unbounded growth)
                         let mut conflicts = self.conflicts.write().await;
@@ -664,6 +812,7 @@ impl CloudService {
             &local_str,
             &remote_str,
             &comparisons,
+            &baseline_refresh,
             &result,
             &config,
             index.as_ref(),
@@ -790,12 +939,21 @@ impl CloudService {
             ..Default::default()
         };
 
-        let mut comparisons = build_comparison_results_with_index(
+        // A two-way folder whose side lists nothing while the last sync left
+        // files there stops before any action.
+        if config.sync_direction == CompareDirection::Bidirectional {
+            if let Some(refusal) = two_way::refuse_plan(prior_count, local_len, remote_len) {
+                return Err(refusal.describe().to_string());
+            }
+        }
+        let report = classify_with_summary(
             local_files,
             remote_files,
             &options,
-            index.as_ref(),
+            Self::two_way_index(config, index.as_ref()).as_ref(),
         );
+        let baseline_refresh = report.baseline_refresh;
+        let mut comparisons = report.differences;
 
         // A provider whose successful listing can omit a stored object
         // (`listing_is_authoritative() == false`, ImageKit) cannot authorise
@@ -803,6 +961,7 @@ impl CloudService {
         // `sync::remote_listing_delete_guard` applies on the shared path.
         if !provider.listing_is_authoritative() {
             for c in &mut comparisons {
+                c.two_way_gate.hold_local_deletes = true;
                 if c.status == SyncStatus::LocalOnly {
                     c.previously_synced = false;
                 }
@@ -830,15 +989,19 @@ impl CloudService {
                 local_complete,
                 remote_complete
             );
-            for c in &mut comparisons {
-                if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
-                    c.previously_synced = false;
-                }
-            }
+            Self::apply_safety_gate(
+                config,
+                &mut comparisons,
+                ScanHealth {
+                    local_complete,
+                    remote_complete,
+                },
+            );
         }
 
         Ok(SyncPlan {
             comparisons,
+            baseline_refresh,
             index,
             local_str,
             remote_str,
@@ -876,6 +1039,7 @@ impl CloudService {
             errors: Vec::new(),
             duration_secs: 0,
             file_details: Vec::new(),
+            completed_paths: Default::default(),
         };
 
         for comparison in &comparisons {
@@ -926,6 +1090,7 @@ impl CloudService {
         // derive from byte-identical inputs).
         let SyncPlan {
             comparisons,
+            baseline_refresh,
             index,
             local_str,
             remote_str,
@@ -944,6 +1109,7 @@ impl CloudService {
             errors: Vec::new(),
             duration_secs: 0,
             file_details: Vec::new(),
+            completed_paths: Default::default(),
         };
 
         // Process each comparison
@@ -970,6 +1136,9 @@ impl CloudService {
             {
                 Ok(action) => match action {
                     SyncAction::AskUser => {
+                        result
+                            .completed_paths
+                            .insert(comparison.relative_path.clone());
                         result.conflicts += 1;
                         // Add to conflicts list (capped at 10K to prevent unbounded growth)
                         let mut conflicts = self.conflicts.write().await;
@@ -1039,6 +1208,7 @@ impl CloudService {
             &local_str,
             &remote_str,
             &comparisons,
+            &baseline_refresh,
             &result,
             &config,
             index.as_ref(),
@@ -1076,6 +1246,9 @@ impl CloudService {
         comparison: &FileComparison,
         action: &SyncAction,
     ) {
+        result
+            .completed_paths
+            .insert(comparison.relative_path.clone());
         match action {
             SyncAction::Upload => {
                 result.uploaded += 1;
@@ -2054,7 +2227,14 @@ mod baseline_tests {
             is_dir,
             sync_reason: String::new(),
             previously_synced,
+            two_way: None,
+            two_way_gate: Default::default(),
         }
+    }
+
+    /// Every row of a cycle completed.
+    fn done(rows: &[FileComparison]) -> std::collections::HashSet<String> {
+        rows.iter().map(|c| c.relative_path.clone()).collect()
     }
 
     fn cfg(direction: CompareDirection, preserve: bool, strategy: ConflictStrategy) -> CloudConfig {
@@ -2202,6 +2382,7 @@ mod baseline_tests {
             size,
             modified: None,
             is_dir: false,
+            remote: None,
         };
         let mut prior = SyncIndex::new("/l".to_string(), "/r".to_string());
         prior.files.insert("synced.txt".to_string(), entry(1));
@@ -2219,8 +2400,8 @@ mod baseline_tests {
             true,
             ConflictStrategy::AskUser,
         );
-        let files =
-            svc.post_sync_baseline(&[synced.clone(), never.clone()], &preserve, Some(&prior));
+        let rows = [synced.clone(), never.clone()];
+        let files = svc.post_sync_baseline(&rows, &[], &done(&rows), &preserve, Some(&prior));
         assert!(
             files.contains_key("synced.txt"),
             "a Skip must not drop a synced file's entry"
@@ -2236,7 +2417,8 @@ mod baseline_tests {
             false,
             ConflictStrategy::AskUser,
         );
-        let files = svc.post_sync_baseline(&[gone], &bidi, Some(&prior));
+        let rows = [gone];
+        let files = svc.post_sync_baseline(&rows, &[], &done(&rows), &bidi, Some(&prior));
         assert!(
             !files.contains_key("gone.txt"),
             "a delete removes the entry"
@@ -2462,7 +2644,7 @@ mod baseline_tests {
         let mut remote_files: HashMap<String, FileInfo> = HashMap::new();
         remote_files.insert("sub/b.txt".to_string(), fi(1, 1_700_000_000));
 
-        let comparisons = build_comparison_results_with_index(
+        let comparisons = crate::sync::build_comparison_results_with_index(
             local_files,
             remote_files,
             &CompareOptions::default(),
@@ -2937,6 +3119,274 @@ mod secval_b_tests {
         assert!(
             still_there,
             "AeroCloud deleted a local file because a non-authoritative listing omitted it"
+        );
+    }
+}
+
+#[cfg(test)]
+mod two_way_engine_tests {
+    //! An AeroCloud two-way folder against the decision table, through the
+    //! compare and the action the executor runs. The tests read only what the
+    //! compare reads (the index file's entries, both listings), so they run
+    //! unchanged on the code before the two-way engine.
+    use super::*;
+
+    const T0: i64 = 1_700_000_000;
+
+    fn file(size: u64, mtime: i64) -> FileInfo {
+        FileInfo {
+            name: "a.txt".to_string(),
+            path: "/a.txt".to_string(),
+            size,
+            modified: DateTime::<Utc>::from_timestamp(mtime, 0),
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        }
+    }
+
+    /// An index holding one entry for `a.txt`, read the way the index file
+    /// is read.
+    fn index_with(entry: serde_json::Value) -> SyncIndex {
+        let mut index = SyncIndex::new("/l".to_string(), "/r".to_string());
+        index.files.insert(
+            "a.txt".to_string(),
+            serde_json::from_value(entry).expect("an index entry"),
+        );
+        index
+    }
+
+    /// What the executor does with `a.txt` in a two-way folder; `None` when
+    /// the compare has nothing to do for it.
+    fn action(
+        index: Option<&SyncIndex>,
+        local: Option<FileInfo>,
+        remote: Option<FileInfo>,
+        strategy: ConflictStrategy,
+    ) -> Option<SyncAction> {
+        let side = |f: Option<FileInfo>| -> HashMap<String, FileInfo> {
+            f.into_iter().map(|f| ("a.txt".to_string(), f)).collect()
+        };
+        let rows = crate::sync::build_comparison_results_with_index(
+            side(local),
+            side(remote),
+            &CompareOptions::default(),
+            index,
+        );
+        let config = CloudConfig {
+            sync_direction: CompareDirection::Bidirectional,
+            conflict_strategy: strategy,
+            ..Default::default()
+        };
+        let svc = CloudService::new();
+        rows.iter()
+            .find(|row| row.relative_path == "a.txt")
+            .map(|row| svc.resolve_action(&config, row))
+    }
+
+    /// The data loss: the remote copy was deleted while the local copy was
+    /// edited. The file was in the baseline and is absent remotely, so the
+    /// cycle deleted the local edit. A delete never wins against a
+    /// modification: the edit goes back to the remote.
+    #[test]
+    fn a_remote_delete_does_not_delete_a_local_edit() {
+        let index = index_with(serde_json::json!({
+            "size": 10,
+            "modified": "2023-11-14T22:13:20Z",
+            "is_dir": false
+        }));
+        assert_eq!(
+            action(
+                Some(&index),
+                Some(file(12, T0 + 600)),
+                None,
+                ConflictStrategy::AskUser
+            ),
+            Some(SyncAction::Upload)
+        );
+    }
+
+    /// The same loss the other way: deleted locally, edited on the remote.
+    #[test]
+    fn a_local_delete_does_not_delete_a_remote_edit() {
+        let index = index_with(serde_json::json!({
+            "size": 10,
+            "modified": "2023-11-14T22:13:20Z",
+            "is_dir": false
+        }));
+        assert_eq!(
+            action(
+                Some(&index),
+                None,
+                Some(file(12, T0 + 600)),
+                ConflictStrategy::AskUser
+            ),
+            Some(SyncAction::Download)
+        );
+    }
+
+    /// Created on both sides with different contents, before any baseline
+    /// knew the file: the newer copy silently overwrote the other. It is a
+    /// conflict, decided by the folder's strategy.
+    #[test]
+    fn created_on_both_sides_with_different_contents_is_a_conflict() {
+        let empty = SyncIndex::new("/l".to_string(), "/r".to_string());
+        assert_eq!(
+            action(
+                Some(&empty),
+                Some(file(12, T0 + 600)),
+                Some(file(10, T0)),
+                ConflictStrategy::AskUser
+            ),
+            Some(SyncAction::AskUser)
+        );
+    }
+
+    /// A remote that reports the upload time, not the local mtime (S3, many
+    /// WebDAV servers): read against one shared baseline value, its side
+    /// looked changed on every cycle and the file was downloaded back each
+    /// time. Each side is read against its own baseline.
+    #[test]
+    fn a_remote_that_reports_its_own_time_is_not_changed_every_cycle() {
+        let index = index_with(serde_json::json!({
+            "size": 10,
+            "modified": "2023-11-14T22:13:20Z",
+            "is_dir": false,
+            "remote": { "size": 10, "modified": "2023-11-14T23:13:20Z" }
+        }));
+        assert_eq!(
+            action(
+                Some(&index),
+                Some(file(10, T0)),
+                Some(file(10, T0 + 3600)),
+                ConflictStrategy::AskUser
+            ),
+            None
+        );
+    }
+
+    /// The rows the code before the engine already decided right, pinned so
+    /// the engine keeps them: an edit on one side is copied, a delete on one
+    /// side of an unchanged file is propagated.
+    #[test]
+    fn one_sided_edits_and_deletes_are_propagated() {
+        let index = index_with(serde_json::json!({
+            "size": 10,
+            "modified": "2023-11-14T22:13:20Z",
+            "is_dir": false
+        }));
+        let unchanged = || Some(file(10, T0));
+        let edited = || Some(file(12, T0 + 600));
+        let s = || ConflictStrategy::AskUser;
+        assert_eq!(action(Some(&index), unchanged(), unchanged(), s()), None);
+        assert_eq!(
+            action(Some(&index), edited(), unchanged(), s()),
+            Some(SyncAction::Upload)
+        );
+        assert_eq!(
+            action(Some(&index), unchanged(), edited(), s()),
+            Some(SyncAction::Download)
+        );
+        assert_eq!(
+            action(Some(&index), None, unchanged(), s()),
+            Some(SyncAction::DeleteRemote)
+        );
+        assert_eq!(
+            action(Some(&index), unchanged(), None, s()),
+            Some(SyncAction::DeleteLocal)
+        );
+    }
+}
+
+#[cfg(test)]
+mod two_way_baseline_tests {
+    use super::*;
+
+    const T0: i64 = 1_700_000_000;
+
+    fn file(size: u64, mtime: i64) -> FileInfo {
+        FileInfo {
+            name: "f".to_string(),
+            path: "/f".to_string(),
+            size,
+            modified: DateTime::<Utc>::from_timestamp(mtime, 0),
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        }
+    }
+
+    fn entry(size: u64, mtime: i64) -> SyncIndexEntry {
+        SyncIndexEntry {
+            size,
+            modified: DateTime::<Utc>::from_timestamp(mtime, 0),
+            is_dir: false,
+            remote: None,
+        }
+    }
+
+    /// A two-way cycle advances the baseline for the rows that completed
+    /// only, records each side apart (a copy's written side by size until a
+    /// listing reports its time), and records the files already in sync the
+    /// compare named. Before, one failed row kept the whole index from being
+    /// saved, and a file identical on both sides never entered it.
+    #[test]
+    fn a_two_way_cycle_records_each_side_and_only_what_completed() {
+        let mut prior = SyncIndex::new("/l".to_string(), "/r".to_string());
+        prior.files.insert("up.txt".to_string(), entry(10, T0));
+        prior.files.insert("failed.txt".to_string(), entry(10, T0));
+        let local = HashMap::from([
+            ("up.txt".to_string(), file(12, T0 + 600)),
+            ("failed.txt".to_string(), file(10, T0)),
+            ("same.txt".to_string(), file(7, T0)),
+        ]);
+        let remote = HashMap::from([
+            ("up.txt".to_string(), file(10, T0)),
+            ("failed.txt".to_string(), file(14, T0 + 600)),
+            ("same.txt".to_string(), file(7, T0 + 1)),
+        ]);
+        let report = crate::sync::classify_with_summary(
+            local,
+            remote,
+            &CompareOptions::default(),
+            Some(&prior),
+        );
+        let config = CloudConfig {
+            sync_direction: CompareDirection::Bidirectional,
+            ..Default::default()
+        };
+        let completed: std::collections::HashSet<String> =
+            ["up.txt".to_string()].into_iter().collect();
+        let files = CloudService::new().post_sync_baseline(
+            &report.differences,
+            &report.baseline_refresh,
+            &completed,
+            &config,
+            Some(&prior),
+        );
+
+        let up = files["up.txt"].pair();
+        assert_eq!(up.local, SideBaseline::of_file(&file(12, T0 + 600)));
+        assert_eq!(up.remote, SideBaseline::written(12));
+        let failed = &files["failed.txt"];
+        assert_eq!(
+            (failed.size, failed.remote),
+            (10, None),
+            "a failed row keeps its entry"
+        );
+        let same = files["same.txt"].pair();
+        assert_eq!(same.local, SideBaseline::of_file(&file(7, T0)));
+        assert_eq!(same.remote, SideBaseline::of_file(&file(7, T0 + 1)));
+    }
+
+    /// A side that lists nothing while the baseline holds files stops a
+    /// two-way cycle before any action, where the delete gate used to turn
+    /// every delete into a copy back.
+    #[test]
+    fn an_empty_side_refuses_a_two_way_cycle() {
+        assert_eq!(
+            two_way::refuse_plan(3, 0, 3),
+            Some(two_way::TwoWayRefusal::LocalSideEmpty)
         );
     }
 }
