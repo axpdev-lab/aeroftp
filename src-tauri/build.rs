@@ -46,6 +46,9 @@ const DEPENDENCY_CATEGORIES: &[(&str, &[&str])] = &[
         &[
             "axum",
             "http",
+            "http-body-util",
+            "hyper",
+            "hyper-util",
             "oauth2",
             "percent-encoding",
             "quick-xml",
@@ -176,7 +179,6 @@ const DEPENDENCY_CATEGORIES: &[(&str, &[&str])] = &[
             "tauri-plugin-autostart",
             "tauri-plugin-dialog",
             "tauri-plugin-fs",
-            "tauri-plugin-localhost",
             "tauri-plugin-log",
             "tauri-plugin-notification",
             "tauri-plugin-shell",
