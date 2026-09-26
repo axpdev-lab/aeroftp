@@ -47,17 +47,73 @@ fn opened_fn(line: &str) -> Option<&str> {
 /// Every `(line, function)` of `source` whose code (comments aside)
 /// contains `needle`.
 fn sites<'a>(source: &'a str, needle: &str) -> Vec<(usize, &'a str)> {
+    sites_where(source, |line| line.contains(needle))
+}
+
+/// Every `(line, function)` of `source` whose code (comments aside)
+/// satisfies `matches`. A struct declared inside a function owns its fields
+/// only up to its closing brace; the lines after it belong to the function
+/// again (`resume_upload` in OneDrive declares one).
+fn sites_where<'a>(source: &'a str, matches: impl Fn(&str) -> bool) -> Vec<(usize, &'a str)> {
     let mut current = "";
+    // The indentation of an open struct's closing brace, and the function
+    // to go back to after it.
+    let mut open_struct: Option<(String, &str)> = None;
     let mut found = Vec::new();
     for (index, line) in source.lines().enumerate() {
+        if open_struct
+            .as_ref()
+            .is_some_and(|(closing, _)| line == closing)
+        {
+            if let Some((_, outer)) = open_struct.take() {
+                current = outer;
+            }
+            continue;
+        }
         if let Some(name) = opened_fn(line) {
+            let indent = &line[..line.len() - line.trim_start().len()];
+            if line.contains("struct ") && line.trim_end().ends_with('{') && open_struct.is_none() {
+                open_struct = Some((format!("{indent}}}"), current));
+            }
             current = name;
         }
-        if !line.trim_start().starts_with("//") && line.contains(needle) {
+        if !line.trim_start().starts_with("//") && matches(line) {
             found.push((index + 1, current));
         }
     }
     found
+}
+
+/// Whether `line` uses `field` whole: not joined with a relative path
+/// (`field.trim_end_matches('/')` followed by the rest of the path), not
+/// assigned (`field =`), not declared (`field:`). A whole current folder in
+/// place of a parent is the bug the OneDrive `rename` and `server_side_copy`
+/// had.
+fn uses_whole(line: &str, field: &str) -> bool {
+    line.match_indices(field).any(|(at, _)| {
+        let after = &line[at + field.len()..];
+        !(after.starts_with(".trim_end_matches('/')")
+            || after.starts_with(':')
+            || after.starts_with(" ="))
+    })
+}
+
+/// Fail on any line of `source` that uses `field` whole outside `allowed`,
+/// after proving the guard sees such a use where it belongs.
+fn assert_whole_uses_confined(file: &str, source: &str, field: &str, allowed: &[&str]) {
+    let found = sites_where(production(source), |line| uses_whole(line, field));
+    assert!(
+        found.iter().any(|(_, function)| allowed.contains(function)),
+        "{file}: no whole use of `{field}` found in {allowed:?}; the guard is not reading the real source"
+    );
+    let stray: Vec<_> = found
+        .into_iter()
+        .filter(|(_, function)| !allowed.contains(function))
+        .collect();
+    assert!(
+        stray.is_empty(),
+        "{file}: `{field}` used whole outside {allowed:?}, take the parent of an absolute path instead: {stray:?}"
+    );
 }
 
 /// Fail on any `needle` outside `allowed`, after proving the guard sees
@@ -148,14 +204,54 @@ fn zoho_workdrive_resolves_every_path_through_parent_folder_id() {
 /// reports. Taking it as the parent anywhere else is the bug `rename` had
 /// (a move of `/x` into the current folder read as a rename in place) and
 /// `server_side_copy` had (a copy to `/x` landed in the current folder).
+///
+/// Three needles, since the literal `current_path.clone()` missed every other
+/// form: any use of `current_path` is confined to the functions that
+/// resolve a relative path onto it (so a new function that touches it is
+/// read before it passes), a whole use of it (a borrow, a copy, a
+/// `.to_string()`, anything but the join of a relative path) to the ones
+/// where the current folder really is the answer, and `current_item_id`, its
+/// id, to the functions that keep it.
 #[test]
 fn onedrive_takes_the_current_folder_as_a_parent_only_where_allowed() {
     let source = include_str!("onedrive.rs");
     assert_confined(
         "onedrive.rs",
         source,
-        "current_path.clone()",
-        &["list", "pwd", "mkdir"],
+        "current_path",
+        &[
+            "OneDriveProvider",
+            "new",
+            "connect",
+            "list",
+            "pwd",
+            "cd",
+            "download",
+            "resume_download",
+            "download_to_bytes",
+            "upload",
+            "mkdir",
+            "delete",
+            "rename",
+            "stat",
+            "create_share_link",
+            "server_side_copy",
+            "resume_upload",
+            "begin_multipart_upload",
+            "copy_destination",
+        ],
+    );
+    assert_whole_uses_confined(
+        "onedrive.rs",
+        source,
+        "current_path",
+        &["list", "pwd", "cd", "mkdir", "server_side_copy"],
+    );
+    assert_confined(
+        "onedrive.rs",
+        source,
+        "current_item_id",
+        &["OneDriveProvider", "new", "connect", "list", "cd"],
     );
 }
 
@@ -172,6 +268,9 @@ fn the_guard_sees_the_forms_the_literal_needles_missed() {
                   \x20   let here = &self.current_folder_id;\n\
                   \x20   let root: String = \"root\".into();\n\
                   \x20   // self.resolve_path( in a comment\n}\n\
+                  fn outer() {\n    struct Inner {\n        a: u8,\n    }\n\
+                  \x20   let parent = self.current_path.to_string();\n\
+                  \x20   let joined = format!(\"{}/x\", self.current_path.trim_end_matches('/'));\n}\n\
                   \n#[cfg(test)]\nmod tests {\n}\n";
     let found_in = |needle: &str| -> Vec<&str> {
         sites(production(source), needle)
@@ -182,6 +281,14 @@ fn the_guard_sees_the_forms_the_literal_needles_missed() {
     assert_eq!(found_in(".resolve_path("), ["allowed", "stray"]);
     assert_eq!(found_in("current_folder_id"), ["Provider", "stray"]);
     assert_eq!(found_in("\"root\""), ["stray"]);
+    // After a struct declared inside a function, the lines are the
+    // function's again; only the `.to_string()` is a whole use.
+    assert_eq!(found_in("current_path"), ["outer", "outer"]);
+    let whole: Vec<&str> = sites_where(production(source), |line| uses_whole(line, "current_path"))
+        .into_iter()
+        .map(|(_, function)| function)
+        .collect();
+    assert_eq!(whole, ["outer"]);
     for missed in [
         "self.resolve_path(",
         "self.current_folder_id.clone()",
