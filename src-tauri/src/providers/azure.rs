@@ -508,6 +508,18 @@ impl AzureProvider {
         {
             return Err(ProviderError::AlreadyExists(to.to_string()));
         }
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            // No blob by that name. A folder (only a prefix, with or without
+            // the marker `mkdir` writes) is not something Copy Blob moves:
+            // "Copy failed: 404" hid that.
+            if self.is_a_folder(&from_blob).await? {
+                return Err(ProviderError::NotSupported(format!(
+                    "{from} is a folder, and on Azure a rename moves one blob: renaming a \
+                     folder is not supported"
+                )));
+            }
+            return Err(ProviderError::NotFound(from.to_string()));
+        }
         if !resp.status().is_success() {
             return Err(ProviderError::Other(format!(
                 "Copy failed: {}",
@@ -2734,7 +2746,22 @@ mod tests {
                             )))
                             .unwrap();
                     }
+                    // A copy from a name that is only a folder prefix finds
+                    // no blob, as on Azure.
+                    let copy_source = req
+                        .headers()
+                        .get("x-ms-copy-source")
+                        .map(|v| v.to_str().unwrap().to_string())
+                        .unwrap_or_default();
+                    let source = copy_source
+                        .rsplit_once("/mycontainer/")
+                        .map(|(_, name)| name.to_string())
+                        .unwrap_or_default();
+                    let source_is_a_folder = !source.is_empty()
+                        && !existing.contains(&source.as_str())
+                        && existing.iter().any(|name| name.starts_with(&format!("{source}/")));
                     let status = match req.method().as_str() {
+                        "PUT" if source_is_a_folder => 404,
                         "PUT" if condition == "*" && existing.contains(&blob) => 412,
                         "PUT" | "DELETE" => 202,
                         _ => 404,
@@ -2814,6 +2841,18 @@ mod tests {
         }
         let log = log.lock().unwrap().clone();
         assert!(!log.iter().any(|r| r.starts_with("PUT")), "{log:?}");
+    }
+
+    /// A folder is no blob Copy Blob can move: renaming one failed with
+    /// "Copy failed: 404". It is NotSupported, saying so.
+    #[tokio::test]
+    async fn a_folder_source_is_not_supported_not_a_failed_copy() {
+        let (mut provider, _) = provider_on_blob_service(&["d/", "d/x.txt"]).await;
+        let outcome = provider.rename("/d/", "/e/").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotSupported(ref m)) if m.contains("folder")),
+            "{outcome:?}"
+        );
     }
 
     /// The copy took the source without its trailing slash, the delete took
