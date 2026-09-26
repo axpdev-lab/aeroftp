@@ -1602,7 +1602,8 @@ impl StorageProvider for FileLuProvider {
         // Step 3: Upload via multipart with a streaming body. The request is
         // built again for every attempt over a freshly opened file, so a
         // retry (a 503 from the upload server) sends the whole file again,
-        // and the bar starts over with it.
+        // and the bar holds where the failed attempt stopped until the new
+        // one passes it.
         let local = Path::new(local_path);
         let resp = send_with_retry_replayable(
             &self.client,
@@ -2303,8 +2304,9 @@ mod tests {
 
     /// A 503 from the upload server is retried with the whole file: the
     /// request is built again over a reopened file. The retry used to go out
-    /// with the multipart headers and no body. The bar starts over with the
-    /// second attempt and reaches 100 once, at the end.
+    /// with the multipart headers and no body. The bar never goes back while
+    /// the second attempt resends what the first had sent, and reaches 100
+    /// once, at the end.
     #[tokio::test]
     async fn a_busy_upload_server_gets_the_whole_file_again() {
         let (outcome, updates, received) =
@@ -2322,7 +2324,7 @@ mod tests {
         assert!(uploads[0] > 300 * 1024, "{uploads:?}");
         assert_eq!(uploads[0], uploads[1], "the retry carried a different body");
         let total = 300 * 1024;
-        assert_eq!(updates.last(), Some(&(total, total)));
+        crate::providers::upload_progress::fixture::assert_real_progress(&updates, total, true);
         assert_eq!(
             updates.iter().filter(|&&(sent, _)| sent == total).count(),
             1

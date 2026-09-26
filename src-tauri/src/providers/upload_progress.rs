@@ -37,6 +37,10 @@ use crate::transfer_dag::governor::TransferDirection;
 pub struct UploadProgress {
     callback: Option<Arc<Mutex<ProgressCallback>>>,
     total: u64,
+    /// The highest count reported so far, shared by every attempt: a retry
+    /// sends the file again from its first byte, and the bar holds here until
+    /// the new attempt passes it, so it never goes back.
+    reported: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl UploadProgress {
@@ -44,12 +48,13 @@ impl UploadProgress {
         Self {
             callback: callback.map(|cb| Arc::new(Mutex::new(cb))),
             total,
+            reported: Arc::default(),
         }
     }
 
     /// Wrap a body stream so every chunk it yields reports the running byte
-    /// count, while that count is below the total. Errors pass through
-    /// uncounted.
+    /// count, while that count is below the total and above anything already
+    /// reported by an earlier attempt. Errors pass through uncounted.
     pub fn track<S, E>(&self, stream: S) -> impl Stream<Item = Result<Bytes, E>> + Send + 'static
     where
         S: Stream<Item = Result<Bytes, E>> + Send + 'static,
@@ -57,13 +62,15 @@ impl UploadProgress {
     {
         let callback = self.callback.clone();
         let total = self.total;
+        let reported = Arc::clone(&self.reported);
         let mut sent = 0u64;
         stream.inspect(move |chunk| {
             let Ok(bytes) = chunk else {
                 return;
             };
             sent = sent.saturating_add(bytes.len() as u64);
-            if sent < total {
+            if sent < total && reported.fetch_max(sent, std::sync::atomic::Ordering::Relaxed) < sent
+            {
                 if let Some(callback) = &callback {
                     let callback = callback.lock().unwrap_or_else(|e| e.into_inner());
                     callback(sent, total);
@@ -90,8 +97,8 @@ impl UploadProgress {
     }
 
     /// [`Self::file_body`] over a fresh handle on `path`, for a request built
-    /// again on every attempt: a retry sends the whole file again, and its
-    /// progress starts over from zero with it. The open is synchronous, as
+    /// again on every attempt: a retry sends the whole file again, and the
+    /// bar holds where the failed attempt stopped until the new one passes it. The open is synchronous, as
     /// the request builder is, and a failure to open travels as the body's
     /// error, so that attempt fails instead of going out empty.
     pub fn reopened_file_body(&self, path: &std::path::Path) -> reqwest::Body {
@@ -345,6 +352,39 @@ mod tests {
         server.abort();
         assert!(outcome.is_err(), "{outcome:?}");
         assert!(received.lock().unwrap().is_empty());
+    }
+
+    /// A retried attempt sends the file again from its first byte. The bar
+    /// holds where the failed attempt left it until the new one passes that
+    /// point, so it never goes back and a callback that sums the differences
+    /// between updates never counts more than the file.
+    #[tokio::test]
+    async fn a_second_attempt_never_moves_the_bar_back() {
+        let (callback, updates) = recorder();
+        let progress = UploadProgress::new(Some(callback), 40);
+        let attempt = || {
+            futures_util::stream::iter(
+                [10usize, 10, 10, 10].map(|n| Ok::<_, std::io::Error>(Bytes::from(vec![0u8; n]))),
+            )
+        };
+        let _: Vec<_> = progress.track(attempt()).take(3).collect().await;
+        let _: Vec<_> = progress.track(attempt()).collect().await;
+        progress.complete();
+        let updates = updates.lock().unwrap();
+        assert!(
+            updates.windows(2).all(|w| w[0].0 <= w[1].0),
+            "went back: {updates:?}"
+        );
+        let summed: u64 = updates
+            .iter()
+            .scan(0u64, |last, &(sent, _)| {
+                let delta = sent.saturating_sub(*last);
+                *last = sent;
+                Some(delta)
+            })
+            .sum();
+        assert_eq!(summed, 40, "{updates:?}");
+        assert_eq!(*updates, [(10, 40), (20, 40), (30, 40), (40, 40)]);
     }
 
     /// No callback, no work, no panic.
