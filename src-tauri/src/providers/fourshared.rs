@@ -28,7 +28,8 @@ const UPLOAD_BASE: &str = "https://upload.4shared.com/v1_2";
 const PAGE_SIZE: u32 = 100;
 
 /// The most pages a lookup reads: 100 000 entries, beyond any folder a
-/// rename looks into, and a stop for a server that never ends its pages.
+/// rename looks into. A lookup that reaches it fails: what it has not read
+/// may hold the name.
 const MAX_LOOKUP_PAGES: usize = 1000;
 
 /// Whether the listing shows `folder`: it hides deleted and trashed ones,
@@ -698,9 +699,11 @@ impl FourSharedProvider {
 
     /// Read the pages of a listing a lookup needs, handing each to `visit`
     /// until it answers that it is done. A server that ignores `offset`
-    /// answers the first page again, and the walk never ended: a page that
-    /// starts with the id the previous one started with ends it, and so does
-    /// [`MAX_LOOKUP_PAGES`].
+    /// answers the first page again, and the walk never ended. A page that
+    /// starts with the id the previous one started with, or a walk past
+    /// [`MAX_LOOKUP_PAGES`], is a ServerError: the entries not read may hold
+    /// the name, so the lookup cannot answer "absent" (the listing, which
+    /// guards nothing, stops there instead).
     async fn walk_lookup_pages<T>(
         &self,
         base_url: &str,
@@ -716,7 +719,10 @@ impl FourSharedProvider {
             let page_count = page.len() as u32;
             let first = page.first().and_then(|item| id_of(item).cloned());
             if first.is_some() && first == previous_first {
-                return Ok(());
+                return Err(ProviderError::ServerError(format!(
+                    "4shared answered the same page again past offset {offset} while looking \
+                     up {path}: the rest of the folder cannot be read"
+                )));
             }
             if visit(page) || page_count < PAGE_SIZE {
                 return Ok(());
@@ -724,7 +730,9 @@ impl FourSharedProvider {
             previous_first = first;
             offset += page_count;
         }
-        Ok(())
+        Err(ProviderError::ServerError(format!(
+            "looking up {path} read {MAX_LOOKUP_PAGES} pages without reaching the end of the folder"
+        )))
     }
 
     /// One page of a listing a lookup reads, from `offset`. A refusal is
@@ -849,13 +857,14 @@ impl FourSharedProvider {
         None
     }
 
-    /// The entries of a listing a lookup reads, strictly: an array, or an
-    /// object holding one under `keys`. An empty body or `null` is an empty
-    /// folder (what 4shared answers for one is not documented, so both are
-    /// taken as that); anything else, a JSON error object with HTTP 200
-    /// among them, is a ParseError. The lenient parse of the listing wraps
-    /// such an object as one nameless entry, and the name looked for then
-    /// read as free.
+    /// The entries of a listing a lookup reads, strictly: an array, an
+    /// object holding one under `keys`, or a single entry not wrapped in an
+    /// array (a string `id` and `name`), which the API guide documents for a
+    /// folder holding one item. An empty body or `null` is an empty folder
+    /// (what 4shared answers for one is not documented, so both are taken as
+    /// that); anything else, a JSON error object with HTTP 200 among them, is
+    /// a ParseError. The lenient parse of the listing wraps such an object as
+    /// one nameless entry, and the name looked for then read as free.
     fn strict_listing_items(
         body: &str,
         keys: &[&str],
@@ -875,6 +884,12 @@ impl FourSharedProvider {
             serde_json::from_str(trimmed).map_err(|_| not_a_listing())?;
         if let Some(items) = value.as_array() {
             return Ok(items.clone());
+        }
+        let is_an_entry = ["id", "name"]
+            .iter()
+            .all(|field| value.get(*field).is_some_and(|v| v.is_string()));
+        if is_an_entry {
+            return Ok(vec![value]);
         }
         keys.iter()
             .find_map(|key| value.get(*key).and_then(|v| v.as_array()).cloned())
@@ -1955,7 +1970,9 @@ mod tests {
     /// listed as an empty body and `null`), `jsonerror` (`J`, a JSON error
     /// object with HTTP 200), `looping` (`L`, the same full page whatever the
     /// offset) and `trashy` (`T`, holding a trashed `a.txt`, `FT`, which a
-    /// GET of the file still answers); `src`
+    /// GET of the file still answers) and `single` (`G`, whose one file
+    /// `only.txt`, `FG`, is listed as a bare object) and `endless` (`N`, a
+    /// full page of new files at every offset); `src`
     /// holds `a.txt` (`FA`), `dst` holds `b.txt` (`FB`)
     /// and, when `dst_holds_a`, an `a.txt` of its own (`FA2`). Every PUT (a
     /// move or a rename) succeeds, except a rename to a name starting with
@@ -2029,6 +2046,8 @@ mod tests {
                             item("J", "jsonerror"),
                             item("L", "looping"),
                             item("T", "trashy"),
+                            item("G", "single"),
+                            item("N", "endless"),
                         ]),
                         "/folders/E/files" => return "".into_response(),
                         "/folders/E/children" => return "null".into_response(),
@@ -2039,6 +2058,16 @@ mod tests {
                         "/folders/L/files" => serde_json::json!((0..100)
                             .map(|i| item(&format!("L{i}"), &format!("l{i}.txt")))
                             .collect::<Vec<_>>()),
+                        // A full page of new files at every offset.
+                        "/folders/N/files" => {
+                            let from: usize = page_offset.parse().unwrap_or(0);
+                            serde_json::json!((from..from + 100)
+                                .map(|i| item(&format!("N{i}"), &format!("n{i}.txt")))
+                                .collect::<Vec<_>>())
+                        }
+                        // One file, listed as that entry alone.
+                        "/folders/G/files" => item("FG", "only.txt"),
+                        "/files/FG" => item("FG", "only.txt"),
                         "/folders/T/files" => serde_json::json!([
                             { "id": "FT", "name": "a.txt", "status": "trashed" }
                         ]),
@@ -2166,20 +2195,66 @@ mod tests {
         );
     }
 
-    /// A server that ignores `offset` answers its first page again, and the
-    /// lookup never ended. A page that starts where the previous one started
-    /// ends it.
+    /// A server that ignores `offset` answers its first page again: the
+    /// lookup never ended, and then ended reading the name as free although
+    /// the pages it could not read may hold it. It fails, and nothing is
+    /// sent.
     #[tokio::test]
-    async fn a_lookup_whose_pages_repeat_ends() {
+    async fn a_lookup_whose_pages_repeat_fails() {
         let (mut provider, puts) = provider_on_fourshared(false).await;
-        tokio::time::timeout(
+        let outcome = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             provider.rename("/src/a.txt", "/looping/a.txt"),
         )
         .await
-        .expect("the walk ends on a repeated page")
-        .expect("a.txt is not in the one page there is");
-        assert_eq!(*puts.lock().unwrap(), ["/files/FA/move L"]);
+        .expect("the walk ends on a repeated page");
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// A lookup that read its page limit ended as if the name were free,
+    /// although the pages it did not read may hold it. It fails, and nothing
+    /// is sent.
+    #[tokio::test]
+    async fn a_lookup_past_its_page_limit_fails() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/endless/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("pages")),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// The API guide documents a folder holding one item listed as that
+    /// item alone, not in an array: a lookup read it as a ParseError, and
+    /// every stat, rm or mv in such a folder failed. An object with a string
+    /// id and name is that one entry (an error object stays an error, see
+    /// the test above).
+    #[tokio::test]
+    async fn a_lookup_reads_a_single_entry_listing_as_that_entry() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/single/only.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
     }
 
     /// A trashed file held its name for a lookup, while the listing does
