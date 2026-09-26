@@ -1735,8 +1735,24 @@ impl StorageProvider for JottacloudProvider {
 
         let resp = self.get_with_retry(&url).await?;
 
-        if !resp.status().is_success() {
+        // Only a 404 says the path is absent. Any other refusal (an expired
+        // token, a 5xx) says nothing about it, and read as NotFound it made
+        // the look before a rename report a taken name as free.
+        let status = resp.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
             return Err(ProviderError::NotFound(resolved.clone()));
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            let detail = format!(
+                "Stat {resolved} failed ({status}): {}",
+                sanitize_api_error(&body)
+            );
+            return Err(match status.as_u16() {
+                401 => ProviderError::AuthenticationFailed(detail),
+                403 => ProviderError::PermissionDenied(detail),
+                _ => ProviderError::ServerError(detail),
+            });
         }
 
         let xml = resp
@@ -3219,8 +3235,9 @@ mod tests {
     }
 
     /// A JFS double for `test_provider()` holding the files `a.txt` and
-    /// `b.txt` and the folder `d` in the mount root. Every POST (a move)
-    /// succeeds. Returns a provider on it and every POST query.
+    /// `b.txt` and the folder `d` in the mount root; a look at `busy.txt`
+    /// answers 503. Every POST (a move) succeeds. Returns a provider on it
+    /// and every POST query.
     async fn provider_on_jfs() -> (
         JottacloudProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
@@ -3249,6 +3266,11 @@ mod tests {
                     match req.uri().path() {
                         "/user123/Jotta/Archive/a.txt" => file("a.txt").into_response(),
                         "/user123/Jotta/Archive/b.txt" => file("b.txt").into_response(),
+                        "/user123/Jotta/Archive/busy.txt" => (
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            [(axum::http::header::RETRY_AFTER, "0")],
+                        )
+                            .into_response(),
                         "/user123/Jotta/Archive/d" | "/user123/Jotta/Archive/d/" => {
                             "<folder name=\"d\"><folders/><files/></folder>".into_response()
                         }
@@ -3290,6 +3312,28 @@ mod tests {
             .await
             .expect("free name");
         assert_eq!(posts.lock().unwrap().len(), 1);
+    }
+
+    /// A look that JFS refuses (here 503, after the retries) says nothing
+    /// about the destination: it was read as NotFound, the name as free, and
+    /// the move went out. The rename now fails closed and nothing is sent.
+    #[tokio::test]
+    async fn a_refused_look_fails_the_rename_closed() {
+        let (mut provider, posts) = provider_on_jfs().await;
+        let outcome = provider.rename("/a.txt", "/busy.txt").await;
+        assert!(
+            outcome.is_err() && !matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            posts.lock().unwrap().is_empty(),
+            "{:?}",
+            posts.lock().unwrap()
+        );
+        assert!(matches!(
+            provider.stat("/gone.txt").await,
+            Err(ProviderError::NotFound(_))
+        ));
     }
 
     /// `replace` keeps the move without the look (whatever JFS does with the
