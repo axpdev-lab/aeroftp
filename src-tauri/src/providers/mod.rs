@@ -809,10 +809,15 @@ pub trait StorageProvider: Send + Sync {
     /// before this method existed. A backend whose rename refuses an occupied
     /// destination must override this, or every replace onto an existing
     /// file fails: SFTP, WebDAV, the copy-based backends (S3, B2, Swift,
-    /// Azure, Cloudinary, OpenDrive), FTP and ImageKit overwrite in one server
-    /// step, Google Drive uploads the new content as a revision of the file
-    /// there, and MEGA, Filen and FileLu, which have neither, set the old item
-    /// aside first (see [`set_aside_name`]).
+    /// Azure, Cloudinary, OpenDrive), FTP, ImageKit, pCloud, Yandex Disk and
+    /// the MTP folder overwrite in one server step, MEGAcmd and Jottacloud
+    /// send their move without the look their rename makes, OneDrive
+    /// replaces in the request that moves, Google Drive uploads the new
+    /// content as a revision of the file there, and MEGA, Filen and FileLu,
+    /// which have neither, set the old item aside first (see
+    /// [`set_aside_name`]). A backend with none of these keeps the default,
+    /// whose refusal is the answer, and says so through
+    /// [`StorageProvider::supports_atomic_replace`].
     ///
     /// A replace puts a file in place of a file or a folder in place of a
     /// folder. Across the two (see [`refuse_replace_across_types`]) it is
@@ -834,9 +839,12 @@ pub trait StorageProvider: Send + Sync {
     /// backend that has actually measured its own ground says otherwise:
     /// `SftpProvider`, which asks the server whether it offers
     /// `posix-rename@openssh.com`; the backends whose replace sets the old
-    /// item aside (MEGA, Filen, FileLu) or has none (Twake); and ImageKit and
-    /// OpenDrive, which overwrite only across folders while every caller
-    /// stages its temporary in the target's own folder.
+    /// item aside (MEGA, Filen, FileLu); those whose move over a file is not
+    /// documented as one step (MEGAcmd, Jottacloud); those with no replace
+    /// at all, whose rename refuses a taken name or who have no rename (each
+    /// says why on its own answer); and ImageKit and OpenDrive, which
+    /// overwrite only across folders while every caller stages its temporary
+    /// in the target's own folder.
     ///
     /// [`replace`]: StorageProvider::replace
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {

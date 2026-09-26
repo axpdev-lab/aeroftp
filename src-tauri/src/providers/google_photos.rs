@@ -1299,6 +1299,12 @@ impl StorageProvider for GooglePhotosProvider {
         ))
     }
 
+    /// No: there is no rename here, so there is no replace either, and the
+    /// callers that need one refuse before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let (folder, filename) = Self::parse_path(path);
 
@@ -1447,6 +1453,15 @@ impl StorageProvider for GooglePhotosProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// There is no rename here, so a replace could only fail after a caller
+    /// staged its temporary. The answer is no, so those callers (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write.
+    #[tokio::test]
+    async fn google_photos_does_not_claim_an_atomic_replace() {
+        let mut p = GooglePhotosProvider::new(GooglePhotosConfig::new("id", "secret"));
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
 
     #[test]
     fn parse_path_splits_album_from_filename() {

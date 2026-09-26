@@ -1080,6 +1080,13 @@ impl StorageProvider for ProtonCliProvider {
         Ok(())
     }
 
+    /// No: the Proton Drive CLI renames and moves without an overwrite, so
+    /// there is no one-step replace, and the callers that need one refuse
+    /// before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let abs = self.resolve_path(path);
         if abs == "/" {
@@ -1252,6 +1259,19 @@ impl StorageProvider for ProtonCliProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Proton Drive CLI renames and moves without an overwrite, so there is
+    /// no one-step replace. The answer is no, so the callers that need one (CLI
+    /// `edit`, MCP `remote_edit`, the crypt marker paths) refuse before they
+    /// write.
+    #[tokio::test]
+    async fn proton_does_not_claim_an_atomic_replace() {
+        let mut p = ProtonCliProvider::new(ProtonConfig {
+            display_name: "t".into(),
+            binary_path: None,
+        });
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
 
     #[test]
     fn parse_root_list() {
