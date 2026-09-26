@@ -469,8 +469,17 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # final reply in one segment leaves the socket empty and the refusal inside
 # the BufReader, and a peek on the bare socket is blind to it: the transfer
 # then waits out the full data idle timeout for an answer that arrived with
-# the first one. The fork can be audited at a glance: `git diff v12.1.0` shows
-# only that method and its two tests.
+# the first one. The fork can be audited at a glance:
+# `git diff c841f5e6 8d7c78f6` (c841f5e6 is upstream's v12.1.0 tag, which the
+# fork does not carry) shows only that method, its two tests and a doc note.
+#
+# WHERE THE PIN LIVES: commit 8d7c78f6 on branch `aeroftp/v12.1.0` of
+# axpdev-lab/suppaftp and, because a branch can move and a rev it no longer
+# reaches stops resolving for every uncached build, under the immutable tag
+# `aeroftp-v12.1.0-buffered-reply-bytes-8d7c78f6`. The 4.2.0 pin (v10.0.2 plus
+# the same method, 2d39fadc) has `aeroftp-v10.0.2-buffered-reply-bytes-2d39fad`.
+# Protecting the `aeroftp/*` branches with a ruleset is the owner's call; an
+# upstream pull request starts from a new branch, never by rewriting these.
 #
 # EXIT CONDITION: delete this entry as soon as an upstream release exposes
 # the reader's buffered bytes (or an equivalent readiness) on the tokio
@@ -486,9 +495,8 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # the branch was built. It also has a binding AI_POLICY.md: disclosure is
 # mandatory and must go through their PR template, and the contributor has to
 # be a person who understands the change and answers review in their own
-# words. The branch `aeroftp/v12.1.0-buffered-reply-bytes` is pushed on
-# axpdev-lab/suppaftp; the issue text, the disclosure wording and the
-# remaining work are in the release 4.2.1 S-lane handoff under `docs/dev`,
+# words. The issue text, the disclosure wording and the remaining work are in
+# the release 4.2.1 S-lane handoff under `docs/dev`,
 # outside the public tree. Filing it is an action on somebody else's
 # repository under somebody's name, so it belongs to the account owner rather
 # than to whoever edits this file.
@@ -509,4 +517,4 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # become permanent because the exit condition is missing; it becomes
 # permanent because the exit condition is written in a form nobody can
 # verify.
-suppaftp = { git = "https://github.com/axpdev-lab/suppaftp", rev = "6b7b66e222f9387aaa86cb00945c37f6e00ef6cf" }
+suppaftp = { git = "https://github.com/axpdev-lab/suppaftp", rev = "8d7c78f67827a8b980e0eee4d0550615183b862e" }
