@@ -65,6 +65,8 @@ import {
 import type { UpdateInfo } from '../hooks/useAutoUpdate';
 import { useI18n, Language, AVAILABLE_LANGUAGES } from '../i18n';
 import { openUrl } from '../utils/openUrl';
+import { KeystoreImportPreview } from './KeystoreImportPreview';
+import { decisionsPayload, defaultDecisions, type ProfileDecision, type ProfilePreview } from '../utils/keystoreImportPreview';
 
 // Operation types for activity log - must match useActivityLog.ts
 type ActivityLogOperation = 'CONNECT' | 'DISCONNECT' | 'UPLOAD' | 'DOWNLOAD' | 'DELETE' | 'RENAME' | 'MOVE' | 'MKDIR' | 'NAVIGATE' | 'UPDATE' | 'ERROR' | 'INFO' | 'SUCCESS';
@@ -516,6 +518,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [keystoreImportPassword, setKeystoreImportPassword] = useState('');
     const [showKeystoreImportPassword, setShowKeystoreImportPassword] = useState(false);
     const [keystoreImportMerge, setKeystoreImportMerge] = useState<'skip_existing' | 'overwrite'>('skip_existing');
+    // #347: per-profile preview of the import and the user's choice for each
+    // change. Cleared whenever the file, password or merge strategy changes,
+    // so the decisions sent always belong to the preview on screen.
+    const [keystorePreview, setKeystorePreview] = useState<ProfilePreview | null>(null);
+    const [keystoreDecisions, setKeystoreDecisions] = useState<Record<string, ProfileDecision>>({});
+    const [keystorePreviewing, setKeystorePreviewing] = useState(false);
     const [keystoreMetadata, setKeystoreMetadata] = useState<{
         exportDate: string;
         aeroftpVersion: string;
@@ -529,6 +537,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         };
     } | null>(null);
     const [keystoreImportFilePath, setKeystoreImportFilePath] = useState<string | null>(null);
+    // A preview answers the inputs it was asked with: a change bumps the
+    // generation, so a preview still in flight for the old inputs is dropped.
+    const keystorePreviewGenRef = useRef(0);
+    useEffect(() => {
+        keystorePreviewGenRef.current += 1;
+        setKeystorePreview(null);
+        setKeystoreDecisions({});
+        setKeystorePreviewing(false);
+    }, [keystoreImportFilePath, keystoreImportPassword, keystoreImportMerge]);
     const [keystoreMessage, setKeystoreMessage] = useState<{
         type: 'success' | 'error' | 'info';
         text: string;
@@ -3529,6 +3546,48 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             </div>
                                                         </div>
 
+                                                        {/* #347: per-profile preview of what the import changes */}
+                                                        {keystorePreview ? (
+                                                            <KeystoreImportPreview
+                                                                preview={keystorePreview}
+                                                                decisions={keystoreDecisions}
+                                                                onDecide={(id, decision) => setKeystoreDecisions(prev => ({ ...prev, [id]: decision }))}
+                                                            />
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                disabled={keystorePreviewing || keystoreImporting || keystoreImportPassword.length < 8}
+                                                                onClick={async () => {
+                                                                    if (!keystoreImportFilePath) return;
+                                                                    setKeystoreMessage(null);
+                                                                    const gen = keystorePreviewGenRef.current;
+                                                                    setKeystorePreviewing(true);
+                                                                    try {
+                                                                        const preview = await invoke<ProfilePreview>('preview_keystore_import', {
+                                                                            password: keystoreImportPassword,
+                                                                            filePath: keystoreImportFilePath,
+                                                                            mergeStrategy: keystoreImportMerge,
+                                                                        });
+                                                                        if (gen !== keystorePreviewGenRef.current) return;
+                                                                        setKeystorePreview(preview);
+                                                                        setKeystoreDecisions(defaultDecisions(preview));
+                                                                    } catch (err) {
+                                                                        if (gen !== keystorePreviewGenRef.current) return;
+                                                                        const errStr = String(err);
+                                                                        setKeystoreMessage({
+                                                                            type: 'error',
+                                                                            text: errStr.includes('Invalid password') || errStr.includes('decrypt') ? t('settings.invalidPassword') : errStr,
+                                                                        });
+                                                                    } finally {
+                                                                        if (gen === keystorePreviewGenRef.current) setKeystorePreviewing(false);
+                                                                    }
+                                                                }}
+                                                                className="w-full px-4 py-2 border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors"
+                                                            >
+                                                                {keystorePreviewing ? t('settings.keystorePreviewLoading') : t('settings.keystorePreviewButton')}
+                                                            </button>
+                                                        )}
+
                                                         {/* Import progress bar (shown above buttons) */}
                                                         {keystoreImporting && keystoreImportProgress && (
                                                             <div className="space-y-1">
@@ -3595,6 +3654,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             // F-012 W3: pre-import snapshot path of the local
                                                                             // user_partitions.db (makes the import reversible).
                                                                             userPartitionsBackupPath?: string;
+                                                                            // #347: set when per-profile decisions were applied.
+                                                                            profilesAfterDecisions?: number;
+                                                                            // #347: the import succeeded, the decisions did not.
+                                                                            profileDecisionsError?: string;
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,
@@ -3606,6 +3669,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             importSqlite: true,
                                                                             importFiles: true,
                                                                             importLocalStorage: true,
+                                                                            // #347: only when the user reviewed the changes;
+                                                                            // otherwise the import behaves as it always did.
+                                                                            profileDecisions: keystorePreview
+                                                                                ? decisionsPayload(keystorePreview, keystoreDecisions, c =>
+                                                                                    t('settings.keystoreCopyName', { name: c.backupName ?? c.id }))
+                                                                                : undefined,
+                                                                            profileFingerprint: keystorePreview?.fingerprint,
                                                                         });
                                                                         // Apply the localStorage map returned by the
                                                                         // backend. The backend deliberately stays out of
@@ -3649,10 +3719,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         if ((result.userPartitionsUnreadable ?? 0) > 0) {
                                                                             extraNotes.push(t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0, defaultValue: '{count} account(s) could not be unlocked on this device. The backup was made on another computer: re-export it there with a password set on those accounts, then import it here.' }));
                                                                         }
+                                                                        if (result.profileDecisionsError) {
+                                                                            extraNotes.push(t('settings.keystoreDecisionsFailed', { error: result.profileDecisionsError }));
+                                                                        }
                                                                         if (result.requiresRestart) {
                                                                             extraNotes.push(t('settings.keystoreRestartRequired', { defaultValue: 'Restart AeroFTP to apply restored databases and plugins.' }));
                                                                         }
-                                                                        const importHadWarning = (result.userPartitionsUnreadable ?? 0) > 0 || !!result.requiresRestart;
+                                                                        const importHadWarning = (result.userPartitionsUnreadable ?? 0) > 0 || !!result.requiresRestart || !!result.profileDecisionsError;
                                                                         setKeystoreMessage({
                                                                             type: importHadWarning ? 'info' : 'success',
                                                                             text: extraNotes.length > 0 ? `${successText}. ${extraNotes.join(' ')}` : successText,
@@ -3707,7 +3780,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
                                                                             if (profilesJson) {
                                                                                 const importedProfiles = JSON.parse(profilesJson) as ServerProfile[];
-                                                                                if (Array.isArray(importedProfiles) && importedProfiles.length > 0) {
+                                                                                // With decisions the list is what the user chose, and
+                                                                                // an empty one is a real answer, not a missing list.
+                                                                                const decided = result.profilesAfterDecisions !== undefined && result.profilesAfterDecisions !== null;
+                                                                                if (Array.isArray(importedProfiles) && (importedProfiles.length > 0 || decided)) {
                                                                                     await storeSavedServerProfiles(importedProfiles).catch(() => {});
                                                                                     setServers(importedProfiles);
                                                                                     onServersChanged?.();
@@ -3740,7 +3816,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         setKeystoreImportProgress(null);
                                                                     }
                                                                 }}
-                                                                disabled={keystoreImporting || keystoreImportPassword.length < 8}
+                                                                disabled={keystoreImporting || keystorePreviewing || keystoreImportPassword.length < 8}
                                                                 className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                                                             >
                                                                 {keystoreImporting ? (

@@ -320,6 +320,13 @@
       "twin": "raktų",
       "reason": "'Su raktu' is the instrumental singular ('with a key'); 'raktų' is the genitive plural and would be wrong here."
     },
+    "fr\u001fsettings.keystorePreviewNone\u001fL'importation de cette sauvegarde ne modifie pas vos profils de serveur.": {
+      "locale": "fr",
+      "key": "settings.keystorePreviewNone",
+      "folded": "modifie",
+      "twin": "modifié",
+      "reason": "'ne modifie pas' is the present tense of 'modifier' (does not change); 'modifié' is the past participle and would be wrong here."
+    },
     "vi\u001fsettings.general\u001fChung": {
       "locale": "vi",
       "key": "settings.general",

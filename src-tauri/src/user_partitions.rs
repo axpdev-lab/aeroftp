@@ -474,7 +474,7 @@ fn current_schema_version(conn: &Connection) -> Result<Option<String>, String> {
     .map_err(|e| format!("Read schema version: {e}"))
 }
 
-fn active_user_id(conn: &Connection) -> Result<Option<i64>, String> {
+pub(crate) fn active_user_id(conn: &Connection) -> Result<Option<i64>, String> {
     let value = conn
         .query_row(
             "SELECT value FROM global_state WHERE key = ?1",
@@ -1760,7 +1760,7 @@ pub fn relocate_server_profile(
 /// Partition credential_type for a relocate key (migrate precedent at
 /// `copy_user_secrets_with_dek`: `server` / `oauth` / `jottacloud_refresh`,
 /// plus the crypt/Filen/OneDrive prefixes from [`relocate_all_secret_key_candidates`]).
-fn relocate_secret_kind(credential_key: &str) -> &'static str {
+pub(crate) fn relocate_secret_kind(credential_key: &str) -> &'static str {
     if credential_key.starts_with("server_modes_") {
         "server_modes"
     } else if credential_key.starts_with("server_") {
@@ -3912,6 +3912,16 @@ pub fn refresh_legacy_profiles_blob_from_db(
     if !db_path.is_file() {
         return Ok(false);
     }
+    mirror_active_profiles_to_legacy_blob(store, &read_active_profiles_from_db(store, db_path)?)
+}
+
+/// The active user's profiles in the partition database at `db_path`, opened
+/// read-only (never migrated or created). Used by the keystore import preview
+/// on this machine's database and on a temporary copy of the backup's.
+pub fn read_active_profiles_from_db(
+    store: &CredentialStore,
+    db_path: &std::path::Path,
+) -> Result<Vec<Value>, String> {
     let conn = Connection::open_with_flags(
         db_path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -3920,7 +3930,7 @@ pub fn refresh_legacy_profiles_blob_from_db(
     let mut root_key = store.derive_user_partition_wrapping_key();
     let result = list_active_server_profiles(&conn, &root_key);
     root_key.zeroize();
-    mirror_active_profiles_to_legacy_blob(store, &result?)
+    result
 }
 
 /// Read server profiles for a specific user id without touching
