@@ -6,13 +6,27 @@
 // One rule in one place, so a profile name, a path or a pattern can never turn
 // a suggested command into a different one.
 
+/// One argument for the shell the user most likely types into on this
+/// platform: POSIX (`sh`, Bash, zsh) on Unix, PowerShell on Windows, where it
+/// is the default shell. The result is the whole argument: callers write it
+/// as it is, without adding quotes.
+pub fn shell_arg(value: &str) -> String {
+    #[cfg(windows)]
+    {
+        powershell_arg(value)
+    }
+    #[cfg(not(windows))]
+    {
+        posix_arg(value)
+    }
+}
+
 /// One POSIX shell argument, quoted the way Python's `shlex.quote` does it: a
 /// value made only of characters no shell treats specially is left bare, and
 /// anything else goes inside single quotes, where nothing expands (`$`,
 /// backticks, `\`, and the `!` an interactive Bash would read as a history
-/// event), with each `'` written as `'"'"'`. The result is the whole argument:
-/// callers write it as it is, without adding quotes.
-pub fn shell_arg(value: &str) -> String {
+/// event), with each `'` written as `'"'"'`.
+pub fn posix_arg(value: &str) -> String {
     let safe = !value.is_empty()
         && value
             .chars()
@@ -24,17 +38,100 @@ pub fn shell_arg(value: &str) -> String {
     }
 }
 
+/// One PowerShell argument. Bare when it holds only characters PowerShell
+/// reads literally in an argument; otherwise between double quotes, with a
+/// backtick before each character PowerShell would still act on there: `$`,
+/// the backtick itself, and every double quote it recognises (`"` and the
+/// typographic U+201C, U+201D, U+201E). Double quotes rather than single ones,
+/// so the usual values (a name with spaces, a Windows path, an apostrophe)
+/// also read as one argument in cmd.exe; there a value with `$` or a backtick
+/// keeps the backticks and needs editing.
+pub fn powershell_arg(value: &str) -> String {
+    let safe = !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._-/\\:".contains(c));
+    if safe {
+        return value.to_string();
+    }
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for c in value.chars() {
+        if matches!(c, '$' | '`' | '"' | '\u{201C}' | '\u{201D}' | '\u{201E}') {
+            out.push('`');
+        }
+        out.push(c);
+    }
+    out.push('"');
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::shell_arg;
+    use super::{posix_arg, powershell_arg, shell_arg};
 
     #[test]
     fn quotes_like_shlex() {
-        assert_eq!(shell_arg("/var/www/app.js"), "/var/www/app.js");
-        assert_eq!(shell_arg(""), "''");
-        assert_eq!(shell_arg("My Server"), "'My Server'");
-        assert_eq!(shell_arg("$(id) `id` !x \\"), "'$(id) `id` !x \\'");
-        assert_eq!(shell_arg("it's"), r#"'it'"'"'s'"#);
+        assert_eq!(posix_arg("/var/www/app.js"), "/var/www/app.js");
+        assert_eq!(posix_arg(""), "''");
+        assert_eq!(posix_arg("My Server"), "'My Server'");
+        assert_eq!(posix_arg("$(id) `id` !x \\"), "'$(id) `id` !x \\'");
+        assert_eq!(posix_arg("it's"), r#"'it'"'"'s'"#);
+    }
+
+    /// On Windows the hints were POSIX-quoted, and cmd.exe splits
+    /// `'My Server'` into two arguments; the old double-quoted hints worked.
+    #[test]
+    fn quotes_for_powershell_with_double_quotes() {
+        assert_eq!(powershell_arg(r"C:\Users\me"), r"C:\Users\me");
+        assert_eq!(powershell_arg(""), "\"\"");
+        assert_eq!(powershell_arg("My Server"), "\"My Server\"");
+        assert_eq!(powershell_arg("it's"), "\"it's\"");
+        assert_eq!(powershell_arg("a,b"), "\"a,b\"");
+        assert_eq!(powershell_arg("@x"), "\"@x\"");
+        assert_eq!(
+            powershell_arg("$(id) `id` \"q\" \u{201C}t\u{201D}"),
+            "\"`$(id) ``id`` `\"q`\" `\u{201C}t`\u{201D}\""
+        );
+    }
+
+    #[test]
+    fn the_platform_picks_its_shell() {
+        let expected = if cfg!(windows) {
+            powershell_arg("My Server")
+        } else {
+            posix_arg("My Server")
+        };
+        assert_eq!(shell_arg("My Server"), expected);
+    }
+
+    /// PowerShell is the judge on Windows: every hostile value comes back
+    /// byte for byte, and no substitution runs.
+    #[cfg(windows)]
+    #[test]
+    fn powershell_reads_every_value_back_unchanged() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let marker = dir.path().join("ran");
+        let mut values = hostile_values(&marker);
+        values.push("typo\u{201C}graphic\u{201D} \u{201E}q".to_string());
+        values.push("it's, @a".to_string());
+        for value in values {
+            let script = format!(
+                "$v = {}; [Console]::Out.Write('[' + $v + ']')",
+                powershell_arg(&value)
+            );
+            let out = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+                .output()
+                .expect("run powershell");
+            assert_eq!(
+                String::from_utf8_lossy(&out.stdout),
+                format!("[{value}]"),
+                "{value:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        assert!(!marker.exists(), "a substitution ran");
     }
 
     fn hostile_values(marker: &std::path::Path) -> Vec<String> {
@@ -60,7 +157,7 @@ mod tests {
         for value in hostile_values(&marker) {
             let out = std::process::Command::new("sh")
                 .arg("-c")
-                .arg(format!("printf '[%s]' {}", shell_arg(&value)))
+                .arg(format!("printf '[%s]' {}", posix_arg(&value)))
                 .output()
                 .expect("run sh");
             assert_eq!(String::from_utf8_lossy(&out.stdout), format!("[{value}]"));
@@ -75,13 +172,12 @@ mod tests {
     #[test]
     fn an_interactive_bash_reads_every_value_back_unchanged() {
         use std::io::Write;
-        if std::process::Command::new("bash")
+        // Every Unix CI runner and developer station here has bash: a missing
+        // one is a broken bench, not a pass.
+        std::process::Command::new("bash")
             .arg("--version")
             .output()
-            .is_err()
-        {
-            return; // no bash on this host: the sh test covers the rest
-        }
+            .expect("bash is installed");
         let dir = tempfile::tempdir().expect("temp dir");
         let marker = dir.path().join("ran");
         for value in hostile_values(&marker) {
@@ -93,14 +189,20 @@ mod tests {
                 .stderr(std::process::Stdio::piped())
                 .spawn()
                 .expect("run bash -i");
+            // Proves history expansion is on in this shell: without it the
+            // test would not exercise the `!` it exists for.
             writeln!(
                 child.stdin.as_mut().expect("stdin"),
-                "printf '[%s]\\n' {}",
-                shell_arg(&value)
+                "[[ $- == *H* ]] && echo HISTEXPAND-ON\nprintf '[%s]\\n' {}",
+                posix_arg(&value)
             )
             .expect("write the line");
             let out = child.wait_with_output().expect("bash output");
             let stdout = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                stdout.contains("HISTEXPAND-ON"),
+                "history expansion is off: {stdout:?}"
+            );
             assert!(
                 stdout.contains(&format!("[{value}]")),
                 "{value:?}: stdout {stdout:?} stderr {:?}",
