@@ -2791,26 +2791,32 @@ impl StorageProvider for SftpProvider {
         });
         // A rename that only changes the letter case needs its own look: a
         // case-insensitive server finds the source itself at `to`. There the
-        // parent listing decides, since it names each entry as stored: the
-        // name is taken only when entries spelled exactly like `to` and like
-        // `from` are both there, two items (a case-sensitive server holding
-        // both spellings). One entry is the source, whichever spelling it is
-        // stored under. A listing that cannot be read leaves the server's
-        // refusal as it came.
+        // parent listing of `to` decides, since it names each entry as
+        // stored: an entry spelled exactly like `to` is another item. When
+        // only the name changes case in one folder (byte-identical parents),
+        // one entry is the source whichever spelling it is stored under, so
+        // the name is taken only when entries spelled like `to` and like
+        // `from` are both there (a case-sensitive server holding both). A
+        // listing that cannot be read leaves the server's refusal as it came.
         let taken = if !failure {
             false
         } else if from_path.to_lowercase() == to_path.to_lowercase() {
-            let (parent, to_name) = match to_path.rsplit_once('/') {
-                Some(("", name)) => ("/", name),
-                Some((parent, name)) => (parent, name),
-                None => (".", to_path.as_str()),
+            let split = |path: &str| -> (String, String) {
+                match path.rsplit_once('/') {
+                    Some(("", name)) => ("/".to_string(), name.to_string()),
+                    Some((parent, name)) => (parent.to_string(), name.to_string()),
+                    None => (".".to_string(), path.to_string()),
+                }
             };
-            let from_name = from_path.rsplit('/').next().unwrap_or(&from_path);
-            match sftp.read_dir(parent).await {
+            let (to_parent, to_name) = split(&to_path);
+            let (from_parent, from_name) = split(&from_path);
+            let one_folder_two_spellings = from_parent == to_parent && from_name != to_name;
+            match sftp.read_dir(&to_parent).await {
                 Ok(entries) => {
                     let names: Vec<String> =
                         entries.into_iter().map(|entry| entry.file_name()).collect();
-                    names.iter().any(|n| n == to_name) && names.iter().any(|n| n == from_name)
+                    names.contains(&to_name)
+                        && (!one_folder_two_spellings || names.contains(&from_name))
                 }
                 Err(_) => false,
             }

@@ -473,5 +473,17 @@ async fn rename_reports_a_taken_name_and_skips_its_own_path() {
         "{outcome:?}"
     );
     provider.disconnect().await.ok();
+
+    // 10. On a case-sensitive server `/Dir` and `/dir` are two folders: a
+    // rename of `/Dir/a.txt` onto the `/dir/A.txt` there is a taken name,
+    // although the source's spelling is in another folder.
+    let (port, _) = start_server(&["/Dir/a.txt", "/dir/A.txt"], false).await;
+    let mut provider = connect(port).await;
+    let outcome = provider.rename("/Dir/a.txt", "/dir/A.txt").await;
+    assert!(
+        matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+        "{outcome:?}"
+    );
+    provider.disconnect().await.ok();
     std::fs::remove_dir_all(&home).ok();
 }
