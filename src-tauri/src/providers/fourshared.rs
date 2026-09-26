@@ -27,6 +27,25 @@ const UPLOAD_BASE: &str = "https://upload.4shared.com/v1_2";
 /// Maximum items per page for 4shared API list operations
 const PAGE_SIZE: u32 = 100;
 
+/// The most pages a lookup reads: 100 000 entries, beyond any folder a
+/// rename looks into, and a stop for a server that never ends its pages.
+const MAX_LOOKUP_PAGES: usize = 1000;
+
+/// Whether the listing shows `folder`: it hides deleted and trashed ones,
+/// and a lookup must see what the listing sees.
+fn folder_is_listed(folder: &FourSharedFolder) -> bool {
+    !matches!(folder.status.as_deref(), Some("deleted") | Some("trashed"))
+}
+
+/// Whether the listing shows `file`: it hides deleted, trashed and
+/// incomplete ones, and a lookup must see what the listing sees.
+fn file_is_listed(file: &FourSharedFile) -> bool {
+    !matches!(
+        file.status.as_deref(),
+        Some("deleted") | Some("trashed") | Some("incomplete")
+    )
+}
+
 // FS-008: StatusBar path/quota overlap is a frontend CSS issue, fixed in
 // src/components/StatusBar.tsx (min-w-0 flex-1). Not applicable to this file.
 
@@ -565,32 +584,30 @@ impl FourSharedProvider {
 
         // Every page, until the name is found: a folder holds more files
         // than one page lists.
-        let mut offset: u32 = 0;
-        loop {
-            let files = self
-                .lookup_page(
-                    &format!("{}/folders/{}/files", self.api_base(), folder_id),
-                    offset,
-                    path,
-                    Self::parse_file_list_strict,
-                )
-                .await?;
-            let page_count = files.len() as u32;
-            Self::enforce_cache_limit(&mut self.file_cache);
-            for file in &files {
-                if let (Some(name), Some(id)) = (&file.name, &file.id) {
-                    let fpath = if parent_path == "/" {
-                        format!("/{}", name)
-                    } else {
-                        format!("{}/{}", parent_path, name)
-                    };
-                    self.file_cache.insert(fpath, id.clone());
+        let mut listed: Vec<(String, String)> = Vec::new();
+        self.walk_lookup_pages(
+            &format!("{}/folders/{}/files", self.api_base(), folder_id),
+            path,
+            Self::parse_file_list_strict,
+            |f: &FourSharedFile| f.id.as_ref(),
+            |page| {
+                for file in page.into_iter().filter(file_is_listed) {
+                    if let (Some(name), Some(id)) = (file.name, file.id) {
+                        listed.push((name, id));
+                    }
                 }
-            }
-            if self.file_cache.contains_key(&normalized) || page_count < PAGE_SIZE {
-                break;
-            }
-            offset += page_count;
+                listed.iter().any(|(name, _)| *name == file_name)
+            },
+        )
+        .await?;
+        Self::enforce_cache_limit(&mut self.file_cache);
+        for (name, id) in listed {
+            let fpath = if parent_path == "/" {
+                format!("/{}", name)
+            } else {
+                format!("{}/{}", parent_path, name)
+            };
+            self.file_cache.insert(fpath, id);
         }
 
         self.file_cache
@@ -607,28 +624,22 @@ impl FourSharedProvider {
         name: &str,
         path: &str,
     ) -> Result<Option<FourSharedFolder>, ProviderError> {
-        let mut offset: u32 = 0;
-        loop {
-            let folders = self
-                .lookup_page(
-                    &format!("{}/folders/{}/children", self.api_base(), folder_id),
-                    offset,
-                    path,
-                    Self::parse_folder_list_strict,
-                )
-                .await?;
-            let page_count = folders.len() as u32;
-            if let Some(found) = folders
-                .into_iter()
-                .find(|f| f.name.as_deref().unwrap_or("") == name)
-            {
-                return Ok(Some(found));
-            }
-            if page_count < PAGE_SIZE {
-                return Ok(None);
-            }
-            offset += page_count;
-        }
+        let mut found = None;
+        self.walk_lookup_pages(
+            &format!("{}/folders/{}/children", self.api_base(), folder_id),
+            path,
+            Self::parse_folder_list_strict,
+            |f: &FourSharedFolder| f.id.as_ref(),
+            |page| {
+                found = page
+                    .into_iter()
+                    .filter(folder_is_listed)
+                    .find(|f| f.name.as_deref().unwrap_or("") == name);
+                found.is_some()
+            },
+        )
+        .await?;
+        Ok(found)
     }
 
     /// Refuse to undo a first step onto `name` in the folder `parent` when
@@ -666,28 +677,54 @@ impl FourSharedProvider {
         name: &str,
         path: &str,
     ) -> Result<Option<String>, ProviderError> {
+        let mut found = None;
+        self.walk_lookup_pages(
+            &format!("{}/folders/{}/files", self.api_base(), folder_id),
+            path,
+            Self::parse_file_list_strict,
+            |f: &FourSharedFile| f.id.as_ref(),
+            |page| {
+                found = page
+                    .into_iter()
+                    .filter(file_is_listed)
+                    .find(|f| f.name.as_deref().unwrap_or("") == name)
+                    .and_then(|f| f.id);
+                found.is_some()
+            },
+        )
+        .await?;
+        Ok(found)
+    }
+
+    /// Read the pages of a listing a lookup needs, handing each to `visit`
+    /// until it answers that it is done. A server that ignores `offset`
+    /// answers the first page again, and the walk never ended: a page that
+    /// starts with the id the previous one started with ends it, and so does
+    /// [`MAX_LOOKUP_PAGES`].
+    async fn walk_lookup_pages<T>(
+        &self,
+        base_url: &str,
+        path: &str,
+        parse: fn(&str) -> Result<Vec<T>, ProviderError>,
+        id_of: fn(&T) -> Option<&String>,
+        mut visit: impl FnMut(Vec<T>) -> bool,
+    ) -> Result<(), ProviderError> {
         let mut offset: u32 = 0;
-        loop {
-            let files = self
-                .lookup_page(
-                    &format!("{}/folders/{}/files", self.api_base(), folder_id),
-                    offset,
-                    path,
-                    Self::parse_file_list_strict,
-                )
-                .await?;
-            let page_count = files.len() as u32;
-            if let Some(found) = files
-                .into_iter()
-                .find(|f| f.name.as_deref().unwrap_or("") == name)
-            {
-                return Ok(found.id);
+        let mut previous_first: Option<String> = None;
+        for _ in 0..MAX_LOOKUP_PAGES {
+            let page = self.lookup_page(base_url, offset, path, parse).await?;
+            let page_count = page.len() as u32;
+            let first = page.first().and_then(|item| id_of(item).cloned());
+            if first.is_some() && first == previous_first {
+                return Ok(());
             }
-            if page_count < PAGE_SIZE {
-                return Ok(None);
+            if visit(page) || page_count < PAGE_SIZE {
+                return Ok(());
             }
+            previous_first = first;
             offset += page_count;
         }
+        Ok(())
     }
 
     /// One page of a listing a lookup reads, from `offset`. A refusal is
@@ -812,32 +849,58 @@ impl FourSharedProvider {
         None
     }
 
-    /// [`Self::parse_folder_list`], but a body that is not a listing at all
-    /// is an error rather than an empty folder.
-    fn parse_folder_list_strict(body: &str) -> Result<Vec<FourSharedFolder>, ProviderError> {
-        if serde_json::from_str::<Vec<FourSharedFolder>>(body).is_err()
-            && Self::extract_json_array(body, &["children", "folders", "items", "data"]).is_none()
-        {
-            return Err(ProviderError::ParseError(format!(
-                "4shared answered a folder listing that is not one: {}",
-                &body[..body.floor_char_boundary(200)]
-            )));
+    /// The entries of a listing a lookup reads, strictly: an array, or an
+    /// object holding one under `keys`. An empty body or `null` is an empty
+    /// folder (what 4shared answers for one is not documented, so both are
+    /// taken as that); anything else, a JSON error object with HTTP 200
+    /// among them, is a ParseError. The lenient parse of the listing wraps
+    /// such an object as one nameless entry, and the name looked for then
+    /// read as free.
+    fn strict_listing_items(
+        body: &str,
+        keys: &[&str],
+        what: &str,
+    ) -> Result<Vec<serde_json::Value>, ProviderError> {
+        let trimmed = body.trim();
+        if trimmed.is_empty() || trimmed == "null" {
+            return Ok(Vec::new());
         }
-        Ok(Self::parse_folder_list(body))
+        let not_a_listing = || {
+            ProviderError::ParseError(format!(
+                "4shared answered a {what} listing that is not one: {}",
+                &body[..body.floor_char_boundary(200)]
+            ))
+        };
+        let value: serde_json::Value =
+            serde_json::from_str(trimmed).map_err(|_| not_a_listing())?;
+        if let Some(items) = value.as_array() {
+            return Ok(items.clone());
+        }
+        keys.iter()
+            .find_map(|key| value.get(*key).and_then(|v| v.as_array()).cloned())
+            .ok_or_else(not_a_listing)
     }
 
-    /// [`Self::parse_file_list`], but a body that is not a listing at all is
-    /// an error rather than an empty folder.
+    /// The folders of a listing a lookup reads (see
+    /// [`Self::strict_listing_items`]).
+    fn parse_folder_list_strict(body: &str) -> Result<Vec<FourSharedFolder>, ProviderError> {
+        let items =
+            Self::strict_listing_items(body, &["children", "folders", "items", "data"], "folder")?;
+        Ok(items
+            .into_iter()
+            .filter_map(|item| serde_json::from_value::<FourSharedFolder>(item).ok())
+            .collect())
+    }
+
+    /// The files of a listing a lookup reads (see
+    /// [`Self::strict_listing_items`]).
     fn parse_file_list_strict(body: &str) -> Result<Vec<FourSharedFile>, ProviderError> {
-        if serde_json::from_str::<Vec<FourSharedFile>>(body).is_err()
-            && Self::extract_json_array(body, &["files", "children", "items", "data"]).is_none()
-        {
-            return Err(ProviderError::ParseError(format!(
-                "4shared answered a file listing that is not one: {}",
-                &body[..body.floor_char_boundary(200)]
-            )));
-        }
-        Ok(Self::parse_file_list(body))
+        let items =
+            Self::strict_listing_items(body, &["files", "children", "items", "data"], "file")?;
+        Ok(items
+            .into_iter()
+            .filter_map(|item| serde_json::from_value::<FourSharedFile>(item).ok())
+            .collect())
     }
 
     /// Parse folder list response with per-entry fallback.
@@ -1004,6 +1067,7 @@ impl StorageProvider for FourSharedProvider {
 
         // 1. List subfolders with pagination (FS-006)
         let mut offset: u32 = 0;
+        let mut previous_first: Option<String> = None;
         loop {
             let folders_url = format!(
                 "{}/folders/{}/children?offset={}&limit={}",
@@ -1038,6 +1102,12 @@ impl StorageProvider for FourSharedProvider {
             );
             let folders = Self::parse_folder_list(&body);
             let page_count = folders.len() as u32;
+            // A server that ignores `offset` answers the first page again.
+            let first = folders.first().and_then(|f| f.id.clone());
+            if first.is_some() && first == previous_first {
+                break;
+            }
+            previous_first = first;
 
             for f in &folders {
                 // Skip deleted/trashed entries
@@ -1085,6 +1155,7 @@ impl StorageProvider for FourSharedProvider {
 
         // 2. List files with pagination (FS-006)
         offset = 0;
+        previous_first = None;
         loop {
             let files_url = format!(
                 "{}/folders/{}/files?offset={}&limit={}",
@@ -1119,6 +1190,12 @@ impl StorageProvider for FourSharedProvider {
             );
             let files = Self::parse_file_list(&body);
             let page_count = files.len() as u32;
+            // A server that ignores `offset` answers the first page again.
+            let first = files.first().and_then(|f| f.id.clone());
+            if first.is_some() && first == previous_first {
+                break;
+            }
+            previous_first = first;
 
             for f in &files {
                 // Skip deleted/trashed/incomplete entries
@@ -1873,8 +1950,12 @@ mod tests {
 
     /// A 4shared API double: the root `R` holds the folders `src` (`S`),
     /// `dst` (`D`), `busy` (`B`, whose file listing answers 500), `paged`
-    /// (`P`, 100 files on its first page and `a.txt` on the second) and
-    /// `unreadable` (`U`, whose file listing is not JSON); `src`
+    /// (`P`, 100 files on its first page and `a.txt` on the second),
+    /// `unreadable` (`U`, whose file listing is not JSON), `empty` (`E`,
+    /// listed as an empty body and `null`), `jsonerror` (`J`, a JSON error
+    /// object with HTTP 200), `looping` (`L`, the same full page whatever the
+    /// offset) and `trashy` (`T`, holding a trashed `a.txt`, `FT`, which a
+    /// GET of the file still answers); `src`
     /// holds `a.txt` (`FA`), `dst` holds `b.txt` (`FB`)
     /// and, when `dst_holds_a`, an `a.txt` of its own (`FA2`). Every PUT (a
     /// move or a rename) succeeds, except a rename to a name starting with
@@ -1944,6 +2025,22 @@ mod tests {
                             item("B", "busy"),
                             item("P", "paged"),
                             item("U", "unreadable"),
+                            item("E", "empty"),
+                            item("J", "jsonerror"),
+                            item("L", "looping"),
+                            item("T", "trashy"),
+                        ]),
+                        "/folders/E/files" => return "".into_response(),
+                        "/folders/E/children" => return "null".into_response(),
+                        "/folders/J/files" => {
+                            return r#"{"code":500,"message":"try again"}"#.into_response()
+                        }
+                        // Ignores `offset`: the same 100 files on every page.
+                        "/folders/L/files" => serde_json::json!((0..100)
+                            .map(|i| item(&format!("L{i}"), &format!("l{i}.txt")))
+                            .collect::<Vec<_>>()),
+                        "/folders/T/files" => serde_json::json!([
+                            { "id": "FT", "name": "a.txt", "status": "trashed" }
                         ]),
                         // 100 files on the first page, `a.txt` on the second.
                         "/folders/P/files" if page_offset == "0" => serde_json::json!((0..100)
@@ -1974,6 +2071,9 @@ mod tests {
                         "/files/FA2" => item("FA2", "a.txt"),
                         "/files/FB" => item("FB", "b.txt"),
                         "/files/FP" => item("FP", "a.txt"),
+                        "/files/FT" => {
+                            serde_json::json!({ "id": "FT", "name": "a.txt", "status": "trashed" })
+                        }
                         "/folders/S" => item("S", "src"),
                         "/folders/D" => item("D", "dst"),
                         p if p.ends_with("/children") || p.ends_with("/files") => {
@@ -2034,6 +2134,80 @@ mod tests {
             "{:?}",
             puts.lock().unwrap()
         );
+    }
+
+    /// An empty body or `null` is an empty folder: a ParseError stopped a
+    /// move into one.
+    #[tokio::test]
+    async fn a_lookup_reads_an_empty_or_null_listing_as_an_empty_folder() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        provider
+            .rename("/src/a.txt", "/empty/a.txt")
+            .await
+            .expect("an empty folder holds nothing");
+        assert_eq!(*puts.lock().unwrap(), ["/files/FA/move E"]);
+    }
+
+    /// A JSON error object with HTTP 200 was wrapped as one nameless file,
+    /// and the name looked for read as free. It is an error, and nothing is
+    /// sent.
+    #[tokio::test]
+    async fn a_lookup_reads_a_json_error_object_as_an_error() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/jsonerror/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// A server that ignores `offset` answers its first page again, and the
+    /// lookup never ended. A page that starts where the previous one started
+    /// ends it.
+    #[tokio::test]
+    async fn a_lookup_whose_pages_repeat_ends() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.rename("/src/a.txt", "/looping/a.txt"),
+        )
+        .await
+        .expect("the walk ends on a repeated page")
+        .expect("a.txt is not in the one page there is");
+        assert_eq!(*puts.lock().unwrap(), ["/files/FA/move L"]);
+    }
+
+    /// A trashed file held its name for a lookup, while the listing does
+    /// not show it: the move was refused onto a name `ls` shows free.
+    #[tokio::test]
+    async fn a_lookup_skips_a_trashed_file_as_list_does() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        provider
+            .rename("/src/a.txt", "/trashy/a.txt")
+            .await
+            .expect("a trashed a.txt does not hold the name");
+        assert_eq!(*puts.lock().unwrap(), ["/files/FA/move T"]);
+    }
+
+    /// A server that ignores `offset` answers its first page again, and the
+    /// listing never ended. A page that starts where the previous one
+    /// started ends it, and each file is listed once.
+    #[tokio::test]
+    async fn a_listing_whose_pages_repeat_ends() {
+        let (mut provider, _) = provider_on_fourshared(false).await;
+        let listed = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.list("/looping"),
+        )
+        .await
+        .expect("the listing ends on a repeated page")
+        .expect("list");
+        assert_eq!(listed.len(), 100);
     }
 
     /// When the rename after the move was refused, the file stayed in the
