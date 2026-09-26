@@ -75,14 +75,14 @@ futures-util = "0.3"
 # localhost server, and Windows and macOS use `WebviewUrl::App`, which is why
 # only Linux regressed. The schemes differ,
 # `make_relative` fails, and the third clause asks whether "http" is a
-# registered URI scheme, which it is not: tauri-plugin-localhost runs an HTTP
-# server rather than registering a scheme.
+# registered URI scheme, which it is not: `ui_server` (formerly
+# tauri-plugin-localhost) runs an HTTP server rather than registering a scheme.
 #
 # The obvious remedy is self-defeating, which is worth writing down because it
 # looks correct. Making `get_app_url()` return the HTTP URL requires
 # `frontendDist` to be a URL, and tauri-codegen maps `FrontendDist::Url` to an
-# EMPTY embedded asset set, which is exactly what tauri-plugin-localhost serves
-# through `app.asset_resolver()`. The app would start and answer 404.
+# EMPTY embedded asset set, which is exactly what `ui_server` serves through
+# `app.asset_resolver()`. The app would start and answer 404.
 #
 # Discarded alternative, recorded so it is not re-evaluated from scratch:
 # stop embedding the frontend and serve it from disk with our own server. That
@@ -322,10 +322,16 @@ windows = { version = "0.58", features = [
 winreg = "0.56"
 
 # Linux-only dependencies
-# - tauri-plugin-localhost: WebKitGTK workaround (Monaco ESM, xterm.js, canvas, iframe CSS)
+# - hyper, hyper-util, http-body-util: `ui_server`, the loopback server the
+#   webviews load the frontend from (WebKitGTK needs an HTTP origin for Monaco
+#   ESM, xterm.js, canvas and iframe CSS). It replaced tauri-plugin-localhost,
+#   whose tiny_http 0.12 core could leave a cold-start request unread. All three
+#   were already in the tree through reqwest; only features are added here.
 # - fuser: FUSE virtual filesystem mount (macOS requires macFUSE installed by user)
 [target.'cfg(target_os = "linux")'.dependencies]
-tauri-plugin-localhost = "2"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
 # T-DEBT-13c: bumped from 0.16 to 0.17. Breaking changes consumed in
 # `mod fuse_mount` (cli.rs): all `Filesystem` trait methods migrated
 # from `&mut self` to `&self`, integer args switched to newtypes
