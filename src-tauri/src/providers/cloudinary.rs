@@ -638,6 +638,151 @@ impl CloudinaryProvider {
         }
     }
 
+    /// Rename or replace. With `overwrite` false an occupied destination is
+    /// refused before anything changes (the `rename` contract). With it true
+    /// (the `replace` contract) a fixed-folder account renames the public id
+    /// with `overwrite=true`, one step on the server; a dynamic-folder
+    /// account, where two assets may share a display name in one folder,
+    /// moves the asset in and only then deletes the one it displaced, so the
+    /// destination is never empty.
+    async fn move_asset(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let source = self.resolve_path(from);
+        let target = self.resolve_path(to);
+        if source == target {
+            return Ok(());
+        }
+        let entry = self.stat(&source).await?;
+        // The trait promises no overwrite: refuse an occupied destination
+        // before either branch runs.
+        let displaced = match self.stat(&target).await {
+            Ok(_) if !overwrite => return Err(ProviderError::AlreadyExists(to.to_string())),
+            Ok(occupant) => Some(occupant),
+            Err(ProviderError::NotFound(_)) => None,
+            Err(e) => return Err(e),
+        };
+        let dynamic_folders = self.dynamic_folder_mode.lock().ok().and_then(|m| *m) == Some(true);
+        if !entry.is_dir && dynamic_folders {
+            self.update_asset_place(&entry, &source, &target).await?;
+            return match displaced {
+                Some(occupant)
+                    if !occupant.is_dir
+                        && occupant.metadata.get("asset_id") != entry.metadata.get("asset_id") =>
+                {
+                    self.delete_displaced_asset(&occupant, to).await
+                }
+                _ => Ok(()),
+            };
+        }
+        if entry.is_dir {
+            // PUT /folders/<from> with form to_folder=<to>
+            let from_seg = source.trim_matches('/');
+            let url = format!(
+                "{}/folders/{}?to_folder={}",
+                self.api_base(),
+                encode_folder_segments(from_seg),
+                urlencoding::encode(target.trim_matches('/'))
+            );
+            let resp = self
+                .auth(self.client.put(&url))
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            if resp.status().is_success() {
+                Ok(())
+            } else {
+                Err(self.parse_error(resp).await)
+            }
+        } else {
+            let kind = entry
+                .metadata
+                .get("resource_type")
+                .cloned()
+                .or_else(|| {
+                    entry
+                        .metadata
+                        .get("public_id")
+                        .and_then(|pid| self.cached_resource_type(pid))
+                })
+                .unwrap_or_else(|| "image".to_string());
+            let from_pid = entry
+                .metadata
+                .get("public_id")
+                .cloned()
+                .unwrap_or_else(|| source.trim_matches('/').to_string());
+            let to_pid = target.trim_matches('/').to_string();
+            // Without `overwrite` (default false) Cloudinary refuses a target
+            // public id that is already taken (rename reference); a replace
+            // asks for the overwrite.
+            let mut url = format!(
+                "{}/{}/rename?from_public_id={}&to_public_id={}",
+                self.api_base(),
+                kind,
+                urlencoding::encode(&from_pid),
+                urlencoding::encode(&to_pid)
+            );
+            if overwrite {
+                url.push_str("&overwrite=true");
+            }
+            let resp = self
+                .auth(self.client.post(&url))
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            if resp.status().is_success() {
+                Ok(())
+            } else {
+                Err(self.parse_error(resp).await)
+            }
+        }
+    }
+
+    /// Delete the asset a dynamic-folder replace displaced. It now shares its
+    /// folder and display name with the asset that took its place, so a
+    /// failure here is an error that says so, never a success.
+    async fn delete_displaced_asset(
+        &self,
+        occupant: &RemoteEntry,
+        to: &str,
+    ) -> Result<(), ProviderError> {
+        let public_id = occupant
+            .metadata
+            .get("public_id")
+            .cloned()
+            .unwrap_or_default();
+        let kind = occupant
+            .metadata
+            .get("resource_type")
+            .cloned()
+            .unwrap_or_else(|| "image".to_string());
+        let outcome = if public_id.is_empty() {
+            Err(ProviderError::Other(
+                "it was listed without a public id".to_string(),
+            ))
+        } else {
+            match self.delete_resource(&public_id, &kind).await {
+                Ok(true) => Ok(()),
+                Ok(false) => Err(ProviderError::Other(
+                    "Cloudinary did not delete it".to_string(),
+                )),
+                Err(e) => Err(e),
+            }
+        };
+        outcome.map_err(|e| {
+            ProviderError::Other(format!(
+                "moved the file to {to}, but the asset it replaced ({public_id}) is still there \
+                 under the same name: {e}"
+            ))
+        })
+    }
+
     fn primary_resource_type(&self, item: &CloudinaryResource) -> String {
         if !item.resource_type.is_empty() {
             item.resource_type.clone()
@@ -1181,78 +1326,13 @@ impl StorageProvider for CloudinaryProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
-        let source = self.resolve_path(from);
-        let target = self.resolve_path(to);
-        let entry = self.stat(&source).await?;
-        // The trait promises no overwrite: refuse an occupied destination
-        // before either branch runs.
-        if source != target && self.exists(&target).await? {
-            return Err(ProviderError::AlreadyExists(to.to_string()));
-        }
-        let dynamic_folders = self.dynamic_folder_mode.lock().ok().and_then(|m| *m) == Some(true);
-        if !entry.is_dir && dynamic_folders {
-            return self.update_asset_place(&entry, &source, &target).await;
-        }
-        if entry.is_dir {
-            // PUT /folders/<from> with form to_folder=<to>
-            let from_seg = source.trim_matches('/');
-            let url = format!(
-                "{}/folders/{}?to_folder={}",
-                self.api_base(),
-                encode_folder_segments(from_seg),
-                urlencoding::encode(target.trim_matches('/'))
-            );
-            let resp = self
-                .auth(self.client.put(&url))
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-            if resp.status().is_success() {
-                Ok(())
-            } else {
-                Err(self.parse_error(resp).await)
-            }
-        } else {
-            let kind = entry
-                .metadata
-                .get("resource_type")
-                .cloned()
-                .or_else(|| {
-                    entry
-                        .metadata
-                        .get("public_id")
-                        .and_then(|pid| self.cached_resource_type(pid))
-                })
-                .unwrap_or_else(|| "image".to_string());
-            let from_pid = entry
-                .metadata
-                .get("public_id")
-                .cloned()
-                .unwrap_or_else(|| source.trim_matches('/').to_string());
-            let to_pid = target.trim_matches('/').to_string();
-            // No `overwrite`: its default, false, makes Cloudinary refuse a
-            // target public id that is already taken (rename reference).
-            let url = format!(
-                "{}/{}/rename?from_public_id={}&to_public_id={}",
-                self.api_base(),
-                kind,
-                urlencoding::encode(&from_pid),
-                urlencoding::encode(&to_pid)
-            );
-            let resp = self
-                .auth(self.client.post(&url))
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-            if resp.status().is_success() {
-                Ok(())
-            } else {
-                Err(self.parse_error(resp).await)
-            }
-        }
+        self.move_asset(from, to, false).await
+    }
+
+    /// A rename with `overwrite=true` (fixed folders), or a move that then
+    /// deletes the asset it displaced (dynamic folders): see `move_asset`.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.move_asset(from, to, true).await
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1787,7 +1867,7 @@ mod tests {
     /// (`dynamic` false) `by_asset_folder` answers 400 as a legacy account
     /// does and the provider lists by prefix; on a dynamic-folder account it
     /// lists by `asset_folder`. Returns the provider, the rename queries and
-    /// the asset updates.
+    /// the asset updates (`PUT` bodies, and `DELETE <query>` for a delete).
     async fn provider_for_file_rename(
         occupied: bool,
         dynamic: bool,
@@ -1832,6 +1912,19 @@ mod tests {
                     move || {
                         let listing = listing.clone();
                         async move { listing }
+                    }
+                }),
+            )
+            .route(
+                "/resources/{kind}/upload",
+                axum::routing::delete({
+                    let seen_deletes = Arc::clone(&updates);
+                    move |uri: axum::http::Uri| {
+                        seen_deletes
+                            .lock()
+                            .unwrap()
+                            .push(format!("DELETE {}", uri.query().unwrap_or("")));
+                        async { r#"{"deleted":{"b":"deleted"}}"# }
                     }
                 }),
             )
@@ -1912,6 +2005,37 @@ mod tests {
             "{outcome:?}"
         );
         assert!(renames.lock().unwrap().is_empty());
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination.
+    #[tokio::test]
+    async fn replace_renames_over_an_existing_destination_with_overwrite() {
+        let (mut provider, renames, _) = provider_for_file_rename(true, false).await;
+        provider.replace("/a.jpg", "/b.jpg").await.expect("replace");
+        let renames = renames.lock().unwrap().clone();
+        assert_eq!(renames.len(), 1, "{renames:?}");
+        assert!(renames[0].contains("from_public_id=a"), "{renames:?}");
+        assert!(renames[0].contains("to_public_id=b"), "{renames:?}");
+        assert!(renames[0].contains("overwrite=true"), "{renames:?}");
+    }
+
+    /// On a dynamic-folder account two assets may share a display name, so
+    /// a replace moves the new asset in first and then deletes the old one:
+    /// the destination is never empty and never left doubled.
+    #[tokio::test]
+    async fn dynamic_folder_replace_moves_in_then_deletes_the_displaced_asset() {
+        let (mut provider, renames, updates) = provider_for_file_rename(true, true).await;
+        provider.replace("/a.jpg", "/b.jpg").await.expect("replace");
+        assert!(renames.lock().unwrap().is_empty());
+        let updates = updates.lock().unwrap().clone();
+        assert_eq!(updates.len(), 2, "{updates:?}");
+        assert_eq!(updates[0], "display_name=b");
+        assert!(
+            updates[1].starts_with("DELETE ") && updates[1].contains("public_ids[]=b"),
+            "{updates:?}"
+        );
     }
 
     /// On a dynamic-folder account the folder is `asset_folder` and the

@@ -911,6 +911,148 @@ impl OpenDriveProvider {
         self.delete(from_path).await
     }
 
+    /// Rename or replace. With `overwrite` false an occupied destination is
+    /// refused before anything changes (the `rename` contract). With it true
+    /// (the `replace` contract) a file move asks the server to overwrite;
+    /// a rename in place and a folder move have no such flag and are sent as
+    /// they were before the check existed, so the server decides.
+    async fn move_item(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        let from_resolved = self.resolve_path(from)?;
+        let to_resolved = self.resolve_path(to)?;
+        if from_resolved == "/" {
+            return Err(ProviderError::InvalidPath(
+                "Cannot rename root folder".into(),
+            ));
+        }
+
+        let (from_parent_path, _) = split_parent_child(&from_resolved);
+        let (to_parent_path, to_name) = split_parent_child(&to_resolved);
+        if to_name.is_empty() {
+            return Err(ProviderError::InvalidPath("Missing target name".into()));
+        }
+        // The new leaf is stored encoded (used for folder/file rename + move).
+        let to_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &to_name);
+        if from_resolved == to_resolved {
+            return Ok(());
+        }
+
+        // The trait promises no overwrite. `file/move_copy.json` and the
+        // download+upload fallback below would both replace an existing file
+        // at the destination, so an occupied destination is refused first.
+        let occupied = !overwrite
+            && self
+                .with_reauth(|this| {
+                    let to_parent_path = to_parent_path.clone();
+                    let to_name = to_name.clone();
+                    Box::pin(async move { this.child_exists(&to_parent_path, &to_name).await })
+                })
+                .await?;
+        if occupied {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+
+        // Folder rename/move path
+        let folder_result = self
+            .with_reauth(|this| {
+                let from_resolved = from_resolved.clone();
+                let to_parent_path = to_parent_path.clone();
+                let to_name = to_name.clone();
+                let from_parent_path = from_parent_path.clone();
+                Box::pin(async move {
+                    let folder_id = match this.folder_id_by_path(&from_resolved).await {
+                        Ok(id) => id,
+                        Err(_) => return Ok::<Option<()>, ProviderError>(None),
+                    };
+                    if from_parent_path == to_parent_path {
+                        this.post_form_unit(
+                            "folder/rename.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("folder_id", folder_id),
+                                ("folder_name", to_name),
+                            ],
+                        )
+                        .await?;
+                    } else {
+                        let to_parent_id = this.folder_id_by_path(&to_parent_path).await?;
+                        this.post_form_unit(
+                            "folder/move_copy.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("folder_id", folder_id),
+                                ("dst_folder_id", to_parent_id),
+                                ("move", "true".to_string()),
+                                ("new_folder_name", to_name),
+                            ],
+                        )
+                        .await?;
+                    }
+                    Ok(Some(()))
+                })
+            })
+            .await?;
+
+        if folder_result.is_some() {
+            return Ok(());
+        }
+
+        // File rename/move path
+        let move_result: Result<(), ProviderError> = self
+            .with_reauth(|this| {
+                let from_resolved = from_resolved.clone();
+                let from_parent_path = from_parent_path.clone();
+                let to_parent_path = to_parent_path.clone();
+                let to_name = to_name.clone();
+                Box::pin(async move {
+                    let file_id = this.resolve_file_id(&from_resolved).await?;
+
+                    if from_parent_path == to_parent_path {
+                        this.post_form_unit(
+                            "file/rename.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("file_id", file_id),
+                                ("new_file_name", to_name),
+                            ],
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+
+                    let to_parent_id = this.folder_id_by_path(&to_parent_path).await?;
+                    this.post_form_unit(
+                        "file/move_copy.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("src_file_id", file_id),
+                            ("dst_folder_id", to_parent_id),
+                            ("move", "true".to_string()),
+                            ("overwrite_if_exists", overwrite.to_string()),
+                            ("new_file_name", to_name),
+                        ],
+                    )
+                    .await
+                })
+            })
+            .await;
+
+        match move_result {
+            Ok(()) => Ok(()),
+            Err(ProviderError::InvalidPath(message))
+                if message.contains("Invalid value specified for `move`") =>
+            {
+                self.move_file_via_temp_copy(&from_resolved, &to_resolved)
+                    .await
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     fn folder_to_entry(&self, folder: OpenDriveFolder, parent: &str) -> RemoteEntry {
         let raw_name = folder.name.unwrap_or_else(|| "Unnamed Folder".to_string());
         // Decode the stored name back to the user's original spelling.
@@ -1930,134 +2072,12 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let from_resolved = self.resolve_path(from)?;
-        let to_resolved = self.resolve_path(to)?;
-        if from_resolved == "/" {
-            return Err(ProviderError::InvalidPath(
-                "Cannot rename root folder".into(),
-            ));
-        }
+        self.move_item(from, to, false).await
+    }
 
-        let (from_parent_path, _) = split_parent_child(&from_resolved);
-        let (to_parent_path, to_name) = split_parent_child(&to_resolved);
-        if to_name.is_empty() {
-            return Err(ProviderError::InvalidPath("Missing target name".into()));
-        }
-        // The new leaf is stored encoded (used for folder/file rename + move).
-        let to_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &to_name);
-        if from_resolved == to_resolved {
-            return Ok(());
-        }
-
-        // The trait promises no overwrite. `file/move_copy.json` and the
-        // download+upload fallback below would both replace an existing file
-        // at the destination, so an occupied destination is refused first.
-        let occupied = self
-            .with_reauth(|this| {
-                let to_parent_path = to_parent_path.clone();
-                let to_name = to_name.clone();
-                Box::pin(async move { this.child_exists(&to_parent_path, &to_name).await })
-            })
-            .await?;
-        if occupied {
-            return Err(ProviderError::AlreadyExists(to.to_string()));
-        }
-
-        // Folder rename/move path
-        let folder_result = self
-            .with_reauth(|this| {
-                let from_resolved = from_resolved.clone();
-                let to_parent_path = to_parent_path.clone();
-                let to_name = to_name.clone();
-                let from_parent_path = from_parent_path.clone();
-                Box::pin(async move {
-                    let folder_id = match this.folder_id_by_path(&from_resolved).await {
-                        Ok(id) => id,
-                        Err(_) => return Ok::<Option<()>, ProviderError>(None),
-                    };
-                    if from_parent_path == to_parent_path {
-                        this.post_form_unit(
-                            "folder/rename.json",
-                            &[
-                                ("session_id", this.session_id.clone()),
-                                ("folder_id", folder_id),
-                                ("folder_name", to_name),
-                            ],
-                        )
-                        .await?;
-                    } else {
-                        let to_parent_id = this.folder_id_by_path(&to_parent_path).await?;
-                        this.post_form_unit(
-                            "folder/move_copy.json",
-                            &[
-                                ("session_id", this.session_id.clone()),
-                                ("folder_id", folder_id),
-                                ("dst_folder_id", to_parent_id),
-                                ("move", "true".to_string()),
-                                ("new_folder_name", to_name),
-                            ],
-                        )
-                        .await?;
-                    }
-                    Ok(Some(()))
-                })
-            })
-            .await?;
-
-        if folder_result.is_some() {
-            return Ok(());
-        }
-
-        // File rename/move path
-        let move_result: Result<(), ProviderError> = self
-            .with_reauth(|this| {
-                let from_resolved = from_resolved.clone();
-                let from_parent_path = from_parent_path.clone();
-                let to_parent_path = to_parent_path.clone();
-                let to_name = to_name.clone();
-                Box::pin(async move {
-                    let file_id = this.resolve_file_id(&from_resolved).await?;
-
-                    if from_parent_path == to_parent_path {
-                        this.post_form_unit(
-                            "file/rename.json",
-                            &[
-                                ("session_id", this.session_id.clone()),
-                                ("file_id", file_id),
-                                ("new_file_name", to_name),
-                            ],
-                        )
-                        .await?;
-                        return Ok(());
-                    }
-
-                    let to_parent_id = this.folder_id_by_path(&to_parent_path).await?;
-                    this.post_form_unit(
-                        "file/move_copy.json",
-                        &[
-                            ("session_id", this.session_id.clone()),
-                            ("src_file_id", file_id),
-                            ("dst_folder_id", to_parent_id),
-                            ("move", "true".to_string()),
-                            ("overwrite_if_exists", "false".to_string()),
-                            ("new_file_name", to_name),
-                        ],
-                    )
-                    .await
-                })
-            })
-            .await;
-
-        match move_result {
-            Ok(()) => Ok(()),
-            Err(ProviderError::InvalidPath(message))
-                if message.contains("Invalid value specified for `move`") =>
-            {
-                self.move_file_via_temp_copy(&from_resolved, &to_resolved)
-                    .await
-            }
-            Err(error) => Err(error),
-        }
+    /// A file move with `overwrite_if_exists=true`: see `move_item`.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.move_item(from, to, true).await
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2657,6 +2677,22 @@ mod tests {
         let moves = moves.lock().unwrap().clone();
         assert_eq!(moves.len(), 1, "{moves:?}");
         assert!(moves[0].contains("overwrite_if_exists=false"), "{moves:?}");
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination.
+    #[tokio::test]
+    async fn replace_moves_over_an_existing_destination_with_overwrite() {
+        let (mut provider, moves) = provider_for_file_move(true).await;
+        provider
+            .replace("/src/f.txt", "/dst/f.txt")
+            .await
+            .expect("replace");
+        let moves = moves.lock().unwrap().clone();
+        assert_eq!(moves.len(), 1, "{moves:?}");
+        assert!(moves[0].contains("src_file_id=F"), "{moves:?}");
+        assert!(moves[0].contains("overwrite_if_exists=true"), "{moves:?}");
     }
 
     #[tokio::test]

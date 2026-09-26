@@ -745,6 +745,55 @@ impl SwiftProvider {
         )
     }
 
+    /// Rename or replace by a PUT with X-Copy-From, then a DELETE of the
+    /// source. With `overwrite` false an occupied destination is refused
+    /// before anything is copied (the `rename` contract); with it true the
+    /// copy lands over whatever the destination holds (the `replace`
+    /// contract).
+    async fn move_object(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        let from_clean = Self::normalize_path(from);
+        let to_clean = Self::normalize_path(to);
+        // Onto itself a copy-then-delete would delete the only copy.
+        if from_clean == to_clean {
+            return Ok(());
+        }
+
+        // The trait promises no overwrite, and a PUT with X-Copy-From
+        // replaces whatever the destination holds: look first.
+        if !overwrite {
+            match self.stat(to).await {
+                Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
+                Err(ProviderError::NotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+
+        let dest_url = self.object_url(&to_clean)?;
+        let copy_from = self.object_reference(&from_clean);
+
+        let headers = vec![
+            ("X-Copy-From".to_string(), copy_from),
+            ("Content-Length".to_string(), "0".to_string()),
+        ];
+
+        let resp = self
+            .swift_request(Method::PUT, &dest_url, Some(vec![]), &headers)
+            .await?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "Copy for rename failed: HTTP {}",
+                resp.status()
+            )));
+        }
+
+        self.delete(from).await
+    }
+
     /// Swift object keys are flat, so a path is only ever a prefix. This turns
     /// a UI path into that prefix, and the root case is the point: without it,
     /// `.` survives as a literal segment and the listing asks the server for the
@@ -1463,36 +1512,13 @@ impl StorageProvider for SwiftProvider {
     /// Rename via server-side COPY + DELETE (Swift has no atomic rename).
     /// PUT {dest_url} with X-Copy-From: /{container}/{source}
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let from_clean = Self::normalize_path(from);
-        let to_clean = Self::normalize_path(to);
+        self.move_object(from, to, false).await
+    }
 
-        // The trait promises no overwrite, and a PUT with X-Copy-From
-        // replaces whatever the destination holds: look first.
-        match self.stat(to).await {
-            Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
-            Err(ProviderError::NotFound(_)) => {}
-            Err(e) => return Err(e),
-        }
-
-        let dest_url = self.object_url(&to_clean)?;
-        let copy_from = self.object_reference(&from_clean);
-
-        let headers = vec![
-            ("X-Copy-From".to_string(), copy_from),
-            ("Content-Length".to_string(), "0".to_string()),
-        ];
-
-        let resp = self
-            .swift_request(Method::PUT, &dest_url, Some(vec![]), &headers)
-            .await?;
-        if !resp.status().is_success() {
-            return Err(ProviderError::ServerError(format!(
-                "Copy for rename failed: HTTP {}",
-                resp.status()
-            )));
-        }
-
-        self.delete(from).await
+    /// A PUT with X-Copy-From puts the new object over the old one in one
+    /// step, so a replace is the rename without its destination check.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.move_object(from, to, true).await
     }
 
     /// HEAD {storage_url}/{container}/{object}
@@ -1820,6 +1846,37 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
+        assert!(!log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.0 == "PUT" || r.0 == "DELETE"));
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination.
+    #[tokio::test]
+    async fn replace_copies_the_source_over_an_existing_destination() {
+        let (mut p, log) =
+            provider_on_storage(&["/v1/AUTH_a/my%20box/d/x.txt"], serde_json::json!([])).await;
+        p.replace("/d/a.txt", "/d/x.txt").await.expect("replace");
+        let log = log.lock().unwrap().clone();
+        let put = log.iter().find(|r| r.0 == "PUT").expect("a PUT");
+        assert_eq!(put.1, "/v1/AUTH_a/my%20box/d/x.txt");
+        assert_eq!(put.2.as_deref(), Some("/my%20box/d/a.txt"));
+        assert!(log
+            .iter()
+            .any(|r| r.0 == "DELETE" && r.1 == "/v1/AUTH_a/my%20box/d/a.txt"));
+    }
+
+    /// A copy-then-delete onto itself would delete the only copy.
+    #[tokio::test]
+    async fn rename_or_replace_onto_the_same_path_is_a_no_op() {
+        let (mut p, log) =
+            provider_on_storage(&["/v1/AUTH_a/my%20box/d/a.txt"], serde_json::json!([])).await;
+        p.rename("/d/a.txt", "/d/a.txt").await.expect("rename");
+        p.replace("/d/a.txt", "d/a.txt").await.expect("replace");
         assert!(!log
             .lock()
             .unwrap()
