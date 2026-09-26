@@ -30158,9 +30158,17 @@ async fn webdav_dispatch(
                     response
                 }
                 // RFC 4918 section 9.9.4: a destination that exists under
-                // `Overwrite: F` is 412, not a server failure.
+                // `Overwrite: F` is 412, not a server failure. Under
+                // `Overwrite: T` the client allowed the overwrite, so a
+                // refusal there (a file onto a folder, a backend that cannot
+                // replace in one folder) is a conflict, 409.
                 Err(ProviderError::AlreadyExists(message)) => {
-                    serve_error_response(StatusCode::PRECONDITION_FAILED, &message)
+                    let status = if overwrite {
+                        StatusCode::CONFLICT
+                    } else {
+                        StatusCode::PRECONDITION_FAILED
+                    };
+                    serve_error_response(status, &message)
                 }
                 Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
             }
@@ -78746,6 +78754,9 @@ mod tests {
         deleted: Vec<String>,
         rename_fails_with: Option<String>,
         replace_fails_with: Option<String>,
+        /// When set, `replace` refuses as AlreadyExists, as a backend does
+        /// for a file onto a folder.
+        replace_refuses_as_existing: bool,
         /// What this fake answers to `supports_atomic_replace`.
         atomic_replace: bool,
         /// When set, `stat` fails with this instead of answering.
@@ -78762,6 +78773,7 @@ mod tests {
                 deleted: Vec::new(),
                 rename_fails_with: None,
                 replace_fails_with: None,
+                replace_refuses_as_existing: false,
                 atomic_replace: true,
                 stat_fails_with: None,
             }
@@ -78883,6 +78895,11 @@ mod tests {
             if let Some(msg) = &self.replace_fails_with {
                 return Err(ProviderError::TransferFailed(msg.clone()));
             }
+            if self.replace_refuses_as_existing {
+                return Err(ProviderError::AlreadyExists(format!(
+                    "cannot replace {to} with {from}"
+                )));
+            }
             let data = self
                 .remote_files
                 .remove(from)
@@ -79000,7 +79017,14 @@ mod tests {
     async fn served_move_onto_an_existing_file(
         overwrite: Option<&'static str>,
     ) -> (StatusCode, CliEditFakeProvider) {
-        let mut fake = CliEditFakeProvider::new();
+        served_move_onto_an_existing_file_with(overwrite, CliEditFakeProvider::new()).await
+    }
+
+    /// [`served_move_onto_an_existing_file`] on a given fake.
+    async fn served_move_onto_an_existing_file_with(
+        overwrite: Option<&'static str>,
+        mut fake: CliEditFakeProvider,
+    ) -> (StatusCode, CliEditFakeProvider) {
         fake.remote_files
             .insert("/a.txt".to_string(), b"new".to_vec());
         fake.remote_files
@@ -79057,6 +79081,21 @@ mod tests {
                 "{overwrite:?}"
             );
         }
+    }
+
+    /// 412 is the answer to `Overwrite: F` only. Under `Overwrite: T` the
+    /// client allowed the overwrite, so a replace the backend refuses (a
+    /// file onto a folder) is a conflict, 409, not a failed precondition.
+    #[tokio::test]
+    async fn served_webdav_move_whose_replace_is_refused_is_409() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.replace_refuses_as_existing = true;
+        let (status, fake) = served_move_onto_an_existing_file_with(Some("T"), fake).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            fake.remote_files.get("/b.txt").map(Vec::as_slice),
+            Some(&b"old"[..])
+        );
     }
 
     /// `Overwrite: F` onto an existing destination is 412 (RFC 4918 section
