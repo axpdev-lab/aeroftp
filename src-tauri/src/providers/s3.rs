@@ -3830,6 +3830,16 @@ impl S3Provider {
     /// shares the prefix, before a single byte moved. The first listing is
     /// enough for the object itself, because the shortest key with a prefix
     /// is the prefix and S3 lists keys in order.
+    ///
+    /// Two assumptions, both declared rather than checked. ListObjectsV2
+    /// returns keys in ascending UTF-8 binary order (AWS documents it, and
+    /// the S3-compatible servers this provider talks to follow it): a server
+    /// that listed a sibling such as `key-a` before `key` would hide `key`
+    /// from the first listing. And `max-keys=1` is honoured or ignored,
+    /// never cut below one: a server that ignores it answers a longer first
+    /// page, which the checks read the same way. Either way the answer leans
+    /// toward "free", so the rename would then overwrite, as it did before
+    /// this check existed.
     async fn key_or_folder_exists(&self, key: &str) -> Result<bool, ProviderError> {
         if self
             .list_keys_with_prefix_up_to(key, Some(1))
