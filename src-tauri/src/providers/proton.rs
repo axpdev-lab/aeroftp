@@ -165,6 +165,16 @@ impl ProtonCliProvider {
         Err(last_err)
     }
 
+    /// `filesystem rename` of `path` to `name`, in its own folder.
+    async fn rename_in_place(&self, path: &str, name: &str) -> Result<(), ProviderError> {
+        self.run_cli(
+            &["filesystem", "rename", path, "--", name],
+            META_TIMEOUT_SECS,
+        )
+        .await
+        .map(|_| ())
+    }
+
     fn resolve_path(&self, path: &str) -> String {
         let p = path.trim();
         if p.is_empty() || p == "." {
@@ -1048,6 +1058,13 @@ impl StorageProvider for ProtonCliProvider {
         }
     }
 
+    /// A rename in place, or a move to the new folder (which keeps the name)
+    /// and then a rename. Proton refuses a taken name, but at the rename
+    /// after the move the source had already moved, so the destination is
+    /// looked up first and a taken one refused as AlreadyExists before any
+    /// command. When the destination folder already holds the old name the
+    /// rename goes first, in the source folder; when the source folder also
+    /// holds the new name, nothing is changed.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from = self.resolve_path(from);
         let to = self.resolve_path(to);
@@ -1055,27 +1072,40 @@ impl StorageProvider for ProtonCliProvider {
         let from_parent = parent_of(&from);
         let to_parent = parent_of(&to);
         ensure_parent_writable(&to_parent)?;
-        let to_name = basename(&to);
+        if from == to {
+            return Ok(());
+        }
+        super::refuse_occupied_destination(self, &from, &to).await?;
+        let (from_name, to_name) = (basename(&from), basename(&to));
         if from_parent == to_parent {
-            self.run_cli(
-                &["filesystem", "rename", &from, "--", &to_name],
-                META_TIMEOUT_SECS,
-            )
-            .await?;
-        } else {
-            self.run_cli(
-                &["filesystem", "move", &from, &to_parent],
-                META_TIMEOUT_SECS,
-            )
-            .await?;
-            let moved = join_path(&to_parent, &basename(&from));
-            if basename(&from) != to_name {
-                self.run_cli(
-                    &["filesystem", "rename", &moved, "--", &to_name],
-                    META_TIMEOUT_SECS,
-                )
-                .await?;
+            return self.rename_in_place(&from, &to_name).await;
+        }
+        let old_name_at_destination = join_path(&to_parent, &from_name);
+        let rename_first = from_name != to_name && self.exists(&old_name_at_destination).await?;
+        if rename_first {
+            let new_name_at_source = join_path(&from_parent, &to_name);
+            if self.exists(&new_name_at_source).await? {
+                return Err(ProviderError::Other(format!(
+                    "Cannot move {from} to {to} in two steps without two items sharing a name: \
+                     {old_name_at_destination} and {new_name_at_source} both exist"
+                )));
             }
+            self.rename_in_place(&from, &to_name).await?;
+            self.run_cli(
+                &["filesystem", "move", &new_name_at_source, &to_parent],
+                META_TIMEOUT_SECS,
+            )
+            .await?;
+            return Ok(());
+        }
+        self.run_cli(
+            &["filesystem", "move", &from, &to_parent],
+            META_TIMEOUT_SECS,
+        )
+        .await?;
+        if from_name != to_name {
+            self.rename_in_place(&old_name_at_destination, &to_name)
+                .await?;
         }
         Ok(())
     }
@@ -1820,10 +1850,67 @@ mod cli_sequence_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The `rename` and `move` commands the shim received, as argv lines.
+    fn changes(dir: &Path) -> Vec<String> {
+        read_argv(dir)
+            .into_iter()
+            .filter(|a| matches!(a.get(1).map(String::as_str), Some("rename" | "move")))
+            .map(|a| a.join(" "))
+            .collect()
+    }
+
+    /// A move to another folder onto a taken name moved the source there and
+    /// only then had its rename refused: the source was left moved. It is now
+    /// refused before any command.
+    #[tokio::test]
+    async fn a_move_onto_a_taken_name_is_refused_before_any_command() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("existing.json"),
+            r#"["/my-files/src/a.txt", "/my-files/dst/b.txt"]"#,
+        )
+        .unwrap();
+        let mut p = provider(&shim);
+        let outcome = p.rename("/my-files/src/a.txt", "/my-files/dst/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(changes(&dir).is_empty(), "{:?}", changes(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The move keeps the old name: with `/my-files/dst/a.txt` there, it
+    /// would meet that file. The rename goes first, in the source folder.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("existing.json"),
+            r#"["/my-files/src/a.txt", "/my-files/dst/a.txt"]"#,
+        )
+        .unwrap();
+        let mut p = provider(&shim);
+        p.rename("/my-files/src/a.txt", "/my-files/dst/c.txt")
+            .await
+            .expect("rename then move");
+        assert_eq!(
+            changes(&dir),
+            [
+                "filesystem rename /my-files/src/a.txt -- c.txt",
+                "filesystem move /my-files/src/c.txt /my-files/dst",
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn mkdir_rename_copy_put_dash_guard_before_bare_names() {
         let dir = workdir();
         let shim = link_shim(&dir);
+        std::fs::write(dir.join("existing.json"), r#"["/my-files/scratch/a.txt"]"#).unwrap();
         let mut p = provider(&shim);
         p.mkdir("/my-files/scratch/-x").await.unwrap();
         p.rename("/my-files/scratch/a.txt", "/my-files/scratch/-y")

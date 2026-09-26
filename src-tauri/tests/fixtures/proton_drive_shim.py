@@ -41,6 +41,13 @@ if verb == "filesystem" and sub == "download":
 if verb == "filesystem" and sub == "info":
     path = next((a for a in args[2:] if not a.startswith("-")), "/x")
     name = pathlib.Path(path).name
+    # A test that lists the paths that exist (existing.json next to the link)
+    # gets "not found" for every other one; without the list, every path
+    # exists.
+    existing = pathlib.Path(HERE, "existing.json")
+    if existing.exists() and path not in json.loads(existing.read_text()):
+        print("Error: %s not found" % path, file=sys.stderr)
+        sys.exit(1)
     print(json.dumps({
         "name": {"ok": True, "value": name},
         "uid": "UID-CAPTURED",
