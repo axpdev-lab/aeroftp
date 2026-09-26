@@ -5328,8 +5328,8 @@
                 "checking": "Preverjanje, kako ta strežnik premika datoteke...",
                 "serverCopy": "Ta strežnik ne podpira premikanja: vsaka ohranjena kopija se kopira na strežniku in nato izbriše. To stane celotno kopijo vsake ohranjene datoteke, v dveh ločenih korakih.",
                 "clientCopy": "Ta strežnik ne podpira premikanja: vsaka ohranjena kopija se prenese, naloži v mapo varnostnih kopij in nato izbriše. Vsaka ohranjena datoteka gre dvakrat skozi ta računalnik, v ločenih korakih.",
-                "unsupported": "Ta strežnik ne more premikati datotek v drugo mapo, zato ne more ohranjati starih kopij. Za zagon izklopite različično varnostno kopijo.",
-                "checkFailed": "Strežnika ni bilo mogoče vprašati, kako premika datoteke. Znova se povežite ali za zagon izklopite različično varnostno kopijo.",
+                "unsupported": "Ta strežnik ne more premikati datotek v drugo mapo, zato ne more ohranjati starih kopij. Za zagon izklopite varnostno kopijo z različicami.",
+                "checkFailed": "Strežnika ni bilo mogoče vprašati, kako premika datoteke. Znova se povežite ali za zagon izklopite varnostno kopijo z različicami.",
                 "nested": "Mapa varnostnih kopij je znotraj {folder}, kamor piše ta sinhronizacija. Izberite mapo zunaj nje.",
                 "invalid": {
                     "empty": "Vnesite ime mape varnostnih kopij.",
