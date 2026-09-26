@@ -1826,10 +1826,42 @@ pub(crate) async fn replace_by_setting_aside(
     Ok(())
 }
 
+/// The error of a rename done in two steps (a move that keeps the name and
+/// a rename in place, in either order) whose second step failed with
+/// `error` after the first had succeeded. When the first step was undone
+/// nothing changed, and `error` is the answer as it came. When the undo
+/// failed too, the item is at `now_at`: the error names both failures and
+/// that path, and is never AlreadyExists, which would say nothing changed.
+pub(crate) fn second_step_failed(
+    from: &str,
+    to: &str,
+    now_at: &str,
+    error: ProviderError,
+    undone: Result<(), ProviderError>,
+) -> ProviderError {
+    match undone {
+        Ok(()) => error,
+        Err(undo) => ProviderError::Other(format!(
+            "renaming {from} to {to} stopped halfway: the second step failed ({error}) and \
+             undoing the first failed too ({undo}): the item is now at {now_at}"
+        )),
+    }
+}
+
+/// Drop from a path-keyed id cache the entry for `path` and every entry
+/// under it. After a rename or a replace the ids cached for the old path,
+/// the new one and everything below them point at items that moved or went
+/// to the trash: a later lookup would act on the wrong item.
+pub(crate) fn forget_cached_subtree<V>(cache: &mut HashMap<String, V>, path: &str) {
+    let path = path.trim_end_matches('/');
+    let below = format!("{path}/");
+    cache.retain(|cached, _| cached != path && !cached.starts_with(&below));
+}
+
 /// Whether the item `stat(to)` found, named `found_name`, is the source of a
 /// rename that only changes the letter case, found again by a
 /// case-insensitive backend under the name it has stored.
-fn is_the_source_under_another_case(from: &str, to: &str, found_name: &str) -> bool {
+pub(crate) fn is_the_source_under_another_case(from: &str, to: &str, found_name: &str) -> bool {
     let (from, to) = (from.trim_end_matches('/'), to.trim_end_matches('/'));
     from != to
         && from.to_lowercase() == to.to_lowercase()

@@ -165,6 +165,13 @@ impl ProtonCliProvider {
         Err(last_err)
     }
 
+    /// `filesystem move` of `path` into the folder `folder`, under its name.
+    async fn move_into(&self, path: &str, folder: &str) -> Result<(), ProviderError> {
+        self.run_cli(&["filesystem", "move", path, folder], META_TIMEOUT_SECS)
+            .await
+            .map(|_| ())
+    }
+
     /// `filesystem rename` of `path` to `name`, in its own folder.
     async fn rename_in_place(&self, path: &str, name: &str) -> Result<(), ProviderError> {
         self.run_cli(
@@ -1091,21 +1098,35 @@ impl StorageProvider for ProtonCliProvider {
                 )));
             }
             self.rename_in_place(&from, &to_name).await?;
-            self.run_cli(
-                &["filesystem", "move", &new_name_at_source, &to_parent],
-                META_TIMEOUT_SECS,
-            )
-            .await?;
+            // If the move fails, the rename is undone; if that fails too,
+            // the error says where the item is.
+            if let Err(e) = self.move_into(&new_name_at_source, &to_parent).await {
+                let undone = self.rename_in_place(&new_name_at_source, &from_name).await;
+                return Err(super::second_step_failed(
+                    &from,
+                    &to,
+                    &new_name_at_source,
+                    e,
+                    undone,
+                ));
+            }
             return Ok(());
         }
-        self.run_cli(
-            &["filesystem", "move", &from, &to_parent],
-            META_TIMEOUT_SECS,
-        )
-        .await?;
+        self.move_into(&from, &to_parent).await?;
         if from_name != to_name {
-            self.rename_in_place(&old_name_at_destination, &to_name)
-                .await?;
+            if let Err(e) = self
+                .rename_in_place(&old_name_at_destination, &to_name)
+                .await
+            {
+                let undone = self.move_into(&old_name_at_destination, &from_parent).await;
+                return Err(super::second_step_failed(
+                    &from,
+                    &to,
+                    &old_name_at_destination,
+                    e,
+                    undone,
+                ));
+            }
         }
         Ok(())
     }
@@ -1878,6 +1899,30 @@ mod cli_sequence_tests {
             "{outcome:?}"
         );
         assert!(changes(&dir).is_empty(), "{:?}", changes(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// When the rename after the move failed, the file stayed in the new
+    /// folder under its old name while the error said nothing of it. The
+    /// move is undone.
+    #[tokio::test]
+    async fn a_move_whose_rename_fails_is_moved_back() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(dir.join("existing.json"), r#"["/my-files/src/a.txt"]"#).unwrap();
+        let mut p = provider(&shim);
+        let outcome = p
+            .rename("/my-files/src/a.txt", "/my-files/dst/fail.txt")
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(
+            changes(&dir),
+            [
+                "filesystem move /my-files/src/a.txt /my-files/dst",
+                "filesystem rename /my-files/dst/a.txt -- fail.txt",
+                "filesystem move /my-files/dst/a.txt /my-files/src",
+            ]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

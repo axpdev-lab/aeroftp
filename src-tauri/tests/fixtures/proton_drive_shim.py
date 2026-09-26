@@ -72,6 +72,11 @@ if verb == "filesystem" and sub == "list":
     else:
         print("[]")
     sys.exit(0)
+# A rename to a name starting with `fail` is refused, for the tests of a
+# two-step move whose second step fails.
+if verb == "filesystem" and sub == "rename" and args[-1].startswith("fail"):
+    print("Error: the name was rejected", file=sys.stderr)
+    sys.exit(1)
 if verb == "filesystem" and sub in (
     "upload", "trash", "delete", "rename", "create-folder", "copy", "move"
 ):

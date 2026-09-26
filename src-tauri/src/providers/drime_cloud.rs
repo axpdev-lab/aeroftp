@@ -1543,7 +1543,8 @@ impl StorageProvider for DrimeCloudProvider {
             )));
         }
 
-        self.dir_cache.remove(&resolved);
+        // The ids cached for the item and for everything under it are gone.
+        super::forget_cached_subtree(&mut self.dir_cache, &resolved);
         Ok(())
     }
 
@@ -1593,19 +1594,57 @@ impl StorageProvider for DrimeCloudProvider {
                  folder holds {to_name}"
             )));
         }
-        if rename_first {
-            self.rename_entry(&file_id, to_name, &resolved_to).await?;
+        // Two steps when both the folder and the name change. If the second
+        // fails, the first is undone, and if that fails too the error says
+        // where the item is.
+        let outcome = async {
+            match &to_parent_id {
+                None => self.rename_entry(&file_id, to_name, &resolved_to).await,
+                Some(to_parent_id) if rename_first => {
+                    self.rename_entry(&file_id, to_name, &resolved_to).await?;
+                    if let Err(e) = self.move_entry(&file_id, to_parent_id, &resolved_to).await {
+                        let undone = self.rename_entry(&file_id, from_name, &resolved_from).await;
+                        let now_at = format!("{}/{to_name}", from_parent.trim_end_matches('/'));
+                        return Err(super::second_step_failed(
+                            &resolved_from,
+                            &resolved_to,
+                            &now_at,
+                            e,
+                            undone,
+                        ));
+                    }
+                    Ok(())
+                }
+                Some(to_parent_id) => {
+                    self.move_entry(&file_id, to_parent_id, &resolved_to)
+                        .await?;
+                    if !renames {
+                        return Ok(());
+                    }
+                    if let Err(e) = self.rename_entry(&file_id, to_name, &resolved_to).await {
+                        let undone = self
+                            .move_entry(&file_id, &from_parent_id, &resolved_from)
+                            .await;
+                        let now_at = format!("{}/{from_name}", to_parent.trim_end_matches('/'));
+                        return Err(super::second_step_failed(
+                            &resolved_from,
+                            &resolved_to,
+                            &now_at,
+                            e,
+                            undone,
+                        ));
+                    }
+                    Ok(())
+                }
+            }
         }
-        if let Some(to_parent_id) = &to_parent_id {
-            self.move_entry(&file_id, to_parent_id, &resolved_to)
-                .await?;
-        }
-        if renames && !rename_first {
-            self.rename_entry(&file_id, to_name, &resolved_to).await?;
-        }
+        .await;
 
-        self.dir_cache.remove(&resolved_from);
-        Ok(())
+        // Whatever happened, the ids cached for either path, and for
+        // everything under them, may now point at moved items.
+        super::forget_cached_subtree(&mut self.dir_cache, &resolved_from);
+        super::forget_cached_subtree(&mut self.dir_cache, &resolved_to);
+        outcome
     }
 
     /// Drime's rename and move never overwrite, so a replace sets the item at
@@ -2750,9 +2789,10 @@ mod tests {
 
     /// A Drime double that keeps `entries` (id, name, parent id, kind; the
     /// root is the parent `""`) in memory: listings by `parentIds`, a rename
-    /// (`PUT /file-entries/{id}`, 400 onto a name taken in its folder), a
-    /// move and a delete. Returns a provider on it, the entries, and every
-    /// change as `rename ID NAME` or `delete ID`.
+    /// (`PUT /file-entries/{id}`, 400 onto a name taken in its folder, 500
+    /// to a name starting with `fail`), a move and a delete. Returns a
+    /// provider on it, the entries, and every change as `rename ID NAME`,
+    /// `move ID PARENT` or `delete ID`.
     #[allow(clippy::type_complexity)]
     async fn provider_on_drime_entries(
         entries: &[(u64, &str, &str, &str)],
@@ -2806,6 +2846,10 @@ mod tests {
                         ("PUT", p) if p.starts_with("/file-entries/") => {
                             let id: u64 = p.trim_start_matches("/file-entries/").parse().unwrap();
                             let name = args["name"].as_str().unwrap_or("").to_string();
+                            if name.starts_with("fail") {
+                                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "{}")
+                                    .into_response();
+                            }
                             let parent = items.iter().find(|e| e.0 == id).unwrap().2.clone();
                             if items.iter().any(|e| e.2 == parent && e.1 == name) {
                                 return (
@@ -2816,6 +2860,18 @@ mod tests {
                             }
                             items.iter_mut().find(|e| e.0 == id).unwrap().1 = name.clone();
                             seen.lock().unwrap().push(format!("rename {id} {name}"));
+                            ok()
+                        }
+                        ("POST", "/file-entries/move") => {
+                            let parent = match &args["destinationId"] {
+                                serde_json::Value::Number(n) => n.to_string(),
+                                _ => String::new(),
+                            };
+                            for id in args["entryIds"].as_array().unwrap() {
+                                let id = id.as_u64().unwrap();
+                                items.iter_mut().find(|e| e.0 == id).unwrap().2 = parent.clone();
+                                seen.lock().unwrap().push(format!("move {id} {parent}"));
+                            }
                             ok()
                         }
                         ("POST", "/file-entries/delete") => {
@@ -2867,6 +2923,30 @@ mod tests {
         assert_eq!(changes[2], "delete 12");
         let names: Vec<String> = store.lock().unwrap().iter().map(|e| e.1.clone()).collect();
         assert_eq!(names, ["d", "b.txt"]);
+    }
+
+    /// A move to another folder under a new name is two steps. When the
+    /// rename after the move failed, the item stayed in the new folder under
+    /// its old name while the error said nothing of it. The move is undone.
+    #[tokio::test]
+    async fn a_move_whose_rename_fails_is_moved_back() {
+        let (mut provider, store, changes) = provider_on_drime_entries(&[
+            (1, "d", "", "folder"),
+            (2, "e", "", "folder"),
+            (11, "a.txt", "1", "file"),
+        ])
+        .await;
+        let outcome = provider.rename("/d/a.txt", "/e/fail.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(*changes.lock().unwrap(), ["move 11 2", "move 11 1"]);
+        let a = store
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|e| e.0 == 11)
+            .cloned()
+            .unwrap();
+        assert_eq!((a.1.as_str(), a.2.as_str()), ("a.txt", "1"));
     }
 
     /// The replace sets the old item aside, so the name is empty for a

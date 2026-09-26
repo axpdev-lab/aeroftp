@@ -650,6 +650,68 @@ impl InternxtProvider {
             .header("internxt-version", "v1.0.436")
     }
 
+    /// Move the file or folder `uuid` (`kind` is `files` or `folders`) into
+    /// the folder `folder_uuid`. `lands_at` is the path it takes there, the
+    /// one a 409 names.
+    async fn move_item(
+        &mut self,
+        kind: &str,
+        uuid: &str,
+        folder_uuid: &str,
+        lands_at: &str,
+    ) -> Result<(), ProviderError> {
+        let payload = serde_json::json!({ "destinationFolder": folder_uuid });
+        let path = format!("/{kind}/{uuid}");
+        let resp = self
+            .send_with_reauth(|this| {
+                this.drive_request(reqwest::Method::PATCH, &path)
+                    .header(CONTENT_TYPE, "application/json")
+                    .json(&payload)
+            })
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(rename_refused("Move", status, &body, lands_at));
+        }
+        Ok(())
+    }
+
+    /// Rename the file or folder `uuid` (`kind` is `files` or `folders`) to
+    /// `name` in the folder it is in; `lands_at` is the path a 409 names.
+    async fn rename_item(
+        &mut self,
+        kind: &str,
+        uuid: &str,
+        name: &str,
+        lands_at: &str,
+    ) -> Result<(), ProviderError> {
+        let payload = if kind == "files" {
+            let (plain_name, file_type) = Self::split_name_ext(name);
+            let mut payload = serde_json::json!({ "plainName": plain_name });
+            if !file_type.is_empty() {
+                payload["type"] = serde_json::Value::String(file_type);
+            }
+            payload
+        } else {
+            serde_json::json!({ "plainName": name })
+        };
+        let path = format!("/{kind}/{uuid}/meta");
+        let resp = self
+            .send_with_reauth(|this| {
+                this.drive_request(reqwest::Method::PUT, &path)
+                    .header(CONTENT_TYPE, "application/json")
+                    .json(&payload)
+            })
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(rename_refused("Rename", status, &body, lands_at));
+        }
+        Ok(())
+    }
+
     /// Make authenticated request to /network/* endpoints (Basic auth).
     /// Network endpoints always use GATEWAY (gateway.internxt.com/network/* → api.internxt.com/*),
     /// regardless of whether api_base was switched to API_URL for /drive/* requests.
@@ -2082,132 +2144,99 @@ impl StorageProvider for InternxtProvider {
         Ok(true)
     }
 
+    /// A move to the new folder, which keeps the name, and a rename in
+    /// place, as needed. Internxt refuses a taken name (409), but at the
+    /// second step the first had already happened, so the destination is
+    /// looked up first and a taken one refused before any change. When the
+    /// destination folder already holds the old name the rename goes first,
+    /// in the source folder; if the second step fails the first is undone.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_resolved = self.resolve_path(from);
         let to_resolved = self.resolve_path(to);
         if from_resolved == to_resolved {
             return Ok(());
         }
-        // A move to another folder keeps the name, and the rename that
-        // follows is the step Internxt refuses onto a taken name (409): by
-        // then the source had moved. The destination is looked up first.
         super::refuse_occupied_destination(self, &from_resolved, &to_resolved).await?;
         let (from_parent, from_name) = Self::split_path(&from_resolved);
-        let from_parent = from_parent.to_string();
-        let from_name = from_name.to_string();
+        let (from_parent, from_name) = (from_parent.to_string(), from_name.to_string());
         let (to_parent, to_name) = Self::split_path(&to_resolved);
-        let to_parent = to_parent.to_string();
-        let to_name = to_name.to_string();
-        // Where the move alone puts the source: the path a 409 on it names.
-        let moved_to = format!("{}/{}", to_parent.trim_end_matches('/'), from_name);
+        let (to_parent, to_name) = (to_parent.to_string(), to_name.to_string());
+        let join = |parent: &str, name: &str| format!("{}/{name}", parent.trim_end_matches('/'));
         let from_parent_uuid = self.resolve_folder_uuid(&from_parent).await?;
 
-        // Try as file first
-        if let Some((file_uuid, _, _)) = self
+        let (kind, uuid) = match self
             .find_file_in_folder(&from_parent_uuid, &from_name)
             .await?
         {
-            // If target is in a different directory, move first
-            if from_parent != to_parent {
-                let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
-                let move_payload = serde_json::json!({
-                    "destinationFolder": to_parent_uuid
-                });
-                let move_resp = self
-                    .send_with_reauth(|this| {
-                        this.drive_request(reqwest::Method::PATCH, &format!("/files/{}", file_uuid))
-                            .header(CONTENT_TYPE, "application/json")
-                            .json(&move_payload)
-                    })
-                    .await?;
-
-                if !move_resp.status().is_success() {
-                    let status = move_resp.status();
-                    let body = move_resp.text().await.unwrap_or_default();
-                    return Err(rename_refused("Move file", status, &body, &moved_to));
+            Some((file_uuid, _, _)) => ("files", file_uuid),
+            None => match self.resolve_folder_uuid(&from_resolved).await {
+                Ok(folder_uuid) => ("folders", folder_uuid),
+                Err(ProviderError::NotFound(_)) => {
+                    return Err(ProviderError::NotFound(from_resolved.to_string()))
                 }
-            }
-
-            // Rename if name changed
-            if from_name != to_name {
-                let (new_plain_name, new_type) = Self::split_name_ext(&to_name);
-                let mut payload = serde_json::json!({ "plainName": new_plain_name });
-                if !new_type.is_empty() {
-                    payload["type"] = serde_json::Value::String(new_type);
-                }
-
-                let resp = self
-                    .send_with_reauth(|this| {
-                        this.drive_request(
-                            reqwest::Method::PUT,
-                            &format!("/files/{}/meta", file_uuid),
-                        )
-                        .header(CONTENT_TYPE, "application/json")
-                        .json(&payload)
-                    })
-                    .await?;
-
-                if !resp.status().is_success() {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    return Err(rename_refused("Rename", status, &body, &to_resolved));
-                }
-            }
-            return Ok(());
-        }
-
-        // Try as folder: resolve UUID (may not be cached)
-        let folder_uuid = match self.resolve_folder_uuid(&from_resolved).await {
-            Ok(uuid) => uuid,
-            Err(_) => return Err(ProviderError::NotFound(from_resolved.to_string())),
+                Err(e) => return Err(e),
+            },
         };
 
-        // Move folder to different parent if needed
-        if from_parent != to_parent {
+        let renames = from_name != to_name;
+        if from_parent == to_parent {
+            if renames {
+                self.rename_item(kind, &uuid, &to_name, &to_resolved)
+                    .await?;
+            }
+        } else {
             let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
-            let move_payload = serde_json::json!({
-                "destinationFolder": to_parent_uuid
-            });
-            let move_resp = self
-                .send_with_reauth(|this| {
-                    this.drive_request(reqwest::Method::PATCH, &format!("/folders/{}", folder_uuid))
-                        .header(CONTENT_TYPE, "application/json")
-                        .json(&move_payload)
-                })
-                .await?;
-
-            if !move_resp.status().is_success() {
-                let status = move_resp.status();
-                let body = move_resp.text().await.unwrap_or_default();
-                return Err(rename_refused("Move folder", status, &body, &moved_to));
+            let moved_to = join(&to_parent, &from_name);
+            let rename_first = renames && self.exists(&moved_to).await?;
+            if rename_first {
+                let renamed_at = join(&from_parent, &to_name);
+                if self.exists(&renamed_at).await? {
+                    return Err(ProviderError::Other(format!(
+                        "Cannot move {from_resolved} to {to_resolved} in two steps without two \
+                         items sharing a name: {moved_to} and {renamed_at} both exist"
+                    )));
+                }
+                self.rename_item(kind, &uuid, &to_name, &renamed_at).await?;
+                if let Err(e) = self
+                    .move_item(kind, &uuid, &to_parent_uuid, &to_resolved)
+                    .await
+                {
+                    let undone = self
+                        .rename_item(kind, &uuid, &from_name, &from_resolved)
+                        .await;
+                    return Err(super::second_step_failed(
+                        &from_resolved,
+                        &to_resolved,
+                        &renamed_at,
+                        e,
+                        undone,
+                    ));
+                }
+            } else {
+                self.move_item(kind, &uuid, &to_parent_uuid, &moved_to)
+                    .await?;
+                if renames {
+                    if let Err(e) = self.rename_item(kind, &uuid, &to_name, &to_resolved).await {
+                        let undone = self
+                            .move_item(kind, &uuid, &from_parent_uuid, &from_resolved)
+                            .await;
+                        return Err(super::second_step_failed(
+                            &from_resolved,
+                            &to_resolved,
+                            &moved_to,
+                            e,
+                            undone,
+                        ));
+                    }
+                }
             }
         }
 
-        // Rename folder if name changed
-        if from_name != to_name {
-            let rename_payload = serde_json::json!({ "plainName": to_name });
-            let rename_resp = self
-                .send_with_reauth(|this| {
-                    this.drive_request(
-                        reqwest::Method::PUT,
-                        &format!("/folders/{}/meta", folder_uuid),
-                    )
-                    .header(CONTENT_TYPE, "application/json")
-                    .json(&rename_payload)
-                })
-                .await?;
-
-            if !rename_resp.status().is_success() {
-                let status = rename_resp.status();
-                let body = rename_resp.text().await.unwrap_or_default();
-                return Err(rename_refused("Rename folder", status, &body, &to_resolved));
-            }
+        if kind == "folders" {
+            // Invalidate the old entries, re-cache at the new path
+            super::forget_cached_subtree(&mut self.dir_cache, &from_resolved);
+            self.dir_cache_insert(to_resolved, DirInfo { uuid });
         }
-
-        // Invalidate old cache entry, re-cache at new path
-        self.dir_cache.remove(&from_resolved);
-        self.dir_cache_insert(to_resolved, DirInfo { uuid: folder_uuid });
-
         Ok(())
     }
 
@@ -2236,25 +2265,30 @@ impl StorageProvider for InternxtProvider {
             }
         }
 
-        // Try as folder
-        if self.resolve_folder_uuid(&resolved).await.is_ok() {
-            return Ok(RemoteEntry {
-                name: name.to_string(),
-                path: resolved.clone(),
-                is_dir: true,
-                size: 0,
-                modified: None,
-                permissions: None,
-                owner: None,
-                group: None,
-                is_symlink: false,
-                link_target: None,
-                mime_type: None,
-                metadata: Default::default(),
-            });
+        // Try as folder. Only an absence is NotFound: a refused lookup says
+        // nothing about the path, and read as absent it made the look before
+        // a rename report a taken name as free.
+        match self.resolve_folder_uuid(&resolved).await {
+            Ok(_) => {}
+            Err(ProviderError::NotFound(_)) => {
+                return Err(ProviderError::NotFound(resolved.to_string()))
+            }
+            Err(e) => return Err(e),
         }
-
-        Err(ProviderError::NotFound(resolved.to_string()))
+        Ok(RemoteEntry {
+            name: name.to_string(),
+            path: resolved.clone(),
+            is_dir: true,
+            size: 0,
+            modified: None,
+            permissions: None,
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            mime_type: None,
+            metadata: Default::default(),
+        })
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -2716,57 +2750,99 @@ mod tests {
         assert!(matches!(other, ProviderError::ServerError(_)), "{other:?}");
     }
 
-    /// An Internxt drive double: the root `R` holds the folders `src` (`S`)
-    /// and `dst` (`D`), `src` holds `a.txt` and `dst` holds `b.txt`. A move
-    /// (PATCH) succeeds; a rename (PUT `/meta`) answers 409, as Internxt does
-    /// for a taken name. Returns a provider on it and every change as
-    /// `METHOD path`.
-    async fn provider_on_drive() -> (
+    /// An Internxt drive double over the root `R`, which holds the folders
+    /// `src` (`S`) and `dst` (`D`), and `files` (uuid, name, folder) kept in
+    /// memory. A move (PATCH) or a rename (PUT `/meta`) onto a name its
+    /// folder holds answers 409, as Internxt does; a rename to a name
+    /// starting with `fail` answers 403. Returns a provider on it, the files,
+    /// and every change as `METHOD path`.
+    #[allow(clippy::type_complexity)]
+    async fn provider_on_drive(
+        files: &[(&str, &str, &str)],
+    ) -> (
         InternxtProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<(String, String, String)>>>,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
         use axum::response::IntoResponse;
         use std::sync::{Arc, Mutex};
+        let store: Arc<Mutex<Vec<(String, String, String)>>> = Arc::new(Mutex::new(
+            files
+                .iter()
+                .map(|(uuid, name, folder)| {
+                    (uuid.to_string(), name.to_string(), folder.to_string())
+                })
+                .collect(),
+        ));
         let changes: Arc<Mutex<Vec<String>>> = Arc::default();
-        let seen = Arc::clone(&changes);
+        let (items, seen) = (Arc::clone(&store), Arc::clone(&changes));
         let app = axum::Router::new().fallback(axum::routing::any(
             move |req: axum::extract::Request| {
-                let seen = Arc::clone(&seen);
+                let (items, seen) = (Arc::clone(&items), Arc::clone(&seen));
                 async move {
                     let method = req.method().clone();
                     let path = req.uri().path().to_string();
-                    if method != axum::http::Method::GET {
-                        seen.lock().unwrap().push(format!("{method} {path}"));
-                        return if path.ends_with("/meta") {
-                            (
-                                axum::http::StatusCode::CONFLICT,
-                                r#"{"error":"A file with this name already exists"}"#,
-                            )
-                                .into_response()
-                        } else {
-                            axum::Json(serde_json::json!({})).into_response()
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                    let args: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+                    let mut items = items.lock().unwrap();
+                    let conflict = || {
+                        (
+                            axum::http::StatusCode::CONFLICT,
+                            r#"{"error":"A file with this name already exists"}"#,
+                        )
+                            .into_response()
+                    };
+                    if method == axum::http::Method::GET {
+                        let body = match path.as_str() {
+                            "/drive/folders/content/R/folders" => serde_json::json!({
+                                "folders": [
+                                    { "uuid": "S", "plainName": "src" },
+                                    { "uuid": "D", "plainName": "dst" },
+                                ]
+                            }),
+                            p if p.ends_with("/folders") => serde_json::json!({ "folders": [] }),
+                            p => {
+                                let folder = p
+                                    .trim_start_matches("/drive/folders/content/")
+                                    .trim_end_matches("/files");
+                                let files: Vec<serde_json::Value> = items
+                                    .iter()
+                                    .filter(|f| f.2 == folder)
+                                    .map(|f| {
+                                        let (stem, ext) = f.1.rsplit_once('.').unwrap();
+                                        serde_json::json!({ "uuid": f.0, "plainName": stem, "type": ext })
+                                    })
+                                    .collect();
+                                serde_json::json!({ "files": files })
+                            }
                         };
+                        return axum::Json(body).into_response();
                     }
-                    let folder = |uuid: &str, name: &str| {
-                        serde_json::json!({ "uuid": uuid, "plainName": name })
-                    };
-                    let file = |uuid: &str, name: &str| {
-                        serde_json::json!({ "uuid": uuid, "plainName": name, "type": "txt" })
-                    };
-                    let body = match path.as_str() {
-                        "/drive/folders/content/R/folders" => serde_json::json!({
-                            "folders": [folder("S", "src"), folder("D", "dst")]
-                        }),
-                        "/drive/folders/content/S/files" => {
-                            serde_json::json!({ "files": [file("FA", "a")] })
+                    seen.lock().unwrap().push(format!("{method} {path}"));
+                    let uuid = path
+                        .trim_start_matches("/drive/files/")
+                        .trim_end_matches("/meta")
+                        .to_string();
+                    let at = items.iter().position(|f| f.0 == uuid).unwrap();
+                    let (name, folder) = if path.ends_with("/meta") {
+                        let name = format!(
+                            "{}.{}",
+                            args["plainName"].as_str().unwrap_or(""),
+                            args["type"].as_str().unwrap_or("")
+                        );
+                        if name.starts_with("fail") {
+                            return axum::http::StatusCode::FORBIDDEN.into_response();
                         }
-                        "/drive/folders/content/D/files" => {
-                            serde_json::json!({ "files": [file("FB", "b")] })
-                        }
-                        p if p.ends_with("/folders") => serde_json::json!({ "folders": [] }),
-                        _ => serde_json::json!({ "files": [] }),
+                        (name, items[at].2.clone())
+                    } else {
+                        let folder = args["destinationFolder"].as_str().unwrap_or("").to_string();
+                        (items[at].1.clone(), folder)
                     };
-                    axum::Json(body).into_response()
+                    if items.iter().any(|f| f.0 != uuid && f.1 == name && f.2 == folder) {
+                        return conflict();
+                    }
+                    items[at] = (uuid, name, folder);
+                    axum::Json(serde_json::json!({})).into_response()
                 }
             },
         ));
@@ -2777,7 +2853,7 @@ mod tests {
         provider.connected = true;
         provider.root_folder_id = "R".to_string();
         provider.api_base = format!("http://{addr}");
-        (provider, changes)
+        (provider, store, changes)
     }
 
     /// A move to another folder onto a taken name moved the source there and
@@ -2785,7 +2861,8 @@ mod tests {
     /// error saying nothing was done. It is now refused before any change.
     #[tokio::test]
     async fn a_move_onto_a_taken_name_is_refused_before_any_change() {
-        let (mut provider, changes) = provider_on_drive().await;
+        let (mut provider, _, changes) =
+            provider_on_drive(&[("FA", "a.txt", "S"), ("FB", "b.txt", "D")]).await;
         let outcome = provider.rename("/src/a.txt", "/dst/b.txt").await;
         assert!(
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
@@ -2796,6 +2873,45 @@ mod tests {
             "{:?}",
             changes.lock().unwrap()
         );
+    }
+
+    /// The move keeps the old name: with `/dst/a.txt` there Internxt refused
+    /// it (409) and the rename of a file to the free `/dst/c.txt` failed as
+    /// AlreadyExists. The rename goes first, in the source folder.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        let (mut provider, store, changes) =
+            provider_on_drive(&[("FA", "a.txt", "S"), ("FA2", "a.txt", "D")]).await;
+        provider
+            .rename("/src/a.txt", "/dst/c.txt")
+            .await
+            .expect("rename then move");
+        assert_eq!(
+            *changes.lock().unwrap(),
+            ["PUT /drive/files/FA/meta", "PATCH /drive/files/FA"]
+        );
+        let moved = store.lock().unwrap()[0].clone();
+        assert_eq!((moved.1.as_str(), moved.2.as_str()), ("c.txt", "D"));
+    }
+
+    /// When the rename after the move failed, the file stayed in the new
+    /// folder under its old name while the error said nothing of it. The
+    /// move is undone.
+    #[tokio::test]
+    async fn a_move_whose_rename_fails_is_moved_back() {
+        let (mut provider, store, changes) = provider_on_drive(&[("FA", "a.txt", "S")]).await;
+        let outcome = provider.rename("/src/a.txt", "/dst/fail.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(
+            *changes.lock().unwrap(),
+            [
+                "PATCH /drive/files/FA",
+                "PUT /drive/files/FA/meta",
+                "PATCH /drive/files/FA"
+            ]
+        );
+        let back = store.lock().unwrap()[0].clone();
+        assert_eq!((back.1.as_str(), back.2.as_str()), ("a.txt", "S"));
     }
 
     fn test_provider() -> InternxtProvider {

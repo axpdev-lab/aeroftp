@@ -2383,15 +2383,38 @@ impl ZohoWorkdriveProvider {
                  the destination folder holds {file_name} and the source folder holds {new_name}"
             )));
         }
-        if rename_first {
+        // Two steps when both the folder and the name change. If the second
+        // fails, the first is undone, and if that fails too the error says
+        // where the item is.
+        let at = |absolute: bool, parent: &str, name: &str| {
+            let slash = if absolute { "/" } else { "" };
+            if parent.is_empty() {
+                format!("{slash}{name}")
+            } else {
+                format!("{slash}{parent}/{name}")
+            }
+        };
+        if !is_cross_folder {
+            if is_rename {
+                self.rename_file_in_place(&file.id, new_name, to).await?;
+            }
+        } else if rename_first {
             self.rename_file_in_place(&file.id, new_name, to).await?;
-        }
-        if is_cross_folder {
+            if let Err(e) = self.move_file_into(&file.id, &to_parent_id, to).await {
+                let undone = self.rename_file_in_place(&file.id, file_name, from).await;
+                let now_at = at(from_path_is_absolute, from_parent_path, new_name);
+                return Err(super::second_step_failed(from, to, &now_at, e, undone));
+            }
+        } else {
             self.move_file_into(&file.id, &to_parent_id, to).await?;
             info!("Moved {} to folder {}", from, to_parent_path);
-        }
-        if is_rename && !rename_first {
-            self.rename_file_in_place(&file.id, new_name, to).await?;
+            if is_rename {
+                if let Err(e) = self.rename_file_in_place(&file.id, new_name, to).await {
+                    let undone = self.move_file_into(&file.id, &from_parent_id, from).await;
+                    let now_at = at(to_path_is_absolute, to_parent_path, file_name);
+                    return Err(super::second_step_failed(from, to, &now_at, e, undone));
+                }
+            }
         }
 
         info!("Renamed {} to {}", from, to);
@@ -4095,6 +4118,58 @@ mod tests {
         assert_eq!(
             changes,
             ["/workdrive/api/v1/files/FA", "/workdrive/api/v1/files"]
+        );
+    }
+
+    /// A move to another folder under a new name is two calls. When the
+    /// rename after the move was refused, the item stayed in the new folder
+    /// under its old name while the error said nothing of it. The move is
+    /// undone.
+    #[tokio::test]
+    async fn a_move_whose_rename_is_refused_is_moved_back() {
+        use crate::providers::upload_progress::fixture::{serve_logged, Route};
+        let patch = |path: &'static str, status: u16| Route {
+            method: axum::http::Method::PATCH,
+            path,
+            status,
+            body: "{}".to_string(),
+            busy_first: false,
+        };
+        let (base, _server, received) = serve_logged(vec![
+            Route::get(
+                "/workdrive/api/v1/files/S/files",
+                200,
+                r#"{"data":[{"id":"FA","attributes":{"name":"a.txt","type":"file"}}]}"#,
+            ),
+            Route::get("/workdrive/api/v1/files/D/files", 200, r#"{"data":[]}"#),
+            patch("/workdrive/api/v1/files/FA", 403),
+            patch("/workdrive/api/v1/files", 200),
+        ])
+        .await;
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(base);
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        for (path, id) in [("/", "ROOT"), ("/src", "S"), ("/dst", "D")] {
+            p.folder_cache.insert(path.to_string(), id.to_string());
+        }
+        p.current_folder_id = "ROOT".to_string();
+        let outcome = p.rename("/src/a.txt", "/dst/c.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let changes: Vec<&str> = received
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(path, _)| *path)
+            .filter(|path| !path.ends_with("/files") || *path == "/workdrive/api/v1/files")
+            .collect();
+        assert_eq!(
+            changes,
+            [
+                "/workdrive/api/v1/files",
+                "/workdrive/api/v1/files/FA",
+                "/workdrive/api/v1/files"
+            ]
         );
     }
 
