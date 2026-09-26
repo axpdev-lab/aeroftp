@@ -18,7 +18,7 @@ use futures_util::StreamExt;
 use hmac::{Hmac, Mac};
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE, IF_NONE_MATCH};
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE, IF_NONE_MATCH, RANGE};
 use secrecy::ExposeSecret;
 use sha2::Sha256;
 use tokio::io::AsyncReadExt;
@@ -336,21 +336,18 @@ impl AzureProvider {
             .collect::<String>()
     }
 
-    /// Add SAS token or Shared Key auth to request
-    fn sign_request(
+    /// The Shared Key string to sign (Authorize with Shared Key, Blob
+    /// service): the verb, then Content-Encoding, Content-Language,
+    /// Content-Length, Content-MD5, Content-Type, Date, If-Modified-Since,
+    /// If-Match, If-None-Match, If-Unmodified-Since and Range, one line each,
+    /// then the canonicalized `x-ms-` headers and resource.
+    fn string_to_sign(
         &self,
         method: &str,
         url: &str,
         headers: &HeaderMap,
         content_length: u64,
     ) -> Result<String, ProviderError> {
-        if let Some(ref sas) = self.config.sas_token {
-            // SAS token appended to URL
-            let separator = if url.contains('?') { "&" } else { "?" };
-            return Ok(format!("{}{}{}", url, separator, sas.expose_secret()));
-        }
-
-        // Shared Key signing
         let content_type = headers
             .get(CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
@@ -376,15 +373,18 @@ impl AzureProvider {
             .map(|(k, v)| format!("\n{}:{}", k, v))
             .collect::<String>();
 
-        // Shared Key signs If-None-Match in its own slot: a request that
-        // carries the header (the destination condition of a rename's Copy
-        // Blob) and signs an empty slot is refused with 403.
-        let if_none_match = headers
-            .get(IF_NONE_MATCH)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        let string_to_sign = format!(
-            "{}\n\n\n{}\n\n{}\n\n\n\n{}\n\n\n{}{}{}",
+        // Shared Key signs If-None-Match and Range in slots of their own: a
+        // request that carries one (the destination condition of a rename's
+        // Copy Blob, the Range of a resumed download) and signs its slot
+        // empty is refused with 403.
+        let header = |name: reqwest::header::HeaderName| {
+            headers
+                .get(name)
+                .and_then(|v: &HeaderValue| v.to_str().ok())
+                .unwrap_or("")
+        };
+        Ok(format!(
+            "{}\n\n\n{}\n\n{}\n\n\n\n{}\n\n{}\n{}{}{}",
             method,
             if content_length > 0 {
                 content_length.to_string()
@@ -392,11 +392,29 @@ impl AzureProvider {
                 String::new()
             },
             content_type,
-            if_none_match,
+            header(IF_NONE_MATCH),
+            header(RANGE),
             canonical_headers,
             canonicalized_resource,
             query_str,
-        );
+        ))
+    }
+
+    /// Add SAS token or Shared Key auth to request
+    fn sign_request(
+        &self,
+        method: &str,
+        url: &str,
+        headers: &HeaderMap,
+        content_length: u64,
+    ) -> Result<String, ProviderError> {
+        if let Some(ref sas) = self.config.sas_token {
+            // SAS token appended to URL
+            let separator = if url.contains('?') { "&" } else { "?" };
+            return Ok(format!("{}{}{}", url, separator, sas.expose_secret()));
+        }
+
+        let string_to_sign = self.string_to_sign(method, url, headers, content_length)?;
 
         let key_bytes = BASE64
             .decode(self.config.access_key.expose_secret())
@@ -2641,21 +2659,58 @@ mod tests {
         );
     }
 
-    /// Shared Key signs If-None-Match in its own slot of the string to sign;
-    /// sending the header with the slot left empty is a 403 from Azure.
+    /// Headers with a fixed date and the API version, plus `extra`.
+    fn signed_headers(extra: &[(&'static str, &'static str)]) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_static("Sat, 26 Sep 2026 12:00:00 GMT"),
+        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        for (name, value) in extra {
+            headers.insert(*name, HeaderValue::from_static(value));
+        }
+        headers
+    }
+
+    /// The conditional Copy Blob of a rename carries `If-None-Match: *`,
+    /// which Shared Key signs in the tenth line of the string to sign. A
+    /// request that carries it and signs the line empty is a 403.
     #[test]
-    fn shared_key_signs_the_if_none_match_header() {
+    fn shared_key_signs_if_none_match_in_its_own_line() {
         let provider = AzureProvider::new(test_config());
         let url = "https://myacc.blob.core.windows.net/mycontainer/b.txt";
-        let mut headers = HeaderMap::new();
-        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-        let unconditional = provider.sign_request("PUT", url, &headers, 0).unwrap();
-        headers.insert(
-            reqwest::header::IF_NONE_MATCH,
-            HeaderValue::from_static("*"),
+        let signed = provider
+            .string_to_sign("PUT", url, &signed_headers(&[("if-none-match", "*")]), 0)
+            .unwrap();
+        assert_eq!(
+            signed,
+            format!(
+                "PUT\n\n\n\n\n\n\n\n\n*\n\n\n\
+                 x-ms-date:Sat, 26 Sep 2026 12:00:00 GMT\nx-ms-version:{API_VERSION}\n\
+                 /myacc/mycontainer/b.txt"
+            )
         );
-        let conditional = provider.sign_request("PUT", url, &headers, 0).unwrap();
-        assert_ne!(unconditional, conditional);
+    }
+
+    /// A resumed download sends `Range: bytes=N-`, which Shared Key signs in
+    /// the twelfth line. It was signed empty, so every resume with a shared
+    /// key was refused with 403 (SAS tokens do not sign it).
+    #[test]
+    fn shared_key_signs_range_in_its_own_line() {
+        let provider = AzureProvider::new(test_config());
+        let url = "https://myacc.blob.core.windows.net/mycontainer/b.txt";
+        let signed = provider
+            .string_to_sign("GET", url, &signed_headers(&[("range", "bytes=5-")]), 0)
+            .unwrap();
+        assert_eq!(
+            signed,
+            format!(
+                "GET\n\n\n\n\n\n\n\n\n\n\nbytes=5-\n\
+                 x-ms-date:Sat, 26 Sep 2026 12:00:00 GMT\nx-ms-version:{API_VERSION}\n\
+                 /myacc/mycontainer/b.txt"
+            )
+        );
     }
 
     #[test]
