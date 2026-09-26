@@ -2297,6 +2297,8 @@ ECHO Deploying ${ENV} v${VERSION}
 ECHO Price: $$$VERSION  # → Price: $2.9.1
 ```
 
+`${NAME}` and `$NAME` are replaced by the value of an earlier `SET`, once: a value is never expanded again. A variable that no earlier line has `SET` stops the script before anything runs, so a typo such as `${REMOT}` cannot become the name of a folder; write `$$` for a literal `$`. A script exported from AeroSync writes every `$` of a path as `$$`.
+
 ### Error Handling
 
 ```

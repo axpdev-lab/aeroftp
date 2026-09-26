@@ -348,7 +348,9 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
         if let Some(rest) = trimmed.strip_prefix("SET ") {
             if let Some(eq) = rest.find('=') {
                 let name = rest[..eq].trim().to_string();
-                let value = rest[eq + 1..].trim().to_string();
+                // Expanded as it is defined, like the batch runner does, so
+                // `$$` in a value is a `$` and a value is never expanded twice.
+                let value = expand_variables(rest[eq + 1..].trim(), &variables, line_num)?;
                 if !name.is_empty() {
                     variables.insert(name, value);
                 } else {
@@ -712,6 +714,9 @@ fn shell_quote(value: &str) -> String {
         match ch {
             '\\' => out.push_str("\\\\"),
             '"' => out.push_str("\\\""),
+            // Both readers expand variables before they split the line, and
+            // read `$$` as one `$`.
+            '$' => out.push_str("$$"),
             _ => out.push(ch),
         }
     }
@@ -746,33 +751,49 @@ fn expand_variables(
     vars: &std::collections::HashMap<String, String>,
     line: usize,
 ) -> Result<String, ParseError> {
-    // CLAUDE-AV-B3-04: scan by `str` slices, never by raw bytes. The prior
-    // fallback computed a char length from `(b as char).len_utf8()` on a RAW
-    // byte, which for a multi-byte UTF-8 lead byte (e.g. 0xE7) yields the wrong
-    // length and slices mid-character, panicking on any non-ASCII literal path
-    // in a SYNC/CONNECT line. `find("${")` and slicing at the returned char
-    // boundaries is UTF-8-safe.
-    let mut out = String::with_capacity(body.len());
-    let mut rest = body;
-    while let Some(pos) = rest.find("${") {
+    expand_script_variables(body, vars).map_err(|name| ParseError::UndefinedVariable { line, name })
+}
+
+/// Expand `${NAME}` and `$NAME` in one line of a script, in one pass: a
+/// value is inserted as it is and never expanded again. `$$` is a literal
+/// `$`, and a `$` not followed by a name, `{` or `$` stays as written. A
+/// variable that was never SET is an error, returned as its name: kept as
+/// text it became part of a path, and a SYNC wrote into a folder called
+/// `${REMOT}`. The single rule for the GUI import and the CLI batch; the
+/// export writes every `$` of a value as `$$`.
+pub fn expand_script_variables(
+    line: &str,
+    vars: &std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(pos) = rest.find('$') {
         out.push_str(&rest[..pos]);
-        let after = &rest[pos + 2..];
-        if let Some(end) = after.find('}') {
-            let name = &after[..end];
-            match vars.get(name) {
-                Some(v) => out.push_str(v),
+        let after = &rest[pos + 1..];
+        if let Some(tail) = after.strip_prefix('$') {
+            out.push('$');
+            rest = tail;
+        } else if let Some(braced) = after.strip_prefix('{') {
+            match braced.find('}') {
+                Some(end) => {
+                    let name = &braced[..end];
+                    out.push_str(vars.get(name).ok_or_else(|| name.to_string())?);
+                    rest = &braced[end + 1..];
+                }
                 None => {
-                    return Err(ParseError::UndefinedVariable {
-                        line,
-                        name: name.to_string(),
-                    });
+                    out.push_str("${");
+                    rest = braced;
                 }
             }
-            rest = &after[end + 1..];
+        } else if after.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
+            let end = after
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(after.len());
+            let name = &after[..end];
+            out.push_str(vars.get(name).ok_or_else(|| name.to_string())?);
+            rest = &after[end..];
         } else {
-            // No closing brace: emit the literal "${" and keep scanning after it
-            // (preserves the pre-fix behavior for an unterminated variable).
-            out.push_str("${");
+            out.push('$');
             rest = after;
         }
     }
@@ -1024,6 +1045,42 @@ pub fn tokenize_script_line(body: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `$$` is a literal `$`, and a variable that was never SET is an error
+    /// in the GUI import and in the batch alike: kept as text, `${REMOT}`
+    /// became part of a path. Values are inserted once, never expanded again.
+    #[test]
+    fn variables_expand_once_and_an_unknown_one_is_an_error() {
+        let vars = std::collections::HashMap::from([
+            ("A".to_string(), "x$$y".to_string()),
+            ("B_1".to_string(), "b".to_string()),
+        ]);
+        assert_eq!(
+            expand_script_variables("${A}/$B_1/$$C/$5/${ /照片", &vars),
+            Ok("x$$y/b/$C/$5/${ /照片".to_string())
+        );
+        assert_eq!(
+            expand_script_variables("/d/${REMOT}", &vars),
+            Err("REMOT".to_string())
+        );
+        assert_eq!(
+            expand_script_variables("/d/$REMOT/x", &vars),
+            Err("REMOT".to_string())
+        );
+    }
+
+    /// A path with `$` in it survives an export and a GUI import: the export
+    /// writes `$$` and both readers read it back as `$`.
+    #[test]
+    fn a_dollar_in_a_path_survives_the_export_and_the_import() {
+        let mut profile = sample(SyncProfile::mirror());
+        profile.local_path = "/data/$weird/a$$b".to_string();
+        profile.remote_path = "/r/${HOME}".to_string();
+        let script = generate_script(&profile, "test");
+        let parsed = parse_script(&script).expect("imports");
+        assert_eq!(parsed.profile.local_path, "/data/$weird/a$$b");
+        assert_eq!(parsed.profile.remote_path, "/r/${HOME}");
+    }
 
     /// Only ` \\` continues a line: a SYNC whose last path ends in a
     /// backslash is complete, and the next line is not glued onto it.
@@ -1296,16 +1353,21 @@ mod tests {
             tokenize_script_line(r#"SYNC "C:\Users\me" "a \"q\" b" 'lit $x \n' "" x"#).unwrap(),
             vec!["SYNC", r"C:\Users\me", r#"a "q" b"#, r"lit $x \n", "", "x"]
         );
-        // Whatever the exporter quotes reads back as the value.
+        // Whatever the exporter quotes reads back as the value, once the
+        // variables are expanded as both readers do.
         for value in [
+            "has $dollar and $$ two",
             r"C:\Users\me\Docs",
             r#"has "quotes""#,
             r"trailing\",
             "sp ace",
             "",
         ] {
+            let expanded =
+                expand_script_variables(&shell_quote(value), &std::collections::HashMap::new())
+                    .unwrap();
             assert_eq!(
-                tokenize_script_line(&shell_quote(value)).unwrap(),
+                tokenize_script_line(&expanded).unwrap(),
                 vec![value],
                 "{value}"
             );

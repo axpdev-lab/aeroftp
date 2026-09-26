@@ -61586,67 +61586,6 @@ fn batch_logical_lines(content: &str) -> Result<Vec<(usize, String)>, (usize, St
     Ok(out)
 }
 
-/// Expand `${VAR}` and `$VAR` in one pass (a value is never expanded again);
-/// `$$` is a literal `$`, and an unknown variable is kept as written.
-fn expand_batch_variables(line: &str, variables: &HashMap<String, String>) -> String {
-    let mut result = String::with_capacity(line.len());
-    let chars: Vec<(usize, char)> = line.char_indices().collect();
-    let mut ci = 0;
-    while ci < chars.len() {
-        let (byte_idx, ch) = chars[ci];
-        if ch == '$' && ci + 1 < chars.len() {
-            let (_, next_ch) = chars[ci + 1];
-            if next_ch == '$' {
-                result.push('$');
-                ci += 2;
-                continue;
-            } else if next_ch == '{' {
-                let start_byte = chars[ci + 2..]
-                    .first()
-                    .map(|(b, _)| *b)
-                    .unwrap_or(line.len());
-                if let Some(close_pos) = line[start_byte..].find('}') {
-                    let key = &line[start_byte..start_byte + close_pos];
-                    let end_byte = start_byte + close_pos + 1;
-                    match variables.get(key) {
-                        Some(val) => result.push_str(val),
-                        None => result.push_str(&line[byte_idx..end_byte]),
-                    }
-                    ci = chars
-                        .iter()
-                        .position(|(b, _)| *b >= end_byte)
-                        .unwrap_or(chars.len());
-                    continue;
-                }
-            } else if next_ch.is_ascii_alphabetic() || next_ch == '_' {
-                let start = ci + 1;
-                let mut end = start;
-                while end < chars.len()
-                    && (chars[end].1.is_ascii_alphanumeric() || chars[end].1 == '_')
-                {
-                    end += 1;
-                }
-                let key_start = chars[start].0;
-                let key_end = if end < chars.len() {
-                    chars[end].0
-                } else {
-                    line.len()
-                };
-                let key = &line[key_start..key_end];
-                match variables.get(key) {
-                    Some(val) => result.push_str(val),
-                    None => result.push_str(&line[byte_idx..key_end]),
-                }
-                ci = end;
-                continue;
-            }
-        }
-        result.push(ch);
-        ci += 1;
-    }
-    result
-}
-
 /// Check the arguments of a command against its spec: `--` ends the flags, a
 /// token starting with `-` must be one of the command's flags, and the number
 /// of positional arguments must fit.
@@ -61702,7 +61641,16 @@ fn read_batch_script(content: &str) -> Result<Vec<BatchLine>, (usize, String)> {
     let mut variables: HashMap<String, String> = HashMap::new();
     let mut lines = Vec::new();
     for (line_num, logical) in batch_logical_lines(content)? {
-        let expanded = expand_batch_variables(&logical, &variables);
+        let expanded =
+            ftp_client_gui_lib::sync_script::expand_script_variables(&logical, &variables)
+                .map_err(|name| {
+                    (
+                        line_num,
+                        format!(
+                            "undefined variable '{name}': SET it on an earlier line, or write $$ for a literal $"
+                        ),
+                    )
+                })?;
         let parts = ftp_client_gui_lib::sync_script::tokenize_script_line(&expanded)
             .map_err(|e| (line_num, e))?;
         let Some(first) = parts.first() else {
@@ -62570,6 +62518,62 @@ DISCONNECT\n";
                 read_batch_script(&format!("CONNECT sftp://h/\nSYNC /a /b {sync}\n"))
                     .unwrap_or_else(|e| panic!("{sync}: {}", e.1));
             }
+        });
+    }
+
+    /// A variable that was never SET stops the script while it is read: kept
+    /// as text, `${REMOT}` became the name of the folder SYNC wrote into.
+    #[test]
+    fn an_undefined_variable_stops_the_script_before_it_runs() {
+        on_big_stack(|| {
+            for script in [
+                "SET REMOTE=/r\nCONNECT sftp://h/\nSYNC /a ${REMOT} --direction upload\n",
+                "CONNECT sftp://h/\nECHO saved to $DEST\n",
+            ] {
+                let err = read_batch_script(script).expect_err(script);
+                assert!(
+                    err.1.contains("undefined variable"),
+                    "{script:?}: {}",
+                    err.1
+                );
+            }
+            let ok = read_batch_script("SET V=1\nCONNECT sftp://h/\nECHO Price: $$$V, $5\n")
+                .expect("reads");
+            let echo = ok.iter().find(|l| l.cmd == "ECHO").expect("an ECHO line");
+            assert!(
+                echo.expanded.ends_with("Price: $1, $5"),
+                "{}",
+                echo.expanded
+            );
+        });
+    }
+
+    /// A path with `$` in it, exported and run as a batch, is the same path:
+    /// the export writes `$$`, and `$weird` is no longer read as a variable.
+    #[test]
+    fn a_dollar_in_an_exported_path_reaches_sync_unchanged() {
+        on_big_stack(|| {
+            let profile = AerosyncScriptProfile {
+                profile: SyncProfile::mirror(),
+                local_path: "/data/$weird/a$$b".to_string(),
+                remote_path: "/r/${HOME}".to_string(),
+                connect_profile: Some("P".to_string()),
+                connect_url: None,
+                dry_run: false,
+                conflict_mode: None,
+                track_renames: false,
+                skip_matching: false,
+                resync: false,
+                watch: false,
+            };
+            let script = generate_script(&profile, "test");
+            let lines = read_batch_script(&script).unwrap_or_else(|e| panic!("{}: {script}", e.1));
+            let sync = lines.iter().find(|l| l.cmd == "SYNC").expect("a SYNC line");
+            let Commands::Sync { local, remote, .. } = sync_of(sync) else {
+                panic!("not a sync");
+            };
+            assert_eq!(local, "/data/$weird/a$$b");
+            assert_eq!(remote, "/r/${HOME}");
         });
     }
 
