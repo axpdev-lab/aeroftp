@@ -1466,6 +1466,16 @@ impl B2Provider {
                 Err(e) => return Err(e),
             }
         }
+        // A folder is only a prefix: no file holds its name, so the look
+        // above finds none and the copy would put a file named like the
+        // folder beside it. A rename may not take a folder's name, and a
+        // replace puts a file only in place of a file.
+        if self.is_a_folder(&to_key).await? {
+            if !overwrite {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            super::refuse_replace_across_types(to, false, true)?;
+        }
         if size > COPY_MAX_SIZE {
             // Files above the 5 GB b2_copy_file ceiling go through the
             // chunked b2_copy_part workflow. The inner method handles the
@@ -1887,6 +1897,16 @@ impl B2Provider {
     }
 
     /// Look up the latest version's `fileId` and `contentLength` for a given key.
+    /// Whether a folder is at `key`: B2 has no folders, only names under
+    /// `key/` (a `.bzEmpty` marker included), so one listing of that prefix
+    /// answers.
+    async fn is_a_folder(&self, key: &str) -> Result<bool, ProviderError> {
+        let listed = self
+            .list_file_names(&format!("{key}/"), None, None, 1)
+            .await?;
+        Ok(!listed.files.is_empty())
+    }
+
     async fn lookup_file_id(&self, key: &str) -> Result<(String, u64), ProviderError> {
         let resp = self.list_file_names(key, None, None, 1).await?;
         let f = resp
@@ -5006,7 +5026,8 @@ mod tests {
     }
 
     /// A B2 API double for `rename("/a.txt", "/b.txt")`: `a.txt` exists,
-    /// `b.txt` exists only when `destination_taken`, a copy succeeds, and a
+    /// `b.txt` exists only when `destination_taken`, the folder `d` exists as
+    /// the prefix of `d/x.txt`, a copy succeeds, and a
     /// delete answers `delete_status`. Returns the provider, the API
     /// operations it received, in order, and the bodies of its copies.
     async fn provider_for_rename(
@@ -5056,6 +5077,8 @@ mod tests {
                                 Some("b.txt") if destination_taken => {
                                     vec![file("b.txt", "dst-id")]
                                 }
+                                // `d` is a folder: only `d/x.txt` holds it.
+                                Some("d") | Some("d/") => vec![file("d/x.txt", "x-id")],
                                 _ => vec![],
                             };
                             json(200, serde_json::json!({ "files": files, "nextFileName": null }))
@@ -5105,9 +5128,32 @@ mod tests {
             [
                 "b2_list_file_names",
                 "b2_list_file_names",
+                "b2_list_file_names",
                 "b2_copy_file",
                 "b2_delete_file_version"
             ]
+        );
+    }
+
+    /// A folder is only the prefix of the files under it, so the look for a
+    /// file named `d` found none and the copy put a file `d` beside the
+    /// folder `d/`. A rename or a replace of a file onto it is refused
+    /// before anything is copied.
+    #[tokio::test]
+    async fn a_file_onto_a_prefix_folder_is_refused_before_copying() {
+        let (mut provider, ops, _) = provider_for_rename(false, 200).await;
+        let renamed = provider.rename("/a.txt", "/d").await;
+        let replaced = provider.replace("/a.txt", "/d").await;
+        for outcome in [renamed, replaced] {
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{outcome:?}"
+            );
+        }
+        assert!(
+            !ops.lock().unwrap().iter().any(|op| op == "b2_copy_file"),
+            "{:?}",
+            ops.lock().unwrap()
         );
     }
 

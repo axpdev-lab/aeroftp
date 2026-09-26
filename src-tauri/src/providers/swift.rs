@@ -745,6 +745,29 @@ impl SwiftProvider {
         )
     }
 
+    /// Whether a folder is at `name`: Swift has no folders, only objects
+    /// named under `name/` (a directory marker included), so one listing of
+    /// that prefix answers.
+    async fn is_a_folder(&mut self, name: &str) -> Result<bool, ProviderError> {
+        let url = format!(
+            "{}?format=json&prefix={}/&limit=1",
+            self.object_url("")?,
+            urlencoding::encode(name)
+        );
+        let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "Listing {name}/ failed: HTTP {}",
+                resp.status()
+            )));
+        }
+        let entries: Vec<ObjectEntry> = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(format!("Listing {name}/: {e}")))?;
+        Ok(!entries.is_empty())
+    }
+
     /// Rename or replace by a PUT with X-Copy-From, then a DELETE of the
     /// source. With `overwrite` false an occupied destination is refused
     /// before anything is copied (the `rename` contract); with it true the
@@ -779,6 +802,16 @@ impl SwiftProvider {
                 Err(ProviderError::NotFound(_)) => {}
                 Err(e) => return Err(e),
             }
+        }
+        // A folder is only a prefix: no object holds its name, so the look
+        // above finds none and the copy would put an object named like the
+        // folder beside it. A rename may not take a folder's name, and a
+        // replace puts a file only in place of a file.
+        if self.is_a_folder(&to_clean).await? {
+            if !overwrite {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            super::refuse_replace_across_types(to, false, true)?;
         }
 
         let dest_url = self.object_url(&to_clean)?;
@@ -1876,6 +1909,36 @@ mod tests {
         assert!(log
             .iter()
             .any(|r| r.0 == "DELETE" && r.1 == "/v1/AUTH_a/my%20box/d/a.txt"));
+    }
+
+    /// A folder is only the prefix of the objects under it, so the HEAD of
+    /// `d/x.txt` found nothing and the copy put an object `d/x.txt` beside
+    /// the folder `d/x.txt/`. A rename or a replace of a file onto it is
+    /// refused before anything is copied.
+    #[tokio::test]
+    async fn a_file_onto_a_prefix_folder_is_refused_before_copying() {
+        let (mut p, log) = provider_on_storage(
+            &[],
+            serde_json::json!([{ "name": "d/x.txt/y.txt", "bytes": 1 }]),
+        )
+        .await;
+        let renamed = p.rename("/d/a.txt", "/d/x.txt").await;
+        let replaced = p.replace("/d/a.txt", "/d/x.txt").await;
+        for outcome in [renamed, replaced] {
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{outcome:?}"
+            );
+        }
+        let log = log.lock().unwrap().clone();
+        assert!(
+            !log.iter().any(|r| r.0 == "PUT" || r.0 == "DELETE"),
+            "{log:?}"
+        );
+        assert!(
+            log.iter().any(|r| r.0 == "GET"),
+            "the folder was looked for: {log:?}"
+        );
     }
 
     /// A copy-then-delete onto itself would delete the only copy.

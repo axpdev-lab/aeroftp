@@ -449,6 +449,17 @@ impl AzureProvider {
             return Ok(());
         }
 
+        // A folder is only a prefix: no blob holds its name, so the copy
+        // condition below finds none and the copy would put a blob named
+        // like the folder beside it. A rename may not take a folder's name,
+        // and a replace puts a file only in place of a file.
+        if self.is_a_folder(&to_blob).await? {
+            if !overwrite {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            super::refuse_replace_across_types(to, false, true)?;
+        }
+
         let source_url = self.blob_url(&from_blob);
         let dest_url = self.blob_url(&to_blob);
 
@@ -521,6 +532,44 @@ impl AzureProvider {
         self.delete(from).await?;
 
         Ok(())
+    }
+
+    /// Whether a folder is at `blob`: Azure has none, only blobs named under
+    /// `blob/` (the marker `mkdir` writes included), so one listing of that
+    /// prefix answers.
+    async fn is_a_folder(&self, blob: &str) -> Result<bool, ProviderError> {
+        let url = format!(
+            "{}/{}?restype=container&comp=list&prefix={}&maxresults=1",
+            self.config.blob_endpoint(),
+            self.config.container,
+            urlencoding::encode(&format!("{blob}/"))
+        );
+        let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        let resp = self
+            .send_with_auth_and_retry(reqwest::Method::GET, &url, headers, 0, None)
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Listing {blob}/ failed ({status}): {}",
+                parse_azure_xml_error(&body)
+            )));
+        }
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        Ok(lists_a_blob(&body))
     }
 
     /// AZ-005/AZ-006: Send a request with retry logic for transient errors (429/5xx).
@@ -2567,6 +2616,24 @@ impl AzureProvider {
     }
 }
 
+/// Whether a `comp=list` answer names at least one blob or prefix.
+fn lists_a_blob(xml: &str) -> bool {
+    let mut reader = Reader::from_str(xml);
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e))
+                if matches!(e.name().as_ref(), "Blob" | "BlobPrefix") =>
+            {
+                return true
+            }
+            Ok(Event::Eof) | Err(_) => return false,
+            _ => {}
+        }
+        buf.clear();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2583,10 +2650,11 @@ mod tests {
     }
 
     /// A blob service double for container `mycontainer` holding `existing`
-    /// (blob names). A Copy Blob onto an existing blob under
-    /// `If-None-Match: *` answers 412, as Azure does; any other copy lands
-    /// and completes at once; a delete succeeds. Returns a provider pointed at
-    /// it and every request as `METHOD path if-none-match`.
+    /// (blob names). A listing names the first blob under its prefix. A Copy
+    /// Blob onto an existing blob under `If-None-Match: *` answers 412, as
+    /// Azure does; any other copy lands and completes at once; a delete
+    /// succeeds. Returns a provider pointed at it and every request as
+    /// `METHOD path if-none-match`.
     async fn provider_on_blob_service(
         existing: &'static [&'static str],
     ) -> (AzureProvider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
@@ -2607,6 +2675,27 @@ mod tests {
                         .unwrap()
                         .push(format!("{} {path} {condition}", req.method()));
                     let blob = path.trim_start_matches("/mycontainer/");
+                    if req.method() == axum::http::Method::GET && path == "/mycontainer" {
+                        let query = urlencoding::decode(req.uri().query().unwrap_or(""))
+                            .unwrap()
+                            .to_string();
+                        let prefix = query
+                            .split('&')
+                            .find_map(|pair| pair.strip_prefix("prefix="))
+                            .unwrap_or("");
+                        let blobs: String = existing
+                            .iter()
+                            .filter(|name| name.starts_with(prefix))
+                            .take(1)
+                            .map(|name| format!("<Blob><Name>{name}</Name></Blob>"))
+                            .collect();
+                        return axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::from(format!(
+                                "<EnumerationResults><Blobs>{blobs}</Blobs></EnumerationResults>"
+                            )))
+                            .unwrap();
+                    }
                     let status = match req.method().as_str() {
                         "PUT" if condition == "*" && existing.contains(&blob) => 412,
                         "PUT" | "DELETE" => 202,
@@ -2642,7 +2731,11 @@ mod tests {
             "{outcome:?}"
         );
         let log = log.lock().unwrap().clone();
-        assert_eq!(log, ["PUT /mycontainer/b.txt *"], "{log:?}");
+        assert_eq!(
+            log,
+            ["GET /mycontainer ", "PUT /mycontainer/b.txt *"],
+            "{log:?}"
+        );
     }
 
     /// `replace` is the verb for "put this over that" and copies without
@@ -2654,9 +2747,42 @@ mod tests {
         let log = log.lock().unwrap().clone();
         assert_eq!(
             log,
-            ["PUT /mycontainer/b.txt ", "DELETE /mycontainer/a.txt "],
+            [
+                "GET /mycontainer ",
+                "PUT /mycontainer/b.txt ",
+                "DELETE /mycontainer/a.txt "
+            ],
             "{log:?}"
         );
+    }
+
+    /// A folder is only the prefix of the blobs under it, so the copy
+    /// condition found no blob `d` and the copy put a blob `d` beside the
+    /// folder `d/`. A rename or a replace of a file onto it is refused
+    /// before any copy.
+    #[tokio::test]
+    async fn a_file_onto_a_prefix_folder_is_refused_before_any_copy() {
+        let (mut provider, log) = provider_on_blob_service(&["d/x.txt"]).await;
+        let renamed = provider.rename("/a.txt", "/d").await;
+        let replaced = provider.replace("/a.txt", "/d").await;
+        for outcome in [renamed, replaced] {
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{outcome:?}"
+            );
+        }
+        let log = log.lock().unwrap().clone();
+        assert!(!log.iter().any(|r| r.starts_with("PUT")), "{log:?}");
+    }
+
+    #[test]
+    fn a_listing_names_a_blob_only_when_it_holds_one() {
+        assert!(lists_a_blob(
+            "<EnumerationResults><Blobs><Blob><Name>d/</Name></Blob></Blobs></EnumerationResults>"
+        ));
+        assert!(!lists_a_blob(
+            "<EnumerationResults><Blobs /><NextMarker /></EnumerationResults>"
+        ));
     }
 
     /// Headers with a fixed date and the API version, plus `extra`.
