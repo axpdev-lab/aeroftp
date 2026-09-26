@@ -862,6 +862,14 @@ impl RemoteShellTransport for RusshSessionTransport {
 impl RawRemoteShellTransport for RusshSessionTransport {
     type RawStream = RusshRawStream;
 
+    fn endpoint(&self) -> Option<(String, u16, String)> {
+        Some((
+            self.config.host.clone(),
+            self.config.port,
+            self.config.username.clone(),
+        ))
+    }
+
     async fn open_raw_stream(
         &self,
         request: RemoteExecRequest,
@@ -1066,6 +1074,24 @@ mod tests {
         assert_eq!(original.handshake_count(), 1);
         clone.cancel_flag.store(true, Ordering::SeqCst);
         assert!(original.cancel_flag.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn endpoint_keys_the_dialect_by_host_port_and_user() {
+        let mut config = dummy_config();
+        config.port = 2222;
+        config.username = "alice".into();
+        let transport = RusshSessionTransport {
+            handle: Arc::new(HandleSlot::new(None)),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            handshake_count: Arc::new(AtomicU32::new(0)),
+            raw_open_count: Arc::new(AtomicU32::new(0)),
+            config,
+        };
+        assert_eq!(
+            transport.endpoint(),
+            Some(("127.0.0.1".to_string(), 2222, "alice".to_string()))
+        );
     }
 
     #[tokio::test]

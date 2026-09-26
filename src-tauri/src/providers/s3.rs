@@ -1807,17 +1807,17 @@ impl S3Provider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(event)) => match event.name().as_ref() {
-                    b"Bucket" => in_bucket = true,
-                    b"Name" if in_bucket => in_name = true,
+                    "Bucket" => in_bucket = true,
+                    "Name" if in_bucket => in_name = true,
                     _ => {}
                 },
                 Ok(Event::End(event)) => match event.name().as_ref() {
-                    b"Name" => in_name = false,
-                    b"Bucket" => in_bucket = false,
+                    "Name" => in_name = false,
+                    "Bucket" => in_bucket = false,
                     _ => {}
                 },
                 Ok(Event::Text(text)) if in_bucket && in_name => {
-                    let value = String::from_utf8_lossy(text.as_ref()).trim().to_string();
+                    let value = text.as_ref().trim().to_string();
                     if !value.is_empty() {
                         buckets.push(value);
                     }
@@ -1898,7 +1898,7 @@ impl S3Provider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => {
-                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag_name = e.name().as_ref().to_string();
                     match tag_name.as_str() {
                         "CommonPrefixes" => {
                             context = Context::CommonPrefixes;
@@ -1934,7 +1934,7 @@ impl S3Provider {
                     // two entity refs (`a&amp; &amp;b.txt`) or at an element
                     // edge (` &amp;x`) the space is part of the value and
                     // must be preserved.
-                    let raw = String::from_utf8_lossy(e.as_ref()).to_string();
+                    let raw = e.as_ref().to_string();
                     let payload_open = in_next_token
                         || (matches!(context, Context::CommonPrefixes) && current_tag == "Prefix")
                         || (matches!(context, Context::Contents)
@@ -2008,7 +2008,7 @@ impl S3Provider {
                     }
                 }
                 Ok(Event::End(ref e)) => {
-                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag_name = e.name().as_ref().to_string();
                     match tag_name.as_str() {
                         "CommonPrefixes" => {
                             if let Some(ref raw_prefix) = cp_prefix {
@@ -2177,7 +2177,7 @@ impl S3Provider {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => {
                     let name = e.name();
-                    let tag_name = String::from_utf8_lossy(name.as_ref());
+                    let tag_name = name.as_ref();
                     if inside_target {
                         depth += 1;
                     } else if tag_name == tag {
@@ -2187,7 +2187,7 @@ impl S3Provider {
                     }
                 }
                 Ok(Event::Text(ref e)) if inside_target && depth == 0 => {
-                    acc.push_str(&String::from_utf8_lossy(e.as_ref()));
+                    acc.push_str(e.as_ref());
                 }
                 Ok(Event::GeneralRef(ref e)) if inside_target && depth == 0 => {
                     if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
@@ -2196,7 +2196,7 @@ impl S3Provider {
                 }
                 Ok(Event::End(ref e)) => {
                     let name = e.name();
-                    let tag_name = String::from_utf8_lossy(name.as_ref());
+                    let tag_name = name.as_ref();
                     if inside_target {
                         if depth > 0 {
                             depth -= 1;
@@ -3723,8 +3723,8 @@ impl S3Provider {
                 match reader.read_event_into(&mut buf) {
                     Ok(Event::Start(ref e)) => {
                         let name = e.name();
-                        let tag = String::from_utf8_lossy(name.as_ref());
-                        match tag.as_ref() {
+                        let tag = name.as_ref();
+                        match tag {
                             "Key" => {
                                 inside_key = true;
                                 current_key.clear();
@@ -3737,7 +3737,7 @@ impl S3Provider {
                         }
                     }
                     Ok(Event::Text(ref e)) => {
-                        let text = String::from_utf8_lossy(e.as_ref());
+                        let text = e.as_ref();
                         // Skip indentation-only fragments, but preserve
                         // whitespace while a Key/token element is open: there
                         // it is payload (e.g. `a&amp; &amp;b.txt`).
@@ -3746,9 +3746,9 @@ impl S3Provider {
                             continue;
                         }
                         if inside_key {
-                            current_key.push_str(&text);
+                            current_key.push_str(text);
                         } else if inside_next_token {
-                            current_token.push_str(&text);
+                            current_token.push_str(text);
                         }
                     }
                     Ok(Event::GeneralRef(ref e)) => {
@@ -3762,8 +3762,8 @@ impl S3Provider {
                     }
                     Ok(Event::End(ref e)) => {
                         let name = e.name();
-                        let tag = String::from_utf8_lossy(name.as_ref());
-                        match tag.as_ref() {
+                        let tag = name.as_ref();
+                        match tag {
                             "Key" => {
                                 inside_key = false;
                                 if !current_key.is_empty() {
@@ -5375,7 +5375,7 @@ impl StorageProvider for S3Provider {
             loop {
                 match find_reader.read_event_into(&mut find_buf) {
                     Ok(Event::Start(ref e)) => {
-                        let tn = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                        let tn = e.name().as_ref().to_string();
                         match tn.as_str() {
                             "Contents" => {
                                 in_contents = true;
@@ -5393,7 +5393,7 @@ impl StorageProvider for S3Provider {
                         // fragments only when no payload element (Key inside
                         // Contents, or the continuation token) is open;
                         // scalars are trimmed at consumption.
-                        let t = String::from_utf8_lossy(e.as_ref());
+                        let t = e.as_ref();
                         if t.trim().is_empty()
                             && !in_next_tok
                             && !(in_contents && find_tag == "Key")
@@ -5402,14 +5402,14 @@ impl StorageProvider for S3Provider {
                             continue;
                         }
                         if in_next_tok {
-                            next_tok_val.get_or_insert_with(String::new).push_str(&t);
+                            next_tok_val.get_or_insert_with(String::new).push_str(t);
                         }
                         if in_contents {
                             match find_tag.as_str() {
-                                "Key" => find_key.get_or_insert_with(String::new).push_str(&t),
-                                "Size" => find_size.get_or_insert_with(String::new).push_str(&t),
+                                "Key" => find_key.get_or_insert_with(String::new).push_str(t),
+                                "Size" => find_size.get_or_insert_with(String::new).push_str(t),
                                 "LastModified" => {
-                                    find_modified.get_or_insert_with(String::new).push_str(&t)
+                                    find_modified.get_or_insert_with(String::new).push_str(t)
                                 }
                                 _ => {}
                             }
@@ -5435,7 +5435,7 @@ impl StorageProvider for S3Provider {
                         }
                     }
                     Ok(Event::End(ref e)) => {
-                        let tn = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                        let tn = e.name().as_ref().to_string();
                         match tn.as_str() {
                             "Contents" => {
                                 if let Some(ref key) = find_key {
@@ -6003,7 +6003,7 @@ impl StorageProvider for S3Provider {
             loop {
                 match reader.read_event_into(&mut buf) {
                     Ok(Event::Start(ref e)) => {
-                        let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                        let tag_name = e.name().as_ref().to_string();
                         match tag_name.as_str() {
                             "Version" => {
                                 in_version = true;
@@ -6025,7 +6025,7 @@ impl StorageProvider for S3Provider {
                         }
                     }
                     Ok(Event::Text(ref e)) => {
-                        let text = String::from_utf8_lossy(e.as_ref());
+                        let text = e.as_ref();
                         // Skip indentation-only fragments, but preserve
                         // whitespace while a Key inside <Version> or a
                         // pagination marker element is open: there it is
@@ -6045,27 +6045,27 @@ impl StorageProvider for S3Provider {
                         if in_next_key_marker {
                             next_key_marker
                                 .get_or_insert_with(String::new)
-                                .push_str(&text);
+                                .push_str(text);
                         }
                         if in_next_version_id_marker {
                             next_version_id_marker
                                 .get_or_insert_with(String::new)
-                                .push_str(&text);
+                                .push_str(text);
                         }
 
                         if in_version {
                             match current_tag.as_str() {
-                                "Key" => v_key.get_or_insert_with(String::new).push_str(&text),
+                                "Key" => v_key.get_or_insert_with(String::new).push_str(text),
                                 "VersionId" => {
-                                    v_version_id.get_or_insert_with(String::new).push_str(&text)
+                                    v_version_id.get_or_insert_with(String::new).push_str(text)
                                 }
                                 "IsLatest" => {
-                                    v_is_latest.get_or_insert_with(String::new).push_str(&text)
+                                    v_is_latest.get_or_insert_with(String::new).push_str(text)
                                 }
                                 "LastModified" => v_last_modified
                                     .get_or_insert_with(String::new)
-                                    .push_str(&text),
-                                "Size" => v_size.get_or_insert_with(String::new).push_str(&text),
+                                    .push_str(text),
+                                "Size" => v_size.get_or_insert_with(String::new).push_str(text),
                                 _ => {}
                             }
                         }
@@ -6101,7 +6101,7 @@ impl StorageProvider for S3Provider {
                         }
                     }
                     Ok(Event::End(ref e)) => {
-                        let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                        let tag_name = e.name().as_ref().to_string();
                         match tag_name.as_str() {
                             "Version" => {
                                 // Only include versions whose key exactly matches
@@ -6733,18 +6733,18 @@ impl S3Provider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => match e.name().as_ref() {
-                    b"Key" => {
+                    "Key" => {
                         in_key = true;
                         current_key = Some(String::new());
                     }
-                    b"Value" => {
+                    "Value" => {
                         in_value = true;
                         current_value = Some(String::new());
                     }
                     _ => {}
                 },
                 Ok(Event::Text(ref e)) => {
-                    let text = String::from_utf8_lossy(e.as_ref());
+                    let text = e.as_ref();
                     // Skip indentation-only fragments, but preserve
                     // whitespace while a <Key>/<Value> element is open:
                     // there it is payload (e.g. `a&amp; &amp;b`).
@@ -6754,12 +6754,12 @@ impl S3Provider {
                     }
                     if in_key {
                         if let Some(ref mut k) = current_key {
-                            k.push_str(&text);
+                            k.push_str(text);
                         }
                     }
                     if in_value {
                         if let Some(ref mut v) = current_value {
-                            v.push_str(&text);
+                            v.push_str(text);
                         }
                     }
                 }
@@ -6778,9 +6778,9 @@ impl S3Provider {
                     }
                 }
                 Ok(Event::End(ref e)) => match e.name().as_ref() {
-                    b"Key" => in_key = false,
-                    b"Value" => in_value = false,
-                    b"Tag" => {
+                    "Key" => in_key = false,
+                    "Value" => in_value = false,
+                    "Tag" => {
                         if let (Some(k), Some(v)) = (current_key.take(), current_value.take()) {
                             tags.insert(k.trim().to_string(), v.trim().to_string());
                         }
@@ -7221,7 +7221,7 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag_name = e.name().as_ref().to_string();
                 if tag_name == "DeleteResult" {
                     if saw_delete_result {
                         parse_invalid = true;
@@ -7242,7 +7242,7 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
                     buf.clear();
                     continue;
                 }
-                let text = String::from_utf8_lossy(e.as_ref());
+                let text = e.as_ref();
                 // Skip indentation-only fragments, except inside <Key> where
                 // whitespace is payload (e.g. `a&amp; &amp;b.txt`).
                 if text.trim().is_empty() && current_tag != "Key" {
@@ -7250,9 +7250,9 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
                     continue;
                 }
                 match current_tag.as_str() {
-                    "Key" => e_key.get_or_insert_with(String::new).push_str(&text),
-                    "Code" => e_code.get_or_insert_with(String::new).push_str(&text),
-                    "Message" => e_message.get_or_insert_with(String::new).push_str(&text),
+                    "Key" => e_key.get_or_insert_with(String::new).push_str(text),
+                    "Code" => e_code.get_or_insert_with(String::new).push_str(text),
+                    "Message" => e_message.get_or_insert_with(String::new).push_str(text),
                     _ => {}
                 }
             }
@@ -7271,7 +7271,7 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
                 }
             }
             Ok(Event::End(ref e)) => {
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag_name = e.name().as_ref().to_string();
                 if tag_name == "DeleteResult" {
                     delete_result_closed = true;
                 }
@@ -7288,7 +7288,7 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
                 current_tag.clear();
             }
             Ok(Event::Empty(ref e)) => {
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag_name = e.name().as_ref().to_string();
                 if tag_name == "DeleteResult" {
                     if saw_delete_result {
                         parse_invalid = true;
@@ -7389,7 +7389,7 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag_name = e.name().as_ref().to_string();
                 match tag_name.as_str() {
                     "Version" | "DeleteMarker" => {
                         elem = if tag_name == "Version" {
@@ -7412,7 +7412,7 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
                 }
             }
             Ok(Event::Text(ref e)) => {
-                let text = String::from_utf8_lossy(e.as_ref());
+                let text = e.as_ref();
                 // Skip indentation-only fragments, but preserve whitespace
                 // while a Key inside <Version>/<DeleteMarker> or a pagination
                 // marker element is open: there it is payload.
@@ -7431,23 +7431,23 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
                 if in_next_key_marker {
                     next_key_marker
                         .get_or_insert_with(String::new)
-                        .push_str(&text);
+                        .push_str(text);
                 }
                 if in_next_version_id_marker {
                     next_version_id_marker
                         .get_or_insert_with(String::new)
-                        .push_str(&text);
+                        .push_str(text);
                 }
 
                 if elem != Elem::None {
                     match current_tag.as_str() {
-                        "Key" => e_key.get_or_insert_with(String::new).push_str(&text),
-                        "VersionId" => e_version_id.get_or_insert_with(String::new).push_str(&text),
-                        "IsLatest" => e_is_latest.get_or_insert_with(String::new).push_str(&text),
+                        "Key" => e_key.get_or_insert_with(String::new).push_str(text),
+                        "VersionId" => e_version_id.get_or_insert_with(String::new).push_str(text),
+                        "IsLatest" => e_is_latest.get_or_insert_with(String::new).push_str(text),
                         "LastModified" => e_last_modified
                             .get_or_insert_with(String::new)
-                            .push_str(&text),
-                        "Size" => e_size.get_or_insert_with(String::new).push_str(&text),
+                            .push_str(text),
+                        "Size" => e_size.get_or_insert_with(String::new).push_str(text),
                         _ => {}
                     }
                 }
@@ -7481,7 +7481,7 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
                 }
             }
             Ok(Event::End(ref e)) => {
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag_name = e.name().as_ref().to_string();
                 match tag_name.as_str() {
                     "Version" | "DeleteMarker" => {
                         let is_delete_marker = tag_name == "DeleteMarker";
@@ -12026,5 +12026,58 @@ mod documented_limits_tests {
             assert_eq!(hints.max_file_size, None, "{other}");
             assert_eq!(hints.max_path_bytes, None, "{other}");
         }
+    }
+}
+
+#[cfg(test)]
+mod recorded_list_fixture {
+    use secrecy::SecretString;
+
+    use super::super::S3Config;
+    use super::S3Provider;
+
+    #[test]
+    fn parses_recorded_list_objects_v2() {
+        let provider = S3Provider::new(S3Config {
+            endpoint: Some("http://localhost:9000".to_string()),
+            region: "us-east-1".to_string(),
+            access_key_id: "key".to_string(),
+            secret_access_key: SecretString::from("secret".to_string()),
+            session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: "test-bucket".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+            allow_cleartext_endpoint: false,
+        })
+        .expect("provider");
+        let xml = include_str!("fixtures/quickxml/s3-list-objects-v2.xml");
+        let (entries, next_token) = provider.parse_list_response(xml, false).expect("parse");
+        assert_eq!(next_token.as_deref(), Some("token-2"));
+        let readme = entries
+            .iter()
+            .find(|e| e.name == "readme.txt")
+            .expect("readme");
+        assert!(!readme.is_dir);
+        assert_eq!(readme.size, 11);
+        let escaped = entries
+            .iter()
+            .find(|e| e.name == "a&b.txt")
+            .expect("entity key");
+        assert_eq!(escaped.size, 4);
+        let reports = entries
+            .iter()
+            .find(|e| e.name == "reports")
+            .expect("prefix");
+        assert!(reports.is_dir);
     }
 }

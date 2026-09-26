@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/dav/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype><d:collection/></d:resourcetype>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/dav/file.txt</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype/>
+        <d:getcontentlength>1024</d:getcontentlength>
+        <d:getlastmodified>Mon, 01 Jan 2024 00:00:00 GMT</d:getlastmodified>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/dav/a&amp;b.txt</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype/>
+        <d:getcontentlength>7</d:getcontentlength>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/dav/subdir/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:resourcetype><d:collection/></d:resourcetype>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
