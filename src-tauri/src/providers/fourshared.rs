@@ -547,7 +547,7 @@ impl FourSharedProvider {
                     status,
                     &body[..body.floor_char_boundary(200)]
                 );
-                return Err(ProviderError::NotFound(path.to_string()));
+                return Err(refused_lookup(status, &body, path));
             }
 
             let body = resp
@@ -596,7 +596,7 @@ impl FourSharedProvider {
                 status,
                 &body[..body.floor_char_boundary(200)]
             );
-            return Err(ProviderError::NotFound(path.to_string()));
+            return Err(refused_lookup(status, &body, path));
         }
 
         let body = resp
@@ -1338,7 +1338,10 @@ impl StorageProvider for FourSharedProvider {
         // Files first, then folders, as before.
         let (kind, id) = match self.resolve_file_id(&old_normalized).await {
             Ok(file_id) => ("files", file_id),
-            Err(_) => ("folders", self.resolve_folder_id(&old_normalized).await?),
+            Err(ProviderError::NotFound(_)) => {
+                ("folders", self.resolve_folder_id(&old_normalized).await?)
+            }
+            Err(e) => return Err(e),
         };
         let target_folder_id = if is_cross_folder {
             Some(self.resolve_folder_id(&new_parent).await?)
@@ -1347,37 +1350,72 @@ impl StorageProvider for FourSharedProvider {
         };
         let old_name_at_destination = format!("{}/{}", new_parent.trim_end_matches('/'), old_name);
         let rename_first =
-            is_cross_folder && renames && self.stat(&old_name_at_destination).await.is_ok();
+            is_cross_folder && renames && self.exists(&old_name_at_destination).await?;
         if rename_first {
             let new_name_at_source = format!("{}/{}", old_parent.trim_end_matches('/'), new_name);
-            if self.stat(&new_name_at_source).await.is_ok() {
+            if self.exists(&new_name_at_source).await? {
                 return Err(ProviderError::Other(format!(
                     "Cannot move {old_normalized} to {new_normalized} in two steps without two \
                      items sharing a name: {old_name_at_destination} and {new_name_at_source} \
                      both exist"
                 )));
             }
-            self.rename_item(kind, &id, &new_name).await?;
         }
-        if let Some(target_folder_id) = &target_folder_id {
-            self.move_item(kind, &id, target_folder_id).await?;
-            info!(
-                "4shared moved {} {} to {}",
-                kind, old_normalized, new_parent
-            );
-        }
-        if renames && !rename_first {
-            self.rename_item(kind, &id, &new_name).await?;
-        }
-
-        if kind == "files" {
-            if let Some(id) = self.file_cache.remove(&old_normalized) {
-                self.file_cache.insert(new_normalized, id);
+        let outcome = match &target_folder_id {
+            None => self.rename_item(kind, &id, &new_name).await,
+            // If the second step fails, the first is undone, and if that fails
+            // too the error says where the item is.
+            Some(target_folder_id) if rename_first => {
+                let renamed_at = format!("{}/{}", old_parent.trim_end_matches('/'), new_name);
+                self.rename_item(kind, &id, &new_name).await?;
+                match self.move_item(kind, &id, target_folder_id).await {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        let undone = self.rename_item(kind, &id, &old_name).await;
+                        Err(super::second_step_failed(
+                            &old_normalized,
+                            &new_normalized,
+                            &renamed_at,
+                            e,
+                            undone,
+                        ))
+                    }
+                }
             }
-        } else if let Some(id) = self.folder_cache.remove(&old_normalized) {
-            self.folder_cache.insert(new_normalized, id);
+            Some(target_folder_id) => {
+                self.move_item(kind, &id, target_folder_id).await?;
+                info!(
+                    "4shared moved {} {} to {}",
+                    kind, old_normalized, new_parent
+                );
+                if !renames {
+                    Ok(())
+                } else if let Err(e) = self.rename_item(kind, &id, &new_name).await {
+                    let source_folder_id = self.resolve_folder_id(&old_parent).await;
+                    let undone = match source_folder_id {
+                        Ok(source) => self.move_item(kind, &id, &source).await,
+                        Err(lookup) => Err(lookup),
+                    };
+                    Err(super::second_step_failed(
+                        &old_normalized,
+                        &new_normalized,
+                        &old_name_at_destination,
+                        e,
+                        undone,
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+        };
+
+        // Whatever happened, the ids cached for either path, and for
+        // everything under them, may now point at moved items.
+        for path in [&old_normalized, &new_normalized] {
+            super::forget_cached_subtree(&mut self.file_cache, path);
+            super::forget_cached_subtree(&mut self.folder_cache, path);
         }
-        Ok(())
+        outcome
     }
 
     /// No: 4shared documents no overwrite on rename or move, so there is no
@@ -1390,12 +1428,23 @@ impl StorageProvider for FourSharedProvider {
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let normalized = self.resolve_path(path);
 
-        // Try as file
-        if let Ok(file_id) = self.resolve_file_id(&normalized).await {
+        // Try as file. Only an absence sends the look on to the folders: a
+        // refused listing or file lookup says nothing about the path.
+        let file_id = match self.resolve_file_id(&normalized).await {
+            Ok(file_id) => Some(file_id),
+            Err(ProviderError::NotFound(_)) => None,
+            Err(e) => return Err(e),
+        };
+        if let Some(file_id) = file_id {
             let url = format!("{}/files/{}", self.api_base(), file_id);
             let resp = self.signed_get(&url).await?;
+            let status = resp.status();
+            if !status.is_success() && status != reqwest::StatusCode::NOT_FOUND {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(refused_lookup(status, &body, &normalized));
+            }
 
-            if resp.status().is_success() {
+            if status.is_success() {
                 let body = resp
                     .text()
                     .await
@@ -1431,7 +1480,9 @@ impl StorageProvider for FourSharedProvider {
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::NotFound(path.to_string()));
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(refused_lookup(status, &body, path));
         }
 
         let body = resp
@@ -1636,6 +1687,21 @@ impl StorageProvider for FourSharedProvider {
     }
 }
 
+/// The error of a lookup 4shared refused: NotFound only for a 404, since
+/// any other refusal says nothing about whether `path` is there, and a look
+/// before a rename must not read it as free.
+fn refused_lookup(status: reqwest::StatusCode, body: &str, path: &str) -> ProviderError {
+    let detail = format!(
+        "{path}: 4shared answered {status}: {}",
+        &body[..body.floor_char_boundary(200)]
+    );
+    match status.as_u16() {
+        404 => ProviderError::NotFound(path.to_string()),
+        403 => ProviderError::PermissionDenied(detail),
+        _ => ProviderError::ServerError(detail),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1670,11 +1736,13 @@ mod tests {
         (outcome, updates)
     }
 
-    /// A 4shared API double: the root `R` holds the folders `src` (`S`) and
-    /// `dst` (`D`); `src` holds `a.txt` (`FA`), `dst` holds `b.txt` (`FB`)
+    /// A 4shared API double: the root `R` holds the folders `src` (`S`),
+    /// `dst` (`D`) and `busy` (`B`, whose file listing answers 500); `src`
+    /// holds `a.txt` (`FA`), `dst` holds `b.txt` (`FB`)
     /// and, when `dst_holds_a`, an `a.txt` of its own (`FA2`). Every PUT (a
-    /// move or a rename) succeeds. Returns a provider on it and every PUT as
-    /// its path.
+    /// move or a rename) succeeds, except a rename to a name starting with
+    /// `fail` (403). Returns a provider on it and every PUT that succeeded,
+    /// as its path and, for a move, the target folder.
     async fn provider_on_fourshared(
         dst_holds_a: bool,
     ) -> (
@@ -1691,13 +1759,37 @@ mod tests {
                 async move {
                     let path = req.uri().path().to_string();
                     if req.method() == axum::http::Method::PUT {
-                        seen.lock().unwrap().push(path);
+                        let query = req.uri().query().unwrap_or("").to_string();
+                        let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                            .await
+                            .unwrap();
+                        let body = String::from_utf8_lossy(&body).to_string();
+                        if body.contains("name=fail") {
+                            return axum::http::StatusCode::FORBIDDEN.into_response();
+                        }
+                        let folder = query
+                            .split('&')
+                            .find_map(|pair| pair.strip_prefix("folderId="))
+                            .map(|id| format!(" {id}"))
+                            .unwrap_or_default();
+                        seen.lock().unwrap().push(format!("{path}{folder}"));
                         return axum::Json(serde_json::json!({})).into_response();
                     }
                     let item = |id: &str, name: &str| serde_json::json!({ "id": id, "name": name });
                     let body = match path.as_str() {
                         "/folders/R/children" => {
-                            serde_json::json!([item("S", "src"), item("D", "dst")])
+                            serde_json::json!([
+                                item("S", "src"),
+                                item("D", "dst"),
+                                item("B", "busy")
+                            ])
+                        }
+                        "/folders/B/files" => {
+                            return (
+                                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                [(axum::http::header::RETRY_AFTER, "0")],
+                            )
+                                .into_response()
                         }
                         "/folders/S/files" => serde_json::json!([item("FA", "a.txt")]),
                         "/folders/D/files" if dst_holds_a => {
@@ -1745,6 +1837,38 @@ mod tests {
         );
     }
 
+    /// When the rename after the move was refused, the file stayed in the
+    /// new folder under its old name while the error said nothing of it. The
+    /// move is undone.
+    #[tokio::test]
+    async fn a_move_whose_rename_is_refused_is_moved_back() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/dst/fail.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(
+            *puts.lock().unwrap(),
+            ["/files/FA/move D", "/files/FA/move S"]
+        );
+    }
+
+    /// A listing 4shared refused (here 500) read as "not there": the look
+    /// saw a free name and the move and rename went out. The rename now fails
+    /// and sends nothing.
+    #[tokio::test]
+    async fn a_refused_listing_fails_the_rename_closed() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/busy/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
     /// The move keeps the old name: with `/dst/a.txt` there it would put a
     /// second `a.txt` in `/dst` until the rename. The rename goes first, in
     /// the source folder.
@@ -1755,7 +1879,7 @@ mod tests {
             .rename("/src/a.txt", "/dst/c.txt")
             .await
             .expect("rename then move");
-        assert_eq!(*puts.lock().unwrap(), ["/files/FA", "/files/FA/move"]);
+        assert_eq!(*puts.lock().unwrap(), ["/files/FA", "/files/FA/move D"]);
     }
 
     /// 4shared documents no overwrite on rename or move, so there is no one-step
