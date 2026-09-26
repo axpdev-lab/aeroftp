@@ -38,14 +38,22 @@ pub fn posix_arg(value: &str) -> String {
     }
 }
 
-/// One PowerShell argument. Bare when it holds only characters PowerShell
-/// reads literally in an argument; otherwise between double quotes, with a
-/// backtick before each character PowerShell would still act on there: `$`,
-/// the backtick itself, and every double quote it recognises (`"` and the
-/// typographic U+201C, U+201D, U+201E). Double quotes rather than single ones,
-/// so the usual values (a name with spaces, a Windows path, an apostrophe)
-/// also read as one argument in cmd.exe; there a value with `$` or a backtick
-/// keeps the backticks and needs editing.
+/// One PowerShell argument to a native program such as `aeroftp-cli`. Bare
+/// when it holds only characters PowerShell reads literally in an argument.
+/// Otherwise two layers, inside out. First the Windows command-line rule the
+/// program's C runtime reads back (`CommandLineToArgvW`): a `"` in the value
+/// is written `\"`, with the backslashes right before it doubled, and when the
+/// value has whitespace (Windows PowerShell 5.1 then wraps the argument in
+/// quotes) its trailing backslashes are doubled too. Then PowerShell's own
+/// double-quoted form, with a backtick before `$`, the backtick, and every
+/// double quote PowerShell recognises (`"`, U+201C, U+201D, U+201E).
+///
+/// Written for Windows PowerShell 5.1, the one every Windows ships: it passes
+/// native arguments in the legacy way that needs the first layer. PowerShell
+/// 7.3 and later escape embedded quotes themselves, so there a value with a
+/// `"` in it (never a Windows path) keeps a backslash and needs editing.
+/// Double quotes also make the usual values (a name with spaces, a Windows
+/// path, an apostrophe) one argument in cmd.exe.
 pub fn powershell_arg(value: &str) -> String {
     let safe = !value.is_empty()
         && value
@@ -54,9 +62,33 @@ pub fn powershell_arg(value: &str) -> String {
     if safe {
         return value.to_string();
     }
-    let mut out = String::with_capacity(value.len() + 2);
-    out.push('"');
+    let mut native = String::with_capacity(value.len() + 4);
+    let mut backslashes = 0usize;
     for c in value.chars() {
+        match c {
+            '\\' => backslashes += 1,
+            '"' => {
+                native.push_str(&"\\".repeat(backslashes * 2 + 1));
+                backslashes = 0;
+            }
+            _ => {
+                native.push_str(&"\\".repeat(backslashes));
+                backslashes = 0;
+            }
+        }
+        if c != '\\' {
+            native.push(c);
+        }
+    }
+    let wrapped = value.chars().any(char::is_whitespace);
+    native.push_str(&"\\".repeat(if wrapped {
+        backslashes * 2
+    } else {
+        backslashes
+    }));
+    let mut out = String::with_capacity(native.len() + 2);
+    out.push('"');
+    for c in native.chars() {
         if matches!(c, '$' | '`' | '"' | '\u{201C}' | '\u{201D}' | '\u{201E}') {
             out.push('`');
         }
@@ -91,8 +123,13 @@ mod tests {
         assert_eq!(powershell_arg("@x"), "\"@x\"");
         assert_eq!(
             powershell_arg("$(id) `id` \"q\" \u{201C}t\u{201D}"),
-            "\"`$(id) ``id`` `\"q`\" `\u{201C}t`\u{201D}\""
+            "\"`$(id) ``id`` \\`\"q\\`\" `\u{201C}t`\u{201D}\""
         );
+        // Backslashes before a quote are doubled, trailing ones too when the
+        // value has a space (Windows PowerShell 5.1 wraps it in quotes).
+        assert_eq!(powershell_arg(r#"x\"y"#), r#""x\\\`"y""#);
+        assert_eq!(powershell_arg(r"sp ace\"), r#""sp ace\\""#);
+        assert_eq!(powershell_arg(r"a,b\"), r#""a,b\""#);
     }
 
     #[test]
@@ -105,21 +142,33 @@ mod tests {
         assert_eq!(shell_arg("My Server"), expected);
     }
 
-    /// PowerShell is the judge on Windows: every hostile value comes back
-    /// byte for byte, and no substitution runs.
+    /// Windows PowerShell 5.1 is the judge: it runs a native program with
+    /// each quoted value, and that program must receive the value byte for
+    /// byte, with no substitution run. Python stands in for aeroftp-cli as the
+    /// native program that prints its first argument.
     #[cfg(windows)]
     #[test]
-    fn powershell_reads_every_value_back_unchanged() {
+    fn powershell_passes_every_value_to_a_native_program_unchanged() {
         let dir = tempfile::tempdir().expect("temp dir");
         let marker = dir.path().join("ran");
+        let dump = dir.path().join("dump.py");
+        std::fs::write(
+            &dump,
+            "import sys\nsys.stdout.buffer.write(('[' + sys.argv[1] + ']').encode('utf-8'))\n",
+        )
+        .expect("write the dumper");
         let mut values = hostile_values(&marker);
-        values.push("typo\u{201C}graphic\u{201D} \u{201E}q".to_string());
-        values.push("it's, @a".to_string());
+        values.retain(|v| !v.is_empty()); // 5.1 drops an empty native argument
+        values.extend([
+            "typo\u{201C}graphic\u{201D} \u{201E}q".to_string(),
+            "it's, @a".to_string(),
+            r#"x\"y"#.to_string(),
+            r"trail\".to_string(),
+            r"sp ace\".to_string(),
+            r#"q"uote"#.to_string(),
+        ]);
         for value in values {
-            let script = format!(
-                "$v = {}; [Console]::Out.Write('[' + $v + ']')",
-                powershell_arg(&value)
-            );
+            let script = format!("& python '{}' {}", dump.display(), powershell_arg(&value));
             let out = std::process::Command::new("powershell")
                 .args(["-NoProfile", "-NonInteractive", "-Command", &script])
                 .output()
@@ -127,7 +176,8 @@ mod tests {
             assert_eq!(
                 String::from_utf8_lossy(&out.stdout),
                 format!("[{value}]"),
-                "{value:?}: {}",
+                "{value:?} as {}: {}",
+                powershell_arg(&value),
                 String::from_utf8_lossy(&out.stderr)
             );
         }
