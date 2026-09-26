@@ -1273,7 +1273,19 @@ impl StorageProvider for PCloudProvider {
             .await
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
-        // PA-006: If stat fails, fall back to listfolder to get folder metadata
+        // PA-006: If stat fails, fall back to listfolder to get folder metadata.
+        // Only when stat says the path is absent (2005, 2009, 2010): any other
+        // refusal (an internal error, a throttle inside HTTP 200) says nothing
+        // about the path, and the listfolder that followed answered 2005 for a
+        // file, so the look before a rename read a taken name as free.
+        if resp.result != 0
+            && !matches!(
+                classify_pcloud_result(resp.result, resp.error.as_deref()),
+                Some(ProviderError::NotFound(_))
+            )
+        {
+            Self::check_response(&resp)?;
+        }
         if resp.result != 0 {
             let url = format!(
                 "{}/listfolder?path={}&nofiles=1",
@@ -2482,6 +2494,9 @@ mod tests {
                     let is_folder = |p: &str| tree.contains(&p) && !p.contains('.');
                     let is_file = |p: &str| tree.contains(&p) && p.contains('.');
                     match uri.path() {
+                        "/stat" if path.contains("busy") => {
+                            r#"{"result":5000,"error":"Internal error."}"#.to_string()
+                        }
                         "/stat" if is_file(&path) => format!(
                             r#"{{"result":0,"metadata":{{"name":"{name}","isfolder":false,"fileid":7}}}}"#
                         ),
@@ -2555,6 +2570,26 @@ mod tests {
         assert!(
             matches!(outcome, Err(ProviderError::PermissionDenied(_))),
             "{outcome:?}"
+        );
+    }
+
+    /// A stat that pCloud refuses with anything but an absence code (here
+    /// 5000) said nothing about the path, but it fell to listfolder, whose
+    /// 2005 for a file read as NotFound: the look saw a free name and
+    /// `renamefile` overwrote. The rename now fails and sends nothing.
+    #[tokio::test]
+    async fn a_refused_stat_fails_the_rename_closed() {
+        let (mut provider, calls) =
+            provider_on_pcloud_tree(&["/a.txt", "/busy.txt"], r#"{"result":0}"#).await;
+        let outcome = provider.rename("/a.txt", "/busy.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
         );
     }
 
