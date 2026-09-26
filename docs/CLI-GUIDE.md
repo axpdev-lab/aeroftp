@@ -2287,7 +2287,7 @@ The whole script is read and checked before anything runs: an unknown command, a
 | `ECHO <message>` | Print message |
 | `ON_ERROR CONTINUE\|FAIL` | Set error handling policy |
 
-A script exported from the AeroSync template dialog is in this form. Preset settings `aeroftp-cli sync` has no flag for yet (compare mode, retry, verify) are named in a comment above its `SYNC` line and kept in the metadata for the GUI import, not applied by the run. A preset that deletes orphans is exported with `--max-delete 50%`: a batch run is never interactive and `sync` refuses an unattended `--delete` without a cap. When the plan would delete more than half of the source and destination file counts added together (a file on both sides counts twice), the sync stops before transferring or deleting anything and exits 4. That stops a source that lost most of its files, but not one whose files were all replaced (100 new files against 100 old ones is 100 of 200); an empty or missing source is refused on its own.
+A script exported from the AeroSync template dialog is in this form. Preset settings `aeroftp-cli sync` has no flag for yet (compare mode, retry, verify) are named in a comment above its `SYNC` line and kept in the metadata for the GUI import, not applied by the run. A preset that deletes orphans is exported with `--max-delete 50%`: a batch run is never interactive and `sync` refuses an unattended `--delete` without a cap. When the plan would delete more than half of the files on the side it deletes from, the sync stops before transferring or deleting anything and exits 4. That stops a source that lost most of its files and one whose files were all replaced; an empty or missing source is refused on its own.
 
 ### Variable Substitution
 

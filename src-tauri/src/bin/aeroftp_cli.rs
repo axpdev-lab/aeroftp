@@ -2565,7 +2565,8 @@ enum Commands {
         /// Detect renamed files by hash to avoid re-upload
         #[arg(long)]
         track_renames: bool,
-        /// Safety limit: abort if more than N files (or N%) would be deleted
+        /// Safety limit: abort if more than N files would be deleted, or more than N% of
+        /// the files on the side they are deleted from
         #[arg(long)]
         max_delete: Option<String>,
         /// Copy each local file into this directory before sync deletes it; a file
@@ -48596,16 +48597,33 @@ async fn cmd_sync(
     // --max-delete safety check
     if let Some(max_del) = effective_max_delete.as_deref() {
         let delete_count = to_delete_remote.len() + to_delete_local.len();
-        let total_files = local_map.len() + remote_map.len();
-        let limit = match MaxDeleteCap::parse(max_del) {
-            Ok(cap) => cap.limit(total_files),
+        let cap = match MaxDeleteCap::parse(max_del) {
+            Ok(cap) => cap,
             Err(err) => {
                 print_error(format, &err, 5);
                 let _ = provider.disconnect().await;
                 return 5.into();
             }
         };
-        if delete_count > limit {
+        // A count caps the deletes of the whole run. A percentage applies to
+        // each side on its own: the deletes on the remote against the remote's
+        // file count, and the same locally. Summing both sides let a Mirror
+        // whose 100 files were all replaced delete the 100 old ones (100 of 200).
+        let (exceeded, limit) = match cap {
+            MaxDeleteCap::Count(_) => {
+                let limit = cap.limit(delete_count);
+                (delete_count > limit, limit)
+            }
+            MaxDeleteCap::Percent(_) => {
+                let remote_limit = cap.limit(remote_map.len());
+                let local_limit = cap.limit(local_map.len());
+                (
+                    to_delete_remote.len() > remote_limit || to_delete_local.len() > local_limit,
+                    remote_limit.max(local_limit),
+                )
+            }
+        };
+        if exceeded {
             let defaulted = max_delete.is_none();
             let msg = if defaulted {
                 format!(
@@ -77793,15 +77811,12 @@ mod tests {
         });
     }
 
-    /// KNOWN GAP, pending the fix in `cmd_sync` (CLI parity PR B, Twake
-    /// session): the `--max-delete N%` base is the file count of both sides
-    /// added together, not the destination. A Mirror whose source was replaced
-    /// by 100 new files against 100 old ones plans 100 deletes out of a base of
-    /// 200, which is exactly 50% and passes, emptying the destination. This test
-    /// states the behaviour the cap should have; it fails today and is ignored
-    /// until the base moves to the destination count, when the `#[ignore]` goes.
+    /// The `--max-delete N%` base was the file count of both sides added
+    /// together: a Mirror whose source was replaced by 100 new files against
+    /// 100 old ones planned 100 deletes out of a base of 200, exactly 50%, and
+    /// emptied the destination. A percentage now applies to the file count of
+    /// the side the deletes happen on.
     #[test]
-    #[ignore = "known gap: --max-delete % counts both sides together; fix pending in cmd_sync (CLI parity PR B)"]
     fn exported_mirror_cap_stops_a_fully_replaced_source() {
         on_big_stack(|| {
             let old: Vec<String> = (0..100).map(|i| format!("old-{i:03}.txt")).collect();

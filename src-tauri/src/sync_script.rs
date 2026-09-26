@@ -224,11 +224,10 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
     if profile.profile.delete_orphans {
         out.push_str(&format!(
             "# --max-delete {cap} is the safety cap for an unattended run: when the plan would\n\
-             # delete more than {cap} of the source and destination file counts added together\n\
-             # (a file on both sides counts twice), sync stops before transferring or deleting\n\
-             # anything and exits 4. It stops a source that lost most of its files; it does not\n\
-             # stop a source whose files were all replaced (100 new against 100 old is 100 of\n\
-             # 200). An empty or missing source is refused on its own. Change it deliberately.\n",
+             # delete more than {cap} of the files on the side it deletes from, sync stops before\n\
+             # transferring or deleting anything and exits 4. That stops a source that lost most\n\
+             # of its files and a source whose files were all replaced. An empty or missing\n\
+             # source is refused on its own. Change it deliberately.\n",
             cap = UNATTENDED_MAX_DELETE
         ));
     }
