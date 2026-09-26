@@ -552,10 +552,44 @@ impl StorageProvider for MtpFsProvider {
         }
         let src = self.resolve_existing(&from_v)?;
         let dest = self.resolve_for_create(&to_v)?;
+        if src == dest {
+            return Ok(());
+        }
+        // rename(2) replaces a file at the destination (and an empty folder
+        // with a folder): the trait promises no overwrite. A case-insensitive
+        // mount finds the source itself under the new spelling, which is no
+        // other item. The look and the rename are two calls; a file created
+        // in between is still replaced.
+        if let Ok(occupant) = std::fs::symlink_metadata(&dest) {
+            let source = std::fs::symlink_metadata(&src).map_err(ProviderError::IoError)?;
+            if !same_file(&source, &occupant) {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+        }
         tokio::fs::rename(&src, &dest)
             .await
             .map_err(ProviderError::IoError)?;
         Ok(())
+    }
+
+    /// rename(2), which puts the new file in place of the old in one step.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_v = self.virtual_path(from)?;
+        let to_v = self.virtual_path(to)?;
+        if from_v == "/" || to_v == "/" {
+            return Err(ProviderError::InvalidPath(
+                "cannot rename the MTP mount root".to_string(),
+            ));
+        }
+        let src = self.resolve_existing(&from_v)?;
+        let dest = self.resolve_for_create(&to_v)?;
+        if let Ok(occupant) = std::fs::symlink_metadata(&dest) {
+            let source = std::fs::symlink_metadata(&src).map_err(ProviderError::IoError)?;
+            super::super::refuse_replace_across_types(to, source.is_dir(), occupant.is_dir())?;
+        }
+        tokio::fs::rename(&src, &dest)
+            .await
+            .map_err(ProviderError::IoError)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -623,6 +657,24 @@ impl StorageProvider for MtpFsProvider {
     }
 }
 
+/// Whether two metadata describe one file: the same inode on the same
+/// device where the platform says so, the same length, type and
+/// modification time elsewhere.
+fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        a.dev() == b.dev() && a.ino() == b.ino()
+    }
+    #[cfg(not(unix))]
+    {
+        a.len() == b.len()
+            && a.is_dir() == b.is_dir()
+            && a.modified().ok() == b.modified().ok()
+            && a.created().ok() == b.created().ok()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -636,6 +688,48 @@ mod tests {
         );
         p.connect().await.expect("connect");
         p
+    }
+
+    /// `tokio::fs::rename` is POSIX rename(2), which replaces the file at the
+    /// destination: a rename onto an existing file destroyed it and answered
+    /// Ok. It is now refused, and nothing is touched; a rename to a free name
+    /// and one that only changes the letter case still go through.
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination_and_allows_a_case_change() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"A").unwrap();
+        std::fs::write(dir.path().join("b.txt"), b"B").unwrap();
+        std::fs::create_dir(dir.path().join("d")).unwrap();
+        let mut p = connected(dir.path()).await;
+
+        for to in ["/b.txt", "/d"] {
+            let outcome = p.rename("/a.txt", to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{to}: {outcome:?}"
+            );
+        }
+        assert_eq!(std::fs::read(dir.path().join("b.txt")).unwrap(), b"B");
+        assert_eq!(std::fs::read(dir.path().join("a.txt")).unwrap(), b"A");
+
+        p.rename("/a.txt", "/A.txt")
+            .await
+            .expect("case-only rename");
+        assert_eq!(std::fs::read(dir.path().join("A.txt")).unwrap(), b"A");
+        p.rename("/A.txt", "/c.txt").await.expect("free name");
+        assert_eq!(std::fs::read(dir.path().join("c.txt")).unwrap(), b"A");
+    }
+
+    /// `replace` keeps rename(2), which puts the new file in place in one step.
+    #[tokio::test]
+    async fn replace_puts_the_new_file_in_place() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"A").unwrap();
+        std::fs::write(dir.path().join("b.txt"), b"B").unwrap();
+        let mut p = connected(dir.path()).await;
+        p.replace("/a.txt", "/b.txt").await.expect("replace");
+        assert_eq!(std::fs::read(dir.path().join("b.txt")).unwrap(), b"A");
+        assert!(!dir.path().join("a.txt").exists());
     }
 
     #[tokio::test]

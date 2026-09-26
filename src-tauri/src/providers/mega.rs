@@ -34,6 +34,9 @@ pub struct MegaCmdProvider {
     config: MegaConfig,
     connected: bool,
     current_path: String,
+    /// A folder of stand-in `mega-*` scripts, in tests.
+    #[cfg(test)]
+    cmd_dir: Option<std::path::PathBuf>,
 }
 
 impl MegaCmdProvider {
@@ -42,6 +45,8 @@ impl MegaCmdProvider {
             config,
             connected: false,
             current_path: "/".to_string(),
+            #[cfg(test)]
+            cmd_dir: None,
         }
     }
 
@@ -121,8 +126,23 @@ impl MegaCmdProvider {
     /// Helper to run mega-* commands with timeout, error classification, and retry (ARCH-04, ERR-01, ERR-02).
     async fn run_mega_cmd(&self, cmd: &str, args: &[&str]) -> Result<String, ProviderError> {
         self.log_debug(&format!("[CMD] {} {:?}", cmd, args));
+        #[cfg(test)]
+        if let Some(dir) = &self.cmd_dir {
+            return self
+                .run_resolved_mega_cmd(cmd, &dir.join(cmd).to_string_lossy(), args)
+                .await;
+        }
         let resolved_cmd = Self::resolve_mega_cmd(cmd);
+        self.run_resolved_mega_cmd(cmd, &resolved_cmd, args).await
+    }
 
+    /// [`run_mega_cmd`] with the executable already resolved.
+    async fn run_resolved_mega_cmd(
+        &self,
+        cmd: &str,
+        resolved_cmd: &str,
+        args: &[&str],
+    ) -> Result<String, ProviderError> {
         let mut last_err = ProviderError::Unknown("No attempts made".to_string());
 
         for attempt in 0..=MAX_RETRIES {
@@ -131,7 +151,7 @@ impl MegaCmdProvider {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS)).await;
             }
 
-            let mut cmd_builder = Command::new(&resolved_cmd);
+            let mut cmd_builder = Command::new(resolved_cmd);
             cmd_builder.args(args);
             cmd_builder.kill_on_drop(true);
             #[cfg(windows)]
@@ -795,11 +815,49 @@ impl StorageProvider for MegaCmdProvider {
         }
     }
 
+    /// `mega-mv` onto an existing file replaces it, and onto an existing
+    /// folder it moves the source inside that folder and answers Ok, so the
+    /// destination is looked up first and a taken one refused.
     async fn rename(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {
         let f = self.resolve_path(f);
         let t = self.resolve_path(t);
+        if f == t {
+            return Ok(());
+        }
+        super::refuse_occupied_destination(self, &f, &t).await?;
         self.run_mega_cmd_with_reauth("mega-mv", &[&f, &t]).await?;
         Ok(())
+    }
+
+    /// `mega-mv` of a file onto an existing file, as before. Never onto a
+    /// folder: there `mega-mv` moves the source inside it.
+    async fn replace(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {
+        let f = self.resolve_path(f);
+        let t = self.resolve_path(t);
+        if f == t {
+            return Ok(());
+        }
+        let source = self.stat(&f).await?;
+        match self.stat(&t).await {
+            Ok(occupant) if source.is_dir && occupant.is_dir => {
+                return Err(ProviderError::AlreadyExists(format!(
+                    "{t} is a folder, and MEGAcmd would move {f} inside it instead of in \
+                     its place: nothing was changed"
+                )));
+            }
+            Ok(occupant) => super::refuse_replace_across_types(&t, source.is_dir, occupant.is_dir)?,
+            Err(ProviderError::NotFound(_)) => {}
+            Err(e) => return Err(e),
+        }
+        self.run_mega_cmd_with_reauth("mega-mv", &[&f, &t]).await?;
+        Ok(())
+    }
+
+    /// No: MEGAcmd does not document whether `mega-mv` over a file swaps
+    /// the two in one step, so callers that need atomicity refuse before
+    /// they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1291,6 +1349,88 @@ mod tests {
             matches!(never, Err(ProviderError::NotConnected)),
             "nor must a session that was never opened: {never:?}"
         );
+    }
+
+    /// A provider whose `mega-ls` and `mega-mv` are stand-in scripts over a
+    /// root holding the files `a.txt` and `b.txt` and the folder `d`. Every
+    /// `mega-mv` is logged, one line of arguments each. Returns the provider,
+    /// the log file and the folder that keeps the scripts alive.
+    #[cfg(unix)]
+    fn provider_on_stand_in_megacmd() -> (MegaCmdProvider, std::path::PathBuf, tempfile::TempDir) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let log = dir.path().join("mv.log");
+        let scripts = [
+            (
+                "mega-ls",
+                "#!/bin/sh\nif [ \"$1\" = \"-l\" ] && [ \"$2\" = \"/\" ]; then\n\
+                 echo 'FLAGS VERS SIZE DATE TIME NAME'\n\
+                 echo '----  1  3  15Jan2026  14:30  a.txt'\n\
+                 echo '----  1  3  15Jan2026  14:30  b.txt'\n\
+                 echo 'd---  -  -  15Jan2026  14:30  d'\n\
+                 exit 0\nfi\necho \"Couldn't find $2\" >&2\nexit 53\n"
+                    .to_string(),
+            ),
+            (
+                "mega-mv",
+                format!("#!/bin/sh\necho \"$1 $2\" >> '{}'\n", log.display()),
+            ),
+        ];
+        for (name, body) in scripts {
+            let path = dir.path().join(name);
+            std::fs::write(&path, body).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        (provider, log, dir)
+    }
+
+    #[cfg(unix)]
+    fn moves(log: &std::path::Path) -> Vec<String> {
+        std::fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// `mega-mv` onto an existing file replaces it, and onto an existing
+    /// folder it moves the source INSIDE it and answers Ok. A rename onto
+    /// either is refused before `mega-mv` runs.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn rename_refuses_an_occupied_destination_before_mega_mv() {
+        let (mut provider, log, _dir) = provider_on_stand_in_megacmd();
+        for to in ["/b.txt", "/d"] {
+            let outcome = provider.rename("/a.txt", to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{to}: {outcome:?}"
+            );
+        }
+        assert!(moves(&log).is_empty(), "{:?}", moves(&log));
+        provider
+            .rename("/a.txt", "/c.txt")
+            .await
+            .expect("free name");
+        assert_eq!(moves(&log), ["/a.txt /c.txt"]);
+    }
+
+    /// `replace` keeps `mega-mv` over an existing file, but never lets a file
+    /// land inside a folder that merely has the target name. Whether MEGAcmd
+    /// swaps the two in one step is not documented, so the provider does not
+    /// claim an atomic replace.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn replace_moves_over_a_file_but_not_into_a_folder() {
+        let (mut provider, log, _dir) = provider_on_stand_in_megacmd();
+        assert!(!provider.supports_atomic_replace().await.unwrap());
+        let outcome = provider.replace("/a.txt", "/d").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(moves(&log).is_empty(), "{:?}", moves(&log));
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        assert_eq!(moves(&log), ["/a.txt /b.txt"]);
     }
 
     fn test_provider() -> MegaCmdProvider {

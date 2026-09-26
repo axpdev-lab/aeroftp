@@ -1674,6 +1674,45 @@ pub(crate) fn report_set_aside_leftover(to: &str, aside: &str, error: &ProviderE
     );
 }
 
+/// Refuse `rename(from, to)` when `to` is taken, on a backend whose own move
+/// would overwrite the item there, move the source inside it, or put a
+/// second item beside it under the same name. The trait promises none of
+/// that happens, and these backends have no call that refuses on their own.
+///
+/// `stat` of `to` decides: found is AlreadyExists, not found is free, and any
+/// other answer is passed on (the rename does not go out on a guess). The one
+/// exception is a rename that only changes the letter case: a
+/// case-insensitive backend finds the source itself under the new spelling
+/// and reports the name it has stored, so an entry named exactly like the
+/// source is the source. A backend that echoes the spelling it was asked for
+/// makes such a rename refused, which is the safe way to be wrong.
+///
+/// The look and the move are separate requests, so an item created at `to`
+/// between them is still overwritten or doubled: the window is declared, not
+/// closed, on every backend that uses this.
+pub(crate) async fn refuse_occupied_destination(
+    provider: &mut dyn StorageProvider,
+    from: &str,
+    to: &str,
+) -> Result<(), ProviderError> {
+    match provider.stat(to).await {
+        Ok(found) if is_the_source_under_another_case(from, to, &found.name) => Ok(()),
+        Ok(_) => Err(ProviderError::AlreadyExists(to.to_string())),
+        Err(ProviderError::NotFound(_)) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Whether the item `stat(to)` found, named `found_name`, is the source of a
+/// rename that only changes the letter case, found again by a
+/// case-insensitive backend under the name it has stored.
+fn is_the_source_under_another_case(from: &str, to: &str, found_name: &str) -> bool {
+    let (from, to) = (from.trim_end_matches('/'), to.trim_end_matches('/'));
+    from != to
+        && from.to_lowercase() == to.to_lowercase()
+        && found_name == from.rsplit('/').next().unwrap_or(from)
+}
+
 /// Refuse a replace that would put a file in place of a folder or a folder
 /// in place of a file. On a backend that sets the old item aside and then
 /// deletes it, a file replacing a folder deleted the whole folder, contents
@@ -2114,6 +2153,59 @@ mod tests {
         );
         assert!(out.contains("[REDACTED]"));
         assert!(!out.contains("stack trace"), "only the first line is kept");
+    }
+
+    /// The shared look before a rename, on a local folder: a file or a folder
+    /// at the destination is AlreadyExists, a free name passes, and the
+    /// source found under another letter case (as a case-insensitive backend
+    /// reports it) is not another item.
+    #[tokio::test]
+    async fn the_shared_look_refuses_a_taken_destination_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"A").unwrap();
+        std::fs::write(dir.path().join("b.txt"), b"B").unwrap();
+        std::fs::create_dir(dir.path().join("d")).unwrap();
+        let mut provider = mtp::MtpFsProvider::new(
+            dir.path().to_path_buf(),
+            "dev".to_string(),
+            "Device".to_string(),
+        );
+        provider.connect().await.expect("connect");
+        for to in ["/b.txt", "/d", "/d/"] {
+            let outcome = refuse_occupied_destination(&mut provider, "/a.txt", to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{to}: {outcome:?}"
+            );
+        }
+        refuse_occupied_destination(&mut provider, "/a.txt", "/c.txt")
+            .await
+            .expect("a free name");
+    }
+
+    /// A case-insensitive backend answers `stat("/Readme.TXT")` with the
+    /// source it stored as `readme.txt`: that is no other item. The other
+    /// spelling stored as such, or a different name, is.
+    #[test]
+    fn only_the_source_found_under_another_case_is_not_another_item() {
+        assert!(is_the_source_under_another_case(
+            "/d/readme.txt",
+            "/d/Readme.TXT",
+            "readme.txt"
+        ));
+        assert!(!is_the_source_under_another_case(
+            "/d/readme.txt",
+            "/d/Readme.TXT",
+            "Readme.TXT"
+        ));
+        assert!(!is_the_source_under_another_case(
+            "/d/a.txt", "/d/b.txt", "a.txt"
+        ));
+        assert!(!is_the_source_under_another_case(
+            "/d/a.txt",
+            "/d/a.txt/",
+            "a.txt"
+        ));
     }
 
     #[test]
