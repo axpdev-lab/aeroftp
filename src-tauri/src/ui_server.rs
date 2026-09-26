@@ -26,9 +26,10 @@
 //! only; the plugin treated a failed write as fatal and took the server down for
 //! the rest of the session.
 //!
-//! What it accepts is deliberately narrow: GET and HEAD, a `Host` naming this
-//! origin (so a DNS-rebound page cannot read it), and a path that stays inside
-//! the asset root after decoding.
+//! What it accepts is deliberately narrow: GET and HEAD without content, one
+//! `Host` naming this origin (so a DNS-rebound page cannot read it), and a path
+//! that stays inside the asset root after decoding. Anything else is refused
+//! and its connection closed.
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -45,8 +46,9 @@ use http_body_util::Full;
 use hyper::body::{Body, Bytes, Frame, Incoming, SizeHint};
 use hyper::header::{
     HeaderName, HeaderValue, ALLOW, CACHE_CONTROL, CONNECTION, CONTENT_SECURITY_POLICY,
-    CONTENT_TYPE, HOST,
+    CONTENT_TYPE, HOST, X_CONTENT_TYPE_OPTIONS,
 };
+use hyper::http::uri::Scheme;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
@@ -59,6 +61,17 @@ use tokio::time::{MissedTickBehavior, Sleep};
 /// The header `localhost_security::wait_for_owned_server` looks for (it
 /// compares names case-insensitively, as HTTP does).
 const NONCE_HEADER: HeaderName = HeaderName::from_static("x-aeroftp-ui-nonce");
+
+const CROSS_ORIGIN_RESOURCE_POLICY: HeaderName =
+    HeaderName::from_static("cross-origin-resource-policy");
+
+/// hyper's request limits, pinned rather than inherited: the largest request
+/// head, and the most header lines in it. Both sit far above what a webview
+/// sends. hyper's defaults (about 400 KB, 100 lines) would let each connection
+/// hold 400 KB of a head that never ends. Past either, hyper answers 431 and
+/// closes the connection.
+const MAX_HEAD_BYTES: usize = 16 * 1024;
+const MAX_HEADERS: usize = 32;
 
 /// How often, at most, the connections closed at the cap and the failed
 /// accepts are logged. Every log line is also an event sent to the webview, so
@@ -117,7 +130,36 @@ impl<R: tauri::Runtime> AssetSource for tauri::AssetResolver<R> {
 /// each request, so nothing is cached there and a rebuilt file is served as is.
 struct Frontend {
     source: Box<dyn AssetSource>,
-    cache: HashMap<String, OnceLock<Option<ServedAsset>>>,
+    cache: HashMap<String, OnceLock<Result<Prepared, StatusCode>>>,
+}
+
+/// An asset ready to send: its bytes, shared, and the header values that
+/// describe it, encoded once.
+#[derive(Clone)]
+struct Prepared {
+    body: Bytes,
+    content_type: HeaderValue,
+    csp: Option<HeaderValue>,
+}
+
+impl Prepared {
+    /// No asset is a 404. A type or policy that is not a legal header value
+    /// is a 500: sending the asset without its Content-Security-Policy would
+    /// fail open.
+    fn new(asset: Option<ServedAsset>, key: &str) -> Result<Self, StatusCode> {
+        let asset = asset.ok_or(StatusCode::NOT_FOUND)?;
+        let header = |value: &str| {
+            HeaderValue::from_str(value).map_err(|_| {
+                log::error!("UI asset {key} has a header that cannot be sent: {value:?}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })
+        };
+        Ok(Self {
+            content_type: header(&asset.mime_type)?,
+            csp: asset.csp.as_deref().map(header).transpose()?,
+            body: asset.bytes,
+        })
+    }
 }
 
 impl Frontend {
@@ -158,18 +200,17 @@ impl Frontend {
     }
 
     /// An asset already resolved, without leaving the reactor.
-    fn cached(&self, key: &str) -> Option<Option<ServedAsset>> {
+    fn cached(&self, key: &str) -> Option<Result<Prepared, StatusCode>> {
         self.cache.get(key)?.get().cloned()
     }
 
     /// Resolves `key` (an embedded key, or the request path in a dev build).
     /// Blocks: it decompresses, or waits for the request that does.
-    fn fetch(&self, key: &str) -> Option<ServedAsset> {
+    fn fetch(&self, key: &str) -> Result<Prepared, StatusCode> {
+        let resolve = || Prepared::new(self.source.asset(key), key);
         match self.cache.get(key) {
-            Some(slot) if !key.ends_with(".html") => {
-                slot.get_or_init(|| self.source.asset(key)).clone()
-            }
-            _ => self.source.asset(key),
+            Some(slot) if !key.ends_with(".html") => slot.get_or_init(resolve).clone(),
+            _ => resolve(),
         }
     }
 }
@@ -217,8 +258,11 @@ impl Limits {
 
 struct Site {
     frontend: Frontend,
-    nonce: String,
-    allowed_hosts: [String; 2],
+    nonce: HeaderValue,
+    /// `127.0.0.1:<port>`, the one `Host` this origin is reached by: the
+    /// webviews load `http://127.0.0.1:<port>`, and nothing in the app loads a
+    /// `localhost` URL from this server.
+    origin_host: String,
     stats: Stats,
 }
 
@@ -294,10 +338,15 @@ pub(crate) fn start(
             format!("the UI server binds a loopback address only, not {addr}"),
         ));
     }
+    let nonce = HeaderValue::from_str(&nonce).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the UI nonce is not a header value",
+        )
+    })?;
     let listener = std::net::TcpListener::bind(addr)?;
     listener.set_nonblocking(true)?;
     let local = listener.local_addr()?;
-    let port = local.port();
     let frontend = Frontend::new(source);
     match frontend.cache.len() {
         0 => log::info!("UI server on {local} reads the frontend directory per request"),
@@ -306,7 +355,7 @@ pub(crate) fn start(
     let site = Arc::new(Site {
         frontend,
         nonce,
-        allowed_hosts: [format!("127.0.0.1:{port}"), format!("localhost:{port}")],
+        origin_host: local.to_string(),
         stats: Stats::default(),
     });
     tauri::async_runtime::spawn(accept_loop(listener, site, limits));
@@ -418,6 +467,8 @@ async fn serve(
     let connection = http1::Builder::new()
         .timer(TokioTimer::new())
         .header_read_timeout(limits.header_read_timeout)
+        .max_buf_size(MAX_HEAD_BYTES)
+        .max_headers(MAX_HEADERS)
         .serve_connection(
             TokioIo::new(StallGuard::new(
                 stream,
@@ -710,8 +761,8 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for StallGuard<S> {
 
 impl Site {
     async fn respond(self: Arc<Self>, request: Request<Incoming>) -> Response<Full<Bytes>> {
-        if !self.host_allowed(&request) {
-            return refusal(StatusCode::MISDIRECTED_REQUEST);
+        if let Some(refused) = self.misdirected(&request) {
+            return refusal(refused);
         }
         let method = request.method();
         if method != Method::GET && method != Method::HEAD {
@@ -721,20 +772,26 @@ impl Site {
                 .insert(ALLOW, HeaderValue::from_static("GET, HEAD"));
             return response;
         }
+        // Neither carries content, and a webview sends none. Refusing a
+        // request that does, and closing, leaves no body for hyper to drain
+        // or skip, so no byte of one is ever parsed as the next request.
+        if !request.body().is_end_stream() {
+            return refusal(StatusCode::BAD_REQUEST);
+        }
         let Some(path) = asset_path(request.uri().path()) else {
             return refusal(StatusCode::NOT_FOUND);
         };
         match self.resolve(path).await {
-            Some(asset) => self.asset_response(asset),
-            None => refusal(StatusCode::NOT_FOUND),
+            Ok(asset) => self.asset_response(asset),
+            Err(status) => refusal(status),
         }
     }
 
-    async fn resolve(self: &Arc<Self>, path: String) -> Option<ServedAsset> {
+    async fn resolve(self: &Arc<Self>, path: String) -> Result<Prepared, StatusCode> {
         let key = if self.frontend.cache.is_empty() {
             path
         } else {
-            let key = self.frontend.key(&path)?;
+            let key = self.frontend.key(&path).ok_or(StatusCode::NOT_FOUND)?;
             if let Some(cached) = self.frontend.cached(key) {
                 return cached;
             }
@@ -744,33 +801,48 @@ impl Site {
         let site = self.clone();
         tokio::task::spawn_blocking(move || site.frontend.fetch(&key))
             .await
-            .ok()
-            .flatten()
+            // The resolver panicked.
+            .unwrap_or(Err(StatusCode::INTERNAL_SERVER_ERROR))
     }
 
+    /// The refusal a request earns by not naming this origin, if any.
+    ///
     /// DNS rebinding makes a hostile page same-origin with whatever name it
     /// resolves to 127.0.0.1, and the `Host` it sends is still its own name.
-    fn host_allowed(&self, request: &Request<Incoming>) -> bool {
-        let Some(host) = request.headers().get(HOST).and_then(|v| v.to_str().ok()) else {
-            return false;
+    fn misdirected(&self, request: &Request<Incoming>) -> Option<StatusCode> {
+        let mut hosts = request.headers().get_all(HOST).iter();
+        // RFC 9112 3.2: a request without exactly one Host is malformed.
+        let (Some(host), None) = (hosts.next(), hosts.next()) else {
+            return Some(StatusCode::BAD_REQUEST);
         };
-        let host = host.trim().to_ascii_lowercase();
-        self.allowed_hosts.contains(&host)
+        // An absolute-form target names its own authority, which takes the
+        // place of Host (RFC 9112 3.2.2), so it must name this origin too.
+        let target = request.uri();
+        let target_is_ours = target.authority().is_none_or(|authority| {
+            authority.as_str() == self.origin_host
+                && target.scheme().is_none_or(|scheme| *scheme == Scheme::HTTP)
+        });
+        (host.as_bytes() != self.origin_host.as_bytes() || !target_is_ours)
+            .then_some(StatusCode::MISDIRECTED_REQUEST)
     }
 
-    fn asset_response(&self, asset: ServedAsset) -> Response<Full<Bytes>> {
-        let mut response = Response::new(Full::new(asset.bytes));
+    fn asset_response(&self, asset: Prepared) -> Response<Full<Bytes>> {
+        let mut response = Response::new(Full::new(asset.body));
         let headers = response.headers_mut();
-        if let Ok(value) = HeaderValue::from_str(&asset.mime_type) {
-            headers.insert(CONTENT_TYPE, value);
-        }
-        if let Some(Ok(value)) = asset.csp.as_deref().map(HeaderValue::from_str) {
-            headers.insert(CONTENT_SECURITY_POLICY, value);
+        headers.insert(CONTENT_TYPE, asset.content_type);
+        if let Some(csp) = asset.csp {
+            headers.insert(CONTENT_SECURITY_POLICY, csp);
         }
         headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-        if let Ok(value) = HeaderValue::from_str(&self.nonce) {
-            headers.insert(NONCE_HEADER, value);
-        }
+        // Every asset in `dist` gets a type Tauri derives (scripts
+        // `text/javascript`, styles `text/css`), so the webview has nothing
+        // to guess, and no page of another origin may load one.
+        headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+        headers.insert(
+            CROSS_ORIGIN_RESOURCE_POLICY,
+            HeaderValue::from_static("same-origin"),
+        );
+        headers.insert(NONCE_HEADER, self.nonce.clone());
         response
     }
 }
@@ -1003,6 +1075,12 @@ mod tests {
         assert_eq!(headers["cache-control"], "no-cache");
         assert_eq!(headers[NONCE_HEADER.as_str()], NONCE);
         assert_eq!(headers["content-length"], "13");
+        assert_eq!(headers["x-content-type-options"], "nosniff");
+        assert_eq!(headers["cross-origin-resource-policy"], "same-origin");
+        assert!(
+            !headers.contains_key("access-control-allow-origin"),
+            "another origin must not be let to read the assets"
+        );
 
         // No CSP on an asset that has none, and keep-alive still works.
         send(&mut stream, "GET", "/assets/app.css", host(addr));
@@ -1015,20 +1093,69 @@ mod tests {
     fn the_host_must_name_this_origin() {
         let (addr, asked) = serve(Limits::APP);
         let port = addr.port();
-        for (value, expected) in [
-            (Some(format!("127.0.0.1:{port}")), 200),
-            (Some(format!("LOCALHOST:{port}")), 200),
-            (Some(format!("attacker.example:{port}")), 421),
-            (Some("127.0.0.1".to_string()), 421),
-            (Some(format!("127.0.0.1:{}", port.wrapping_add(1))), 421),
-            (None, 421),
+        let ours = format!("Host: 127.0.0.1:{port}\r\n");
+        let with = |host: &str| format!("Host: {host}\r\n");
+        let get = |target: &str, hosts: &str| format!("GET {target} HTTP/1.1\r\n{hosts}\r\n");
+        for (request, expected) in [
+            (get("/index.html", &ours), 200),
+            (
+                get(&format!("http://127.0.0.1:{port}/index.html"), &ours),
+                200,
+            ),
+            // Near misses that a `contains`, `starts_with` or `ends_with`
+            // check, or a case-folded `localhost`, would let through.
+            (get("/index.html", &with(&format!("localhost:{port}"))), 421),
+            (
+                get("/index.html", &with(&format!("localhost.evil.com:{port}"))),
+                421,
+            ),
+            (
+                get("/index.html", &with(&format!("127.0.0.1.nip.io:{port}"))),
+                421,
+            ),
+            (
+                get("/index.html", &with(&format!("evil.localhost:{port}"))),
+                421,
+            ),
+            (get("/index.html", &with(&format!("[::1]:{port}"))), 421),
+            (
+                get("/index.html", &with(&format!("attacker.example:{port}"))),
+                421,
+            ),
+            (get("/index.html", &with("127.0.0.1")), 421),
+            (
+                get(
+                    "/index.html",
+                    &with(&format!("127.0.0.1:{}", port.wrapping_add(1))),
+                ),
+                421,
+            ),
+            // An absolute-form target's authority takes the place of Host.
+            (get("http://evil.example/index.html", &ours), 421),
+            (
+                get(&format!("http://evil.example:{port}/index.html"), &ours),
+                421,
+            ),
+            (
+                get(&format!("https://127.0.0.1:{port}/index.html"), &ours),
+                421,
+            ),
+            // Exactly one Host (RFC 9112 3.2).
+            (get("/index.html", ""), 400),
+            (
+                get("/index.html", &format!("{ours}{}", with("evil.example"))),
+                400,
+            ),
+            (get("/index.html", &format!("{ours}{ours}")), 400),
         ] {
             let mut stream = connect(addr);
-            send(&mut stream, "GET", "/index.html", value.clone());
+            stream.write_all(request.as_bytes()).unwrap();
+            let (status, headers, _) = read_response(&mut stream, false);
+            assert_eq!(status, expected, "{request:?}");
             assert_eq!(
-                read_response(&mut stream, false).0,
-                expected,
-                "Host {value:?}"
+                headers.contains_key(NONCE_HEADER.as_str()),
+                expected == 200,
+                "{request:?}: the nonce goes with an asset and nothing else"
             );
         }
         assert_eq!(
@@ -1414,6 +1541,113 @@ mod tests {
             let error = refused.expect_err(addr);
             assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{addr}");
         }
+    }
+
+    /// A type or policy that cannot be put in a header is a server error,
+    /// never a response that silently goes without it.
+    #[test]
+    fn an_unsendable_header_is_a_server_error() {
+        let mut source = site();
+        source.assets.insert(
+            "/policy.html".into(),
+            (
+                Bytes::from_static(b"<p></p>"),
+                "text/html",
+                Some("default-src 'self'\r\nX-Injected: 1"),
+            ),
+        );
+        source.assets.insert(
+            "/typed.js".into(),
+            (Bytes::from_static(b"1"), "text/javascript\n", None),
+        );
+        let (addr, _) = serve_source(source, Limits::APP);
+        for path in ["/policy.html", "/typed.js"] {
+            let mut stream = connect(addr);
+            send(&mut stream, "GET", path, host(addr));
+            let (status, headers, body) = read_response(&mut stream, false);
+            assert_eq!((status, body.as_slice()), (500, &b""[..]), "{path}");
+            assert!(!headers.contains_key(NONCE_HEADER.as_str()), "{path}");
+        }
+    }
+
+    /// hyper's limits are pinned: a head past either is refused with 431
+    /// instead of sitting in a buffer, and an ordinary one still passes.
+    #[test]
+    fn an_oversized_request_head_is_refused() {
+        let (addr, _) = serve(Limits::APP);
+        let start = format!(
+            "GET /index.html HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n",
+            addr.port()
+        );
+        // Exactly the limit and still unfinished: hyper has read every byte
+        // when it refuses, so the connection closes cleanly, not with a reset.
+        let filler = MAX_HEAD_BYTES - start.len() - "X-Fill: \r\n".len();
+        let long = format!("{start}X-Fill: {}\r\n", "a".repeat(filler));
+        let many: String = (0..MAX_HEADERS)
+            .map(|i| format!("X-Line-{i}: x\r\n"))
+            .collect();
+        let usual: String = (0..MAX_HEADERS / 2)
+            .map(|i| format!("X-Line-{i}: {}\r\n", "a".repeat(100)))
+            .collect();
+        for (request, expected) in [
+            (long, 431),
+            (format!("{start}{many}\r\n"), 431),
+            (format!("{start}{usual}\r\n"), 200),
+        ] {
+            let mut stream = connect(addr);
+            stream.write_all(request.as_bytes()).unwrap();
+            assert_eq!(
+                read_response(&mut stream, false).0,
+                expected,
+                "{} bytes",
+                request.len()
+            );
+        }
+    }
+
+    /// GET and HEAD carry no content. One that does is refused and its
+    /// connection closed, so no byte of that body is ever parsed as a request:
+    /// not after a Content-Length, and not through a Transfer-Encoding that
+    /// contradicts one.
+    #[test]
+    fn a_request_with_content_is_refused_and_nothing_after_it_is_read() {
+        let (addr, asked) = serve(Limits::APP);
+        let port = addr.port();
+        let smuggled = format!("GET /assets/app.css HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n");
+        for (framing, body) in [
+            (
+                format!("Content-Length: {}\r\n", smuggled.len()),
+                smuggled.clone(),
+            ),
+            (
+                format!(
+                    "Transfer-Encoding: chunked\r\nContent-Length: {}\r\n",
+                    smuggled.len() + 5
+                ),
+                format!("0\r\n\r\n{smuggled}"),
+            ),
+        ] {
+            let mut stream = connect(addr);
+            write!(
+                stream,
+                "GET /index.html HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{framing}\r\n{body}"
+            )
+            .unwrap();
+            let (status, headers, _) = read_response(&mut stream, false);
+            assert_eq!(status, 400, "{framing}");
+            assert_eq!(headers.get("connection").map(String::as_str), Some("close"));
+            let mut rest = Vec::new();
+            let _ = stream.read_to_end(&mut rest);
+            assert!(
+                rest.is_empty(),
+                "{framing}: more was answered: {}",
+                String::from_utf8_lossy(&rest)
+            );
+        }
+        assert!(
+            asked.lock().unwrap().is_empty(),
+            "a request with content was served"
+        );
     }
 
     #[test]
