@@ -332,6 +332,16 @@ pub(crate) fn start(
     nonce: String,
     limits: Limits,
 ) -> std::io::Result<SocketAddr> {
+    launch(source, addr, nonce, limits).map(|(local, _)| local)
+}
+
+/// `start`, handing back the running site as well (tests read its totals).
+fn launch(
+    source: impl AssetSource,
+    addr: SocketAddr,
+    nonce: String,
+    limits: Limits,
+) -> io::Result<(SocketAddr, Arc<Site>)> {
     if !addr.ip().is_loopback() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -358,8 +368,8 @@ pub(crate) fn start(
         origin_host: local.to_string(),
         stats: Stats::default(),
     });
-    tauri::async_runtime::spawn(accept_loop(listener, site, limits));
-    Ok(local)
+    tauri::async_runtime::spawn(accept_loop(listener, site.clone(), limits));
+    Ok((local, site))
 }
 
 async fn accept_loop(listener: std::net::TcpListener, site: Arc<Site>, limits: Limits) {
@@ -896,6 +906,9 @@ mod tests {
         assets: HashMap<String, (Bytes, &'static str, Option<&'static str>)>,
         /// Behaves like a dev build: no embedded set, every request reaches it.
         disk: bool,
+        /// Answers every path, as Tauri's resolver does with its fallbacks: a
+        /// request that reached it unchecked would show as a 200.
+        catch_all: bool,
         asked: Asked,
     }
 
@@ -910,7 +923,9 @@ mod tests {
 
         fn asset(&self, path: &str) -> Option<ServedAsset> {
             self.asked.lock().unwrap().push(path.to_string());
-            self.assets.get(path).map(|(bytes, mime, csp)| ServedAsset {
+            let fallback = self.catch_all.then_some("/index.html");
+            let found = self.assets.get(path).or_else(|| self.assets.get(fallback?));
+            found.map(|(bytes, mime, csp)| ServedAsset {
                 bytes: bytes.clone(),
                 mime_type: mime.to_string(),
                 csp: csp.map(str::to_string),
@@ -918,10 +933,24 @@ mod tests {
         }
     }
 
-    /// A response far larger than the socket buffers, shared by every server.
+    /// Larger than all the kernel can buffer between a server socket and a
+    /// client that does not read (both loopback buffers at their autotuning
+    /// ceiling), so a response of this size really waits on the client. A
+    /// fixed 16 MiB did not on a host whose ceilings add up to more.
     fn big() -> Bytes {
         static BIG: OnceLock<Bytes> = OnceLock::new();
-        BIG.get_or_init(|| Bytes::from(vec![7u8; 16 << 20])).clone()
+        BIG.get_or_init(|| {
+            let ceiling = |file: &str| {
+                std::fs::read_to_string(file)
+                    .ok()
+                    .and_then(|v| v.split_whitespace().nth(2)?.parse::<usize>().ok())
+                    .unwrap_or(32 << 20)
+            };
+            let buffered =
+                ceiling("/proc/sys/net/ipv4/tcp_wmem") + ceiling("/proc/sys/net/ipv4/tcp_rmem");
+            Bytes::from(vec![7u8; (2 * buffered).max(16 << 20)])
+        })
+        .clone()
     }
 
     fn site() -> MapSource {
@@ -1000,7 +1029,21 @@ mod tests {
             assert!(n > 0, "connection closed before a response head");
             raw.extend_from_slice(&buf[..n]);
         };
-        let text = String::from_utf8(raw[..end].to_vec()).unwrap();
+        let (status, headers, length) = parse_head(&raw[..end]);
+        let mut body = raw[end + 4..].to_vec();
+        if !head {
+            while body.len() < length {
+                let n = stream.read(&mut buf).expect("body cut short");
+                assert!(n > 0, "connection closed mid-body");
+                body.extend_from_slice(&buf[..n]);
+            }
+        }
+        (status, headers, body)
+    }
+
+    /// Status, headers (names lowercased) and Content-Length of a response head.
+    fn parse_head(head: &[u8]) -> (u16, HashMap<String, String>, usize) {
+        let text = std::str::from_utf8(head).unwrap();
         let mut lines = text.split("\r\n");
         let status = lines
             .next()
@@ -1014,18 +1057,25 @@ mod tests {
             .filter_map(|l| l.split_once(':'))
             .map(|(k, v)| (k.to_ascii_lowercase(), v.trim().to_string()))
             .collect();
-        let mut body = raw[end + 4..].to_vec();
-        let length: usize = headers
+        let length = headers
             .get("content-length")
             .map_or(0, |v| v.parse().unwrap());
-        if !head {
-            while body.len() < length {
-                let n = stream.read(&mut buf).expect("body cut short");
-                assert!(n > 0, "connection closed mid-body");
-                body.extend_from_slice(&buf[..n]);
-            }
+        (status, headers, length)
+    }
+
+    /// Every response a connection gets until the server closes it (or the
+    /// read times out, when it does not).
+    fn responses_until_close(stream: &mut TcpStream) -> Vec<(u16, HashMap<String, String>)> {
+        let mut raw = Vec::new();
+        let _ = stream.read_to_end(&mut raw);
+        let mut rest = raw.as_slice();
+        let mut responses = Vec::new();
+        while let Some(end) = rest.windows(4).position(|w| w == b"\r\n\r\n") {
+            let (status, headers, length) = parse_head(&rest[..end]);
+            responses.push((status, headers));
+            rest = &rest[(end + 4 + length).min(rest.len())..];
         }
-        (status, headers, body)
+        responses
     }
 
     /// The defect this module exists for. Open a burst of keep-alive
@@ -1173,12 +1223,23 @@ mod tests {
         let (status, headers, body) = read_response(&mut stream, true);
         assert_eq!((status, headers["content-length"].as_str()), (200, "13"));
         assert!(body.is_empty(), "HEAD sent a body");
-        for method in ["POST", "PUT", "DELETE", "OPTIONS"] {
+        // An allowlist: every other method is refused, including the ones a
+        // denylist of the usual writes would miss.
+        let origin = format!("127.0.0.1:{}", addr.port());
+        for (method, target) in [
+            ("POST", "/index.html"),
+            ("PUT", "/index.html"),
+            ("DELETE", "/index.html"),
+            ("OPTIONS", "/index.html"),
+            ("PATCH", "/index.html"),
+            ("TRACE", "/index.html"),
+            ("PROPFIND", "/index.html"),
+            ("CONNECT", origin.as_str()),
+        ] {
             let mut stream = connect(addr);
             write!(
                 stream,
-                "{method} /index.html HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nContent-Length: 0\r\n\r\n",
-                addr.port()
+                "{method} {target} HTTP/1.1\r\nHost: {origin}\r\nContent-Length: 0\r\n\r\n"
             )
             .unwrap();
             let (status, headers, _) = read_response(&mut stream, false);
@@ -1189,7 +1250,18 @@ mod tests {
 
     #[test]
     fn paths_cannot_leave_the_asset_root() {
-        let (addr, asked) = serve(Limits::APP);
+        // Both resolvers answer anything that reaches them: the embedded one
+        // with `index.html`, the dev build's from disk (modelled by a
+        // catch-all). So a climbing path that got through would be a 200.
+        let mut disk = site();
+        disk.disk = true;
+        disk.catch_all = true;
+        for (addr, asked) in [serve(Limits::APP), serve_source(disk, Limits::APP)] {
+            refuses_climbing_paths(addr, &asked);
+        }
+    }
+
+    fn refuses_climbing_paths(addr: SocketAddr, asked: &Asked) {
         for path in [
             "/../etc/passwd",
             "/assets/../../etc/passwd",
@@ -1247,7 +1319,13 @@ mod tests {
 
     #[test]
     fn a_client_that_leaves_mid_response_takes_down_nothing() {
-        let (addr, _) = serve(Limits::APP);
+        let (addr, site) = launch(
+            site(),
+            "127.0.0.1:0".parse().unwrap(),
+            NONCE.into(),
+            Limits::APP,
+        )
+        .unwrap();
         for _ in 0..8 {
             let mut stream = connect(addr);
             send(&mut stream, "GET", "/big.bin", host(addr));
@@ -1255,6 +1333,15 @@ mod tests {
             let _ = stream.read(&mut first).unwrap();
             // Dropped with most of the body unread: the server's write fails.
         }
+        // Each of those connection tasks ran to its end. One that panicked on
+        // the failed write (the old plugin's `expect`) would stop the count
+        // short while every later connection is still served.
+        let ended = || site.stats.ended.load(Ordering::Relaxed);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while ended() < 8 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(ended(), 8, "a connection task did not reach its end");
         let mut stream = connect(addr);
         send(&mut stream, "GET", "/index.html", host(addr));
         assert_eq!(read_response(&mut stream, false).0, 200);
@@ -1360,8 +1447,8 @@ mod tests {
         }
     }
 
-    /// The write side of a slowloris: ask for an asset far larger than the
-    /// socket buffers and never read it. With one slot, the next connection is
+    /// The write side of a slowloris: ask for an asset larger than the socket
+    /// buffers can hold (`big`) and never read it. With one slot, the next connection is
     /// served only if the stalled one gives its slot back.
     #[test]
     fn a_client_that_stops_reading_gives_its_slot_back() {
@@ -1648,6 +1735,49 @@ mod tests {
             asked.lock().unwrap().is_empty(),
             "a request with content was served"
         );
+    }
+
+    /// The startup probe and this server agree: the probe's request
+    /// (HTTP/1.0, `Host: 127.0.0.1:<port>`) gets the nonce back, and another
+    /// nonce is still told apart.
+    #[test]
+    fn the_startup_probe_recognises_this_server() {
+        let (addr, _) = serve(Limits::APP);
+        let probe = crate::localhost_security::wait_for_owned_server;
+        assert_eq!(probe(addr.port(), NONCE), Ok(()));
+        assert!(probe(addr.port(), "another-nonce").is_err());
+    }
+
+    /// A port that is taken is the caller's error to report: never a quiet
+    /// bind somewhere else, which would leave the origin to its squatter.
+    #[test]
+    fn a_taken_port_is_reported_to_the_caller() {
+        let squatter = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let taken = squatter.local_addr().unwrap();
+        let error = start(site(), taken, NONCE.into(), Limits::APP).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AddrInUse);
+    }
+
+    /// Every request on a connection is checked, not only the first: a
+    /// pipelined request naming another host is refused, and nothing queued
+    /// behind it is answered.
+    #[test]
+    fn a_pipelined_request_for_another_host_is_refused() {
+        let (addr, asked) = serve(Limits::APP);
+        let port = addr.port();
+        let mut stream = connect(addr);
+        write!(
+            stream,
+            "GET /index.html HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n\
+             GET /assets/app.css HTTP/1.1\r\nHost: evil.example:{port}\r\n\r\n\
+             GET /assets/app.css HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"
+        )
+        .unwrap();
+        let responses = responses_until_close(&mut stream);
+        let statuses: Vec<u16> = responses.iter().map(|(status, _)| *status).collect();
+        assert_eq!(statuses, [200, 421]);
+        assert!(!responses[1].1.contains_key(NONCE_HEADER.as_str()));
+        assert_eq!(asked.lock().unwrap().as_slice(), ["/index.html"]);
     }
 
     #[test]
