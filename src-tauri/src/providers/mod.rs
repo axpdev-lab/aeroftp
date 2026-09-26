@@ -810,8 +810,9 @@ pub trait StorageProvider: Send + Sync {
     /// destination must override this, or every replace onto an existing
     /// file fails: SFTP, WebDAV, the copy-based backends (S3, B2, Swift,
     /// Azure, Cloudinary, OpenDrive), FTP and ImageKit overwrite in one server
-    /// step, and MEGA, Filen, FileLu and Google Drive, which have no such step,
-    /// set the old item aside first (see [`set_aside_name`]).
+    /// step, Google Drive uploads the new content as a revision of the file
+    /// there, and MEGA, Filen and FileLu, which have neither, set the old item
+    /// aside first (see [`set_aside_name`]).
     ///
     /// A replace puts a file in place of a file or a folder in place of a
     /// folder. Across the two (see [`refuse_replace_across_types`]) it is
@@ -833,9 +834,9 @@ pub trait StorageProvider: Send + Sync {
     /// backend that has actually measured its own ground says otherwise:
     /// `SftpProvider`, which asks the server whether it offers
     /// `posix-rename@openssh.com`; the backends whose replace sets the old
-    /// item aside (MEGA, Filen, FileLu, Google Drive) or has none (Twake);
-    /// and ImageKit and OpenDrive, which overwrite only across folders while
-    /// every caller stages its temporary in the target's own folder.
+    /// item aside (MEGA, Filen, FileLu) or has none (Twake); and ImageKit and
+    /// OpenDrive, which overwrite only across folders while every caller
+    /// stages its temporary in the target's own folder.
     ///
     /// [`replace`]: StorageProvider::replace
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {

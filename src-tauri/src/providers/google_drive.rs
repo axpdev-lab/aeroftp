@@ -673,6 +673,45 @@ impl GoogleDriveProvider {
         })
     }
 
+    /// A folder replace: rename the folder at `to` aside, move the new one
+    /// in, and only then trash the old one. If the move fails the old one
+    /// gets its name back; if the trash fails the replace is done and the
+    /// leftover is reported.
+    async fn replace_folder_by_setting_aside(
+        &mut self,
+        from: &str,
+        to: &str,
+        place: &RenamePlace,
+        occupant: &DriveFile,
+    ) -> Result<(), ProviderError> {
+        let aside = super::set_aside_name(&place.new_name);
+        let aside_path = match to.trim_end_matches('/').rsplit_once('/') {
+            Some((parent, _)) => format!("{parent}/{aside}"),
+            None => aside.clone(),
+        };
+        self.patch_drive_file(&occupant.id, &serde_json::json!({ "name": aside }), None)
+            .await?;
+        if let Err(e) = self.patch_into_place(place).await {
+            let restored = self
+                .patch_drive_file(
+                    &occupant.id,
+                    &serde_json::json!({ "name": occupant.name }),
+                    None,
+                )
+                .await;
+            return Err(super::set_aside_move_failed(to, &aside_path, e, restored));
+        }
+        self.forget_folder(from);
+        self.forget_folder(to);
+        if let Err(e) = self
+            .patch_drive_file(&occupant.id, &serde_json::json!({ "trashed": true }), None)
+            .await
+        {
+            super::report_set_aside_leftover(to, &aside_path, &e);
+        }
+        Ok(())
+    }
+
     /// One PATCH that gives the file its new name and, for a move, its new
     /// parent: Drive does both in the same request.
     async fn patch_into_place(&self, place: &RenamePlace) -> Result<(), ProviderError> {
@@ -1976,52 +2015,66 @@ impl StorageProvider for GoogleDriveProvider {
         Ok(())
     }
 
-    /// Drive has no move that overwrites and keeps two items with one name
-    /// side by side, so a replace renames the item at `to` aside, moves
-    /// `from` in, and only then trashes the one set aside; if the move fails
-    /// the item set aside gets its name back.
+    /// A file onto a file: the new content becomes a new revision of the
+    /// file at `to` (an upload by its id, the way `upload` updates an existing
+    /// file), then the staged source goes to the trash. The name is never
+    /// empty and never doubled, so this is the atomic replace the edit and
+    /// marker paths ask for. Drive has no server-side "copy this content into
+    /// that file", so the bytes pass through a local temporary file.
+    ///
+    /// A folder onto a folder has no content to swap: the one at `to` is
+    /// renamed aside, the new one moved in, and only then is the old one
+    /// trashed; if the move fails it gets its name back. Across types it is
+    /// refused, and a Google Workspace document, whose content is an export,
+    /// cannot be replaced this way either.
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let place = self.rename_place(from, to).await?;
         let Some(occupant) = place.occupant.clone() else {
             return self.rename(from, to).await;
         };
-        super::refuse_replace_across_types(
-            to,
-            place.mime_type == DRIVE_FOLDER_MIME,
-            is_drive_folder(&occupant),
-        )?;
-        let aside = super::set_aside_name(&place.new_name);
-        let aside_path = match to.trim_end_matches('/').rsplit_once('/') {
-            Some((parent, _)) => format!("{parent}/{aside}"),
-            None => aside.clone(),
-        };
-        self.patch_drive_file(&occupant.id, &serde_json::json!({ "name": aside }), None)
-            .await?;
-        if let Err(e) = self.patch_into_place(&place).await {
-            let restored = self
-                .patch_drive_file(
-                    &occupant.id,
-                    &serde_json::json!({ "name": occupant.name }),
-                    None,
-                )
+        let source_is_dir = place.mime_type == DRIVE_FOLDER_MIME;
+        super::refuse_replace_across_types(to, source_is_dir, is_drive_folder(&occupant))?;
+        if source_is_dir {
+            return self
+                .replace_folder_by_setting_aside(from, to, &place, &occupant)
                 .await;
-            return Err(super::set_aside_move_failed(to, &aside_path, e, restored));
         }
-        self.forget_folder(from);
-        self.forget_folder(to);
+        // Folders are out by now, so any other Google type is a Workspace
+        // document (or a shortcut, form or site), not stored bytes.
+        let google_type = |mime: &str| mime.starts_with("application/vnd.google-apps.");
+        if google_type(&place.mime_type) || google_type(&occupant.mime_type) {
+            return Err(ProviderError::NotSupported(format!(
+                "cannot replace {to} with {from}: a Google Workspace document has no content \
+                 of its own to put in place of another file's"
+            )));
+        }
+        let staged = tempfile::NamedTempFile::new().map_err(ProviderError::IoError)?;
+        let staged_path = staged.path().to_string_lossy().to_string();
+        self.download(from, &staged_path, None).await?;
+        // `upload` finds the file at `to` by name and sends the content as a
+        // new revision of it, by id.
+        self.upload(&staged_path, to, None).await?;
         if let Err(e) = self
-            .patch_drive_file(&occupant.id, &serde_json::json!({ "trashed": true }), None)
+            .patch_drive_file(
+                &place.file_id,
+                &serde_json::json!({ "trashed": true }),
+                None,
+            )
             .await
         {
-            super::report_set_aside_leftover(to, &aside_path, &e);
+            tracing::warn!(
+                "replaced the content of {to}, but trashing the staged {from} failed: {e}; \
+                 delete it by hand"
+            );
         }
+        self.forget_folder(from);
         Ok(())
     }
 
-    /// A replace leaves `to` empty between setting the old item aside and
-    /// moving the new one in.
+    /// Yes for files: a replace uploads the new content as a revision of the
+    /// file already there, in one request.
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
-        Ok(false)
+        Ok(true)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -3171,8 +3224,9 @@ mod tests {
 
     /// A Drive API double holding `tree` as `(id, name, parent id)`, a name
     /// without a dot being a folder. It answers the `name='..' and '..' in
-    /// parents` searches of `find_by_name` and accepts every PATCH. Returns a
-    /// provider pointed at it and every PATCH as `id body`.
+    /// parents` searches of `find_by_name`, a download (`alt=media`) of `id`
+    /// with `content of id`, and accepts every PATCH, uploads included.
+    /// Returns a provider pointed at it and every PATCH as `id body`.
     async fn provider_on_drive(
         tree: &'static [(&'static str, &'static str, &'static str)],
     ) -> (
@@ -3182,6 +3236,7 @@ mod tests {
         use std::sync::{Arc, Mutex};
         let patches: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&patches);
+        use axum::response::IntoResponse;
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let seen = Arc::clone(&seen);
@@ -3196,7 +3251,11 @@ mod tests {
                         seen.lock()
                             .unwrap()
                             .push(format!("{id} {}", String::from_utf8_lossy(&body)));
-                        return axum::Json(serde_json::json!({ "id": id }));
+                        return axum::Json(serde_json::json!({ "id": id })).into_response();
+                    }
+                    if url.query_pairs().any(|(k, v)| k == "alt" && v == "media") {
+                        let id = url.path().rsplit('/').next().unwrap_or("").to_string();
+                        return format!("content of {id}").into_response();
                     }
                     let q = url
                         .query_pairs()
@@ -3226,7 +3285,7 @@ mod tests {
                         }
                         None => Vec::new(),
                     };
-                    axum::Json(serde_json::json!({ "files": files }))
+                    axum::Json(serde_json::json!({ "files": files })).into_response()
                 }
             }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -3270,23 +3329,22 @@ mod tests {
     }
 
     /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
-    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
-    /// forwards it to `rename`, which refuses an occupied destination. The
-    /// file there is renamed aside, the new one takes its name, and only then
-    /// is the old one trashed.
+    /// `remote_edit`, the AeroCrypt marker publish). Setting the old file
+    /// aside left a moment with no file at the name, so these callers refused
+    /// on Drive. Drive can do it in one step: the new content becomes a new
+    /// revision of the file already there (an upload by its id), and the
+    /// staged file is then trashed. No rename, nothing set aside.
     #[tokio::test]
-    async fn replace_sets_the_old_file_aside_renames_the_new_one_in_then_trashes_it() {
+    async fn replace_uploads_the_new_content_as_a_revision_of_the_old_file() {
         let (mut p, patches) =
             provider_on_drive(&[("OLD", "a.txt", "root"), ("NEW", "a.txt.tmp", "root")]).await;
+        assert!(p.supports_atomic_replace().await.unwrap());
         p.replace("/a.txt.tmp", "/a.txt").await.expect("replace");
         let patches = patches.lock().unwrap().clone();
-        assert_eq!(patches.len(), 3, "{patches:?}");
-        assert!(
-            patches[0].starts_with(r#"OLD {"name":".a.txt.aeroftp-replaced-"#),
-            "{patches:?}"
-        );
-        assert_eq!(patches[1], r#"NEW {"name":"a.txt"}"#);
-        assert_eq!(patches[2], r#"OLD {"trashed":true}"#);
+        assert_eq!(patches.len(), 2, "{patches:?}");
+        assert!(patches[0].starts_with("OLD "), "{patches:?}");
+        assert!(patches[0].contains("content of NEW"), "{patches:?}");
+        assert_eq!(patches[1], r#"NEW {"trashed":true}"#);
     }
 
     /// A replace puts one file in place of another. Onto a folder it set the
