@@ -2250,6 +2250,117 @@ impl ZohoWorkdriveProvider {
         Ok(files.into_iter().find(|f| f.attributes.name == name))
     }
 
+    /// Move `from` into the folder of `to` and/or rename it: two calls when
+    /// both change. The folder cache is `rename`'s to clean up.
+    async fn move_then_rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_path_is_absolute = from.starts_with('/');
+        let from_path = from.trim_matches('/');
+        let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
+            (&from_path[..pos], &from_path[pos + 1..])
+        } else {
+            ("", from_path)
+        };
+
+        let from_parent_id = self
+            .parent_folder_id(from_path_is_absolute, from_parent_path)
+            .await?;
+
+        let file = self
+            .find_by_name(file_name, &from_parent_id)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+
+        let to_path_is_absolute = to.starts_with('/');
+        let to_path = to.trim_matches('/');
+        let (to_parent_path, new_name) = if let Some(pos) = to_path.rfind('/') {
+            (&to_path[..pos], &to_path[pos + 1..])
+        } else {
+            ("", to_path)
+        };
+
+        let to_parent_id = self
+            .parent_folder_id(to_path_is_absolute, to_parent_path)
+            .await?;
+
+        let is_cross_folder = from_parent_id != to_parent_id;
+        let is_rename = file_name != new_name;
+
+        // Step 1: Move to new folder if cross-folder operation
+        if is_cross_folder {
+            let move_body = move_request_body(&file.id, &to_parent_id);
+            let url = format!("{}/files", self.api_base());
+            let request = self
+                .client
+                .patch(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .header(
+                    CONTENT_TYPE,
+                    HeaderValue::from_static("application/vnd.api+json"),
+                )
+                .body(move_body.to_string())
+                .build()
+                .map_err(|e| {
+                    ProviderError::NetworkError(format!("Failed to build request: {}", e))
+                })?;
+
+            let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!(
+                    "Move failed ({}): {}",
+                    status,
+                    sanitize_api_error(&text)
+                )));
+            }
+            info!("Moved {} to folder {}", from, to_parent_path);
+        }
+
+        // Step 2: Rename if the name changed
+        if is_rename {
+            let rename_body = serde_json::json!({
+                "data": {
+                    "attributes": {
+                        "name": new_name
+                    },
+                    "type": "files"
+                }
+            });
+
+            let url = format!("{}/files/{}", self.api_base(), file.id);
+            let request = self
+                .client
+                .patch(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .header(
+                    CONTENT_TYPE,
+                    HeaderValue::from_static("application/vnd.api+json"),
+                )
+                .body(rename_body.to_string())
+                .build()
+                .map_err(|e| {
+                    ProviderError::NetworkError(format!("Failed to build request: {}", e))
+                })?;
+
+            let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !resp.status().is_success() {
+                return Err(ProviderError::Other(format!(
+                    "Rename failed: {}",
+                    resp.status()
+                )));
+            }
+        }
+
+        info!("Renamed {} to {}", from, to);
+        Ok(())
+    }
+
     /// Drop the cached ids of the folder at `path` (absolute, or relative to
     /// the current folder) and of every folder under it. A rename, move or
     /// delete leaves them pointing at a folder that is no longer there: after
@@ -2948,116 +3059,15 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let from_path_is_absolute = from.starts_with('/');
-        let from_path = from.trim_matches('/');
-        let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
-            (&from_path[..pos], &from_path[pos + 1..])
-        } else {
-            ("", from_path)
-        };
-
-        let from_parent_id = self
-            .parent_folder_id(from_path_is_absolute, from_parent_path)
-            .await?;
-
-        let file = self
-            .find_by_name(file_name, &from_parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
-
-        let to_path_is_absolute = to.starts_with('/');
-        let to_path = to.trim_matches('/');
-        let (to_parent_path, new_name) = if let Some(pos) = to_path.rfind('/') {
-            (&to_path[..pos], &to_path[pos + 1..])
-        } else {
-            ("", to_path)
-        };
-
-        let to_parent_id = self
-            .parent_folder_id(to_path_is_absolute, to_parent_path)
-            .await?;
-
-        let is_cross_folder = from_parent_id != to_parent_id;
-        let is_rename = file_name != new_name;
-
-        // Step 1: Move to new folder if cross-folder operation
-        if is_cross_folder {
-            let move_body = move_request_body(&file.id, &to_parent_id);
-            let url = format!("{}/files", self.api_base());
-            let request = self
-                .client
-                .patch(&url)
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .header(
-                    CONTENT_TYPE,
-                    HeaderValue::from_static("application/vnd.api+json"),
-                )
-                .body(move_body.to_string())
-                .build()
-                .map_err(|e| {
-                    ProviderError::NetworkError(format!("Failed to build request: {}", e))
-                })?;
-
-            let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let text = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Move failed ({}): {}",
-                    status,
-                    sanitize_api_error(&text)
-                )));
-            }
-            info!("Moved {} to folder {}", from, to_parent_path);
-        }
-
-        // Step 2: Rename if the name changed
-        if is_rename {
-            let rename_body = serde_json::json!({
-                "data": {
-                    "attributes": {
-                        "name": new_name
-                    },
-                    "type": "files"
-                }
-            });
-
-            let url = format!("{}/files/{}", self.api_base(), file.id);
-            let request = self
-                .client
-                .patch(&url)
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .header(
-                    CONTENT_TYPE,
-                    HeaderValue::from_static("application/vnd.api+json"),
-                )
-                .body(rename_body.to_string())
-                .build()
-                .map_err(|e| {
-                    ProviderError::NetworkError(format!("Failed to build request: {}", e))
-                })?;
-
-            let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !resp.status().is_success() {
-                // A move that went through before has changed paths.
-                self.forget_folder(from);
-                return Err(ProviderError::Other(format!(
-                    "Rename failed: {}",
-                    resp.status()
-                )));
-            }
-        }
-
+        let outcome = self.move_then_rename(from, to).await;
+        // After a failure too, whichever step and however it failed (an HTTP
+        // status, or a `?` on the auth header, the request or the transport):
+        // a move that went through has changed paths, and a cache entry that
+        // is merely stale costs one lookup, where a wrong one deletes the
+        // wrong folder's files.
         self.forget_folder(from);
         self.forget_folder(to);
-        info!("Renamed {} to {}", from, to);
-        Ok(())
+        outcome
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -3885,6 +3895,54 @@ mod tests {
         assert!(
             p.folder_cache.contains_key("/ab"),
             "a sibling sharing the prefix stays"
+        );
+    }
+
+    /// A move under a new name is two calls. When the move went through and
+    /// the rename then failed before any answer (the connection dropped), the
+    /// error returned past the cache cleanup, which ran only on an HTTP error
+    /// status: `/a` still resolved to the folder now in `/d`.
+    #[tokio::test]
+    async fn a_move_whose_rename_fails_in_transport_still_forgets_the_cache() {
+        let listing = r#"{"data":[{"id":"A","attributes":{"name":"a","type":"folder"}}]}"#;
+        let app = axum::Router::new()
+            .route(
+                "/workdrive/api/v1/files/ROOT/files",
+                axum::routing::get(move || async move { listing }),
+            )
+            .route(
+                "/workdrive/api/v1/files",
+                axum::routing::patch(|| async { "{}" }),
+            )
+            .route(
+                // A handler that panics drops the connection without an
+                // answer: a transport failure, as when the network goes.
+                "/workdrive/api/v1/files/A",
+                axum::routing::patch(|| async {
+                    if std::hint::black_box(true) {
+                        panic!("connection dropped");
+                    }
+                    ""
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        for (path, id) in [("/", "ROOT"), ("/a", "A"), ("/a/sub", "SUB"), ("/d", "D")] {
+            p.folder_cache.insert(path.to_string(), id.to_string());
+        }
+        p.current_folder_id = "ROOT".to_string();
+        let outcome = p.rename("/a", "/d/b").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(!p.folder_cache.contains_key("/a"), "{:?}", p.folder_cache);
+        assert!(
+            !p.folder_cache.contains_key("/a/sub"),
+            "{:?}",
+            p.folder_cache
         );
     }
 
