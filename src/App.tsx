@@ -16189,7 +16189,10 @@ const App: React.FC = () => {
                   // engine still never sees these: the overlay keeps
                   // `supports_checksum()` false, so no comparison against a
                   // local plaintext hash can be built on them.
-                  const map = await invoke<Record<string, string>>('provider_checksum', { path: propertiesDialog.path });
+                  // The algorithm is passed because FTP computes the digest on
+                  // request and must select it with OPTS HASH first; every
+                  // other backend returns what it stores regardless.
+                  const map = await invoke<Record<string, string>>('provider_checksum', { path: propertiesDialog.path, algorithm });
                   setPropertiesDialog(prev => {
                     if (!prev) return null;
                     const next = { ...prev.checksum, calculating: false };
