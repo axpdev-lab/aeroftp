@@ -1,15 +1,20 @@
-//! Structural guard for the path resolution of Google Drive and Zoho
-//! WorkDrive.
+//! Structural guard for the path resolution of Google Drive, Zoho WorkDrive
+//! and OneDrive.
 //!
-//! Both providers turn a path into a folder id in many places (25 in Drive,
+//! These providers turn a path into a folder id in many places (25 in Drive,
 //! 15 in Zoho). Until 2026-09-25 every site carried its own copy of the rule,
 //! and the copies had drifted: a one-segment path went to the current folder
 //! even with a leading slash, the Drive downloads sent it to the root, and a
 //! longer relative path always went to the root. The rule now lives in one
-//! `parent_folder_id` per provider. No HTTP double can drive these providers
-//! (their token comes from the OAuth manager), so this test is what keeps the
-//! sites from diverging again: it reads the production source and fails when
-//! a path is resolved outside the functions allowed to do it.
+//! `parent_folder_id` per provider (OneDrive: `parent_of_absolute`). The
+//! sites are too many to drive one by one through a double, so this test is
+//! what keeps them from diverging again: it reads the production source and
+//! fails when a path is resolved outside the functions allowed to do it.
+//!
+//! It matches what a site has to contain, not how one is usually written:
+//! `.resolve_path(` (rustfmt breaks a long call as `self\n    .resolve_path(`),
+//! `current_folder_id` in any form (`&self.current_folder_id` borrows it
+//! without `.clone()`), and `"root"` in any form (`"root".into()`).
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -24,19 +29,23 @@ fn production(source: &str) -> &str {
         .expect("the source has a test module to cut at")
 }
 
-/// The name of the function a line opens, if it opens one.
+/// The name of the function or struct a line opens, if it opens one: a
+/// struct's fields belong to the struct, not to the function above it.
 fn opened_fn(line: &str) -> Option<&str> {
     let mut rest = line.trim_start();
     for prefix in ["pub(crate) ", "pub(super) ", "pub ", "async "] {
         rest = rest.strip_prefix(prefix).unwrap_or(rest);
     }
     let rest = rest.strip_prefix("async ").unwrap_or(rest);
-    let name = rest.strip_prefix("fn ")?;
+    let name = rest
+        .strip_prefix("fn ")
+        .or_else(|| rest.strip_prefix("struct "))?;
     let end = name.find(|c: char| !(c.is_alphanumeric() || c == '_'))?;
     Some(&name[..end])
 }
 
-/// Every `(line, function)` of `source` whose line contains `needle`.
+/// Every `(line, function)` of `source` whose code (comments aside)
+/// contains `needle`.
 fn sites<'a>(source: &'a str, needle: &str) -> Vec<(usize, &'a str)> {
     let mut current = "";
     let mut found = Vec::new();
@@ -44,7 +53,7 @@ fn sites<'a>(source: &'a str, needle: &str) -> Vec<(usize, &'a str)> {
         if let Some(name) = opened_fn(line) {
             current = name;
         }
-        if line.contains(needle) {
+        if !line.trim_start().starts_with("//") && line.contains(needle) {
             found.push((index + 1, current));
         }
     }
@@ -75,19 +84,26 @@ fn google_drive_resolves_every_path_through_parent_folder_id() {
     assert_confined(
         "google_drive.rs",
         source,
-        "self.resolve_path(",
+        ".resolve_path(",
         &["parent_folder_id", "cd"],
     );
     assert_confined(
         "google_drive.rs",
         source,
-        "self.current_folder_id.clone()",
-        &["parent_folder_id", "list"],
+        "current_folder_id",
+        &[
+            "GoogleDriveProvider",
+            "new",
+            "connect",
+            "parent_folder_id",
+            "list",
+            "cd",
+        ],
     );
     assert_confined(
         "google_drive.rs",
         source,
-        "\"root\".to_string()",
+        "\"root\"",
         &["new", "connect", "resolve_path"],
     );
 }
@@ -98,14 +114,25 @@ fn zoho_workdrive_resolves_every_path_through_parent_folder_id() {
     assert_confined(
         "zoho_workdrive.rs",
         source,
-        "self.resolve_path(",
+        ".resolve_path(",
         &["parent_folder_id", "cd"],
     );
     assert_confined(
         "zoho_workdrive.rs",
         source,
-        "self.current_folder_id.clone()",
-        &["parent_folder_id", "list", "resolve_path"],
+        "current_folder_id",
+        &[
+            "ZohoWorkdriveProvider",
+            "new",
+            "rclone_root_folder_id_from_discovery",
+            "rclone_root_folder_id_for_export",
+            "discover_team",
+            "discover_privatespace",
+            "parent_folder_id",
+            "resolve_path",
+            "list",
+            "cd",
+        ],
     );
     assert_confined(
         "zoho_workdrive.rs",
@@ -113,6 +140,58 @@ fn zoho_workdrive_resolves_every_path_through_parent_folder_id() {
         ".get(\"/\")",
         &["resolve_path"],
     );
+}
+
+/// OneDrive resolves at each site, and the parent of a path goes through
+/// `parent_of_absolute`: the current folder stands in for a parent only for
+/// a relative one-segment path, which `list` and `mkdir` handle and `pwd`
+/// reports. Taking it as the parent anywhere else is the bug `rename` had
+/// (a move of `/x` into the current folder read as a rename in place) and
+/// `server_side_copy` had (a copy to `/x` landed in the current folder).
+#[test]
+fn onedrive_takes_the_current_folder_as_a_parent_only_where_allowed() {
+    let source = include_str!("onedrive.rs");
+    assert_confined(
+        "onedrive.rs",
+        source,
+        "current_path.clone()",
+        &["list", "pwd", "mkdir"],
+    );
+}
+
+/// The forms that slipped past the literal needles the guard searched for
+/// until 2026-09-26: a call rustfmt breaks after `self`, the field borrowed
+/// instead of cloned, the root id built with `.into()`. The needles now in
+/// use see each of them, in the function that holds it, and a comment or a
+/// struct field is not a site.
+#[test]
+fn the_guard_sees_the_forms_the_literal_needles_missed() {
+    let source = "fn allowed() {\n    self.resolve_path(path)\n}\n\
+                  struct Provider {\n    current_folder_id: String,\n}\n\
+                  fn stray() {\n    let id = self\n        .resolve_path(&a_long_path)\n        .await?;\n\
+                  \x20   let here = &self.current_folder_id;\n\
+                  \x20   let root: String = \"root\".into();\n\
+                  \x20   // self.resolve_path( in a comment\n}\n\
+                  \n#[cfg(test)]\nmod tests {\n}\n";
+    let found_in = |needle: &str| -> Vec<&str> {
+        sites(production(source), needle)
+            .into_iter()
+            .map(|(_, function)| function)
+            .collect()
+    };
+    assert_eq!(found_in(".resolve_path("), ["allowed", "stray"]);
+    assert_eq!(found_in("current_folder_id"), ["Provider", "stray"]);
+    assert_eq!(found_in("\"root\""), ["stray"]);
+    for missed in [
+        "self.resolve_path(",
+        "self.current_folder_id.clone()",
+        "\"root\".to_string()",
+    ] {
+        assert!(
+            !found_in(missed).contains(&"stray"),
+            "{missed} was expected to miss the stray forms"
+        );
+    }
 }
 
 fn entry_names(entries: Vec<super::RemoteEntry>) -> Vec<String> {

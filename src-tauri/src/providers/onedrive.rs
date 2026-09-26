@@ -1752,20 +1752,7 @@ impl StorageProvider for OneDriveProvider {
         let from_id = self.resolve_path(&from_path).await?;
 
         // Resolve destination parent and name
-        let to_path = to.trim_matches('/');
-        let (to_parent, to_name) = if let Some(pos) = to_path.rfind('/') {
-            (&to_path[..pos], &to_path[pos + 1..])
-        } else {
-            ("", to_path)
-        };
-
-        let to_parent_path = if to_parent.is_empty() {
-            self.current_path.clone()
-        } else if to_parent.starts_with('/') {
-            to_parent.to_string()
-        } else {
-            format!("{}/{}", self.current_path.trim_end_matches('/'), to_parent)
-        };
+        let (to_parent_path, to_name) = copy_destination(&self.current_path, to);
 
         let to_parent_id = self.resolve_path(&to_parent_path).await?;
 
@@ -2534,6 +2521,25 @@ fn parent_of_absolute(path: &str) -> String {
         .unwrap_or_else(|| "/".to_string())
 }
 
+/// The folder and name a copy to `to` lands at: an absolute path from the
+/// root, a relative one from `current_path`. The copy trimmed the leading
+/// slash first, so after `cd /docs` a copy to `/x` landed in `/docs/x` and one
+/// to `/d/x` in `/docs/d/x`.
+fn copy_destination(current_path: &str, to: &str) -> (String, String) {
+    let absolute = if to.starts_with('/') {
+        to.to_string()
+    } else {
+        format!("{}/{to}", current_path.trim_end_matches('/'))
+    };
+    let name = absolute
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    (parent_of_absolute(&absolute), name)
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -2622,6 +2628,21 @@ mod tests {
         }
     }
     use super::*;
+
+    /// After `cd /docs`, a copy to `/x` must land at the root and one to `x`
+    /// in `/docs`; the copy trimmed the slash and sent both to `/docs`.
+    #[test]
+    fn a_copy_destination_resolves_from_the_root_or_the_current_folder() {
+        let at = |to| copy_destination("/docs", to);
+        assert_eq!(at("/x"), ("/".to_string(), "x".to_string()));
+        assert_eq!(at("/d/x"), ("/d".to_string(), "x".to_string()));
+        assert_eq!(at("x"), ("/docs".to_string(), "x".to_string()));
+        assert_eq!(at("d/x"), ("/docs/d".to_string(), "x".to_string()));
+        assert_eq!(
+            copy_destination("/", "x"),
+            ("/".to_string(), "x".to_string())
+        );
+    }
 
     #[test]
     fn the_parent_of_a_one_segment_path_is_the_root() {
