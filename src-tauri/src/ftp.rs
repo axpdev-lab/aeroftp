@@ -354,6 +354,18 @@ impl FtpManager {
     /// take a lost connection for "nothing there".
     pub async fn exists(&mut self, path: &str) -> Result<bool> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
+        // SIZE is defined on the binary form of a file: vsftpd refuses it
+        // with 550 in ASCII mode even for a file that is there, and that
+        // refusal followed by CWD's 550 on a file read as "nothing there".
+        // Every transfer here sets binary itself, so this changes nothing
+        // else; a server that refuses binary is an error, not a "no".
+        tokio::time::timeout(
+            self.timeouts.command_timeout,
+            stream.transfer_type(FileType::Binary),
+        )
+        .await
+        .context("TYPE timeout")?
+        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
         match tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
             .await
             .context("SIZE timeout")?
@@ -1031,4 +1043,68 @@ LIST "not-a-date 10:30AM <DIR> folder"
   <err: Invalid path: Unrecognised listing row: not-a-date 10:30AM <DIR> folder>
 LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ."
   <err: Invalid path: Unrecognised listing row: drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 .>"#;
+}
+
+#[cfg(test)]
+mod exists_tests {
+    use super::*;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    /// A control connection that answers like vsftpd: the session starts in
+    /// ASCII, and SIZE is refused with 550 in ASCII mode whether or not the
+    /// file is there. `/a.txt` is a file and `/d` a folder.
+    async fn vsftpd_like() -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut binary = false;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let (cmd, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                let reply = match cmd {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 in\r\n".to_string(),
+                    "PWD" => "257 \"/\"\r\n".to_string(),
+                    "TYPE" => {
+                        binary = arg == "I";
+                        "200 type set\r\n".to_string()
+                    }
+                    "SIZE" if !binary => "550 Could not get file size.\r\n".to_string(),
+                    "SIZE" if arg == "/a.txt" => "213 5\r\n".to_string(),
+                    "SIZE" => "550 Could not get file size.\r\n".to_string(),
+                    "CWD" if arg == "/d" || arg == "/" => "250 ok\r\n".to_string(),
+                    "CWD" => "550 Failed to change directory.\r\n".to_string(),
+                    "QUIT" => {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        break;
+                    }
+                    _ => "502 not implemented\r\n".to_string(),
+                };
+                write.write_all(reply.as_bytes()).await.unwrap();
+            }
+        });
+        addr
+    }
+
+    /// In ASCII mode SIZE refuses an existing file with 550, then CWD on a
+    /// file refuses with 550 too, and the file read as absent: a versioned
+    /// backup skipped a source it should have kept and could take a taken
+    /// destination for free.
+    #[tokio::test]
+    async fn a_file_is_found_on_a_server_that_refuses_size_in_ascii() {
+        let addr = vsftpd_like().await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(
+            ftp.exists("/a.txt").await.unwrap(),
+            "an existing file read as absent"
+        );
+        assert!(ftp.exists("/d").await.unwrap());
+        assert!(!ftp.exists("/missing").await.unwrap());
+        ftp.disconnect().await.unwrap();
+    }
 }
