@@ -30,12 +30,13 @@
 //! origin (so a DNS-rebound page cannot read it), and a path that stays inside
 //! the asset root after decoding.
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -56,25 +57,111 @@ use tokio::time::Sleep;
 /// compares names case-insensitively, as HTTP does).
 const NONCE_HEADER: HeaderName = HeaderName::from_static("x-aeroftp-ui-nonce");
 
-/// One embedded asset, as the resolver hands it over.
+/// One embedded asset, as the resolver hands it over. Cloning shares the bytes.
+#[derive(Clone)]
 pub(crate) struct ServedAsset {
-    pub bytes: Vec<u8>,
+    pub bytes: Bytes,
     pub mime_type: String,
     pub csp: Option<String>,
 }
 
 /// Where the bytes come from: Tauri's embedded assets in the app, a map in tests.
 pub(crate) trait AssetSource: Send + Sync + 'static {
+    /// Every path the source holds, keyed as Tauri keys them (`/index.html`).
+    /// Empty for a source that reads a directory on disk, as a dev build does.
+    fn paths(&self) -> Vec<String>;
     fn asset(&self, path: &str) -> Option<ServedAsset>;
 }
 
 impl<R: tauri::Runtime> AssetSource for tauri::AssetResolver<R> {
+    fn paths(&self) -> Vec<String> {
+        // Empty in a dev build with a `devUrl`: tauri-codegen embeds nothing
+        // there and `get` reads `frontendDist` from disk instead.
+        self.iter().map(|(path, _)| path.into_owned()).collect()
+    }
+
     fn asset(&self, path: &str) -> Option<ServedAsset> {
         self.get(path.to_string()).map(|asset| ServedAsset {
-            bytes: asset.bytes,
+            bytes: asset.bytes.into(),
             mime_type: asset.mime_type,
             csp: asset.csp_header,
         })
+    }
+}
+
+/// The frontend as this server hands it out.
+///
+/// Tauri brotli-decompresses an embedded asset on every `get`, and the largest
+/// one is about 15 MB, so resolving per request let any local client turn a
+/// short request into a decompression and a private copy of the asset per
+/// connection. Here an asset is resolved once, on its first request, and every
+/// response shares that copy. The table is keyed on the embedded set, so a
+/// request can fill a slot but never add one: a path outside the set is
+/// answered with `index.html`, as Tauri answers it.
+///
+/// HTML pages are resolved per response instead: Tauri stamps a fresh CSP
+/// nonce into each one whenever asset CSP modification is enabled (it is off
+/// in tauri.conf.json today, a setting that can change), and the pages are
+/// about 1 KB each.
+///
+/// A dev build embeds nothing and its resolver reads the frontend directory on
+/// each request, so nothing is cached there and a rebuilt file is served as is.
+struct Frontend {
+    source: Box<dyn AssetSource>,
+    cache: HashMap<String, OnceLock<Option<ServedAsset>>>,
+}
+
+impl Frontend {
+    fn new(source: impl AssetSource) -> Self {
+        let cache = source
+            .paths()
+            .into_iter()
+            // Tauri's keys carry the leading `/` (`AssetKey`); the lookups
+            // below rely on it, so do not trust that to stay true.
+            .map(|path| {
+                if path.starts_with('/') {
+                    path
+                } else {
+                    format!("/{path}")
+                }
+            })
+            .map(|path| (path, OnceLock::new()))
+            .collect();
+        Self {
+            source: Box::new(source),
+            cache,
+        }
+    }
+
+    /// The embedded asset a request path names, by Tauri's own lookup order:
+    /// the path, `<path>.html`, `<path>/index.html`, then `/index.html`.
+    fn key(&self, path: &str) -> Option<&str> {
+        let path = path.trim_end_matches('/');
+        [
+            path.to_string(),
+            format!("{path}.html"),
+            format!("{path}/index.html"),
+            "/index.html".to_string(),
+        ]
+        .iter()
+        .find_map(|candidate| self.cache.get_key_value(candidate.as_str()))
+        .map(|(key, _)| key.as_str())
+    }
+
+    /// An asset already resolved, without leaving the reactor.
+    fn cached(&self, key: &str) -> Option<Option<ServedAsset>> {
+        self.cache.get(key)?.get().cloned()
+    }
+
+    /// Resolves `key` (an embedded key, or the request path in a dev build).
+    /// Blocks: it decompresses, or waits for the request that does.
+    fn fetch(&self, key: &str) -> Option<ServedAsset> {
+        match self.cache.get(key) {
+            Some(slot) if !key.ends_with(".html") => {
+                slot.get_or_init(|| self.source.asset(key)).clone()
+            }
+            _ => self.source.asset(key),
+        }
     }
 }
 
@@ -87,7 +174,9 @@ pub(crate) struct Limits {
     pub header_read_timeout: Duration,
     /// Connections served at once. Beyond it a new connection is closed at
     /// accept, which confines a local connection flood to this server instead of
-    /// letting it exhaust the process's file descriptors.
+    /// letting it exhaust the process's file descriptors. Memory is not what
+    /// it bounds: responses share the cached asset and are written without
+    /// being copied, so a connection costs hyper's buffers whatever it asks for.
     pub max_connections: usize,
     /// A response write that makes no progress for this long ends the
     /// connection. Without it a client that asks for a large asset and never
@@ -116,7 +205,7 @@ impl Limits {
 }
 
 struct Site {
-    source: Box<dyn AssetSource>,
+    frontend: Frontend,
     nonce: String,
     allowed_hosts: [String; 2],
 }
@@ -134,8 +223,13 @@ pub(crate) fn start(
     listener.set_nonblocking(true)?;
     let local = listener.local_addr()?;
     let port = local.port();
+    let frontend = Frontend::new(source);
+    match frontend.cache.len() {
+        0 => log::info!("UI server on {local} reads the frontend directory per request"),
+        assets => log::info!("UI server on {local} serves {assets} embedded assets"),
+    }
     let site = Arc::new(Site {
-        source: Box::new(source),
+        frontend,
         nonce,
         allowed_hosts: [format!("127.0.0.1:{port}"), format!("localhost:{port}")],
     });
@@ -219,9 +313,17 @@ impl<S> StallGuard<S> {
         }
     }
 
-    /// Called when the inner write is pending: start the stall clock, or fail
-    /// once it has run out.
-    fn stalled<T>(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<T>> {
+    /// A write that went through restarts the stall clock. A pending one
+    /// starts it, or fails once it has run out.
+    fn progress<T>(
+        &mut self,
+        cx: &mut Context<'_>,
+        polled: Poll<io::Result<T>>,
+    ) -> Poll<io::Result<T>> {
+        if polled.is_ready() {
+            self.stalled_since = None;
+            return polled;
+        }
         let stall = self.stall;
         let timer = self
             .stalled_since
@@ -253,24 +355,31 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for StallGuard<S> {
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
-        match Pin::new(&mut this.inner).poll_write(cx, buf) {
-            Poll::Pending => this.stalled(cx),
-            ready => {
-                this.stalled_since = None;
-                ready
-            }
-        }
+        let polled = Pin::new(&mut this.inner).poll_write(cx, buf);
+        this.progress(cx, polled)
+    }
+
+    /// Forwarded along with `is_write_vectored`: a stream that does not report
+    /// vectored writes makes hyper copy each response body into its own buffer
+    /// before writing it, one private copy of the asset per connection.
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        let this = self.get_mut();
+        let polled = Pin::new(&mut this.inner).poll_write_vectored(cx, bufs);
+        this.progress(cx, polled)
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.inner.is_write_vectored()
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let this = self.get_mut();
-        match Pin::new(&mut this.inner).poll_flush(cx) {
-            Poll::Pending => this.stalled(cx),
-            ready => {
-                this.stalled_since = None;
-                ready
-            }
-        }
+        let polled = Pin::new(&mut this.inner).poll_flush(cx);
+        this.progress(cx, polled)
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
@@ -294,16 +403,28 @@ impl Site {
         let Some(path) = asset_path(request.uri().path()) else {
             return plain(StatusCode::NOT_FOUND);
         };
-        // Resolving decompresses the embedded asset: keep it off the reactor.
-        let site = self.clone();
-        let asset = tokio::task::spawn_blocking(move || site.source.asset(&path))
-            .await
-            .ok()
-            .flatten();
-        match asset {
+        match self.resolve(path).await {
             Some(asset) => self.asset_response(asset),
             None => plain(StatusCode::NOT_FOUND),
         }
+    }
+
+    async fn resolve(self: &Arc<Self>, path: String) -> Option<ServedAsset> {
+        let key = if self.frontend.cache.is_empty() {
+            path
+        } else {
+            let key = self.frontend.key(&path)?;
+            if let Some(cached) = self.frontend.cached(key) {
+                return cached;
+            }
+            key.to_string()
+        };
+        // Resolving decompresses the embedded asset: keep it off the reactor.
+        let site = self.clone();
+        tokio::task::spawn_blocking(move || site.frontend.fetch(&key))
+            .await
+            .ok()
+            .flatten()
     }
 
     /// DNS rebinding makes a hostile page same-origin with whatever name it
@@ -317,7 +438,7 @@ impl Site {
     }
 
     fn asset_response(&self, asset: ServedAsset) -> Response<Full<Bytes>> {
-        let mut response = Response::new(Full::new(Bytes::from(asset.bytes)));
+        let mut response = Response::new(Full::new(asset.bytes));
         let headers = response.headers_mut();
         if let Ok(value) = HeaderValue::from_str(&asset.mime_type) {
             headers.insert(CONTENT_TYPE, value);
@@ -364,7 +485,6 @@ fn asset_path(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::sync::Mutex;
@@ -372,13 +492,25 @@ mod tests {
 
     const NONCE: &str = "test-nonce";
 
+    type Asked = Arc<Mutex<Vec<String>>>;
+
     #[derive(Default)]
     struct MapSource {
-        assets: HashMap<String, (Vec<u8>, &'static str, Option<&'static str>)>,
-        asked: Arc<Mutex<Vec<String>>>,
+        assets: HashMap<String, (Bytes, &'static str, Option<&'static str>)>,
+        /// Behaves like a dev build: no embedded set, every request reaches it.
+        disk: bool,
+        asked: Asked,
     }
 
     impl AssetSource for MapSource {
+        fn paths(&self) -> Vec<String> {
+            if self.disk {
+                Vec::new()
+            } else {
+                self.assets.keys().cloned().collect()
+            }
+        }
+
         fn asset(&self, path: &str) -> Option<ServedAsset> {
             self.asked.lock().unwrap().push(path.to_string());
             self.assets.get(path).map(|(bytes, mime, csp)| ServedAsset {
@@ -389,24 +521,51 @@ mod tests {
         }
     }
 
-    fn serve(limits: Limits) -> (SocketAddr, Arc<Mutex<Vec<String>>>) {
+    /// A response far larger than the socket buffers, shared by every server.
+    fn big() -> Bytes {
+        static BIG: OnceLock<Bytes> = OnceLock::new();
+        BIG.get_or_init(|| Bytes::from(vec![7u8; 16 << 20])).clone()
+    }
+
+    fn site() -> MapSource {
         let mut source = MapSource::default();
-        source.assets.insert(
-            "/index.html".into(),
+        for (path, bytes, mime, csp) in [
             (
-                b"<html></html>".to_vec(),
+                "/index.html",
+                Bytes::from_static(b"<html></html>"),
                 "text/html",
                 Some("default-src 'self'"),
             ),
-        );
-        source.assets.insert(
-            "/assets/app.css".into(),
-            (b"body{}".to_vec(), "text/css", None),
-        );
-        source.assets.insert(
-            "/big.bin".into(),
-            (vec![7u8; 16 << 20], "application/octet-stream", None),
-        );
+            (
+                "/splash.html",
+                Bytes::from_static(b"<p>splash</p>"),
+                "text/html",
+                None,
+            ),
+            (
+                "/assets/app.css",
+                Bytes::from_static(b"body{}"),
+                "text/css",
+                None,
+            ),
+            (
+                "/assets/vendor.js",
+                Bytes::from(vec![b'/'; 1 << 20]),
+                "text/javascript",
+                None,
+            ),
+            ("/big.bin", big(), "application/octet-stream", None),
+        ] {
+            source.assets.insert(path.into(), (bytes, mime, csp));
+        }
+        source
+    }
+
+    fn serve(limits: Limits) -> (SocketAddr, Asked) {
+        serve_source(site(), limits)
+    }
+
+    fn serve_source(source: MapSource, limits: Limits) -> (SocketAddr, Asked) {
         let asked = source.asked.clone();
         let addr = start(source, "127.0.0.1:0".parse().unwrap(), NONCE.into(), limits).unwrap();
         (addr, asked)
@@ -642,7 +801,7 @@ mod tests {
             send(&mut stream, "GET", "/big.bin", host(addr));
             let mut first = [0u8; 1024];
             let _ = stream.read(&mut first).unwrap();
-            // Dropped with most of the 16 MiB body unread: the server's write fails.
+            // Dropped with most of the body unread: the server's write fails.
         }
         let mut stream = connect(addr);
         send(&mut stream, "GET", "/index.html", host(addr));
@@ -729,6 +888,124 @@ mod tests {
         send(&mut next, "GET", "/index.html", host(addr));
         assert_eq!(read_response(&mut next, false).0, 200);
         reader.join().unwrap();
+    }
+
+    /// Every response for an asset shares one resolution of it, including
+    /// requests that race for it before it is cached.
+    #[test]
+    fn an_asset_is_resolved_once_however_often_it_is_asked_for() {
+        let (addr, asked) = serve(Limits::APP);
+        let racers: Vec<_> = (0..8)
+            .map(|_| {
+                std::thread::spawn(move || {
+                    let mut stream = connect(addr);
+                    send(&mut stream, "GET", "/assets/vendor.js", host(addr));
+                    let (status, _, body) = read_response(&mut stream, false);
+                    (status, body.len())
+                })
+            })
+            .collect();
+        for racer in racers {
+            assert_eq!(racer.join().unwrap(), (200, 1 << 20));
+        }
+        let mut stream = connect(addr);
+        for method in ["GET", "HEAD", "GET", "HEAD"] {
+            send(&mut stream, method, "/assets/app.css", host(addr));
+            let (status, headers, body) = read_response(&mut stream, method == "HEAD");
+            assert_eq!((status, headers["content-length"].as_str()), (200, "6"));
+            let expected: &[u8] = if method == "HEAD" { b"" } else { b"body{}" };
+            assert_eq!(body, expected);
+        }
+        let asked = asked.lock().unwrap();
+        let count = |path: &str| asked.iter().filter(|asked| *asked == path).count();
+        assert_eq!(
+            (count("/assets/vendor.js"), count("/assets/app.css")),
+            (1, 1),
+            "{asked:?}"
+        );
+    }
+
+    /// Tauri answers a path it does not hold with `index.html` (the app routes
+    /// on the client). So does this server, without handing the unknown path
+    /// to the resolver or keeping anything for it.
+    #[test]
+    fn a_path_outside_the_embedded_set_is_answered_with_index_html() {
+        let (addr, asked) = serve(Limits::APP);
+        let mut stream = connect(addr);
+        for path in [
+            "/",
+            "/settings",
+            "/no/such/route",
+            "/assets/",
+            "/assets/missing.js",
+        ] {
+            send(&mut stream, "GET", path, host(addr));
+            let (status, headers, body) = read_response(&mut stream, false);
+            assert_eq!(
+                (status, body.as_slice()),
+                (200, &b"<html></html>"[..]),
+                "{path}"
+            );
+            assert_eq!(headers["content-type"], "text/html", "{path}");
+        }
+        // Tauri's `<path>.html` rule.
+        send(&mut stream, "GET", "/splash", host(addr));
+        assert_eq!(read_response(&mut stream, false).2, b"<p>splash</p>");
+        let asked = asked.lock().unwrap();
+        assert!(
+            asked
+                .iter()
+                .all(|path| path == "/index.html" || path == "/splash.html"),
+            "an unknown path reached the resolver: {asked:?}"
+        );
+    }
+
+    /// A dev build has no embedded set: its resolver reads `dist` on disk, so
+    /// every request goes through to it and nothing is kept.
+    #[test]
+    fn a_dev_build_reads_every_request_through() {
+        let mut source = site();
+        source.disk = true;
+        let (addr, asked) = serve_source(source, Limits::APP);
+        let mut stream = connect(addr);
+        for _ in 0..2 {
+            send(&mut stream, "GET", "/assets/app.css", host(addr));
+            assert_eq!(read_response(&mut stream, false).2, b"body{}");
+        }
+        send(&mut stream, "GET", "/settings", host(addr));
+        assert_eq!(read_response(&mut stream, false).0, 404);
+        assert_eq!(
+            asked.lock().unwrap().as_slice(),
+            ["/assets/app.css", "/assets/app.css", "/settings"]
+        );
+    }
+
+    /// hyper queues a response body and writes it with `writev` only when the
+    /// stream says it writes vectored; otherwise it first copies the whole
+    /// body into its own buffer, a private copy of the asset per connection.
+    #[test]
+    fn hyper_sees_a_stream_that_writes_vectored() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let client = tokio::net::TcpStream::connect(listener.local_addr().unwrap())
+                .await
+                .unwrap();
+            let (server, _) = listener.accept().await.unwrap();
+            let mut stream = TokioIo::new(StallGuard::new(server, Duration::from_secs(1)));
+            assert!(hyper::rt::Write::is_write_vectored(&stream));
+            let parts = [io::IoSlice::new(b"head"), io::IoSlice::new(b"body")];
+            let written = std::future::poll_fn(|cx| {
+                hyper::rt::Write::poll_write_vectored(Pin::new(&mut stream), cx, &parts)
+            })
+            .await
+            .unwrap();
+            assert_eq!(written, 8, "only the first buffer went out");
+            drop(client);
+        });
     }
 
     #[test]
