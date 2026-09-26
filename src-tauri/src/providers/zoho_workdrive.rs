@@ -2250,6 +2250,23 @@ impl ZohoWorkdriveProvider {
         Ok(files.into_iter().find(|f| f.attributes.name == name))
     }
 
+    /// Drop the cached ids of the folder at `path` (absolute, or relative to
+    /// the current folder) and of every folder under it. A rename, move or
+    /// delete leaves them pointing at a folder that is no longer there: after
+    /// `/a` moved to `/b`, a new `/a` still resolved to the moved folder, and
+    /// deleting `/a/x` deleted `/b/x`.
+    fn forget_folder(&mut self, path: &str) {
+        let trimmed = path.trim_matches('/');
+        let path = if path.starts_with('/') {
+            format!("/{trimmed}")
+        } else {
+            format!("{}/{trimmed}", self.current_path.trim_end_matches('/'))
+        };
+        let below = format!("{}/", path.trim_end_matches('/'));
+        self.folder_cache
+            .retain(|cached, _| *cached != path && !cached.starts_with(&below));
+    }
+
     /// The id of `parent`, the folder part of a path already stripped of
     /// its slashes. An absolute path resolves from the root (the cached
     /// `/`) and a relative one from the current folder, as on every other
@@ -2834,6 +2851,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        let original_path = path;
         let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
@@ -2888,6 +2906,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         }
 
         info!("Moved to trash: {}", path);
+        self.forget_folder(original_path);
         Ok(())
     }
 
@@ -3026,6 +3045,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !resp.status().is_success() {
+                // A move that went through before has changed paths.
+                self.forget_folder(from);
                 return Err(ProviderError::Other(format!(
                     "Rename failed: {}",
                     resp.status()
@@ -3033,6 +3054,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
             }
         }
 
+        self.forget_folder(from);
+        self.forget_folder(to);
         info!("Renamed {} to {}", from, to);
         Ok(())
     }
@@ -3818,6 +3841,59 @@ mod tests {
             upload_against_fixture(file.path(), "/big.bin", 200, r#"{"data":[]}"#).await;
         assert!(outcome.is_err());
         assert_real_progress(&updates, size, false);
+    }
+
+    /// A WorkDrive double whose root `ROOT` holds the folder `a` (`A`):
+    /// listings answer that, every PATCH succeeds. Returns a provider on it
+    /// whose cache maps `/` to `ROOT`, `/a` to `A` and `/a/sub` to `SUB`.
+    async fn provider_with_cached_folder_a() -> ZohoWorkdriveProvider {
+        use crate::providers::upload_progress::fixture::{serve, Route};
+        let listing = r#"{"data":[{"id":"A","attributes":{"name":"a","type":"folder"}}]}"#;
+        let (base, _server) = serve(vec![
+            Route::get("/workdrive/api/v1/files/ROOT/files", 200, listing),
+            Route {
+                method: axum::http::Method::PATCH,
+                path: "/workdrive/api/v1/files/A",
+                status: 200,
+                body: "{}".to_string(),
+                busy_first: false,
+            },
+        ])
+        .await;
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.endpoint_override = Some(base);
+        provider.test_access_token = Some("test-token".into());
+        provider.connected = true;
+        for (path, id) in [("/", "ROOT"), ("/a", "A"), ("/a/sub", "SUB"), ("/ab", "AB")] {
+            provider
+                .folder_cache
+                .insert(path.to_string(), id.to_string());
+        }
+        provider.current_folder_id = "ROOT".to_string();
+        provider
+    }
+
+    /// After `/a` moved to `/b`, the cache still mapped `/a` (and `/a/sub`)
+    /// to the moved folder: a new `/a` resolved to `/b`, and deleting `/a/x`
+    /// deleted `/b/x`.
+    #[tokio::test]
+    async fn renaming_a_folder_forgets_its_cached_path_and_everything_under_it() {
+        let mut p = provider_with_cached_folder_a().await;
+        p.rename("/a", "/b").await.expect("rename");
+        assert!(!p.folder_cache.contains_key("/a"));
+        assert!(!p.folder_cache.contains_key("/a/sub"));
+        assert!(
+            p.folder_cache.contains_key("/ab"),
+            "a sibling sharing the prefix stays"
+        );
+    }
+
+    #[tokio::test]
+    async fn deleting_a_folder_forgets_its_cached_path_and_everything_under_it() {
+        let mut p = provider_with_cached_folder_a().await;
+        p.rmdir("/a").await.expect("rmdir");
+        assert!(!p.folder_cache.contains_key("/a"));
+        assert!(!p.folder_cache.contains_key("/a/sub"));
     }
 
     /// #347: above the documented 250 MB of `POST /upload` (which answered a

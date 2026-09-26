@@ -262,6 +262,22 @@ pub struct GoogleDriveProvider {
     /// with that error code. Users opt in explicitly because the flag is
     /// a legal acknowledgement of the abusive content risk.
     acknowledge_abuse: bool,
+    /// Scheme and host of a local API double, in tests.
+    #[cfg(test)]
+    api_origin_override: Option<String>,
+    /// Bearer token for the double, instead of the OAuth manager's.
+    #[cfg(test)]
+    test_access_token: Option<String>,
+}
+
+/// Where `rename` takes a file (see `rename_place`).
+struct RenamePlace {
+    file_id: String,
+    from_parent_id: String,
+    to_parent_id: String,
+    new_name: String,
+    /// Another item that already has `new_name` in the destination folder.
+    occupant: Option<DriveFile>,
 }
 
 impl GoogleDriveProvider {
@@ -284,7 +300,29 @@ impl GoogleDriveProvider {
             profile_id: String::new(),
             cross_account_copy: false,
             acknowledge_abuse: false,
+            #[cfg(test)]
+            api_origin_override: None,
+            #[cfg(test)]
+            test_access_token: None,
         }
+    }
+
+    /// `DRIVE_API_BASE`, pointed at a local double in tests.
+    fn drive_api(&self) -> String {
+        #[cfg(test)]
+        if let Some(origin) = &self.api_origin_override {
+            return format!("{origin}/drive/v3");
+        }
+        DRIVE_API_BASE.to_string()
+    }
+
+    /// `UPLOAD_API_BASE`, pointed at a local double in tests.
+    fn upload_api(&self) -> String {
+        #[cfg(test)]
+        if let Some(origin) = &self.api_origin_override {
+            return format!("{origin}/upload/drive/v3");
+        }
+        UPLOAD_API_BASE.to_string()
     }
 
     /// Bind this provider to a server profile so OAuth tokens are stored
@@ -329,6 +367,11 @@ impl GoogleDriveProvider {
     /// Get authorization header
     async fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
         use secrecy::ExposeSecret;
+        #[cfg(test)]
+        if let Some(token) = &self.test_access_token {
+            return HeaderValue::from_str(&format!("Bearer {token}"))
+                .map_err(|e| ProviderError::Other(format!("Invalid token: {}", e)));
+        }
         let token = self
             .oauth_manager
             .get_valid_token(&self.oauth_config())
@@ -368,7 +411,7 @@ impl GoogleDriveProvider {
         loop {
             let mut url = format!(
                 "{}/files?q='{}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,parents,starred,description,properties,md5Checksum,sha1Checksum,sha256Checksum),nextPageToken&pageSize=1000",
-                DRIVE_API_BASE, folder_id
+                self.drive_api(), folder_id
             );
 
             if let Some(ref token) = page_token {
@@ -408,7 +451,7 @@ impl GoogleDriveProvider {
     async fn get_file(&self, file_id: &str) -> Result<DriveFile, ProviderError> {
         let url = format!(
             "{}/files/{}?fields=id,name,mimeType,size,modifiedTime,parents,md5Checksum,sha1Checksum,sha256Checksum",
-            DRIVE_API_BASE, file_id
+            self.drive_api(), file_id
         );
 
         let response = self
@@ -443,7 +486,7 @@ impl GoogleDriveProvider {
 
         let url = format!(
             "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents,md5Checksum,sha1Checksum,sha256Checksum)",
-            DRIVE_API_BASE,
+            self.drive_api(),
             urlencoding::encode(&query)
         );
 
@@ -480,6 +523,28 @@ impl GoogleDriveProvider {
                 self.folder_cache.remove(&key);
             }
         }
+    }
+
+    /// `path` as the absolute path the folder cache is keyed by: a relative
+    /// path is taken from the current folder.
+    fn absolute_path(&self, path: &str) -> String {
+        let trimmed = path.trim_matches('/');
+        if path.starts_with('/') {
+            format!("/{trimmed}")
+        } else {
+            format!("{}/{trimmed}", self.current_path.trim_end_matches('/'))
+        }
+    }
+
+    /// Drop the cached ids of the folder at `path` and of every folder under
+    /// it. A rename, move or delete leaves them pointing at a folder that is
+    /// no longer there: after `/a` moved to `/b`, a new `/a` still resolved to
+    /// the moved folder, and deleting `/a/x` deleted `/b/x`.
+    fn forget_folder(&mut self, path: &str) {
+        let path = self.absolute_path(path);
+        let below = format!("{}/", path.trim_end_matches('/'));
+        self.folder_cache
+            .retain(|cached, _| *cached != path && !cached.starts_with(&below));
     }
 
     /// The id of `parent`, the folder part of a path already stripped of
@@ -561,6 +626,97 @@ impl GoogleDriveProvider {
         Ok(current_id)
     }
 
+    /// Where a rename of `from` to `to` takes the file: its
+    /// source and destination folders, the new name, and the other item
+    /// that already has that name there, if any.
+    async fn rename_place(&mut self, from: &str, to: &str) -> Result<RenamePlace, ProviderError> {
+        let from_path_is_absolute = from.starts_with('/');
+        let from_path = from.trim_matches('/');
+        let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
+            (&from_path[..pos], &from_path[pos + 1..])
+        } else {
+            ("", from_path)
+        };
+        let from_parent_id = self
+            .parent_folder_id(from_path_is_absolute, from_parent_path)
+            .await?;
+        let file = self
+            .find_by_name(file_name, &from_parent_id)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+
+        let to_path_is_absolute = to.starts_with('/');
+        let to_path = to.trim_matches('/');
+        let (to_parent_path, new_name) = if let Some(pos) = to_path.rfind('/') {
+            (&to_path[..pos], &to_path[pos + 1..])
+        } else {
+            ("", to_path)
+        };
+        let to_parent_id = self
+            .parent_folder_id(to_path_is_absolute, to_parent_path)
+            .await?;
+        let occupant = self
+            .find_by_name(new_name, &to_parent_id)
+            .await?
+            .filter(|existing| existing.id != file.id);
+        Ok(RenamePlace {
+            file_id: file.id,
+            from_parent_id,
+            to_parent_id,
+            new_name: new_name.to_string(),
+            occupant,
+        })
+    }
+
+    /// One PATCH that gives the file its new name and, for a move, its new
+    /// parent: Drive does both in the same request.
+    async fn patch_into_place(&self, place: &RenamePlace) -> Result<(), ProviderError> {
+        let parents = (place.from_parent_id != place.to_parent_id)
+            .then_some((place.to_parent_id.as_str(), place.from_parent_id.as_str()));
+        self.patch_drive_file(
+            &place.file_id,
+            &serde_json::json!({ "name": place.new_name }),
+            parents,
+        )
+        .await
+    }
+
+    /// PATCH the metadata of `file_id` with `metadata`, moving it from the
+    /// second folder of `parents` to the first when given.
+    async fn patch_drive_file(
+        &self,
+        file_id: &str,
+        metadata: &serde_json::Value,
+        parents: Option<(&str, &str)>,
+    ) -> Result<(), ProviderError> {
+        let mut url = format!("{}/files/{}", self.drive_api(), file_id);
+        if let Some((add, remove)) = parents {
+            url = format!(
+                "{}?addParents={}&removeParents={}",
+                url,
+                urlencoding::encode(add),
+                urlencoding::encode(remove)
+            );
+        }
+        let response = self
+            .client
+            .patch(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(metadata.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Rename/move failed: {}",
+                sanitize_api_error(&text)
+            )));
+        }
+        Ok(())
+    }
+
     /// Check if MIME type is a Google Workspace type and return export MIME + extension
     fn workspace_export_info(mime_type: &str) -> Option<(&'static str, &'static str)> {
         WORKSPACE_EXPORT_MAP
@@ -579,7 +735,7 @@ impl GoogleDriveProvider {
             // Workspace file: use export endpoint
             format!(
                 "{}/files/{}/export?mimeType={}",
-                DRIVE_API_BASE,
+                self.drive_api(),
                 file_id,
                 urlencoding::encode(export_mime)
             )
@@ -590,7 +746,7 @@ impl GoogleDriveProvider {
             // abusive still download.
             format!(
                 "{}/files/{}?alt=media{}",
-                DRIVE_API_BASE,
+                self.drive_api(),
                 file_id,
                 self.acknowledge_abuse_suffix()
             )
@@ -620,7 +776,7 @@ impl GoogleDriveProvider {
         loop {
             let mut url = format!(
                 "{}/files?q=trashed=true&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken&pageSize=1000",
-                DRIVE_API_BASE
+                self.drive_api()
             );
 
             if let Some(ref token) = page_token {
@@ -660,6 +816,7 @@ impl GoogleDriveProvider {
 
     /// Move a file to trash by path
     pub async fn trash_file(&mut self, path: &str) -> Result<(), ProviderError> {
+        let original_path = path;
         let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
@@ -675,7 +832,7 @@ impl GoogleDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
-        let url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
+        let url = format!("{}/files/{}", self.drive_api(), file.id);
         let body = serde_json::json!({ "trashed": true });
 
         let response = self
@@ -697,12 +854,13 @@ impl GoogleDriveProvider {
         }
 
         info!("Trashed: {}", path);
+        self.forget_folder(original_path);
         Ok(())
     }
 
     /// Restore a file from trash by file ID
     pub async fn restore_from_trash(&mut self, file_id: &str) -> Result<(), ProviderError> {
-        let url = format!("{}/files/{}", DRIVE_API_BASE, file_id);
+        let url = format!("{}/files/{}", self.drive_api(), file_id);
         let body = serde_json::json!({ "trashed": false });
 
         let response = self
@@ -744,7 +902,7 @@ impl GoogleDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
-        let url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
+        let url = format!("{}/files/{}", self.drive_api(), file.id);
         let body = serde_json::json!({ "starred": starred });
 
         let response = self
@@ -795,7 +953,7 @@ impl GoogleDriveProvider {
 
         let url = format!(
             "{}/files/{}/comments?fields=comments(id,content,createdTime,author(displayName),resolved)&pageSize=100",
-            DRIVE_API_BASE, file.id
+            self.drive_api(), file.id
         );
 
         let response = self
@@ -867,7 +1025,8 @@ impl GoogleDriveProvider {
 
         let url = format!(
             "{}/files/{}/comments?fields=id,content,createdTime",
-            DRIVE_API_BASE, file.id
+            self.drive_api(),
+            file.id
         );
         let body = serde_json::json!({ "content": message });
 
@@ -916,7 +1075,9 @@ impl GoogleDriveProvider {
 
         let url = format!(
             "{}/files/{}/comments/{}",
-            DRIVE_API_BASE, file.id, comment_id
+            self.drive_api(),
+            file.id,
+            comment_id
         );
 
         let response = self
@@ -960,7 +1121,7 @@ impl GoogleDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
-        let url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
+        let url = format!("{}/files/{}", self.drive_api(), file.id);
         let body = serde_json::json!({ "properties": properties });
 
         let response = self
@@ -1006,7 +1167,7 @@ impl GoogleDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
-        let url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
+        let url = format!("{}/files/{}", self.drive_api(), file.id);
         let body = serde_json::json!({ "description": description });
 
         let response = self
@@ -1044,7 +1205,7 @@ impl GoogleDriveProvider {
         let q = format!("name='{}' and trashed=true", escaped);
         let url = format!(
             "{}/files?q={}&orderBy=modifiedTime+desc&fields=files(id,name,mimeType,modifiedTime),nextPageToken&pageSize=10",
-            DRIVE_API_BASE,
+            self.drive_api(),
             urlencoding::encode(&q)
         );
         let response = self
@@ -1066,7 +1227,7 @@ impl GoogleDriveProvider {
 
     /// Permanently delete a file by file ID (bypasses trash)
     pub async fn permanent_delete(&mut self, file_id: &str) -> Result<(), ProviderError> {
-        let url = format!("{}/files/{}", DRIVE_API_BASE, file_id);
+        let url = format!("{}/files/{}", self.drive_api(), file_id);
 
         let response = self
             .client
@@ -1188,9 +1349,9 @@ impl GoogleDriveProvider {
         };
 
         let init_url = if let Some(ref fid) = existing_file_id {
-            format!("{}/files/{}?uploadType=resumable", UPLOAD_API_BASE, fid)
+            format!("{}/files/{}?uploadType=resumable", self.upload_api(), fid)
         } else {
-            format!("{}/files?uploadType=resumable", UPLOAD_API_BASE)
+            format!("{}/files?uploadType=resumable", self.upload_api())
         };
 
         let init_request = if existing_file_id.is_some() {
@@ -1392,7 +1553,7 @@ impl StorageProvider for GoogleDriveProvider {
         let url = if let Some((export_mime, _)) = Self::workspace_export_info(&file.mime_type) {
             format!(
                 "{}/files/{}/export?mimeType={}",
-                DRIVE_API_BASE,
+                self.drive_api(),
                 file.id,
                 urlencoding::encode(export_mime)
             )
@@ -1400,7 +1561,7 @@ impl StorageProvider for GoogleDriveProvider {
             // KE-B2.4: append acknowledgeAbuse when opted in.
             format!(
                 "{}/files/{}?alt=media{}",
-                DRIVE_API_BASE,
+                self.drive_api(),
                 file.id,
                 self.acknowledge_abuse_suffix()
             )
@@ -1471,7 +1632,7 @@ impl StorageProvider for GoogleDriveProvider {
         // KE-B2.4: append acknowledgeAbuse when opted in.
         let url = format!(
             "{}/files/{}?alt=media{}",
-            DRIVE_API_BASE,
+            self.drive_api(),
             file.id,
             self.acknowledge_abuse_suffix()
         );
@@ -1554,9 +1715,9 @@ impl StorageProvider for GoogleDriveProvider {
 
             // Step 1: Initiate resumable upload session
             let init_url = if let Some(ref fid) = existing_file_id {
-                format!("{}/files/{}?uploadType=resumable", UPLOAD_API_BASE, fid)
+                format!("{}/files/{}?uploadType=resumable", self.upload_api(), fid)
             } else {
-                format!("{}/files?uploadType=resumable", UPLOAD_API_BASE)
+                format!("{}/files?uploadType=resumable", self.upload_api())
             };
 
             let init_request = if existing_file_id.is_some() {
@@ -1659,9 +1820,9 @@ impl StorageProvider for GoogleDriveProvider {
             body.extend_from_slice(format!("\r\n--{}--", boundary).as_bytes());
 
             let url = if let Some(ref fid) = existing_file_id {
-                format!("{}/files/{}?uploadType=multipart", UPLOAD_API_BASE, fid)
+                format!("{}/files/{}?uploadType=multipart", self.upload_api(), fid)
             } else {
-                format!("{}/files?uploadType=multipart", UPLOAD_API_BASE)
+                format!("{}/files?uploadType=multipart", self.upload_api())
             };
 
             let request = if existing_file_id.is_some() {
@@ -1731,7 +1892,7 @@ impl StorageProvider for GoogleDriveProvider {
             "parents": [parent_id]
         });
 
-        let url = format!("{}/files", DRIVE_API_BASE);
+        let url = format!("{}/files", self.drive_api());
 
         let response = self
             .client
@@ -1793,82 +1954,19 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let from_path_is_absolute = from.starts_with('/');
-        let from_path = from.trim_matches('/');
-        let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
-            (&from_path[..pos], &from_path[pos + 1..])
-        } else {
-            ("", from_path)
-        };
-
-        let from_parent_id = self
-            .parent_folder_id(from_path_is_absolute, from_parent_path)
-            .await?;
-
-        let file = self
-            .find_by_name(file_name, &from_parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
-
-        let to_path_is_absolute = to.starts_with('/');
-        let to_path = to.trim_matches('/');
-        let (to_parent_path, new_name) = if let Some(pos) = to_path.rfind('/') {
-            (&to_path[..pos], &to_path[pos + 1..])
-        } else {
-            ("", to_path)
-        };
-
-        let to_parent_id = self
-            .parent_folder_id(to_path_is_absolute, to_parent_path)
-            .await?;
-
+        let place = self.rename_place(from, to).await?;
         // The trait promises no overwrite, and Drive keeps two files with one
         // name side by side: a move onto an existing name left both (found
         // live on 2026-09-25). The source itself is no conflict, which is
-        // what a rename that only changes the letter case finds.
-        if let Some(existing) = self.find_by_name(new_name, &to_parent_id).await? {
-            if existing.id != file.id {
-                return Err(ProviderError::AlreadyExists(to.to_string()));
-            }
+        // what a rename that only changes the letter case finds. Drive has
+        // no conditional update, so a file given that name between this
+        // look and the PATCH still ends up beside it.
+        if place.occupant.is_some() {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
         }
-
-        // Determine if this is a cross-folder move or a simple rename
-        let is_move = from_parent_id != to_parent_id;
-
-        let metadata = serde_json::json!({
-            "name": new_name
-        });
-
-        let mut url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
-
-        if is_move {
-            // Add move query parameters: addParents and removeParents
-            url = format!(
-                "{}?addParents={}&removeParents={}",
-                url,
-                urlencoding::encode(&to_parent_id),
-                urlencoding::encode(&from_parent_id)
-            );
-        }
-
-        let response = self
-            .client
-            .patch(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(metadata.to_string())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Rename/move failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-
+        self.patch_into_place(&place).await?;
+        self.forget_folder(from);
+        self.forget_folder(to);
         info!("Renamed {} to {}", from, to);
         Ok(())
     }
@@ -1981,7 +2079,7 @@ impl StorageProvider for GoogleDriveProvider {
             "type": "anyone"
         });
 
-        let perm_url = format!("{}/files/{}/permissions", DRIVE_API_BASE, file.id);
+        let perm_url = format!("{}/files/{}/permissions", self.drive_api(), file.id);
 
         let response = self
             .client
@@ -2000,7 +2098,7 @@ impl StorageProvider for GoogleDriveProvider {
         }
 
         // Get the web view link
-        let file_url = format!("{}/files/{}?fields=webViewLink", DRIVE_API_BASE, file.id);
+        let file_url = format!("{}/files/{}?fields=webViewLink", self.drive_api(), file.id);
 
         let response = self
             .client
@@ -2108,10 +2206,11 @@ impl StorageProvider for GoogleDriveProvider {
         let url = if self.cross_account_copy {
             format!(
                 "{}/files/{}/copy?supportsAllDrives=true",
-                DRIVE_API_BASE, file.id
+                self.drive_api(),
+                file.id
             )
         } else {
-            format!("{}/files/{}/copy", DRIVE_API_BASE, file.id)
+            format!("{}/files/{}/copy", self.drive_api(), file.id)
         };
 
         let response = self
@@ -2168,7 +2267,7 @@ impl StorageProvider for GoogleDriveProvider {
         loop {
             let mut url = format!(
                 "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken&pageSize=200",
-                DRIVE_API_BASE, urlencoding::encode(&query)
+                self.drive_api(), urlencoding::encode(&query)
             );
 
             if let Some(ref token) = page_token {
@@ -2213,7 +2312,7 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let url = format!("{}/about?fields=storageQuota", DRIVE_API_BASE);
+        let url = format!("{}/about?fields=storageQuota", self.drive_api());
 
         let response = self
             .client
@@ -2294,7 +2393,8 @@ impl StorageProvider for GoogleDriveProvider {
 
         let url = format!(
             "{}/files/{}/revisions?fields=revisions(id,modifiedTime,size,lastModifyingUser)",
-            DRIVE_API_BASE, file.id
+            self.drive_api(),
+            file.id
         );
 
         let response = self
@@ -2378,7 +2478,7 @@ impl StorageProvider for GoogleDriveProvider {
         // because Google flags the underlying file, not a specific version.
         let url = format!(
             "{}/files/{}/revisions/{}?alt=media{}",
-            DRIVE_API_BASE,
+            self.drive_api(),
             file.id,
             version_id,
             self.acknowledge_abuse_suffix()
@@ -2434,7 +2534,11 @@ impl StorageProvider for GoogleDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
-        let url = format!("{}/files/{}?fields=thumbnailLink", DRIVE_API_BASE, file.id);
+        let url = format!(
+            "{}/files/{}?fields=thumbnailLink",
+            self.drive_api(),
+            file.id
+        );
 
         let response = self
             .client
@@ -2495,7 +2599,8 @@ impl StorageProvider for GoogleDriveProvider {
 
         let url = format!(
             "{}/files/{}/permissions?fields=permissions(id,role,type,emailAddress)",
-            DRIVE_API_BASE, file.id
+            self.drive_api(),
+            file.id
         );
 
         let response = self
@@ -2574,7 +2679,7 @@ impl StorageProvider for GoogleDriveProvider {
             body["emailAddress"] = serde_json::Value::String(permission.target.clone());
         }
 
-        let url = format!("{}/files/{}/permissions", DRIVE_API_BASE, file.id);
+        let url = format!("{}/files/{}/permissions", self.drive_api(), file.id);
 
         let response = self
             .client
@@ -2602,7 +2707,7 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn get_change_token(&mut self) -> Result<String, ProviderError> {
-        let url = format!("{}/changes/startPageToken", DRIVE_API_BASE);
+        let url = format!("{}/changes/startPageToken", self.drive_api());
 
         let response = self
             .client
@@ -2644,7 +2749,7 @@ impl StorageProvider for GoogleDriveProvider {
         loop {
             let url = format!(
                 "{}/changes?pageToken={}&fields=changes(fileId,file(name,mimeType,trashed),removed,time),newStartPageToken,nextPageToken&pageSize=1000",
-                DRIVE_API_BASE, urlencoding::encode(&current_token)
+                self.drive_api(), urlencoding::encode(&current_token)
             );
 
             let response = self
@@ -2752,7 +2857,8 @@ impl StorageProvider for GoogleDriveProvider {
         // List with IDs
         let url = format!(
             "{}/files/{}/permissions?fields=permissions(id,emailAddress)",
-            DRIVE_API_BASE, file.id
+            self.drive_api(),
+            file.id
         );
 
         let response = self
@@ -2789,7 +2895,9 @@ impl StorageProvider for GoogleDriveProvider {
 
         let delete_url = format!(
             "{}/files/{}/permissions/{}",
-            DRIVE_API_BASE, file.id, perm.id
+            self.drive_api(),
+            file.id,
+            perm.id
         );
 
         let del_response = self
@@ -3006,6 +3114,106 @@ mod tests {
 
     fn test_provider() -> GoogleDriveProvider {
         GoogleDriveProvider::new(GoogleDriveConfig::new("cid", "csec"))
+    }
+
+    /// A Drive API double holding `tree` as `(id, name, parent id)`, a name
+    /// without a dot being a folder. It answers the `name='..' and '..' in
+    /// parents` searches of `find_by_name` and accepts every PATCH. Returns a
+    /// provider pointed at it and every PATCH as `id body`.
+    async fn provider_on_drive(
+        tree: &'static [(&'static str, &'static str, &'static str)],
+    ) -> (
+        GoogleDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let patches: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&patches);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                        .await
+                        .unwrap();
+                    if method == "PATCH" {
+                        let id = url.path().rsplit('/').next().unwrap_or("").to_string();
+                        seen.lock()
+                            .unwrap()
+                            .push(format!("{id} {}", String::from_utf8_lossy(&body)));
+                        return axum::Json(serde_json::json!({ "id": id }));
+                    }
+                    let q = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "q")
+                        .map(|(_, v)| v.to_string())
+                        .unwrap_or_default();
+                    let name = q
+                        .strip_prefix("name='")
+                        .and_then(|rest| rest.split_once("' and '"))
+                        .map(|(name, rest)| (name.to_string(), rest.to_string()));
+                    let files: Vec<serde_json::Value> = match name {
+                        Some((name, rest)) => {
+                            let parent = rest.split_once("' in parents").map_or("", |(p, _)| p);
+                            tree.iter()
+                                .filter(|(_, n, p)| *n == name && *p == parent)
+                                .map(|(id, n, p)| {
+                                    let mime = if n.contains('.') {
+                                        "text/plain"
+                                    } else {
+                                        "application/vnd.google-apps.folder"
+                                    };
+                                    serde_json::json!({
+                                        "id": id, "name": n, "mimeType": mime, "parents": [p],
+                                    })
+                                })
+                                .collect()
+                        }
+                        None => Vec::new(),
+                    };
+                    axum::Json(serde_json::json!({ "files": files }))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        (provider, patches)
+    }
+
+    /// After `/a` moved to `/b`, the cache still mapped `/a` (and `/a/sub`)
+    /// to the moved folder: a new `/a` resolved to `/b`, and deleting `/a/x`
+    /// deleted `/b/x`.
+    #[tokio::test]
+    async fn renaming_a_folder_forgets_its_cached_path_and_everything_under_it() {
+        let (mut p, patches) = provider_on_drive(&[("A", "a", "root")]).await;
+        for (path, id) in [("/a", "A"), ("/a/sub", "SUB"), ("/ab", "AB")] {
+            p.folder_cache.insert(path.to_string(), (id.to_string(), 0));
+        }
+        p.rename("/a", "/b").await.expect("rename");
+        assert_eq!(patches.lock().unwrap().len(), 1);
+        assert!(!p.folder_cache.contains_key("/a"));
+        assert!(!p.folder_cache.contains_key("/a/sub"));
+        assert!(
+            p.folder_cache.contains_key("/ab"),
+            "a sibling sharing the prefix stays"
+        );
+    }
+
+    #[tokio::test]
+    async fn deleting_a_folder_forgets_its_cached_path_and_everything_under_it() {
+        let (mut p, _) = provider_on_drive(&[("A", "a", "root")]).await;
+        for (path, id) in [("/a", "A"), ("/a/sub", "SUB")] {
+            p.folder_cache.insert(path.to_string(), (id.to_string(), 0));
+        }
+        p.rmdir("/a").await.expect("rmdir");
+        assert!(!p.folder_cache.contains_key("/a"));
+        assert!(!p.folder_cache.contains_key("/a/sub"));
     }
 
     /// After `cd /docs`: `/x` and `x` name different folders, `/x` the
