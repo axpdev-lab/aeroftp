@@ -859,8 +859,8 @@ impl FourSharedProvider {
 
     /// The entries of a listing a lookup reads, strictly: an array, an
     /// object holding one under `keys`, or a single entry not wrapped in an
-    /// array (a string `id` and `name`), which the API guide documents for a
-    /// folder holding one item. An empty body or `null` is an empty folder
+    /// array (a string `id` and `name`, and no `code`, `message` or `error`),
+    /// which the API guide documents for a folder holding one item. An empty body or `null` is an empty folder
     /// (what 4shared answers for one is not documented, so both are taken as
     /// that); anything else, a JSON error object with HTTP 200 among them, is
     /// a ParseError. The lenient parse of the listing wraps such an object as
@@ -885,15 +885,25 @@ impl FourSharedProvider {
         if let Some(items) = value.as_array() {
             return Ok(items.clone());
         }
+        // The wrapper first, as the listing reads it: an object with an `id`,
+        // a `name` and a `files` array read as that one entry, and a name
+        // among the files read free.
+        if let Some(items) = keys
+            .iter()
+            .find_map(|key| value.get(*key).and_then(|v| v.as_array()).cloned())
+        {
+            return Ok(items);
+        }
+        let is_an_error = ["code", "message", "error"]
+            .iter()
+            .any(|field| value.get(*field).is_some());
         let is_an_entry = ["id", "name"]
             .iter()
             .all(|field| value.get(*field).is_some_and(|v| v.is_string()));
-        if is_an_entry {
+        if is_an_entry && !is_an_error {
             return Ok(vec![value]);
         }
-        keys.iter()
-            .find_map(|key| value.get(*key).and_then(|v| v.as_array()).cloned())
-            .ok_or_else(not_a_listing)
+        Err(not_a_listing())
     }
 
     /// The folders of a listing a lookup reads (see
@@ -1972,7 +1982,10 @@ mod tests {
     /// offset) and `trashy` (`T`, holding a trashed `a.txt`, `FT`, which a
     /// GET of the file still answers) and `single` (`G`, whose one file
     /// `only.txt`, `FG`, is listed as a bare object) and `endless` (`N`, a
-    /// full page of new files at every offset); `src`
+    /// full page of new files at every offset), `wrapped` (`W`, whose file
+    /// listing is a wrapper that also has an `id` and a `name`, holding
+    /// `a.txt`, `FW`) and `errorentry` (`X`, an error object with an `id` and
+    /// a `name`); `src`
     /// holds `a.txt` (`FA`), `dst` holds `b.txt` (`FB`)
     /// and, when `dst_holds_a`, an `a.txt` of its own (`FA2`). Every PUT (a
     /// move or a rename) succeeds, except a rename to a name starting with
@@ -2048,6 +2061,8 @@ mod tests {
                             item("T", "trashy"),
                             item("G", "single"),
                             item("N", "endless"),
+                            item("W", "wrapped"),
+                            item("X", "errorentry"),
                         ]),
                         "/folders/E/files" => return "".into_response(),
                         "/folders/E/children" => return "null".into_response(),
@@ -2065,6 +2080,15 @@ mod tests {
                                 .map(|i| item(&format!("N{i}"), &format!("n{i}.txt")))
                                 .collect::<Vec<_>>())
                         }
+                        // A wrapper that also carries an `id` and a `name`.
+                        "/folders/W/files" => serde_json::json!({
+                            "id": "W", "name": "wrapped", "files": [item("FW", "a.txt")]
+                        }),
+                        "/files/FW" => item("FW", "a.txt"),
+                        // An error object that also carries an `id` and a `name`.
+                        "/folders/X/files" => serde_json::json!({
+                            "id": "X", "name": "errorentry", "code": 500, "message": "try again"
+                        }),
                         // One file, listed as that entry alone.
                         "/folders/G/files" => item("FG", "only.txt"),
                         "/files/FG" => item("FG", "only.txt"),
@@ -2210,6 +2234,41 @@ mod tests {
         .expect("the walk ends on a repeated page");
         assert!(
             matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// A wrapper that also carries an `id` and a `name` was read as that one
+    /// entry before its `files` array, which the listing reads: the `a.txt`
+    /// there read free. The wrapper comes first.
+    #[tokio::test]
+    async fn a_lookup_reads_a_wrapper_before_a_single_entry() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/wrapped/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// An error object that also carries an `id` and a `name` was read as a
+    /// single entry, and the name looked for read free. It is an error.
+    #[tokio::test]
+    async fn a_lookup_reads_an_error_object_with_an_id_as_an_error() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/errorentry/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
             "{outcome:?}"
         );
         assert!(
