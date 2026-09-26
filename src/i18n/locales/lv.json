@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Paturēt šīs ierīces versiju",
             "keystoreDecisionKeepBoth": "Paturēt abus",
             "keystoreCopyName": "{name} (no dublējuma)",
-            "keystorePreviewLocalFromVault": "Šīs ierīces kontu sarakstu neizdevās nolasīt, tāpēc salīdzinājums izmanto glabātavā saglabāto serveru sarakstu.",
+            "keystorePreviewLocalFromVault": "Šīs ierīces serveru profilu sarakstu neizdevās nolasīt, tāpēc salīdzinājums izmanto glabātavā saglabāto serveru sarakstu.",
             "keystoreDecisionsFailed": "Importēšana ir pabeigta, bet neizdevās piemērot jūsu serveru profilu izvēles: {error}",
             "exportKeystoreDesc": "Eksportēt visus šifrētos akreditācijas datus dublējuma failā",
             "importKeystoreDesc": "Importēt akreditācijas datus no dublējuma faila",

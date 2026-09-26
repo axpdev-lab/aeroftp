@@ -811,7 +811,7 @@
             "keystoreDecisionKeepLocal": "Manter a versión deste dispositivo",
             "keystoreDecisionKeepBoth": "Manter ambos",
             "keystoreCopyName": "{name} (da copia)",
-            "keystorePreviewLocalFromVault": "Non se puido ler a lista de contas deste dispositivo, así que a comparación usa a lista de servidores gardada na caixa forte.",
+            "keystorePreviewLocalFromVault": "Non se puido ler a lista de perfís de servidor deste dispositivo, así que a comparación usa a lista de servidores gardada na caixa forte.",
             "keystoreDecisionsFailed": "A importación rematou, pero non se puideron aplicar as túas escollas para os perfís de servidor: {error}",
             "exportKeystoreDesc": "Exportar todas as credenciais cifradas",
             "importKeystoreDesc": "Importar credenciais desde copia de seguridade",

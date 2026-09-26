@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Behold enhedens version",
             "keystoreDecisionKeepBoth": "Behold begge",
             "keystoreCopyName": "{name} (fra sikkerhedskopi)",
-            "keystorePreviewLocalFromVault": "Enhedens kontoliste kunne ikke læses, så sammenligningen bruger serverlisten i boksen.",
+            "keystorePreviewLocalFromVault": "Enhedens liste over serverprofiler kunne ikke læses, så sammenligningen bruger serverlisten i boksen.",
             "keystoreDecisionsFailed": "Importen er færdig, men dine valg for serverprofilerne kunne ikke anvendes: {error}",
             "exportKeystoreDesc": "Eksportér alle krypterede legitimationsoplysninger til en sikkerhedskopifil",
             "importKeystoreDesc": "Importér legitimationsoplysninger fra en sikkerhedskopifil",

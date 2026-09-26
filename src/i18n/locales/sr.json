@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Задржи верзију са овог уређаја",
             "keystoreDecisionKeepBoth": "Задржи обе",
             "keystoreCopyName": "{name} (из копије)",
-            "keystorePreviewLocalFromVault": "Листу налога овог уређаја није могуће прочитати, па поређење користи листу сервера сачувану у трезору.",
+            "keystorePreviewLocalFromVault": "Листу профила сервера овог уређаја није могуће прочитати, па поређење користи листу сервера сачувану у трезору.",
             "keystoreDecisionsFailed": "Увоз је завршен, али ваши избори за профиле сервера нису примењени: {error}",
             "exportKeystoreDesc": "Извезите све шифроване акредитиве у резервну датотеку",
             "importKeystoreDesc": "Увезите акредитиве из резервне датотеке",

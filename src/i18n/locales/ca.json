@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Mantén la versió d'aquest dispositiu",
             "keystoreDecisionKeepBoth": "Mantén tots dos",
             "keystoreCopyName": "{name} (de la còpia)",
-            "keystorePreviewLocalFromVault": "No s'ha pogut llegir la llista de comptes d'aquest dispositiu, així que la comparació fa servir la llista de servidors desada a la caixa forta.",
+            "keystorePreviewLocalFromVault": "No s'ha pogut llegir la llista de perfils de servidor d'aquest dispositiu, així que la comparació fa servir la llista de servidors desada a la caixa forta.",
             "keystoreDecisionsFailed": "La importació ha acabat, però no s'han pogut aplicar les teves eleccions per als perfils de servidor: {error}",
             "exportKeystoreDesc": "Exportar totes les credencials xifrades a un fitxer de còpia de seguretat",
             "importKeystoreDesc": "Importar credencials des d'un fitxer de còpia de seguretat",

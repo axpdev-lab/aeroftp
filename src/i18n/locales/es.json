@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Mantener la versión de este dispositivo",
             "keystoreDecisionKeepBoth": "Mantener ambos",
             "keystoreCopyName": "{name} (de la copia)",
-            "keystorePreviewLocalFromVault": "No se pudo leer la lista de cuentas de este dispositivo, así que la comparación usa la lista de servidores guardada en la bóveda.",
+            "keystorePreviewLocalFromVault": "No se pudo leer la lista de perfiles de servidor de este dispositivo, así que la comparación usa la lista de servidores guardada en la bóveda.",
             "keystoreDecisionsFailed": "La importación terminó, pero no se pudieron aplicar tus elecciones para los perfiles de servidor: {error}",
             "exportKeystoreDesc": "Exportar todas las credenciales cifradas a un archivo de respaldo",
             "importKeystoreDesc": "Importar credenciales desde un archivo de respaldo",

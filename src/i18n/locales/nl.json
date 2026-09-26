@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Versie van dit apparaat behouden",
             "keystoreDecisionKeepBoth": "Beide behouden",
             "keystoreCopyName": "{name} (uit back-up)",
-            "keystorePreviewLocalFromVault": "De accountlijst van dit apparaat kon niet worden gelezen, dus de vergelijking gebruikt de serverlijst in de kluis.",
+            "keystorePreviewLocalFromVault": "De lijst met serverprofielen van dit apparaat kon niet worden gelezen, dus de vergelijking gebruikt de serverlijst in de kluis.",
             "keystoreDecisionsFailed": "De import is voltooid, maar je keuzes voor de serverprofielen konden niet worden toegepast: {error}",
             "exportKeystoreDesc": "Alle versleutelde inloggegevens exporteren naar een back-upbestand",
             "importKeystoreDesc": "Inloggegevens importeren vanuit een back-upbestand",

@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Ponechať miestnu verziu",
             "keystoreDecisionKeepBoth": "Ponechať obe",
             "keystoreCopyName": "{name} (zo zálohy)",
-            "keystorePreviewLocalFromVault": "Zoznam účtov tohto zariadenia sa nepodarilo prečítať, porovnanie preto používa zoznam serverov uložený v trezore.",
+            "keystorePreviewLocalFromVault": "Nepodarilo sa prečítať zoznam profilov serverov tohto zariadenia; porovnanie preto používa zoznam serverov uložený v trezore.",
             "keystoreDecisionsFailed": "Import sa skončil, ale vaše voľby pre profily serverov sa nepodarilo použiť: {error}",
             "exportKeystoreDesc": "Exportovať všetky šifrované prihlasovacie údaje do súboru zálohy",
             "importKeystoreDesc": "Importovať prihlasovacie údaje zo súboru zálohy",

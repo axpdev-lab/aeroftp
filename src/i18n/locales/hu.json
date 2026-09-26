@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Az eszköz verziójának megtartása",
             "keystoreDecisionKeepBoth": "Mindkettő megtartása",
             "keystoreCopyName": "{name} (mentésből)",
-            "keystorePreviewLocalFromVault": "Az eszköz fióklistája nem olvasható, ezért az összehasonlítás a széfben tárolt kiszolgálólistát használja.",
+            "keystorePreviewLocalFromVault": "Az eszköz kiszolgálóprofil-listája nem olvasható, ezért az összehasonlítás a széfben tárolt kiszolgálólistát használja.",
             "keystoreDecisionsFailed": "Az importálás befejeződött, de a kiszolgálóprofilokra vonatkozó választásait nem sikerült alkalmazni: {error}",
             "exportKeystoreDesc": "Minden titkosított hitelesítő adat exportálása biztonsági másolatba",
             "importKeystoreDesc": "Hitelesítő adatok importálása biztonsági másolatból",

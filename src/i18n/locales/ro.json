@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Păstrează versiunea de pe acest dispozitiv",
             "keystoreDecisionKeepBoth": "Păstrează ambele",
             "keystoreCopyName": "{name} (din copie)",
-            "keystorePreviewLocalFromVault": "Lista de conturi a acestui dispozitiv nu a putut fi citită, așa că comparația folosește lista de servere salvată în seif.",
+            "keystorePreviewLocalFromVault": "Lista de profiluri de server a acestui dispozitiv nu a putut fi citită, așa că comparația folosește lista de servere salvată în seif.",
             "keystoreDecisionsFailed": "Importul s-a încheiat, dar alegerile pentru profilurile de server nu au putut fi aplicate: {error}",
             "exportKeystoreDesc": "Exportați toate credențialele criptate într-un fișier de rezervă",
             "importKeystoreDesc": "Importați credențialele dintr-un fișier de rezervă",

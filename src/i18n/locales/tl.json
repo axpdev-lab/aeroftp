@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Itabi ang bersyon sa device na ito",
             "keystoreDecisionKeepBoth": "Itabi pareho",
             "keystoreCopyName": "{name} (mula sa backup)",
-            "keystorePreviewLocalFromVault": "Hindi mabasa ang listahan ng account ng device na ito, kaya ang paghahambing ay gumagamit ng listahan ng server na naka-save sa vault.",
+            "keystorePreviewLocalFromVault": "Hindi mabasa ang listahan ng mga profile ng server ng device na ito, kaya ang paghahambing ay gumagamit ng listahan ng server na naka-save sa vault.",
             "keystoreDecisionsFailed": "Tapos na ang pag-import, pero hindi nailapat ang mga pinili mo para sa mga profile ng server: {error}",
             "exportKeystoreDesc": "I-export ang lahat ng naka-encrypt na kredensyal sa backup file",
             "importKeystoreDesc": "Mag-import ng mga kredensyal mula sa backup file",

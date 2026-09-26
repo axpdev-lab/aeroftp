@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Obdrži različico te naprave",
             "keystoreDecisionKeepBoth": "Obdrži oboje",
             "keystoreCopyName": "{name} (iz varnostne kopije)",
-            "keystorePreviewLocalFromVault": "Seznama računov te naprave ni bilo mogoče prebrati, zato primerjava uporablja seznam strežnikov, shranjen v trezorju.",
+            "keystorePreviewLocalFromVault": "Seznama profilov strežnikov te naprave ni bilo mogoče prebrati, zato primerjava uporablja seznam strežnikov, shranjen v trezorju.",
             "keystoreDecisionsFailed": "Uvoz je končan, vendar vaših izbir za profile strežnikov ni bilo mogoče uveljaviti: {error}",
             "exportKeystoreDesc": "Izvozite vse šifrirane poverilnice v datoteko varnostne kopije",
             "importKeystoreDesc": "Uvozite poverilnice iz datoteke varnostne kopije",

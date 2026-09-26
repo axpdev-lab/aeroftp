@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Halda útgáfu þessa tækis",
             "keystoreDecisionKeepBoth": "Halda báðum",
             "keystoreCopyName": "{name} (úr afriti)",
-            "keystorePreviewLocalFromVault": "Ekki tókst að lesa reikningalista þessa tækis, svo samanburðurinn notar netþjónalistann sem geymdur er í hvelfingunni.",
+            "keystorePreviewLocalFromVault": "Ekki tókst að lesa lista þessa tækis yfir netþjónasnið, svo samanburðurinn notar netþjónalistann sem geymdur er í hvelfingunni.",
             "keystoreDecisionsFailed": "Innflutningi er lokið, en ekki tókst að beita vali þínu á netþjónasniðunum: {error}",
             "exportKeystoreDesc": "Flytðu öll dulkóðuð skilríki út í öryggisafritsskrá",
             "importKeystoreDesc": "Flytðu inn skilríki úr öryggisafritsskrá",

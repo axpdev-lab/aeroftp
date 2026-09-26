@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Kekalkan versi pada peranti",
             "keystoreDecisionKeepBoth": "Simpan kedua-duanya",
             "keystoreCopyName": "{name} (daripada sandaran)",
-            "keystorePreviewLocalFromVault": "Senarai akaun peranti ini tidak dapat dibaca, jadi perbandingan menggunakan senarai pelayan yang disimpan dalam peti besi.",
+            "keystorePreviewLocalFromVault": "Senarai profil pelayan peranti ini tidak dapat dibaca, jadi perbandingan menggunakan senarai pelayan yang disimpan dalam peti besi.",
             "keystoreDecisionsFailed": "Import selesai, tetapi pilihan anda untuk profil pelayan tidak dapat digunakan: {error}",
             "exportKeystoreDesc": "Eksport semua kelayakan disulitkan ke fail sandaran",
             "importKeystoreDesc": "Import kelayakan dari fail sandaran",

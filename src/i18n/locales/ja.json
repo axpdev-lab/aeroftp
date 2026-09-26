@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "このデバイスのバージョンを残す",
             "keystoreDecisionKeepBoth": "両方残す",
             "keystoreCopyName": "{name} (バックアップから)",
-            "keystorePreviewLocalFromVault": "このデバイスのアカウント一覧を読み取れなかったため、比較には保管庫に保存されたサーバー一覧を使っています。",
+            "keystorePreviewLocalFromVault": "このデバイスのサーバープロファイル一覧を読み取れなかったため、比較には保管庫に保存されたサーバー一覧を使っています。",
             "keystoreDecisionsFailed": "インポートは完了しましたが、サーバープロファイルに対する選択を適用できませんでした: {error}",
             "exportKeystoreDesc": "暗号化された資格情報をバックアップファイルにエクスポート",
             "importKeystoreDesc": "バックアップファイルから資格情報をインポート",

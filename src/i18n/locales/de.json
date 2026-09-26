@@ -796,7 +796,7 @@
             "keystoreDecisionKeepLocal": "Version dieses Geräts behalten",
             "keystoreDecisionKeepBoth": "Beide behalten",
             "keystoreCopyName": "{name} (aus Sicherung)",
-            "keystorePreviewLocalFromVault": "Die Kontenliste dieses Geräts konnte nicht gelesen werden, daher vergleicht die Ansicht mit der im Tresor gespeicherten Serverliste.",
+            "keystorePreviewLocalFromVault": "Die Liste der Serverprofile dieses Geräts konnte nicht gelesen werden, daher vergleicht die Ansicht mit der im Tresor gespeicherten Serverliste.",
             "keystoreDecisionsFailed": "Der Import ist abgeschlossen, aber Ihre Auswahl für die Serverprofile konnte nicht angewendet werden: {error}",
             "exportKeystoreDesc": "Alle verschlüsselten Anmeldedaten in eine Sicherungsdatei exportieren",
             "importKeystoreDesc": "Anmeldedaten aus einer Sicherungsdatei importieren",
