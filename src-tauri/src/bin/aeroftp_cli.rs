@@ -10236,6 +10236,27 @@ async fn upload_with_resume(
 /// the caller for the disconnect. The CLI renders progress through the
 /// `indicatif` callback and prints its own result line, so the graph runs
 /// with a `NoopDagObserver`.
+/// Run a single transfer until it ends, or until Ctrl-C raises `cancelled`:
+/// `None` then, and the transfer future is dropped, which closes its
+/// connections and runs its guards (an atomic download removes its
+/// `.aerotmp`). The handler only sets the flag, so a transfer that never
+/// looks at it has to be raced against it, or it runs to its end.
+async fn run_until_interrupted<T>(
+    cancelled: &AtomicBool,
+    transfer: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    let interrupted = async {
+        while !cancelled.load(Ordering::Relaxed) {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    };
+    tokio::select! {
+        biased;
+        out = transfer => Some(out),
+        () = interrupted => None,
+    }
+}
+
 async fn cli_run_single_file_dag(
     provider: Box<dyn StorageProvider>,
     direction: ftp_client_gui_lib::transfer_dag::TransferDirection,
@@ -32207,30 +32228,50 @@ async fn cmd_get(
     // DAG-ENGINE: route the plain classic single-file download through the
     // graph engine. `--partial` keeps the legacy `download_with_resume`
     // (its resume branch is not the plain leaf).
-    let dl_result = if !cli.partial {
-        let (returned, res) = cli_run_single_file_dag(
-            provider,
-            ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
-            remote,
-            local_path,
-            progress_cb,
-            cli,
-            Some(url),
-        )
-        .await;
-        provider = returned;
-        res
-    } else {
-        download_with_resume(
-            &mut *provider,
-            remote,
-            local_path,
-            (total_size > 0).then_some(total_size),
-            cli,
-            progress_cb,
-        )
-        .await
+    let transfer = async move {
+        if !cli.partial {
+            cli_run_single_file_dag(
+                provider,
+                ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
+                remote,
+                local_path,
+                progress_cb,
+                cli,
+                Some(url),
+            )
+            .await
+        } else {
+            let mut provider = provider;
+            let res = download_with_resume(
+                &mut *provider,
+                remote,
+                local_path,
+                (total_size > 0).then_some(total_size),
+                cli,
+                progress_cb,
+            )
+            .await;
+            (provider, res)
+        }
     };
+    let Some((returned, dl_result)) = run_until_interrupted(&cancelled, transfer).await else {
+        if let Some(pb) = pb {
+            pb.finish_and_clear();
+        }
+        // The transfer was dropped mid-way: an atomic download removes its
+        // `.aerotmp` as it goes, a `--partial` one keeps it for the resume, and
+        // only `--inplace` wrote the destination itself.
+        if cli.inplace && !cli.partial {
+            let _ = std::fs::remove_file(local_path);
+        }
+        print_error(
+            format,
+            "Interrupted (Ctrl+C): the download did not finish",
+            130,
+        );
+        return 130;
+    };
+    let mut provider = returned;
 
     match dl_result {
         Ok(()) => {
@@ -33630,22 +33671,39 @@ async fn cmd_put(
     // DAG-ENGINE: route the plain classic single-file upload through the
     // graph engine. `--partial` keeps the legacy `upload_with_resume` (its
     // resume branch is not the plain leaf).
-    let up_result = if !cli.partial {
-        let (returned, res) = cli_run_single_file_dag(
-            provider,
-            ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
-            remote_path,
-            local,
-            progress_cb,
-            cli,
-            Some(url),
-        )
-        .await;
-        provider = returned;
-        res
-    } else {
-        upload_with_resume(&mut *provider, local, remote_path, cli, progress_cb).await
+    let transfer = async move {
+        if !cli.partial {
+            cli_run_single_file_dag(
+                provider,
+                ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
+                remote_path,
+                local,
+                progress_cb,
+                cli,
+                Some(url),
+            )
+            .await
+        } else {
+            let mut provider = provider;
+            let res =
+                upload_with_resume(&mut *provider, local, remote_path, cli, progress_cb).await;
+            (provider, res)
+        }
     };
+    let Some((returned, up_result)) = run_until_interrupted(&cancelled, transfer).await else {
+        if let Some(pb) = pb {
+            pb.finish_and_clear();
+        }
+        print_error(
+            format,
+            &format!(
+                "Interrupted (Ctrl+C): the upload did not finish, {remote_path} may be incomplete"
+            ),
+            130,
+        );
+        return 130;
+    };
+    let mut provider = returned;
 
     match up_result {
         Ok(()) => {
@@ -69945,7 +70003,15 @@ fn is_retryable_exit(code: i32) -> bool {
     //   6  authentication failed
     //   7  operation not supported
     //   9  already exists (--no-clobber short-circuit)
-    code != 0 && code != 2 && code != 3 && code != 5 && code != 6 && code != 7 && code != 9
+    //  130 interrupted: Ctrl-C is the user's answer, not a failure to retry
+    code != 0
+        && code != 2
+        && code != 3
+        && code != 5
+        && code != 6
+        && code != 7
+        && code != 9
+        && code != 130
 }
 
 /// Attempt budget for the dispatch-level retry loops (get/put/pget/sync).
