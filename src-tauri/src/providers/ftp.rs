@@ -724,12 +724,15 @@ impl FtpProvider {
     }
 
     /// Whether the server is known to hold an item at `to` other than
-    /// `from`. A look that cannot be made (a write-only folder whose listing
-    /// is refused, a dropped data connection) answers no: it is unknown, not
-    /// occupied, and the rename goes out as it did before the look existed.
-    /// Declared, not closed: there, a Unix server that renames over an
-    /// existing file overwrites one the look could not see. Refusing instead
-    /// would make every rename in a write-only folder fail.
+    /// `from`. When the listing cannot be read (a write-only folder whose
+    /// LIST is refused, a dropped data connection) SIZE asks for `to` alone
+    /// and needs no listing: a server that answers it holds a file there,
+    /// the one item a Unix server's RNTO would overwrite. A look that still
+    /// cannot be made answers no: it is unknown, not occupied, and the rename
+    /// goes out as it did before the look existed. Narrowed, not closed: a
+    /// server that refuses both LIST and SIZE there overwrites a file the
+    /// look could not see. Refusing instead would make every rename in such
+    /// a folder fail.
     ///
     /// A rename that only changes the letter case needs its own look: on a
     /// case-insensitive server a stat of the new spelling finds the source
@@ -737,7 +740,11 @@ impl FtpProvider {
     /// as stored: only an entry spelled exactly like `to` is another item.
     async fn holds_another_item_at(&mut self, from: &str, to: &str) -> bool {
         if from.to_lowercase() != to.to_lowercase() {
-            return self.stat(to).await.is_ok();
+            return match self.stat(to).await {
+                Ok(_) => true,
+                Err(ProviderError::NotFound(_)) => false,
+                Err(_) => self.size(to).await.is_ok(),
+            };
         }
         let (parent, name) = match to.rsplit_once('/') {
             Some(("", name)) => ("/", name),
@@ -5402,6 +5409,8 @@ mod rename_contract_tests {
                     "250-Listing {argument}\r\n type=file;size=3;modify=20240101000000; {argument}\r\n250 End\r\n"
                 ),
                 "MLST" => "550 No such file or directory\r\n".to_string(),
+                "SIZE" if present(&argument) => "213 3\r\n".to_string(),
+                "SIZE" => "550 No such file\r\n".to_string(),
                 "PASV" => {
                     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
                     let port = listener.local_addr().unwrap().port();
@@ -5587,5 +5596,23 @@ mod rename_contract_tests {
             .await
             .expect("the rename goes out");
         assert_eq!(*log.lock().unwrap(), ["RNFR /a.txt", "RNTO /c.txt"]);
+    }
+
+    /// Where the listing is refused, the look answered "unknown" and the
+    /// RNTO went out over an existing file, which vsftpd replaces. SIZE needs
+    /// no listing: a file it finds is refused before RNFR.
+    #[tokio::test]
+    async fn a_refused_listing_still_refuses_a_file_that_size_finds() {
+        let quirks = Quirks {
+            listing_denied: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log) = provider_on_server_with(&["/a.txt", "/b.txt"], quirks).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
     }
 }
