@@ -535,8 +535,11 @@ impl AzureProvider {
             return Err(ProviderError::Other(format!("Copy failed: {}", desc)));
         }
 
-        // Delete original only after copy is confirmed
-        self.delete(from).await?;
+        // Delete original only after copy is confirmed: the blob copied, by
+        // the same name. With its trailing slash `from` named the folder
+        // marker `a.txt/`: a 404 left two copies, or the marker went while
+        // the source stayed.
+        self.delete(&format!("/{from_blob}")).await?;
 
         Ok(())
     }
@@ -2811,6 +2814,24 @@ mod tests {
         }
         let log = log.lock().unwrap().clone();
         assert!(!log.iter().any(|r| r.starts_with("PUT")), "{log:?}");
+    }
+
+    /// The copy took the source without its trailing slash, the delete took
+    /// it with the slash: it deleted `a.txt/`, not the blob copied.
+    #[tokio::test]
+    async fn a_source_with_a_trailing_slash_deletes_the_blob_it_copied() {
+        let (mut provider, log) = provider_on_blob_service(&[]).await;
+        provider.rename("/a.txt/", "/b.txt").await.expect("rename");
+        let log = log.lock().unwrap().clone();
+        assert_eq!(
+            log,
+            [
+                "GET /mycontainer ",
+                "PUT /mycontainer/b.txt *",
+                "DELETE /mycontainer/a.txt "
+            ],
+            "{log:?}"
+        );
     }
 
     /// Azure may answer a page with no blob and a continuation marker: read
