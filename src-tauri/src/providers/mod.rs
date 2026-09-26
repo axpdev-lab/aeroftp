@@ -1756,42 +1756,93 @@ pub(crate) fn report_set_aside_leftover(to: &str, aside: &str, error: &ProviderE
 }
 
 /// Keep `message` for the front end to show ([`take_warnings`]): a warning
-/// the user should see that a successful call cannot return. When the
-/// front end never asks (the GUI, which has the log), the oldest go first
-/// and are counted, so the queue stays bounded and the newest survive.
+/// the user should see that a successful call cannot return. Inside
+/// [`CallWarnings::scope`] it is kept for that call; elsewhere it goes to
+/// the process queue. When the front end never asks (the GUI, which has the
+/// log), the oldest go first and are counted, so the queue stays bounded and
+/// the newest survive.
 pub fn report_warning(message: String) {
-    with_pending_warnings(|pending| {
-        if pending.messages.len() == MAX_PENDING_WARNINGS {
-            pending.messages.pop_front();
-            pending.dropped += 1;
+    let mut message = Some(message);
+    let _ = CALL_WARNINGS.try_with(|call| {
+        if let Some(message) = message.take() {
+            call.lock().push(message);
         }
-        pending.messages.push_back(message);
     });
+    if let Some(message) = message {
+        with_pending_warnings(|pending| pending.push(message));
+    }
 }
 
 /// Take the warnings reported since the last call, oldest first, for the
 /// front end to show in its own format (the CLI: a line on stderr, or a JSON
-/// object there with `--json`; MCP: a text block of the tool result). When
-/// some were dropped to keep the queue bounded, the first says how many.
+/// object there with `--json`; MCP: a text block of the tool result): inside
+/// [`CallWarnings::scope`] the call's own, then the process queue's. When
+/// some were dropped to keep a queue bounded, the first says how many.
 pub fn take_warnings() -> Vec<String> {
-    with_pending_warnings(|pending| {
-        let mut taken = Vec::with_capacity(pending.messages.len() + 1);
-        if pending.dropped > 0 {
-            taken.push(format!(
-                "{} earlier warnings were dropped before anyone read them",
-                pending.dropped
-            ));
-            pending.dropped = 0;
-        }
-        taken.extend(pending.messages.drain(..));
-        taken
-    })
+    let mut taken = CALL_WARNINGS
+        .try_with(CallWarnings::take)
+        .unwrap_or_default();
+    taken.extend(with_pending_warnings(PendingWarnings::take));
+    taken
+}
+
+/// The warnings one call reports, kept apart from the process queue so they
+/// reach that call's answer and no other: a server answering several calls
+/// at once (MCP, `serve webdav`) gave one call's warning to whichever call
+/// took the queue next. They stay readable after the call is dropped (a
+/// timeout, a cancellation).
+#[derive(Clone, Default)]
+pub struct CallWarnings(std::sync::Arc<std::sync::Mutex<PendingWarnings>>);
+
+tokio::task_local! {
+    static CALL_WARNINGS: CallWarnings;
+}
+
+impl CallWarnings {
+    /// Run `call`, keeping here what it reports through [`report_warning`].
+    pub async fn scope<F: std::future::Future>(&self, call: F) -> F::Output {
+        CALL_WARNINGS.scope(self.clone(), call).await
+    }
+
+    /// Take what the call reported so far, oldest first.
+    pub fn take(&self) -> Vec<String> {
+        self.lock().take()
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, PendingWarnings> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
 #[derive(Default)]
 struct PendingWarnings {
     messages: std::collections::VecDeque<String>,
     dropped: usize,
+}
+
+impl PendingWarnings {
+    fn push(&mut self, message: String) {
+        if self.messages.len() == MAX_PENDING_WARNINGS {
+            self.messages.pop_front();
+            self.dropped += 1;
+        }
+        self.messages.push_back(message);
+    }
+
+    fn take(&mut self) -> Vec<String> {
+        let mut taken = Vec::with_capacity(self.messages.len() + 1);
+        if self.dropped > 0 {
+            taken.push(format!(
+                "{} earlier warnings were dropped before anyone read them",
+                self.dropped
+            ));
+            self.dropped = 0;
+        }
+        taken.extend(self.messages.drain(..));
+        taken
+    }
 }
 
 const MAX_PENDING_WARNINGS: usize = 64;

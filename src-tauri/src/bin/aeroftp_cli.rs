@@ -7264,16 +7264,6 @@ fn warning_line(format: OutputFormat, warning: &str) -> String {
     }
 }
 
-/// The format `serve` was started with: its handlers have no `Cli`, and
-/// `--json` sets the process-wide flag.
-fn served_output_format() -> OutputFormat {
-    if JSON_MODE.load(Ordering::Relaxed) {
-        OutputFormat::Json
-    } else {
-        OutputFormat::Text
-    }
-}
-
 /// Show on stderr the warnings the library reported since the last call.
 /// A closed stderr is no reason to panic: the line is dropped.
 fn render_pending_warnings(format: OutputFormat) {
@@ -28965,6 +28955,38 @@ struct ServeHttpState {
     provider_label: String,
     base_path: String,
     auth_token: Option<String>,
+    warnings: ServedWarnings,
+}
+
+/// Where a served request shows the warnings its provider call left (a
+/// replace that could not delete the copy it set aside): stderr, in the
+/// format the server was started with. The server runs until stopped, and
+/// the log is off by default.
+#[derive(Clone)]
+struct ServedWarnings {
+    format: OutputFormat,
+    out: Arc<std::sync::Mutex<dyn std::io::Write + Send>>,
+}
+
+impl ServedWarnings {
+    fn stderr(format: OutputFormat) -> Self {
+        Self {
+            format,
+            out: Arc::new(std::sync::Mutex::new(std::io::stderr())),
+        }
+    }
+
+    /// Show `warnings`, one line each. A closed stderr is no reason to
+    /// panic: the line is dropped.
+    fn show(&self, warnings: Vec<String>) {
+        let mut out = self
+            .out
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for warning in warnings {
+            let _ = writeln!(out, "{}", warning_line(self.format, &warning));
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -29887,6 +29909,7 @@ async fn cmd_serve_http(
         provider_label,
         base_path: base_path.clone(),
         auth_token: auth_token.clone(),
+        warnings: ServedWarnings::stderr(format),
     };
 
     let app = Router::new()
@@ -30261,15 +30284,21 @@ async fn webdav_dispatch(
             // stays one call on every backend. Only a refusal with
             // `Overwrite: T` goes on to `replace`, the verb that is allowed to
             // put one item over another.
-            let outcome = match provider.rename(&remote_path, &dest_remote).await {
-                Err(ProviderError::AlreadyExists(_)) if overwrite => {
-                    provider.replace(&remote_path, &dest_remote).await
-                }
-                other => other,
-            };
-            // A replace that left its set-aside copy behind says so here: the
-            // server runs until stopped, and the log is off by default.
-            render_pending_warnings(served_output_format());
+            // What this MOVE reports is kept for it: a request served at the
+            // same time does not show it, nor it theirs.
+            let call_warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+            let outcome = call_warnings
+                .scope(async {
+                    match provider.rename(&remote_path, &dest_remote).await {
+                        Err(ProviderError::AlreadyExists(_)) if overwrite => {
+                            provider.replace(&remote_path, &dest_remote).await
+                        }
+                        other => other,
+                    }
+                })
+                .await;
+            // A replace that left its set-aside copy behind says so here.
+            state.warnings.show(call_warnings.take());
             match outcome {
                 Ok(()) => {
                     let mut response = Response::new(Body::empty());
@@ -30388,6 +30417,7 @@ async fn cmd_serve_webdav(
         provider_label,
         base_path: base_path.clone(),
         auth_token: auth_token.clone(),
+        warnings: ServedWarnings::stderr(format),
     };
 
     let app = Router::new()
@@ -51981,6 +52011,7 @@ async fn cmd_mount_windows(
         provider_label,
         base_path,
         auth_token: None, // local-only WebDAV bridge for Windows mount - no auth needed
+        warnings: ServedWarnings::stderr(format),
     };
 
     let app = Router::new()
@@ -80344,7 +80375,18 @@ mod tests {
     /// [`served_move_onto_an_existing_file`] on a given fake.
     async fn served_move_onto_an_existing_file_with(
         overwrite: Option<&'static str>,
+        fake: CliEditFakeProvider,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        served_move_showing_warnings_to(overwrite, fake, ServedWarnings::stderr(OutputFormat::Text))
+            .await
+    }
+
+    /// [`served_move_onto_an_existing_file_with`], showing its warnings
+    /// through `warnings`.
+    async fn served_move_showing_warnings_to(
+        overwrite: Option<&'static str>,
         mut fake: CliEditFakeProvider,
+        warnings: ServedWarnings,
     ) -> (StatusCode, CliEditFakeProvider) {
         fake.remote_files
             .insert("/a.txt".to_string(), b"new".to_vec());
@@ -80356,6 +80398,7 @@ mod tests {
             provider_label: "fake".to_string(),
             base_path: "/".to_string(),
             auth_token: None,
+            warnings,
         };
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -80420,18 +80463,26 @@ mod tests {
     }
 
     /// `serve webdav` runs until stopped: a warning a MOVE's replace left
-    /// (its set-aside copy not deleted) is shown when the MOVE ends, not
-    /// kept until the process exits.
+    /// (its set-aside copy not deleted) is shown when the MOVE ends, in the
+    /// format the server was started with (with `--json`, one JSON object a
+    /// line), and it is this MOVE's own, not the process queue's.
     #[tokio::test]
     async fn served_webdav_move_shows_the_warning_its_replace_left() {
-        let warning = format!("left a copy {}", uuid::Uuid::new_v4());
         let mut fake = CliEditFakeProvider::new();
-        fake.replace_leaves_warning = Some(warning.clone());
-        let (status, _) = served_move_onto_an_existing_file_with(Some("T"), fake).await;
+        fake.replace_leaves_warning = Some("left /.b.txt.aeroftp-replaced-1".to_string());
+        let shown: Arc<std::sync::Mutex<Vec<u8>>> = Arc::default();
+        let warnings = ServedWarnings {
+            format: OutputFormat::Json,
+            out: shown.clone(),
+        };
+        let (status, _) = served_move_showing_warnings_to(Some("T"), fake, warnings).await;
         assert_eq!(status, StatusCode::NO_CONTENT);
-        assert!(
-            !ftp_client_gui_lib::providers::take_warnings().contains(&warning),
-            "the MOVE did not take its warning"
+        let shown = String::from_utf8(shown.lock().unwrap().clone()).unwrap();
+        let line: serde_json::Value =
+            serde_json::from_str(shown.trim_end()).expect("one JSON object");
+        assert_eq!(
+            line,
+            serde_json::json!({ "status": "warning", "warning": "left /.b.txt.aeroftp-replaced-1" })
         );
     }
 
