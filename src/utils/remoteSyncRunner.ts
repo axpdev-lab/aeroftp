@@ -452,6 +452,29 @@ export const runRemoteSync = async (
     // One stamp for the whole run, asked once, so every copy this run keeps
     // lands in the same `<dir>/<stamp>/` folder.
     let backupStamp: string | null = null;
+    /** Move one path into this run's backup folder; null when it is not there. */
+    const archiveOne = async (
+        side: 'local' | 'remote',
+        dir: string,
+        relativePath: string,
+    ): Promise<string | null | undefined> => {
+        backupStamp ??= await invoke<string>('sync_backup_run_stamp');
+        if (side === 'local' || config.isLocalLocal) {
+            return invoke<string | null>('sync_backup_archive_local', {
+                root: side === 'local' ? localBase : remoteBase,
+                dir,
+                stamp: backupStamp,
+                rel: relativePath,
+            });
+        }
+        return invoke<string | null>('sync_backup_archive_remote', {
+            useProvider: config.isProvider,
+            root: remoteBase,
+            dir,
+            stamp: backupStamp,
+            rel: relativePath,
+        });
+    };
     const archiveBeforeMutation = async (
         side: 'local' | 'remote',
         relativePath: string,
@@ -460,23 +483,7 @@ export const runRemoteSync = async (
         if (!backup) return;
         let kept: string | null | undefined;
         try {
-            backupStamp ??= await invoke<string>('sync_backup_run_stamp');
-            if (side === 'local' || config.isLocalLocal) {
-                kept = await invoke<string | null>('sync_backup_archive_local', {
-                    root: side === 'local' ? localBase : remoteBase,
-                    dir: backup.dir,
-                    stamp: backupStamp,
-                    rel: relativePath,
-                });
-            } else {
-                kept = await invoke<string | null>('sync_backup_archive_remote', {
-                    useProvider: config.isProvider,
-                    root: remoteBase,
-                    dir: backup.dir,
-                    stamp: backupStamp,
-                    rel: relativePath,
-                });
-            }
+            kept = await archiveOne(side, backup.dir, relativePath);
         } catch (e) {
             throw new Error(`Backup failed for ${relativePath}: ${String(e)}`);
         }
@@ -487,6 +494,27 @@ export const runRemoteSync = async (
         if (kept == null) {
             throw new Error(`Backup failed for ${relativePath}: the destination copy was not found, so it was left as it is`);
         }
+        // The `.aerocorrect` parity sidecar belongs to the copy just kept, so
+        // it goes into the backup folder with it; most files have none. The
+        // compare never lists sidecars, so one left behind would stay beside a
+        // file that is gone or replaced for good: if it cannot be moved it is
+        // deleted, and the kept copy goes without its parity.
+        if (side === 'remote') {
+            const sidecarRel = `${relativePath}.aerocorrect`;
+            await archiveOne(side, backup.dir, sidecarRel).catch(() =>
+                deleteRemoteSidecar(`${remoteBase}/${relativePath}`),
+            );
+        }
+    };
+    /** Best-effort removal of the `.aerocorrect` sidecar of a destination file. */
+    const deleteRemoteSidecar = async (remoteFilePath: string): Promise<void> => {
+        const sidecarPath = `${remoteFilePath}.aerocorrect`;
+        const sidecarInvoke = config.isLocalLocal
+            ? invoke('delete_local_file', { path: sidecarPath })
+            : config.isProvider
+                ? invoke('provider_delete_file', { path: sidecarPath })
+                : invoke('delete_remote_file', { path: sidecarPath, isDir: false });
+        await sidecarInvoke.catch(() => undefined);
     };
     /** Record a file the backup step failed: its destination copy is untouched. */
     const failBackup = (item: SyncRunFile, journalEntry: SyncJournalEntry | undefined, e: unknown): void => {
@@ -909,15 +937,7 @@ export const runRemoteSync = async (
                     // Best-effort: remove the `.aerocorrect` EC parity sidecar alongside the
                     // deleted file so a removed backup never orphans its sidecar. The
                     // sidecar is excluded from comparison, so it is never its own action.
-                    if (!item.isDir) {
-                        const sidecarPath = `${remoteFilePath}.aerocorrect`;
-                        const sidecarInvoke = config.isLocalLocal
-                            ? invoke('delete_local_file', { path: sidecarPath })
-                            : config.isProvider
-                                ? invoke('provider_delete_file', { path: sidecarPath })
-                                : invoke('delete_remote_file', { path: sidecarPath, isDir: false });
-                        await sidecarInvoke.catch(() => undefined);
-                    }
+                    if (!item.isDir) await deleteRemoteSidecar(remoteFilePath);
                 } else {
                     await invoke('delete_local_file', { path: localFilePath });
                 }

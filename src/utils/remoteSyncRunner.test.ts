@@ -396,6 +396,64 @@ describe('remoteSyncRunner: versioned backup', () => {
         expect(calls.some((c) => c.cmd === 'sync_backup_archive_remote')).toBe(false);
     });
 
+    it('keeps the .aerocorrect sidecar with the copy it protects', async () => {
+        // The move replaced the delete and skipped the sidecar cleanup, so a
+        // sidecar stayed beside a file that was gone; the compare never lists
+        // sidecars, so no later run removed it.
+        const { invoke, calls } = stampedInvoke();
+        const report = await runRemoteSync(
+            [file('gone.txt', 'delete-remote'), file('c.txt', 'upload', { overwritesExisting: true })],
+            noDirs,
+            baseConfig(backup),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.errors).toEqual([]);
+        expect(calls.filter((c) => c.cmd === 'sync_backup_archive_remote').map((c) => c.args?.rel)).toEqual([
+            'gone.txt',
+            'gone.txt.aerocorrect',
+            'c.txt',
+            'c.txt.aerocorrect',
+        ]);
+        expect(calls.some((c) => c.cmd === 'delete_remote_file')).toBe(false);
+    });
+
+    it('deletes a sidecar it could not move, and still counts the file', async () => {
+        const { invoke, calls } = stampedInvoke({
+            sync_backup_archive_remote: (args) => {
+                if (String(args?.rel).endsWith('.aerocorrect')) throw new Error('move refused');
+                return kept(args);
+            },
+        });
+        const report = await runRemoteSync(
+            [file('gone.txt', 'delete-remote')],
+            noDirs,
+            baseConfig(backup),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.errors).toEqual([]);
+        expect(report.deleted).toBe(1);
+        expect(calls.find((c) => c.cmd === 'delete_remote_file')?.args)
+            .toEqual({ path: '/srv/data/gone.txt.aerocorrect', isDir: false });
+    });
+
+    it('does not archive or delete a sidecar that is not there', async () => {
+        const { invoke, calls } = stampedInvoke({
+            sync_backup_archive_remote: (args) =>
+                String(args?.rel).endsWith('.aerocorrect') ? null : kept(args),
+        });
+        const report = await runRemoteSync(
+            [file('gone.txt', 'delete-remote')],
+            noDirs,
+            baseConfig(backup),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.errors).toEqual([]);
+        expect(calls.some((c) => c.cmd === 'delete_remote_file')).toBe(false);
+    });
+
     it('does nothing of the kind when versioned backup is off', async () => {
         const { invoke, calls } = stampedInvoke();
         await runRemoteSync(
