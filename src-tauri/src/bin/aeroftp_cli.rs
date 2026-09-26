@@ -76927,6 +76927,209 @@ mod tests {
         }
     }
 
+    /// A server that accepts a transfer and never finishes it: the one a user
+    /// stops with Ctrl-C.
+    struct StallingProvider;
+
+    #[async_trait::async_trait]
+    impl StorageProvider for StallingProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "stalling".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            std::future::pending().await
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            std::future::pending().await
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            std::future::pending().await
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            if path.ends_with("f.bin") {
+                Ok(RemoteEntry::file(
+                    "f.bin".to_string(),
+                    path.to_string(),
+                    1_000_000,
+                ))
+            } else {
+                Err(ProviderError::NotFound(path.to_string()))
+            }
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(1_000_000)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("stalling".to_string())
+        }
+    }
+
+    /// Run `command` against a [`StallingProvider`], with `cancelled` raised
+    /// 200 ms in, as the Ctrl-C handler does; `-1` when the command had not
+    /// returned 10 s later.
+    fn interrupted_after_a_moment<F: std::future::Future<Output = i32>>(
+        command: impl FnOnce(Arc<AtomicBool>) -> F + Send,
+    ) -> i32 {
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(64 * 1024 * 1024)
+                .spawn_scoped(scope, move || {
+                    TEST_CONNECTED_PROVIDER
+                        .with(|slot| *slot.borrow_mut() = Some(Box::new(StallingProvider)));
+                    let cancelled = Arc::new(AtomicBool::new(false));
+                    let flag = Arc::clone(&cancelled);
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                        flag.store(true, Ordering::Relaxed);
+                    });
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("test runtime")
+                        .block_on(async move {
+                            tokio::time::timeout(
+                                std::time::Duration::from_secs(10),
+                                command(cancelled),
+                            )
+                            .await
+                            .unwrap_or(-1)
+                        })
+                })
+                .expect("spawn the command thread")
+                .join()
+                .expect("the command thread panicked")
+        })
+    }
+
+    /// Ctrl-C set the cancel flag and printed "press again to force quit",
+    /// but a single-file `get` never looked at the flag: the transfer ran to
+    /// its end, or forever on a server that stalled. It stops now, exit 130.
+    #[test]
+    fn ctrl_c_stops_a_single_file_get() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let code = interrupted_after_a_moment(|cancelled| async move {
+            cmd_get(
+                "memory://",
+                "/f.bin",
+                Some(local.as_str()),
+                false,
+                1,
+                false,
+                &cli,
+                OutputFormat::Json,
+                cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 130, "-1 means the get was still running");
+        assert!(
+            std::fs::read_dir(dir.path()).unwrap().next().is_none(),
+            "no partial file is left behind"
+        );
+    }
+
+    /// The same for a single-file `put`.
+    #[test]
+    fn ctrl_c_stops_a_single_file_put() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        std::fs::write(&local, b"payload").unwrap();
+        let local = local.to_string_lossy().into_owned();
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let code = interrupted_after_a_moment(|cancelled| async move {
+            cmd_put(
+                "memory://",
+                local.as_str(),
+                Some("/f.bin"),
+                false,
+                false,
+                false,
+                None,
+                &cli,
+                OutputFormat::Json,
+                cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 130, "-1 means the put was still running");
+    }
+
+    /// An interrupted transfer is not retried: `--retries` is for failures,
+    /// and Ctrl-C is the user's answer.
+    #[test]
+    fn an_interrupted_command_is_not_retried() {
+        assert!(!is_retryable_exit(130));
+    }
+
     static SESSION_TRANSFER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
 
     /// Records the actual provider path selected by the shared CLI batch, with
