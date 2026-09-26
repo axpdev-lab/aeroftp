@@ -2118,9 +2118,21 @@ impl StorageProvider for OpenDriveProvider {
         self.move_item(from, to, false).await
     }
 
-    /// A file move with `overwrite_if_exists=true`: see `move_item`.
+    /// A file move into another folder with `overwrite_if_exists=true`: see
+    /// `move_item`. In one folder OpenDrive only renames (`file/rename.json`),
+    /// which has no overwrite and refuses a taken name with 409.
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.move_item(from, to, true).await
+    }
+
+    /// No. The callers that need atomicity (CLI `edit`, MCP `remote_edit`,
+    /// the crypt marker paths) stage their temporary next to the target, and
+    /// a replace in one folder is a `file/rename.json`, which refuses the
+    /// taken name: the edit uploaded its temporary and then failed with 409
+    /// (found live on 2026-09-26). Answering no makes them refuse before they
+    /// write anything. A replace across folders still lands in one step.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2822,6 +2834,17 @@ mod tests {
             assert_eq!(created.len(), 1, "{log:?}");
             assert!(created[0].contains(expected), "{overwrite}: {created:?}");
         }
+    }
+
+    /// Every caller that needs atomicity stages its temporary next to the
+    /// target, and in one folder OpenDrive only renames (`file/rename.json`),
+    /// which refuses a taken name with 409: the edit uploaded its temporary
+    /// and then failed (found live on 2026-09-26). The answer is no, so those
+    /// callers refuse before writing anything.
+    #[tokio::test]
+    async fn opendrive_does_not_claim_an_atomic_replace() {
+        let (mut provider, _) = provider_for_file_move(false).await;
+        assert!(!provider.supports_atomic_replace().await.unwrap());
     }
 
     #[tokio::test]
