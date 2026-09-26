@@ -299,6 +299,11 @@ impl From<GitHubError> for ProviderError {
             // GraphQL / Parse / Input
             GitHubError::GraphQLError { .. } => ProviderError::ServerError(text),
             GitHubError::ParseError(_) => ProviderError::ParseError(text),
+            // The Contents API refuses to create a file over an existing
+            // one: its sha, which an update must name, was not supplied.
+            GitHubError::Unprocessable(ref msg) if msg.contains("\"sha\" wasn't supplied") => {
+                ProviderError::AlreadyExists(text)
+            }
             GitHubError::InvalidInput(_) | GitHubError::Unprocessable(_) => {
                 ProviderError::Other(text)
             }
@@ -411,6 +416,23 @@ pub fn classify_api_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Contents API refuses to create a file over an existing one with
+    /// 422 "\"sha\" wasn't supplied": that is a taken destination,
+    /// AlreadyExists (the CLI's exit 9), not a generic error.
+    #[test]
+    fn a_contents_put_onto_an_existing_file_is_already_exists() {
+        let taken: ProviderError =
+            GitHubError::Unprocessable("Invalid request. \"sha\" wasn't supplied.".to_string())
+                .into();
+        assert!(
+            matches!(taken, ProviderError::AlreadyExists(_)),
+            "{taken:?}"
+        );
+        let other: ProviderError =
+            GitHubError::Unprocessable("Validation failed".to_string()).into();
+        assert!(matches!(other, ProviderError::Other(_)), "{other:?}");
+    }
 
     #[test]
     fn test_format_bytes() {
