@@ -654,6 +654,9 @@ impl OpenDriveProvider {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         let message = sanitize_api_error(&body);
+        if Self::body_refuses_a_taken_name(status.as_u16(), &body) {
+            return ProviderError::AlreadyExists(message);
+        }
         match status.as_u16() {
             400 => ProviderError::InvalidPath(message),
             401 => ProviderError::AuthenticationFailed(message),
@@ -669,6 +672,26 @@ impl OpenDriveProvider {
             500..=599 => ProviderError::ServerError(message),
             _ => ProviderError::Other(message),
         }
+    }
+
+    /// Whether an error answer is OpenDrive refusing a name that is taken:
+    /// a 409, a JSON error whose `code` is 409, or a client error that says
+    /// the item already exists. Without this a move refused in the window
+    /// after the destination check reached the caller as InvalidPath, and
+    /// sync and `mkdir -p` could not tell it from a bad path.
+    fn body_refuses_a_taken_name(status: u16, body: &str) -> bool {
+        if status == 409 {
+            return true;
+        }
+        let code = serde_json::from_str::<serde_json::Value>(body)
+            .ok()
+            .and_then(|value| {
+                value
+                    .pointer("/error/code")
+                    .and_then(serde_json::Value::as_u64)
+            });
+        (400..500).contains(&status)
+            && (code == Some(409) || body.to_ascii_lowercase().contains("already exist"))
     }
 
     /// True when an OpenDrive 403 body indicates the hard per-file size limit,
@@ -886,10 +909,201 @@ impl OpenDriveProvider {
         self.get_json(url.as_str()).await
     }
 
+    /// Upload `local_path` to `remote_path`. `open_if_exists` is the flag of
+    /// `upload/create_file.json`: true writes over a file of that name, false
+    /// makes the server refuse it.
+    async fn upload_file(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        open_if_exists: bool,
+    ) -> Result<(), ProviderError> {
+        // Proactive/reactive session handling is done by each `with_reauth` call below.
+        let resolved = self.resolve_path(remote_path)?;
+        let (parent_path, file_name) = split_parent_child(&resolved);
+        if file_name.is_empty() {
+            return Err(ProviderError::InvalidPath("Missing file name".into()));
+        }
+        // Store the new leaf under its reversible encoded form.
+        let file_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &file_name);
+
+        let folder_id = self
+            .with_reauth(|this| {
+                let parent_path = parent_path.clone();
+                Box::pin(async move { this.folder_id_by_path(&parent_path).await })
+            })
+            .await?;
+        let metadata = tokio::fs::metadata(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let file_size = metadata.len();
+        let file_hash = self.compute_md5(local_path).await?;
+
+        if let Some(ref cb) = on_progress {
+            cb(0, file_size);
+        }
+
+        let created: CreateFileResponse = self
+            .with_reauth(|this| {
+                let folder_id = folder_id.clone();
+                let file_name = file_name.clone();
+                let file_hash = file_hash.clone();
+                Box::pin(async move {
+                    this.post_form(
+                        "upload/create_file.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("folder_id", folder_id),
+                            ("file_name", file_name),
+                            ("file_size", file_size.to_string()),
+                            ("file_hash", file_hash),
+                            ("open_if_exists", u8::from(open_if_exists).to_string()),
+                        ],
+                    )
+                    .await
+                })
+            })
+            .await?;
+
+        let file_id = created
+            .file_id
+            .ok_or_else(|| ProviderError::ParseError("Missing FileId from create_file".into()))?;
+
+        let opened: OpenUploadResponse = self
+            .with_reauth(|this| {
+                let file_id = file_id.clone();
+                let file_hash = file_hash.clone();
+                Box::pin(async move {
+                    this.post_form(
+                        "upload/open_file_upload.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("file_id", file_id),
+                            ("file_size", file_size.to_string()),
+                            ("file_hash", file_hash),
+                        ],
+                    )
+                    .await
+                })
+            })
+            .await?;
+
+        let require_compression = parse_boolish(
+            opened
+                .require_compression
+                .as_ref()
+                .or(created.require_compression.as_ref()),
+        );
+        let temp_location = opened
+            .temp_location
+            .or(created.temp_location)
+            .ok_or_else(|| {
+                ProviderError::ParseError("Missing TempLocation from upload flow".into())
+            })?;
+        let mut file_compressed = false;
+
+        if file_size > 0 {
+            file_compressed = self
+                .upload_chunk(
+                    &file_id,
+                    &temp_location,
+                    &file_name,
+                    file_size,
+                    local_path,
+                    require_compression,
+                )
+                .await?;
+        }
+
+        let file_time = metadata
+            .modified()
+            .ok()
+            .and_then(|mtime| mtime.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs().to_string())
+            .unwrap_or_else(|| {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|duration| duration.as_secs().to_string())
+                    .unwrap_or_else(|_| "0".to_string())
+            });
+
+        self.with_reauth(|this| {
+            let file_id = file_id.clone();
+            let temp_location = temp_location.clone();
+            let file_time = file_time.clone();
+            let file_hash = file_hash.clone();
+            Box::pin(async move {
+                this.post_form_unit(
+                    "upload/close_file_upload.json",
+                    &[
+                        ("session_id", this.session_id.clone()),
+                        ("file_id", file_id),
+                        ("file_size", file_size.to_string()),
+                        ("temp_location", temp_location),
+                        ("file_time", file_time),
+                        ("file_hash", file_hash),
+                        (
+                            "file_compressed",
+                            if file_compressed { "1" } else { "0" }.to_string(),
+                        ),
+                    ],
+                )
+                .await
+            })
+        })
+        .await?;
+
+        // #252: apply the account's default privacy to the freshly uploaded
+        // file, reusing the file_id we already hold (no extra resolve). This is
+        // non-fatal: a failure warns but never changes the upload result.
+        if let Some(level) = self.config.default_privacy {
+            let level_value = level.to_api_value().to_string();
+            let file_id_for_access = file_id.clone();
+            if let Err(e) = self
+                .with_reauth(|this| {
+                    let file_id = file_id_for_access.clone();
+                    let level_value = level_value.clone();
+                    Box::pin(async move {
+                        this.post_form_unit(
+                            "file/access.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("file_id", file_id),
+                                ("file_ispublic", level_value),
+                            ],
+                        )
+                        .await
+                    })
+                })
+                .await
+            {
+                tracing::warn!(
+                    "[OpenDrive] could not apply default privacy to '{}': {}",
+                    remote_path,
+                    e
+                );
+            }
+        }
+
+        if let Some(ref cb) = on_progress {
+            cb(file_size, file_size);
+        }
+
+        self.last_activity = std::time::Instant::now();
+        Ok(())
+    }
+
+    /// Move a file by downloading and uploading it, for accounts whose
+    /// `file/move_copy.json` refuses `move`. With `overwrite` false the upload
+    /// asks the server to refuse a name that is taken (`open_if_exists=0`):
+    /// the destination was found free before, and a file that appeared there
+    /// since must not be overwritten.
     async fn move_file_via_temp_copy(
         &mut self,
         from_path: &str,
         to_path: &str,
+        overwrite: bool,
     ) -> Result<(), ProviderError> {
         let unique_suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -905,7 +1119,7 @@ impl OpenDriveProvider {
             .into_owned();
 
         self.download(from_path, &temp_path, None).await?;
-        let upload_result = self.upload(&temp_path, to_path, None).await;
+        let upload_result = self.upload_file(&temp_path, to_path, None, overwrite).await;
         let _ = tokio::fs::remove_file(&temp_path).await;
         upload_result?;
         self.delete(from_path).await
@@ -1046,7 +1260,7 @@ impl OpenDriveProvider {
             Err(ProviderError::InvalidPath(message))
                 if message.contains("Invalid value specified for `move`") =>
             {
-                self.move_file_via_temp_copy(&from_resolved, &to_resolved)
+                self.move_file_via_temp_copy(&from_resolved, &to_resolved, overwrite)
                     .await
             }
             Err(error) => Err(error),
@@ -1779,179 +1993,8 @@ impl StorageProvider for OpenDriveProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        // Proactive/reactive session handling is done by each `with_reauth` call below.
-        let resolved = self.resolve_path(remote_path)?;
-        let (parent_path, file_name) = split_parent_child(&resolved);
-        if file_name.is_empty() {
-            return Err(ProviderError::InvalidPath("Missing file name".into()));
-        }
-        // Store the new leaf under its reversible encoded form.
-        let file_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &file_name);
-
-        let folder_id = self
-            .with_reauth(|this| {
-                let parent_path = parent_path.clone();
-                Box::pin(async move { this.folder_id_by_path(&parent_path).await })
-            })
-            .await?;
-        let metadata = tokio::fs::metadata(local_path)
+        self.upload_file(local_path, remote_path, on_progress, true)
             .await
-            .map_err(ProviderError::IoError)?;
-        let file_size = metadata.len();
-        let file_hash = self.compute_md5(local_path).await?;
-
-        if let Some(ref cb) = on_progress {
-            cb(0, file_size);
-        }
-
-        let created: CreateFileResponse = self
-            .with_reauth(|this| {
-                let folder_id = folder_id.clone();
-                let file_name = file_name.clone();
-                let file_hash = file_hash.clone();
-                Box::pin(async move {
-                    this.post_form(
-                        "upload/create_file.json",
-                        &[
-                            ("session_id", this.session_id.clone()),
-                            ("folder_id", folder_id),
-                            ("file_name", file_name),
-                            ("file_size", file_size.to_string()),
-                            ("file_hash", file_hash),
-                            ("open_if_exists", "1".to_string()),
-                        ],
-                    )
-                    .await
-                })
-            })
-            .await?;
-
-        let file_id = created
-            .file_id
-            .ok_or_else(|| ProviderError::ParseError("Missing FileId from create_file".into()))?;
-
-        let opened: OpenUploadResponse = self
-            .with_reauth(|this| {
-                let file_id = file_id.clone();
-                let file_hash = file_hash.clone();
-                Box::pin(async move {
-                    this.post_form(
-                        "upload/open_file_upload.json",
-                        &[
-                            ("session_id", this.session_id.clone()),
-                            ("file_id", file_id),
-                            ("file_size", file_size.to_string()),
-                            ("file_hash", file_hash),
-                        ],
-                    )
-                    .await
-                })
-            })
-            .await?;
-
-        let require_compression = parse_boolish(
-            opened
-                .require_compression
-                .as_ref()
-                .or(created.require_compression.as_ref()),
-        );
-        let temp_location = opened
-            .temp_location
-            .or(created.temp_location)
-            .ok_or_else(|| {
-                ProviderError::ParseError("Missing TempLocation from upload flow".into())
-            })?;
-        let mut file_compressed = false;
-
-        if file_size > 0 {
-            file_compressed = self
-                .upload_chunk(
-                    &file_id,
-                    &temp_location,
-                    &file_name,
-                    file_size,
-                    local_path,
-                    require_compression,
-                )
-                .await?;
-        }
-
-        let file_time = metadata
-            .modified()
-            .ok()
-            .and_then(|mtime| mtime.duration_since(UNIX_EPOCH).ok())
-            .map(|duration| duration.as_secs().to_string())
-            .unwrap_or_else(|| {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|duration| duration.as_secs().to_string())
-                    .unwrap_or_else(|_| "0".to_string())
-            });
-
-        self.with_reauth(|this| {
-            let file_id = file_id.clone();
-            let temp_location = temp_location.clone();
-            let file_time = file_time.clone();
-            let file_hash = file_hash.clone();
-            Box::pin(async move {
-                this.post_form_unit(
-                    "upload/close_file_upload.json",
-                    &[
-                        ("session_id", this.session_id.clone()),
-                        ("file_id", file_id),
-                        ("file_size", file_size.to_string()),
-                        ("temp_location", temp_location),
-                        ("file_time", file_time),
-                        ("file_hash", file_hash),
-                        (
-                            "file_compressed",
-                            if file_compressed { "1" } else { "0" }.to_string(),
-                        ),
-                    ],
-                )
-                .await
-            })
-        })
-        .await?;
-
-        // #252: apply the account's default privacy to the freshly uploaded
-        // file, reusing the file_id we already hold (no extra resolve). This is
-        // non-fatal: a failure warns but never changes the upload result.
-        if let Some(level) = self.config.default_privacy {
-            let level_value = level.to_api_value().to_string();
-            let file_id_for_access = file_id.clone();
-            if let Err(e) = self
-                .with_reauth(|this| {
-                    let file_id = file_id_for_access.clone();
-                    let level_value = level_value.clone();
-                    Box::pin(async move {
-                        this.post_form_unit(
-                            "file/access.json",
-                            &[
-                                ("session_id", this.session_id.clone()),
-                                ("file_id", file_id),
-                                ("file_ispublic", level_value),
-                            ],
-                        )
-                        .await
-                    })
-                })
-                .await
-            {
-                tracing::warn!(
-                    "[OpenDrive] could not apply default privacy to '{}': {}",
-                    remote_path,
-                    e
-                );
-            }
-        }
-
-        if let Some(ref cb) = on_progress {
-            cb(file_size, file_size);
-        }
-
-        self.last_activity = std::time::Instant::now();
-        Ok(())
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -2596,6 +2639,21 @@ mod tests {
         OpenDriveProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_for_file_move_answering(occupied, 200, "{}").await
+    }
+
+    /// [`provider_for_file_move`] whose `file/move_copy.json` answers
+    /// `move_status` and `move_body`. The download and upload endpoints of
+    /// the temporary-copy fallback succeed, and the log also holds each
+    /// `upload/create_file.json` form, prefixed `create_file `.
+    async fn provider_for_file_move_answering(
+        occupied: bool,
+        move_status: u16,
+        move_body: &'static str,
+    ) -> (
+        OpenDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         use std::sync::{Arc, Mutex};
         let moves: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&moves);
@@ -2646,8 +2704,31 @@ mod tests {
                             seen.lock()
                                 .unwrap()
                                 .push(String::from_utf8_lossy(&body).to_string());
-                            json(200, serde_json::json!({}))
+                            axum::response::Response::builder()
+                                .status(move_status)
+                                .header("content-type", "application/json")
+                                .body(axum::body::Body::from(move_body))
+                                .unwrap()
                         }
+                        "/api/v1/download/file.json/F" => axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::from("abc"))
+                            .unwrap(),
+                        "/api/v1/upload/create_file.json" => {
+                            seen.lock()
+                                .unwrap()
+                                .push(format!("create_file {}", String::from_utf8_lossy(&body)));
+                            json(
+                                200,
+                                serde_json::json!({ "FileId": "N", "TempLocation": "t" }),
+                            )
+                        }
+                        "/api/v1/upload/open_file_upload.json" => {
+                            json(200, serde_json::json!({ "TempLocation": "t" }))
+                        }
+                        "/api/v1/upload/upload_file_chunk2.json/sid/N"
+                        | "/api/v1/upload/close_file_upload.json"
+                        | "/api/v1/file/trash.json" => json(200, serde_json::json!({})),
                         _ => not_found(),
                     }
                 }
@@ -2693,6 +2774,54 @@ mod tests {
         assert_eq!(moves.len(), 1, "{moves:?}");
         assert!(moves[0].contains("src_file_id=F"), "{moves:?}");
         assert!(moves[0].contains("overwrite_if_exists=true"), "{moves:?}");
+    }
+
+    /// A name taken between the destination check and the move: OpenDrive
+    /// refuses it with a client error, which reached the caller as
+    /// InvalidPath instead of AlreadyExists.
+    #[tokio::test]
+    async fn a_move_refused_for_a_taken_name_is_already_exists() {
+        let (mut provider, _) = provider_for_file_move_answering(
+            false,
+            400,
+            r#"{"error":{"code":409,"message":"File with the same name already exists"}}"#,
+        )
+        .await;
+        let outcome = provider.rename("/src/f.txt", "/dst/f.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// On an account whose move_copy refuses `move`, a rename downloads and
+    /// uploads the file. The destination was checked free first; the upload
+    /// asked the server to write over any file there anyway
+    /// (`open_if_exists=1`), so one that appeared since was overwritten. A
+    /// rename now asks for a refusal; a replace still overwrites.
+    #[tokio::test]
+    async fn the_temporary_copy_fallback_overwrites_only_for_a_replace() {
+        for (overwrite, expected) in [(false, "open_if_exists=0"), (true, "open_if_exists=1")] {
+            let (mut provider, log) = provider_for_file_move_answering(
+                false,
+                400,
+                r#"{"error":{"code":400,"message":"Invalid value specified for `move`"}}"#,
+            )
+            .await;
+            let outcome = if overwrite {
+                provider.replace("/src/f.txt", "/dst/f.txt").await
+            } else {
+                provider.rename("/src/f.txt", "/dst/f.txt").await
+            };
+            outcome.expect("the fallback moves the file");
+            let log = log.lock().unwrap().clone();
+            let created: Vec<&String> = log
+                .iter()
+                .filter(|e| e.starts_with("create_file "))
+                .collect();
+            assert_eq!(created.len(), 1, "{log:?}");
+            assert!(created[0].contains(expected), "{overwrite}: {created:?}");
+        }
     }
 
     #[tokio::test]
