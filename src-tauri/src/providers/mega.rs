@@ -1351,39 +1351,22 @@ mod tests {
         );
     }
 
-    /// A provider whose `mega-ls` and `mega-mv` are stand-in scripts over a
-    /// root holding the files `a.txt` and `b.txt` and the folder `d`. Every
-    /// `mega-mv` is logged, one line of arguments each. Returns the provider,
-    /// the log file and the folder that keeps the scripts alive.
+    /// A provider whose `mega-ls` and `mega-mv` are links to the checked-in
+    /// stand-in `tests/fixtures/megacmd_shim.sh`, over a root holding the
+    /// files `a.txt` and `b.txt` and the folder `d`. Every `mega-mv` is
+    /// logged, one line of arguments each. Returns the provider, the log file
+    /// and the folder that keeps the links.
     #[cfg(unix)]
     fn provider_on_stand_in_megacmd() -> (MegaCmdProvider, std::path::PathBuf, tempfile::TempDir) {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("tempdir");
-        let log = dir.path().join("mv.log");
-        let scripts = [
-            (
-                "mega-ls",
-                "#!/bin/sh\nif [ \"$1\" = \"-l\" ] && [ \"$2\" = \"/\" ]; then\n\
-                 echo 'FLAGS VERS SIZE DATE TIME NAME'\n\
-                 echo '----  1  3  15Jan2026  14:30  a.txt'\n\
-                 echo '----  1  3  15Jan2026  14:30  b.txt'\n\
-                 echo 'd---  -  -  15Jan2026  14:30  d'\n\
-                 exit 0\nfi\necho \"Couldn't find $2\" >&2\nexit 53\n"
-                    .to_string(),
-            ),
-            (
-                "mega-mv",
-                format!("#!/bin/sh\necho \"$1 $2\" >> '{}'\n", log.display()),
-            ),
-        ];
-        for (name, body) in scripts {
-            let path = dir.path().join(name);
-            std::fs::write(&path, body).unwrap();
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let shim =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/megacmd_shim.sh");
+        for name in ["mega-ls", "mega-mv"] {
+            std::os::unix::fs::symlink(&shim, dir.path().join(name)).unwrap();
         }
         let mut provider = test_provider();
         provider.cmd_dir = Some(dir.path().to_path_buf());
-        (provider, log, dir)
+        (provider, dir.path().join("mv.log"), dir)
     }
 
     #[cfg(unix)]
