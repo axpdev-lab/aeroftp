@@ -1400,6 +1400,25 @@ impl S3Provider {
         if !overwrite && self.key_or_folder_exists(to_trimmed).await? {
             return Err(ProviderError::AlreadyExists(to.to_string()));
         }
+        // A replace puts a file in place of a file and a folder in place of a
+        // folder. A folder here is only a prefix, so the copy of a file onto
+        // one put a key named like the folder beside it, and a folder onto a
+        // file put its keys under the file's name.
+        if overwrite {
+            let occupant_is_dir = !self
+                .list_keys_with_prefix_up_to(&to_prefix, Some(1))
+                .await?
+                .is_empty();
+            let occupant_is_file = !occupant_is_dir
+                && self
+                    .list_keys_with_prefix_up_to(to_trimmed, Some(1))
+                    .await?
+                    .iter()
+                    .any(|listed| listed == to_trimmed);
+            if occupant_is_dir || occupant_is_file {
+                super::refuse_replace_across_types(to, !keys.is_empty(), occupant_is_dir)?;
+            }
+        }
 
         if keys.is_empty() {
             if self.is_filelu_s3_endpoint() {
@@ -9016,6 +9035,31 @@ mod tests {
                 !log.lock().unwrap().iter().any(|r| r.starts_with("PUT")),
                 "{existing:?}"
             );
+        }
+    }
+
+    /// A replace puts a file in place of a file and a folder in place of a
+    /// folder. A folder is only a prefix, so a file copied onto `d` landed
+    /// beside the folder `d/`, and a folder onto the file `dst` put its keys
+    /// under `dst/`. Both are refused before any copy.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_copies_nothing() {
+        for (objects, from, to) in [
+            (&[("a.txt", "A"), ("d/x.txt", "X")][..], "/a.txt", "/d"),
+            (&[("src/a.txt", "A"), ("dst", "D")][..], "/src", "/dst"),
+        ] {
+            let (mut provider, bucket, log) = provider_on_memory_bucket(objects).await;
+            let outcome = provider.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+            assert!(
+                !log.lock().unwrap().iter().any(|r| r.starts_with("PUT")),
+                "{from} -> {to}: {:?}",
+                log.lock().unwrap()
+            );
+            assert_eq!(bucket.lock().unwrap().len(), objects.len());
         }
     }
 
