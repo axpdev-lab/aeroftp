@@ -91,6 +91,8 @@ struct Store {
     paths: Mutex<HashSet<String>>,
     renames: AtomicU32,
     case_insensitive: bool,
+    /// Refuses OPENDIR, as a server that allows no listing there.
+    refuse_opendir: bool,
 }
 
 struct RenameServer {
@@ -149,6 +151,17 @@ impl RenameHandler {
                 let from = rstr(data, &mut pos).unwrap_or_default();
                 let to = rstr(data, &mut pos).unwrap_or_default();
                 let mut paths = self.store.paths.lock().unwrap();
+                // A case-insensitive server finds the source whatever the
+                // spelling it is asked for.
+                let from = if self.store.case_insensitive {
+                    paths
+                        .iter()
+                        .find(|p| p.eq_ignore_ascii_case(&from))
+                        .cloned()
+                        .unwrap_or(from)
+                } else {
+                    from
+                };
                 if !paths.contains(&from) {
                     status(id, SSH_FX_NO_SUCH_FILE, "No such file")
                 } else if self.store.case_insensitive
@@ -168,6 +181,9 @@ impl RenameHandler {
                     paths.insert(to);
                     status(id, SSH_FX_OK, "")
                 }
+            }
+            SSH_FXP_OPENDIR if self.store.refuse_opendir => {
+                status(id, SSH_FX_PERMISSION_DENIED, "Permission denied")
             }
             SSH_FXP_OPENDIR => {
                 let dir = rstr(data, &mut pos).unwrap_or_default();
@@ -287,10 +303,19 @@ impl Handler for RenameHandler {
 
 /// Start the server on loopback holding `paths`; returns its port and store.
 async fn start_server(paths: &[&str], case_insensitive: bool) -> (u16, Arc<Store>) {
-    let store = Arc::new(Store {
-        case_insensitive,
-        ..Store::default()
-    });
+    start_server_with(
+        paths,
+        Store {
+            case_insensitive,
+            ..Store::default()
+        },
+    )
+    .await
+}
+
+/// [`start_server`] with a given store (its paths are added).
+async fn start_server_with(paths: &[&str], store: Store) -> (u16, Arc<Store>) {
+    let store = Arc::new(store);
     store
         .paths
         .lock()
@@ -415,6 +440,36 @@ async fn rename_reports_a_taken_name_and_skips_its_own_path() {
     let outcome = provider.rename("/x.txt", "/X.txt").await;
     assert!(
         matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+        "{outcome:?}"
+    );
+    provider.disconnect().await.ok();
+
+    // 8. A case-insensitive server that stores `A.txt`, asked to rename
+    // `a.txt` to `A.txt`, refuses: the listing holds one entry, the source
+    // itself, so this is no taken name.
+    let (port, _) = start_server(&["/A.txt"], true).await;
+    let mut provider = connect(port).await;
+    let outcome = provider.rename("/a.txt", "/A.txt").await;
+    assert!(
+        outcome.is_err() && !matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+        "{outcome:?}"
+    );
+    provider.disconnect().await.ok();
+
+    // 9. A listing the server refuses leaves its refusal as it came: the
+    // look cannot tell, and does not guess a taken name.
+    let (port, _) = start_server_with(
+        &["/x.txt", "/X.txt"],
+        Store {
+            refuse_opendir: true,
+            ..Store::default()
+        },
+    )
+    .await;
+    let mut provider = connect(port).await;
+    let outcome = provider.rename("/x.txt", "/X.txt").await;
+    assert!(
+        outcome.is_err() && !matches!(outcome, Err(ProviderError::AlreadyExists(_))),
         "{outcome:?}"
     );
     provider.disconnect().await.ok();

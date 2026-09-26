@@ -2791,19 +2791,27 @@ impl StorageProvider for SftpProvider {
         });
         // A rename that only changes the letter case needs its own look: a
         // case-insensitive server finds the source itself at `to`. There the
-        // parent listing decides, since it names each entry as stored: only
-        // an entry spelled exactly like `to` is another item (a
-        // case-sensitive server holding both spellings).
+        // parent listing decides, since it names each entry as stored: the
+        // name is taken only when entries spelled exactly like `to` and like
+        // `from` are both there, two items (a case-sensitive server holding
+        // both spellings). One entry is the source, whichever spelling it is
+        // stored under. A listing that cannot be read leaves the server's
+        // refusal as it came.
         let taken = if !failure {
             false
         } else if from_path.to_lowercase() == to_path.to_lowercase() {
-            let (parent, name) = match to_path.rsplit_once('/') {
+            let (parent, to_name) = match to_path.rsplit_once('/') {
                 Some(("", name)) => ("/", name),
                 Some((parent, name)) => (parent, name),
                 None => (".", to_path.as_str()),
             };
+            let from_name = from_path.rsplit('/').next().unwrap_or(&from_path);
             match sftp.read_dir(parent).await {
-                Ok(entries) => entries.into_iter().any(|entry| entry.file_name() == name),
+                Ok(entries) => {
+                    let names: Vec<String> =
+                        entries.into_iter().map(|entry| entry.file_name()).collect();
+                    names.iter().any(|n| n == to_name) && names.iter().any(|n| n == from_name)
+                }
                 Err(_) => false,
             }
         } else {
