@@ -5497,7 +5497,11 @@ mod tests {
 
     /// A WebDAV double that treats MOVE as golang.org/x/net/webdav does:
     /// `Depth` absent or `infinity` moves (201), any other value is a 400.
-    /// Returns its URL and the `Depth` of every MOVE it received.
+    /// PROPFIND describes every path as a 3-byte file, so a client that stats
+    /// the source to choose the header (as this provider did, sending `0` for
+    /// a file) is caught; a double that refused PROPFIND let the old code fall
+    /// back to `infinity` and pass. Returns its URL and the `Depth` of every
+    /// MOVE it received.
     async fn move_server_like_x_net_webdav() -> (
         String,
         std::sync::Arc<std::sync::Mutex<Vec<Option<String>>>>,
@@ -5509,8 +5513,30 @@ mod tests {
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let seen = Arc::clone(&seen);
                 async move {
-                    if req.method().as_str() != "MOVE" {
-                        return axum::http::StatusCode::METHOD_NOT_ALLOWED;
+                    let reply = |status: u16, body: String| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .header("content-type", "application/xml; charset=utf-8")
+                            .body(axum::body::Body::from(body))
+                            .unwrap()
+                    };
+                    match req.method().as_str() {
+                        "PROPFIND" => {
+                            let href = req.uri().path().to_string();
+                            return reply(
+                                207,
+                                format!(
+                                    "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+                                     <d:multistatus xmlns:d=\"DAV:\"><d:response>\
+                                     <d:href>{href}</d:href><d:propstat><d:prop>\
+                                     <d:resourcetype/><d:getcontentlength>3</d:getcontentlength>\
+                                     </d:prop><d:status>HTTP/1.1 200 OK</d:status>\
+                                     </d:propstat></d:response></d:multistatus>"
+                                ),
+                            );
+                        }
+                        "MOVE" => {}
+                        _ => return reply(405, String::new()),
                     }
                     let depth = req
                         .headers()
@@ -5518,11 +5544,7 @@ mod tests {
                         .map(|v| v.to_str().unwrap().to_string());
                     let valid = matches!(depth.as_deref(), None | Some("infinity"));
                     seen.lock().unwrap().push(depth);
-                    if valid {
-                        axum::http::StatusCode::CREATED
-                    } else {
-                        axum::http::StatusCode::BAD_REQUEST
-                    }
+                    reply(if valid { 201 } else { 400 }, String::new())
                 }
             }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
