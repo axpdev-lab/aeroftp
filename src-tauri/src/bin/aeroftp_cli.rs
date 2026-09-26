@@ -76994,8 +76994,11 @@ mod tests {
     }
 
     /// A server that accepts a transfer and never finishes it: the one a user
-    /// stops with Ctrl-C.
-    struct StallingProvider;
+    /// stops with Ctrl-C. With `refuse`, it fails every download at once.
+    #[derive(Default)]
+    struct StallingProvider {
+        refuse: bool,
+    }
 
     #[async_trait::async_trait]
     impl StorageProvider for StallingProvider {
@@ -77035,6 +77038,9 @@ mod tests {
             _local_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            if self.refuse {
+                return Err(ProviderError::NotFound("/f.bin".to_string()));
+            }
             std::future::pending().await
         }
         async fn download_to_bytes(
@@ -77097,12 +77103,20 @@ mod tests {
     fn interrupted_after_a_moment<F: std::future::Future<Output = i32>>(
         command: impl FnOnce(Arc<AtomicBool>) -> F + Send,
     ) -> i32 {
+        against_stalling(StallingProvider::default(), command)
+    }
+
+    /// [`interrupted_after_a_moment`] against `provider`.
+    fn against_stalling<F: std::future::Future<Output = i32>>(
+        provider: StallingProvider,
+        command: impl FnOnce(Arc<AtomicBool>) -> F + Send,
+    ) -> i32 {
         std::thread::scope(|scope| {
             std::thread::Builder::new()
                 .stack_size(64 * 1024 * 1024)
                 .spawn_scoped(scope, move || {
                     TEST_CONNECTED_PROVIDER
-                        .with(|slot| *slot.borrow_mut() = Some(Box::new(StallingProvider)));
+                        .with(|slot| *slot.borrow_mut() = Some(Box::new(provider)));
                     let cancelled = Arc::new(AtomicBool::new(false));
                     let flag = Arc::clone(&cancelled);
                     std::thread::spawn(move || {
@@ -77187,6 +77201,55 @@ mod tests {
             .await
         });
         assert_eq!(code, 130, "-1 means the put was still running");
+    }
+
+    /// `get` of `/f.bin` into a local file that already holds "keep me", with
+    /// `--inplace`, against `provider`; the exit code and what the file holds
+    /// afterwards.
+    fn inplace_get_over_an_existing_file(provider: StallingProvider) -> (i32, Option<Vec<u8>>) {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        std::fs::write(&local, b"keep me").unwrap();
+        let local_str = local.to_string_lossy().into_owned();
+        let cli = Cli {
+            quiet: true,
+            inplace: true,
+            ..test_cli()
+        };
+        let code = against_stalling(provider, |cancelled| async move {
+            cmd_get(
+                "memory://",
+                "/f.bin",
+                Some(local_str.as_str()),
+                false,
+                1,
+                false,
+                &cli,
+                OutputFormat::Json,
+                cancelled,
+            )
+            .await
+        });
+        (code, std::fs::read(&local).ok())
+    }
+
+    /// CodeRabbit on #951: with `--inplace`, a Ctrl-C that lands before the
+    /// download has opened the destination (the server has not answered yet)
+    /// removed the local file, which the transfer had never touched.
+    #[test]
+    fn ctrl_c_before_an_inplace_download_opens_keeps_the_local_file() {
+        let (code, kept) = inplace_get_over_an_existing_file(StallingProvider::default());
+        assert_eq!(code, 130);
+        assert_eq!(kept.as_deref(), Some(&b"keep me"[..]));
+    }
+
+    /// The same on a failure: a download refused before it wrote anything
+    /// removed the existing local file under `--inplace`.
+    #[test]
+    fn a_failed_inplace_download_keeps_a_file_it_never_wrote() {
+        let (code, kept) = inplace_get_over_an_existing_file(StallingProvider { refuse: true });
+        assert_ne!(code, 0);
+        assert_eq!(kept.as_deref(), Some(&b"keep me"[..]));
     }
 
     /// An interrupted transfer is not retried: `--retries` is for failures,
