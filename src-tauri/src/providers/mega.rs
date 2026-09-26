@@ -429,7 +429,11 @@ impl MegaCmdProvider {
         let date_str = parts[3];
         let time_str = parts[4];
 
-        let name = parts[5..].join(" ");
+        // The name is the rest of the line after the fifth column, as it
+        // came: joining the split words collapsed a double space and dropped
+        // a trailing one, so the look before a rename never found `a  b.txt`
+        // or `b.txt ` and `mega-mv` went over it.
+        let name = rest_after_columns(line, 5).to_string();
         if name.is_empty() {
             tracing::debug!(target: "mega", "[PARSE] Skipping line with empty name: {:?}", line);
             return None;
@@ -1299,6 +1303,18 @@ fn map_mega_exists(result: Result<String, ProviderError>) -> Result<bool, Provid
     }
 }
 
+/// What follows the first `columns` whitespace-separated columns of `line`
+/// and the whitespace after them, with its own spaces kept.
+fn rest_after_columns(line: &str, columns: usize) -> &str {
+    let mut rest = line;
+    for _ in 0..columns {
+        rest = rest.trim_start();
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        rest = &rest[end..];
+    }
+    rest.trim_start()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1450,6 +1466,17 @@ mod tests {
         assert!(MegaCmdProvider::parse_ls_line("/photos:", "/").is_none());
         assert!(MegaCmdProvider::parse_ls_line("", "/").is_none());
         assert!(MegaCmdProvider::parse_ls_line("too few columns", "/").is_none());
+    }
+
+    /// A name with a double space or a trailing space is the name: joined
+    /// from split words it was `a b.txt`, so the look before a rename never
+    /// found the item and `mega-mv` went over it.
+    #[test]
+    fn parse_ls_line_keeps_the_spaces_of_a_name() {
+        let line = "----  1  3  15Jan2026  14:30  a  b.txt ";
+        let entry = MegaCmdProvider::parse_ls_line(line, "/").unwrap();
+        assert_eq!(entry.name, "a  b.txt ");
+        assert_eq!(entry.path, "/a  b.txt ");
     }
 
     #[test]
