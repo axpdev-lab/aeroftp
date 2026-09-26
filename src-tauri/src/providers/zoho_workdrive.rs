@@ -2250,6 +2250,25 @@ impl ZohoWorkdriveProvider {
         Ok(files.into_iter().find(|f| f.attributes.name == name))
     }
 
+    /// Refuse to undo a first step onto `name` in the folder `parent_id`
+    /// when an item other than `file_id` took that name since: what
+    /// WorkDrive does with a taken name is not documented. `path` names the
+    /// way back in the error.
+    async fn way_back_is_free(
+        &self,
+        name: &str,
+        parent_id: &str,
+        file_id: &str,
+        path: &str,
+    ) -> Result<(), ProviderError> {
+        match self.find_by_name(name, parent_id).await? {
+            Some(found) if found.id != file_id => Err(ProviderError::AlreadyExists(format!(
+                "{path} was taken by another item, so the first step was not undone"
+            ))),
+            _ => Ok(()),
+        }
+    }
+
     /// Move the item `file_id` into the folder `to_parent_id` under its name.
     async fn move_file_into(
         &self,
@@ -2401,7 +2420,13 @@ impl ZohoWorkdriveProvider {
         } else if rename_first {
             self.rename_file_in_place(&file.id, new_name, to).await?;
             if let Err(e) = self.move_file_into(&file.id, &to_parent_id, to).await {
-                let undone = self.rename_file_in_place(&file.id, file_name, from).await;
+                let undone = match self
+                    .way_back_is_free(file_name, &from_parent_id, &file.id, from)
+                    .await
+                {
+                    Ok(()) => self.rename_file_in_place(&file.id, file_name, from).await,
+                    Err(e) => Err(e),
+                };
                 let now_at = at(from_path_is_absolute, from_parent_path, new_name);
                 return Err(super::second_step_failed(from, to, &now_at, e, undone));
             }
@@ -2410,7 +2435,13 @@ impl ZohoWorkdriveProvider {
             info!("Moved {} to folder {}", from, to_parent_path);
             if is_rename {
                 if let Err(e) = self.rename_file_in_place(&file.id, new_name, to).await {
-                    let undone = self.move_file_into(&file.id, &from_parent_id, from).await;
+                    let undone = match self
+                        .way_back_is_free(file_name, &from_parent_id, &file.id, from)
+                        .await
+                    {
+                        Ok(()) => self.move_file_into(&file.id, &from_parent_id, from).await,
+                        Err(e) => Err(e),
+                    };
                     let now_at = at(to_path_is_absolute, to_parent_path, file_name);
                     return Err(super::second_step_failed(from, to, &now_at, e, undone));
                 }
@@ -4171,6 +4202,66 @@ mod tests {
                 "/workdrive/api/v1/files"
             ]
         );
+    }
+
+    /// When the name the undo would take back was taken meanwhile (here
+    /// the source folder lists another `a.txt` after the move), moving back
+    /// would meet it: what WorkDrive does then is not documented. The move
+    /// stays, and the error says where the item is.
+    #[tokio::test]
+    async fn an_undo_whose_way_back_is_taken_is_not_made() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+        let source_listings = Arc::new(AtomicUsize::new(0));
+        let moves: Arc<Mutex<usize>> = Arc::default();
+        let (listed, moved) = (Arc::clone(&source_listings), Arc::clone(&moves));
+        let app = axum::Router::new()
+            .route(
+                "/workdrive/api/v1/files/S/files",
+                axum::routing::get(move || {
+                    // The source first, then another item under its name.
+                    let id = if listed.fetch_add(1, Ordering::SeqCst) == 0 { "FA" } else { "FX" };
+                    async move {
+                        format!(
+                            r#"{{"data":[{{"id":"{id}","attributes":{{"name":"a.txt","type":"file"}}}}]}}"#
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/workdrive/api/v1/files/D/files",
+                axum::routing::get(|| async { r#"{"data":[]}"# }),
+            )
+            .route(
+                "/workdrive/api/v1/files",
+                axum::routing::patch(move || {
+                    *moved.lock().unwrap() += 1;
+                    async { "{}" }
+                }),
+            )
+            .route(
+                "/workdrive/api/v1/files/FA",
+                axum::routing::patch(|| async { (axum::http::StatusCode::FORBIDDEN, "{}") }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        for (path, id) in [("/", "ROOT"), ("/src", "S"), ("/dst", "D")] {
+            p.folder_cache.insert(path.to_string(), id.to_string());
+        }
+        p.current_folder_id = "ROOT".to_string();
+        let outcome = p.rename("/src/a.txt", "/dst/c.txt").await;
+        match outcome {
+            Err(ProviderError::Other(message)) => {
+                assert!(message.contains("now at /dst/a.txt"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(*moves.lock().unwrap(), 1, "no move back");
     }
 
     #[tokio::test]

@@ -557,6 +557,25 @@ impl DrimeCloudProvider {
         Self::rename_outcome(resp, "Move", to).await
     }
 
+    /// Refuse to undo a first step onto `name` in the folder `folder_id`
+    /// when an item other than `file_id` took that name since: Drime keeps
+    /// two items with one name, and the undo would double it. `path` names
+    /// the way back in the error.
+    async fn way_back_is_free(
+        &self,
+        folder_id: &str,
+        name: &str,
+        file_id: &str,
+        path: &str,
+    ) -> Result<(), ProviderError> {
+        match self.find_file_in_folder(folder_id, name).await? {
+            Some((id, _, _)) if id != file_id => Err(ProviderError::AlreadyExists(format!(
+                "{path} was taken by another item, so the first step was not undone"
+            ))),
+            _ => Ok(()),
+        }
+    }
+
     /// Rename the entry `file_id` to `to_name` in the folder it is in.
     async fn rename_entry(
         &self,
@@ -1603,7 +1622,13 @@ impl StorageProvider for DrimeCloudProvider {
                 Some(to_parent_id) if rename_first => {
                     self.rename_entry(&file_id, to_name, &resolved_to).await?;
                     if let Err(e) = self.move_entry(&file_id, to_parent_id, &resolved_to).await {
-                        let undone = self.rename_entry(&file_id, from_name, &resolved_from).await;
+                        let undone = match self
+                            .way_back_is_free(&from_parent_id, from_name, &file_id, &resolved_from)
+                            .await
+                        {
+                            Ok(()) => self.rename_entry(&file_id, from_name, &resolved_from).await,
+                            Err(e) => Err(e),
+                        };
                         let now_at = format!("{}/{to_name}", from_parent.trim_end_matches('/'));
                         return Err(super::second_step_failed(
                             &resolved_from,
@@ -1622,9 +1647,16 @@ impl StorageProvider for DrimeCloudProvider {
                         return Ok(());
                     }
                     if let Err(e) = self.rename_entry(&file_id, to_name, &resolved_to).await {
-                        let undone = self
-                            .move_entry(&file_id, &from_parent_id, &resolved_from)
-                            .await;
+                        let undone = match self
+                            .way_back_is_free(&from_parent_id, from_name, &file_id, &resolved_from)
+                            .await
+                        {
+                            Ok(()) => {
+                                self.move_entry(&file_id, &from_parent_id, &resolved_from)
+                                    .await
+                            }
+                            Err(e) => Err(e),
+                        };
                         let now_at = format!("{}/{from_name}", to_parent.trim_end_matches('/'));
                         return Err(super::second_step_failed(
                             &resolved_from,
@@ -2789,10 +2821,12 @@ mod tests {
 
     /// A Drime double that keeps `entries` (id, name, parent id, kind; the
     /// root is the parent `""`) in memory: listings by `parentIds`, a rename
-    /// (`PUT /file-entries/{id}`, 400 onto a name taken in its folder, 500
-    /// to a name starting with `fail`), a move and a delete. Returns a
-    /// provider on it, the entries, and every change as `rename ID NAME`,
-    /// `move ID PARENT` or `delete ID`.
+    /// (`PUT /file-entries/{id}`, 400 onto a name taken in its folder; to a
+    /// name starting with `fail` 500, and with `failrace` another `a.txt`
+    /// appears in folder 1; to one starting with `ghost` 400 as a name taken
+    /// since the look), a move (403 into a folder named `nomove...`) and a
+    /// delete. Returns a provider on it, the entries, and every change as
+    /// `rename ID NAME`, `move ID PARENT` or `delete ID`.
     #[allow(clippy::type_complexity)]
     async fn provider_on_drime_entries(
         entries: &[(u64, &str, &str, &str)],
@@ -2846,8 +2880,28 @@ mod tests {
                         ("PUT", p) if p.starts_with("/file-entries/") => {
                             let id: u64 = p.trim_start_matches("/file-entries/").parse().unwrap();
                             let name = args["name"].as_str().unwrap_or("").to_string();
+                            if name.starts_with("failrace") {
+                                // Refused, and meanwhile another `a.txt` took
+                                // the way back into folder 1.
+                                items.push((
+                                    99,
+                                    "a.txt".to_string(),
+                                    "1".to_string(),
+                                    "file".to_string(),
+                                ));
+                                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "{}")
+                                    .into_response();
+                            }
                             if name.starts_with("fail") {
                                 return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "{}")
+                                    .into_response();
+                            }
+                            if name.starts_with("ghost") {
+                                // Taken since the look, by an item not listed yet.
+                                return (
+                                    axum::http::StatusCode::BAD_REQUEST,
+                                    r#"{"message":"An item with this name already exists."}"#,
+                                )
                                     .into_response();
                             }
                             let parent = items.iter().find(|e| e.0 == id).unwrap().2.clone();
@@ -2867,6 +2921,12 @@ mod tests {
                                 serde_json::Value::Number(n) => n.to_string(),
                                 _ => String::new(),
                             };
+                            let refuses = items
+                                .iter()
+                                .any(|e| e.0.to_string() == parent && e.1.starts_with("nomove"));
+                            if refuses {
+                                return (axum::http::StatusCode::FORBIDDEN, "{}").into_response();
+                            }
                             for id in args["entryIds"].as_array().unwrap() {
                                 let id = id.as_u64().unwrap();
                                 items.iter_mut().find(|e| e.0 == id).unwrap().2 = parent.clone();
@@ -2947,6 +3007,101 @@ mod tests {
             .cloned()
             .unwrap();
         assert_eq!((a.1.as_str(), a.2.as_str()), ("a.txt", "1"));
+    }
+
+    /// The folders `d` (1) and `e` (2), `nomove` (4, which refuses moves in)
+    /// holding its own `a.txt` (44), and `a.txt` (11) in `d`.
+    async fn provider_for_two_step_renames() -> (
+        DrimeCloudProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<(u64, String, String, String)>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        provider_on_drime_entries(&[
+            (1, "d", "", "folder"),
+            (2, "e", "", "folder"),
+            (4, "nomove", "", "folder"),
+            (11, "a.txt", "1", "file"),
+            (44, "a.txt", "4", "file"),
+        ])
+        .await
+    }
+
+    /// When the name the undo would take back was taken meanwhile, undoing
+    /// would put a second `a.txt` in `d`: the first step stays, and the error
+    /// says where the item is, never AlreadyExists, since something changed.
+    #[tokio::test]
+    async fn an_undo_whose_way_back_is_taken_is_not_made_and_says_where_the_item_is() {
+        let (mut provider, _, changes) = provider_for_two_step_renames().await;
+        let outcome = provider.rename("/d/a.txt", "/e/failrace.txt").await;
+        match outcome {
+            Err(ProviderError::Other(message)) => {
+                assert!(message.contains("now at /e/a.txt"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(*changes.lock().unwrap(), ["move 11 2"], "no move back");
+    }
+
+    /// A second step refused for a name taken since the look, with the first
+    /// step undone, is AlreadyExists as it came: nothing changed.
+    #[tokio::test]
+    async fn a_taken_name_after_an_undone_first_step_is_already_exists() {
+        let (mut provider, store, changes) = provider_for_two_step_renames().await;
+        let outcome = provider.rename("/d/a.txt", "/e/ghost.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(*changes.lock().unwrap(), ["move 11 2", "move 11 1"]);
+        let a = store
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|e| e.0 == 11)
+            .cloned()
+            .unwrap();
+        assert_eq!((a.1.as_str(), a.2.as_str()), ("a.txt", "1"));
+    }
+
+    /// Renamed first (the destination folder holds the old name), then the
+    /// move refused: the rename is undone.
+    #[tokio::test]
+    async fn a_rename_first_whose_move_fails_is_renamed_back() {
+        let (mut provider, store, changes) = provider_for_two_step_renames().await;
+        let outcome = provider.rename("/d/a.txt", "/nomove/c.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(
+            *changes.lock().unwrap(),
+            ["rename 11 c.txt", "rename 11 a.txt"]
+        );
+        let a = store
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|e| e.0 == 11)
+            .cloned()
+            .unwrap();
+        assert_eq!((a.1.as_str(), a.2.as_str()), ("a.txt", "1"));
+    }
+
+    /// After every outcome the ids cached for both paths and everything
+    /// under them are forgotten; a sibling sharing the prefix stays.
+    #[tokio::test]
+    async fn a_failed_rename_forgets_the_ids_cached_under_both_paths() {
+        let (mut provider, _, _) = provider_for_two_step_renames().await;
+        for path in ["/d/a.txt/x", "/e/fail.txt/x", "/d/a.txtx"] {
+            provider.dir_cache_insert(
+                path.to_string(),
+                DirInfo {
+                    id: "Z".to_string(),
+                },
+            );
+        }
+        let outcome = provider.rename("/d/a.txt", "/e/fail.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(!provider.dir_cache.contains_key("/d/a.txt/x"));
+        assert!(!provider.dir_cache.contains_key("/e/fail.txt/x"));
+        assert!(provider.dir_cache.contains_key("/d/a.txtx"));
     }
 
     /// The replace sets the old item aside, so the name is empty for a

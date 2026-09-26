@@ -1847,6 +1847,11 @@ pub(crate) async fn replace_by_setting_aside(
 /// nothing changed, and `error` is the answer as it came. When the undo
 /// failed too, the item is at `now_at`: the error names both failures and
 /// that path, and is never AlreadyExists, which would say nothing changed.
+///
+/// Declared, not closed: a second step whose answer was lost after the
+/// server applied it (a timeout) reads as failed, so the undo moves back an
+/// item that had arrived, or the error names a place it has left. No
+/// backend that renames in two steps offers a way to ask which it was.
 pub(crate) fn second_step_failed(
     from: &str,
     to: &str,
