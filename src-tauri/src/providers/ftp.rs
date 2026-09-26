@@ -6069,8 +6069,12 @@ mod transfer_verdict_tests {
     struct Script {
         /// RETR: the bytes sent on the data connection before it closes.
         retr_payload: Vec<u8>,
-        /// RETR: the reply(ies) after the data connection closes.
+        /// RETR: the reply(ies) once the whole payload was written.
         retr_reply: &'static str,
+        /// RETR: the reply(ies) when the client closed the data connection
+        /// before the payload was written, as a real server answers an early
+        /// close (it cannot complain before the client has closed).
+        retr_reply_after_early_close: &'static str,
         /// STOR: the reply once the data connection ends, unless the client
         /// sent ABOR first.
         stor_reply: &'static str,
@@ -6127,10 +6131,15 @@ mod transfer_verdict_tests {
                     if write.write_all(b"150 opening\r\n").await.is_err() {
                         return;
                     }
-                    // The client may close early: a failed write is its choice.
-                    let _ = data.write_all(&script.retr_payload).await;
+                    // The client may close early: a failed write is its choice,
+                    // and the server's answer to it.
+                    let complete = data.write_all(&script.retr_payload).await.is_ok();
                     drop(data);
-                    script.retr_reply.to_string()
+                    if complete {
+                        script.retr_reply.to_string()
+                    } else {
+                        script.retr_reply_after_early_close.to_string()
+                    }
                 }
                 "STOR" => {
                     let (mut data, _) = data_listener.accept().await.unwrap();
@@ -6187,6 +6196,7 @@ mod transfer_verdict_tests {
             let (port, _) = scripted_server(Script {
                 retr_payload: b"0123456789".to_vec(),
                 retr_reply: reply,
+                retr_reply_after_early_close: reply,
                 stor_reply: "226 done\r\n",
             })
             .await;
@@ -6215,6 +6225,7 @@ mod transfer_verdict_tests {
             let (port, _) = scripted_server(Script {
                 retr_payload: Vec::new(),
                 retr_reply: "226 done\r\n",
+                retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
                 stor_reply: reply,
             })
             .await;
@@ -6240,6 +6251,7 @@ mod transfer_verdict_tests {
         let (port, _) = scripted_server(Script {
             retr_payload: vec![b'x'; 40],
             retr_reply: "451 Requested action aborted: local error.\r\n",
+            retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
             stor_reply: "226 done\r\n",
         })
         .await;
@@ -6250,6 +6262,7 @@ mod transfer_verdict_tests {
         let (port, _) = scripted_server(Script {
             retr_payload: vec![b'x'; 40],
             retr_reply: "226 done\r\n",
+            retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
             stor_reply: "226 done\r\n",
         })
         .await;
@@ -6268,9 +6281,13 @@ mod transfer_verdict_tests {
     /// reading the leftover `226` as its own reply.
     #[tokio::test]
     async fn a_range_that_stops_before_the_end_leaves_the_provider_usable() {
+        // Far more than the socket buffers hold, so the server is still
+        // writing when the client closes, and answers the early close.
         let (port, _) = scripted_server(Script {
-            retr_payload: vec![b'x'; 100],
-            retr_reply: "426 Connection closed; transfer aborted.\r\n226 closing\r\n",
+            retr_payload: vec![b'x'; 64 * 1024 * 1024],
+            retr_reply: "226 done\r\n",
+            retr_reply_after_early_close:
+                "426 Connection closed; transfer aborted.\r\n226 closing\r\n",
             stor_reply: "226 done\r\n",
         })
         .await;
@@ -6297,6 +6314,7 @@ mod transfer_verdict_tests {
         let (port, log) = scripted_server(Script {
             retr_payload: Vec::new(),
             retr_reply: "226 done\r\n",
+            retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
             stor_reply: "226 done\r\n",
         })
         .await;
