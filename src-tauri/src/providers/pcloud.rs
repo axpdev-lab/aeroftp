@@ -64,6 +64,16 @@ fn classify_pcloud_result(result: u32, error: Option<&str>) -> Option<ProviderEr
         .map(str::to_string)
         .unwrap_or_else(|| format!("Error code: {result}"));
     let msg = sanitize_api_error(&raw_msg);
+    // `msg` with the code it came with, so a run records the number, which
+    // pCloud's own text does not carry (a message pCloud left out already
+    // names it).
+    let with_code = |msg: String| {
+        if error.is_some() {
+            format!("{msg} (pCloud result {result})")
+        } else {
+            msg
+        }
+    };
     Some(match result {
         // 1000: "Log in required", 2000: "Log in failed", 2094: "Invalid access_token"
         1000 | 2000 | 2094 => ProviderError::AuthenticationFailed(msg),
@@ -75,7 +85,7 @@ fn classify_pcloud_result(result: u32, error: Option<&str>) -> Option<ProviderEr
         // negative. Without 2005 here, the AeroCrypt overlay bootstrap probe
         // (`exists(.aeroftp-crypt.json)`) saw a ServerError and failed "could
         // not be unlocked" on pCloud.
-        2002 | 2005 | 2009 | 2010 => ProviderError::NotFound(with_code(msg, result)),
+        2002 | 2005 | 2009 | 2010 => ProviderError::NotFound(with_code(msg)),
         2003 | 2028 => ProviderError::PermissionDenied(msg),
         2004 => ProviderError::AlreadyExists(msg),
         // 4006: "Throttle limit reached", often inside HTTP 200 JSON.
@@ -90,16 +100,10 @@ fn classify_pcloud_result(result: u32, error: Option<&str>) -> Option<ProviderEr
             .trim_end()
             .eq_ignore_ascii_case("File or folder not found") =>
         {
-            ProviderError::NotFound(with_code(msg, result))
+            ProviderError::NotFound(with_code(msg))
         }
-        _ => ProviderError::ServerError(with_code(msg, result)),
+        _ => ProviderError::ServerError(with_code(msg)),
     })
-}
-
-/// `msg` with the pCloud result code it came with, so a run records the
-/// number, which pCloud's own text does not carry.
-fn with_code(msg: String, result: u32) -> String {
-    format!("{msg} (pCloud result {result})")
 }
 
 /// The refusal above, said as what it is.
@@ -2617,6 +2621,12 @@ mod tests {
         assert!(
             matches!(&failed, Some(ProviderError::ServerError(m)) if m.contains("(pCloud result 5000)")),
             "{failed:?}"
+        );
+        // Without pCloud's text the message is the code, once.
+        let bare = classify_pcloud_result(5000, None);
+        assert!(
+            matches!(&bare, Some(ProviderError::ServerError(m)) if m.matches("5000").count() == 1),
+            "{bare:?}"
         );
     }
 
