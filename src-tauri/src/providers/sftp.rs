@@ -2789,7 +2789,14 @@ impl StorageProvider for SftpProvider {
         let error = classify_russh_err(refusal, |s| {
             ProviderError::ServerError(format!("Failed to rename: {}", s))
         });
-        if failure && map_sftp_try_exists(sftp.try_exists(&to_path).await).unwrap_or(false) {
+        // Not for a rename that only changes the letter case: a
+        // case-insensitive server finds the source itself at `to`, and its
+        // refusal is its own, not a taken name.
+        let case_only = from_path.to_lowercase() == to_path.to_lowercase();
+        if failure
+            && !case_only
+            && map_sftp_try_exists(sftp.try_exists(&to_path).await).unwrap_or(false)
+        {
             return Err(ProviderError::AlreadyExists(to_path));
         }
         Err(error)

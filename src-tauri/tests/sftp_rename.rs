@@ -10,7 +10,9 @@
 //!
 //! The server below is russh plus a minimal hand-rolled SFTP v3 packet loop
 //! (the shape of `tests/sftp_size_hint.rs`): INIT, REALPATH, STAT/LSTAT and
-//! RENAME over a set of paths, every RENAME counted.
+//! RENAME over a set of paths, every RENAME counted. Names match whatever
+//! their case, and a rename that changes only the case is refused, as on a
+//! case-insensitive server that does not support it.
 
 // Unix only, for the reason `tests/sftp_size_hint.rs` gives: the guard
 // against writing into a real `known_hosts` is a redirected `HOME`, which
@@ -112,8 +114,17 @@ impl RenameHandler {
                 r
             }
             SSH_FXP_STAT | SSH_FXP_LSTAT => {
+                // Names match whatever their letter case, as on a Windows
+                // server.
                 let path = rstr(data, &mut pos).unwrap_or_default();
-                if self.store.paths.lock().unwrap().contains(&path) {
+                let found = self
+                    .store
+                    .paths
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|p| p.eq_ignore_ascii_case(&path));
+                if found {
                     let mut r = vec![SSH_FXP_ATTRS];
                     w32(&mut r, id);
                     w32(&mut r, 0);
@@ -129,6 +140,9 @@ impl RenameHandler {
                 let mut paths = self.store.paths.lock().unwrap();
                 if !paths.contains(&from) {
                     status(id, SSH_FX_NO_SUCH_FILE, "No such file")
+                } else if to != from && to.eq_ignore_ascii_case(&from) {
+                    // A server that refuses a rename changing only the case.
+                    status(id, SSH_FX_FAILURE, "Failure")
                 } else if to.starts_with("/locked/") {
                     status(id, SSH_FX_PERMISSION_DENIED, "Permission denied")
                 } else if paths.contains(&to) || to.starts_with("/full/") {
@@ -314,7 +328,16 @@ async fn rename_reports_a_taken_name_and_skips_its_own_path() {
         .expect("a rename onto its own path is a no-op");
     assert_eq!(store.renames.load(Ordering::SeqCst), before);
 
-    // 5. A free name still renames.
+    // 5. A rename that only changes the case, refused by a case-insensitive
+    // server with the bare failure, is that refusal and not a taken name:
+    // the look finds the source itself under the new spelling.
+    let outcome = provider.rename("/a.txt", "/A.txt").await;
+    assert!(
+        outcome.is_err() && !matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+        "{outcome:?}"
+    );
+
+    // 6. A free name still renames.
     provider
         .rename("/a.txt", "/c.txt")
         .await
