@@ -10,16 +10,17 @@
 //!
 //! The server below is russh plus a minimal hand-rolled SFTP v3 packet loop
 //! (the shape of `tests/sftp_size_hint.rs`): INIT, REALPATH, STAT/LSTAT and
-//! RENAME over a set of paths, every RENAME counted. Names match whatever
-//! their case, and a rename that changes only the case is refused, as on a
-//! case-insensitive server that does not support it.
+//! RENAME, and OPENDIR/READDIR/CLOSE, over a set of paths, every RENAME
+//! counted. A case-insensitive server matches names whatever their case and
+//! refuses a rename that changes only the case; a case-sensitive one holds
+//! both spellings.
 
 // Unix only, for the reason `tests/sftp_size_hint.rs` gives: the guard
 // against writing into a real `known_hosts` is a redirected `HOME`, which
 // no environment variable redirects on Windows.
 #![cfg(unix)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -32,15 +33,20 @@ use russh::{Channel, ChannelId};
 
 const SSH_FXP_INIT: u8 = 1;
 const SSH_FXP_VERSION: u8 = 2;
+const SSH_FXP_CLOSE: u8 = 4;
 const SSH_FXP_LSTAT: u8 = 7;
+const SSH_FXP_OPENDIR: u8 = 11;
+const SSH_FXP_READDIR: u8 = 12;
 const SSH_FXP_REALPATH: u8 = 16;
 const SSH_FXP_STAT: u8 = 17;
 const SSH_FXP_RENAME: u8 = 18;
 const SSH_FXP_STATUS: u8 = 101;
+const SSH_FXP_HANDLE: u8 = 102;
 const SSH_FXP_NAME: u8 = 104;
 const SSH_FXP_ATTRS: u8 = 105;
 
 const SSH_FX_OK: u32 = 0;
+const SSH_FX_EOF: u32 = 1;
 const SSH_FX_NO_SUCH_FILE: u32 = 2;
 const SSH_FX_PERMISSION_DENIED: u32 = 3;
 const SSH_FX_FAILURE: u32 = 4;
@@ -76,11 +82,15 @@ fn status(id: u32, code: u32, msg: &str) -> Vec<u8> {
     r
 }
 
-/// What the server holds, and how many RENAMEs reached it.
+/// What the server holds, and how many RENAMEs reached it. A
+/// case-insensitive server matches names whatever their case and refuses a
+/// rename that changes only the case; a case-sensitive one holds both
+/// spellings as two files.
 #[derive(Default)]
 struct Store {
     paths: Mutex<HashSet<String>>,
     renames: AtomicU32,
+    case_insensitive: bool,
 }
 
 struct RenameServer {
@@ -90,6 +100,8 @@ struct RenameServer {
 struct RenameHandler {
     store: Arc<Store>,
     buf: Vec<u8>,
+    /// Open directory handles: the folder, and whether its entries went out.
+    dirs: HashMap<String, (String, bool)>,
 }
 
 impl RenameHandler {
@@ -114,16 +126,15 @@ impl RenameHandler {
                 r
             }
             SSH_FXP_STAT | SSH_FXP_LSTAT => {
-                // Names match whatever their letter case, as on a Windows
-                // server.
                 let path = rstr(data, &mut pos).unwrap_or_default();
+                let insensitive = self.store.case_insensitive;
                 let found = self
                     .store
                     .paths
                     .lock()
                     .unwrap()
                     .iter()
-                    .any(|p| p.eq_ignore_ascii_case(&path));
+                    .any(|p| *p == path || (insensitive && p.eq_ignore_ascii_case(&path)));
                 if found {
                     let mut r = vec![SSH_FXP_ATTRS];
                     w32(&mut r, id);
@@ -140,7 +151,10 @@ impl RenameHandler {
                 let mut paths = self.store.paths.lock().unwrap();
                 if !paths.contains(&from) {
                     status(id, SSH_FX_NO_SUCH_FILE, "No such file")
-                } else if to != from && to.eq_ignore_ascii_case(&from) {
+                } else if self.store.case_insensitive
+                    && to != from
+                    && to.eq_ignore_ascii_case(&from)
+                {
                     // A server that refuses a rename changing only the case.
                     status(id, SSH_FX_FAILURE, "Failure")
                 } else if to.starts_with("/locked/") {
@@ -155,6 +169,49 @@ impl RenameHandler {
                     status(id, SSH_FX_OK, "")
                 }
             }
+            SSH_FXP_OPENDIR => {
+                let dir = rstr(data, &mut pos).unwrap_or_default();
+                let handle = format!("d{}", self.dirs.len());
+                self.dirs.insert(handle.clone(), (dir, false));
+                let mut r = vec![SSH_FXP_HANDLE];
+                w32(&mut r, id);
+                wstr(&mut r, handle.as_bytes());
+                r
+            }
+            SSH_FXP_READDIR => {
+                let handle = rstr(data, &mut pos).unwrap_or_default();
+                match self.dirs.get_mut(&handle) {
+                    Some((dir, served)) if !*served => {
+                        *served = true;
+                        let prefix = format!("{}/", dir.trim_end_matches('/'));
+                        let names: Vec<String> = self
+                            .store
+                            .paths
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .filter_map(|p| p.strip_prefix(&prefix))
+                            .filter(|name| !name.contains('/'))
+                            .map(str::to_string)
+                            .collect();
+                        let mut r = vec![SSH_FXP_NAME];
+                        w32(&mut r, id);
+                        w32(&mut r, names.len() as u32);
+                        for name in names {
+                            wstr(&mut r, name.as_bytes());
+                            wstr(&mut r, name.as_bytes());
+                            w32(&mut r, 0);
+                        }
+                        r
+                    }
+                    _ => status(id, SSH_FX_EOF, "eof"),
+                }
+            }
+            SSH_FXP_CLOSE => {
+                let handle = rstr(data, &mut pos).unwrap_or_default();
+                self.dirs.remove(&handle);
+                status(id, SSH_FX_OK, "")
+            }
             _ => status(id, SSH_FX_FAILURE, "unsupported"),
         };
         Some(reply)
@@ -167,6 +224,7 @@ impl Server for RenameServer {
         RenameHandler {
             store: self.store.clone(),
             buf: Vec::new(),
+            dirs: HashMap::new(),
         }
     }
 }
@@ -228,8 +286,11 @@ impl Handler for RenameHandler {
 }
 
 /// Start the server on loopback holding `paths`; returns its port and store.
-async fn start_server(paths: &[&str]) -> (u16, Arc<Store>) {
-    let store = Arc::new(Store::default());
+async fn start_server(paths: &[&str], case_insensitive: bool) -> (u16, Arc<Store>) {
+    let store = Arc::new(Store {
+        case_insensitive,
+        ..Store::default()
+    });
     store
         .paths
         .lock()
@@ -292,7 +353,7 @@ async fn rename_reports_a_taken_name_and_skips_its_own_path() {
     // trust_unknown_hosts accept-and-save path.
     unsafe { std::env::set_var("HOME", &home) };
 
-    let (port, store) = start_server(&["/a.txt", "/b.txt"]).await;
+    let (port, store) = start_server(&["/a.txt", "/b.txt"], true).await;
     let mut provider = connect(port).await;
 
     // 1. Onto an existing file OpenSSH answers the bare SSH_FX_FAILURE,
@@ -344,6 +405,18 @@ async fn rename_reports_a_taken_name_and_skips_its_own_path() {
         .expect("free name");
     assert!(store.paths.lock().unwrap().contains("/c.txt"));
 
+    provider.disconnect().await.ok();
+
+    // 7. On a case-sensitive server `x.txt` and `X.txt` are two files, and a
+    // rename of one onto the other is refused with the bare failure (link(2)
+    // meets EEXIST): the parent listing shows `X.txt`, so it is a taken name.
+    let (port, _) = start_server(&["/x.txt", "/X.txt"], false).await;
+    let mut provider = connect(port).await;
+    let outcome = provider.rename("/x.txt", "/X.txt").await;
+    assert!(
+        matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+        "{outcome:?}"
+    );
     provider.disconnect().await.ok();
     std::fs::remove_dir_all(&home).ok();
 }

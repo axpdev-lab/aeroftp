@@ -2789,14 +2789,27 @@ impl StorageProvider for SftpProvider {
         let error = classify_russh_err(refusal, |s| {
             ProviderError::ServerError(format!("Failed to rename: {}", s))
         });
-        // Not for a rename that only changes the letter case: a
-        // case-insensitive server finds the source itself at `to`, and its
-        // refusal is its own, not a taken name.
-        let case_only = from_path.to_lowercase() == to_path.to_lowercase();
-        if failure
-            && !case_only
-            && map_sftp_try_exists(sftp.try_exists(&to_path).await).unwrap_or(false)
-        {
+        // A rename that only changes the letter case needs its own look: a
+        // case-insensitive server finds the source itself at `to`. There the
+        // parent listing decides, since it names each entry as stored: only
+        // an entry spelled exactly like `to` is another item (a
+        // case-sensitive server holding both spellings).
+        let taken = if !failure {
+            false
+        } else if from_path.to_lowercase() == to_path.to_lowercase() {
+            let (parent, name) = match to_path.rsplit_once('/') {
+                Some(("", name)) => ("/", name),
+                Some((parent, name)) => (parent, name),
+                None => (".", to_path.as_str()),
+            };
+            match sftp.read_dir(parent).await {
+                Ok(entries) => entries.into_iter().any(|entry| entry.file_name() == name),
+                Err(_) => false,
+            }
+        } else {
+            map_sftp_try_exists(sftp.try_exists(&to_path).await).unwrap_or(false)
+        };
+        if taken {
             return Err(ProviderError::AlreadyExists(to_path));
         }
         Err(error)
