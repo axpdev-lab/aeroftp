@@ -1140,6 +1140,40 @@ impl MegaNativeProvider {
             .find(|node| node.name == name)
     }
 
+    /// Send the move (`a: "m"`) and rename (`a: "a"`) commands `rename`
+    /// built, in the order it chose. A failure after the first command went
+    /// through says so: the node is then half-way, and the caller must not
+    /// read the error as "nothing changed".
+    async fn relocate_node(
+        &self,
+        from: &str,
+        to: &str,
+        move_command: Option<Value>,
+        rename_command: Option<Value>,
+        rename_first: bool,
+    ) -> Result<(), ProviderError> {
+        let steps = if rename_first {
+            [(rename_command, "renamed"), (move_command, "moved")]
+        } else {
+            [(move_command, "moved"), (rename_command, "renamed")]
+        };
+        let mut done: Option<&str> = None;
+        for (command, what) in steps {
+            let Some(command) = command else { continue };
+            if let Err(e) = self.command_with_retry::<Value>(command).await {
+                return Err(match done {
+                    None => e,
+                    Some(previous) => ProviderError::Other(format!(
+                        "{previous} {from}, but the second step toward {to} failed, so it \
+                         is only half-way there: {e}"
+                    )),
+                });
+            }
+            done = Some(what);
+        }
+        Ok(())
+    }
+
     /// Resolve parent path and extract the final name component.
     fn resolve_parent_and_name(&self, path: &str) -> Result<(String, String), ProviderError> {
         let clean = path.trim_matches('/');
@@ -1786,7 +1820,7 @@ impl StorageProvider for MegaNativeProvider {
             return Ok(());
         }
         // The trait promises no overwrite, and MEGA would keep two siblings
-        // with one name. Both checks run before anything changes.
+        // with one name. Every check runs before anything changes.
         if self.child_named(&to_parent_handle, &to_name).is_some() {
             return Err(ProviderError::AlreadyExists(to.to_string()));
         }
@@ -1797,34 +1831,52 @@ impl StorageProvider for MegaNativeProvider {
                 "Cannot rename {from}: the node has no key to encrypt its new name with"
             )));
         }
-
-        // If parent changed, move first
-        if moves {
-            let _: Value = self
-                .command_with_retry(json!({
-                    "a": "m",
-                    "n": from_handle,
-                    "t": to_parent_handle,
-                }))
-                .await?;
-        }
-
-        // If name changed, update attributes
-        if renames {
+        let rename_command = if renames {
             let encrypted_attrs = encrypt_node_attrs(&to_name, &from_node.key)?;
-            let attrs_b64 = mega_base64_encode(&encrypted_attrs);
-
-            let _: Value = self
-                .command_with_retry(json!({
-                    "a": "a",
-                    "n": from_handle,
-                    "attr": attrs_b64,
-                }))
-                .await?;
+            Some(json!({
+                "a": "a",
+                "n": from_handle,
+                "attr": mega_base64_encode(&encrypted_attrs),
+            }))
+        } else {
+            None
+        };
+        let move_command = json!({
+            "a": "m",
+            "n": from_handle,
+            "t": to_parent_handle,
+        });
+        // The move keeps the old name: when the destination already holds it
+        // the rename goes first, in the source folder, so no step puts two
+        // siblings under one name.
+        let rename_first = moves
+            && renames
+            && self
+                .child_named(&to_parent_handle, &from_node.name)
+                .is_some();
+        if rename_first
+            && self
+                .child_named(&from_node.parent, &to_name)
+                .is_some_and(|node| node.handle != from_handle)
+        {
+            return Err(ProviderError::Other(format!(
+                "Cannot move {from} to {to} in two steps without two items sharing a name: \
+                 the destination folder holds {} and the source folder holds {to_name}",
+                from_node.name
+            )));
         }
 
+        let outcome = self
+            .relocate_node(
+                from,
+                to,
+                moves.then_some(move_command),
+                rename_command,
+                rename_first,
+            )
+            .await;
         self.invalidate_nodes();
-        Ok(())
+        outcome
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2713,6 +2765,48 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
+        assert!(commands.lock().unwrap().is_empty());
+    }
+
+    /// The move keeps the old name. With `/b/f.txt` present, moving first
+    /// put a second `f.txt` in `/b` until the rename, and left it there if
+    /// the rename failed: the rename now goes first, in `/a`.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], true).await;
+        provider
+            .rename("/a/f.txt", "/b/g.txt")
+            .await
+            .expect("rename then move");
+        assert_eq!(*commands.lock().unwrap(), ["a", "m"]);
+    }
+
+    /// Old name taken at the destination and new name taken at the source:
+    /// either order would put two siblings under one name.
+    #[tokio::test]
+    async fn a_move_that_cannot_avoid_a_shared_name_changes_nothing() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], true).await;
+        provider.nodes.insert(
+            "H".to_string(),
+            super::MegaNode {
+                handle: "H".to_string(),
+                parent: "A".to_string(),
+                node_type: 0,
+                name: "g.txt".to_string(),
+                size: 0,
+                timestamp: 0,
+                key: vec![5u8; 32],
+            },
+        );
+        provider
+            .children
+            .entry("A".to_string())
+            .or_default()
+            .push("H".to_string());
+        let outcome = provider.rename("/a/f.txt", "/b/g.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
         assert!(commands.lock().unwrap().is_empty());
     }
 
