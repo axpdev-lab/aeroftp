@@ -1446,6 +1446,51 @@ enum RcloneFilenameEncryption {
     Off,
 }
 
+/// How an rclone crypt password and salt given on the command line are
+/// written. `auto` reads an rclone-obscured value as such and refuses one that
+/// reads two ways (a 22+ character value that would reveal to 2 characters or
+/// fewer); `clear` takes them as typed; `obscured` as rclone.conf keeps them.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq, Default)]
+enum SecretFormArg {
+    #[default]
+    Auto,
+    Clear,
+    Obscured,
+}
+
+/// The form `crypt set-form` records: never a guess.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
+enum RecordedFormArg {
+    Clear,
+    Obscured,
+}
+
+impl RecordedFormArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Clear => "clear",
+            Self::Obscured => "obscured",
+        }
+    }
+}
+
+/// The forms of a password and a salt given on the command line.
+type CryptSecretForms = (
+    Option<ftp_client_gui_lib::rclone_crypt::CryptSecretForm>,
+    Option<ftp_client_gui_lib::rclone_crypt::CryptSecretForm>,
+);
+
+impl SecretFormArg {
+    fn form(self) -> Option<ftp_client_gui_lib::rclone_crypt::CryptSecretForm> {
+        use ftp_client_gui_lib::rclone_crypt::CryptSecretForm;
+        match self {
+            Self::Auto => None,
+            Self::Clear => Some(CryptSecretForm::Clear),
+            Self::Obscured => Some(CryptSecretForm::Obscured),
+        }
+    }
+}
+
 /// Issue #252: per-create privacy level for providers that expose a
 /// three-level access model (OpenDrive today). Mirrors rclone's
 /// `--opendrive-access`. Defaults to `private` (max-privacy, opt-out)
@@ -1692,6 +1737,15 @@ enum Commands {
     /// Run inside a Flatpak with a native `~/.config/aeroftp` present, this
     /// copies it into the sandbox (copy-only, never overwriting). Outside a
     /// Flatpak it is a no-op. Restart AeroFTP afterwards to load the import.
+    /// The host vault and saved servers come in only when the sandbox has no
+    /// vault of its own, and the output says whether they did.
+    ///
+    /// Exit codes: 0 when files were imported, when no file was copied (each
+    /// file the import would copy already has a file with the same name in the
+    /// sandbox, or the host config holds nothing the import copies), with
+    /// --status, and outside a Flatpak;
+    /// 1 when there is no host config, or when the copy failed (files copied
+    /// before the error stay in the sandbox).
     FlatpakImport {
         /// Only report whether an import is available; do not apply it.
         #[arg(long)]
@@ -2058,10 +2112,10 @@ enum Commands {
         #[arg(default_value = "/")]
         remote: String,
         /// Password for rclone crypt (can also be passed via AEROFTP_RCLONE_CRYPT_PASSWORD)
-        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD")]
+        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
         /// Salt for rclone crypt (can also be passed via AEROFTP_RCLONE_CRYPT_PASSWORD2)
-        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD2")]
+        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD2", hide_env_values = true)]
         password2: Option<String>,
         /// Filename encryption mode
         #[arg(long, default_value = "standard")]
@@ -2079,6 +2133,13 @@ enum Commands {
         /// Hash algorithm to use (sha256 or md5)
         #[arg(long, short = 'a', default_value = "sha256")]
         algorithm: String,
+        /// How --password is written: auto, clear (as typed) or obscured (as
+        /// in rclone.conf)
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        password_form: SecretFormArg,
+        /// How --password2 is written: auto, clear or obscured
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        salt_form: SecretFormArg,
     },
     /// Reconcile local and remote trees with categorized diff output
     Reconcile {
@@ -3825,6 +3886,22 @@ enum Commands {
 mod cli_dispatch;
 
 #[cfg(test)]
+mod warning_line_tests {
+    use super::{warning_line, OutputFormat};
+
+    /// With `--json` stderr carries JSON objects: a warning is one of them,
+    /// not a free-text line a consumer cannot parse.
+    #[test]
+    fn a_warning_is_json_on_json_stderr_and_a_line_otherwise() {
+        let json: serde_json::Value =
+            serde_json::from_str(&warning_line(OutputFormat::Json, "left \"x\"")).unwrap();
+        assert_eq!(json["status"], "warning");
+        assert_eq!(json["warning"], "left \"x\"");
+        assert_eq!(warning_line(OutputFormat::Text, "left"), "warning: left");
+    }
+}
+
+#[cfg(test)]
 mod cli_dispatch_tests {
     use super::{cli_dispatch, Cli};
     use clap::CommandFactory;
@@ -4460,11 +4537,17 @@ enum CorrectCommands {
 
 #[derive(Subcommand, Clone)]
 enum ExportCommands {
-    /// Export profiles to rclone.conf format (S3, SFTP, FTP, WebDAV, Mega).
-    /// OAuth-based providers (pCloud, Dropbox, Google Drive, Box, OneDrive,
-    /// Yandex, Zoho, Koofr, Internxt, kDrive) cannot be exported because
-    /// rclone uses its own OAuth flow with provider-issued client IDs:
-    /// they are listed as `# manual setup required` comments instead.
+    /// Export profiles to rclone.conf format: FTP/FTPS, SFTP, WebDAV, S3,
+    /// MEGA, Filen, Internxt, Azure, Swift, Koofr, OpenDrive, Backblaze B2,
+    /// Drime, Cloudinary, ImageKit, Jottacloud, and the OAuth providers
+    /// (Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex Disk, Zoho
+    /// WorkDrive) with their token and the client ID that minted it. An
+    /// Internxt remote needs one `rclone config reconnect "<remote>:"` before
+    /// use, as the file says. ImageKit needs the account public key, which only
+    /// a profile imported from rclone holds. FileLu is skipped: rclone signs in
+    /// with the FileLu Rclone key, not the API key AeroFTP holds. Any profile
+    /// that cannot be written is skipped and listed with the reason in the
+    /// command output; nothing is written for it.
     Rclone {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
@@ -5393,6 +5476,17 @@ enum CryptCommands {
         #[arg(long)]
         keyfile: Option<String>,
     },
+    /// Record how an rclone-crypt profile's stored password and salt are
+    /// written, as typed (clear) or as rclone.conf keeps them (obscured), so
+    /// they are read that way instead of guessed. Needs --profile.
+    SetForm {
+        /// How the stored password is written
+        #[arg(long, value_enum)]
+        password_form: Option<RecordedFormArg>,
+        /// How the stored salt (password2) is written
+        #[arg(long, value_enum)]
+        salt_form: Option<RecordedFormArg>,
+    },
     /// Convert a headerless vault to a portable remote marker
     ToHeaded {
         /// Server URL (omit when using --profile)
@@ -5631,6 +5725,13 @@ enum RcloneCryptCommands {
         /// Optional rclone password2/salt (empty by default)
         #[arg(long, env = "AEROFTP_RCLONE_CRYPT_SALT", hide_env_values = true)]
         salt: Option<String>,
+        /// How --password is written: auto, clear (as typed) or obscured (as
+        /// in rclone.conf)
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        password_form: SecretFormArg,
+        /// How --salt is written: auto, clear or obscured
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        salt_form: SecretFormArg,
         /// Filename encryption mode
         #[arg(long, value_enum, default_value_t = RcloneFilenameEncryption::Standard)]
         filename_encryption: RcloneFilenameEncryption,
@@ -7293,6 +7394,28 @@ fn print_json<T: Serialize>(value: &T) {
     match serde_json::to_string_pretty(value) {
         Ok(json) => println!("{}", json),
         Err(e) => eprintln!("Error: failed to serialize JSON: {}", e),
+    }
+}
+
+/// A warning the library reported during a command (a set-aside leftover
+/// of a replace), as the line `format` shows on stderr: plain text, or with
+/// `--json` a JSON object, since stderr carries JSON there.
+fn warning_line(format: OutputFormat, warning: &str) -> String {
+    match format {
+        OutputFormat::Text => format!("warning: {warning}"),
+        OutputFormat::Json => {
+            serde_json::json!({ "status": "warning", "warning": warning }).to_string()
+        }
+    }
+}
+
+/// Show on stderr the warnings the library reported since the last call.
+/// A closed stderr is no reason to panic: the line is dropped.
+fn render_pending_warnings(format: OutputFormat) {
+    use std::io::Write;
+    let mut stderr = std::io::stderr();
+    for warning in ftp_client_gui_lib::providers::take_warnings() {
+        let _ = writeln!(stderr, "{}", warning_line(format, &warning));
     }
 }
 
@@ -11905,7 +12028,41 @@ fn load_active_user_profiles(
         None => return Err("NO_ACTIVE_USER".to_string()),
     };
     match user_partitions::cli_list_server_profiles_for_user(store, target.id) {
-        Ok(profiles) => Ok(profiles),
+        Ok(mut profiles) => {
+            // rclone-crypt secrets that `import rclone --apply` used to leave in
+            // a profile's options move to the vault and a binding, once; the list
+            // is re-read, merged and written in one transaction, and only when a
+            // move applied.
+            let uid = scoped_credential_user_id(cli, store);
+            let notes = ftp_client_gui_lib::bridge_commands::migrate_legacy_rclone_crypt_on_load(
+                &mut profiles,
+                |key, secret| dual_store_server_cred_checked(store, uid, key, secret),
+                |key| read_server_cred(store, uid, key),
+                |apply| {
+                    let (stored, written) = user_partitions::cli_update_server_profiles_for_user(
+                        store, target.id, apply,
+                    )?;
+                    if written {
+                        mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
+                    }
+                    Ok((stored, written))
+                },
+            );
+            // A profile left unmoved keeps its secrets in its options and opens
+            // without its overlay: say so on every run until it is fixed, once
+            // per run (a command can load the list more than once).
+            static NOTES_SHOWN: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            if !cli.quiet
+                && !notes.is_empty()
+                && !NOTES_SHOWN.swap(true, std::sync::atomic::Ordering::Relaxed)
+            {
+                for note in &notes {
+                    eprintln!("Warning: {note}");
+                }
+            }
+            Ok(profiles)
+        }
         Err(e) if e == "USER_LOCKED" => Err(e),
         Err(e) if e == "NO_ACTIVE_USER" => Err(e),
         Err(_) => {
@@ -11931,6 +12088,34 @@ fn load_active_user_profiles(
 /// the persistent active user). The legacy `config_server_profiles` blob is
 /// mirrored ONLY when writing to the persistent active user, so downgrade
 /// to a single-user CLI does not silently surface someone else's profiles.
+/// Whether `user_id` is the persistent active user (not a `--user` override).
+fn is_active_user(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
+) -> bool {
+    ftp_client_gui_lib::user_partitions::cli_get_active_user(store)
+        .ok()
+        .flatten()
+        .map(|u| u.id)
+        == Some(user_id)
+}
+
+/// Mirror a written profile list to the legacy blob, only when the write
+/// targets the persistent active user. Mirroring a `--user other` write would
+/// leak `other`'s profile names into the legacy blob, which is exactly the
+/// cross-partition leak R3 forbids.
+fn mirror_profiles_to_legacy_blob_if_active(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
+    profiles: &[serde_json::Value],
+) {
+    if is_active_user(store, user_id) {
+        if let Ok(serialized) = serde_json::to_string(profiles) {
+            let _ = store.store("config_server_profiles", &serialized);
+        }
+    }
+}
+
 fn save_active_user_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
@@ -11941,23 +12126,11 @@ fn save_active_user_profiles(
         Some(t) => t,
         None => return Err("NO_ACTIVE_USER".to_string()),
     };
-    let active_id = user_partitions::cli_get_active_user(store)
-        .ok()
-        .flatten()
-        .map(|u| u.id);
-    let writing_to_active = active_id == Some(target.id);
+    let writing_to_active = is_active_user(store, target.id);
 
     match user_partitions::cli_replace_server_profiles_for_user(store, target.id, profiles) {
         Ok(()) => {
-            // Only mirror to the legacy blob when the write targets the
-            // persistent active user. Mirroring a `--user other` write would
-            // leak `other`'s profile names into the legacy blob, which is
-            // exactly the cross-partition leak R3 forbids.
-            if writing_to_active {
-                if let Ok(serialized) = serde_json::to_string(profiles) {
-                    let _ = store.store("config_server_profiles", &serialized);
-                }
-            }
+            mirror_profiles_to_legacy_blob_if_active(store, target.id, profiles);
             Ok(())
         }
         Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => Err(e),
@@ -16781,11 +16954,7 @@ async fn remove_tui_session_via_cli_handler(
     let result = if recursive {
         provider.rmdir_recursive(&resolved).await
     } else {
-        // Try file delete first, fall back to empty-directory removal.
-        match provider.delete(&resolved).await {
-            Ok(()) => Ok(()),
-            Err(_) => provider.rmdir(&resolved).await,
-        }
+        delete_file_or_empty_dir(provider, &resolved).await
     };
     result
         .map(|_| resolved)
@@ -28568,7 +28737,10 @@ async fn cli_apply_crypt_overlay(
             }
         },
     };
-    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
+    let stored_password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id));
+    // A secret from the environment carries no recorded form.
+    let password_from_env = stored_password.is_none();
+    let password = stored_password
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
         .unwrap_or_default();
     // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
@@ -28580,9 +28752,12 @@ async fn cli_apply_crypt_overlay(
         );
         return Err(5);
     }
-    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
+    let stored_salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id));
+    let salt_from_env = stored_salt.is_none();
+    let salt = stored_salt
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
+    let (password_form, salt_form) = ftp_client_gui_lib::rclone_crypt::crypt_secret_forms(profile);
     let local_config_json =
         read_server_cred(&store, uid, &format!("aerocrypt_overlay_config_{}", id))
             .filter(|s| !s.is_empty());
@@ -28605,6 +28780,16 @@ async fn cli_apply_crypt_overlay(
             Some(salt.clone())
         },
         with_header,
+        password_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            password_form,
+            password_from_env,
+            "AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM",
+        ),
+        salt_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            salt_form,
+            salt_from_env,
+            "AEROFTP_CRYPT_OVERLAY_SALT_FORM",
+        ),
     };
     match ftp_client_gui_lib::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
         provider,
@@ -29066,6 +29251,38 @@ struct ServeHttpState {
     provider_label: String,
     base_path: String,
     auth_token: Option<String>,
+    warnings: ServedWarnings,
+}
+
+/// Where a served request shows the warnings its provider call left (a
+/// replace that could not delete the copy it set aside): stderr, in the
+/// format the server was started with. The server runs until stopped, and
+/// the log is off by default.
+#[derive(Clone)]
+struct ServedWarnings {
+    format: OutputFormat,
+    out: Arc<std::sync::Mutex<dyn std::io::Write + Send>>,
+}
+
+impl ServedWarnings {
+    fn stderr(format: OutputFormat) -> Self {
+        Self {
+            format,
+            out: Arc::new(std::sync::Mutex::new(std::io::stderr())),
+        }
+    }
+
+    /// Show `warnings`, one line each. A closed stderr is no reason to
+    /// panic: the line is dropped.
+    fn show(&self, warnings: Vec<String>) {
+        let mut out = self
+            .out
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for warning in warnings {
+            let _ = writeln!(out, "{}", warning_line(self.format, &warning));
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -29163,7 +29380,15 @@ fn sanitize_served_relative_path(path: &str) -> Result<String, StatusCode> {
     let decoded = urlencoding::decode(path)
         .map_err(|_| StatusCode::BAD_REQUEST)?
         .into_owned();
+    sanitize_decoded_served_path(&decoded)
+}
 
+/// [`sanitize_served_relative_path`] for a path already percent-decoded, as
+/// axum's `Path` extractor hands a request path over. Decoding it a second
+/// time turned a name holding a literal `%41` into another name (`aA.txt`)
+/// while the `Destination` header was decoded once: a MOVE onto itself
+/// missed its 403 and moved another file over it.
+fn sanitize_decoded_served_path(decoded: &str) -> Result<String, StatusCode> {
     if decoded.contains('\0') {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -29335,8 +29560,11 @@ fn resolve_served_backend_path(
     base_path: &str,
     requested_path: &str,
 ) -> Result<String, &'static str> {
+    // An FTP or SFTP path is not percent-encoded: decoding it made the name
+    // `a%41.txt` the file `aA.txt`, so DELE, RNFR and STOR acted on another
+    // file. `..` is still refused as a segment.
     let relative =
-        sanitize_served_relative_path(requested_path).map_err(|_| "path traversal denied")?;
+        sanitize_decoded_served_path(requested_path).map_err(|_| "path traversal denied")?;
     Ok(build_served_remote_path(base_path, &relative))
 }
 
@@ -29797,7 +30025,7 @@ async fn serve_http_response(
     head_only: bool,
     range: Option<&HeaderValue>,
 ) -> Response {
-    let relative_path = match sanitize_served_relative_path(&relative_path) {
+    let relative_path = match sanitize_decoded_served_path(&relative_path) {
         Ok(path) => path,
         Err(status) => return serve_error_response(status, "Invalid request path"),
     };
@@ -29988,6 +30216,7 @@ async fn cmd_serve_http(
         provider_label,
         base_path: base_path.clone(),
         auth_token: auth_token.clone(),
+        warnings: ServedWarnings::stderr(format),
     };
 
     let app = Router::new()
@@ -30153,6 +30382,54 @@ fn extract_destination_relative(headers: &HeaderMap) -> Result<String, StatusCod
     sanitize_served_relative_path(path_part).map_err(|_| StatusCode::BAD_REQUEST)
 }
 
+/// Whether a MOVE may replace an existing destination. RFC 4918 section
+/// 10.6: `Overwrite: F` forbids it, and a request without the header is
+/// treated as `Overwrite: T`.
+fn webdav_move_may_overwrite(headers: &HeaderMap) -> bool {
+    !headers
+        .get("Overwrite")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("F"))
+}
+
+/// A served WebDAV DELETE: a file, or a collection with everything under it
+/// (RFC 4918 section 9.6.1).
+///
+/// It used to escalate after ANY `delete` failure: `rmdir`, then
+/// `rmdir_recursive`. A file `delete` refused for a transient reason then
+/// erased the directory of the same name (an S3 key `x` beside the prefix
+/// `x/`), and an ambiguous path (Cloudinary: an asset and a folder sharing a
+/// name) emptied the folder. The escalation now happens only for a path `stat`
+/// calls a directory (not a link to one), or one it cannot describe (see
+/// [`stat_cannot_describe`]) that the provider can list: on S3 the served
+/// collection `x` is the prefix `x/`, which no key names.
+async fn served_webdav_delete(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<(), ProviderError> {
+    let refused = match provider.delete(path).await {
+        Ok(()) => return Ok(()),
+        Err(ProviderError::Cancelled) => return Err(ProviderError::Cancelled),
+        Err(e) => e,
+    };
+    match provider.stat(path).await {
+        Ok(entry) if entry.is_dir && !entry.is_symlink => {}
+        // An object store sees no key `x` behind the collection `x/`: only a
+        // path the provider can list is a collection. A key that is simply
+        // gone keeps the delete error.
+        Err(e) if stat_cannot_describe(&e) => {
+            if provider.list(path).await.is_err() {
+                return Err(refused);
+            }
+        }
+        _ => return Err(refused),
+    }
+    match provider.rmdir(path).await {
+        Ok(()) => Ok(()),
+        Err(_) => provider.rmdir_recursive(path).await,
+    }
+}
+
 async fn webdav_dispatch(
     state: ServeHttpState,
     method: Method,
@@ -30169,7 +30446,7 @@ async fn webdav_dispatch(
         return response;
     }
 
-    let relative_path = match sanitize_served_relative_path(&path) {
+    let relative_path = match sanitize_decoded_served_path(&path) {
         Ok(p) => p,
         Err(status) => return serve_error_response(status, "Invalid path"),
     };
@@ -30310,30 +30587,13 @@ async fn webdav_dispatch(
 
         "DELETE" => {
             let mut provider = state.provider.lock().await;
-            // Try file delete first; on any failure try rmdir (target may be a directory)
-            match provider.delete(&remote_path).await {
+            match served_webdav_delete(provider.as_mut(), &remote_path).await {
                 Ok(()) => {
                     let mut response = Response::new(Body::empty());
                     *response.status_mut() = StatusCode::NO_CONTENT;
                     response
                 }
-                Err(_file_err) => match provider.rmdir(&remote_path).await {
-                    Ok(()) => {
-                        let mut response = Response::new(Body::empty());
-                        *response.status_mut() = StatusCode::NO_CONTENT;
-                        response
-                    }
-                    Err(_) => match provider.rmdir_recursive(&remote_path).await {
-                        Ok(()) => {
-                            let mut response = Response::new(Body::empty());
-                            *response.status_mut() = StatusCode::NO_CONTENT;
-                            response
-                        }
-                        Err(e) => {
-                            serve_error_response(provider_error_to_status_code(&e), &e.to_string())
-                        }
-                    },
-                },
+                Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
             }
         }
 
@@ -30345,12 +30605,55 @@ async fn webdav_dispatch(
                 }
             };
             let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
+            // RFC 4918 section 9.9.4: a MOVE whose source and destination are
+            // the same resource is 403. The backends answer a rename onto
+            // itself with a no-op, which read as 204, a move that happened.
+            if remote_path.trim_end_matches('/') == dest_remote.trim_end_matches('/') {
+                return serve_error_response(
+                    StatusCode::FORBIDDEN,
+                    "The source and the destination are the same resource",
+                );
+            }
+            let overwrite = webdav_move_may_overwrite(&headers);
             let mut provider = state.provider.lock().await;
-            match provider.rename(&remote_path, &dest_remote).await {
+            // `rename` first: it refuses an occupied destination, which is
+            // what `Overwrite: F` asks for, and a plain move onto a free name
+            // stays one call on every backend. Only a refusal with
+            // `Overwrite: T` goes on to `replace`, the verb that is allowed to
+            // put one item over another.
+            // What this MOVE reports is kept for it: a request served at the
+            // same time does not show it, nor it theirs.
+            let call_warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+            let outcome = call_warnings
+                .scope(async {
+                    match provider.rename(&remote_path, &dest_remote).await {
+                        Err(ProviderError::AlreadyExists(_)) if overwrite => {
+                            provider.replace(&remote_path, &dest_remote).await
+                        }
+                        other => other,
+                    }
+                })
+                .await;
+            // A replace that left its set-aside copy behind says so here.
+            state.warnings.show(call_warnings.take());
+            match outcome {
                 Ok(()) => {
                     let mut response = Response::new(Body::empty());
                     *response.status_mut() = StatusCode::NO_CONTENT;
                     response
+                }
+                // RFC 4918 section 9.9.4: a destination that exists under
+                // `Overwrite: F` is 412, not a server failure. Under
+                // `Overwrite: T` the client allowed the overwrite, so a
+                // refusal there (a file onto a folder, a backend that cannot
+                // replace in one folder) is a conflict, 409.
+                Err(ProviderError::AlreadyExists(message)) => {
+                    let status = if overwrite {
+                        StatusCode::CONFLICT
+                    } else {
+                        StatusCode::PRECONDITION_FAILED
+                    };
+                    serve_error_response(status, &message)
                 }
                 Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
             }
@@ -30364,6 +30667,14 @@ async fn webdav_dispatch(
                 }
             };
             let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
+            // RFC 4918 section 9.8.5: a COPY whose source and destination are
+            // the same resource is 403.
+            if remote_path.trim_end_matches('/') == dest_remote.trim_end_matches('/') {
+                return serve_error_response(
+                    StatusCode::FORBIDDEN,
+                    "The source and the destination are the same resource",
+                );
+            }
             // The bridge shares the production copy DAG and its one
             // authoritative fallback classifier with GUI and `cp`.
             match ftp_client_gui_lib::transfer_dag_single_file::execute_copy_dag(
@@ -30451,6 +30762,7 @@ async fn cmd_serve_webdav(
         provider_label,
         base_path: base_path.clone(),
         auth_token: auth_token.clone(),
+        warnings: ServedWarnings::stderr(format),
     };
 
     let app = Router::new()
@@ -34916,6 +35228,47 @@ async fn run_rm_dry_run(
     0
 }
 
+/// Delete `path` as a file, or as an empty directory when it is one.
+///
+/// `rm` and the TUI used to fall back to `rmdir` after ANY `delete` failure. A
+/// path the provider cannot resolve to one item (Cloudinary answers
+/// `InvalidPath` for a name an asset and a folder share) then removed the
+/// folder, and a file `delete` refused for another reason was sent to `rmdir`.
+/// The fallback now asks `stat`: a directory (not a link to one) goes to
+/// `rmdir`, and so does a path `stat` cannot describe (see
+/// [`stat_cannot_describe`]), so `rm` of an empty directory still works
+/// where it did. A file, an ambiguous path, a link and a failed `stat` keep
+/// the `delete` error.
+async fn delete_file_or_empty_dir(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<(), ProviderError> {
+    let refused = match provider.delete(path).await {
+        Ok(()) => return Ok(()),
+        Err(ProviderError::Cancelled) => return Err(ProviderError::Cancelled),
+        Err(e) => e,
+    };
+    match provider.stat(path).await {
+        Ok(entry) if entry.is_dir && !entry.is_symlink => provider.rmdir(path).await,
+        Err(e) if stat_cannot_describe(&e) => provider.rmdir(path).await,
+        _ => Err(refused),
+    }
+}
+
+/// A `stat` answer that says the provider cannot describe the path, as
+/// opposed to one that failed. S3, Azure, Swift and B2 see no directory
+/// behind a path without its trailing slash (NotFound); Box and GitHub fail
+/// to parse the answer for a folder (ParseError). A transient failure
+/// (network, server, timeout) says nothing about the path, and escalating on
+/// it reached the directory of the same name: on S3 and Azure `rmdir` is
+/// recursive.
+fn stat_cannot_describe(error: &ProviderError) -> bool {
+    matches!(
+        error,
+        ProviderError::NotFound(_) | ProviderError::NotSupported(_) | ProviderError::ParseError(_)
+    )
+}
+
 /// The real `rm`/`purge` when the global filter flags narrow the delete.
 ///
 /// It runs the same walk `--dry-run` prints and then deletes exactly that plan,
@@ -35128,11 +35481,7 @@ async fn cmd_rm(
     let result = if recursive {
         provider.rmdir_recursive(path).await
     } else {
-        // Try file delete first, then directory
-        match provider.delete(path).await {
-            Ok(()) => Ok(()),
-            Err(_) => provider.rmdir(path).await,
-        }
+        delete_file_or_empty_dir(provider.as_mut(), path).await
     };
 
     match result {
@@ -36400,6 +36749,115 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
     }
 }
 
+/// The `import rclone` text report, up to the apply line. Everything in it
+/// that comes from the file (section names, types, users, hosts, and the
+/// reasons that quote them) goes through `sanitize_filename`: a section named
+/// with escape sequences must not drive the terminal it is printed on.
+fn rclone_import_listing(result: &ftp_client_gui_lib::rclone_import::RcloneImportResult) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "Scanned {} remotes from {}\n",
+        result.total_remotes,
+        sanitize_filename(&result.source_path)
+    );
+
+    if !result.servers.is_empty() {
+        let _ = writeln!(out, "Importable ({}):", result.servers.len());
+        for s in &result.servers {
+            let proto = s.protocol.as_deref().unwrap_or("?");
+            let cred = if s.credential.is_some() {
+                " [credentials]"
+            } else {
+                ""
+            };
+            let _ = writeln!(
+                out,
+                "  {} - {}://{}@{}:{}{}{}",
+                sanitize_filename(&s.name),
+                sanitize_filename(proto),
+                sanitize_filename(&s.username),
+                sanitize_filename(&s.host),
+                s.port,
+                cred,
+                sanitize_filename(s.cleartext_endpoint_note())
+            );
+        }
+        out.push('\n');
+    }
+
+    if !result.skipped.is_empty() {
+        let _ = writeln!(out, "Skipped ({}):", result.skipped.len());
+        for s in &result.skipped {
+            let _ = writeln!(
+                out,
+                "  {} - {} ({})",
+                sanitize_filename(&s.name),
+                sanitize_filename(&s.rclone_type),
+                sanitize_filename(&s.reason)
+            );
+        }
+        out.push('\n');
+    }
+
+    // Imported, but not whole: e.g. a password that does not reveal left the
+    // profile without a credential.
+    if !result.warnings.is_empty() {
+        let _ = writeln!(out, "Warnings ({}):", result.warnings.len());
+        for w in &result.warnings {
+            let _ = writeln!(
+                out,
+                "  {} - {}",
+                sanitize_filename(&w.name),
+                sanitize_filename(&w.reason)
+            );
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// The `import rclone --json` document. It carries no credential: servers say
+/// `hasCredential` instead of the password, and the options the importer fills
+/// with a revealed secret (the crypt password and salt, the Filen API key) are
+/// left out, as the GUI preview leaves them out.
+fn rclone_import_json(
+    result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
+    apply: bool,
+    applied_summary: Option<&RcloneApplySummary>,
+) -> serde_json::Value {
+    let mut redacted = serde_json::json!({
+        "servers": result.servers.iter().map(|s| serde_json::json!({
+            "id": s.id,
+            "name": s.name,
+            "host": s.host,
+            "port": s.port,
+            "username": s.username,
+            "protocol": s.protocol,
+            "initialPath": s.initial_path,
+            "options": ftp_client_gui_lib::rclone_import::options_without_secrets(
+                s.options.as_ref()
+            ),
+            "hasCredential": s.credential.is_some(),
+        })).collect::<Vec<_>>(),
+        "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+        "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
+        "sourcePath": result.source_path,
+        "totalRemotes": result.total_remotes,
+        "applied": apply,
+    });
+    if let Some(summary) = applied_summary {
+        redacted["appliedSummary"] = serde_json::json!({
+            "passwordsStored": summary.passwords_stored,
+            "oauthTokensStored": summary.oauth_tokens_stored,
+            "jottaRefreshStored": summary.jotta_refresh_stored,
+            "profilesAppended": summary.profiles_appended,
+        });
+    }
+    redacted
+}
+
 async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &Cli) -> i32 {
     use ftp_client_gui_lib::rclone_import;
 
@@ -36475,73 +36933,17 @@ async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &
             }
 
             if json {
-                // Redact credentials: never output plaintext passwords to stdout
-                let mut redacted = serde_json::json!({
-                    "servers": result.servers.iter().map(|s| serde_json::json!({
-                        "id": s.id,
-                        "name": s.name,
-                        "host": s.host,
-                        "port": s.port,
-                        "username": s.username,
-                        "protocol": s.protocol,
-                        "initialPath": s.initial_path,
-                        "options": s.options,
-                        "hasCredential": s.credential.is_some(),
-                    })).collect::<Vec<_>>(),
-                    "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
-                    "sourcePath": result.source_path,
-                    "totalRemotes": result.total_remotes,
-                    "applied": apply,
-                });
-                if let Some(summary) = &applied_summary {
-                    redacted["appliedSummary"] = serde_json::json!({
-                        "passwordsStored": summary.passwords_stored,
-                        "oauthTokensStored": summary.oauth_tokens_stored,
-                        "jottaRefreshStored": summary.jotta_refresh_stored,
-                        "profilesAppended": summary.profiles_appended,
-                    });
-                }
                 println!(
                     "{}",
-                    serde_json::to_string_pretty(&redacted).unwrap_or_default()
+                    serde_json::to_string_pretty(&rclone_import_json(
+                        &result,
+                        apply,
+                        applied_summary.as_ref()
+                    ))
+                    .unwrap_or_default()
                 );
             } else {
-                println!(
-                    "Scanned {} remotes from {}",
-                    result.total_remotes, result.source_path
-                );
-                println!();
-
-                if !result.servers.is_empty() {
-                    println!("Importable ({}):", result.servers.len());
-                    for s in &result.servers {
-                        let proto = s.protocol.as_deref().unwrap_or("?");
-                        let cred = if s.credential.is_some() {
-                            " [credentials]"
-                        } else {
-                            ""
-                        };
-                        println!(
-                            "  {} - {}://{}@{}:{}{}{}",
-                            s.name,
-                            proto,
-                            s.username,
-                            s.host,
-                            s.port,
-                            cred,
-                            s.cleartext_endpoint_note()
-                        );
-                    }
-                    println!();
-                }
-
-                if !result.skipped.is_empty() {
-                    println!("Skipped ({}):", result.skipped.len());
-                    for s in &result.skipped {
-                        println!("  {} - {} ({})", s.name, s.rclone_type, s.reason);
-                    }
-                    println!();
-                }
+                print!("{}", rclone_import_listing(&result));
 
                 if let Some(summary) = &applied_summary {
                     println!(
@@ -36603,6 +37005,34 @@ fn cli_oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static str> {
 /// blobs into the AeroFTP vault, then append the new profiles to
 /// `config_server_profiles` so the GUI lists them on next launch. Mirrors
 /// the `import_rclone_config` Tauri command in `lib.rs`. Issue #214.
+/// The profile `import rclone --apply` saves for one imported server. An
+/// rclone crypt remote becomes the same overlay binding the GUI import makes,
+/// its password and salt written with `store_secret` and recorded clear. Saved
+/// in the options instead, they sat there in clear and no overlay was bound.
+fn imported_server_profile(
+    server: &ftp_client_gui_lib::rclone_import::ServerProfileExport,
+    store_secret: impl FnMut(&str, &str) -> Result<(), String>,
+) -> Result<serde_json::Value, String> {
+    let mut profile = serde_json::json!({
+        "id": server.id,
+        "name": server.name,
+        "host": server.host,
+        "port": server.port,
+        "username": server.username,
+        "protocol": server.protocol,
+        "initialPath": server.initial_path,
+        "color": server.color,
+        "lastConnected": server.last_connected,
+        "options": server.options,
+        "providerId": server.provider_id,
+    });
+    ftp_client_gui_lib::bridge_commands::materialize_imported_crypt_overlay(
+        &mut profile,
+        store_secret,
+    )?;
+    Ok(profile)
+}
+
 async fn apply_rclone_import_to_vault(
     cli: &Cli,
     result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
@@ -36688,19 +37118,11 @@ async fn apply_rclone_import_to_vault(
         if existing_ids.contains(&server.id) {
             continue;
         }
-        profiles.push(serde_json::json!({
-            "id": server.id,
-            "name": server.name,
-            "host": server.host,
-            "port": server.port,
-            "username": server.username,
-            "protocol": server.protocol,
-            "initialPath": server.initial_path,
-            "color": server.color,
-            "lastConnected": server.last_connected,
-            "options": server.options,
-            "providerId": server.provider_id,
-        }));
+        let profile = imported_server_profile(server, |key, secret| {
+            dual_store_server_cred_checked(&store, scoped_uid, key, secret)
+        })
+        .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+        profiles.push(profile);
         profiles_appended += 1;
     }
     save_active_user_profiles(cli, &store, &profiles)
@@ -36986,6 +37408,7 @@ fn collect_export_scaffold(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     servers_json: &serde_json::Value,
     name_filter: Option<&[String]>,
+    source: &str,
     supported_protocols: &[&str],
     oauth_protocols: &[&str],
 ) -> Result<ExportCollected, String> {
@@ -37083,10 +37506,11 @@ fn collect_export_scaffold(
             continue;
         }
         if !proto_supported {
-            out.skipped.push((
-                name.to_string(),
-                format!("protocol {} not exportable", protocol),
-            ));
+            let reason =
+                ftp_client_gui_lib::bridge_shared::bridge_export_refusal(source, &protocol)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("protocol {} not exportable", protocol));
+            out.skipped.push((name.to_string(), reason));
             continue;
         }
         // SFTP profiles authenticate by SSH key (path in
@@ -37177,8 +37601,8 @@ async fn cmd_export_rclone(
     let filter = parse_profile_name_filter(profiles);
 
     // Single source of truth shared with the GUI bridge: the credential
-    // backends (FTP/SFTP/WebDAV/S3/Filen/Mega/Azure/Swift/Koofr/OpenDrive/
-    // Backblaze) plus the #128-D OAuth-token providers (Drive/Dropbox/
+    // backends (FTP/SFTP/WebDAV/S3/Filen/Mega/Internxt/Azure/Swift/Koofr/
+    // OpenDrive/Backblaze) plus the #128-D OAuth-token providers (Drive/Dropbox/
     // OneDrive/Box/pCloud/Yandex/Zoho), whose token + BYO client_id/secret
     // are injected below. Jottacloud is appended CLI-only: its rclone export
     // rebuilds the persisted OIDC refresh token into a working token (verified
@@ -37190,15 +37614,20 @@ async fn cmd_export_rclone(
     supported.push("jottacloud");
     let oauth: [&str; 0] = [];
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
-        {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        "rclone",
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
 
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
@@ -37334,15 +37763,20 @@ async fn cmd_export_winscp(
     let supported = ["ftp", "ftps", "sftp"];
     let oauth: [&str; 0] = [];
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
-        {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        "winscp",
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
         return 4;
@@ -37409,15 +37843,20 @@ async fn cmd_export_filezilla(
     let supported = ["ftp", "ftps", "sftp"];
     let oauth: [&str; 0] = [];
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
-        {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        "filezilla",
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
         return 4;
@@ -37518,6 +37957,7 @@ async fn cmd_export_bridge(
         &store,
         &servers_json,
         filter.as_deref(),
+        src,
         supported,
         &oauth,
     ) {
@@ -38482,9 +38922,9 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
             ),
             OutputFormat::Text => match (st.available, st.source) {
                 (true, Some(src)) => println!("Import available from {}", src.display()),
-                _ => {
-                    println!("No host configuration to import (none present, or already decided).")
-                }
+                _ => println!(
+                    "No host configuration to import (none present, nothing in it to import, or already decided)."
+                ),
             },
         }
         return 0;
@@ -38492,25 +38932,15 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
 
     match portable::flatpak_host_import_apply(true) {
         Ok(report) => {
+            let imported = report.imported();
             match format {
-                OutputFormat::Json => println!(
-                    "{}",
-                    serde_json::json!({
-                        "imported": report.imported,
-                        "source": path_str(report.source),
-                        "target": path_str(report.target),
-                        "requires_restart": report.imported,
-                    })
-                ),
-                OutputFormat::Text => {
-                    if report.imported {
-                        println!(
-                            "Imported host configuration into the sandbox. Restart AeroFTP to load it."
-                        );
-                    } else {
-                        println!("Nothing to import.");
-                    }
+                OutputFormat::Json => {
+                    // The GUI command's fields, plus the restart flag of the CLI.
+                    let mut json = report.to_json();
+                    json["requires_restart"] = serde_json::Value::Bool(imported);
+                    println!("{json}");
                 }
+                OutputFormat::Text => println!("{}", flatpak_import_summary(&report)),
             }
             0
         }
@@ -38518,6 +38948,126 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
             print_error(format, &format!("flatpak-import failed: {e}"), 1);
             1
         }
+    }
+}
+
+/// The text `flatpak-import` prints after an accepted import: how many files it
+/// copied, and what happened to the host vault and saved servers.
+fn flatpak_import_summary(report: &ftp_client_gui_lib::portable::FlatpakImportReport) -> String {
+    use ftp_client_gui_lib::portable::HostVault;
+
+    let source = report
+        .source
+        .as_ref()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    if report.imported() {
+        let files = format!(
+            "Imported {} {} from {} into the sandbox",
+            report.copied,
+            if report.copied == 1 { "file" } else { "files" },
+            source
+        );
+        match report.vault {
+            HostVault::Imported => format!(
+                "{files}, including your saved servers and vault. Restart AeroFTP to load them."
+            ),
+            HostVault::Skipped => format!(
+                "{files}, but not your saved servers and vault: this Flatpak install already has its own vault, and existing files are never overwritten. Restart AeroFTP to load what was imported."
+            ),
+            HostVault::Absent => format!(
+                "{files}, but your existing configuration held no saved servers or vault the import could copy. Restart AeroFTP to load what was imported."
+            ),
+        }
+    } else if report.vault == HostVault::Skipped {
+        format!(
+            "No file was copied from {source}, so your saved servers and vault were not imported: this Flatpak install already has its own vault and a file with the same name for each file the import would copy, and existing files are never overwritten."
+        )
+    } else if report.nothing_importable {
+        format!(
+            "Nothing to import: {source} holds no file the import copies (it copies files only, never SQLite sidecar files or symbolic links)."
+        )
+    } else {
+        // The copy skips a file by name, never by content, so this says what it
+        // saw: a file with the same name, not the same file. And it never copies
+        // symbolic links or SQLite sidecars, so the claim covers only the files
+        // it would copy: a linked file on the host is not "already here".
+        format!(
+            "No file was copied: this Flatpak install already has a file with the same name for each file the import would copy from {source}, and existing files are never overwritten."
+        )
+    }
+}
+
+#[cfg(test)]
+mod flatpak_import_summary_tests {
+    use super::flatpak_import_summary;
+    use ftp_client_gui_lib::portable::{FlatpakImportReport, HostVault};
+    use std::path::PathBuf;
+
+    fn report(copied: usize, vault: HostVault) -> FlatpakImportReport {
+        FlatpakImportReport {
+            copied,
+            vault,
+            nothing_importable: false,
+            source: Some(PathBuf::from("/home/u/.config/aeroftp")),
+            target: Some(PathBuf::from(
+                "/home/u/.var/app/app.aeroftp.AeroFTP/config/aeroftp",
+            )),
+        }
+    }
+
+    #[test]
+    fn flatpak_import_says_the_vault_stayed_behind() {
+        let text = flatpak_import_summary(&report(2, HostVault::Skipped));
+        assert!(
+            text.starts_with("Imported 2 files from /home/u/.config/aeroftp"),
+            "{text}"
+        );
+        assert!(
+            text.contains("but not your saved servers and vault: this Flatpak install already has its own vault"),
+            "{text}"
+        );
+
+        // The claim covers the files the import copies, not every host file:
+        // symbolic links and SQLite sidecars are never copied.
+        assert_eq!(
+            flatpak_import_summary(&report(0, HostVault::Skipped)),
+            "No file was copied from /home/u/.config/aeroftp, so your saved servers and vault were not imported: this Flatpak install already has its own vault and a file with the same name for each file the import would copy, and existing files are never overwritten."
+        );
+    }
+
+    #[test]
+    fn flatpak_import_says_no_file_was_copied_not_that_none_was_needed() {
+        // The copy skips by name, never by content, and never copies symbolic
+        // links or SQLite sidecars: the claim is about the files it would copy.
+        assert_eq!(
+            flatpak_import_summary(&report(0, HostVault::Absent)),
+            "No file was copied: this Flatpak install already has a file with the same name for each file the import would copy from /home/u/.config/aeroftp, and existing files are never overwritten."
+        );
+    }
+
+    #[test]
+    fn flatpak_import_of_a_config_with_nothing_to_copy_says_nothing_to_import() {
+        let mut empty = report(0, HostVault::Absent);
+        empty.nothing_importable = true;
+        assert_eq!(
+            flatpak_import_summary(&empty),
+            "Nothing to import: /home/u/.config/aeroftp holds no file the import copies (it copies files only, never SQLite sidecar files or symbolic links)."
+        );
+    }
+
+    #[test]
+    fn flatpak_import_says_whether_the_servers_and_vault_came() {
+        let text = flatpak_import_summary(&report(3, HostVault::Imported));
+        assert!(
+            text.contains("including your saved servers and vault"),
+            "{text}"
+        );
+        // A user who expects the servers after the restart is told none came.
+        assert_eq!(
+            flatpak_import_summary(&report(1, HostVault::Absent)),
+            "Imported 1 file from /home/u/.config/aeroftp into the sandbox, but your existing configuration held no saved servers or vault the import could copy. Restart AeroFTP to load what was imported."
+        );
     }
 }
 
@@ -52865,6 +53415,7 @@ async fn cmd_mount_windows(
         provider_label,
         base_path,
         auth_token: None, // local-only WebDAV bridge for Windows mount - no auth needed
+        warnings: ServedWarnings::stderr(format),
     };
 
     let app = Router::new()
@@ -55281,6 +55832,126 @@ fn bind_after_init(
     }
 }
 
+/// What `crypt set-form` writes: `overlay` with the given forms recorded and
+/// every other field as it was. Refused when it is not an enabled rclone-crypt
+/// binding, and when it would leave one form recorded and the other not: the
+/// unrecorded secret would stay on the reading a refusal was about, which is
+/// why the GUI asks for both before Save.
+fn binding_with_recorded_forms(
+    overlay: &serde_json::Value,
+    password_form: Option<RecordedFormArg>,
+    salt_form: Option<RecordedFormArg>,
+) -> Result<serde_json::Value, String> {
+    let rclone_crypt = overlay.get("enabled").and_then(|v| v.as_bool()) == Some(true)
+        && overlay.get("kind").and_then(|v| v.as_str()) == Some("rclone-crypt");
+    let mut overlay = overlay.clone();
+    let obj = overlay
+        .as_object_mut()
+        .filter(|_| rclone_crypt)
+        .ok_or("This profile has no rclone-crypt overlay.")?;
+    if let Some(form) = password_form {
+        obj.insert("passwordForm".into(), serde_json::json!(form.as_str()));
+    }
+    if let Some(form) = salt_form {
+        obj.insert("saltForm".into(), serde_json::json!(form.as_str()));
+    }
+    match (
+        obj.contains_key("passwordForm"),
+        obj.contains_key("saltForm"),
+    ) {
+        (true, false) => Err("Record the salt's form too: pass --salt-form clear|obscured.".into()),
+        (false, true) => {
+            Err("Record the password's form too: pass --password-form clear|obscured.".into())
+        }
+        _ => Ok(overlay),
+    }
+}
+
+/// `crypt set-form`: record on the `--profile`'s rclone-crypt binding how its
+/// stored password and salt are written, the answer to a "reads two ways"
+/// refusal. Only the binding changes; the secrets stay as they are.
+fn cmd_crypt_set_form(
+    password_form: Option<RecordedFormArg>,
+    salt_form: Option<RecordedFormArg>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    if password_form.is_none() && salt_form.is_none() {
+        print_error(
+            format,
+            "Pass --password-form and/or --salt-form (clear or obscured).",
+            5,
+        );
+        return 5;
+    }
+    let Some(profile_query) = cli.profile.as_deref() else {
+        print_error(format, "crypt set-form needs --profile <name-or-index>.", 5);
+        return 5;
+    };
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let profile_id = match resolve_profile_id_for_query(cli, &store, profile_query, format) {
+        Ok(id) => id,
+        Err(code) => return code,
+    };
+    let profiles = match load_active_user_profiles(cli, &store) {
+        Ok(profiles) => profiles,
+        Err(e) => {
+            print_error(format, &format!("Could not load the profiles: {e}"), 5);
+            return 5;
+        }
+    };
+    let current = profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id.as_str()))
+        .and_then(|p| p.get("aeroCryptOverlay"))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let overlay = match binding_with_recorded_forms(&current, password_form, salt_form) {
+        Ok(overlay) => overlay,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let recorded = (
+        overlay
+            .get("passwordForm")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+        overlay
+            .get("saltForm")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    if let Err(e) =
+        update_profile_field_in_vault(cli, &store, &profile_id, "aeroCryptOverlay", overlay)
+    {
+        print_error(format, &format!("Could not save the profile: {e}"), 4);
+        return 4;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "profile": profile_query,
+            "passwordForm": recorded.0,
+            "saltForm": recorded.1,
+        }));
+    } else {
+        println!(
+            "Recorded for {profile_query}: password {}, salt {}",
+            recorded.0.as_str().unwrap_or("not recorded"),
+            recorded.1.as_str().unwrap_or("not recorded"),
+        );
+    }
+    0
+}
+
 /// Set or clear `aeroCryptOverlay.withHeader` on a saved profile without
 /// touching secrets. Used by `crypt to-headed` / `to-headerless` so connect-time
 /// heal knows the vault's headed intent (tracker #421 item #7).
@@ -57261,6 +57932,7 @@ async fn cmd_rclone_crypt_put(
     remote_path: &str,
     password: &str,
     salt: &str,
+    secret_forms: CryptSecretForms,
     filename_encryption: RcloneFilenameEncryption,
     dir_iv_base64: Option<&str>,
     remote_name: Option<&str>,
@@ -57276,7 +57948,12 @@ async fn cmd_rclone_crypt_put(
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, remote_path));
 
     let (name_key, data_key, name_tweak) =
-        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak(password, salt) {
+        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_forms(
+            password,
+            secret_forms.0,
+            salt,
+            secret_forms.1,
+        ) {
             Ok(keys) => keys,
             Err(e) => {
                 print_error(format, &format!("rclone key derivation failed: {}", e), 5);
@@ -59563,6 +60240,174 @@ mod hashsum_digest_tests {
         assert_ne!(CONTENT_MD5, SERVER_MD5);
     }
 
+    /// `import rclone --apply` turns an rclone crypt remote into the overlay
+    /// binding the GUI import makes: secrets in the vault, recorded clear,
+    /// none left in the profile's options. The values are obscured by rclone
+    /// v1.75.1; the salt is one rclone generates, which a second reveal empties.
+    #[test]
+    fn rclone_apply_binds_a_crypt_remote_with_its_secrets_in_the_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "[base]\ntype = sftp\nhost = sftp.example.invalid\nuser = smoke\n\n\
+             [vault]\ntype = crypt\nremote = base:\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\
+             password2 = V98yILELzRn3G-7rg4ymQ3B0X0zgFAbWo74vIapw-YnWja9Jn3k\n",
+        )
+        .unwrap();
+        let result = ftp_client_gui_lib::rclone_import::import_rclone(&conf).unwrap();
+        let server = result
+            .servers
+            .iter()
+            .find(|s| s.name == "vault")
+            .expect("the crypt remote is imported");
+        let mut vault = std::collections::HashMap::new();
+        let profile = imported_server_profile(server, |k, v| {
+            vault.insert(k.to_string(), v.to_string());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(profile["aeroCryptOverlay"]["kind"], "rclone-crypt");
+        assert_eq!(profile["aeroCryptOverlay"]["passwordForm"], "clear");
+        assert_eq!(profile["aeroCryptOverlay"]["saltForm"], "clear");
+        assert!(profile.pointer("/options/rcloneCryptPassword").is_none());
+        assert!(profile.pointer("/options/rcloneCryptPassword2").is_none());
+        assert_eq!(
+            vault[&format!("aerocrypt_overlay_pw_{}", server.id)],
+            "crypt-pass-954"
+        );
+        assert_eq!(
+            vault[&format!("aerocrypt_overlay_salt_{}", server.id)],
+            "hD1lB5uyIChoDFqhaHOsUg"
+        );
+    }
+
+    /// What `crypt set-form` writes: the forms given, recorded on an enabled
+    /// rclone-crypt binding, every other field (and a form not given) kept;
+    /// nothing for an AeroCrypt or disabled binding.
+    #[test]
+    fn crypt_set_form_writes_only_the_forms_given() {
+        let bound = serde_json::json!({
+            "enabled": true, "kind": "rclone-crypt", "remoteScope": "/enc",
+            "filenameEncryption": "standard", "passwordForm": "obscured"
+        });
+        let written =
+            binding_with_recorded_forms(&bound, None, Some(RecordedFormArg::Clear)).unwrap();
+        assert_eq!(written["passwordForm"], "obscured");
+        assert_eq!(written["saltForm"], "clear");
+        assert_eq!(written["remoteScope"], "/enc");
+        assert_eq!(written["filenameEncryption"], "standard");
+        let written = binding_with_recorded_forms(
+            &bound,
+            Some(RecordedFormArg::Clear),
+            Some(RecordedFormArg::Clear),
+        )
+        .unwrap();
+        assert_eq!(written["passwordForm"], "clear");
+        assert_eq!(written["saltForm"], "clear");
+
+        // One form recorded and not the other is what the GUI will not save.
+        let unrecorded = serde_json::json!({"enabled": true, "kind": "rclone-crypt"});
+        let e = binding_with_recorded_forms(&unrecorded, Some(RecordedFormArg::Clear), None)
+            .unwrap_err();
+        assert!(e.contains("--salt-form"), "{e}");
+        let e = binding_with_recorded_forms(&bound, Some(RecordedFormArg::Clear), None);
+        assert!(e.unwrap_err().contains("--salt-form"));
+
+        let aerocrypt = serde_json::json!({"enabled": true, "kind": "aerocrypt"});
+        assert!(
+            binding_with_recorded_forms(&aerocrypt, Some(RecordedFormArg::Clear), None)
+                .unwrap_err()
+                .contains("no rclone-crypt overlay")
+        );
+        let disabled = serde_json::json!({"enabled": false, "kind": "rclone-crypt"});
+        assert!(
+            binding_with_recorded_forms(&disabled, Some(RecordedFormArg::Clear), None).is_err()
+        );
+    }
+
+    /// A password and a salt can be given in different forms, and `crypt
+    /// set-form` records one form per secret; a form is never a guess (`auto`
+    /// is not accepted there).
+    #[test]
+    fn crypt_secret_form_flags_parse() {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let put = Cli::try_parse_from([
+                    "aeroftp",
+                    "rclone-crypt",
+                    "put",
+                    "./f.txt",
+                    "sftp://example",
+                    "/r",
+                    "--password",
+                    "p",
+                    "--password-form",
+                    "clear",
+                    "--salt-form",
+                    "obscured",
+                ])
+                .expect("put with forms parses");
+                match put.command {
+                    Commands::RcloneCrypt {
+                        command:
+                            RcloneCryptCommands::Put {
+                                password_form,
+                                salt_form,
+                                ..
+                            },
+                    } => {
+                        assert_eq!(password_form, SecretFormArg::Clear);
+                        assert_eq!(salt_form, SecretFormArg::Obscured);
+                        assert_eq!(
+                            salt_form.form(),
+                            Some(ftp_client_gui_lib::rclone_crypt::CryptSecretForm::Obscured)
+                        );
+                        assert_eq!(SecretFormArg::Auto.form(), None);
+                    }
+                    _ => panic!("expected rclone-crypt put"),
+                }
+                let set = Cli::try_parse_from([
+                    "aeroftp",
+                    "--profile",
+                    "vault",
+                    "crypt",
+                    "set-form",
+                    "--password-form",
+                    "clear",
+                    "--salt-form",
+                    "obscured",
+                ])
+                .expect("crypt set-form parses");
+                match set.command {
+                    Commands::Crypt {
+                        command:
+                            CryptCommands::SetForm {
+                                password_form,
+                                salt_form,
+                            },
+                    } => {
+                        assert_eq!(password_form.map(RecordedFormArg::as_str), Some("clear"));
+                        assert_eq!(salt_form.map(RecordedFormArg::as_str), Some("obscured"));
+                    }
+                    _ => panic!("expected crypt set-form"),
+                }
+                assert!(Cli::try_parse_from([
+                    "aeroftp",
+                    "crypt",
+                    "set-form",
+                    "--password-form",
+                    "auto",
+                ])
+                .is_err());
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     #[test]
     fn hashsum_download_flag_parses() {
         std::thread::Builder::new()
@@ -59774,7 +60619,10 @@ async fn cli_unlock_crypt_compare_keys(
             }
         },
     };
-    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
+    let stored_password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id));
+    // A secret from the environment carries no recorded form.
+    let password_from_env = stored_password.is_none();
+    let password = stored_password
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
         .unwrap_or_default();
     // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
@@ -59786,9 +60634,12 @@ async fn cli_unlock_crypt_compare_keys(
         );
         return Err(5);
     }
-    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
+    let stored_salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id));
+    let salt_from_env = stored_salt.is_none();
+    let salt = stored_salt
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
+    let (password_form, salt_form) = ftp_client_gui_lib::rclone_crypt::crypt_secret_forms(profile);
     let local_config_json =
         read_server_cred(&store, uid, &format!("aerocrypt_overlay_config_{}", id))
             .filter(|s| !s.is_empty());
@@ -59807,6 +60658,16 @@ async fn cli_unlock_crypt_compare_keys(
             Some(salt.clone())
         },
         with_header: false,
+        password_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            password_form,
+            password_from_env,
+            "AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM",
+        ),
+        salt_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            salt_form,
+            salt_from_env,
+            "AEROFTP_CRYPT_OVERLAY_SALT_FORM",
+        ),
     };
     match ftp_client_gui_lib::crypt_compare::unlock_overlay_keys(
         provider,
@@ -60124,6 +60985,7 @@ async fn cmd_cryptcheck(
     remote_path: &str,
     password: Option<String>,
     password2: Option<String>,
+    secret_forms: CryptSecretForms,
     filename_encryption: &str,
     suffix: Option<&str>,
     one_way: bool,
@@ -60138,6 +61000,7 @@ async fn cmd_cryptcheck(
         remote_path,
         password,
         password2,
+        secret_forms,
         filename_encryption,
         suffix,
         one_way,
@@ -60196,6 +61059,7 @@ async fn cryptcheck_report(
     remote_path: &str,
     password: Option<String>,
     password2: Option<String>,
+    secret_forms: CryptSecretForms,
     filename_encryption: &str,
     suffix: Option<&str>,
     one_way: bool,
@@ -60232,7 +61096,12 @@ async fn cryptcheck_report(
         .unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD2").unwrap_or_default());
 
     let (name_key, data_key, name_tweak) =
-        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak(&pwd, &salt) {
+        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_forms(
+            &pwd,
+            secret_forms.0,
+            &salt,
+            secret_forms.1,
+        ) {
             Ok(keys) => keys,
             Err(e) => {
                 print_error(format, &format!("Key derivation failed: {}", e), 5);
@@ -67338,6 +68207,7 @@ async fn main() {
 
     if matches!(&cli.command, Commands::Tui) {
         let exit_code = cmd_tui(&mut cli, format).await;
+        render_pending_warnings(format);
         std::process::exit(exit_code);
     }
 
@@ -67613,6 +68483,8 @@ async fn main() {
             one_way,
             checkfile,
             algorithm,
+            password_form,
+            salt_form,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), local.as_str())
@@ -67625,6 +68497,7 @@ async fn main() {
                 r,
                 password.clone(),
                 password2.clone(),
+                (password_form.form(), salt_form.form()),
                 filename_encryption,
                 suffix.as_deref(),
                 *one_way,
@@ -70265,6 +71138,10 @@ async fn main() {
                         }
                     }
                 },
+                CryptCommands::SetForm {
+                    password_form,
+                    salt_form,
+                } => cmd_crypt_set_form(*password_form, *salt_form, &cli, format),
                 CryptCommands::ToHeaded {
                     url,
                     path,
@@ -70629,6 +71506,8 @@ async fn main() {
                     remote,
                     password,
                     salt,
+                    password_form,
+                    salt_form,
                     filename_encryption,
                     dir_iv_base64,
                     remote_name,
@@ -70650,6 +71529,7 @@ async fn main() {
                             remote,
                             &pw,
                             salt.as_deref().unwrap_or(""),
+                            (password_form.form(), salt_form.form()),
                             *filename_encryption,
                             dir_iv_base64.as_deref(),
                             remote_name.as_deref(),
@@ -71117,6 +71997,7 @@ async fn main() {
         exit_code
     };
 
+    render_pending_warnings(format);
     std::process::exit(exit_code);
 }
 
@@ -75712,6 +76593,22 @@ mod tests {
         assert!(resolve_served_backend_path("/base", "docs/../../secret.txt").is_err());
     }
 
+    /// `serve ftp` and `serve sftp` hand over raw paths, which the resolver
+    /// percent-decoded: DELE, RNFR or STOR of `a%41.txt` acted on `aA.txt`.
+    /// A literal `%` stays in the name, and `..` is still refused.
+    #[test]
+    fn a_served_ftp_or_sftp_path_is_not_percent_decoded() {
+        assert_eq!(
+            resolve_served_backend_path("/base", "a%41.txt").unwrap(),
+            "/base/a%41.txt"
+        );
+        assert_eq!(
+            resolve_served_backend_path("/base", "%2e%2e/x").unwrap(),
+            "/base/%2e%2e/x"
+        );
+        assert!(resolve_served_backend_path("/base", "d/../../x").is_err());
+    }
+
     #[test]
     fn test_serve_effective_base_path() {
         assert_eq!(
@@ -78905,6 +79802,415 @@ mod tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("shared-tree".to_string())
         }
+    }
+
+    /// Scripted answers for the delete fallbacks of `rm`, the TUI and the
+    /// served WebDAV DELETE; every call is recorded by name.
+    struct DeleteFallbackProvider {
+        delete: fn() -> Result<(), ProviderError>,
+        stat: fn() -> Result<RemoteEntry, ProviderError>,
+        rmdir: fn() -> Result<(), ProviderError>,
+        list: fn() -> Result<Vec<RemoteEntry>, ProviderError>,
+        calls: Vec<&'static str>,
+    }
+
+    impl DeleteFallbackProvider {
+        fn new(
+            delete: fn() -> Result<(), ProviderError>,
+            stat: fn() -> Result<RemoteEntry, ProviderError>,
+        ) -> Self {
+            Self {
+                delete,
+                stat,
+                rmdir: || Ok(()),
+                list: || Ok(Vec::new()),
+                calls: Vec::new(),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for DeleteFallbackProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "delete-fallback".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.calls.push("list");
+            (self.list)()
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("delete");
+            (self.delete)()
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("rmdir");
+            (self.rmdir)()
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("rmdir_recursive");
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, _path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.calls.push("stat");
+            (self.stat)()
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("delete-fallback".to_string())
+        }
+    }
+
+    fn ambiguous() -> ProviderError {
+        ProviderError::InvalidPath("'/photos' names an asset and a folder".to_string())
+    }
+
+    /// Scenario C of the #944 review: Cloudinary refuses `rm /photos` because
+    /// an image and a folder share the name, and `rm` used to answer the
+    /// refusal with `rmdir`, removing the folder.
+    #[tokio::test]
+    async fn rm_does_not_turn_an_ambiguous_path_into_rmdir() {
+        let mut p = DeleteFallbackProvider::new(|| Err(ambiguous()), || Err(ambiguous()));
+        let result = delete_file_or_empty_dir(&mut p, "/photos").await;
+        assert!(
+            matches!(result, Err(ProviderError::InvalidPath(_))),
+            "{result:?}"
+        );
+        assert_eq!(p.calls, ["delete", "stat"]);
+    }
+
+    /// A file `delete` refused keeps its own error instead of the `rmdir` one.
+    #[tokio::test]
+    async fn rm_returns_the_delete_error_for_a_file() {
+        let mut p = DeleteFallbackProvider::new(
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Ok(RemoteEntry::file("a".to_string(), "/a".to_string(), 1)),
+        );
+        let result = delete_file_or_empty_dir(&mut p, "/a").await;
+        assert!(
+            matches!(result, Err(ProviderError::ServerError(_))),
+            "{result:?}"
+        );
+        assert_eq!(p.calls, ["delete", "stat"]);
+    }
+
+    /// A cancelled `delete` stops there.
+    #[tokio::test]
+    async fn rm_stops_on_a_cancelled_delete() {
+        let mut p = DeleteFallbackProvider::new(
+            || Err(ProviderError::Cancelled),
+            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
+        );
+        let result = delete_file_or_empty_dir(&mut p, "/d").await;
+        assert!(
+            matches!(result, Err(ProviderError::Cancelled)),
+            "{result:?}"
+        );
+        assert_eq!(p.calls, ["delete"]);
+    }
+
+    /// The fallback still serves what it exists for: a directory `delete`
+    /// refuses (MTP answers InvalidPath "is a directory"), and a directory
+    /// `stat` cannot see (S3 without the trailing slash).
+    #[tokio::test]
+    async fn rm_still_removes_an_empty_directory() {
+        let mut dir = DeleteFallbackProvider::new(
+            || {
+                Err(ProviderError::InvalidPath(
+                    "/d is a directory; use rmdir".to_string(),
+                ))
+            },
+            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
+        );
+        assert!(delete_file_or_empty_dir(&mut dir, "/d").await.is_ok());
+        assert_eq!(dir.calls, ["delete", "stat", "rmdir"]);
+
+        let mut unseen = DeleteFallbackProvider::new(
+            || Err(ProviderError::NotFound("/d".to_string())),
+            || Err(ProviderError::NotFound("/d".to_string())),
+        );
+        assert!(delete_file_or_empty_dir(&mut unseen, "/d").await.is_ok());
+        assert_eq!(unseen.calls, ["delete", "stat", "rmdir"]);
+    }
+
+    /// The served DELETE used to escalate to `rmdir_recursive` after any
+    /// failure: an ambiguous path emptied the folder, and a file refused for a
+    /// transient reason erased the directory of the same name.
+    #[tokio::test]
+    async fn served_delete_escalates_only_for_a_directory() {
+        let mut amb = DeleteFallbackProvider::new(|| Err(ambiguous()), || Err(ambiguous()));
+        amb.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        let result = served_webdav_delete(&mut amb, "/photos").await;
+        assert!(
+            matches!(result, Err(ProviderError::InvalidPath(_))),
+            "{result:?}"
+        );
+        assert_eq!(amb.calls, ["delete", "stat"]);
+
+        let mut file = DeleteFallbackProvider::new(
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Ok(RemoteEntry::file("x".to_string(), "/x".to_string(), 1)),
+        );
+        file.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        let result = served_webdav_delete(&mut file, "/x").await;
+        assert!(
+            matches!(result, Err(ProviderError::ServerError(_))),
+            "{result:?}"
+        );
+        assert_eq!(file.calls, ["delete", "stat"]);
+
+        let mut dir = DeleteFallbackProvider::new(
+            || Err(ProviderError::InvalidPath("/d is a directory".to_string())),
+            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
+        );
+        dir.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        assert!(served_webdav_delete(&mut dir, "/d").await.is_ok());
+        assert_eq!(dir.calls, ["delete", "stat", "rmdir", "rmdir_recursive"]);
+
+        let mut unseen = DeleteFallbackProvider::new(
+            || Err(ProviderError::NotFound("/d".to_string())),
+            || Err(ProviderError::NotFound("/d".to_string())),
+        );
+        unseen.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        assert!(served_webdav_delete(&mut unseen, "/d").await.is_ok());
+        assert_eq!(
+            unseen.calls,
+            ["delete", "stat", "list", "rmdir", "rmdir_recursive"]
+        );
+
+        // A key that is gone and a path nobody can list: the delete error
+        // stays, and nothing recursive runs (CodeRabbit on a630c990).
+        let mut gone = DeleteFallbackProvider::new(
+            || Err(ProviderError::NotFound("/x".to_string())),
+            || Err(ProviderError::NotFound("/x".to_string())),
+        );
+        gone.list = || Err(ProviderError::NotFound("/x".to_string()));
+        let result = served_webdav_delete(&mut gone, "/x").await;
+        assert!(
+            matches!(result, Err(ProviderError::NotFound(_))),
+            "{result:?}"
+        );
+        assert_eq!(gone.calls, ["delete", "stat", "list"]);
+    }
+
+    /// A `stat` that failed says nothing about the path: escalating on it
+    /// reached the directory of the same name (recursive `rmdir` on S3 and
+    /// Azure). Only an answer that the provider cannot describe the path
+    /// (NotFound, NotSupported, ParseError as Box and GitHub give for a
+    /// folder) keeps the old fallback.
+    #[tokio::test]
+    async fn a_failed_stat_keeps_the_delete_error() {
+        for stat in [
+            (|| Err(ProviderError::NetworkError("reset".to_string())))
+                as fn() -> Result<RemoteEntry, ProviderError>,
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Err(ProviderError::Timeout),
+            || Err(ProviderError::Cancelled),
+        ] {
+            let mut rm = DeleteFallbackProvider::new(
+                || Err(ProviderError::ServerError("503".to_string())),
+                stat,
+            );
+            let result = delete_file_or_empty_dir(&mut rm, "/x").await;
+            assert!(
+                matches!(result, Err(ProviderError::ServerError(_))),
+                "{result:?}"
+            );
+            assert_eq!(rm.calls, ["delete", "stat"]);
+
+            let mut served = DeleteFallbackProvider::new(
+                || Err(ProviderError::ServerError("503".to_string())),
+                stat,
+            );
+            let result = served_webdav_delete(&mut served, "/x").await;
+            assert!(
+                matches!(result, Err(ProviderError::ServerError(_))),
+                "{result:?}"
+            );
+            assert_eq!(served.calls, ["delete", "stat"]);
+        }
+
+        let mut parse = DeleteFallbackProvider::new(
+            || Err(ProviderError::ServerError("a folder".to_string())),
+            || Err(ProviderError::ParseError("an array".to_string())),
+        );
+        assert!(delete_file_or_empty_dir(&mut parse, "/d").await.is_ok());
+        assert_eq!(parse.calls, ["delete", "stat", "rmdir"]);
+    }
+
+    /// A link to a directory is not the directory: the served DELETE listed
+    /// through it and emptied the target.
+    #[tokio::test]
+    async fn a_link_to_a_directory_is_not_removed_as_one() {
+        let link = || {
+            let mut entry = RemoteEntry::directory("l".to_string(), "/l".to_string());
+            entry.is_symlink = true;
+            Ok(entry)
+        };
+        let mut rm = DeleteFallbackProvider::new(
+            || Err(ProviderError::PermissionDenied("/l".to_string())),
+            link,
+        );
+        let result = delete_file_or_empty_dir(&mut rm, "/l").await;
+        assert!(
+            matches!(result, Err(ProviderError::PermissionDenied(_))),
+            "{result:?}"
+        );
+        assert_eq!(rm.calls, ["delete", "stat"]);
+
+        let mut served = DeleteFallbackProvider::new(
+            || Err(ProviderError::PermissionDenied("/l".to_string())),
+            link,
+        );
+        let result = served_webdav_delete(&mut served, "/l").await;
+        assert!(
+            matches!(result, Err(ProviderError::PermissionDenied(_))),
+            "{result:?}"
+        );
+        assert_eq!(served.calls, ["delete", "stat"]);
+    }
+
+    /// `import rclone` printed section names, types and reasons from the file
+    /// as they were, so a section named with escape sequences could clear or
+    /// rewrite the terminal the report went to (CWE-150).
+    #[test]
+    fn import_rclone_listing_prints_no_terminal_control_sequence() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "[ok\x1b[2Jcleared]\ntype = ftp\nhost = h\x1b]0;title\x07.example\nuser = u\x1b[31m\n\n\
+             [odd\x1b[1Aup]\ntype = x\x1b[2Kline\n\n\
+             [ix\x1b[5mblink]\ntype = internxt\nemail = me@example.com\npass = S3cr3tPass!\n",
+        )
+        .expect("write the config");
+        let result = ftp_client_gui_lib::rclone_import::import_rclone(&conf).expect("import");
+        assert_eq!(result.servers.len(), 2, "{:?}", result.skipped.len());
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.warnings.len(), 1);
+
+        let listing = rclone_import_listing(&result);
+        assert!(
+            !listing.chars().any(|c| c == '\x1b' || c == '\x07'),
+            "a control sequence reaches the terminal: {listing:?}"
+        );
+        for kept in [
+            "okcleared",
+            "oddup",
+            "ixblink",
+            "Importable (2)",
+            "Skipped (1)",
+            "Warnings (1)",
+        ] {
+            assert!(listing.contains(kept), "'{kept}' missing: {listing:?}");
+        }
+    }
+
+    /// `import rclone --json` printed every server's `options` as imported,
+    /// under a comment promising no plaintext password on stdout: a crypt
+    /// overlay's password and salt and a Filen API key went out revealed. The
+    /// values below come from the real `rclone obscure` (v1.75.1).
+    #[test]
+    fn import_rclone_json_prints_no_revealed_secret() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "\
+[base]
+type = sftp
+host = example.com
+user = me
+
+[vault]
+type = crypt
+remote = base:vault
+password = BgXYaxA3d0gsDcU-bvJ2XJz6EdJONj19szH2IdXkKg
+password2 = mjtTXNyNZn88PP0n-rDRojtkDnqkqRio7KzRQqJl-w
+
+[filen-acct]
+type = filen
+email = me@example.com
+password = CrJEBaRGAs70RSR0bcBPEkueD6ODk8bYD49QQDiJCQ
+api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
+",
+        )
+        .expect("write the config");
+        let result = ftp_client_gui_lib::rclone_import::import_rclone(&conf).expect("import");
+        assert_eq!(result.servers.len(), 3, "base, vault and filen-acct import");
+
+        let printed =
+            serde_json::to_string(&rclone_import_json(&result, false, None)).expect("serialize");
+        for secret in [
+            "CryptPassPlain1",
+            "CryptSaltPlain2",
+            "FilenApiKeyPlain3",
+            "FilenPassPlain4",
+        ] {
+            assert!(!printed.contains(secret), "'{secret}' on stdout: {printed}");
+        }
+        // What is left still says what was found.
+        assert!(printed.contains("\"rcloneCryptEnabled\":true"), "{printed}");
+        assert!(printed.contains("\"hasCredential\":true"), "{printed}");
     }
 
     static SESSION_TRANSFER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
@@ -82634,6 +83940,7 @@ mod tests {
                 "/root",
                 Some("crypt password".to_string()),
                 Some(String::new()),
+                (None, None),
                 "off",
                 None,
                 one_way,
@@ -83451,10 +84758,16 @@ mod tests {
         deleted: Vec<String>,
         rename_fails_with: Option<String>,
         replace_fails_with: Option<String>,
+        /// When set, `replace` refuses as AlreadyExists, as a backend does
+        /// for a file onto a folder.
+        replace_refuses_as_existing: bool,
         /// What this fake answers to `supports_atomic_replace`.
         atomic_replace: bool,
         /// When set, `stat` fails with this instead of answering.
         stat_fails_with: Option<String>,
+        /// When set, a replace that succeeds leaves this warning, as a
+        /// set-aside replace does when it cannot delete the old copy.
+        replace_leaves_warning: Option<String>,
     }
 
     impl CliEditFakeProvider {
@@ -83467,8 +84780,10 @@ mod tests {
                 deleted: Vec::new(),
                 rename_fails_with: None,
                 replace_fails_with: None,
+                replace_refuses_as_existing: false,
                 atomic_replace: true,
                 stat_fails_with: None,
+                replace_leaves_warning: None,
             }
         }
     }
@@ -83588,12 +84903,20 @@ mod tests {
             if let Some(msg) = &self.replace_fails_with {
                 return Err(ProviderError::TransferFailed(msg.clone()));
             }
+            if self.replace_refuses_as_existing {
+                return Err(ProviderError::AlreadyExists(format!(
+                    "cannot replace {to} with {from}"
+                )));
+            }
             let data = self
                 .remote_files
                 .remove(from)
                 .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
             self.remote_files.insert(to.to_string(), data);
             self.replaces.push((from.to_string(), to.to_string()));
+            if let Some(warning) = &self.replace_leaves_warning {
+                ftp_client_gui_lib::providers::report_warning(warning.clone());
+            }
             Ok(())
         }
 
@@ -83697,6 +85020,249 @@ mod tests {
             "temp path must be gone after successful rename"
         );
         assert!(provider.deleted.is_empty());
+    }
+
+    /// A served WebDAV MOVE of `/a.txt` onto the existing `/b.txt`, with
+    /// `overwrite` as the Overwrite header when given. Returns the status and
+    /// the fake the handler worked on.
+    async fn served_move_onto_an_existing_file(
+        overwrite: Option<&'static str>,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        served_move_onto_an_existing_file_with(overwrite, CliEditFakeProvider::new()).await
+    }
+
+    /// [`served_move_onto_an_existing_file`] on a given fake.
+    async fn served_move_onto_an_existing_file_with(
+        overwrite: Option<&'static str>,
+        fake: CliEditFakeProvider,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        served_move_showing_warnings_to(overwrite, fake, ServedWarnings::stderr(OutputFormat::Text))
+            .await
+    }
+
+    /// [`served_move_onto_an_existing_file_with`], showing its warnings
+    /// through `warnings`.
+    async fn served_move_showing_warnings_to(
+        overwrite: Option<&'static str>,
+        mut fake: CliEditFakeProvider,
+        warnings: ServedWarnings,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"new".to_vec());
+        fake.remote_files
+            .insert("/b.txt".to_string(), b"old".to_vec());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let state = ServeHttpState {
+            provider: Arc::new(AsyncMutex::new(provider)),
+            provider_label: "fake".to_string(),
+            base_path: "/".to_string(),
+            auth_token: None,
+            warnings,
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Destination",
+            HeaderValue::from_static("http://127.0.0.1:8080/b.txt"),
+        );
+        if let Some(value) = overwrite {
+            headers.insert("Overwrite", HeaderValue::from_static(value));
+        }
+        let response = webdav_dispatch(
+            state.clone(),
+            Method::from_bytes(b"MOVE").unwrap(),
+            "a.txt".to_string(),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake");
+        let fake = std::mem::replace(fake, CliEditFakeProvider::new());
+        (response.status(), fake)
+    }
+
+    /// Office and most WebDAV editors save by writing a temporary and
+    /// MOVEing it over the document with `Overwrite: T` (or no header, which
+    /// RFC 4918 reads as T). The handler always called `rename`, which
+    /// refuses an occupied destination, so every such save failed with 500.
+    #[tokio::test]
+    async fn served_webdav_move_with_overwrite_t_replaces_the_destination() {
+        for overwrite in [Some("T"), None] {
+            let (status, fake) = served_move_onto_an_existing_file(overwrite).await;
+            assert_eq!(status, StatusCode::NO_CONTENT, "{overwrite:?}");
+            assert_eq!(
+                fake.replaces,
+                vec![("/a.txt".to_string(), "/b.txt".to_string())],
+                "{overwrite:?}"
+            );
+            assert_eq!(
+                fake.remote_files.get("/b.txt").map(Vec::as_slice),
+                Some(&b"new"[..]),
+                "{overwrite:?}"
+            );
+        }
+    }
+
+    /// 412 is the answer to `Overwrite: F` only. Under `Overwrite: T` the
+    /// client allowed the overwrite, so a replace the backend refuses (a
+    /// file onto a folder) is a conflict, 409, not a failed precondition.
+    #[tokio::test]
+    async fn served_webdav_move_whose_replace_is_refused_is_409() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.replace_refuses_as_existing = true;
+        let (status, fake) = served_move_onto_an_existing_file_with(Some("T"), fake).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            fake.remote_files.get("/b.txt").map(Vec::as_slice),
+            Some(&b"old"[..])
+        );
+    }
+
+    /// `serve webdav` runs until stopped: a warning a MOVE's replace left
+    /// (its set-aside copy not deleted) is shown when the MOVE ends, in the
+    /// format the server was started with (with `--json`, one JSON object a
+    /// line), and it is this MOVE's own, not the process queue's.
+    #[tokio::test]
+    async fn served_webdav_move_shows_the_warning_its_replace_left() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.replace_leaves_warning = Some("left /.b.txt.aeroftp-replaced-1".to_string());
+        let shown: Arc<std::sync::Mutex<Vec<u8>>> = Arc::default();
+        let warnings = ServedWarnings {
+            format: OutputFormat::Json,
+            out: shown.clone(),
+        };
+        let (status, _) = served_move_showing_warnings_to(Some("T"), fake, warnings).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let shown = String::from_utf8(shown.lock().unwrap().clone()).unwrap();
+        let line: serde_json::Value =
+            serde_json::from_str(shown.trim_end()).expect("one JSON object");
+        assert_eq!(
+            line,
+            serde_json::json!({ "status": "warning", "warning": "left /.b.txt.aeroftp-replaced-1" })
+        );
+    }
+
+    /// One served WebDAV request `method` for `path` (as axum's `Path`
+    /// extractor hands it over, decoded once) with the `Destination`
+    /// `destination`, on `fake`; returns the status and the fake after.
+    async fn served_request(
+        method: &str,
+        path: &str,
+        destination: &'static str,
+        fake: CliEditFakeProvider,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let state = ServeHttpState {
+            provider: Arc::new(AsyncMutex::new(provider)),
+            provider_label: "fake".to_string(),
+            base_path: "/".to_string(),
+            auth_token: None,
+            warnings: ServedWarnings::stderr(OutputFormat::Text),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert("Destination", HeaderValue::from_static(destination));
+        let response = webdav_dispatch(
+            state.clone(),
+            Method::from_bytes(method.as_bytes()).unwrap(),
+            path.to_string(),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake");
+        let fake = std::mem::replace(fake, CliEditFakeProvider::new());
+        (response.status(), fake)
+    }
+
+    /// The name `a%41.txt` arrives as the request path `a%2541.txt`, which
+    /// axum decodes to `a%41.txt`; the handler decoded it again to `aA.txt`
+    /// while the Destination was decoded once. A MOVE of `a%41.txt` onto
+    /// itself missed its 403 and put `aA.txt` over it.
+    #[tokio::test]
+    async fn served_webdav_move_of_a_percent_name_onto_itself_is_403() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a%41.txt".to_string(), b"mine".to_vec());
+        fake.remote_files
+            .insert("/aA.txt".to_string(), b"other".to_vec());
+        let (status, fake) =
+            served_request("MOVE", "a%41.txt", "http://127.0.0.1:8080/a%2541.txt", fake).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(fake.renames.is_empty(), "{:?}", fake.renames);
+        assert!(fake.replaces.is_empty(), "{:?}", fake.replaces);
+        assert_eq!(fake.remote_files["/a%41.txt"], b"mine");
+    }
+
+    /// A COPY onto its own path went through the copy DAG; RFC 4918 section
+    /// 9.8.5 makes it 403, answered before the provider is asked.
+    #[tokio::test]
+    async fn served_webdav_copy_onto_itself_is_403() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"mine".to_vec());
+        let (status, fake) =
+            served_request("COPY", "a.txt", "http://127.0.0.1:8080/a.txt", fake).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(fake.remote_files["/a.txt"], b"mine");
+    }
+
+    /// A MOVE onto its own path reached the backend's rename, a no-op, and
+    /// answered 204 as if something had moved. RFC 4918 section 9.9.4 makes
+    /// it 403, and the provider is not asked.
+    #[tokio::test]
+    async fn served_webdav_move_onto_itself_is_403() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"new".to_vec());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let state = ServeHttpState {
+            provider: Arc::new(AsyncMutex::new(provider)),
+            provider_label: "fake".to_string(),
+            base_path: "/".to_string(),
+            auth_token: None,
+            warnings: ServedWarnings::stderr(OutputFormat::Text),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Destination",
+            HeaderValue::from_static("http://127.0.0.1:8080/a.txt"),
+        );
+        let response = webdav_dispatch(
+            state.clone(),
+            Method::from_bytes(b"MOVE").unwrap(),
+            "a.txt".to_string(),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake");
+        assert!(fake.renames.is_empty(), "{:?}", fake.renames);
+        assert!(fake.replaces.is_empty(), "{:?}", fake.replaces);
+    }
+
+    /// `Overwrite: F` onto an existing destination is 412 (RFC 4918 section
+    /// 9.9.4), and nothing moves.
+    #[tokio::test]
+    async fn served_webdav_move_with_overwrite_f_is_412_and_moves_nothing() {
+        let (status, fake) = served_move_onto_an_existing_file(Some("F")).await;
+        assert_eq!(status, StatusCode::PRECONDITION_FAILED);
+        assert!(fake.replaces.is_empty() && fake.renames.is_empty());
+        assert_eq!(
+            fake.remote_files.get("/b.txt").map(Vec::as_slice),
+            Some(&b"old"[..])
+        );
     }
 
     #[tokio::test]

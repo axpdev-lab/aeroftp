@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import type { AeroCryptOverlayBinding } from '../types';
+import type { AeroCryptOverlayBinding, CryptSecretForm } from '../types';
 import { normalizeRemotePath, resolveOverlayScope } from './overlayScope';
 
 /** The overlay fields of the Quick Connect form, as the user has left them. */
@@ -22,6 +22,9 @@ export interface OverlayEditForm {
     password: string;
     salt: string;
     keyfilePath: string;
+    /** rclone-crypt: the forms the form would record (`undefined` = not recorded). */
+    passwordForm?: CryptSecretForm;
+    saltForm?: CryptSecretForm;
 }
 
 /** What the stored profile holds, and what the edit form was hydrated with. */
@@ -31,6 +34,8 @@ export interface OverlayEditStored {
     remotePath: string;
     /** The keyfile path read back from the vault for display ('' when none). */
     hydratedKeyfilePath: string;
+    /** rclone-crypt: the forms the stored values are read in (`cryptSecretForms`). */
+    secretForms?: { password?: CryptSecretForm; salt?: CryptSecretForm };
 }
 
 /**
@@ -59,6 +64,10 @@ export function overlayEditDiffers(form: OverlayEditForm, stored: OverlayEditSto
     const formNames = isRclone ? form.filenameEncryption : 'standard';
     if (formNames !== (b.filenameEncryption || 'standard')) return true;
     if (isRclone && form.directoryNameEncryption !== (b.directoryNameEncryption ?? true)) return true;
+    // Saying how a stored password or salt is written is an edit of its own,
+    // made without retyping the (locked) secret.
+    if (isRclone && form.passwordForm !== stored.secretForms?.password) return true;
+    if (isRclone && form.saltForm !== stored.secretForms?.salt) return true;
 
     // A blank stored scope means "the Remote Path", and the form materializes it
     // on edit, so compare the anchor each side actually resolves to.

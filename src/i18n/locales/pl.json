@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Załaduj ponownie",
             "uiTokensReset": "Wyczyść nadpisania",
             "uiTokensApplied": "Zastosowane nadpisania: {count}",
-            "uiTokensRejected": "Odrzucone wpisy: {count}"
+            "uiTokensRejected": "Odrzucone wpisy: {count}",
+            "keystorePreferencesFailed": "Import zakończył się, ale nie udało się przywrócić Twoich preferencji aplikacji: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5604,7 +5605,12 @@
             "defaultSaltNeedsStronger": "Wprowadź silne wygenerowane hasło, aby włączyć domyślny salt.",
             "defaultSaltOneSaltNote": "Istnieje tylko jeden salt: 32 bajty, publiczny, identyczny dla każdego sejfu z domyślnym saltem.",
             "defaultSaltValueLabel": "Publiczny domyślny salt (AeroCrypt v3), SHA-256 z",
-            "defaultSaltTierMeaning": "Domyślna sól oznacza, że sejf otwiera samo hasło: nie trzeba nosić ze sobą niczego więcej i nic więcej go nie chroni."
+            "defaultSaltTierMeaning": "Domyślna sól oznacza, że sejf otwiera samo hasło: nie trzeba nosić ze sobą niczego więcej i nic więcej go nie chroni.",
+            "pastedObscured": "Wklejono z rclone.conf (zaciemnione)",
+            "pastedObscuredHint": "Wybierz „Wklejono z rclone.conf” tylko wtedy, gdy ta wartość została skopiowana z pliku rclone.conf, w którym rclone przechowuje ją w postaci zaciemnionej.",
+            "formNotRecorded": "Nie odnotowano: ta wartość została zapisana, zanim AeroFTP zaczął o to pytać. Wybierz, jak została wprowadzona; wartość zaimportowana przez AeroFTP z rclone.conf została zapisana jako „Wpisane”.",
+            "secretFormTyped": "Wpisane",
+            "secretFormChangeConfirm": "To zmienia sposób odczytu zapisanej wartości, a więc i klucz, którym otwierają się pliki: otworzy je tylko właściwy wybór. Zmienić ten wybór?"
         },
         "modalGuard": {
             "busyTitle": "Operacja w toku",
@@ -5869,10 +5875,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP znalazł istniejącą konfigurację w Twoim folderze domowym. Ta instalacja Flatpak korzysta z własnej, oddzielnej pamięci, więc zapisane serwery i zaszyfrowany sejf nie są tu jeszcze widoczne. Zaimportować je teraz? Pliki są tylko kopiowane, nic nie jest nadpisywane, a sejf odblokowuje się tutaj w taki sam sposób jak teraz.",
+            "importBody": "AeroFTP znalazł istniejącą konfigurację w Twoim folderze domowym. Ta instalacja Flatpak korzysta z własnej, oddzielnej pamięci, więc zapisane serwery i zaszyfrowany sejf nie są tu jeszcze widoczne. Zaimportować teraz Twoją konfigurację? Pliki są tylko kopiowane, a plik, który ta instalacja Flatpak już ma, nigdy nie jest nadpisywany.",
             "importAccept": "Importuj",
             "importedBody": "Twoja konfiguracja została zaimportowana. Uruchom ponownie AeroFTP, aby wczytać serwery i sejf.",
-            "restartNow": "Uruchom ponownie teraz"
+            "restartNow": "Uruchom ponownie teraz",
+            "importNothingBody": "Nie skopiowano żadnego pliku: dla każdego pliku, który import by skopiował, w tej instalacji Flatpak istnieje już plik o tej samej nazwie, a istniejące pliki nigdy nie są nadpisywane.",
+            "importFailedBody": "Import zatrzymał się z błędem: {error}. Pliki już skopiowane do tej instalacji Flatpak pozostają na miejscu, a nic nie zostało nadpisane. AeroFTP zaproponuje import ponownie przy następnym uruchomieniu.",
+            "importedNoVaultBody": "Twoja konfiguracja została zaimportowana, ale nie zawierała zapisanych serwerów ani sejfu, które import mógłby skopiować. Uruchom ponownie AeroFTP, aby wczytać to, co zostało zaimportowane.",
+            "importedVaultSkippedBody": "Część Twojej konfiguracji została zaimportowana, ale nie zapisane serwery i sejf: ta instalacja Flatpak ma już własny sejf, a istniejące pliki nigdy nie są nadpisywane. Uruchom ponownie AeroFTP, aby wczytać to, co zostało zaimportowane.",
+            "importNothingVaultSkippedBody": "Nie skopiowano żadnego pliku, więc zapisane serwery i sejf nie zostały zaimportowane: ta instalacja Flatpak ma już własny sejf oraz plik o tej samej nazwie dla każdego pliku, który import by skopiował, a istniejące pliki nigdy nie są nadpisywane.",
+            "importUnreadableResult": "AeroFTP nie mógł odczytać wyniku importu",
+            "importNothingToImportBody": "Nie skopiowano żadnego pliku: Twoja istniejąca konfiguracja nie zawiera żadnego pliku, który import kopiuje (dowiązania symboliczne i pliki tymczasowe SQLite nigdy nie są kopiowane)."
         },
         "picker": {
             "unavailable": {

@@ -1358,6 +1358,188 @@ impl S3Provider {
         )))
     }
 
+    /// Rename or replace by CopyObject then delete: S3 has no move. With
+    /// `overwrite` false an occupied destination is refused before anything
+    /// is copied (the `rename` contract); with it true the copy lands over
+    /// whatever the destination holds (the `replace` contract).
+    async fn move_objects(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let from_trimmed = from.trim_matches('/');
+        let to_trimmed = to.trim_matches('/');
+        // Onto itself a copy-then-delete would copy the object over itself
+        // and then delete the only copy.
+        if from_trimmed == to_trimmed {
+            return Ok(());
+        }
+        // The copies below take the same keys the checks take: with its
+        // trailing slash `d/` was checked as `d` but copied to the key `d/`,
+        // a folder marker, which no listing shows as a file.
+        let (from_path, to_path) = (format!("/{from_trimmed}"), format!("/{to_trimmed}"));
+        let (from, to) = (from_path.as_str(), to_path.as_str());
+        let prefix = format!("{}/", from_trimmed);
+
+        // Check if this is a directory by listing objects under the prefix
+        let keys = self.list_keys_with_prefix(&prefix).await?;
+
+        // The trait promises no overwrite, and CopyObject replaces whatever
+        // the destination key holds. Listings, not a HEAD: without
+        // s3:ListBucket AWS answers HEAD on a missing key with 403, and the
+        // listing above already needs that permission.
+        //
+        // The check and the copies are separate requests, so an object
+        // written to the destination between them is overwritten. AWS closes
+        // that window with `If-None-Match: *` on CopyObject (since October
+        // 2025), but the S3-compatible servers this provider also talks to
+        // either ignore the header, which changes nothing, or refuse the
+        // request with it, which would break every rename there. It is not
+        // sent, and the window stays open.
+        let to_prefix = format!("{}/", to_trimmed);
+        if !overwrite && self.key_or_folder_exists(to_trimmed).await? {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+        // A replace puts a file in place of a file and a folder in place of a
+        // folder. A folder here is only a prefix, so the copy of a file onto
+        // one put a key named like the folder beside it, and a folder onto a
+        // file put its keys under the file's name.
+        if overwrite {
+            let occupant_is_dir = !self
+                .list_keys_with_prefix_up_to(&to_prefix, Some(1))
+                .await?
+                .is_empty();
+            let occupant_is_file = !occupant_is_dir
+                && self
+                    .list_keys_with_prefix_up_to(to_trimmed, Some(1))
+                    .await?
+                    .iter()
+                    .any(|listed| listed == to_trimmed);
+            if occupant_is_dir || occupant_is_file {
+                super::refuse_replace_across_types(to, !keys.is_empty(), occupant_is_dir)?;
+            }
+            // A folder over a folder copied the keys in beside the ones there:
+            // a merge, not a replace.
+            if occupant_is_dir && !keys.is_empty() {
+                return Err(ProviderError::AlreadyExists(format!(
+                    "{to} is a folder, and on S3 moving a folder over it would merge the two: \
+                     nothing was changed"
+                )));
+            }
+        }
+
+        if keys.is_empty() {
+            if self.is_filelu_s3_endpoint() {
+                return self.rename_filelu_safe(from, to).await;
+            }
+
+            // ListObjectsV2 with the source as prefix returned nothing. Two
+            // cases collapse here: (a) `from` is a real file (no children),
+            // (b) `from` is a virtual folder with no marker key. Some
+            // S3-compatible bridges (Filen's local S3 in particular)
+            // represent empty folders as CommonPrefixes generated from
+            // internal metadata, with no actual key. Attempting Copy on
+            // such a phantom returns 412 Precondition Failed, surfacing as
+            // a confusing error to the user. Probe with HEAD: if the
+            // source has no underlying object, fail with a clear message
+            // rather than letting the wrapper return 412. Issue #128.
+            let from_key = from.trim_start_matches('/');
+            // Shared message for the phantom-folder case: an empty folder is a
+            // virtual prefix with no marker key, so it cannot be renamed
+            // server-side (issue #128).
+            let virtual_folder_err = || {
+                ProviderError::NotSupported(format!(
+                    "Cannot rename '{}': the path does not exist as an \
+                     S3 object. Some S3-compatible backends (e.g. Filen's \
+                     local S3 bridge) represent empty folders as virtual \
+                     prefixes without a marker key, which precludes \
+                     server-side rename. Add a file inside the folder \
+                     first, or use the native API / WebDAV bridge.",
+                    from
+                ))
+            };
+            match self.s3_request(Method::HEAD, from_key, None, None).await {
+                Ok(resp) if resp.status() == StatusCode::OK => {
+                    // Real file: proceed with single-file rename.
+                    self.server_copy(from, to).await?;
+                    self.verify_copy_target_exists(to).await?;
+                    self.delete(from).await?;
+                    info!("Renamed file (copy+delete) {} to {}", from, to);
+                }
+                Ok(resp) if resp.status() == StatusCode::NOT_FOUND => {
+                    return Err(virtual_folder_err());
+                }
+                // Filen's local S3 bridge (the Windows build in particular,
+                // issue #368) answers HEAD on a virtual-folder key with 401/403
+                // instead of 404. Reaching this arm means the prefix listing
+                // already succeeded, so credentials are valid and this is the
+                // same phantom-folder case, not a real auth failure. Map it to
+                // the actionable message instead of leaking the raw status.
+                Ok(resp)
+                    if self.is_filen_s3_endpoint()
+                        && (resp.status() == StatusCode::UNAUTHORIZED
+                            || resp.status() == StatusCode::FORBIDDEN) =>
+                {
+                    return Err(virtual_folder_err());
+                }
+                Ok(resp) => {
+                    return Err(ProviderError::ServerError(format!(
+                        "HEAD on rename source returned status {}",
+                        resp.status()
+                    )));
+                }
+                Err(e) => return Err(e),
+            }
+        } else {
+            // Directory rename: copy all objects to new prefix, then delete
+            // originals (the folder marker, when there is one, is among them).
+            for (copied, old_key) in keys.iter().enumerate() {
+                let new_key = old_key.replacen(&prefix, &to_prefix, 1);
+                if let Err(e) = self
+                    .server_copy(&format!("/{}", old_key), &format!("/{}", new_key))
+                    .await
+                {
+                    // The copies made so far stay under the destination, so a
+                    // retry would be refused as AlreadyExists with nothing to
+                    // say why: say it here.
+                    return Err(ProviderError::Other(format!(
+                        "rename copied {copied} of {} objects to {to} before copying {old_key} \
+                         failed; the originals are all still in {from}, the {copied} copies \
+                         stay under {to}, and a retry is refused until they are removed: {e}",
+                        keys.len()
+                    )));
+                }
+            }
+
+            // A delete that fails leaves the folder under both names: that is
+            // a failed rename, never a success.
+            let originals: Vec<(String, Option<String>)> =
+                keys.iter().map(|key| (key.clone(), None)).collect();
+            self.batch_delete_objects(&originals).await.map_err(|e| {
+                ProviderError::Other(format!(
+                    "rename copied {} objects to {}, but deleting the originals failed, \
+                     so the folder now exists under both names: {e}",
+                    keys.len(),
+                    to
+                ))
+            })?;
+
+            info!(
+                "Renamed directory (copy+delete {} objects) {} to {}",
+                keys.len(),
+                from,
+                to
+            );
+        }
+
+        Ok(())
+    }
+
     async fn rename_filelu_safe(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_key = from.trim_start_matches('/');
         let to_key = to.trim_start_matches('/');
@@ -3670,6 +3852,49 @@ impl S3Provider {
     /// Used by rename (folder) and rmdir_recursive.
     /// Includes pagination via continuation-token (H-05).
     async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, ProviderError> {
+        self.list_keys_with_prefix_up_to(prefix, None).await
+    }
+
+    /// Whether `key` is an object, or a folder with at least one object under
+    /// `key/`, in at most two listings of one key each. The rename check used
+    /// to page through every key that merely starts with `key`: in a large
+    /// bucket that is every object under the folder and every sibling that
+    /// shares the prefix, before a single byte moved. The first listing is
+    /// enough for the object itself, because the shortest key with a prefix
+    /// is the prefix and S3 lists keys in order.
+    ///
+    /// Two assumptions, both declared rather than checked. ListObjectsV2
+    /// returns keys in ascending UTF-8 binary order (AWS documents it, and
+    /// the S3-compatible servers this provider talks to follow it): a server
+    /// that listed a sibling such as `key-a` before `key` would hide `key`
+    /// from the first listing. And `max-keys=1` is honoured or ignored,
+    /// never cut below one: a server that ignores it answers a longer first
+    /// page, which the checks read the same way. Either way the answer leans
+    /// toward "free", so the rename would then overwrite, as it did before
+    /// this check existed.
+    async fn key_or_folder_exists(&self, key: &str) -> Result<bool, ProviderError> {
+        if self
+            .list_keys_with_prefix_up_to(key, Some(1))
+            .await?
+            .iter()
+            .any(|listed| listed == key)
+        {
+            return Ok(true);
+        }
+        Ok(!self
+            .list_keys_with_prefix_up_to(&format!("{key}/"), Some(1))
+            .await?
+            .is_empty())
+    }
+
+    /// The keys under `prefix`: every page, or with `first` only the first
+    /// page, of at most that many keys.
+    async fn list_keys_with_prefix_up_to(
+        &self,
+        prefix: &str,
+        first: Option<usize>,
+    ) -> Result<Vec<String>, ProviderError> {
+        let max_keys = first.map_or_else(|| "1000".to_string(), |n| n.to_string());
         let mut all_keys = Vec::new();
         // Filen's S3 bridge returns <Key> percent-encoded (issue #196). Decode to
         // the logical key here so the single downstream encode_s3_key_path() call
@@ -3682,8 +3907,11 @@ impl S3Provider {
         let mut continuation_token: Option<String> = None;
 
         loop {
-            let mut params: Vec<(&str, &str)> =
-                vec![("list-type", "2"), ("prefix", prefix), ("max-keys", "1000")];
+            let mut params: Vec<(&str, &str)> = vec![
+                ("list-type", "2"),
+                ("prefix", prefix),
+                ("max-keys", &max_keys),
+            ];
 
             let token_str: String;
             if let Some(ref token) = continuation_token {
@@ -3797,10 +4025,9 @@ impl S3Provider {
                 buf.clear();
             }
 
-            if let Some(token) = next_token {
-                continuation_token = Some(token);
-            } else {
-                break;
+            match next_token {
+                Some(token) if first.is_none() => continuation_token = Some(token),
+                _ => break,
             }
         }
 
@@ -4868,106 +5095,13 @@ impl StorageProvider for S3Provider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
+        self.move_objects(from, to, false).await
+    }
 
-        let from_trimmed = from.trim_matches('/');
-        let to_trimmed = to.trim_matches('/');
-        let prefix = format!("{}/", from_trimmed);
-
-        // Check if this is a directory by listing objects under the prefix
-        let keys = self.list_keys_with_prefix(&prefix).await?;
-
-        if keys.is_empty() {
-            if self.is_filelu_s3_endpoint() {
-                return self.rename_filelu_safe(from, to).await;
-            }
-
-            // ListObjectsV2 with the source as prefix returned nothing. Two
-            // cases collapse here: (a) `from` is a real file (no children),
-            // (b) `from` is a virtual folder with no marker key. Some
-            // S3-compatible bridges (Filen's local S3 in particular)
-            // represent empty folders as CommonPrefixes generated from
-            // internal metadata, with no actual key. Attempting Copy on
-            // such a phantom returns 412 Precondition Failed, surfacing as
-            // a confusing error to the user. Probe with HEAD: if the
-            // source has no underlying object, fail with a clear message
-            // rather than letting the wrapper return 412. Issue #128.
-            let from_key = from.trim_start_matches('/');
-            // Shared message for the phantom-folder case: an empty folder is a
-            // virtual prefix with no marker key, so it cannot be renamed
-            // server-side (issue #128).
-            let virtual_folder_err = || {
-                ProviderError::NotSupported(format!(
-                    "Cannot rename '{}': the path does not exist as an \
-                     S3 object. Some S3-compatible backends (e.g. Filen's \
-                     local S3 bridge) represent empty folders as virtual \
-                     prefixes without a marker key, which precludes \
-                     server-side rename. Add a file inside the folder \
-                     first, or use the native API / WebDAV bridge.",
-                    from
-                ))
-            };
-            match self.s3_request(Method::HEAD, from_key, None, None).await {
-                Ok(resp) if resp.status() == StatusCode::OK => {
-                    // Real file: proceed with single-file rename.
-                    self.server_copy(from, to).await?;
-                    self.verify_copy_target_exists(to).await?;
-                    self.delete(from).await?;
-                    info!("Renamed file (copy+delete) {} to {}", from, to);
-                }
-                Ok(resp) if resp.status() == StatusCode::NOT_FOUND => {
-                    return Err(virtual_folder_err());
-                }
-                // Filen's local S3 bridge (the Windows build in particular,
-                // issue #368) answers HEAD on a virtual-folder key with 401/403
-                // instead of 404. Reaching this arm means the prefix listing
-                // already succeeded, so credentials are valid and this is the
-                // same phantom-folder case, not a real auth failure. Map it to
-                // the actionable message instead of leaking the raw status.
-                Ok(resp)
-                    if self.is_filen_s3_endpoint()
-                        && (resp.status() == StatusCode::UNAUTHORIZED
-                            || resp.status() == StatusCode::FORBIDDEN) =>
-                {
-                    return Err(virtual_folder_err());
-                }
-                Ok(resp) => {
-                    return Err(ProviderError::ServerError(format!(
-                        "HEAD on rename source returned status {}",
-                        resp.status()
-                    )));
-                }
-                Err(e) => return Err(e),
-            }
-        } else {
-            // Directory rename: copy all objects to new prefix, then delete originals
-            let to_prefix = format!("{}/", to_trimmed);
-
-            for old_key in &keys {
-                let new_key = old_key.replacen(&prefix, &to_prefix, 1);
-                self.server_copy(&format!("/{}", old_key), &format!("/{}", new_key))
-                    .await?;
-            }
-
-            // Delete all original objects
-            for old_key in &keys {
-                let _ = self.s3_request(Method::DELETE, old_key, None, None).await;
-            }
-
-            // Also try to delete the old directory marker (if exists)
-            let _ = self.s3_request(Method::DELETE, &prefix, None, None).await;
-
-            info!(
-                "Renamed directory (copy+delete {} objects) {} to {}",
-                keys.len(),
-                from,
-                to
-            );
-        }
-
-        Ok(())
+    /// CopyObject puts the new object over the old one in one step, so a
+    /// replace is the rename without its destination check.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.move_objects(from, to, true).await
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -8806,6 +8940,424 @@ mod tests {
             .await
             .unwrap();
         server.abort();
+    }
+
+    /// An S3 double for renaming the folder `src` (the marker `src/` and
+    /// `src/a.txt`) to `dst`. `dst` holds `existing`; a DELETE of
+    /// `src/a.txt` answers 403 when `deny_delete`. Batch delete answers 405,
+    /// so deletes go one by one. Returns the provider and every request as
+    /// `METHOD path`.
+    async fn provider_for_folder_rename(
+        existing: &'static [&'static str],
+        deny_delete: bool,
+    ) -> (S3Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{} {path}", req.method()));
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let prefix = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "prefix")
+                        .map(|(_, v)| v.to_string());
+                    let reply = |status: u16, body: String| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .body(axum::body::Body::from(body))
+                            .unwrap()
+                    };
+                    match (req.method().as_str(), prefix.as_deref()) {
+                        ("GET", Some(prefix)) => {
+                            let keys: Vec<&str> = match prefix {
+                                "src/" => vec!["src/", "src/a.txt"],
+                                _ => existing.to_vec(),
+                            };
+                            let contents: String = keys
+                                .iter()
+                                .map(|k| format!("<Contents><Key>{k}</Key></Contents>"))
+                                .collect();
+                            reply(
+                                200,
+                                format!(
+                                    "<ListBucketResult><IsTruncated>false</IsTruncated>\
+                                     {contents}</ListBucketResult>"
+                                ),
+                            )
+                        }
+                        ("POST", _) => reply(405, String::new()),
+                        ("DELETE", _) if deny_delete && path == "/test-bucket/src/a.txt" => {
+                            reply(403, String::new())
+                        }
+                        ("DELETE", _) => reply(204, String::new()),
+                        _ => reply(200, String::new()),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        (provider, log)
+    }
+
+    #[tokio::test]
+    async fn folder_rename_copies_then_deletes_every_original() {
+        let (mut provider, log) = provider_for_folder_rename(&[], false).await;
+        provider.rename("/src", "/dst").await.expect("rename");
+        let log = log.lock().unwrap().clone();
+        for key in ["src/", "src/a.txt"] {
+            assert!(
+                log.contains(&format!("DELETE /test-bucket/{key}")),
+                "{log:?}"
+            );
+        }
+    }
+
+    /// Two copies of a folder under an Ok is the one outcome a rename must
+    /// never give.
+    #[tokio::test]
+    async fn folder_rename_that_cannot_delete_an_original_is_an_error() {
+        let (mut provider, _) = provider_for_folder_rename(&[], true).await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("an original is left behind");
+        assert!(err.to_string().contains("both names"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination_before_copying() {
+        for existing in [&["dst"][..], &["dst/x.txt"][..]] {
+            let (mut provider, log) = provider_for_folder_rename(existing, false).await;
+            let outcome = provider.rename("/src", "/dst").await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{existing:?}: {outcome:?}"
+            );
+            assert!(
+                !log.lock().unwrap().iter().any(|r| r.starts_with("PUT")),
+                "{existing:?}"
+            );
+        }
+    }
+
+    /// A replace puts a file in place of a file and a folder in place of a
+    /// folder. A folder is only a prefix, so a file copied onto `d` landed
+    /// beside the folder `d/`, and a folder onto the file `dst` put its keys
+    /// under `dst/`. Both are refused before any copy.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_copies_nothing() {
+        for (objects, from, to) in [
+            (&[("a.txt", "A"), ("d/x.txt", "X")][..], "/a.txt", "/d"),
+            (&[("src/a.txt", "A"), ("dst", "D")][..], "/src", "/dst"),
+        ] {
+            let (mut provider, bucket, log) = provider_on_memory_bucket(objects).await;
+            let outcome = provider.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+            assert!(
+                !log.lock().unwrap().iter().any(|r| r.starts_with("PUT")),
+                "{from} -> {to}: {:?}",
+                log.lock().unwrap()
+            );
+            assert_eq!(bucket.lock().unwrap().len(), objects.len());
+        }
+    }
+
+    /// A replace of a folder over a folder copied its keys in beside the
+    /// ones already there: the two were merged, not replaced. It is refused
+    /// before any copy.
+    #[tokio::test]
+    async fn a_replace_of_a_folder_over_a_folder_copies_nothing() {
+        let objects = [("src/a.txt", "A"), ("dst/b.txt", "B")];
+        let (mut provider, bucket, log) = provider_on_memory_bucket(&objects).await;
+        let outcome = provider.replace("/src", "/dst").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            !log.lock().unwrap().iter().any(|r| r.starts_with("PUT")),
+            "{:?}",
+            log.lock().unwrap()
+        );
+        assert_eq!(bucket.lock().unwrap().len(), 2);
+    }
+
+    /// A file renamed to `d/` was checked as `d` but copied to the key `d/`,
+    /// the marker of a folder, where no listing shows it as a file. It is
+    /// now the file `d`.
+    #[tokio::test]
+    async fn a_rename_to_a_trailing_slash_names_the_file_not_a_folder_marker() {
+        let (mut provider, bucket, _) = provider_on_memory_bucket(&[("a.txt", "A")]).await;
+        provider.rename("/a.txt", "/d/").await.expect("rename");
+        let bucket = bucket.lock().unwrap().clone();
+        assert_eq!(bucket.keys().collect::<Vec<_>>(), ["d"], "{bucket:?}");
+        assert_eq!(bucket["d"], b"A");
+    }
+
+    /// The objects of an in-memory bucket, by key.
+    type MemObjects = std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>>;
+
+    /// A path-style S3 double for `test-bucket` that keeps its objects in
+    /// memory: ListObjectsV2 (prefix, max-keys, continuation by offset),
+    /// HEAD, GET, PUT (with `x-amz-copy-source`, a CopyObject; 500 for a
+    /// source whose key contains `unreadable`) and DELETE. Batch delete
+    /// answers 405, so deletes go one by one. Returns the
+    /// provider, the objects, and every request as `METHOD path?query`.
+    async fn provider_on_memory_bucket(
+        objects: &[(&str, &str)],
+    ) -> (
+        S3Provider,
+        MemObjects,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let bucket: MemObjects = Arc::new(Mutex::new(
+            objects
+                .iter()
+                .map(|(key, body)| (key.to_string(), body.as_bytes().to_vec()))
+                .collect(),
+        ));
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (store, seen) = (Arc::clone(&bucket), Arc::clone(&log));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (store, seen) = (Arc::clone(&store), Arc::clone(&seen));
+                async move {
+                    let method = req.method().as_str().to_string();
+                    seen.lock().unwrap().push(format!("{method} {}", req.uri()));
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+                    let key = urlencoding::decode(
+                        url.path()
+                            .trim_start_matches("/test-bucket")
+                            .trim_start_matches('/'),
+                    )
+                    .unwrap()
+                    .into_owned();
+                    let copy_source = req.headers().get("x-amz-copy-source").map(|v| {
+                        urlencoding::decode(v.to_str().unwrap())
+                            .unwrap()
+                            .into_owned()
+                    });
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    let reply = |status: u16, headers: &[(&str, String)], body: Vec<u8>| {
+                        let mut builder = axum::response::Response::builder().status(status);
+                        for (name, value) in headers {
+                            builder = builder.header(*name, value);
+                        }
+                        builder.body(axum::body::Body::from(body)).unwrap()
+                    };
+                    let mut store = store.lock().unwrap();
+                    match method.as_str() {
+                        "GET" if key.is_empty() => {
+                            let prefix = query.get("prefix").cloned().unwrap_or_default();
+                            let max: usize = query
+                                .get("max-keys")
+                                .and_then(|m| m.parse().ok())
+                                .unwrap_or(1000);
+                            let skip: usize = query
+                                .get("continuation-token")
+                                .and_then(|t| t.parse().ok())
+                                .unwrap_or(0);
+                            let matching: Vec<&String> =
+                                store.keys().filter(|k| k.starts_with(&prefix)).collect();
+                            let page: Vec<&&String> =
+                                matching.iter().skip(skip).take(max).collect();
+                            let truncated = skip + page.len() < matching.len();
+                            let contents: String = page
+                                .iter()
+                                .map(|k| {
+                                    format!("<Contents><Key>{k}</Key><Size>1</Size></Contents>")
+                                })
+                                .collect();
+                            let next = if truncated {
+                                format!(
+                                    "<NextContinuationToken>{}</NextContinuationToken>",
+                                    skip + page.len()
+                                )
+                            } else {
+                                String::new()
+                            };
+                            let xml = format!(
+                                "<ListBucketResult><IsTruncated>{truncated}</IsTruncated>\
+                                 {contents}{next}</ListBucketResult>"
+                            );
+                            reply(200, &[], xml.into_bytes())
+                        }
+                        "HEAD" | "GET" => match store.get(&key) {
+                            Some(data) => {
+                                let length = data.len().to_string();
+                                let data = if method == "GET" {
+                                    data.clone()
+                                } else {
+                                    Vec::new()
+                                };
+                                reply(200, &[("content-length", length)], data)
+                            }
+                            None => reply(404, &[], Vec::new()),
+                        },
+                        "PUT" => {
+                            let data = match copy_source {
+                                Some(source) => {
+                                    let source = source.trim_start_matches("/test-bucket/");
+                                    if source.contains("unreadable") {
+                                        return reply(
+                                            500,
+                                            &[],
+                                            b"<Error><Code>InternalError</Code></Error>".to_vec(),
+                                        );
+                                    }
+                                    match store.get(source) {
+                                        Some(data) => data.clone(),
+                                        None => return reply(404, &[], Vec::new()),
+                                    }
+                                }
+                                None => body.to_vec(),
+                            };
+                            store.insert(key, data);
+                            reply(200, &[], b"<CopyObjectResult></CopyObjectResult>".to_vec())
+                        }
+                        "DELETE" => {
+                            store.remove(&key);
+                            reply(204, &[], Vec::new())
+                        }
+                        _ => reply(405, &[], Vec::new()),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        (provider, bucket, log)
+    }
+
+    /// `replace` is the verb for "put this over that": the CLI `edit`, the
+    /// MCP `remote_edit` and the AeroCrypt marker publish all call it with a
+    /// destination that exists by definition. The trait default forwards to
+    /// `rename`, which refuses an occupied destination.
+    #[tokio::test]
+    async fn replace_puts_the_new_object_over_an_existing_destination() {
+        let (mut provider, objects, _) =
+            provider_on_memory_bucket(&[("live.txt", "old"), ("live.txt.tmp", "new")]).await;
+        provider
+            .replace("/live.txt.tmp", "/live.txt")
+            .await
+            .expect("replace");
+        let objects = objects.lock().unwrap();
+        assert_eq!(
+            objects.get("live.txt").map(Vec::as_slice),
+            Some(&b"new"[..])
+        );
+        assert!(!objects.contains_key("live.txt.tmp"), "{objects:?}");
+    }
+
+    /// A copy-then-delete onto itself would delete the only copy; a rename
+    /// onto itself is a no-op on every other provider.
+    #[tokio::test]
+    async fn rename_or_replace_onto_the_same_path_is_a_no_op() {
+        let (mut provider, objects, _) = provider_on_memory_bucket(&[("a.txt", "a")]).await;
+        provider.rename("/a.txt", "/a.txt").await.expect("rename");
+        provider.replace("/a.txt", "a.txt").await.expect("replace");
+        assert_eq!(
+            objects.lock().unwrap().get("a.txt").map(Vec::as_slice),
+            Some(&b"a"[..])
+        );
+    }
+
+    /// The destination check paged through every key that starts with the
+    /// destination name: here 2500 siblings `dst-NNNN`, three pages, before
+    /// anything moved. It now asks for one key, at most twice.
+    #[tokio::test]
+    async fn the_destination_check_lists_one_key_at_most_twice() {
+        let mut objects: Vec<(String, &str)> =
+            (0..2500).map(|i| (format!("dst-{i:04}"), "x")).collect();
+        objects.push(("src.txt".to_string(), "s"));
+        let objects: Vec<(&str, &str)> = objects.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+        let (mut provider, bucket, log) = provider_on_memory_bucket(&objects).await;
+        provider.rename("/src.txt", "/dst").await.expect("rename");
+        assert_eq!(
+            bucket.lock().unwrap().get("dst").map(Vec::as_slice),
+            Some(&b"s"[..])
+        );
+        let destination_listings: Vec<HashMap<String, String>> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|request| request.strip_prefix("GET "))
+            .filter_map(|uri| reqwest::Url::parse(&format!("http://h{uri}")).ok())
+            .map(|url| {
+                url.query_pairs()
+                    .into_owned()
+                    .collect::<HashMap<String, String>>()
+            })
+            .filter(|query| query.get("prefix").is_some_and(|p| p.starts_with("dst")))
+            .collect();
+        assert!(
+            (1..=2).contains(&destination_listings.len()),
+            "{destination_listings:?}"
+        );
+        for query in &destination_listings {
+            assert_eq!(
+                query.get("max-keys").map(String::as_str),
+                Some("1"),
+                "{query:?}"
+            );
+            assert!(!query.contains_key("continuation-token"), "{query:?}");
+        }
+    }
+
+    /// A key that only shares the destination's prefix does not occupy it,
+    /// and a key under `dst/` does.
+    #[tokio::test]
+    async fn the_destination_check_tells_a_sibling_from_a_folder() {
+        let (mut provider, _, _) =
+            provider_on_memory_bucket(&[("dst-a", "x"), ("dst.txt", "x"), ("a.txt", "a")]).await;
+        provider
+            .rename("/a.txt", "/dst")
+            .await
+            .expect("siblings only");
+        let (mut provider, _, _) =
+            provider_on_memory_bucket(&[("dst-a", "x"), ("dst/x", "x"), ("a.txt", "a")]).await;
+        let outcome = provider.rename("/a.txt", "/dst").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// A folder copied halfway leaves copies under the destination, so the
+    /// retry is refused as AlreadyExists: the first error has to say so.
+    #[tokio::test]
+    async fn a_folder_rename_that_fails_halfway_says_what_it_left() {
+        let (mut provider, _, _) =
+            provider_on_memory_bucket(&[("src/a.txt", "a"), ("src/unreadable.txt", "b")]).await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the second copy fails");
+        let message = err.to_string();
+        assert!(message.contains("copied 1 of 2"), "{message}");
+        assert!(message.contains("retry"), "{message}");
     }
 
     /// Opt-in live check. Supply a disposable bucket's saved-profile export

@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Lataa uudelleen",
             "uiTokensReset": "Tyhjennä ohitukset",
             "uiTokensApplied": "Käytetyt ohitukset: {count}",
-            "uiTokensRejected": "Hylätyt kohteet: {count}"
+            "uiTokensRejected": "Hylätyt kohteet: {count}",
+            "keystorePreferencesFailed": "Tuonti valmistui, mutta sovelluksen asetuksiasi ei voitu palauttaa: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5604,7 +5605,12 @@
             "defaultSaltNeedsStronger": "Syötä vahva luotu salasana ottaaksesi oletussuolan käyttöön.",
             "defaultSaltOneSaltNote": "Saltteja on vain yksi: 32 tavua, julkinen, sama kaikissa oletussalttia käyttävissä holveissa.",
             "defaultSaltValueLabel": "Julkinen oletussuola (AeroCrypt v3), SHA-256 merkkijonosta",
-            "defaultSaltTierMeaning": "Oletussuola tarkoittaa, että pelkkä salasana avaa holvin: mitään muuta ei tarvitse kantaa mukana, eikä mikään muu suojaa sitä."
+            "defaultSaltTierMeaning": "Oletussuola tarkoittaa, että pelkkä salasana avaa holvin: mitään muuta ei tarvitse kantaa mukana, eikä mikään muu suojaa sitä.",
+            "pastedObscured": "Liitetty rclone.conf-tiedostosta (hämärretty)",
+            "pastedObscuredHint": "Valitse \"Liitetty rclone.conf-tiedostosta\" vain, jos kopioit tämän arvon rclone.conf-tiedostosta, jossa rclone säilyttää sen hämärrettynä.",
+            "formNotRecorded": "Ei kirjattu: tämä arvo tallennettiin ennen kuin AeroFTP alkoi kysyä asiaa. Valitse, miten se syötettiin; AeroFTP:n rclone.conf-tiedostosta tuoma arvo tallennettiin valinnalla ”Kirjoitettu”.",
+            "secretFormTyped": "Kirjoitettu",
+            "secretFormChangeConfirm": "Tämä muuttaa sitä, miten tallennettu arvo luetaan, ja siten avainta, jolla tiedostot avautuvat: vain oikea valinta avaa ne. Muutetaanko tätä valintaa?"
         },
         "modalGuard": {
             "busyTitle": "Toiminto käynnissä",
@@ -5869,10 +5875,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP löysi olemassa olevan määrityksen kotikansiostasi. Tämä Flatpak-asennus käyttää omaa erillistä tallennustilaansa, joten tallennetut palvelimesi ja salattu holvi eivät näy täällä vielä. Tuodaanko ne nyt? Tiedostot vain kopioidaan, mitään ei korvata, ja holvi avautuu täällä samalla tavalla kuin nyt.",
+            "importBody": "AeroFTP löysi olemassa olevan määrityksen kotikansiostasi. Tämä Flatpak-asennus käyttää omaa erillistä tallennustilaansa, joten tallennetut palvelimesi ja salattu holvi eivät näy täällä vielä. Tuodaanko määrityksesi nyt? Tiedostot vain kopioidaan, eikä tiedostoa, joka tässä Flatpak-asennuksessa jo on, koskaan korvata.",
             "importAccept": "Tuo",
             "importedBody": "Määrityksesi tuotiin. Käynnistä AeroFTP uudelleen ladataksesi palvelimesi ja holvisi.",
-            "restartNow": "Käynnistä uudelleen nyt"
+            "restartNow": "Käynnistä uudelleen nyt",
+            "importNothingBody": "Yhtään tiedostoa ei kopioitu: jokaiselle tiedostolle, jonka tuonti kopioisi, on tässä Flatpak-asennuksessa jo samanniminen tiedosto, eikä olemassa olevia tiedostoja koskaan korvata.",
+            "importFailedBody": "Tuonti pysähtyi virheeseen: {error}. Tähän Flatpak-asennukseen jo kopioidut tiedostot jäävät sinne, eikä mitään korvattu. AeroFTP tarjoaa tuontia uudelleen seuraavalla käynnistyskerralla.",
+            "importedNoVaultBody": "Määrityksesi tuotiin, mutta siinä ei ollut tallennettuja palvelimia eikä holvia, jotka tuonti olisi voinut kopioida. Käynnistä AeroFTP uudelleen ladataksesi tuodut tiedot.",
+            "importedVaultSkippedBody": "Osa määrityksestäsi tuotiin, mutta ei tallennettuja palvelimiasi eikä holvia: tässä Flatpak-asennuksessa on jo oma holvi, eikä olemassa olevia tiedostoja koskaan korvata. Käynnistä AeroFTP uudelleen ladataksesi tuodut tiedot.",
+            "importNothingVaultSkippedBody": "Yhtään tiedostoa ei kopioitu, joten tallennettuja palvelimiasi ja holvia ei tuotu: tässä Flatpak-asennuksessa on jo oma holvi ja samanniminen tiedosto jokaiselle tiedostolle, jonka tuonti kopioisi, eikä olemassa olevia tiedostoja koskaan korvata.",
+            "importUnreadableResult": "AeroFTP ei voinut lukea tuonnin tulosta",
+            "importNothingToImportBody": "Yhtään tiedostoa ei kopioitu: olemassa olevassa määrityksessäsi ei ole yhtään tiedostoa, jonka tuonti kopioi (symbolisia linkkejä ja SQLiten väliaikaistiedostoja ei koskaan kopioida)."
         },
         "picker": {
             "unavailable": {

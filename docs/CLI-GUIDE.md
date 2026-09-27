@@ -751,7 +751,12 @@ aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --password "secret"
 
 # JSON output with details
 aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --json
+
+# Password typed as it is, salt copied from rclone.conf (obscured)
+aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --password "secret" --password2 "<obscured>" --password-form clear --salt-form obscured
 ```
+
+`--password-form` and `--salt-form` say how `--password` and `--password2` (or `AEROFTP_RCLONE_CRYPT_PASSWORD` / `AEROFTP_RCLONE_CRYPT_PASSWORD2`) are written: `clear` as typed, `obscured` as rclone.conf keeps them. The default, `auto`, reads an rclone-obscured value as such, and refuses a value of 22 characters or more whose reading would be 2 characters or fewer, since that reading is as likely wrong as right (a salt rclone generates reveals to nothing): pass `clear` or `obscured` for it.
 
 Verifies the integrity of files stored on a remote encrypted with `rclone crypt`. Stream-decrypts the remote files (without saving to disk) and computes their hash to compare against local cleartext files. Supports `sha256` and `md5`. Reports: matches, differences, files missing on either side, and files that could not be compared. The result is `partial` when a file could not be compared, when either scan could not read its whole tree, or when either scan left out a path it can name, with the same `local_scan_*`, `remote_scan_*` and `*_scan_boundaries` JSON fields as `check`, the same 20 path cap on the stderr list, and the same refusal for a gap the scan cannot name. Exit codes: `0` (success), `4` (differences found, the result is partial, or the run was refused for a gap with no name), `5` (invalid usage).
 
@@ -1282,13 +1287,23 @@ compressed bytes and ratio). It surfaces in the optional, default-hidden
 
 ```bash
 # Encrypt + upload a file using the rclone crypt format (Standard mode)
-AEROFTP_CRYPT_PASSWORD=MySecret \
+AEROFTP_RCLONE_CRYPT_PASSWORD=MySecret \
     aeroftp-cli --profile "S3" rclone-crypt put ./report.pdf /backups/report.pdf
 
 # Obfuscate filename mode (for providers with case-folding issues)
-AEROFTP_CRYPT_PASSWORD=MySecret AEROFTP_CRYPT_PASSWORD2=Salt \
+AEROFTP_RCLONE_CRYPT_PASSWORD=MySecret AEROFTP_RCLONE_CRYPT_SALT=Salt \
     aeroftp-cli --profile "S3" rclone-crypt put ./report.pdf /backups/report.pdf --filename-encryption obfuscate
 ```
+
+`--password-form` / `--salt-form` (`clear`, `obscured` or `auto`) say how the password and salt are written, as for `cryptcheck` above.
+
+A saved profile with an rclone-crypt overlay records how its stored password and salt are written. Profiles saved before AeroFTP recorded it are read automatically (a crypt remote AeroFTP imported from rclone.conf was stored as typed, so as `clear`), and one whose values could mean two things is refused with a message. Record the form once, for both secrets: the command refuses to leave one recorded and the other not.
+
+```bash
+aeroftp-cli --profile "S3" crypt set-form --password-form clear --salt-form obscured
+```
+
+A crypt secret taken from `AEROFTP_CRYPT_OVERLAY_PASSWORD` / `AEROFTP_CRYPT_OVERLAY_SALT` states its form in `AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM` / `AEROFTP_CRYPT_OVERLAY_SALT_FORM` (`clear` or `obscured`).
 
 Drop-in compatible with the format produced by [`rclone crypt`](https://rclone.org/crypt/), so a file uploaded here can be read back with `rclone` and vice versa. Separate from the `crypt` subcommand above (which is the AeroFTP-native overlay): use `rclone-crypt` when the bucket must remain interoperable with the rclone toolchain, use `crypt` for AeroFTP-only flows.
 
@@ -1560,7 +1575,7 @@ aeroftp-cli import rclone /path/to/rclone.conf
 aeroftp-cli import rclone --json
 ```
 
-Supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords are de-obfuscated from rclone's reversible AES-256-CTR scheme. See the full [rclone Integration Guide](https://docs.aeroftp.app/features/rclone) for the complete backend mapping table. For existing `rclone crypt` remotes (full read/write interop with transparent encrypted overlay session), see [rclone crypt interoperability](https://docs.aeroftp.app/features/rclone-crypt).
+Supports these rclone backend types: FTP (and FTPS), SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Internxt, Filen, Box, pCloud, Azure Blob, Swift, Yandex Disk, Zoho WorkDrive, Koofr, Jottacloud, Backblaze B2, OpenDrive, Drime, Cloudinary and ImageKit. Fields rclone obscures (passwords, the Filen API key, crypt passwords) are revealed the way rclone reveals them: one that does not reveal is left out, the profile still imports, and the command lists it under warnings. A crypt remote whose password or salt does not reveal is skipped instead, since the overlay would open with a wrong key. Keys rclone writes as they are (S3, Azure, Swift, B2, Drime, Cloudinary, ImageKit) are imported as they are, with one exception: AeroFTP's own export obscured the S3 and Azure keys before 3.7.6 and the Swift key before 4.0.5. A file it wrote then is recognised by its `# Generated by AeroFTP` and `# Exported:` header, which rclone keeps when it rewrites the file, and a key in it that reveals to a key's shape is revealed and listed under warnings; one that does not, such as a key fixed later in plain text, is kept as written. From 4.2.1 the header also names the AeroFTP version, which settles the question without guessing. A FileLu remote is skipped, since it holds the FileLu Rclone key and not the Developer API key AeroFTP signs in with, and so are a Drime remote pinned to a workspace or to a root folder id and a Cloudinary remote on a regional `upload_prefix`, each with the reason. See the full [rclone Integration Guide](https://docs.aeroftp.app/features/rclone) for the complete backend mapping table. For existing `rclone crypt` remotes (full read/write interop with transparent encrypted overlay session), see [rclone crypt interoperability](https://docs.aeroftp.app/features/rclone-crypt).
 
 #### import winscp
 
@@ -1648,7 +1663,7 @@ Exit codes: `0` ok, `2` input file not found, `9` output file exists without `--
 The reverse direction of `import`: takes the AeroFTP vault and emits a configuration file in the dialect of an external tool, so you can hand off a connection bundle to operators or migrate away. All 15 bridge tools are valid export targets (`rclone`, `winscp`, `filezilla`, `aws`, `ssh`, `mc`, `cyberduck`, `s3cmd`, `lftp`, `putty`, `mobaxterm`, `dreamweaver`, `kopia`, `duplicacy`, `restic`):
 
 ```bash
-# rclone.conf format (S3, SFTP, FTP, WebDAV, MEGA)
+# rclone.conf format (the providers listed below)
 aeroftp-cli export rclone --output ./rclone.conf
 
 # WinSCP.ini format (FTP/FTPS/SFTP)
@@ -1662,13 +1677,13 @@ aeroftp-cli export restic --output ./restic-env.sh
 aeroftp-cli export s3cmd  --output ./.s3cfg
 ```
 
-OAuth profiles **are** exported to rclone for every provider that has a matching rclone backend: Google Drive, Dropbox, OneDrive, Box, pCloud Drive, Yandex Disk, Zoho WorkDrive, Koofr and Jottacloud. Each remote is written with its `client_id`, `client_secret` and `token`, so it is usable and refreshable without re-authorising. This requires all three to be in the vault, which is the case for a profile you authorised in AeroFTP with your own OAuth app; when any of them is missing, the remote is still written and a comment tells you to run `rclone config reconnect <remote>:` before use, rather than emitting a silently broken half-remote. Zoho WorkDrive also carries `region` (mapped to rclone's TLD slug, so AeroFTP `us` becomes rclone `com`) and `root_folder_id` when the profile is pinned to a workspace or team folder.
+OAuth profiles **are** exported to rclone for every provider that has a matching rclone backend: Google Drive, Dropbox, OneDrive, Box, pCloud Drive, Yandex Disk, Zoho WorkDrive and Jottacloud. Each remote is written with the profile's `token` and the `client_id` and `client_secret` configured in AeroFTP for that provider, so it is usable and refreshable without re-authorising. This requires all three to be in the vault, which is the case for a profile you authorised in AeroFTP with your own OAuth app, and rclone can refresh the token only while that app is still the one configured: after switching to another app, authorise the profile again before exporting. When any of the three is missing, the remote is still written and a comment tells you to run `rclone config reconnect "<remote>:"` before use, rather than emitting a silently broken half-remote. Zoho WorkDrive also carries `region` (mapped to rclone's TLD slug, so AeroFTP `us` becomes rclone `com`) and `root_folder_id` when the profile is pinned to a workspace or team folder.
 
-A profile with an rclone-crypt overlay exports as two remotes: the base server, then a sibling `type = crypt` remote whose `remote = <base>:<path>` is the Overlays Path (always at or below the server's remote path). The crypt password and salt are rclone-obscured. Native AeroCrypt overlays are not rclone `crypt` remotes and are not emitted this way.
+A profile with an rclone-crypt overlay exports as two remotes: the base server, then a sibling `type = crypt` remote whose `remote = <base>:<path>` is the Overlays Path (always at or below the server's remote path). The crypt password and salt are read the way the profile records them (typed, or pasted from rclone.conf) and rclone-obscured once. When a stored password or salt was saved before AeroFTP recorded that and could be read two ways, the crypt remote is not written: the base server still is, the file carries a comment with the reason, and the command lists the profile among the skipped ones with the same reason; record the form with `crypt set-form` (see above) and export again. Native AeroCrypt overlays are not rclone `crypt` remotes and are not emitted this way.
 
 Keep in mind that AeroFTP and rclone use different redirect URIs. Register both under the same app in the provider's developer console so the one `client_id` / `client_secret` pair works in both tools.
 
-The providers with no rclone export today are 4shared, Internxt and kDrive; those entries are emitted as `# manual setup required` comments instead. Passwords for non-OAuth profiles are re-encoded in the target tool's native obfuscation (rclone reversible obscure, WinSCP password mask, FileZilla base64). Use `--json` on any subcommand for a machine-readable summary of what was exported and what was skipped.
+Password-based cloud accounts export with the secret AeroFTP already holds: MEGA and Internxt as email + password, Filen as email + password + CLI API key, Koofr and OpenDrive as user + password, Azure, Swift and Backblaze B2 as account + key. API-key providers export their keys as they are, since rclone does not obscure them: Drime as its API token, Cloudinary as cloud name + API key + API secret, ImageKit as URL endpoint + public key + private key. AeroFTP signs ImageKit requests with the private key alone, so a profile created in the app has no public key and is skipped with that reason; one imported from rclone keeps the public key and exports. FileLu is skipped as well: rclone's `filelu` backend signs in with the FileLu Rclone key (`RC_...`, shown in My Account once Rclone is switched on), a different key from the Developer API key AeroFTP holds; add that remote with `rclone config`. So is Proton Drive, which AeroFTP reaches through Proton's own CLI without holding a password. Any other profile (for example 4shared, kDrive, GitHub or GitLab) is skipped: the command lists it with the reason, and nothing is written for it in the file. An Internxt remote needs one `rclone config reconnect "<remote>:"` before use: rclone signs in with the exported email and password and stores the encryption mnemonic it needs, which AeroFTP does not keep on disk (the file says so above the remote; when no password was exported it names `rclone config update "<remote>" --all` instead, which asks for it). Internxt lets rclone sign in only on plans that include rclone access: on other plans, the free one included, the sign-in stops with `402 rclone access not allowed for this user tier`, whichever way the remote was made. rclone obscures passwords in rclone.conf but does not encrypt them, and after that sign-in the file also holds the Internxt mnemonic, the key to the account's files: protect the file with `rclone config encryption set`. Passwords for non-OAuth profiles are re-encoded in the target tool's native obfuscation (rclone reversible obscure, WinSCP password mask, FileZilla base64). Use `--json` on any subcommand for a machine-readable summary of what was exported and what was skipped.
 
 ### profile-export / profile-import - Native `.aeroftp` Profile Backup
 
@@ -1724,6 +1739,22 @@ AEROFTP_KEYSTORE_PASSWORD=MyBackupPassword \
 **Merge strategies on import**: `skip` (default, never overwrite existing vault entries), `overwrite` (force replace), `keep-newer` (compare timestamps). The `--skip-*` flags let you opt out of an entire section per import (vault, sqlite, files, local-storage).
 
 After a successful import that touched SQLite or files, the CLI prints `requires_restart=true` on stdout and exits 0. The AeroFTP GUI must be restarted before the restored databases become visible.
+
+### flatpak-import - Import a Native Configuration into the Flatpak Sandbox
+
+A Flatpak install keeps its own data root inside the sandbox, so it does not see the saved servers and encrypted vault of a native (`.deb`, `.rpm`, AppImage) install in `~/.config/aeroftp`. Run inside the Flatpak sandbox, `flatpak-import` copies that configuration into the sandbox. It copies only the files the sandbox does not have yet: an existing file is never overwritten, and SQLite sidecars and symbolic links inside the folder are never copied (a `~/.config/aeroftp` that is itself a link, as a dotfiles manager creates, is followed). The GUI offers the same import once, at its first start.
+
+```bash
+# Is an import available? Copies nothing.
+aeroftp-cli flatpak-import --status
+
+# Import, then restart AeroFTP to load what was copied
+aeroftp-cli flatpak-import --json
+```
+
+The host vault and the saved servers encrypted under it come in only when the sandbox has no vault of its own. The GUI creates one at its first start, so after a first start they stay behind, and the output says so. The JSON result carries `imported` and `requires_restart` (both true only when files were copied), `copied` (the number of files), `vault_imported`, `vault_skipped` (the host has a vault and the sandbox already had its own), `nothing_importable` (no file was copied because the host configuration holds none the import copies), `source` and `target`.
+
+Exit codes: `0` when files were imported, when no file was copied (each file the import would copy already has a file with the same name in the sandbox, or the host configuration holds nothing the import copies), with `--status`, and outside a Flatpak, where the command does nothing; `1` when there is no host configuration at `~/.config/aeroftp`, or when the copy failed (files copied before the error stay in the sandbox, and nothing is overwritten).
 
 ### completions - Generate Shell Completion Scripts
 

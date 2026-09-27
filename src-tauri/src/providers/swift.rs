@@ -129,6 +129,12 @@ struct SwiftAuth {
     obtained_at: Instant,
 }
 
+/// A container or object name as a URL path segment: UTF-8, percent-encoded,
+/// with `/` kept as the separator it is inside an object name.
+fn encode_swift_name(name: &str) -> String {
+    urlencoding::encode(name).replace("%2F", "/")
+}
+
 impl SwiftAuth {
     fn is_valid(&self) -> bool {
         self.obtained_at.elapsed() < Duration::from_secs(23 * 3600)
@@ -721,9 +727,133 @@ impl SwiftProvider {
                 "{}/{}/{}",
                 storage,
                 self.container,
-                urlencoding::encode(clean).replace("%2F", "/")
+                encode_swift_name(clean)
             ))
         }
+    }
+
+    /// `/{container}/{object}` as a header or a bulk-delete line must carry
+    /// it: "You must UTF-8-encode and then URL-encode the names of the
+    /// container and object" (Swift API reference, `X-Copy-From`), and the
+    /// bulk middleware unquotes every line it reads. Sent raw, a name with
+    /// `%` names another object and a non-ASCII name fails the request.
+    fn object_reference(&self, object: &str) -> String {
+        format!(
+            "/{}/{}",
+            encode_swift_name(&self.container),
+            encode_swift_name(object)
+        )
+    }
+
+    /// Whether a folder is at `name`: Swift has no folders, only objects
+    /// named under `name/`. The directory marker `mkdir` writes (`name/`) is
+    /// looked at first, with a HEAD: an object reads back right after its
+    /// PUT, while the container listing is eventually consistent, and a
+    /// folder made a moment earlier was not in it yet (live on Blomp,
+    /// 2026-09-27: a rename took the name of a folder just created). Then
+    /// one listing of the prefix answers for a folder without a marker.
+    async fn is_a_folder(&mut self, name: &str) -> Result<bool, ProviderError> {
+        let marker = self.object_url(&format!("{name}/"))?;
+        let head = self.swift_request(Method::HEAD, &marker, None, &[]).await?;
+        if head.status().is_success() {
+            return Ok(true);
+        }
+        if head.status() != StatusCode::NOT_FOUND {
+            return Err(ProviderError::ServerError(format!(
+                "Looking at {name}/ failed: HTTP {}",
+                head.status()
+            )));
+        }
+        let url = format!(
+            "{}?format=json&prefix={}/&limit=1",
+            self.object_url("")?,
+            urlencoding::encode(name)
+        );
+        let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "Listing {name}/ failed: HTTP {}",
+                resp.status()
+            )));
+        }
+        let entries: Vec<ObjectEntry> = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(format!("Listing {name}/: {e}")))?;
+        Ok(!entries.is_empty())
+    }
+
+    /// Rename or replace by a PUT with X-Copy-From, then a DELETE of the
+    /// source. With `overwrite` false an occupied destination is refused
+    /// before anything is copied (the `rename` contract); with it true the
+    /// copy lands over whatever the destination holds (the `replace`
+    /// contract).
+    async fn move_object(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        let from_clean = Self::normalize_path(from);
+        let to_clean = Self::normalize_path(to);
+        // Onto itself a copy-then-delete would delete the only copy.
+        if from_clean == to_clean {
+            return Ok(());
+        }
+
+        // The trait promises no overwrite, and a PUT with X-Copy-From
+        // replaces whatever the destination holds: look first.
+        //
+        // The look and the copy are two requests, so an object written to
+        // the destination between them is overwritten. `If-None-Match: *`
+        // closes that window on a plain PUT, but not on a copy: Swift's copy
+        // middleware (swift/common/middleware/copy.py) fetches the source
+        // with `req.copy_get()`, which keeps the client's headers, so the
+        // condition reaches the GET of the source, which exists and answers
+        // 304, and the copy fails every time. The window stays open.
+        if !overwrite {
+            match self.stat(to).await {
+                Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
+                Err(ProviderError::NotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        // A folder is only a prefix: no object holds its name, so the look
+        // above finds none and the copy would put an object named like the
+        // folder beside it. A rename may not take a folder's name, and a
+        // replace puts a file only in place of a file.
+        if self.is_a_folder(&to_clean).await? {
+            if !overwrite {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            super::refuse_replace_across_types(to, false, true)?;
+        }
+
+        let dest_url = self.object_url(&to_clean)?;
+        let copy_from = self.object_reference(&from_clean);
+
+        let headers = vec![
+            ("X-Copy-From".to_string(), copy_from),
+            ("Content-Length".to_string(), "0".to_string()),
+        ];
+
+        let resp = self
+            .swift_request(Method::PUT, &dest_url, Some(vec![]), &headers)
+            .await?;
+        // The copy middleware answers 404 when the source object is missing
+        // (the container is the same for both ends, and the destination look
+        // above already reached it).
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Err(ProviderError::NotFound(from.to_string()));
+        }
+        if !resp.status().is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "Copy for rename failed: HTTP {}",
+                resp.status()
+            )));
+        }
+
+        self.delete(from).await
     }
 
     /// Swift object keys are flat, so a path is only ever a prefix. This turns
@@ -1364,11 +1494,11 @@ impl StorageProvider for SwiftProvider {
         let mut object_paths: Vec<String> = entries
             .iter()
             .filter_map(|e| e.name.as_ref())
-            .map(|n| format!("/{}/{n}", self.container))
+            .map(|n| self.object_reference(n))
             .collect();
 
         // Also delete the directory marker itself
-        object_paths.push(format!("/{}/{prefix}/", self.container));
+        object_paths.push(self.object_reference(&format!("{prefix}/")));
 
         // Bulk delete in chunks of 10000
         for chunk in object_paths.chunks(10000) {
@@ -1444,28 +1574,13 @@ impl StorageProvider for SwiftProvider {
     /// Rename via server-side COPY + DELETE (Swift has no atomic rename).
     /// PUT {dest_url} with X-Copy-From: /{container}/{source}
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let from_clean = Self::normalize_path(from);
-        let to_clean = Self::normalize_path(to);
+        self.move_object(from, to, false).await
+    }
 
-        let dest_url = self.object_url(&to_clean)?;
-        let copy_from = format!("/{}/{from_clean}", self.container);
-
-        let headers = vec![
-            ("X-Copy-From".to_string(), copy_from),
-            ("Content-Length".to_string(), "0".to_string()),
-        ];
-
-        let resp = self
-            .swift_request(Method::PUT, &dest_url, Some(vec![]), &headers)
-            .await?;
-        if !resp.status().is_success() {
-            return Err(ProviderError::ServerError(format!(
-                "Copy for rename failed: HTTP {}",
-                resp.status()
-            )));
-        }
-
-        self.delete(from).await
+    /// A PUT with X-Copy-From puts the new object over the old one in one
+    /// step, so a replace is the rename without its destination check.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.move_object(from, to, true).await
     }
 
     /// HEAD {storage_url}/{container}/{object}
@@ -1600,7 +1715,7 @@ impl StorageProvider for SwiftProvider {
         let from_clean = Self::normalize_path(from);
         let to_clean = Self::normalize_path(to);
         let dest_url = self.object_url(&to_clean)?;
-        let copy_from = format!("/{}/{from_clean}", self.container);
+        let copy_from = self.object_reference(&from_clean);
 
         let headers = vec![
             ("X-Copy-From".to_string(), copy_from),
@@ -1690,6 +1805,249 @@ mod tests {
             verify_cert: true,
             allow_cleartext_storage_endpoint: true,
         })
+    }
+
+    /// Every request the storage double received: method, raw path (as
+    /// sent, percent-encoding included), `X-Copy-From`, body.
+    type StorageLog =
+        std::sync::Arc<std::sync::Mutex<Vec<(String, String, Option<String>, String)>>>;
+
+    /// A storage double at `/v1/AUTH_a` for container `my box`. HEAD finds
+    /// an object only if its raw path is in `existing`; GET lists `listing`;
+    /// PUT, DELETE and the bulk-delete POST succeed.
+    async fn provider_on_storage(
+        existing: &'static [&'static str],
+        listing: serde_json::Value,
+    ) -> (SwiftProvider, StorageLog) {
+        provider_on_storage_without(existing, listing, &[]).await
+    }
+
+    /// [`provider_on_storage`] where a copy from one of `absent` (an
+    /// `X-Copy-From` value) answers 404, as Swift does for a missing source.
+    async fn provider_on_storage_without(
+        existing: &'static [&'static str],
+        listing: serde_json::Value,
+        absent: &'static [&'static str],
+    ) -> (SwiftProvider, StorageLog) {
+        let log: StorageLog = Default::default();
+        let seen = std::sync::Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = std::sync::Arc::clone(&seen);
+                let listing = listing.clone();
+                async move {
+                    let method = req.method().to_string();
+                    let path = req.uri().path().to_string();
+                    let copy_from = req
+                        .headers()
+                        .get("x-copy-from")
+                        .map(|v| v.to_str().unwrap().to_string());
+                    let from_absent = copy_from
+                        .as_deref()
+                        .is_some_and(|source| absent.contains(&source));
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    seen.lock()
+                        .unwrap()
+                        .push((method.clone(), path.clone(), copy_from, body));
+                    let status = match method.as_str() {
+                        "HEAD" if existing.contains(&path.as_str()) => 200,
+                        "HEAD" => 404,
+                        "PUT" if from_absent => 404,
+                        "PUT" => 201,
+                        "DELETE" => 204,
+                        _ => 200,
+                    };
+                    let body = if method == "GET" {
+                        listing.to_string()
+                    } else {
+                        String::new()
+                    };
+                    axum::response::Response::builder()
+                        .status(status)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "my box".to_string();
+        (p, log)
+    }
+
+    #[test]
+    fn object_reference_encodes_container_and_object_names() {
+        let mut p = test_provider();
+        p.container = "my box".to_string();
+        assert_eq!(
+            p.object_reference("d/\u{e9}t\u{e9} 25%.txt"),
+            "/my%20box/d/%C3%A9t%C3%A9%2025%25.txt"
+        );
+    }
+
+    #[tokio::test]
+    async fn rename_copies_from_an_encoded_source_then_deletes_it() {
+        let (mut p, log) = provider_on_storage(&[], serde_json::json!([])).await;
+        p.rename("/d/\u{e9}t\u{e9} 25%.txt", "/d/x.txt")
+            .await
+            .expect("rename");
+        let log = log.lock().unwrap().clone();
+        let put = log.iter().find(|r| r.0 == "PUT").expect("a PUT");
+        assert_eq!(put.1, "/v1/AUTH_a/my%20box/d/x.txt");
+        assert_eq!(
+            put.2.as_deref(),
+            Some("/my%20box/d/%C3%A9t%C3%A9%2025%25.txt")
+        );
+        assert!(log
+            .iter()
+            .any(|r| r.0 == "DELETE" && r.1 == "/v1/AUTH_a/my%20box/d/%C3%A9t%C3%A9%2025%25.txt"));
+    }
+
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination_before_copying() {
+        let (mut p, log) =
+            provider_on_storage(&["/v1/AUTH_a/my%20box/d/x.txt"], serde_json::json!([])).await;
+        let outcome = p.rename("/d/a.txt", "/d/x.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(!log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.0 == "PUT" || r.0 == "DELETE"));
+    }
+
+    /// A missing source answered the copy with 404, reported as a server
+    /// error (CLI exit 10, seen live on Blomp): it is NotFound, and nothing
+    /// is deleted.
+    #[tokio::test]
+    async fn rename_of_a_missing_source_is_not_found() {
+        let (mut p, log) =
+            provider_on_storage_without(&[], serde_json::json!([]), &["/my%20box/d/a.txt"]).await;
+        let outcome = p.rename("/d/a.txt", "/d/x.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(!log.lock().unwrap().iter().any(|r| r.0 == "DELETE"));
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination.
+    #[tokio::test]
+    async fn replace_copies_the_source_over_an_existing_destination() {
+        let (mut p, log) =
+            provider_on_storage(&["/v1/AUTH_a/my%20box/d/x.txt"], serde_json::json!([])).await;
+        p.replace("/d/a.txt", "/d/x.txt").await.expect("replace");
+        let log = log.lock().unwrap().clone();
+        let put = log.iter().find(|r| r.0 == "PUT").expect("a PUT");
+        assert_eq!(put.1, "/v1/AUTH_a/my%20box/d/x.txt");
+        assert_eq!(put.2.as_deref(), Some("/my%20box/d/a.txt"));
+        assert!(log
+            .iter()
+            .any(|r| r.0 == "DELETE" && r.1 == "/v1/AUTH_a/my%20box/d/a.txt"));
+    }
+
+    /// A folder is only the prefix of the objects under it, so the HEAD of
+    /// `d/x.txt` found nothing and the copy put an object `d/x.txt` beside
+    /// the folder `d/x.txt/`. A rename or a replace of a file onto it is
+    /// refused before anything is copied.
+    #[tokio::test]
+    async fn a_file_onto_a_prefix_folder_is_refused_before_copying() {
+        let (mut p, log) = provider_on_storage(
+            &[],
+            serde_json::json!([{ "name": "d/x.txt/y.txt", "bytes": 1 }]),
+        )
+        .await;
+        let renamed = p.rename("/d/a.txt", "/d/x.txt").await;
+        let replaced = p.replace("/d/a.txt", "/d/x.txt").await;
+        for outcome in [renamed, replaced] {
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{outcome:?}"
+            );
+        }
+        let log = log.lock().unwrap().clone();
+        assert!(
+            !log.iter().any(|r| r.0 == "PUT" || r.0 == "DELETE"),
+            "{log:?}"
+        );
+        assert!(
+            log.iter().any(|r| r.0 == "GET"),
+            "the folder was looked for: {log:?}"
+        );
+    }
+
+    /// A folder made a moment earlier has its marker object, which a HEAD
+    /// reads back at once, but the eventually consistent container listing
+    /// did not list it yet: the look found no folder and the copy put an
+    /// object beside it under its name (live on Blomp). The marker is
+    /// looked at first.
+    #[tokio::test]
+    async fn a_folder_the_listing_does_not_show_yet_is_found_by_its_marker() {
+        let (mut p, log) =
+            provider_on_storage(&["/v1/AUTH_a/my%20box/d/x.txt/"], serde_json::json!([])).await;
+        let outcome = p.rename("/d/a.txt", "/d/x.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        let log = log.lock().unwrap().clone();
+        assert!(
+            !log.iter().any(|r| r.0 == "PUT" || r.0 == "DELETE"),
+            "{log:?}"
+        );
+    }
+
+    /// A copy-then-delete onto itself would delete the only copy.
+    #[tokio::test]
+    async fn rename_or_replace_onto_the_same_path_is_a_no_op() {
+        let (mut p, log) =
+            provider_on_storage(&["/v1/AUTH_a/my%20box/d/a.txt"], serde_json::json!([])).await;
+        p.rename("/d/a.txt", "/d/a.txt").await.expect("rename");
+        p.replace("/d/a.txt", "d/a.txt").await.expect("replace");
+        assert!(!log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.0 == "PUT" || r.0 == "DELETE"));
+    }
+
+    #[tokio::test]
+    async fn server_side_copy_sends_an_encoded_source() {
+        let (mut p, log) = provider_on_storage(&[], serde_json::json!([])).await;
+        p.server_side_copy("/d/a b%.txt", "/d/c.txt")
+            .await
+            .expect("copy");
+        let log = log.lock().unwrap().clone();
+        let put = log.iter().find(|r| r.0 == "PUT").expect("a PUT");
+        assert_eq!(put.2.as_deref(), Some("/my%20box/d/a%20b%25.txt"));
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_lines_name_the_objects_url_encoded() {
+        let (mut p, log) = provider_on_storage(
+            &[],
+            serde_json::json!([{ "name": "d/a b%.txt", "bytes": 1 }]),
+        )
+        .await;
+        p.rmdir_recursive("/d").await.expect("recursive delete");
+        let log = log.lock().unwrap().clone();
+        let bulk = log.iter().find(|r| r.0 == "POST").expect("a bulk delete");
+        assert_eq!(bulk.3, "/my%20box/d/a%20b%25.txt\n/my%20box/d/");
     }
 
     /// The GUI's default listing path is `"."`, not `"/"`, and Swift turned that

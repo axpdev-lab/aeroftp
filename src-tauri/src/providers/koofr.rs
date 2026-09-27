@@ -292,6 +292,10 @@ pub struct KoofrProvider {
     /// fixtures. Production paths never set it.
     #[cfg(test)]
     content_base_override: Option<String>,
+    /// Test-only API base (`http://127.0.0.1:port`) for local HTTP fixtures.
+    /// Production paths never set it.
+    #[cfg(test)]
+    api_base_override: Option<String>,
 }
 
 /// Provider-specific hard cap on concurrent Range streams (mirrors S3's 16).
@@ -323,7 +327,18 @@ impl KoofrProvider {
             multi_thread_cutoff: 8 * 1024 * 1024,
             #[cfg(test)]
             content_base_override: None,
+            #[cfg(test)]
+            api_base_override: None,
         }
+    }
+
+    /// Base of the REST API.
+    fn api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(base) = &self.api_base_override {
+            return base.as_str();
+        }
+        API_BASE
     }
 
     /// Base of the content API (uploads and downloads).
@@ -350,7 +365,7 @@ impl KoofrProvider {
     }
 
     fn api_url(&self, path: &str) -> String {
-        format!("{}{}", API_BASE, path)
+        format!("{}{}", self.api_base(), path)
     }
 
     fn version_header() -> (HeaderName, HeaderValue) {
@@ -460,6 +475,8 @@ impl KoofrProvider {
                 let message = inner.message.as_deref().unwrap_or("Unknown error");
                 return match code {
                     "NotFound" => ProviderError::NotFound(message.to_string()),
+                    // A rename or move onto a taken name (409).
+                    "AlreadyExists" => ProviderError::AlreadyExists(message.to_string()),
                     "Forbidden" => ProviderError::PermissionDenied(message.to_string()),
                     "Unauthorized" => ProviderError::AuthenticationFailed(message.to_string()),
                     _ => ProviderError::ServerError(format!(
@@ -664,7 +681,7 @@ impl StorageProvider for KoofrProvider {
         // Fetch detailed mount info for accurate quota (list may omit spaceTotal/spaceUsed)
         // NOTE: Koofr API returns spaceTotal/spaceUsed in MiB: multiply by 1024*1024 for bytes
         const MIB: i64 = 1024 * 1024;
-        let mount_detail_url = format!("{}/mounts/{}", API_BASE, self.mount_id);
+        let mount_detail_url = format!("{}/mounts/{}", self.api_base(), self.mount_id);
         match self.get(&mount_detail_url).await {
             Ok(resp) => {
                 let detail_body = resp.text().await.unwrap_or_default();
@@ -718,7 +735,7 @@ impl StorageProvider for KoofrProvider {
                 // Verify path exists
                 let url = format!(
                     "{}/mounts/{}/files/info?path={}",
-                    API_BASE,
+                    self.api_base(),
                     self.mount_id,
                     urlencoding::encode(&normalized)
                 );
@@ -758,7 +775,7 @@ impl StorageProvider for KoofrProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/mounts/{}/files/list?path={}",
-            API_BASE,
+            self.api_base(),
             self.mount_id,
             urlencoding::encode(&resolved)
         );
@@ -795,7 +812,7 @@ impl StorageProvider for KoofrProvider {
         // Verify directory exists
         let url = format!(
             "{}/mounts/{}/files/info?path={}",
-            API_BASE,
+            self.api_base(),
             self.mount_id,
             urlencoding::encode(&target)
         );
@@ -1034,7 +1051,7 @@ impl StorageProvider for KoofrProvider {
 
         let url = format!(
             "{}/mounts/{}/files/folder?path={}",
-            API_BASE,
+            self.api_base(),
             self.mount_id,
             urlencoding::encode(parent)
         );
@@ -1064,7 +1081,7 @@ impl StorageProvider for KoofrProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/mounts/{}/files/remove?path={}",
-            API_BASE,
+            self.api_base(),
             self.mount_id,
             urlencoding::encode(&resolved)
         );
@@ -1091,6 +1108,9 @@ impl StorageProvider for KoofrProvider {
 
         let from_resolved = self.resolve_path(from);
         let to_resolved = self.resolve_path(to);
+        if from_resolved == to_resolved {
+            return Ok(());
+        }
 
         let (from_parent, _) = Self::split_path(&from_resolved);
         let (to_parent, to_name) = Self::split_path(&to_resolved);
@@ -1099,7 +1119,7 @@ impl StorageProvider for KoofrProvider {
         if from_parent == to_parent {
             let url = format!(
                 "{}/mounts/{}/files/rename?path={}",
-                API_BASE,
+                self.api_base(),
                 self.mount_id,
                 urlencoding::encode(&from_resolved)
             );
@@ -1122,7 +1142,7 @@ impl StorageProvider for KoofrProvider {
             // Move to different directory
             let url = format!(
                 "{}/mounts/{}/files/move?path={}",
-                API_BASE,
+                self.api_base(),
                 self.mount_id,
                 urlencoding::encode(&from_resolved)
             );
@@ -1150,6 +1170,23 @@ impl StorageProvider for KoofrProvider {
         Ok(())
     }
 
+    /// Koofr's rename and move refuse a taken name and offer no overwrite, so a
+    /// replace sets the item at `to` aside, renames `from` in, and then deletes
+    /// the one set aside, which Koofr keeps in its trash: see
+    /// [`super::replace_by_setting_aside`].
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let (from, to) = (self.resolve_path(from), self.resolve_path(to));
+        super::replace_by_setting_aside(self, &from, &to).await
+    }
+
+    /// No: a replace sets the old item aside, so the name is empty for a
+    /// moment. The callers that need atomicity (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write
+    /// anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1158,7 +1195,7 @@ impl StorageProvider for KoofrProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/mounts/{}/files/info?path={}",
-            API_BASE,
+            self.api_base(),
             self.mount_id,
             urlencoding::encode(&resolved)
         );
@@ -1235,7 +1272,7 @@ impl StorageProvider for KoofrProvider {
 
         let url = format!(
             "{}/mounts/{}/files/copy?path={}",
-            API_BASE,
+            self.api_base(),
             self.mount_id,
             urlencoding::encode(&from_resolved)
         );
@@ -1286,7 +1323,7 @@ impl StorageProvider for KoofrProvider {
         }
 
         let resolved = self.resolve_path(path);
-        let url = format!("{}/mounts/{}/links", API_BASE, self.mount_id);
+        let url = format!("{}/mounts/{}/links", self.api_base(), self.mount_id);
 
         #[derive(Serialize)]
         struct CreateLink {
@@ -1318,7 +1355,7 @@ impl StorageProvider for KoofrProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let url = format!("{}/mounts/{}/links", API_BASE, self.mount_id);
+        let url = format!("{}/mounts/{}/links", self.api_base(), self.mount_id);
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
         let links_resp: KoofrLinksResponse = resp
@@ -1356,7 +1393,7 @@ impl StorageProvider for KoofrProvider {
         }
 
         // First, find the link for this path
-        let url = format!("{}/mounts/{}/links", API_BASE, self.mount_id);
+        let url = format!("{}/mounts/{}/links", self.api_base(), self.mount_id);
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
         let links: KoofrLinksResponse = resp
@@ -1368,7 +1405,12 @@ impl StorageProvider for KoofrProvider {
         // No link found is not an error
         for link in &links.links {
             if link.url.contains(&resolved) || link.id == resolved {
-                let delete_url = format!("{}/mounts/{}/links/{}", API_BASE, self.mount_id, link.id);
+                let delete_url = format!(
+                    "{}/mounts/{}/links/{}",
+                    self.api_base(),
+                    self.mount_id,
+                    link.id
+                );
                 let resp = self.delete_req(&delete_url).await?;
                 Self::check_response(resp).await?;
                 return Ok(());
@@ -1385,7 +1427,7 @@ impl StorageProvider for KoofrProvider {
 
         // Refresh mount info: Koofr returns spaceTotal/spaceUsed in MiB
         const MIB: i64 = 1024 * 1024;
-        let url = format!("{}/mounts/{}", API_BASE, self.mount_id);
+        let url = format!("{}/mounts/{}", self.api_base(), self.mount_id);
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
         let body = resp.text().await.map_err(|e| {
@@ -1447,7 +1489,7 @@ impl StorageProvider for KoofrProvider {
 
         let url = format!(
             "{}/search?query={}&mountId={}&path={}&limit=256",
-            API_BASE,
+            self.api_base(),
             urlencoding::encode(&server_query),
             urlencoding::encode(&self.mount_id),
             urlencoding::encode(&resolved)
@@ -1585,7 +1627,7 @@ impl StorageProvider for KoofrProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/mounts/{}/files/versions?path={}",
-            API_BASE,
+            self.api_base(),
             self.mount_id,
             urlencoding::encode(&resolved)
         );
@@ -1682,7 +1724,7 @@ impl StorageProvider for KoofrProvider {
         let resolved = self.resolve_path(path);
         let url = format!(
             "{}/mounts/{}/files/versions/change?path={}&version={}",
-            API_BASE,
+            self.api_base(),
             self.mount_id,
             urlencoding::encode(&resolved),
             urlencoding::encode(version_id)
@@ -1832,7 +1874,7 @@ impl StorageProvider for KoofrProvider {
 impl KoofrProvider {
     /// List trash items
     pub async fn list_trash(&self) -> Result<Vec<KoofrTrashFile>, ProviderError> {
-        let url = format!("{}/trash?pageSize=1000", API_BASE);
+        let url = format!("{}/trash?pageSize=1000", self.api_base());
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
         let trash: KoofrTrashResponse = resp
@@ -1847,7 +1889,7 @@ impl KoofrProvider {
         &self,
         files: Vec<(String, String)>, // (mount_id, path) pairs
     ) -> Result<(), ProviderError> {
-        let url = format!("{}/trash/undelete", API_BASE);
+        let url = format!("{}/trash/undelete", self.api_base());
 
         #[derive(Serialize)]
         struct UndeleteRequest {
@@ -1877,7 +1919,7 @@ impl KoofrProvider {
 
     /// Empty trash permanently
     pub async fn empty_trash(&self) -> Result<(), ProviderError> {
-        let url = format!("{}/trash", API_BASE);
+        let url = format!("{}/trash", self.api_base());
         let resp = self.delete_req(&url).await?;
         Self::check_response(resp).await?;
         Ok(())
@@ -2071,6 +2113,191 @@ mod tests {
         );
         assert_eq!(KoofrProvider::split_path("/a/b"), ("/a", "b"));
         assert_eq!(KoofrProvider::split_path("file.txt"), ("/", "file.txt"));
+    }
+
+    /// Koofr refuses a rename or move onto a taken name with 409 and the
+    /// body code `AlreadyExists`, which became a ServerError (CLI exit 99,
+    /// live on 2026-09-26) instead of AlreadyExists (exit 9).
+    #[test]
+    fn a_taken_name_is_already_exists() {
+        let taken = r#"{"error":{"code":"AlreadyExists","message":"File already exists"}}"#;
+        assert!(matches!(
+            KoofrProvider::classify_koofr_error(409, taken),
+            ProviderError::AlreadyExists(_)
+        ));
+    }
+
+    /// A provider on a Koofr double that answers every request 409
+    /// `AlreadyExists` and records its path.
+    async fn provider_on_refusing_koofr(
+    ) -> (KoofrProvider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            seen.lock().unwrap().push(uri.path().to_string());
+            async {
+                (
+                    axum::http::StatusCode::CONFLICT,
+                    r#"{"error":{"code":"AlreadyExists","message":"File already exists"}}"#,
+                )
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, calls)
+    }
+
+    /// A rename onto its own path is a no-op everywhere else; Koofr refused
+    /// it (live on 2026-09-26). Nothing is sent.
+    #[tokio::test]
+    async fn a_rename_onto_its_own_path_sends_nothing() {
+        let (mut provider, calls) = provider_on_refusing_koofr().await;
+        provider.rename("/a.txt", "/a.txt").await.expect("no-op");
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// A Koofr double that keeps `items` (path, content, is a folder) in
+    /// memory: `info` finds them, `rename` and `move` move one (409
+    /// `AlreadyExists` onto a taken path), `remove` deletes one. Returns a
+    /// provider on it, the items, and every change as `rename FROM TO` or
+    /// `remove PATH`.
+    #[allow(clippy::type_complexity)]
+    async fn provider_on_koofr_items(
+        items: &[(&str, &str, bool)],
+    ) -> (
+        KoofrProvider,
+        std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, (String, bool)>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let store: Arc<Mutex<std::collections::BTreeMap<String, (String, bool)>>> =
+            Arc::new(Mutex::new(
+                items
+                    .iter()
+                    .map(|(path, content, dir)| (path.to_string(), (content.to_string(), *dir)))
+                    .collect(),
+            ));
+        let changes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (items, seen) = (Arc::clone(&store), Arc::clone(&changes));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |uri: axum::http::Uri, body: String| {
+                let (items, seen) = (Arc::clone(&items), Arc::clone(&seen));
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    let path = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "path")
+                        .map(|(_, v)| v.to_string())
+                        .unwrap_or_default();
+                    let args: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                    let refused = |status: u16, code: &str| {
+                        (
+                            axum::http::StatusCode::from_u16(status).unwrap(),
+                            format!(r#"{{"error":{{"code":"{code}","message":"{code}"}}}}"#),
+                        )
+                            .into_response()
+                    };
+                    let mut items = items.lock().unwrap();
+                    let parent = |p: &str| p.rsplit_once('/').map(|(a, _)| a.to_string()).unwrap();
+                    let target = match uri.path() {
+                        "/mounts/M/files/info" => {
+                            return match items.get(&path) {
+                                Some((_, dir)) => axum::Json(serde_json::json!({
+                                    "name": path.rsplit('/').next().unwrap(),
+                                    "type": if *dir { "dir" } else { "file" },
+                                }))
+                                .into_response(),
+                                None => refused(404, "NotFound"),
+                            };
+                        }
+                        "/mounts/M/files/remove" => {
+                            items.remove(&path);
+                            seen.lock().unwrap().push(format!("remove {path}"));
+                            return axum::Json(serde_json::json!({})).into_response();
+                        }
+                        "/mounts/M/files/rename" => {
+                            format!("{}/{}", parent(&path), args["name"].as_str().unwrap_or(""))
+                        }
+                        "/mounts/M/files/move" => args["toPath"].as_str().unwrap_or("").to_string(),
+                        other => return refused(400, other),
+                    };
+                    if items.contains_key(&target) {
+                        return refused(409, "AlreadyExists");
+                    }
+                    let Some(item) = items.remove(&path) else {
+                        return refused(404, "NotFound");
+                    };
+                    items.insert(target.clone(), item);
+                    seen.lock().unwrap().push(format!("rename {path} {target}"));
+                    axum::Json(serde_json::json!({})).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, store, changes)
+    }
+
+    /// Koofr's rename and move never overwrite, so the replace behind CLI
+    /// `edit` and the served WebDAV MOVE with `Overwrite: T` was the rename,
+    /// which Koofr refuses onto the file it is meant to replace (409, live on
+    /// 2026-09-26). It now sets the old file aside, renames the new one in
+    /// and removes the one set aside.
+    #[tokio::test]
+    async fn a_replace_sets_the_old_file_aside_renames_the_new_one_in_then_removes_it() {
+        let (mut provider, store, changes) =
+            provider_on_koofr_items(&[("/d/a.txt", "A", false), ("/d/b.txt", "B", false)]).await;
+        provider
+            .replace("/d/a.txt", "/d/b.txt")
+            .await
+            .expect("replace");
+        let changes = changes.lock().unwrap().clone();
+        assert_eq!(changes.len(), 3, "{changes:?}");
+        assert!(
+            changes[0].starts_with("rename /d/b.txt /d/.b.txt.aeroftp-replaced-"),
+            "{changes:?}"
+        );
+        assert_eq!(changes[1], "rename /d/a.txt /d/b.txt");
+        assert!(
+            changes[2].starts_with("remove /d/.b.txt.aeroftp-replaced-"),
+            "{changes:?}"
+        );
+        let store = store.lock().unwrap().clone();
+        assert_eq!(store.len(), 1, "{store:?}");
+        assert_eq!(store["/d/b.txt"].0, "A");
+    }
+
+    /// The replace sets the old item aside, so the name is empty for a
+    /// moment: no atomic replace is claimed, and the callers that need one
+    /// refuse before they write.
+    #[tokio::test]
+    async fn koofr_does_not_claim_an_atomic_replace() {
+        let (mut provider, _) = provider_on_refusing_koofr().await;
+        assert!(!provider.supports_atomic_replace().await.unwrap());
     }
 
     // Row 4 (#347): the body-level Koofr error code drives the variant; a code we

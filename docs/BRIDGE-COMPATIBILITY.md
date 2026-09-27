@@ -19,10 +19,11 @@ that tool's own config format can express it.
 - The transfer protocols interoperate widely across tools. The native cloud
   providers interoperate **only through rclone**: no other tool's config format
   can express them.
-- **13 AeroFTP-native providers have no external bridge at all** because no other
-  tool speaks their API. They round-trip only through AeroFTP's own `.aeroftp`
-  export: aerocloud, 4shared, Zoho WorkDrive, Internxt, kDrive, Drime, FileLu,
-  GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary.
+- **Some AeroFTP-native providers have no external bridge at all** and
+  round-trip only through AeroFTP's own `.aeroftp` export: aerocloud, 4shared,
+  kDrive, GitHub, GitLab, Immich, Twake and Uploadcare, which no other tool
+  speaks, and FileLu and Proton Drive, whose rclone backends sign in with a
+  secret AeroFTP does not hold (see the asymmetries below).
 
 ## Transfer protocols (all 15 tools)
 
@@ -48,12 +49,23 @@ tool's format can carry them, so every non-rclone column would be `--`.
 
 Every provider in this table now both **imports and exports**. Recoverable-secret
 backends (user + password, account + key) export their secret directly. The OAuth
-backends (Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex) export the OAuth
-token AeroFTP persists for the profile; rclone refreshes it on first use, so no
-provider-issued client setup is needed. Jottacloud follows the same token model
+backends (Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex, Zoho WorkDrive) export the OAuth
+token AeroFTP persists for the profile together with the `client_id` and
+`client_secret` configured in AeroFTP for that provider. rclone can refresh the
+token only with the OAuth app that issued it, so this works while that app is
+still the one configured (after changing it, authorize the profile again before
+exporting); when the vault lacks any of the three, the remote is still written,
+with a comment asking for `rclone config reconnect "<remote>:"`.
+Jottacloud follows the same token model
 via its persisted OIDC refresh token, and Filen exports its email, password and
 Filen CLI api key. (Token and credential export across these providers landed for
-v4.0.9.)
+v4.0.9.) Internxt exports its email and password; rclone then needs one
+`rclone config reconnect "<remote>:"` to sign in and store the encryption
+mnemonic, which AeroFTP does not keep on disk. Exported without its password
+(credentials left out of the export), the remote needs
+`rclone config update "<remote>" --all` instead, which asks for the password
+and then signs in. Internxt lets rclone sign in only on plans that include
+rclone access (the free plan answers 402).
 
 | Provider | rclone | rclone backend | Credentials carried |
 |----------|:--:|----|----|
@@ -63,6 +75,7 @@ v4.0.9.)
 | Koofr           | IE | koofr      | user + password |
 | Jottacloud      | IE | jottacloud | OIDC refresh token (AeroFTP-persisted); the exported remote refreshes on first use (v4.0.9) |
 | Filen           | IE | filen      | email + password + Filen CLI api key |
+| Internxt        | IE | internxt   | email + password; one `rclone config reconnect` before use (`rclone config update --all` when exported without the password), on plans with rclone access |
 | OpenDrive       | IE | opendrive  | username + password |
 | Backblaze B2    | IE | b2         | account (key ID) + application key (native B2, not S3) |
 | Google Drive    | IE | drive      | OAuth token (AeroFTP-persisted); refreshes on rclone's first use |
@@ -71,6 +84,10 @@ v4.0.9.)
 | Box             | IE | box        | OAuth token (AeroFTP-persisted); refreshes on rclone's first use |
 | pCloud          | IE | pcloud     | OAuth token (AeroFTP-persisted) + hostname for the EU region |
 | Yandex Disk     | IE | yandex     | OAuth token (AeroFTP-persisted); refreshes on rclone's first use |
+| Zoho WorkDrive  | IE | zoho       | OAuth token + region + root folder id (a profile without the root folder id is skipped) |
+| Drime           | IE | drime      | API token (default workspace; a remote pinned to a workspace or root folder id is not imported) |
+| Cloudinary      | IE | cloudinary | cloud name + API key + API secret (api.cloudinary.com; a remote on a regional `upload_prefix` is not imported) |
+| ImageKit        | IE | imagekit   | URL endpoint + public key + private key (a profile created in the app has no public key and is skipped on export) |
 
 ## Per-tool exportable protocols
 
@@ -79,7 +96,7 @@ way: an importer reads whatever connection types it recognizes in the file.)
 
 | Tool | Exportable protocols |
 |-----|----------------------|
-| rclone | FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Swift, Koofr, Jottacloud, Filen, Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex, OpenDrive, Backblaze B2 |
+| rclone | FTP, FTPS, SFTP, WebDAV, S3, MEGA, Internxt, Azure, Swift, Koofr, Jottacloud, Filen, Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex, Zoho WorkDrive, OpenDrive, Backblaze B2, Drime, Cloudinary, ImageKit |
 | WinSCP | FTP, FTPS, SFTP, WebDAV, S3 |
 | FileZilla | FTP, FTPS, SFTP, S3 |
 | Cyberduck | FTP, FTPS, SFTP, WebDAV, S3 |
@@ -93,12 +110,26 @@ way: an importer reads whatever connection types it recognizes in the file.)
 ## Asymmetries worth knowing
 
 - **rclone OAuth providers** (Google Drive, Dropbox, OneDrive, Box, pCloud,
-  Yandex) now export too: AeroFTP emits the OAuth token it persists for the
-  profile, which rclone refreshes on first use, so no provider-issued client
-  setup is needed. OneDrive also carries the captured drive_id/drive_type. The
+  Yandex, Zoho WorkDrive) now export too: AeroFTP emits the OAuth token it persists for the
+  profile with the `client_id` and `client_secret` configured in AeroFTP for
+  that provider, which let rclone refresh the token while they belong to the
+  app that issued it; without all three in the vault the remote asks for one
+  `rclone config reconnect`. OneDrive also carries the captured
+  drive_id/drive_type, Zoho WorkDrive its region and root folder id. The
   recoverable-secret providers (MEGA, Azure, Swift, Koofr, OpenDrive, Backblaze
-  B2), Jottacloud, and Filen (email + password + api key) export their secrets
-  directly.
+  B2), Jottacloud, Filen (email + password + api key) and Internxt (email +
+  password, then one `rclone config reconnect`, or `rclone config update --all`
+  when exported without the password) export their secrets directly.
+- **API-key providers** (Drime, Cloudinary, ImageKit) export their keys as they
+  are: rclone does not obscure these fields. ImageKit also needs the account
+  public key, which AeroFTP never uses: only a profile imported from rclone
+  holds it, and one created in the app is skipped on export with that reason.
+- **FileLu and Proton Drive** have rclone backends but no bridge. rclone's
+  `filelu` backend signs in with the FileLu Rclone key (`RC_...`), a different
+  key from the Developer API key AeroFTP holds: export skips a FileLu profile
+  and import skips a `filelu` remote, each with that reason. AeroFTP reaches
+  Proton Drive through Proton's own CLI and holds no password for rclone's
+  `protondrive` backend, so export skips it with that reason.
 - **Cyberduck** imports Backblaze B2 by routing it onto S3, and skips Azure and
   the OAuth providers it can read but cannot represent.
 - **Kopia, Duplicacy and restic** import B2 URLs onto S3 (tagged as Backblaze),

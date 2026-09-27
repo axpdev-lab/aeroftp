@@ -1378,9 +1378,15 @@ async fn rclone_crypt_provider_create_remote(
     suffix: Option<String>,
     directory_name_encryption: Option<bool>,
     target_subpath: Option<String>,
+    password_form: Option<String>,
+    salt_form: Option<String>,
 ) -> Result<rclone_crypt::RcloneCryptVaultInfo, String> {
-    let (name_key, data_key, name_tweak) =
-        rclone_crypt::derive_keys_with_tweak(&password, salt.as_deref().unwrap_or(""))?;
+    let (name_key, data_key, name_tweak) = rclone_crypt::derive_keys_with_forms(
+        &password,
+        rclone_crypt::CryptSecretForm::parse(password_form.as_deref()),
+        salt.as_deref().unwrap_or(""),
+        rclone_crypt::CryptSecretForm::parse(salt_form.as_deref()),
+    )?;
     let mode = match filename_encryption.as_deref() {
         Some("off") => rclone_crypt::FilenameEncryption::Off,
         Some("obfuscate") => rclone_crypt::FilenameEncryption::Obfuscate,
@@ -16523,8 +16529,10 @@ fn flatpak_config_import_status_blocking() -> serde_json::Value {
 /// B3: apply (`accept = true`) or decline (`accept = false`) the host-config
 /// import. Accept copies the native config into the sandbox with copy-only,
 /// never-overwrite semantics; either way the decision is recorded so the prompt
-/// is shown once. The vault is copied encrypted and still needs the master
-/// password to unlock.
+/// is shown once. `vault_imported` and `vault_skipped` say whether the host
+/// vault came in or stayed behind because this install already has its own;
+/// `nothing_importable` says that no file was copied because the host config
+/// holds none the import copies (see [`portable::FlatpakImportReport::to_json`]).
 #[tauri::command]
 async fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, String> {
     tokio::task::spawn_blocking(move || flatpak_config_import_apply_blocking(accept))
@@ -16534,12 +16542,7 @@ async fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, 
 
 /// The body of `flatpak_config_import_apply`, kept synchronous and run on the blocking pool.
 fn flatpak_config_import_apply_blocking(accept: bool) -> Result<serde_json::Value, String> {
-    let report = portable::flatpak_host_import_apply(accept)?;
-    Ok(serde_json::json!({
-        "imported": report.imported,
-        "source": report.source.map(|p| p.to_string_lossy().into_owned()),
-        "target": report.target.map(|p| p.to_string_lossy().into_owned()),
-    }))
+    portable::flatpak_host_import_apply(accept).map(|report| report.to_json())
 }
 
 #[tauri::command]
@@ -19762,6 +19765,7 @@ pub fn run() {
             cryptomator::cryptomator_save_all,
             // Rclone crypt compatibility support
             rclone_crypt::rclone_crypt_unlock,
+            rclone_crypt::rclone_crypt_secret_for_display,
             rclone_crypt::rclone_crypt_lock,
             rclone_crypt::rclone_crypt_decrypt_name,
             rclone_crypt::rclone_crypt_encrypt_name,

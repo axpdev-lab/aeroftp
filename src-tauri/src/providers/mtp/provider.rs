@@ -546,6 +546,12 @@ impl StorageProvider for MtpProvider {
         ))
     }
 
+    /// No: there is no rename here, so there is no replace either, and the
+    /// callers that need one refuse before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         self.require_open()?;
         let norm = normalize_virtual_path(path)?;
@@ -607,6 +613,17 @@ mod tests {
     use super::*;
     use crate::providers::types::{ProviderConfig, ProviderType};
     use crate::providers::ProviderFactory;
+
+    /// There is no rename here, so a replace could only fail after a caller
+    /// staged its temporary. The answer is no, so those callers (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write.
+    #[tokio::test]
+    async fn mtp_does_not_claim_an_atomic_replace() {
+        let mut p = MtpProvider::new(Box::new(
+            crate::providers::mtp::backend::FakeMtpBackend::with_demo_tree(),
+        ));
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
 
     #[test]
     fn capabilities_are_honest() {

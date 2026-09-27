@@ -313,6 +313,12 @@ pub struct OneDriveProvider {
     /// `organization`, `users`. Validation is permissive: Graph rejects
     /// unknown scopes at the API level.
     link_scope_override: Option<String>,
+    /// Scheme and host of a local Graph double, in tests.
+    #[cfg(test)]
+    api_origin_override: Option<String>,
+    /// Bearer token for the double, instead of the OAuth manager's.
+    #[cfg(test)]
+    test_access_token: Option<String>,
 }
 
 impl OneDriveProvider {
@@ -336,7 +342,20 @@ impl OneDriveProvider {
             no_versions: false,
             list_chunk_override: None,
             link_scope_override: None,
+            #[cfg(test)]
+            api_origin_override: None,
+            #[cfg(test)]
+            test_access_token: None,
         }
+    }
+
+    /// `GRAPH_API_BASE`, pointed at a local double in tests.
+    fn graph_api(&self) -> String {
+        #[cfg(test)]
+        if let Some(origin) = &self.api_origin_override {
+            return format!("{origin}/v1.0");
+        }
+        GRAPH_API_BASE.to_string()
     }
 
     /// Bind this provider to a server profile so OAuth tokens are stored
@@ -516,6 +535,11 @@ impl OneDriveProvider {
     /// Get authorization header
     async fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
         use secrecy::ExposeSecret;
+        #[cfg(test)]
+        if let Some(token) = &self.test_access_token {
+            return HeaderValue::from_str(&format!("Bearer {token}"))
+                .map_err(|e| ProviderError::Other(format!("Invalid token: {}", e)));
+        }
         let token = self
             .oauth_manager
             .get_valid_token(&self.oauth_config())
@@ -552,10 +576,10 @@ impl OneDriveProvider {
     fn api_path(&self, path: &str) -> String {
         let clean = path.trim_matches('/');
         if clean.is_empty() {
-            format!("{}/me/drive/root", GRAPH_API_BASE)
+            format!("{}/me/drive/root", self.graph_api())
         } else {
             let encoded = Self::encode_path_segments(clean);
-            format!("{}/me/drive/root:/{}", GRAPH_API_BASE, encoded)
+            format!("{}/me/drive/root:/{}", self.graph_api(), encoded)
         }
     }
 
@@ -570,9 +594,9 @@ impl OneDriveProvider {
     /// Build path for item ID
     fn api_item(&self, item_id: &str) -> String {
         if item_id == "root" {
-            format!("{}/me/drive/root", GRAPH_API_BASE)
+            format!("{}/me/drive/root", self.graph_api())
         } else {
-            format!("{}/me/drive/items/{}", GRAPH_API_BASE, item_id)
+            format!("{}/me/drive/items/{}", self.graph_api(), item_id)
         }
     }
 
@@ -729,7 +753,7 @@ impl OneDriveProvider {
     /// List items in the recycle bin
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut all_entries = Vec::new();
-        let mut url = format!("{}/me/drive/special/deleted/children", GRAPH_API_BASE);
+        let mut url = format!("{}/me/drive/special/deleted/children", self.graph_api());
 
         loop {
             let response = self
@@ -803,7 +827,7 @@ impl OneDriveProvider {
 
     /// Restore an item from the recycle bin
     pub async fn restore_from_trash(&mut self, item_id: &str) -> Result<(), ProviderError> {
-        let url = format!("{}/me/drive/items/{}/restore", GRAPH_API_BASE, item_id);
+        let url = format!("{}/me/drive/items/{}/restore", self.graph_api(), item_id);
 
         let response = self
             .client
@@ -842,7 +866,7 @@ impl OneDriveProvider {
         const MAX_PAGES: usize = 5;
         let mut url = format!(
             "{}/me/drive/special/deleted/children?$top=200",
-            GRAPH_API_BASE
+            self.graph_api()
         );
         let mut pages = 0;
         loop {
@@ -931,6 +955,103 @@ impl OneDriveProvider {
         Ok(item.id)
     }
 
+    /// Rename or move with one PATCH of the item. `conflict` is Graph's
+    /// `@microsoft.graph.conflictBehavior`: none for a rename, which Graph
+    /// then refuses onto a taken name (409 `nameAlreadyExists`, reported as
+    /// AlreadyExists), and `replace` for a replace, which Graph performs in
+    /// the same request.
+    async fn patch_into_place(
+        &mut self,
+        from: &str,
+        to: &str,
+        conflict: Option<&str>,
+    ) -> Result<(), ProviderError> {
+        let from_path = if from.starts_with('/') {
+            from.to_string()
+        } else {
+            format!("{}/{}", self.current_path.trim_end_matches('/'), from)
+        };
+
+        let to_path = if to.starts_with('/') {
+            to.to_string()
+        } else {
+            format!("{}/{}", self.current_path.trim_end_matches('/'), to)
+        };
+        // Onto itself there is nothing to move, and a replace must not name
+        // the item as its own conflict.
+        if from_path.trim_end_matches('/') == to_path.trim_end_matches('/') {
+            return Ok(());
+        }
+
+        let item_id = self.resolve_path(&from_path).await?;
+        let new_name = to_path.rsplit('/').next().unwrap_or(&to_path);
+
+        // Determine source and destination parent paths
+        let from_parent = parent_of_absolute(&from_path);
+        let to_parent = parent_of_absolute(&to_path);
+
+        let is_move = from_parent != to_parent;
+
+        let body = if is_move {
+            let to_parent_clean = to_parent.trim_matches('/');
+            let parent_ref_path = if to_parent_clean.is_empty() {
+                "/drive/root:".to_string()
+            } else {
+                format!("/drive/root:/{}", to_parent_clean)
+            };
+            serde_json::json!({
+                "name": new_name,
+                "parentReference": {
+                    "path": parent_ref_path
+                }
+            })
+        } else {
+            serde_json::json!({
+                "name": new_name
+            })
+        };
+
+        let mut url = self.api_item(&item_id);
+        if let Some(behavior) = conflict {
+            url.push_str(&format!(
+                "?{}={behavior}",
+                urlencoding::encode("@microsoft.graph.conflictBehavior")
+            ));
+        }
+
+        let response = self
+            .client
+            .patch(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            // Only Graph's own code for a taken name: Graph answers 409 for
+            // other conflicts too, a missing parent among them.
+            if text.contains("nameAlreadyExists") {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            return Err(ProviderError::Other(format!(
+                "Rename/move failed ({status}): {}",
+                sanitize_api_error(&text)
+            )));
+        }
+
+        // The ids cached for either path and everything under them now point
+        // at a moved item, or at the one a replace sent to the recycle bin.
+        super::forget_cached_subtree(&mut self.path_cache, from_path.trim_matches('/'));
+        super::forget_cached_subtree(&mut self.path_cache, to_path.trim_matches('/'));
+
+        info!("Renamed {} to {}", from, to);
+        Ok(())
+    }
+
     /// Resolve `remote_path` against the current directory and POST
     /// `/me/drive/root:/<encoded>:/createUploadSession`, returning the
     /// per-session `uploadUrl`. Shared between the legacy `resume_upload`
@@ -941,7 +1062,8 @@ impl OneDriveProvider {
         let encoded = Self::encode_path_segments(path);
         let url = format!(
             "{}/me/drive/root:/{}:/createUploadSession",
-            GRAPH_API_BASE, encoded
+            self.graph_api(),
+            encoded
         );
 
         let body = serde_json::json!({
@@ -1006,7 +1128,7 @@ impl StorageProvider for OneDriveProvider {
         }
 
         // Validate by getting drive info
-        let url = format!("{}/me/drive", GRAPH_API_BASE);
+        let url = format!("{}/me/drive", self.graph_api());
 
         let response = self
             .client
@@ -1202,6 +1324,9 @@ impl StorageProvider for OneDriveProvider {
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(onedrive_error_from_response(response, "Download failed").await);
+        }
 
         let mut stream = response.bytes_stream();
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
@@ -1301,6 +1426,14 @@ impl StorageProvider for OneDriveProvider {
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        // The status first: Graph answers a missing file with 404 and an
+        // error JSON, which was returned as the file's content.
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(ProviderError::NotFound(path));
+        }
+        if !response.status().is_success() {
+            return Err(onedrive_error_from_response(response, "Download failed").await);
+        }
 
         // H2: Size-limited download to prevent OOM on large files
         super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
@@ -1506,79 +1639,30 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let from_path = if from.starts_with('/') {
-            from.to_string()
-        } else {
-            format!("{}/{}", self.current_path.trim_end_matches('/'), from)
-        };
+        self.patch_into_place(from, to, None).await
+    }
 
-        let to_path = if to.starts_with('/') {
-            to.to_string()
-        } else {
-            format!("{}/{}", self.current_path.trim_end_matches('/'), to)
-        };
-
-        let item_id = self.resolve_path(&from_path).await?;
-        let new_name = to_path.rsplit('/').next().unwrap_or(&to_path);
-
-        // Determine source and destination parent paths
-        let from_parent = from_path
-            .trim_matches('/')
-            .rsplit_once('/')
-            .map(|(p, _)| format!("/{}", p))
-            .unwrap_or_else(|| self.current_path.clone());
-        let to_parent = to_path
-            .trim_matches('/')
-            .rsplit_once('/')
-            .map(|(p, _)| format!("/{}", p))
-            .unwrap_or_else(|| self.current_path.clone());
-
-        let is_move = from_parent != to_parent;
-
-        let body = if is_move {
-            let to_parent_clean = to_parent.trim_matches('/');
-            let parent_ref_path = if to_parent_clean.is_empty() {
-                "/drive/root:".to_string()
-            } else {
-                format!("/drive/root:/{}", to_parent_clean)
-            };
-            serde_json::json!({
-                "name": new_name,
-                "parentReference": {
-                    "path": parent_ref_path
-                }
-            })
-        } else {
-            serde_json::json!({
-                "name": new_name
-            })
-        };
-
-        let url = self.api_item(&item_id);
-
-        let response = self
-            .client
-            .patch(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Rename/move failed: {}",
-                sanitize_api_error(&text)
-            )));
+    /// Graph replaces the item at the destination in the same PATCH that
+    /// moves the source there (`conflictBehavior=replace`): an atomic
+    /// replace. Never across types: Graph would put a file in place of a
+    /// whole folder.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let source = self.stat(from).await?;
+        match self.stat(to).await {
+            // The source itself, found at `to` by a rename that only changes
+            // the letter case: there is no other item to replace, and the
+            // PATCH must not name the item as its own conflict.
+            Ok(occupant)
+                if occupant.metadata.contains_key("id")
+                    && occupant.metadata.get("id") == source.metadata.get("id") =>
+            {
+                return self.patch_into_place(from, to, None).await;
+            }
+            Ok(occupant) => super::refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?,
+            Err(ProviderError::NotFound(_)) => {}
+            Err(e) => return Err(e),
         }
-
-        // Invalidate old path from cache
-        self.path_cache.remove(from_path.trim_matches('/'));
-
-        info!("Renamed {} to {}", from, to);
-        Ok(())
+        self.patch_into_place(from, to, Some("replace")).await
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1760,20 +1844,7 @@ impl StorageProvider for OneDriveProvider {
         let from_id = self.resolve_path(&from_path).await?;
 
         // Resolve destination parent and name
-        let to_path = to.trim_matches('/');
-        let (to_parent, to_name) = if let Some(pos) = to_path.rfind('/') {
-            (&to_path[..pos], &to_path[pos + 1..])
-        } else {
-            ("", to_path)
-        };
-
-        let to_parent_path = if to_parent.is_empty() {
-            self.current_path.clone()
-        } else if to_parent.starts_with('/') {
-            to_parent.to_string()
-        } else {
-            format!("{}/{}", self.current_path.trim_end_matches('/'), to_parent)
-        };
+        let (to_parent_path, to_name) = copy_destination(&self.current_path, to);
 
         let to_parent_id = self.resolve_path(&to_parent_path).await?;
 
@@ -1879,7 +1950,7 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let url = format!("{}/me/drive", GRAPH_API_BASE);
+        let url = format!("{}/me/drive", self.graph_api());
 
         let response = self
             .client
@@ -2245,7 +2316,8 @@ impl StorageProvider for OneDriveProvider {
         let encoded = Self::encode_path_segments(path_str);
         let url = format!(
             "{}/me/drive/root:/{}:/createUploadSession",
-            GRAPH_API_BASE, encoded
+            self.graph_api(),
+            encoded
         );
 
         let body = serde_json::json!({
@@ -2531,6 +2603,36 @@ impl StorageProvider for OneDriveProvider {
     }
 }
 
+/// The parent folder of an absolute path: `/a/b` is in `/a`, `/x` in `/`.
+/// `rename` used to take the current folder as the parent of a one-segment
+/// path, so after `cd /docs` a move of `/x` into `/docs` read as a rename in
+/// place: the item stayed at the root and the call reported success.
+fn parent_of_absolute(path: &str) -> String {
+    path.trim_matches('/')
+        .rsplit_once('/')
+        .map(|(parent, _)| format!("/{parent}"))
+        .unwrap_or_else(|| "/".to_string())
+}
+
+/// The folder and name a copy to `to` lands at: an absolute path from the
+/// root, a relative one from `current_path`. The copy trimmed the leading
+/// slash first, so after `cd /docs` a copy to `/x` landed in `/docs/x` and one
+/// to `/d/x` in `/docs/d/x`.
+fn copy_destination(current_path: &str, to: &str) -> (String, String) {
+    let absolute = if to.starts_with('/') {
+        to.to_string()
+    } else {
+        format!("{}/{to}", current_path.trim_end_matches('/'))
+    };
+    let name = absolute
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    (parent_of_absolute(&absolute), name)
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -2620,8 +2722,255 @@ mod tests {
     }
     use super::*;
 
+    /// After `cd /docs`, a copy to `/x` must land at the root and one to `x`
+    /// in `/docs`; the copy trimmed the slash and sent both to `/docs`.
+    #[test]
+    fn a_copy_destination_resolves_from_the_root_or_the_current_folder() {
+        let at = |to| copy_destination("/docs", to);
+        assert_eq!(at("/x"), ("/".to_string(), "x".to_string()));
+        assert_eq!(at("/d/x"), ("/d".to_string(), "x".to_string()));
+        assert_eq!(at("x"), ("/docs".to_string(), "x".to_string()));
+        assert_eq!(at("d/x"), ("/docs/d".to_string(), "x".to_string()));
+        assert_eq!(
+            copy_destination("/", "x"),
+            ("/".to_string(), "x".to_string())
+        );
+    }
+
+    #[test]
+    fn the_parent_of_a_one_segment_path_is_the_root() {
+        assert_eq!(parent_of_absolute("/x"), "/");
+        assert_eq!(parent_of_absolute("/x/"), "/");
+        assert_eq!(parent_of_absolute("/docs/y"), "/docs");
+        assert_eq!(parent_of_absolute("/a/b/c"), "/a/b");
+    }
+
     fn test_provider() -> OneDriveProvider {
         OneDriveProvider::new(OneDriveConfig::new("cid", "csec"))
+    }
+
+    /// A Graph double holding the files `/a.txt` (id `A`) and `/b.txt` (id
+    /// `B`) and the folder `/d` (id `D`). A PATCH of an item answers 409
+    /// `nameAlreadyExists` when `patch_conflicts` and no
+    /// `conflictBehavior=replace` was asked, 200 otherwise; content of a
+    /// missing path answers 404 with Graph's error JSON, and the download URL
+    /// of `/b.txt` has expired (401 with an error JSON). Returns a provider on
+    /// it and every PATCH as `path?query`.
+    async fn provider_on_graph(
+        patch_conflicts: bool,
+    ) -> (
+        OneDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let patches: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&patches);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let refused = |status: axum::http::StatusCode, code: &str| {
+                        (
+                            status,
+                            format!(r#"{{"error":{{"code":"{code}","message":"refused"}}}}"#),
+                        )
+                            .into_response()
+                    };
+                    if req.method() == axum::http::Method::PATCH {
+                        seen.lock().unwrap().push(format!("{path}?{query}"));
+                        let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                            .await
+                            .unwrap();
+                        if String::from_utf8_lossy(&body).contains("/missing") {
+                            // Graph's 409 for a parent that is not there.
+                            return refused(axum::http::StatusCode::CONFLICT, "conflict");
+                        }
+                        let replace = urlencoding::decode(&query)
+                            .unwrap()
+                            .contains("conflictBehavior=replace");
+                        return if patch_conflicts && !replace {
+                            refused(axum::http::StatusCode::CONFLICT, "nameAlreadyExists")
+                        } else {
+                            axum::Json(serde_json::json!({ "id": "A" })).into_response()
+                        };
+                    }
+                    let item = |id: &str, name: &str, facet: &str| {
+                        let mut item = serde_json::json!({
+                            "id": id, "name": name, "size": 3,
+                            "parentReference": { "path": "/drive/root:" },
+                        });
+                        item[facet] = serde_json::json!({});
+                        if name == "b.txt" {
+                            item["@microsoft.graph.downloadUrl"] =
+                                serde_json::json!(format!("http://{addr}/expired"));
+                        }
+                        axum::Json(item).into_response()
+                    };
+                    match path.as_str() {
+                        "/v1.0/me/drive/root:/a.txt" => item("A", "a.txt", "file"),
+                        // Graph matches a path ignoring the case.
+                        "/v1.0/me/drive/root:/A.txt" => item("A", "a.txt", "file"),
+                        "/v1.0/me/drive/root:/b.txt" => item("B", "b.txt", "file"),
+                        "/v1.0/me/drive/root:/d" => item("D", "d", "folder"),
+                        "/expired" => {
+                            refused(axum::http::StatusCode::UNAUTHORIZED, "unauthenticated")
+                        }
+                        _ => refused(axum::http::StatusCode::NOT_FOUND, "itemNotFound"),
+                    }
+                }
+            }));
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        (provider, patches)
+    }
+
+    /// Graph refuses a move onto a taken name with 409 `nameAlreadyExists`,
+    /// which reached the caller as a generic error (CLI exit 99, live on
+    /// 2026-09-26) instead of AlreadyExists (exit 9), the one sync and
+    /// `mkdir -p` handle.
+    #[tokio::test]
+    async fn a_rename_graph_refuses_for_a_taken_name_is_already_exists() {
+        let (mut provider, _) = provider_on_graph(true).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// After a replace the id cached for `b.txt` was the item Graph sent to
+    /// the recycle bin, and after a folder rename the ids cached under the
+    /// old path were the moved items: a later delete of `b.txt` or of a new
+    /// `d/x.txt` acted on them. Both paths and their subtrees are forgotten.
+    #[tokio::test]
+    async fn a_rename_or_replace_forgets_the_ids_cached_under_both_paths() {
+        let (mut provider, _) = provider_on_graph(false).await;
+        for (path, id) in [("b.txt", "B"), ("d", "D"), ("d/x.txt", "X"), ("dx", "DX")] {
+            provider.path_cache.insert(path.to_string(), id.to_string());
+        }
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        provider.rename("/d", "/e").await.expect("rename");
+        let mut cached: Vec<&str> = provider.path_cache.keys().map(String::as_str).collect();
+        cached.sort();
+        assert_eq!(cached, ["dx"], "a sibling sharing the prefix stays");
+    }
+
+    /// Graph answers 409 for other conflicts than a taken name, a missing
+    /// parent among them: only `nameAlreadyExists` is AlreadyExists (exit
+    /// 9), which says something sits at the destination.
+    #[tokio::test]
+    async fn only_name_already_exists_is_a_taken_name() {
+        let (mut provider, _) = provider_on_graph(false).await;
+        let outcome = provider.rename("/a.txt", "/missing/b.txt").await;
+        assert!(
+            outcome.is_err() && !matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// `replace` asks Graph to replace the item at the destination
+    /// (`@microsoft.graph.conflictBehavior=replace`), one request: CLI `edit`
+    /// failed with `nameAlreadyExists` (live on 2026-09-26).
+    #[tokio::test]
+    async fn replace_asks_graph_to_replace_the_destination() {
+        let (mut provider, patches) = provider_on_graph(true).await;
+        assert!(provider.supports_atomic_replace().await.unwrap());
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        let patches = patches.lock().unwrap().clone();
+        assert_eq!(patches.len(), 1, "{patches:?}");
+        assert!(
+            urlencoding::decode(&patches[0])
+                .unwrap()
+                .contains("@microsoft.graph.conflictBehavior=replace"),
+            "{patches:?}"
+        );
+    }
+
+    /// A replace that only changes the letter case finds the source itself
+    /// at `to` (Graph matches paths ignoring the case) and sent the PATCH
+    /// with `conflictBehavior=replace`, naming the item as its own conflict.
+    /// It is the rename's PATCH, with no conflict behaviour.
+    #[tokio::test]
+    async fn a_case_only_replace_patches_without_replace() {
+        let (mut provider, patches) = provider_on_graph(false).await;
+        provider.replace("/a.txt", "/A.txt").await.expect("replace");
+        let patches = patches.lock().unwrap().clone();
+        assert_eq!(patches.len(), 1, "{patches:?}");
+        assert!(
+            !urlencoding::decode(&patches[0])
+                .unwrap()
+                .contains("conflictBehavior"),
+            "{patches:?}"
+        );
+    }
+
+    /// With `conflictBehavior=replace` Graph would put a file in place of a
+    /// whole folder, or a folder in place of a file: both are refused before
+    /// any PATCH.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_sends_no_patch() {
+        let (mut provider, patches) = provider_on_graph(false).await;
+        for (from, to) in [("/a.txt", "/d"), ("/d", "/b.txt")] {
+            let outcome = provider.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+        }
+        assert!(
+            patches.lock().unwrap().is_empty(),
+            "{:?}",
+            patches.lock().unwrap()
+        );
+    }
+
+    /// Onto its own path a rename has nothing to move, and a replace must not
+    /// name the item as its own conflict: no PATCH is sent.
+    #[tokio::test]
+    async fn a_rename_or_replace_onto_its_own_path_sends_no_patch() {
+        let (mut provider, patches) = provider_on_graph(false).await;
+        provider.rename("/a.txt", "/a.txt").await.expect("rename");
+        provider.replace("/a.txt", "/a.txt").await.expect("replace");
+        assert!(
+            patches.lock().unwrap().is_empty(),
+            "{:?}",
+            patches.lock().unwrap()
+        );
+    }
+
+    /// A download of a missing file returned Graph's error JSON as the
+    /// file's content (`cat` printed `{"error":{"code":"itemNotFound"...`,
+    /// live on 2026-09-26). The status is read before the body.
+    #[tokio::test]
+    async fn a_download_of_a_missing_file_is_not_found_not_its_content() {
+        let (mut provider, _) = provider_on_graph(false).await;
+        let outcome = provider.download_to_bytes("/gone.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// A download to a file whose download URL answers an error wrote the
+    /// error JSON into the local file and reported success.
+    #[tokio::test]
+    async fn a_refused_download_writes_no_local_file() {
+        let (mut provider, _) = provider_on_graph(false).await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("b.txt");
+        let outcome = provider
+            .download("/b.txt", local.to_str().unwrap(), None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(!local.exists(), "{:?}", std::fs::read_to_string(&local));
     }
 
     // ─── Live check for #397 on a real account ─────────────────────────

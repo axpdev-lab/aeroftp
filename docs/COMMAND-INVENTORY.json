@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 859
+    "tauri_commands": 860
   },
   "mcp": {
     "count": 77,
@@ -951,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 485,
+    "name_matched_count": 486,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1734,6 +1734,7 @@
       "cryptomator_create",
       "cryptomator_save_all",
       "rclone_crypt_unlock",
+      "rclone_crypt_secret_for_display",
       "rclone_crypt_lock",
       "rclone_crypt_decrypt_name",
       "rclone_crypt_encrypt_name",
@@ -2194,6 +2195,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 859
+    "count": 860
   }
 }

@@ -27,7 +27,7 @@ use ripemd::Ripemd160;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use sha2::{Digest, Sha256, Sha512};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::types::InternxtConfig;
 use super::{
@@ -55,8 +55,6 @@ fn internxt_log(msg: &str) {
 /// All `/drive/*` and `/network/*` prefixed paths in this file rely on this routing.
 /// Reference: rclone-adapter uses the same gateway approach.
 const GATEWAY: &str = "https://gateway.internxt.com";
-/// Direct API URL: used as fallback when gateway blocks CLI access (402 on free tier).
-const API_URL: &str = "https://api.internxt.com";
 
 /// Well-known application-level crypto secret, identical across all Internxt clients
 /// (web, desktop, CLI, rclone adapter). Used for encrypting/decrypting the sKey (salt)
@@ -65,10 +63,61 @@ const API_URL: &str = "https://api.internxt.com";
 /// Changing this value would break compatibility with all Internxt clients.
 const APP_CRYPTO_SECRET: &str = "6KYQBP847D4ATSFA";
 
-// TODO: OPAQUE login protocol (future Internxt auth method)
-
 /// OpenSSL "Salted__" prefix
 const SALTED_PREFIX: &[u8] = b"Salted__";
+
+/// What the CLI access endpoint's 402 means. The server answers it only after
+/// accepting the credentials, so whatever fails next is not a credentials problem.
+const PLAN_WITHOUT_CLI_ACCESS: &str =
+    "this Internxt plan does not include CLI/WebDAV/Rclone access";
+
+/// The error of a refused Internxt login step, `context` naming the step. Every
+/// step reads the status the same way: only the server's own 401 blames the
+/// credentials; a 402 or 403 is the plan or the account being refused; a 429 is
+/// Internxt limiting logins, with the wait it asked for when it sent
+/// `Retry-After`; anything else is a server failure.
+fn internxt_login_refused(
+    context: &str,
+    status: reqwest::StatusCode,
+    retry_after: Option<&str>,
+    body: &str,
+) -> ProviderError {
+    let detail = format!(
+        "{} ({}): {}",
+        context,
+        status,
+        super::sanitize_api_error(body)
+    );
+    match status.as_u16() {
+        401 => ProviderError::AuthenticationFailed(detail),
+        402 | 403 => ProviderError::PermissionDenied(detail),
+        429 => {
+            let wait = match retry_after.map(str::trim).filter(|raw| !raw.is_empty()) {
+                Some(raw) => match super::retry_after::parse_retry_after_seconds(raw) {
+                    Some(wait) => format!("retry in {} seconds", wait.as_secs()),
+                    None => format!("retry after {}", &raw[..raw.floor_char_boundary(64)]),
+                },
+                None => "retry later".to_string(),
+            };
+            ProviderError::ServerError(format!(
+                "{}: Internxt is limiting logins, {} ({}): {}",
+                context,
+                wait,
+                status,
+                super::sanitize_api_error(body)
+            ))
+        }
+        _ => ProviderError::ServerError(detail),
+    }
+}
+
+/// The `Retry-After` header of a login response, read before its body.
+fn login_retry_after(resp: &reqwest::Response) -> Option<String> {
+    resp.headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
+}
 
 fn internxt_auth_failure(context: &str, detail: &str) -> ProviderError {
     let clean = detail.trim();
@@ -138,13 +187,6 @@ struct AccessUser {
     root_folder_uuid: Option<String>,
 }
 
-/// Folder listing response wrapper
-#[derive(Debug, Deserialize)]
-struct FoldersWrapper {
-    #[serde(default)]
-    folders: Vec<InternxtFolder>,
-}
-
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct InternxtFolder {
@@ -187,13 +229,6 @@ struct InternxtFolder {
     modification_time: Option<String>,
     #[serde(rename = "type", default)]
     folder_type: Option<String>,
-}
-
-/// File listing response wrapper
-#[derive(Debug, Deserialize)]
-struct FilesWrapper {
-    #[serde(default)]
-    files: Vec<InternxtFile>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -358,7 +393,7 @@ pub struct InternxtProvider {
     current_path: String,
     /// Current folder UUID
     current_folder_id: String,
-    /// Base URL for API requests (gateway or api.internxt.com)
+    /// Base URL for /drive/* requests, the login included: the gateway (a local fixture in tests)
     api_base: String,
     /// Cache: path → DirInfo (uuid, name)
     /// M3: Capped at DIR_CACHE_MAX_ENTRIES to prevent unbounded memory growth
@@ -370,6 +405,36 @@ pub struct InternxtProvider {
 
 /// M3: Maximum number of cached directory entries to prevent unbounded memory growth.
 const DIR_CACHE_MAX_ENTRIES: usize = 10_000;
+
+/// Page size asked of the cursor-paginated folder content routes; the server
+/// accepts 50 to 1000, and rclone-adapter asks the maximum too.
+const CONTENT_PAGE_LIMIT: u32 = 1000;
+
+/// The cursors a folder content listing has followed. A server that hands one
+/// back again would loop the listing forever, so that is an error, never an end.
+#[derive(Default)]
+struct CursorTrail {
+    seen: HashSet<String>,
+}
+
+impl CursorTrail {
+    /// The cursor of the next page to read, or `None` when `next` says the
+    /// listing of `kind` (`folders` or `files`) is complete.
+    fn follow(
+        &mut self,
+        kind: &str,
+        next: Option<String>,
+    ) -> Result<Option<String>, ProviderError> {
+        match next {
+            None => Ok(None),
+            Some(cursor) if self.seen.insert(cursor.clone()) => Ok(Some(cursor)),
+            Some(_) => Err(ProviderError::ServerError(format!(
+                "List {} failed: the server repeated a page cursor, so the listing cannot be completed",
+                kind
+            ))),
+        }
+    }
+}
 
 impl InternxtProvider {
     pub fn new(config: InternxtConfig) -> Self {
@@ -650,9 +715,71 @@ impl InternxtProvider {
             .header("internxt-version", "v1.0.436")
     }
 
+    /// Move the file or folder `uuid` (`kind` is `files` or `folders`) into
+    /// the folder `folder_uuid`. `lands_at` is the path it takes there, the
+    /// one a 409 names.
+    async fn move_item(
+        &mut self,
+        kind: &str,
+        uuid: &str,
+        folder_uuid: &str,
+        lands_at: &str,
+    ) -> Result<(), ProviderError> {
+        let payload = serde_json::json!({ "destinationFolder": folder_uuid });
+        let path = format!("/{kind}/{uuid}");
+        let resp = self
+            .send_with_reauth(|this| {
+                this.drive_request(reqwest::Method::PATCH, &path)
+                    .header(CONTENT_TYPE, "application/json")
+                    .json(&payload)
+            })
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(rename_refused("Move", status, &body, lands_at));
+        }
+        Ok(())
+    }
+
+    /// Rename the file or folder `uuid` (`kind` is `files` or `folders`) to
+    /// `name` in the folder it is in; `lands_at` is the path a 409 names.
+    async fn rename_item(
+        &mut self,
+        kind: &str,
+        uuid: &str,
+        name: &str,
+        lands_at: &str,
+    ) -> Result<(), ProviderError> {
+        let payload = if kind == "files" {
+            let (plain_name, file_type) = Self::split_name_ext(name);
+            let mut payload = serde_json::json!({ "plainName": plain_name });
+            if !file_type.is_empty() {
+                payload["type"] = serde_json::Value::String(file_type);
+            }
+            payload
+        } else {
+            serde_json::json!({ "plainName": name })
+        };
+        let path = format!("/{kind}/{uuid}/meta");
+        let resp = self
+            .send_with_reauth(|this| {
+                this.drive_request(reqwest::Method::PUT, &path)
+                    .header(CONTENT_TYPE, "application/json")
+                    .json(&payload)
+            })
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(rename_refused("Rename", status, &body, lands_at));
+        }
+        Ok(())
+    }
+
     /// Make authenticated request to /network/* endpoints (Basic auth).
     /// Network endpoints always use GATEWAY (gateway.internxt.com/network/* → api.internxt.com/*),
-    /// regardless of whether api_base was switched to API_URL for /drive/* requests.
+    /// whatever `api_base` the /drive/* requests use.
     /// This is because the Bridge/Network API only accepts Basic auth via the gateway.
     fn network_request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/network{}", GATEWAY, path);
@@ -734,32 +861,14 @@ impl InternxtProvider {
         parent_uuid: &str,
         name: &str,
     ) -> Result<Option<String>, ProviderError> {
-        let mut offset = 0;
+        let mut trail = CursorTrail::default();
+        let mut cursor: Option<String> = None;
         loop {
-            let url = format!(
-                "/folders/content/{}/folders?offset={}&limit=50&sort=plainName&order=ASC",
-                parent_uuid, offset
-            );
-
-            let resp = self
-                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
+            let (folders, next) = self
+                .content_page::<InternxtFolder>(parent_uuid, "folders", cursor.as_deref())
                 .await?;
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "List folders failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
-
-            let wrapper: FoldersWrapper = resp.json().await.map_err(|e| {
-                ProviderError::ServerError(format!("Failed to parse folders response: {}", e))
-            })?;
-
-            for folder in &wrapper.folders {
+            for folder in &folders {
                 let folder_name = folder
                     .plain_name
                     .as_deref()
@@ -770,12 +879,91 @@ impl InternxtProvider {
                 }
             }
 
-            if wrapper.folders.len() < 50 {
-                break;
+            match trail.follow("folders", next)? {
+                Some(next) => cursor = Some(next),
+                None => return Ok(None),
             }
-            offset += 50;
         }
-        Ok(None)
+    }
+
+    /// Read one page of `GET /folders/v2/content/{folder_uuid}/{kind}`, `kind`
+    /// being `folders` or `files`: its items and the cursor of the next page,
+    /// `None` on the last one. These cursor routes replace the deprecated
+    /// offset ones (`/folders/content/...`, drive-server-wip #1163).
+    async fn content_page<T: serde::de::DeserializeOwned>(
+        &mut self,
+        folder_uuid: &str,
+        kind: &str,
+        cursor: Option<&str>,
+    ) -> Result<(Vec<T>, Option<String>), ProviderError> {
+        let url = Self::content_page_url(folder_uuid, kind, cursor);
+        tracing::debug!(target: "internxt", "[LIST {}] GET {}/drive{}", kind, self.api_base, url);
+
+        let resp = self
+            .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
+            .await?;
+
+        let status = resp.status();
+        tracing::debug!(target: "internxt", "[LIST {}] Status: {}", kind, status);
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            tracing::debug!(target: "internxt", "[LIST {}] Error body: {}", kind, &body[..body.floor_char_boundary(200)]);
+            return Err(ProviderError::ServerError(format!(
+                "List {} failed ({}): {}",
+                kind,
+                status,
+                super::sanitize_api_error(&body)
+            )));
+        }
+
+        let raw = resp.text().await.map_err(|e| {
+            ProviderError::ServerError(format!("Failed to read {} response: {}", kind, e))
+        })?;
+        tracing::debug!(target: "internxt", "[LIST {}] Response ({} bytes): {}", kind, raw.len(), &raw[..raw.floor_char_boundary(200)]);
+        Self::parse_content_page(&raw, kind)
+    }
+
+    /// The drive path of a folder content page. The cursor is base64 (`+`, `/`,
+    /// `=`), so it goes out form-encoded.
+    fn content_page_url(folder_uuid: &str, kind: &str, cursor: Option<&str>) -> String {
+        let mut query = url::form_urlencoded::Serializer::new(String::new());
+        query
+            .append_pair("limit", &CONTENT_PAGE_LIMIT.to_string())
+            .append_pair("order", "ASC");
+        if let Some(cursor) = cursor {
+            query.append_pair("cursor", cursor);
+        }
+        format!(
+            "/folders/v2/content/{}/{}?{}",
+            folder_uuid,
+            kind,
+            query.finish()
+        )
+    }
+
+    /// Parse a folder content page. The `kind` array is required, since a page
+    /// without it is not an empty folder; `nextCursor` is a string, or null
+    /// (or absent) on the last page.
+    fn parse_content_page<T: serde::de::DeserializeOwned>(
+        raw: &str,
+        kind: &str,
+    ) -> Result<(Vec<T>, Option<String>), ProviderError> {
+        let invalid = |detail: String| {
+            ProviderError::ServerError(format!("Failed to parse {}: {}", kind, detail))
+        };
+        let mut page: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(raw).map_err(|e| invalid(e.to_string()))?;
+        let items = page
+            .remove(kind)
+            .ok_or_else(|| invalid(format!("the page has no {} array", kind)))?;
+        let items: Vec<T> = serde_json::from_value(items).map_err(|e| invalid(e.to_string()))?;
+        let next = match page.remove("nextCursor") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(cursor)) if cursor.is_empty() => None,
+            Some(serde_json::Value::String(cursor)) => Some(cursor),
+            Some(other) => return Err(invalid(format!("nextCursor is not a string: {}", other))),
+        };
+        Ok((items, next))
     }
 
     /// Normalize path: ensure leading /, remove trailing /, collapse //, resolve . and ..
@@ -840,32 +1028,14 @@ impl InternxtProvider {
         folder_uuid: &str,
         filename: &str,
     ) -> Result<Option<(String, String, String)>, ProviderError> {
-        let mut offset = 0;
+        let mut trail = CursorTrail::default();
+        let mut cursor: Option<String> = None;
         loop {
-            let url = format!(
-                "/folders/content/{}/files?offset={}&limit=50&sort=plainName&order=ASC",
-                folder_uuid, offset
-            );
-
-            let resp = self
-                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
+            let (files, next) = self
+                .content_page::<InternxtFile>(folder_uuid, "files", cursor.as_deref())
                 .await?;
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "List files failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
-
-            let wrapper: FilesWrapper = resp.json().await.map_err(|e| {
-                ProviderError::ServerError(format!("Failed to parse files response: {}", e))
-            })?;
-
-            for file in &wrapper.files {
+            for file in &files {
                 let fname = Self::get_filename(file);
                 if fname.eq_ignore_ascii_case(filename) {
                     return Ok(Some((
@@ -876,12 +1046,11 @@ impl InternxtProvider {
                 }
             }
 
-            if wrapper.files.len() < 50 {
-                break;
+            match trail.follow("files", next)? {
+                Some(next) => cursor = Some(next),
+                None => return Ok(None),
             }
-            offset += 50;
         }
-        Ok(None)
     }
 
     /// Get display filename from file entry
@@ -908,23 +1077,32 @@ impl InternxtProvider {
         }
     }
 
-    /// Fallback auth using api.internxt.com /drive/auth/login/access (no CLI tier restriction)
+    /// Fallback auth on the gateway's web login, /drive/auth/login/access, which has
+    /// no CLI tier restriction (the CLI access endpoint answers 402 on free plans).
+    /// It used to go to api.internxt.com, a legacy host whose /drive/* paths now hang
+    /// until nginx answers 504; every official client uses the gateway.
+    /// `cli_refusal` is what the CLI access endpoint answered with its 402.
     async fn connect_web_auth(
         &mut self,
         email: &str,
         password: &str,
         tfa: &str,
         s_key: &str,
+        cli_refusal: &str,
     ) -> Result<(), ProviderError> {
+        let plan_refused = format!(
+            "{} (the CLI login answered 402: {})",
+            PLAN_WITHOUT_CLI_ACCESS, cli_refusal
+        );
         internxt_log(&format!(
             "[WEB AUTH] Trying {} /drive/auth/login/access...",
-            API_URL
+            self.api_base
         ));
 
         // Re-use sKey from step 1 to encrypt password
         let encrypted_password = Self::encrypt_password_hash(password, s_key)?;
 
-        let web_access_url = format!("{}/drive/auth/login/access", API_URL);
+        let web_access_url = format!("{}/drive/auth/login/access", self.api_base);
         internxt_log(&format!("[WEB AUTH] POST {}", web_access_url));
 
         let mut access_body = serde_json::json!({
@@ -945,29 +1123,34 @@ impl InternxtProvider {
             .await
             .map_err(|e| {
                 internxt_log(&format!("[WEB AUTH FAIL] Request error: {}", e));
-                ProviderError::ConnectionFailed(format!("Web auth access failed: {}", e))
+                ProviderError::ConnectionFailed(format!(
+                    "{}, and the web login fallback could not be reached: {}",
+                    plan_refused, e
+                ))
             })?;
 
         let status = access_resp.status();
         internxt_log(&format!("[WEB AUTH] Response status: {}", status));
 
         if !status.is_success() {
+            let retry_after = login_retry_after(&access_resp);
             let body = access_resp.text().await.unwrap_or_default();
             internxt_log(&format!(
                 "[WEB AUTH FAIL] Body: {}",
                 &body[..body.floor_char_boundary(200)]
             ));
-            return Err(ProviderError::AuthenticationFailed(format!(
-                "Authentication failed ({}): {}. Both CLI and web auth endpoints failed.",
+            return Err(internxt_login_refused(
+                &format!("{}, and the web login fallback failed", plan_refused),
                 status,
-                super::sanitize_api_error(&body)
-            )));
+                retry_after.as_deref(),
+                &body,
+            ));
         }
 
         let access_data: AccessResponse = access_resp.json().await.map_err(|e| {
-            ProviderError::AuthenticationFailed(format!(
-                "Failed to parse web access response: {}",
-                e
+            ProviderError::ServerError(format!(
+                "{}, and the web login fallback answered an unreadable response: {}",
+                plan_refused, e
             ))
         })?;
 
@@ -1004,9 +1187,6 @@ impl InternxtProvider {
         self.current_folder_id = self.root_folder_id.clone();
         self.basic_auth =
             Self::compute_basic_auth(&access_data.user.bridge_user, &access_data.user.user_id);
-
-        // Use api.internxt.com for all subsequent API calls since gateway blocked CLI
-        self.api_base = API_URL.to_string();
 
         self.dir_cache_insert(
             "/".to_string(),
@@ -1072,11 +1252,11 @@ impl StorageProvider for InternxtProvider {
         // TODO: integrate `zeroize` crate for any unavoidable intermediate Strings
         let tfa = self.config.two_factor_code.clone().unwrap_or_default();
 
-        internxt_log(&format!("[CONNECT] email={}, gateway={}", email, GATEWAY));
+        internxt_log(&format!("[CONNECT] email={}, api={}", email, self.api_base));
 
         // Step 1: POST /drive/auth/login with email → get sKey + TFA flag
         // (login endpoint uses gateway /drive/ prefix: see GATEWAY doc)
-        let login_url = format!("{}/drive/auth/login", GATEWAY);
+        let login_url = format!("{}/drive/auth/login", self.api_base);
         tracing::debug!(target: "internxt", "[STEP 1] POST {}", login_url);
         let login_body = serde_json::json!({ "email": email });
         let login_resp = self
@@ -1089,25 +1269,33 @@ impl StorageProvider for InternxtProvider {
             .await
             .map_err(|e| {
                 internxt_log(&format!("[STEP 1 FAIL] Request error: {}", e));
-                ProviderError::ConnectionFailed(format!("Login request failed: {}", e))
+                ProviderError::ConnectionFailed(format!(
+                    "Internxt login could not be reached: {}",
+                    e
+                ))
             })?;
 
         let login_status = login_resp.status();
         tracing::debug!(target: "internxt", "[STEP 1] Response status: {}", login_status);
 
         if !login_status.is_success() {
+            let retry_after = login_retry_after(&login_resp);
             let body = login_resp.text().await.unwrap_or_default();
             tracing::debug!(target: "internxt", "[STEP 1 FAIL] Body: {}", &body[..body.floor_char_boundary(200)]);
-            return Err(ProviderError::AuthenticationFailed(format!(
-                "Login failed ({}): {}",
+            return Err(internxt_login_refused(
+                "Internxt login failed",
                 login_status,
-                super::sanitize_api_error(&body)
-            )));
+                retry_after.as_deref(),
+                &body,
+            ));
         }
 
         let login_data: LoginResponse = login_resp.json().await.map_err(|e| {
             internxt_log(&format!("[STEP 1 FAIL] JSON parse: {}", e));
-            ProviderError::AuthenticationFailed(format!("Failed to parse login response: {}", e))
+            ProviderError::ServerError(format!(
+                "Internxt login answered an unreadable response: {}",
+                e
+            ))
         })?;
 
         tracing::debug!(target: "internxt", "[STEP 1 OK] sKey length={}, tfa_required={}", login_data.s_key.len(), login_data.tfa);
@@ -1126,7 +1314,7 @@ impl StorageProvider for InternxtProvider {
 
         // Step 3: POST /drive/auth/cli/login/access
         // (CLI access endpoint uses gateway /drive/ prefix: see GATEWAY doc)
-        let access_url = format!("{}/drive/auth/cli/login/access", GATEWAY);
+        let access_url = format!("{}/drive/auth/cli/login/access", self.api_base);
         tracing::debug!(target: "internxt", "[STEP 3] POST {}", access_url);
         let mut access_body = serde_json::json!({
             "email": email,
@@ -1146,13 +1334,17 @@ impl StorageProvider for InternxtProvider {
             .await
             .map_err(|e| {
                 internxt_log(&format!("[STEP 3 FAIL] Request error: {}", e));
-                ProviderError::ConnectionFailed(format!("Access request failed: {}", e))
+                ProviderError::ConnectionFailed(format!(
+                    "Internxt CLI login could not be reached: {}",
+                    e
+                ))
             })?;
 
         let access_status = access_resp.status();
         tracing::debug!(target: "internxt", "[STEP 3] Response status: {}", access_status);
 
         if !access_status.is_success() {
+            let retry_after = login_retry_after(&access_resp);
             let body = access_resp.text().await.unwrap_or_default();
             tracing::debug!(target: "internxt", "[STEP 3 FAIL] Body: {}", &body[..body.floor_char_boundary(200)]);
 
@@ -1160,25 +1352,37 @@ impl StorageProvider for InternxtProvider {
             if access_status.as_u16() == 402 {
                 internxt_log("[STEP 3] 402 = Free account blocked from CLI access. Trying web auth fallback...");
 
-                // Try alternative: api.internxt.com /drive/auth/login/access
+                // Try the web login on the gateway: /drive/auth/login/access
                 let password_clone = self.config.password.expose_secret().to_string();
+                let cli_refusal = super::sanitize_api_error(&body);
                 let result = self
-                    .connect_web_auth(&email, &password_clone, &tfa, &login_data.s_key)
+                    .connect_web_auth(
+                        &email,
+                        &password_clone,
+                        &tfa,
+                        &login_data.s_key,
+                        &cli_refusal,
+                    )
                     .await;
                 // password_clone is a plain String on the stack; it will be dropped here.
                 // SecretString's zeroize-on-drop still protects the original.
                 return result;
             }
 
-            return Err(ProviderError::AuthenticationFailed(format!(
-                "Authentication failed ({}): {}. Note: CLI access may require a paid Internxt plan.",
-                access_status, super::sanitize_api_error(&body)
-            )));
+            return Err(internxt_login_refused(
+                "Internxt CLI login failed",
+                access_status,
+                retry_after.as_deref(),
+                &body,
+            ));
         }
 
         let access_data: AccessResponse = access_resp.json().await.map_err(|e| {
             internxt_log(&format!("[STEP 3 FAIL] JSON parse: {}", e));
-            ProviderError::AuthenticationFailed(format!("Failed to parse access response: {}", e))
+            ProviderError::ServerError(format!(
+                "Internxt CLI login answered an unreadable response: {}",
+                e
+            ))
         })?;
 
         tracing::debug!(target: "internxt", "[STEP 3 OK] token_len={}", access_data.token.len());
@@ -1284,44 +1488,15 @@ impl StorageProvider for InternxtProvider {
 
         let mut entries = Vec::new();
 
-        // List all folders (paginated)
-        let mut offset = 0;
+        // List all folders, every page
+        let mut trail = CursorTrail::default();
+        let mut cursor: Option<String> = None;
         loop {
-            let url = format!(
-                "/folders/content/{}/folders?offset={}&limit=50&sort=plainName&order=ASC",
-                folder_uuid, offset
-            );
-            let full_url = format!("{}/drive{}", self.api_base, url);
-            tracing::debug!(target: "internxt", "[LIST FOLDERS] GET {}", full_url);
-
-            let resp = self
-                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
+            let (folders, next) = self
+                .content_page::<InternxtFolder>(&folder_uuid, "folders", cursor.as_deref())
                 .await?;
 
-            let status = resp.status();
-            tracing::debug!(target: "internxt", "[LIST FOLDERS] Status: {}", status);
-
-            if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                tracing::debug!(target: "internxt", "[LIST FOLDERS] Error body: {}", &body[..body.floor_char_boundary(200)]);
-                return Err(ProviderError::ServerError(format!(
-                    "List folders failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
-
-            let raw_text = resp.text().await.map_err(|e| {
-                ProviderError::ServerError(format!("Failed to read folders response: {}", e))
-            })?;
-            tracing::debug!(target: "internxt", "[LIST FOLDERS] Response ({} bytes): {}", raw_text.len(), &raw_text[..raw_text.floor_char_boundary(200)]);
-            let wrapper: FoldersWrapper = serde_json::from_str(&raw_text).map_err(|e| {
-                tracing::debug!(target: "internxt", "[LIST FOLDERS] Parse error: {} | Response: {}", e, &raw_text[..raw_text.floor_char_boundary(200)]);
-                ProviderError::ServerError(format!("Failed to parse folders: {}", e))
-            })?;
-
-            let count = wrapper.folders.len();
-            for folder in wrapper.folders {
+            for folder in folders {
                 let name = folder
                     .plain_name
                     .or(folder.name)
@@ -1364,50 +1539,21 @@ impl StorageProvider for InternxtProvider {
                 });
             }
 
-            if count < 50 {
-                break;
+            match trail.follow("folders", next)? {
+                Some(next) => cursor = Some(next),
+                None => break,
             }
-            offset += 50;
         }
 
-        // List all files (paginated)
-        offset = 0;
+        // List all files, every page
+        let mut trail = CursorTrail::default();
+        let mut cursor: Option<String> = None;
         loop {
-            let url = format!(
-                "/folders/content/{}/files?offset={}&limit=50&sort=plainName&order=ASC",
-                folder_uuid, offset
-            );
-            let full_url = format!("{}/drive{}", self.api_base, url);
-            tracing::debug!(target: "internxt", "[LIST FILES] GET {}", full_url);
-
-            let resp = self
-                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
+            let (files, next) = self
+                .content_page::<InternxtFile>(&folder_uuid, "files", cursor.as_deref())
                 .await?;
 
-            let status = resp.status();
-            tracing::debug!(target: "internxt", "[LIST FILES] Status: {}", status);
-
-            if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                tracing::debug!(target: "internxt", "[LIST FILES] Error body: {}", &body[..body.floor_char_boundary(200)]);
-                return Err(ProviderError::ServerError(format!(
-                    "List files failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
-
-            let raw_text = resp.text().await.map_err(|e| {
-                ProviderError::ServerError(format!("Failed to read files response: {}", e))
-            })?;
-            tracing::debug!(target: "internxt", "[LIST FILES] Response ({} bytes): {}", raw_text.len(), &raw_text[..raw_text.floor_char_boundary(200)]);
-            let wrapper: FilesWrapper = serde_json::from_str(&raw_text).map_err(|e| {
-                tracing::debug!(target: "internxt", "[LIST FILES] Parse error: {} | Response: {}", e, &raw_text[..raw_text.floor_char_boundary(200)]);
-                ProviderError::ServerError(format!("Failed to parse files: {}", e))
-            })?;
-
-            let count = wrapper.files.len();
-            for file in wrapper.files {
+            for file in files {
                 // Skip deleted/trashed
                 if file.status.as_deref() == Some("TRASHED")
                     || file.status.as_deref() == Some("DELETED")
@@ -1443,10 +1589,10 @@ impl StorageProvider for InternxtProvider {
                 });
             }
 
-            if count < 50 {
-                break;
+            match trail.follow("files", next)? {
+                Some(next) => cursor = Some(next),
+                None => break,
             }
-            offset += 50;
         }
 
         internxt_log(&format!(
@@ -2082,140 +2228,114 @@ impl StorageProvider for InternxtProvider {
         Ok(true)
     }
 
+    /// A move to the new folder, which keeps the name, and a rename in
+    /// place, as needed. Internxt refuses a taken name (409), but at the
+    /// second step the first had already happened, so the destination is
+    /// looked up first and a taken one refused before any change. When the
+    /// destination folder already holds the old name the rename goes first,
+    /// in the source folder; if the second step fails the first is undone.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_resolved = self.resolve_path(from);
         let to_resolved = self.resolve_path(to);
+        if from_resolved == to_resolved {
+            return Ok(());
+        }
+        super::refuse_occupied_destination(self, &from_resolved, &to_resolved).await?;
         let (from_parent, from_name) = Self::split_path(&from_resolved);
-        let from_parent = from_parent.to_string();
-        let from_name = from_name.to_string();
+        let (from_parent, from_name) = (from_parent.to_string(), from_name.to_string());
         let (to_parent, to_name) = Self::split_path(&to_resolved);
-        let to_parent = to_parent.to_string();
-        let to_name = to_name.to_string();
+        let (to_parent, to_name) = (to_parent.to_string(), to_name.to_string());
+        let join = |parent: &str, name: &str| format!("{}/{name}", parent.trim_end_matches('/'));
         let from_parent_uuid = self.resolve_folder_uuid(&from_parent).await?;
 
-        // Try as file first
-        if let Some((file_uuid, _, _)) = self
+        let (kind, uuid) = match self
             .find_file_in_folder(&from_parent_uuid, &from_name)
             .await?
         {
-            // If target is in a different directory, move first
-            if from_parent != to_parent {
-                let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
-                let move_payload = serde_json::json!({
-                    "destinationFolder": to_parent_uuid
-                });
-                let move_resp = self
-                    .send_with_reauth(|this| {
-                        this.drive_request(reqwest::Method::PATCH, &format!("/files/{}", file_uuid))
-                            .header(CONTENT_TYPE, "application/json")
-                            .json(&move_payload)
-                    })
-                    .await?;
-
-                if !move_resp.status().is_success() {
-                    let status = move_resp.status();
-                    let body = move_resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::ServerError(format!(
-                        "Move file failed ({}): {}",
-                        status,
-                        super::sanitize_api_error(&body)
-                    )));
+            Some((file_uuid, _, _)) => ("files", file_uuid),
+            None => match self.resolve_folder_uuid(&from_resolved).await {
+                Ok(folder_uuid) => ("folders", folder_uuid),
+                Err(ProviderError::NotFound(_)) => {
+                    return Err(ProviderError::NotFound(from_resolved.to_string()))
                 }
-            }
-
-            // Rename if name changed
-            if from_name != to_name {
-                let (new_plain_name, new_type) = Self::split_name_ext(&to_name);
-                let mut payload = serde_json::json!({ "plainName": new_plain_name });
-                if !new_type.is_empty() {
-                    payload["type"] = serde_json::Value::String(new_type);
-                }
-
-                let resp = self
-                    .send_with_reauth(|this| {
-                        this.drive_request(
-                            reqwest::Method::PUT,
-                            &format!("/files/{}/meta", file_uuid),
-                        )
-                        .header(CONTENT_TYPE, "application/json")
-                        .json(&payload)
-                    })
-                    .await?;
-
-                if !resp.status().is_success() {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::ServerError(format!(
-                        "Rename failed ({}): {}",
-                        status,
-                        super::sanitize_api_error(&body)
-                    )));
-                }
-            }
-            return Ok(());
-        }
-
-        // Try as folder: resolve UUID (may not be cached)
-        let folder_uuid = match self.resolve_folder_uuid(&from_resolved).await {
-            Ok(uuid) => uuid,
-            Err(_) => return Err(ProviderError::NotFound(from_resolved.to_string())),
+                Err(e) => return Err(e),
+            },
         };
 
-        // Move folder to different parent if needed
-        if from_parent != to_parent {
-            let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
-            let move_payload = serde_json::json!({
-                "destinationFolder": to_parent_uuid
-            });
-            let move_resp = self
-                .send_with_reauth(|this| {
-                    this.drive_request(reqwest::Method::PATCH, &format!("/folders/{}", folder_uuid))
-                        .header(CONTENT_TYPE, "application/json")
-                        .json(&move_payload)
-                })
-                .await?;
-
-            if !move_resp.status().is_success() {
-                let status = move_resp.status();
-                let body = move_resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Move folder failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
+        let renames = from_name != to_name;
+        let outcome: Result<(), ProviderError> = async {
+            if from_parent == to_parent {
+                if renames {
+                    self.rename_item(kind, &uuid, &to_name, &to_resolved)
+                        .await?;
+                }
+            } else {
+                let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
+                let moved_to = join(&to_parent, &from_name);
+                let rename_first = renames && self.exists(&moved_to).await?;
+                if rename_first {
+                    let renamed_at = join(&from_parent, &to_name);
+                    if self.exists(&renamed_at).await? {
+                        return Err(ProviderError::Other(format!(
+                            "Cannot move {from_resolved} to {to_resolved} in two steps without two \
+                             items sharing a name: {moved_to} and {renamed_at} both exist"
+                        )));
+                    }
+                    self.rename_item(kind, &uuid, &to_name, &renamed_at).await?;
+                    if let Err(e) = self
+                        .move_item(kind, &uuid, &to_parent_uuid, &to_resolved)
+                        .await
+                    {
+                        let undone = self
+                            .rename_item(kind, &uuid, &from_name, &from_resolved)
+                            .await;
+                        return Err(super::second_step_failed(
+                            &from_resolved,
+                            &to_resolved,
+                            &renamed_at,
+                            e,
+                            undone,
+                        ));
+                    }
+                } else {
+                    self.move_item(kind, &uuid, &to_parent_uuid, &moved_to)
+                        .await?;
+                    if renames {
+                        if let Err(e) = self.rename_item(kind, &uuid, &to_name, &to_resolved).await
+                        {
+                            let undone = self
+                                .move_item(kind, &uuid, &from_parent_uuid, &from_resolved)
+                                .await;
+                            return Err(super::second_step_failed(
+                                &from_resolved,
+                                &to_resolved,
+                                &moved_to,
+                                e,
+                                undone,
+                            ));
+                        }
+                    }
+                }
             }
+            Ok(())
         }
+        .await;
 
-        // Rename folder if name changed
-        if from_name != to_name {
-            let rename_payload = serde_json::json!({ "plainName": to_name });
-            let rename_resp = self
-                .send_with_reauth(|this| {
-                    this.drive_request(
-                        reqwest::Method::PUT,
-                        &format!("/folders/{}/meta", folder_uuid),
-                    )
-                    .header(CONTENT_TYPE, "application/json")
-                    .json(&rename_payload)
-                })
-                .await?;
-
-            if !rename_resp.status().is_success() {
-                let status = rename_resp.status();
-                let body = rename_resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Rename folder failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
+        // Whatever happened, the ids cached for either path, and for
+        // everything under them, may now point at a moved folder.
+        super::forget_cached_subtree(&mut self.dir_cache, &from_resolved);
+        super::forget_cached_subtree(&mut self.dir_cache, &to_resolved);
+        if outcome.is_ok() && kind == "folders" {
+            self.dir_cache_insert(to_resolved, DirInfo { uuid });
         }
+        outcome
+    }
 
-        // Invalidate old cache entry, re-cache at new path
-        self.dir_cache.remove(&from_resolved);
-        self.dir_cache_insert(to_resolved, DirInfo { uuid: folder_uuid });
-
-        Ok(())
+    /// No: Internxt refuses a taken name (409) and has no overwrite on
+    /// rename or move, so there is no one-step replace, and the callers that
+    /// need one refuse before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2236,25 +2356,30 @@ impl StorageProvider for InternxtProvider {
             }
         }
 
-        // Try as folder
-        if self.resolve_folder_uuid(&resolved).await.is_ok() {
-            return Ok(RemoteEntry {
-                name: name.to_string(),
-                path: resolved.clone(),
-                is_dir: true,
-                size: 0,
-                modified: None,
-                permissions: None,
-                owner: None,
-                group: None,
-                is_symlink: false,
-                link_target: None,
-                mime_type: None,
-                metadata: Default::default(),
-            });
+        // Try as folder. Only an absence is NotFound: a refused lookup says
+        // nothing about the path, and read as absent it made the look before
+        // a rename report a taken name as free.
+        match self.resolve_folder_uuid(&resolved).await {
+            Ok(_) => {}
+            Err(ProviderError::NotFound(_)) => {
+                return Err(ProviderError::NotFound(resolved.to_string()))
+            }
+            Err(e) => return Err(e),
         }
-
-        Err(ProviderError::NotFound(resolved.to_string()))
+        Ok(RemoteEntry {
+            name: name.to_string(),
+            path: resolved.clone(),
+            is_dir: true,
+            size: 0,
+            modified: None,
+            permissions: None,
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            mime_type: None,
+            metadata: Default::default(),
+        })
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -2670,9 +2795,283 @@ impl InternxtProvider {
     }
 }
 
+/// The error of a refused move or rename step. Internxt answers a taken name
+/// with 409: that is AlreadyExists (the CLI's exit 9), the one sync and
+/// `mkdir -p` handle.
+fn rename_refused(what: &str, status: reqwest::StatusCode, body: &str, to: &str) -> ProviderError {
+    if status == reqwest::StatusCode::CONFLICT {
+        return ProviderError::AlreadyExists(to.to_string());
+    }
+    ProviderError::ServerError(format!(
+        "{what} failed ({}): {}",
+        status,
+        super::sanitize_api_error(body)
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Internxt refuses a taken name and has no overwrite on rename or move, so
+    /// there is no one-step replace. The answer is no, so the callers that need
+    /// one (CLI `edit`, MCP `remote_edit`, the crypt marker paths) refuse before
+    /// they write.
+    #[tokio::test]
+    async fn internxt_does_not_claim_an_atomic_replace() {
+        let mut p = test_provider();
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
+
+    /// Internxt refuses a move or rename onto a taken name with 409, which
+    /// reached the caller as a server error.
+    #[test]
+    fn a_taken_name_is_already_exists() {
+        let taken = rename_refused(
+            "Rename",
+            reqwest::StatusCode::CONFLICT,
+            r#"{"error":"File already exists"}"#,
+            "/b.txt",
+        );
+        assert!(
+            matches!(taken, ProviderError::AlreadyExists(_)),
+            "{taken:?}"
+        );
+        let other = rename_refused("Rename", reqwest::StatusCode::BAD_GATEWAY, "", "/b.txt");
+        assert!(matches!(other, ProviderError::ServerError(_)), "{other:?}");
+    }
+
+    /// An Internxt drive double over the root `R`, which holds the folders
+    /// `src` (`S`) and `dst` (`D`), and `files` (uuid, name, folder) kept in
+    /// memory. A move (PATCH) or a rename (PUT `/meta`) onto a name its
+    /// folder holds answers 409, as Internxt does; a rename to a name
+    /// starting with `fail`, and any change to a folder, answers 403. A
+    /// rename to a name starting with `failsquat` also puts another `a.txt`
+    /// (`SQ`) in `src`, as a second client taking the name meanwhile.
+    /// Returns a provider on it, the files,
+    /// and every change as `METHOD path`.
+    #[allow(clippy::type_complexity)]
+    async fn provider_on_drive(
+        files: &[(&str, &str, &str)],
+    ) -> (
+        InternxtProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<(String, String, String)>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let store: Arc<Mutex<Vec<(String, String, String)>>> = Arc::new(Mutex::new(
+            files
+                .iter()
+                .map(|(uuid, name, folder)| {
+                    (uuid.to_string(), name.to_string(), folder.to_string())
+                })
+                .collect(),
+        ));
+        let changes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (items, seen) = (Arc::clone(&store), Arc::clone(&changes));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let (items, seen) = (Arc::clone(&items), Arc::clone(&seen));
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                    let args: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+                    let mut items = items.lock().unwrap();
+                    let conflict = || {
+                        (
+                            axum::http::StatusCode::CONFLICT,
+                            r#"{"error":"A file with this name already exists"}"#,
+                        )
+                            .into_response()
+                    };
+                    if method == axum::http::Method::GET {
+                        let body = match path.as_str() {
+                            "/drive/folders/v2/content/R/folders" => serde_json::json!({
+                                "folders": [
+                                    { "uuid": "S", "plainName": "src" },
+                                    { "uuid": "D", "plainName": "dst" },
+                                ]
+                            }),
+                            p if p.ends_with("/folders") => serde_json::json!({ "folders": [] }),
+                            p => {
+                                let folder = p
+                                    .trim_start_matches("/drive/folders/v2/content/")
+                                    .trim_end_matches("/files");
+                                let files: Vec<serde_json::Value> = items
+                                    .iter()
+                                    .filter(|f| f.2 == folder)
+                                    .map(|f| {
+                                        let (stem, ext) = f.1.rsplit_once('.').unwrap();
+                                        serde_json::json!({ "uuid": f.0, "plainName": stem, "type": ext })
+                                    })
+                                    .collect();
+                                serde_json::json!({ "files": files })
+                            }
+                        };
+                        return axum::Json(body).into_response();
+                    }
+                    seen.lock().unwrap().push(format!("{method} {path}"));
+                    if path.starts_with("/drive/folders/") {
+                        return axum::http::StatusCode::FORBIDDEN.into_response();
+                    }
+                    let uuid = path
+                        .trim_start_matches("/drive/files/")
+                        .trim_end_matches("/meta")
+                        .to_string();
+                    let at = items.iter().position(|f| f.0 == uuid).unwrap();
+                    let (name, folder) = if path.ends_with("/meta") {
+                        let name = format!(
+                            "{}.{}",
+                            args["plainName"].as_str().unwrap_or(""),
+                            args["type"].as_str().unwrap_or("")
+                        );
+                        if name.starts_with("fail") {
+                            if name.starts_with("failsquat") {
+                                items.push(("SQ".into(), "a.txt".into(), "S".into()));
+                            }
+                            return axum::http::StatusCode::FORBIDDEN.into_response();
+                        }
+                        (name, items[at].2.clone())
+                    } else {
+                        let folder = args["destinationFolder"].as_str().unwrap_or("").to_string();
+                        (items[at].1.clone(), folder)
+                    };
+                    if items.iter().any(|f| f.0 != uuid && f.1 == name && f.2 == folder) {
+                        return conflict();
+                    }
+                    items[at] = (uuid, name, folder);
+                    axum::Json(serde_json::json!({})).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.root_folder_id = "R".to_string();
+        provider.api_base = format!("http://{addr}");
+        (provider, store, changes)
+    }
+
+    /// A move to another folder onto a taken name moved the source there and
+    /// only then had its rename refused (409): the source was left moved, the
+    /// error saying nothing was done. It is now refused before any change.
+    #[tokio::test]
+    async fn a_move_onto_a_taken_name_is_refused_before_any_change() {
+        let (mut provider, _, changes) =
+            provider_on_drive(&[("FA", "a.txt", "S"), ("FB", "b.txt", "D")]).await;
+        let outcome = provider.rename("/src/a.txt", "/dst/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
+    }
+
+    /// The move keeps the old name: with `/dst/a.txt` there Internxt refused
+    /// it (409) and the rename of a file to the free `/dst/c.txt` failed as
+    /// AlreadyExists. The rename goes first, in the source folder.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        let (mut provider, store, changes) =
+            provider_on_drive(&[("FA", "a.txt", "S"), ("FA2", "a.txt", "D")]).await;
+        provider
+            .rename("/src/a.txt", "/dst/c.txt")
+            .await
+            .expect("rename then move");
+        assert_eq!(
+            *changes.lock().unwrap(),
+            ["PUT /drive/files/FA/meta", "PATCH /drive/files/FA"]
+        );
+        let moved = store.lock().unwrap()[0].clone();
+        assert_eq!((moved.1.as_str(), moved.2.as_str()), ("c.txt", "D"));
+    }
+
+    /// A folder rename that failed kept the ids cached under the old path:
+    /// only a success forgot them. After a first step that went through and
+    /// an undo that did not, `ls`, `mkdir` or `delete` under the old path
+    /// then acted on the moved folder. They are forgotten after every
+    /// outcome.
+    #[tokio::test]
+    async fn a_failed_folder_rename_forgets_the_ids_cached_under_it() {
+        let (mut provider, _, _) = provider_on_drive(&[]).await;
+        for (path, uuid) in [
+            ("/src/sub", "SUB"),
+            ("/src/sub/deep", "DEEP"),
+            ("/src/keep", "K"),
+        ] {
+            provider.dir_cache_insert(
+                path.to_string(),
+                DirInfo {
+                    uuid: uuid.to_string(),
+                },
+            );
+        }
+        let outcome = provider.rename("/src/sub", "/dst/sub2").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(!provider.dir_cache.contains_key("/src/sub"));
+        assert!(!provider.dir_cache.contains_key("/src/sub/deep"));
+        assert!(provider.dir_cache.contains_key("/src/keep"));
+    }
+
+    /// When the rename after the move failed, the file stayed in the new
+    /// folder under its old name while the error said nothing of it. The
+    /// move is undone.
+    #[tokio::test]
+    async fn a_move_whose_rename_fails_is_moved_back() {
+        let (mut provider, store, changes) = provider_on_drive(&[("FA", "a.txt", "S")]).await;
+        let outcome = provider.rename("/src/a.txt", "/dst/fail.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(
+            *changes.lock().unwrap(),
+            [
+                "PATCH /drive/files/FA",
+                "PUT /drive/files/FA/meta",
+                "PATCH /drive/files/FA"
+            ]
+        );
+        let back = store.lock().unwrap()[0].clone();
+        assert_eq!((back.1.as_str(), back.2.as_str()), ("a.txt", "S"));
+    }
+
+    /// The rename after the move failed, and so did the move back: another
+    /// file took the old name in `src` meanwhile. The file stays in `dst`
+    /// under its old name, and the error names both failures and that path
+    /// (never the rename's refusal alone, which would say nothing changed).
+    #[tokio::test]
+    async fn a_move_whose_rename_and_undo_both_fail_says_where_the_file_is() {
+        let (mut provider, store, changes) = provider_on_drive(&[("FA", "a.txt", "S")]).await;
+        let outcome = provider.rename("/src/a.txt", "/dst/failsquat.txt").await;
+        match &outcome {
+            Err(ProviderError::Other(message)) => {
+                assert!(message.contains("now at /dst/a.txt"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(
+            *changes.lock().unwrap(),
+            [
+                "PATCH /drive/files/FA",
+                "PUT /drive/files/FA/meta",
+                "PATCH /drive/files/FA"
+            ]
+        );
+        let file = store
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|f| f.0 == "FA")
+            .cloned()
+            .unwrap();
+        assert_eq!((file.1.as_str(), file.2.as_str()), ("a.txt", "D"));
+    }
 
     fn test_provider() -> InternxtProvider {
         let config = InternxtConfig {
@@ -2786,5 +3185,568 @@ mod tests {
             InternxtProvider::split_name_ext(".hidden"),
             (".hidden".to_string(), String::new())
         );
+    }
+
+    /// One page of a folder content listing, as the drive answers it.
+    fn content_page(kind: &str, items: serde_json::Value, next: Option<&str>) -> serde_json::Value {
+        serde_json::json!({ kind: items, "nextCursor": next })
+    }
+
+    /// A provider connected to a local drive that serves the folder content
+    /// listings of `pages`, keyed by (folder uuid, `folders` or `files`), one
+    /// body per page. A request without a cursor gets the first page, one
+    /// with cursor `c` the page after the one whose `nextCursor` was `c`, and
+    /// an unknown cursor a 400, as Internxt does. The route version is not
+    /// checked, so a client on the offset routes reads the first page again
+    /// and again. Every request URI is recorded.
+    async fn provider_on_paged_drive(
+        pages: Vec<((&str, &str), Vec<serde_json::Value>)>,
+    ) -> (
+        InternxtProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let pages: Arc<HashMap<(String, String), Vec<serde_json::Value>>> = Arc::new(
+            pages
+                .into_iter()
+                .map(|((uuid, kind), bodies)| ((uuid.to_string(), kind.to_string()), bodies))
+                .collect(),
+        );
+        let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&requests);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (pages, seen) = (Arc::clone(&pages), Arc::clone(&seen));
+                async move {
+                    let uri = req.uri().clone();
+                    seen.lock().unwrap().push(uri.to_string());
+                    let not_found = axum::http::StatusCode::NOT_FOUND.into_response();
+                    let Some(rest) = uri.path().strip_prefix("/drive/folders/") else {
+                        return not_found;
+                    };
+                    let rest = rest.strip_prefix("v2/").unwrap_or(rest);
+                    let Some((uuid, kind)) = rest
+                        .strip_prefix("content/")
+                        .and_then(|r| r.split_once('/'))
+                    else {
+                        return not_found;
+                    };
+                    let Some(bodies) = pages.get(&(uuid.to_string(), kind.to_string())) else {
+                        return not_found;
+                    };
+                    let cursor = url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
+                        .find(|(k, _)| k == "cursor")
+                        .map(|(_, v)| v.into_owned());
+                    let at = match cursor {
+                        None => Some(0),
+                        Some(c) => bodies
+                            .iter()
+                            .position(|b| b["nextCursor"].as_str() == Some(c.as_str()))
+                            .map(|i| i + 1),
+                    };
+                    match at.and_then(|i| bodies.get(i)) {
+                        Some(body) => axum::Json(body.clone()).into_response(),
+                        None => {
+                            (axum::http::StatusCode::BAD_REQUEST, "Invalid cursor").into_response()
+                        }
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.root_folder_id = "R".to_string();
+        provider.current_folder_id = "R".to_string();
+        provider.api_base = format!("http://{addr}");
+        (provider, requests)
+    }
+
+    /// The offset routes are deprecated; the cursor routes hand out a
+    /// `nextCursor` until the last page. A listing longer than one page lost
+    /// every page after the first. The cursors are base64 (`+`, `/`, `=`), so
+    /// they must reach the server encoded.
+    #[tokio::test]
+    async fn a_listing_reads_every_cursor_page() {
+        let folder =
+            |uuid: &str, name: &str| serde_json::json!({ "uuid": uuid, "plainName": name });
+        let file = |uuid: &str, name: &str, ext: &str| serde_json::json!({ "uuid": uuid, "plainName": name, "type": ext, "size": "3" });
+        let (mut provider, requests) = provider_on_paged_drive(vec![
+            (
+                ("R", "folders"),
+                vec![
+                    content_page(
+                        "folders",
+                        serde_json::json!([folder("A", "a"), folder("B", "b")]),
+                        Some("Zm9s+/A="),
+                    ),
+                    content_page(
+                        "folders",
+                        serde_json::json!([folder("C", "c"), folder("D", "d")]),
+                        Some("Zm9s+/B=="),
+                    ),
+                    content_page("folders", serde_json::json!([folder("E", "e")]), None),
+                ],
+            ),
+            (
+                ("R", "files"),
+                vec![
+                    content_page(
+                        "files",
+                        serde_json::json!([file("X", "x", "txt"), file("Y", "y", "txt")]),
+                        Some("ZmlsZQ+/="),
+                    ),
+                    content_page("files", serde_json::json!([file("Z", "z", "bin")]), None),
+                ],
+            ),
+        ])
+        .await;
+
+        let entries = provider.list("/").await.expect("list");
+        let mut names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
+        names.sort();
+        assert_eq!(names, ["a", "b", "c", "d", "e", "x.txt", "y.txt", "z.bin"]);
+        assert_eq!(entries.iter().filter(|e| e.is_dir).count(), 5);
+
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 5, "{requests:?}");
+        for uri in requests.iter() {
+            assert!(uri.starts_with("/drive/folders/v2/content/R/"), "{uri}");
+            assert!(!uri.contains("offset=") && !uri.contains("sort="), "{uri}");
+            assert!(uri.contains("limit=") && uri.contains("order=ASC"), "{uri}");
+        }
+    }
+
+    /// A server that hands back a cursor it already gave would make the
+    /// listing loop forever or, cut short, look complete: it is an error.
+    #[tokio::test]
+    async fn a_repeated_cursor_fails_the_listing() {
+        let (mut provider, _) = provider_on_paged_drive(vec![
+            (
+                ("R", "folders"),
+                vec![
+                    content_page(
+                        "folders",
+                        serde_json::json!([{ "uuid": "A", "plainName": "a" }]),
+                        Some("same"),
+                    ),
+                    content_page(
+                        "folders",
+                        serde_json::json!([{ "uuid": "B", "plainName": "b" }]),
+                        Some("same"),
+                    ),
+                ],
+            ),
+            (
+                ("R", "files"),
+                vec![content_page("files", serde_json::json!([]), None)],
+            ),
+        ])
+        .await;
+
+        match provider.list("/").await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(message.contains("cursor"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// A page without its item array is not an empty folder.
+    #[tokio::test]
+    async fn a_page_without_its_items_fails_the_listing() {
+        let (mut provider, _) = provider_on_paged_drive(vec![
+            (
+                ("R", "folders"),
+                vec![serde_json::json!({ "nextCursor": null })],
+            ),
+            (
+                ("R", "files"),
+                vec![content_page("files", serde_json::json!([]), None)],
+            ),
+        ])
+        .await;
+
+        match provider.list("/").await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(message.contains("folders"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Path lookups page too: a folder or a file past the first page was
+    /// reported missing.
+    #[tokio::test]
+    async fn path_lookups_follow_the_cursor_past_the_first_page() {
+        let (mut provider, _) = provider_on_paged_drive(vec![
+            (
+                ("R", "folders"),
+                vec![
+                    content_page("folders", serde_json::json!([{ "uuid": "A", "plainName": "archive" }]), Some("cm9vdA==")),
+                    content_page("folders", serde_json::json!([{ "uuid": "D", "plainName": "docs" }]), None),
+                ],
+            ),
+            (
+                ("D", "files"),
+                vec![
+                    content_page("files", serde_json::json!([{ "uuid": "O", "plainName": "other", "type": "txt" }]), Some("ZG9jcw+=")),
+                    content_page("files", serde_json::json!([{ "uuid": "F", "plainName": "report", "type": "pdf", "fileId": "net-F" }]), None),
+                ],
+            ),
+        ])
+        .await;
+
+        assert_eq!(
+            provider.resolve_folder_uuid("/docs").await.expect("docs"),
+            "D"
+        );
+        let found = provider
+            .find_file_in_folder("D", "report.pdf")
+            .await
+            .expect("lookup");
+        assert_eq!(
+            found.map(|(uuid, file_id, _)| (uuid, file_id)),
+            Some(("F".to_string(), "net-F".to_string()))
+        );
+    }
+
+    /// One answer of the local login server: status, body and the
+    /// Retry-After header it sends, if any.
+    type LoginAnswer = (u16, String, Option<&'static str>);
+
+    /// Step 1's answer on a working account: an sKey and no 2FA.
+    fn login_hands_out_an_s_key() -> LoginAnswer {
+        let s_key = InternxtProvider::encrypt_text("00112233445566778899aabbccddeeff").unwrap();
+        (
+            200,
+            serde_json::json!({ "hasKeys": true, "sKey": s_key, "tfa": false }).to_string(),
+            None,
+        )
+    }
+
+    /// A provider pointed at a local login server. Step 1 hands out an sKey,
+    /// the CLI access endpoint answers `cli` and the web login fallback
+    /// answers `web` (status and body). Every request is recorded as
+    /// "METHOD path".
+    async fn provider_on_login_server(
+        cli: (u16, &str),
+        web: (u16, &str),
+    ) -> (
+        InternxtProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        provider_on_login_steps(
+            login_hands_out_an_s_key(),
+            (cli.0, cli.1.to_string(), None),
+            (web.0, web.1.to_string(), None),
+        )
+        .await
+    }
+
+    /// A provider pointed at a local login server that answers step 1
+    /// (`/drive/auth/login`), the CLI access endpoint and the web login
+    /// fallback with `login`, `cli` and `web`.
+    async fn provider_on_login_steps(
+        login: LoginAnswer,
+        cli: LoginAnswer,
+        web: LoginAnswer,
+    ) -> (
+        InternxtProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let answers: Arc<HashMap<&'static str, LoginAnswer>> = Arc::new(HashMap::from([
+            ("/drive/auth/login", login),
+            ("/drive/auth/cli/login/access", cli),
+            ("/drive/auth/login/access", web),
+        ]));
+        let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&requests);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (answers, seen) = (Arc::clone(&answers), Arc::clone(&seen));
+                async move {
+                    let path = req.uri().path().to_string();
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{} {}", req.method(), path));
+                    match answers.get(path.as_str()) {
+                        Some((status, body, retry_after)) => {
+                            let mut response = (
+                                axum::http::StatusCode::from_u16(*status).unwrap(),
+                                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                                body.clone(),
+                            )
+                                .into_response();
+                            if let Some(retry_after) = retry_after {
+                                response.headers_mut().insert(
+                                    axum::http::header::RETRY_AFTER,
+                                    axum::http::HeaderValue::from_static(retry_after),
+                                );
+                            }
+                            response
+                        }
+                        None => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.api_base = format!("http://{addr}");
+        (provider, requests)
+    }
+
+    const TIER_402: (u16, &str) = (
+        402,
+        r#"{"message":"rclone access not allowed for this user tier"}"#,
+    );
+
+    /// The CLI access endpoint answers 402 to plans without CLI/Rclone access
+    /// (after checking the credentials); the web login on the same gateway
+    /// then logs in. It used to go to api.internxt.com, which hangs to a 504.
+    #[tokio::test]
+    async fn a_plan_without_cli_access_logs_in_through_the_gateway_web_login() {
+        let mnemonic = ["abandon"; 11].join(" ") + " about";
+        let access = serde_json::json!({
+            "token": "t",
+            "newToken": "nt",
+            "user": {
+                "email": "alice@example.com",
+                "userId": "u1",
+                "mnemonic": InternxtProvider::encrypt_text_with_key(&mnemonic, "pw").unwrap(),
+                "rootFolderId": "R",
+                "bucket": "b1",
+                "bridgeUser": "alice@example.com",
+                "uuid": "user-uuid",
+            },
+        })
+        .to_string();
+        let (mut provider, requests) = provider_on_login_server(TIER_402, (200, &access)).await;
+
+        provider.connect().await.expect("connect");
+        assert!(provider.is_connected());
+        assert_eq!(provider.root_folder_id, "R");
+        assert_eq!(provider.mnemonic.expose_secret(), mnemonic);
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [
+                "POST /drive/auth/login",
+                "POST /drive/auth/cli/login/access",
+                "POST /drive/auth/login/access",
+            ]
+        );
+    }
+
+    /// The 402 comes after the credentials were accepted, so a fallback that
+    /// then fails (the old host timed out to a 504) is not a credentials
+    /// problem: the error says what failed, not "check credentials".
+    #[tokio::test]
+    async fn a_failed_fallback_after_the_plan_refusal_does_not_blame_the_credentials() {
+        let (mut provider, _) =
+            provider_on_login_server(TIER_402, (504, "<html>504 Gateway Time-out</html>")).await;
+
+        match provider.connect().await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(
+                    message.contains("does not include CLI/WebDAV/Rclone access"),
+                    "{message}"
+                );
+                assert!(message.contains("504"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(!provider.is_connected());
+    }
+
+    /// A web login the server refuses for the account or the plan (402, 403)
+    /// is a permission problem, named as such.
+    #[tokio::test]
+    async fn a_fallback_refused_for_the_plan_or_account_is_permission_denied() {
+        for web in [
+            (
+                402,
+                r#"{"message":"access not allowed for this user tier"}"#,
+            ),
+            (
+                403,
+                r#"{"message":"Your account has been blocked for security reasons. Please reach out to us","error":"ACCOUNT_BLOCKED"}"#,
+            ),
+        ] {
+            let (mut provider, _) = provider_on_login_server(TIER_402, web).await;
+            match provider.connect().await {
+                Err(ProviderError::PermissionDenied(message)) => {
+                    assert!(
+                        message.contains("does not include CLI/WebDAV/Rclone access"),
+                        "{message}"
+                    );
+                    assert!(message.contains(&web.0.to_string()), "{message}");
+                }
+                other => panic!("{web:?}: {other:?}"),
+            }
+        }
+    }
+
+    /// Only the server's own 401 blames the credentials.
+    #[tokio::test]
+    async fn only_a_401_blames_the_credentials() {
+        let (mut provider, _) =
+            provider_on_login_server(TIER_402, (401, r#"{"message":"Wrong login credentials"}"#))
+                .await;
+        match provider.connect().await {
+            Err(ProviderError::AuthenticationFailed(message)) => {
+                assert!(message.contains("Wrong login credentials"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+
+        let (mut provider, requests) = provider_on_login_server(
+            (401, r#"{"message":"Wrong login credentials"}"#),
+            (200, "{}"),
+        )
+        .await;
+        match provider.connect().await {
+            Err(ProviderError::AuthenticationFailed(message)) => {
+                assert!(message.contains("Wrong login credentials"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(requests.lock().unwrap().len(), 2, "no fallback after a 401");
+    }
+
+    /// A CLI access endpoint that fails for another reason (a 5xx) is a
+    /// server error, not an authentication failure with a plan note.
+    #[tokio::test]
+    async fn a_cli_endpoint_server_error_is_not_an_authentication_failure() {
+        let (mut provider, requests) =
+            provider_on_login_server((500, r#"{"message":"Internal server error"}"#), (200, "{}"))
+                .await;
+        match provider.connect().await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(message.contains("500"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(requests.lock().unwrap().len(), 2, "no fallback after a 500");
+    }
+
+    const RATE_LIMITED: &str =
+        r#"{"statusCode":429,"message":"ThrottlerException: Too Many Requests"}"#;
+
+    /// After many logins in a row the gateway answers 429 on step 1 itself.
+    /// That is Internxt limiting logins, not a wrong password: the error says
+    /// so, asks to retry later and keeps the wait the server asked for.
+    #[tokio::test]
+    async fn a_rate_limited_login_says_so_and_keeps_retry_after() {
+        let (mut provider, requests) = provider_on_login_steps(
+            (429, RATE_LIMITED.to_string(), Some("30")),
+            (200, "{}".to_string(), None),
+            (200, "{}".to_string(), None),
+        )
+        .await;
+        match provider.connect().await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(message.contains("Internxt is limiting logins"), "{message}");
+                assert!(message.contains("429"), "{message}");
+                assert!(message.contains("retry in 30 seconds"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(
+            *requests.lock().unwrap(),
+            ["POST /drive/auth/login"],
+            "no further login step after a 429"
+        );
+
+        let (mut provider, _) = provider_on_login_steps(
+            (429, RATE_LIMITED.to_string(), None),
+            (200, "{}".to_string(), None),
+            (200, "{}".to_string(), None),
+        )
+        .await;
+        match provider.connect().await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(message.contains("Internxt is limiting logins"), "{message}");
+                assert!(message.contains("retry later"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The CLI access endpoint and the web login fallback read a 429 the same
+    /// way as step 1.
+    #[tokio::test]
+    async fn every_login_step_reads_a_429_as_rate_limiting() {
+        let rate_limited = || (429, RATE_LIMITED.to_string(), Some("12"));
+        for (cli, web) in [
+            (rate_limited(), (200, "{}".to_string(), None)),
+            ((TIER_402.0, TIER_402.1.to_string(), None), rate_limited()),
+        ] {
+            let (mut provider, _) =
+                provider_on_login_steps(login_hands_out_an_s_key(), cli, web).await;
+            match provider.connect().await {
+                Err(ProviderError::ServerError(message)) => {
+                    assert!(message.contains("Internxt is limiting logins"), "{message}");
+                    assert!(message.contains("retry in 12 seconds"), "{message}");
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+    }
+
+    /// Step 1 classifies its other refusals like the later steps: only a 401
+    /// blames the credentials, a 403 is the account refused, a 5xx or an
+    /// unreadable answer is the server failing.
+    #[tokio::test]
+    async fn step_one_classifies_its_refusals_like_the_later_steps() {
+        let unused = || (200, "{}".to_string(), None);
+        type Expected = fn(&ProviderError) -> bool;
+        let cases: [(LoginAnswer, Expected); 4] = [
+            (
+                (401, r#"{"message":"Wrong login credentials"}"#.to_string(), None),
+                |e| matches!(e, ProviderError::AuthenticationFailed(m) if m.contains("Wrong login credentials")),
+            ),
+            (
+                (403, r#"{"message":"Your account has been blocked for security reasons. Please reach out to us","error":"ACCOUNT_BLOCKED"}"#.to_string(), None),
+                |e| matches!(e, ProviderError::PermissionDenied(m) if m.contains("403")),
+            ),
+            (
+                (503, "<html>503 Service Temporarily Unavailable</html>".to_string(), None),
+                |e| matches!(e, ProviderError::ServerError(m) if m.contains("503")),
+            ),
+            (
+                (200, "<html>not json</html>".to_string(), None),
+                |e| matches!(e, ProviderError::ServerError(_)),
+            ),
+        ];
+        let mut wrong = Vec::new();
+        for (login, expected) in cases {
+            let label = format!("{} {}", login.0, login.1);
+            let (mut provider, _) = provider_on_login_steps(login, unused(), unused()).await;
+            match provider.connect().await {
+                Err(e) if expected(&e) => {}
+                other => wrong.push(format!("{label}: {other:?}")),
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// A login server nobody answers on is a connection failure at step 1.
+    #[tokio::test]
+    async fn an_unreachable_login_server_is_a_connection_failure() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        let mut provider = test_provider();
+        provider.api_base = format!("http://{addr}");
+        match provider.connect().await {
+            Err(ProviderError::ConnectionFailed(_)) => {}
+            other => panic!("{other:?}"),
+        }
     }
 }

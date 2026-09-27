@@ -41,6 +41,13 @@ if verb == "filesystem" and sub == "download":
 if verb == "filesystem" and sub == "info":
     path = next((a for a in args[2:] if not a.startswith("-")), "/x")
     name = pathlib.Path(path).name
+    # A test that lists the paths that exist (existing.json next to the link)
+    # gets "not found" for every other one; without the list, every path
+    # exists.
+    existing = pathlib.Path(HERE, "existing.json")
+    if existing.exists() and path not in json.loads(existing.read_text()):
+        print("Error: %s not found" % path, file=sys.stderr)
+        sys.exit(1)
     print(json.dumps({
         "name": {"ok": True, "value": name},
         "uid": "UID-CAPTURED",
@@ -65,6 +72,11 @@ if verb == "filesystem" and sub == "list":
     else:
         print("[]")
     sys.exit(0)
+# A rename to a name starting with `fail` is refused, for the tests of a
+# two-step move whose second step fails.
+if verb == "filesystem" and sub == "rename" and args[-1].startswith("fail"):
+    print("Error: the name was rejected", file=sys.stderr)
+    sys.exit(1)
 if verb == "filesystem" and sub in (
     "upload", "trash", "delete", "rename", "create-folder", "copy", "move"
 ):

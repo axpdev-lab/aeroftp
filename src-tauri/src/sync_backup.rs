@@ -256,14 +256,12 @@ pub fn remote_move_support(provider: ProviderType) -> RemoteMove {
         P::GitLab => Native,              // commit `move` action
         P::ImageKit => Native,            // file move (folders are refused, files are what we move)
         P::Cloudinary => Native,          // public_id rename
+        P::Filen => Native,               // v3/file/move or v3/dir/move, then rename
         P::S3 => ServerCopyDelete,        // CopyObject (multipart copy above 5 GiB), then delete
         P::Azure => ServerCopyDelete,     // Copy Blob, then delete
         P::Swift => ServerCopyDelete,     // X-Copy-From, then delete
         P::Backblaze => ServerCopyDelete, // b2_copy_file, then delete
         P::GitHub => ClientCopyDelete,    // download, commit, delete
-        // rename() keeps only the leaf name of the destination and renames in
-        // place with Ok (filen/mod.rs, fn rename): a "move" would stay put.
-        P::Filen => Unsupported("rename keeps the file in its folder"),
         P::GooglePhotos => Unsupported("rename is not supported"),
         P::Immich => Unsupported("rename is not supported"),
         P::Uploadcare => Unsupported("rename is not supported"),
@@ -578,7 +576,7 @@ mod tests {
             (P::Box, "native"),
             (P::PCloud, "native"),
             (P::Azure, "server-copy"),
-            (P::Filen, "unsupported"),
+            (P::Filen, "native"),
             (P::FourShared, "native"),
             (P::ZohoWorkdrive, "native"),
             (P::Internxt, "native"),
@@ -624,8 +622,8 @@ mod tests {
 
     /// A remote tree in memory. `mkdir` needs the parent, like the id-based
     /// providers; `rename` needs the target's parent and refuses an occupied
-    /// target. `leaf_only_rename` behaves like Filen's rename: it keeps the
-    /// file in its folder and answers Ok.
+    /// target. `leaf_only_rename` behaves like Filen's rename before #944: it
+    /// keeps the file in its folder and answers Ok.
     struct MemTree {
         kind: ProviderType,
         files: BTreeSet<String>,
@@ -817,7 +815,7 @@ mod tests {
 
     #[tokio::test]
     async fn archive_remote_refuses_before_touching_an_unsupported_remote() {
-        let mut p = MemTree::new(ProviderType::Filen, &["/r/a.txt"]);
+        let mut p = MemTree::new(ProviderType::Immich, &["/r/a.txt"]);
         let err = archive_remote(&mut p, "/r", &dir("v"), "S", "a.txt")
             .await
             .unwrap_err();

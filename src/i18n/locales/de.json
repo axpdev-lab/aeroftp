@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Neu laden",
             "uiTokensReset": "Überschreibungen löschen",
             "uiTokensApplied": "Angewendete Überschreibungen: {count}",
-            "uiTokensRejected": "Abgelehnte Einträge: {count}"
+            "uiTokensRejected": "Abgelehnte Einträge: {count}",
+            "keystorePreferencesFailed": "Der Import ist abgeschlossen, aber Ihre App-Einstellungen konnten nicht wiederhergestellt werden: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5604,7 +5605,12 @@
             "defaultSaltNeedsStronger": "Geben Sie ein starkes generiertes Passwort ein, um das Standard-Salt zu aktivieren.",
             "defaultSaltOneSaltNote": "Es gibt genau ein Salt: 32 Byte, öffentlich, identisch für jeden Tresor mit Standard-Salt.",
             "defaultSaltValueLabel": "Öffentliches Standard-Salt (AeroCrypt v3), SHA-256 von",
-            "defaultSaltTierMeaning": "Standard-Salt bedeutet, dass allein das Passwort den Tresor öffnet: es muss nichts weiter mitgeführt werden, und nichts weiter schützt ihn."
+            "defaultSaltTierMeaning": "Standard-Salt bedeutet, dass allein das Passwort den Tresor öffnet: es muss nichts weiter mitgeführt werden, und nichts weiter schützt ihn.",
+            "pastedObscured": "Aus rclone.conf eingefügt (verschleiert)",
+            "pastedObscuredHint": "Wählen Sie „Aus rclone.conf eingefügt“ nur, wenn Sie diesen Wert aus einer rclone.conf-Datei kopiert haben, in der rclone ihn verschleiert speichert.",
+            "formNotRecorded": "Nicht erfasst: Dieser Wert wurde gespeichert, bevor AeroFTP danach gefragt hat. Wählen Sie, wie er eingegeben wurde; ein Wert, den AeroFTP aus rclone.conf importiert hat, wurde als eingetippt gespeichert.",
+            "secretFormTyped": "Eingetippt",
+            "secretFormChangeConfirm": "Dies ändert, wie der gespeicherte Wert gelesen wird, und damit den Schlüssel, mit dem sich die Dateien öffnen lassen: Nur die richtige Wahl öffnet sie. Diese Wahl ändern?"
         },
         "modalGuard": {
             "busyTitle": "Vorgang läuft",
@@ -5869,10 +5875,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP hat eine vorhandene Konfiguration in Ihrem Persönlichen Ordner gefunden. Diese Flatpak-Installation verwendet ihren eigenen getrennten Speicher, daher sind Ihre gespeicherten Server und der verschlüsselte Tresor hier noch nicht sichtbar. Jetzt importieren? Die Dateien werden nur kopiert, nichts wird überschrieben, und der Tresor wird hier auf dieselbe Weise entsperrt wie jetzt.",
+            "importBody": "AeroFTP hat eine vorhandene Konfiguration in Ihrem Persönlichen Ordner gefunden. Diese Flatpak-Installation verwendet ihren eigenen getrennten Speicher, daher sind Ihre gespeicherten Server und der verschlüsselte Tresor hier noch nicht sichtbar. Ihre Konfiguration jetzt importieren? Die Dateien werden nur kopiert, und eine Datei, die diese Flatpak-Installation bereits hat, wird nie überschrieben.",
             "importAccept": "Importieren",
             "importedBody": "Ihre Konfiguration wurde importiert. Starten Sie AeroFTP neu, um Ihre Server und den Tresor zu laden.",
-            "restartNow": "Jetzt neu starten"
+            "restartNow": "Jetzt neu starten",
+            "importNothingBody": "Es wurde keine Datei kopiert: Zu jeder Datei, die der Import kopieren würde, gibt es in dieser Flatpak-Installation bereits eine Datei mit demselben Namen, und vorhandene Dateien werden nie überschrieben.",
+            "importFailedBody": "Der Import wurde mit einem Fehler abgebrochen: {error}. Dateien, die bereits in diese Flatpak-Installation kopiert wurden, bleiben dort, und nichts wurde überschrieben. AeroFTP bietet den Import beim nächsten Start erneut an.",
+            "importedNoVaultBody": "Ihre Konfiguration wurde importiert, enthielt aber keine gespeicherten Server und keinen Tresor, die der Import kopieren konnte. Starten Sie AeroFTP neu, um das Importierte zu laden.",
+            "importedVaultSkippedBody": "Ein Teil Ihrer Konfiguration wurde importiert, nicht jedoch Ihre gespeicherten Server und der Tresor: Diese Flatpak-Installation hat bereits einen eigenen Tresor, und vorhandene Dateien werden nie überschrieben. Starten Sie AeroFTP neu, um das Importierte zu laden.",
+            "importNothingVaultSkippedBody": "Es wurde keine Datei kopiert, daher wurden Ihre gespeicherten Server und der Tresor nicht importiert: Diese Flatpak-Installation hat bereits einen eigenen Tresor und zu jeder Datei, die der Import kopieren würde, eine Datei mit demselben Namen, und vorhandene Dateien werden nie überschrieben.",
+            "importUnreadableResult": "AeroFTP konnte das Ergebnis des Imports nicht lesen",
+            "importNothingToImportBody": "Es wurde keine Datei kopiert: Ihre vorhandene Konfiguration enthält keine Datei, die der Import kopiert (symbolische Links und temporäre SQLite-Dateien werden nie kopiert)."
         },
         "picker": {
             "unavailable": {

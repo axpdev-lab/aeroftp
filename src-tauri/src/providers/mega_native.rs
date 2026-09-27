@@ -264,6 +264,9 @@ struct MegaApiClient {
     client: reqwest::Client,
     next_request_id: AtomicU64,
     session_id: Option<String>,
+    /// Points the API at a local double in tests, so no test reaches MEGA.
+    #[cfg(test)]
+    base_url_override: Option<String>,
 }
 
 impl MegaApiClient {
@@ -279,7 +282,17 @@ impl MegaApiClient {
             client,
             next_request_id: AtomicU64::new(1),
             session_id,
+            #[cfg(test)]
+            base_url_override: None,
         }
+    }
+
+    fn base_url(&self) -> &str {
+        #[cfg(test)]
+        if let Some(url) = &self.base_url_override {
+            return url;
+        }
+        MEGA_API_BASE_URL
     }
 
     fn set_session_id(&mut self, session_id: Option<String>) {
@@ -294,7 +307,7 @@ impl MegaApiClient {
         T: DeserializeOwned,
     {
         let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
-        let mut url = reqwest::Url::parse(MEGA_API_BASE_URL).map_err(|err| {
+        let mut url = reqwest::Url::parse(self.base_url()).map_err(|err| {
             ProviderError::InvalidConfig(format!("Invalid MEGA API base URL: {err}"))
         })?;
 
@@ -526,6 +539,14 @@ impl Drop for MegaNativeProvider {
     fn drop(&mut self) {
         self.clear_runtime_session();
     }
+}
+
+/// The commands `plan_relocation` built for one rename or move, and their
+/// order.
+struct Relocation {
+    move_command: Option<Value>,
+    rename_command: Option<Value>,
+    rename_first: bool,
 }
 
 impl MegaNativeProvider {
@@ -1116,6 +1137,133 @@ impl MegaNativeProvider {
         Ok(current_handle)
     }
 
+    /// The child of the folder `parent_handle` named `name`, if any. MEGA
+    /// keeps siblings with the same name side by side, so nothing on the
+    /// server stops a second one: this in-memory look is the only guard.
+    fn child_named(&self, parent_handle: &str, name: &str) -> Option<&MegaNode> {
+        self.children
+            .get(parent_handle)?
+            .iter()
+            .filter_map(|handle| self.nodes.get(handle))
+            .find(|node| node.name == name)
+    }
+
+    /// The commands that take `from` to `to` (see `relocate_node`), or
+    /// `None` when it is already there. The trait promises no overwrite, and
+    /// MEGA would keep two siblings with one name, so a taken destination is
+    /// refused and neither step may pass through a taken name; `set_aside` is
+    /// a node a replace renames out of the way first, which does not count.
+    /// Every check runs before anything changes.
+    fn plan_relocation(
+        &self,
+        from: &str,
+        to: &str,
+        set_aside: Option<&str>,
+    ) -> Result<Option<Relocation>, ProviderError> {
+        let from_handle = self.resolve_path(from)?;
+        let from_node = self
+            .nodes
+            .get(&from_handle)
+            .cloned()
+            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+
+        let (to_parent_handle, to_name) = self.resolve_parent_and_name(to)?;
+        let moves = from_node.parent != to_parent_handle;
+        let renames = from_node.name != to_name;
+        if !moves && !renames {
+            return Ok(None);
+        }
+        let taken = |parent: &str, name: &str| {
+            self.children.get(parent).is_some_and(|handles| {
+                handles.iter().any(|handle| {
+                    *handle != from_handle
+                        && Some(handle.as_str()) != set_aside
+                        && self.nodes.get(handle).is_some_and(|node| node.name == name)
+                })
+            })
+        };
+        if taken(&to_parent_handle, &to_name) {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+        // The new name is encrypted with the node key: without one the name
+        // cannot change, and moving first would leave a half-done rename.
+        if renames && from_node.key.is_empty() {
+            return Err(ProviderError::Other(format!(
+                "Cannot rename {from}: the node has no key to encrypt its new name with"
+            )));
+        }
+        let rename_command = if renames {
+            let encrypted_attrs = encrypt_node_attrs(&to_name, &from_node.key)?;
+            Some(json!({
+                "a": "a",
+                "n": from_handle,
+                "attr": mega_base64_encode(&encrypted_attrs),
+            }))
+        } else {
+            None
+        };
+        let move_command = moves.then(|| {
+            json!({
+                "a": "m",
+                "n": from_handle,
+                "t": to_parent_handle,
+            })
+        });
+        // The move keeps the old name: when the destination already holds it
+        // the rename goes first, in the source folder, so no step puts two
+        // siblings under one name.
+        let rename_first = moves && renames && taken(&to_parent_handle, &from_node.name);
+        if rename_first && taken(&from_node.parent, &to_name) {
+            return Err(ProviderError::Other(format!(
+                "Cannot move {from} to {to} in two steps without two items sharing a name: \
+                 the destination folder holds {} and the source folder holds {to_name}",
+                from_node.name
+            )));
+        }
+        Ok(Some(Relocation {
+            move_command,
+            rename_command,
+            rename_first,
+        }))
+    }
+
+    /// Send the move (`a: "m"`) and rename (`a: "a"`) commands `rename`
+    /// built, in the order it chose. A failure after the first command went
+    /// through says so: the node is then half-way, and the caller must not
+    /// read the error as "nothing changed".
+    async fn relocate_node(
+        &self,
+        from: &str,
+        to: &str,
+        plan: Relocation,
+    ) -> Result<(), ProviderError> {
+        let Relocation {
+            move_command,
+            rename_command,
+            rename_first,
+        } = plan;
+        let steps = if rename_first {
+            [(rename_command, "renamed"), (move_command, "moved")]
+        } else {
+            [(move_command, "moved"), (rename_command, "renamed")]
+        };
+        let mut done: Option<&str> = None;
+        for (command, what) in steps {
+            let Some(command) = command else { continue };
+            if let Err(e) = self.command_with_retry::<Value>(command).await {
+                return Err(match done {
+                    None => e,
+                    Some(previous) => ProviderError::Other(format!(
+                        "{previous} {from}, but the second step toward {to} failed, so it \
+                         is only half-way there: {e}"
+                    )),
+                });
+            }
+            done = Some(what);
+        }
+        Ok(())
+    }
+
     /// Resolve parent path and extract the final name component.
     fn resolve_parent_and_name(&self, path: &str) -> Result<(String, String), ProviderError> {
         let clean = path.trim_matches('/');
@@ -1663,6 +1811,9 @@ impl StorageProvider for MegaNativeProvider {
         let master_key = self.master_key.ok_or(ProviderError::NotConnected)?;
 
         let (parent_handle, folder_name) = self.resolve_parent_and_name(path)?;
+        if self.child_named(&parent_handle, &folder_name).is_some() {
+            return Err(ProviderError::AlreadyExists(path.to_string()));
+        }
 
         // Generate random folder key
         let folder_key: [u8; 16] = rand::random();
@@ -1744,46 +1895,91 @@ impl StorageProvider for MegaNativeProvider {
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.ensure_nodes_loaded().await?;
-        let from_handle = self.resolve_path(from)?;
+        let Some(plan) = self.plan_relocation(from, to, None)? else {
+            return Ok(());
+        };
+        let outcome = self.relocate_node(from, to, plan).await;
+        self.invalidate_nodes();
+        outcome
+    }
 
-        let from_node = self
+    /// MEGA has no move that overwrites, and keeps two siblings with one
+    /// name, so a replace renames the item at `to` aside, moves `from` in,
+    /// and only then sends the one set aside to the rubbish bin; if the move
+    /// fails the item set aside gets its name back. Every command is built
+    /// from the node tree before the first goes out. `to` is empty between
+    /// the first two, which is why `supports_atomic_replace` says no.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.ensure_nodes_loaded().await?;
+        let from_handle = self.resolve_path(from)?;
+        let (to_parent_handle, to_name) = self.resolve_parent_and_name(to)?;
+        let Some(occupant) = self
+            .child_named(&to_parent_handle, &to_name)
+            .filter(|node| node.handle != from_handle)
+            .cloned()
+        else {
+            return self.rename(from, to).await;
+        };
+        let source_is_dir = self
             .nodes
             .get(&from_handle)
-            .cloned()
-            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
-
-        let (to_parent_handle, to_name) = self.resolve_parent_and_name(to)?;
-
-        // If parent changed, move first
-        if from_node.parent != to_parent_handle {
-            let _: Value = self
-                .command_with_retry(json!({
-                    "a": "m",
-                    "n": from_handle,
-                    "t": to_parent_handle,
-                }))
-                .await?;
+            .is_some_and(|node| node.node_type != 0);
+        super::refuse_replace_across_types(to, source_is_dir, occupant.node_type != 0)?;
+        if occupant.key.is_empty() {
+            return Err(ProviderError::Other(format!(
+                "Cannot replace {to}: the item there has no key to rename it aside with"
+            )));
         }
+        let trash = self
+            .trash_handle
+            .clone()
+            .ok_or_else(|| ProviderError::NotFound("Trash handle not found".into()))?;
+        let Some(plan) = self.plan_relocation(from, to, Some(&occupant.handle))? else {
+            return Ok(());
+        };
+        let aside = super::set_aside_name(&to_name);
+        let aside_path = match to.trim_end_matches('/').rsplit_once('/') {
+            Some((parent, _)) => format!("{parent}/{aside}"),
+            None => aside.clone(),
+        };
+        let rename_to = |name: &str| -> Result<Value, ProviderError> {
+            Ok(json!({
+                "a": "a",
+                "n": occupant.handle,
+                "attr": mega_base64_encode(&encrypt_node_attrs(name, &occupant.key)?),
+            }))
+        };
+        let (set_aside, restore) = (rename_to(&aside)?, rename_to(&to_name)?);
 
-        // If name changed, update attributes
-        if from_node.name != to_name {
-            let key = &from_node.key;
-            if !key.is_empty() {
-                let encrypted_attrs = encrypt_node_attrs(&to_name, key)?;
-                let attrs_b64 = mega_base64_encode(&encrypted_attrs);
-
-                let _: Value = self
-                    .command_with_retry(json!({
-                        "a": "a",
-                        "n": from_handle,
-                        "attr": attrs_b64,
-                    }))
-                    .await?;
+        let outcome = async {
+            self.command_with_retry::<Value>(set_aside).await?;
+            if let Err(e) = self.relocate_node(from, to, plan).await {
+                let restored = self.command_with_retry::<Value>(restore).await.map(|_| ());
+                return Err(super::set_aside_move_failed(to, &aside_path, e, restored));
             }
+            let binned = self
+                .command_with_retry::<Value>(json!({
+                    "a": "m",
+                    "n": occupant.handle,
+                    "t": trash,
+                }))
+                .await;
+            if let Err(e) = binned {
+                super::report_set_aside_leftover(to, &aside_path, &e);
+            }
+            Ok(())
         }
-
+        .await;
         self.invalidate_nodes();
-        Ok(())
+        outcome
+    }
+
+    /// No: MEGA can neither overwrite on a move nor give a node new content,
+    /// so a replace sets the old node aside and the name is empty for a
+    /// moment. Callers that need atomicity (CLI `edit`, MCP `remote_edit`,
+    /// the crypt marker paths) refuse before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2556,6 +2752,210 @@ mod tests {
         assert_eq!(normalize_path("/a/./b"), "/a/b");
         assert_eq!(normalize_path("/a/b/.."), "/a");
         assert_eq!(normalize_path("//a///b//"), "/a/b");
+    }
+
+    /// A provider whose tree holds `/a` (folder), `/a/f.txt` (file, key
+    /// `file_key`) and `/b` (folder, holding `f.txt` when `b_holds_f`),
+    /// pointed at a MEGA API double that answers every command with `0`.
+    /// Returns it and the commands the double received, as `a n t` (the
+    /// command, the node, and the target folder of a move).
+    async fn provider_with_tree(
+        file_key: Vec<u8>,
+        b_holds_f: bool,
+    ) -> (
+        super::MegaNativeProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let commands: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&commands);
+        let app = axum::Router::new().fallback(axum::routing::post(
+            move |axum::Json(body): axum::Json<serde_json::Value>| {
+                let command = &body[0];
+                let words: Vec<&str> = ["a", "n", "t"]
+                    .iter()
+                    .filter_map(|key| command[*key].as_str())
+                    .collect();
+                seen.lock().unwrap().push(words.join(" "));
+                async { axum::Json(json!([0])) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+
+        let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+            email: "test@example.com".to_string(),
+            password: secrecy::SecretString::new("unused".into()),
+            two_factor_code: None,
+            totp_secret: None,
+            save_session: false,
+            logout_on_disconnect: None,
+            connection_mode: crate::providers::types::MegaConnectionMode::Native,
+        });
+        provider.api_client.base_url_override = Some(format!("http://{addr}/cs"));
+        provider.root_handle = Some("ROOT".to_string());
+        provider.master_key = Some([7u8; 16]);
+        provider.nodes_loaded = true;
+        let mut add = |handle: &str, parent: &str, node_type: u8, name: &str, key: Vec<u8>| {
+            provider.nodes.insert(
+                handle.to_string(),
+                super::MegaNode {
+                    handle: handle.to_string(),
+                    parent: parent.to_string(),
+                    node_type,
+                    name: name.to_string(),
+                    size: 0,
+                    timestamp: 0,
+                    key,
+                },
+            );
+            provider
+                .children
+                .entry(parent.to_string())
+                .or_default()
+                .push(handle.to_string());
+        };
+        add("ROOT", "", 2, "", Vec::new());
+        add("A", "ROOT", 1, "a", vec![1u8; 16]);
+        add("F", "A", 0, "f.txt", file_key);
+        add("B", "ROOT", 1, "b", vec![2u8; 16]);
+        if b_holds_f {
+            add("G", "B", 0, "f.txt", vec![3u8; 32]);
+        }
+        (provider, commands)
+    }
+
+    #[tokio::test]
+    async fn mkdir_refuses_an_existing_folder() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], false).await;
+        let outcome = provider.mkdir("/a").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(commands.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn rename_moves_then_renames() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], false).await;
+        provider
+            .rename("/a/f.txt", "/b/g.txt")
+            .await
+            .expect("rename");
+        assert_eq!(*commands.lock().unwrap(), ["m F B", "a F"]);
+    }
+
+    /// A node without a key cannot get a new name. That used to be skipped
+    /// in silence after the move, reporting a rename that never happened.
+    #[tokio::test]
+    async fn rename_of_a_node_without_a_key_fails_before_moving() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(Vec::new(), false).await;
+        let outcome = provider.rename("/a/f.txt", "/b/g.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::Other(ref m)) if m.contains("no key")),
+            "{outcome:?}"
+        );
+        assert!(commands.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/f.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(commands.lock().unwrap().is_empty());
+    }
+
+    /// The move keeps the old name. With `/b/f.txt` present, moving first
+    /// put a second `f.txt` in `/b` until the rename, and left it there if
+    /// the rename failed: the rename now goes first, in `/a`.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], true).await;
+        provider
+            .rename("/a/f.txt", "/b/g.txt")
+            .await
+            .expect("rename then move");
+        assert_eq!(*commands.lock().unwrap(), ["a F", "m F B"]);
+    }
+
+    /// Old name taken at the destination and new name taken at the source:
+    /// either order would put two siblings under one name.
+    #[tokio::test]
+    async fn a_move_that_cannot_avoid_a_shared_name_changes_nothing() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], true).await;
+        provider.nodes.insert(
+            "H".to_string(),
+            super::MegaNode {
+                handle: "H".to_string(),
+                parent: "A".to_string(),
+                node_type: 0,
+                name: "g.txt".to_string(),
+                size: 0,
+                timestamp: 0,
+                key: vec![5u8; 32],
+            },
+        );
+        provider
+            .children
+            .entry("A".to_string())
+            .or_default()
+            .push("H".to_string());
+        let outcome = provider.rename("/a/f.txt", "/b/g.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(commands.lock().unwrap().is_empty());
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination. The
+    /// item there is renamed aside, the new one moved in, and only then the
+    /// old one goes to the rubbish bin.
+    #[tokio::test]
+    async fn replace_sets_the_old_item_aside_moves_the_new_one_in_then_trashes_it() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], true).await;
+        provider.trash_handle = Some("TRASH".to_string());
+        provider
+            .replace("/a/f.txt", "/b/f.txt")
+            .await
+            .expect("replace");
+        assert_eq!(*commands.lock().unwrap(), ["a G", "m F B", "m G TRASH"]);
+    }
+
+    /// A replace puts one file in place of another. Onto a folder it set the
+    /// whole folder aside and binned it, contents and all, to leave a file
+    /// under its name; a folder onto a file did the reverse. Both are refused
+    /// before any command.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_is_refused_before_any_command() {
+        use crate::providers::StorageProvider;
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], true).await;
+        provider.trash_handle = Some("TRASH".to_string());
+        for (from, to) in [("/a/f.txt", "/b"), ("/a", "/b/f.txt")] {
+            let outcome = provider.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+            provider.nodes_loaded = true;
+        }
+        assert!(
+            commands.lock().unwrap().is_empty(),
+            "{:?}",
+            commands.lock().unwrap()
+        );
     }
 
     #[test]

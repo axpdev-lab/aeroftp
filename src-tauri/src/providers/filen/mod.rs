@@ -1034,6 +1034,362 @@ impl FilenProvider {
         }
     }
 
+    /// Split a normalized path into its parent folder and leaf name.
+    fn split_parent(normalized: &str) -> (String, String) {
+        match normalized.rfind('/') {
+            Some(pos) if pos > 0 => (
+                normalized[..pos].to_string(),
+                normalized[pos + 1..].to_string(),
+            ),
+            _ => (
+                "/".to_string(),
+                normalized.trim_start_matches('/').to_string(),
+            ),
+        }
+    }
+
+    /// Drop the cached uuid of `path` and of every folder below it, after
+    /// the folder was renamed or moved: the old paths no longer exist.
+    fn forget_dir_subtree(&mut self, path: &str) {
+        let below = format!("{}/", path.trim_end_matches('/'));
+        self.dir_cache
+            .retain(|cached, _| cached != path && !cached.starts_with(&below));
+    }
+
+    /// Rename and/or move `from` to `to`. Filen renames and moves by uuid
+    /// with two separate calls, so a destination in another folder takes a
+    /// move (`v3/file/move` / `v3/dir/move`) and, if the name changes too, a
+    /// rename. Filen keeps two items with one name side by side, so neither
+    /// step may pass through a taken name. An occupied destination is refused
+    /// (the `rename` contract) unless `overwrite` (the `replace` contract):
+    /// then the item there is renamed aside first, gets its name back if the
+    /// move fails, and is trashed once the new one is in. Every call is built
+    /// before the first goes out.
+    async fn relocate(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        let from_path = Self::normalize_path(from);
+        let (from_parent, old_name) = Self::split_parent(&from_path);
+        let (to_parent, new_name) = Self::split_parent(&Self::normalize_path(to));
+        let moves = from_parent != to_parent;
+        let renames = new_name != old_name;
+
+        let entries = self.list(&from_parent).await?;
+        let entry = entries
+            .iter()
+            .find(|e| e.name == old_name)
+            .cloned()
+            .ok_or_else(|| ProviderError::NotFound(old_name.clone()))?;
+
+        let uuid = entry
+            .metadata
+            .get("uuid")
+            .cloned()
+            .ok_or_else(|| ProviderError::Other("No UUID".to_string()))?;
+
+        filen_log(&format!(
+            "rename: '{}' -> '{}', is_dir={}, uuid={}",
+            from, to, entry.is_dir, uuid
+        ));
+
+        if !moves && !renames {
+            return Ok(());
+        }
+        let destination_siblings = if moves {
+            self.list(&to_parent).await?
+        } else {
+            entries.clone()
+        };
+        let occupant = destination_siblings
+            .iter()
+            .find(|sibling| Self::name_taken(std::slice::from_ref(*sibling), &new_name, &[&uuid]))
+            .cloned();
+        if occupant.is_some() && !overwrite {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+        if let Some(occupant) = &occupant {
+            super::refuse_replace_across_types(to, entry.is_dir, occupant.is_dir)?;
+        }
+        let occupant_uuid = occupant
+            .as_ref()
+            .and_then(|o| o.metadata.get("uuid").cloned())
+            .unwrap_or_default();
+        let except = [uuid.as_str(), occupant_uuid.as_str()];
+        // The item a replace sets aside: its uuid, the calls that rename it
+        // aside and back, and where it waits.
+        let set_aside = match &occupant {
+            Some(occupant) => {
+                let aside = super::set_aside_name(&occupant.name);
+                Some((
+                    self.rename_calls(&occupant_uuid, occupant, &aside)?,
+                    self.rename_calls(&occupant_uuid, occupant, &occupant.name)?,
+                    format!("{}/{aside}", to_parent.trim_end_matches('/')),
+                    if occupant.is_dir {
+                        "v3/dir/trash"
+                    } else {
+                        "v3/file/trash"
+                    },
+                ))
+            }
+            None => None,
+        };
+
+        // Everything the two calls send is built before either goes out: a
+        // file whose key is missing used to fail after the move, and stayed in
+        // the new folder under its old name behind the error.
+        let rename_calls = if renames {
+            self.rename_calls(&uuid, &entry, &new_name)?
+        } else {
+            Vec::new()
+        };
+        let to_parent_uuid = if moves {
+            Some(self.resolve_folder_uuid(&to_parent).await?)
+        } else {
+            None
+        };
+        // The move keeps the old name: when the destination already holds it
+        // the rename goes first, in the source folder.
+        let rename_first =
+            moves && renames && Self::name_taken(&destination_siblings, &old_name, &except);
+        if rename_first && Self::name_taken(&entries, &new_name, &except) {
+            return Err(ProviderError::Other(format!(
+                "Cannot move {from} to {to} in two steps without two items sharing a name: \
+                 {to_parent} holds {old_name} and {from_parent} holds {new_name}"
+            )));
+        }
+
+        if let Some((ref set_aside_calls, _, _, _)) = set_aside {
+            self.send_rename_calls(set_aside_calls).await?;
+        }
+        // In a block, so that a failed step reaches the restore below
+        // instead of returning past it.
+        let outcome = async {
+            match to_parent_uuid {
+                None => self.send_rename_calls(&rename_calls).await,
+                Some(ref to_parent_uuid) if rename_first => {
+                    self.send_rename_calls(&rename_calls).await?;
+                    self.move_item(&uuid, to_parent_uuid, entry.is_dir)
+                        .await
+                        .map_err(|e| {
+                            ProviderError::Other(format!(
+                                "renamed {from} to {new_name}, but moving it to {to_parent} \
+                                 failed, so it is still in {from_parent}: {e}"
+                            ))
+                        })
+                }
+                Some(ref to_parent_uuid) => {
+                    self.move_item(&uuid, to_parent_uuid, entry.is_dir).await?;
+                    self.send_rename_calls(&rename_calls).await.map_err(|e| {
+                        ProviderError::Other(format!(
+                            "moved {from} to {to_parent}, but renaming it to {new_name} \
+                             failed, so it is there under its old name: {e}"
+                        ))
+                    })
+                }
+            }
+        }
+        .await;
+        let outcome = match (outcome, set_aside) {
+            (outcome, None) => outcome,
+            (Err(e), Some((_, restore_calls, aside_path, _))) => {
+                let restored = self.send_rename_calls(&restore_calls).await;
+                Err(super::set_aside_move_failed(to, &aside_path, e, restored))
+            }
+            (Ok(()), Some((_, _, aside_path, trash))) => {
+                let trashed = self
+                    .post_v3(trash, &serde_json::json!({ "uuid": occupant_uuid }))
+                    .await;
+                if let Err(e) = trashed {
+                    super::report_set_aside_leftover(to, &aside_path, &e);
+                }
+                Ok(())
+            }
+        };
+        // Also after a failure: a step that went through has changed paths.
+        if entry.is_dir {
+            self.forget_dir_subtree(&from_path);
+        }
+        if occupant.as_ref().is_some_and(|o| o.is_dir) {
+            self.forget_dir_subtree(&Self::normalize_path(to));
+        }
+        outcome
+    }
+
+    /// Whether `siblings` holds an item named `name` other than those whose
+    /// uuid is in `except`.
+    /// Filen identifies a name by the hash of its lowercased form
+    /// (`hash_name`), so the comparison ignores letter case, and the item
+    /// itself does not count, so a rename that only changes the case goes
+    /// through.
+    fn name_taken(siblings: &[RemoteEntry], name: &str, except: &[&str]) -> bool {
+        let name = name.to_lowercase();
+        siblings.iter().any(|sibling| {
+            !sibling
+                .metadata
+                .get("uuid")
+                .is_some_and(|uuid| except.contains(&uuid.as_str()))
+                && sibling.name.to_lowercase() == name
+        })
+    }
+
+    /// The calls that rename the item `uuid` to `new_name` in its folder, as
+    /// (endpoint, body, required): a folder takes `v3/dir/rename` and, for
+    /// the web app, `v3/dir/metadata` under each master key (best effort, as
+    /// before); a file takes `v3/file/rename` with its metadata re-encrypted
+    /// under the new name, which needs its key.
+    fn rename_calls(
+        &self,
+        uuid: &str,
+        entry: &RemoteEntry,
+        new_name: &str,
+    ) -> Result<Vec<(&'static str, serde_json::Value, bool)>, ProviderError> {
+        let name_hashed = Self::hash_name(new_name);
+        if entry.is_dir {
+            let name_json = serde_json::json!({"name": new_name}).to_string();
+            let mut calls = vec![(
+                "v3/dir/rename",
+                serde_json::json!({
+                    "uuid": uuid,
+                    "name": self.encrypt_metadata(&name_json)?,
+                    "nameHashed": name_hashed,
+                }),
+                true,
+            )];
+            for key in &self.auth.master_keys {
+                let encrypted = Self::encrypt_metadata_with_key(&name_json, key.expose_secret())?;
+                calls.push((
+                    "v3/dir/metadata",
+                    serde_json::json!({"uuid": uuid, "encrypted": encrypted}),
+                    false,
+                ));
+            }
+            return Ok(calls);
+        }
+        // H4: Reject empty key: using an empty key would produce a ciphertext
+        // that any attacker could decrypt. Require re-listing the directory.
+        let file_key = self.file_key_cache.get(uuid).cloned().ok_or_else(|| {
+            ProviderError::Other(
+                "No encryption key in cache for file rename (re-list directory first)".to_string(),
+            )
+        })?;
+        if file_key.is_empty() {
+            return Err(ProviderError::Other(
+                "Empty encryption key for file: cannot rename safely".to_string(),
+            ));
+        }
+        let mime = entry
+            .mime_type
+            .clone()
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+        // A rename changes the name, not the contents: carry the mtime the
+        // file already had. Stamping "now" here re-dated every renamed file
+        // and put it out of sync with its unchanged local twin.
+        let last_modified = Self::entry_last_modified_ms(entry.modified.as_deref())
+            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+        let meta_json = serde_json::json!({
+            "name": new_name,
+            "size": entry.size,
+            "mime": mime,
+            "key": file_key,
+            "lastModified": last_modified,
+        });
+        Ok(vec![(
+            "v3/file/rename",
+            serde_json::json!({
+                "uuid": uuid,
+                "name": self.encrypt_metadata(new_name)?,
+                "nameHashed": name_hashed,
+                "metadata": self.encrypt_metadata(&meta_json.to_string())?,
+            }),
+            true,
+        )])
+    }
+
+    /// Send the calls `rename_calls` built, in order. A required call that
+    /// fails is the error; the others are best effort.
+    async fn send_rename_calls(
+        &self,
+        calls: &[(&'static str, serde_json::Value, bool)],
+    ) -> Result<(), ProviderError> {
+        for (endpoint, body, required) in calls {
+            let outcome = self.post_v3(endpoint, body).await;
+            if *required {
+                outcome.map_err(|e| {
+                    filen_log(&format!("{endpoint} FAILED: {e}"));
+                    e
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    /// POST `body` to the gateway's `endpoint`; a `status: false` answer is
+    /// an error carrying the message Filen gave.
+    async fn post_v3(&self, endpoint: &str, body: &serde_json::Value) -> Result<(), ProviderError> {
+        let request = self
+            .client
+            .post(format!("{}/{endpoint}", self.gateway_base()))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+            )
+            .json(body)
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: GenericResponse = self
+            .send_retry(request)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        if resp.status {
+            Ok(())
+        } else {
+            Err(ProviderError::Other(
+                resp.message.unwrap_or_else(|| format!("{endpoint} failed")),
+            ))
+        }
+    }
+
+    /// Move a file or folder into the folder `to_folder_uuid`, keeping its
+    /// name. The endpoints and body are the ones the official SDK sends
+    /// (filen-sdk-ts `src/api/v3/file/move.ts`, `src/api/v3/dir/move.ts`).
+    async fn move_item(
+        &self,
+        uuid: &str,
+        to_folder_uuid: &str,
+        is_dir: bool,
+    ) -> Result<(), ProviderError> {
+        let kind = if is_dir { "dir" } else { "file" };
+        let request = self
+            .client
+            .post(format!("{}/v3/{kind}/move", self.gateway_base()))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+            )
+            .json(&serde_json::json!({"uuid": uuid, "to": to_folder_uuid}))
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: GenericResponse = self
+            .send_retry(request)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        if !resp.status {
+            let msg = resp.message.unwrap_or_else(|| "Move failed".to_string());
+            filen_log(&format!("move {kind} FAILED: {msg}"));
+            return Err(ProviderError::Other(msg));
+        }
+        Ok(())
+    }
+
     /// Resolve a folder path to its UUID
     async fn resolve_folder_uuid(&mut self, path: &str) -> Result<String, ProviderError> {
         let normalized = Self::normalize_path(path);
@@ -2215,161 +2571,25 @@ impl StorageProvider for FilenProvider {
         self.rmdir(path).await // Filen trash handles recursive
     }
 
+    /// Rename and/or move: see `relocate`.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let new_name = std::path::Path::new(to)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| to.to_string());
+        self.relocate(from, to, false).await
+    }
 
-        // Find the item
-        let normalized = Self::normalize_path(from);
-        let (parent_path, old_name) = match normalized.rfind('/') {
-            Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
-            _ => ("/", normalized.trim_start_matches('/')),
-        };
+    /// Filen has no move that overwrites, and keeps two items with one name,
+    /// so a replace renames the item at `to` aside, moves `from` in, and only
+    /// then trashes the one set aside: see `relocate`.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.relocate(from, to, true).await
+    }
 
-        let entries = self.list(parent_path).await?;
-        let entry = entries
-            .iter()
-            .find(|e| e.name == old_name)
-            .ok_or_else(|| ProviderError::NotFound(old_name.to_string()))?;
-
-        let uuid = entry
-            .metadata
-            .get("uuid")
-            .ok_or_else(|| ProviderError::Other("No UUID".to_string()))?;
-
-        filen_log(&format!(
-            "rename: '{}' -> '{}', is_dir={}, uuid={}",
-            from, to, entry.is_dir, uuid
-        ));
-
-        let name_hashed = Self::hash_name(&new_name);
-
-        if entry.is_dir {
-            // Folder rename: name is JSON {"name":"..."}, also call dir/metadata
-            let name_json = serde_json::json!({"name": new_name}).to_string();
-            let encrypted_name = self.encrypt_metadata(&name_json)?;
-
-            let request = self
-                .client
-                .post(format!("{}/v3/dir/rename", self.gateway_base()))
-                .header(
-                    "Authorization",
-                    HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
-                        .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-                )
-                .json(&serde_json::json!({
-                    "uuid": uuid,
-                    "name": encrypted_name,
-                    "nameHashed": name_hashed,
-                }))
-                .build()
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-            let resp: GenericResponse = self
-                .send_retry(request)
-                .await?
-                .json()
-                .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-            if !resp.status {
-                let msg = resp.message.unwrap_or_else(|| "Rename failed".to_string());
-                filen_log(&format!("rename dir FAILED: {}", msg));
-                return Err(ProviderError::Other(msg));
-            }
-
-            // Update dir/metadata for webapp compatibility
-            let master_keys_exposed: Vec<String> = self
-                .auth
-                .master_keys
-                .iter()
-                .map(|k| k.expose_secret().to_string())
-                .collect();
-            for key in &master_keys_exposed {
-                let enc = Self::encrypt_metadata_with_key(&name_json, key)?;
-                let meta_request = self
-                    .client
-                    .post(format!("{}/v3/dir/metadata", self.gateway_base()))
-                    .header(
-                        "Authorization",
-                        HeaderValue::from_str(&format!(
-                            "Bearer {}",
-                            self.auth.api_key.expose_secret()
-                        ))
-                        .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-                    )
-                    .json(&serde_json::json!({"uuid": uuid, "encrypted": enc}))
-                    .build()
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-                let _ = self.send_retry(meta_request).await;
-            }
-        } else {
-            // File rename: need encrypted name + metadata JSON with updated name
-            let encrypted_name = self.encrypt_metadata(&new_name)?;
-            // H4: Reject empty key: using an empty key would produce a ciphertext
-            // that any attacker could decrypt. Require re-listing the directory.
-            let file_key = self.file_key_cache.get(uuid).cloned().ok_or_else(|| {
-                ProviderError::Other(
-                    "No encryption key in cache for file rename (re-list directory first)"
-                        .to_string(),
-                )
-            })?;
-            if file_key.is_empty() {
-                return Err(ProviderError::Other(
-                    "Empty encryption key for file: cannot rename safely".to_string(),
-                ));
-            }
-            let mime = entry
-                .mime_type
-                .clone()
-                .unwrap_or_else(|| "application/octet-stream".to_string());
-            // A rename changes the name, not the contents: carry the mtime the
-            // file already had. Stamping "now" here re-dated every renamed file
-            // and put it out of sync with its unchanged local twin.
-            let last_modified = Self::entry_last_modified_ms(entry.modified.as_deref())
-                .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
-
-            let meta_json = serde_json::json!({
-                "name": new_name,
-                "size": entry.size,
-                "mime": mime,
-                "key": file_key,
-                "lastModified": last_modified,
-            });
-            let encrypted_metadata = self.encrypt_metadata(&meta_json.to_string())?;
-
-            let request = self
-                .client
-                .post(format!("{}/v3/file/rename", self.gateway_base()))
-                .header(
-                    "Authorization",
-                    HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
-                        .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-                )
-                .json(&serde_json::json!({
-                    "uuid": uuid,
-                    "name": encrypted_name,
-                    "nameHashed": name_hashed,
-                    "metadata": encrypted_metadata,
-                }))
-                .build()
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-            let resp: GenericResponse = self
-                .send_retry(request)
-                .await?
-                .json()
-                .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-            if !resp.status {
-                let msg = resp.message.unwrap_or_else(|| "Rename failed".to_string());
-                filen_log(&format!("rename file FAILED: {}", msg));
-                return Err(ProviderError::Other(msg));
-            }
-        }
-
-        Ok(())
+    /// No: Filen can neither overwrite on a move nor give a file new content
+    /// under its uuid without a full re-upload, so a replace sets the old item
+    /// aside and the name is empty for a moment. Callers that need atomicity
+    /// (CLI `edit`, MCP `remote_edit`, the crypt marker paths) refuse before
+    /// they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -3423,6 +3643,305 @@ mod tests {
             if message == "folder access denied"),
             "{outcome:?}"
         );
+    }
+
+    /// Every mutating call the tree gateway received: endpoint and body.
+    type GatewayCalls = Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>;
+
+    const TEST_MASTER_KEY: &str =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    /// A gateway double holding `/a` (uuid `A`) with the files `f.txt`
+    /// (uuid `F`) and `nokey.txt` (uuid `N`, listed without a key), and `/b`
+    /// (uuid `B`) with the files named in `in_b` (uuids `B0`, `B1`...). The
+    /// move endpoints answer `move_status`; every other mutating endpoint
+    /// succeeds. Returns a connected provider pointed at it.
+    async fn tree_gateway(
+        in_b: &[&str],
+        move_status: bool,
+    ) -> (FilenProvider, GatewayCalls, tokio::task::JoinHandle<()>) {
+        use axum::{routing::post, Json, Router};
+
+        let folder = |uuid: &str, name: &str, parent: &str| {
+            let name = serde_json::json!({ "name": name }).to_string();
+            serde_json::json!({
+                "uuid": uuid,
+                "name": FilenProvider::encrypt_metadata_with_key(&name, TEST_MASTER_KEY).unwrap(),
+                "parent": parent,
+                "timestamp": 1_700_000_000u64,
+            })
+        };
+        let file = |uuid: &str, name: &str, parent: &str| {
+            // `nokey.txt` stands for a file listed without its key.
+            let key = if name == "nokey.txt" {
+                String::new()
+            } else {
+                "k".repeat(32)
+            };
+            let meta = serde_json::json!({
+                "name": name,
+                "size": 3,
+                "mime": "text/plain",
+                "key": key,
+                "lastModified": 1_700_000_000_000u64,
+            })
+            .to_string();
+            serde_json::json!({
+                "uuid": uuid,
+                "metadata": FilenProvider::encrypt_metadata_with_key(&meta, TEST_MASTER_KEY).unwrap(),
+                "bucket": "b",
+                "region": "r",
+                "parent": parent,
+                "timestamp": 1_700_000_000u64,
+                "chunks": 1,
+                "size": 3,
+            })
+        };
+        let root = serde_json::json!({
+            "folders": [folder("A", "a", "root-uuid-test"), folder("B", "b", "root-uuid-test")],
+            "uploads": [],
+        });
+        let in_a = serde_json::json!({
+            "folders": [],
+            "uploads": [file("F", "f.txt", "A"), file("N", "nokey.txt", "A")],
+        });
+        let in_b = serde_json::json!({
+            "folders": [],
+            "uploads": in_b
+                .iter()
+                .enumerate()
+                .map(|(i, name)| file(&format!("B{i}"), name, "B"))
+                .collect::<Vec<_>>(),
+        });
+
+        let calls: GatewayCalls = Arc::default();
+        let mut app = Router::new().route(
+            "/v3/dir/content",
+            post(move |Json(body): Json<serde_json::Value>| {
+                let data = match body["uuid"].as_str() {
+                    Some("A") => in_a.clone(),
+                    Some("B") => in_b.clone(),
+                    _ => root.clone(),
+                };
+                async move { Json(serde_json::json!({ "status": true, "data": data })) }
+            }),
+        );
+        for endpoint in [
+            "/v3/file/move",
+            "/v3/dir/move",
+            "/v3/file/rename",
+            "/v3/dir/rename",
+            "/v3/dir/metadata",
+            "/v3/file/trash",
+            "/v3/dir/trash",
+        ] {
+            let calls = Arc::clone(&calls);
+            let status = move_status || !endpoint.ends_with("/move");
+            app =
+                app.route(
+                    endpoint,
+                    post(move |Json(body): Json<serde_json::Value>| {
+                        calls.lock().unwrap().push((endpoint.to_string(), body));
+                        async move {
+                            Json(serde_json::json!({ "status": status, "message": "refused" }))
+                        }
+                    }),
+                );
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = FilenProvider::connected_for_test(demo_cfg());
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+        (provider, calls, server)
+    }
+
+    fn endpoints(calls: &GatewayCalls) -> Vec<String> {
+        calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(e, _)| e.clone())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn rename_into_another_folder_moves_the_file() {
+        let (mut provider, calls, server) = tree_gateway(&[], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/f.txt").await;
+        server.abort();
+        outcome.expect("the move succeeds");
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1, "{calls:?}");
+        assert_eq!(calls[0].0, "/v3/file/move");
+        assert_eq!(calls[0].1, serde_json::json!({ "uuid": "F", "to": "B" }));
+    }
+
+    #[tokio::test]
+    async fn rename_into_another_folder_under_a_new_name_moves_then_renames() {
+        let (mut provider, calls, server) = tree_gateway(&[], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/g.txt").await;
+        server.abort();
+        outcome.expect("move and rename succeed");
+        assert_eq!(endpoints(&calls), ["/v3/file/move", "/v3/file/rename"]);
+        assert_eq!(calls.lock().unwrap()[1].1["uuid"], "F");
+    }
+
+    #[tokio::test]
+    async fn moving_a_folder_uses_dir_move_and_forgets_its_cached_path() {
+        let (mut provider, calls, server) = tree_gateway(&[], true).await;
+        let outcome = provider.rename("/a", "/b/a").await;
+        server.abort();
+        outcome.expect("the folder move succeeds");
+        assert_eq!(endpoints(&calls), ["/v3/dir/move"]);
+        assert_eq!(
+            calls.lock().unwrap()[0].1,
+            serde_json::json!({ "uuid": "A", "to": "B" })
+        );
+        assert!(
+            !provider.dir_cache.contains_key("/a"),
+            "the old path must not resolve to the moved folder"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_occupied_destination_is_refused_before_any_change() {
+        let (mut provider, calls, server) = tree_gateway(&["f.txt"], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/f.txt").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(endpoints(&calls).is_empty(), "{:?}", endpoints(&calls));
+    }
+
+    #[tokio::test]
+    async fn a_refused_move_is_an_error_and_renames_nothing() {
+        let (mut provider, calls, server) = tree_gateway(&[], false).await;
+        let outcome = provider.rename("/a/f.txt", "/b/g.txt").await;
+        server.abort();
+        assert!(outcome.is_err(), "a refused move must not report success");
+        assert_eq!(endpoints(&calls), ["/v3/file/move"]);
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination. The
+    /// file there is renamed aside, the new one moved in, and only then is
+    /// the old one trashed.
+    #[tokio::test]
+    async fn replace_sets_the_old_file_aside_moves_the_new_one_in_then_trashes_it() {
+        let (mut provider, calls, server) = tree_gateway(&["f.txt"], true).await;
+        let outcome = provider.replace("/a/f.txt", "/b/f.txt").await;
+        server.abort();
+        outcome.expect("replace");
+        assert_eq!(
+            endpoints(&calls),
+            ["/v3/file/rename", "/v3/file/move", "/v3/file/trash"]
+        );
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls[0].1["uuid"], "B0");
+        assert_eq!(calls[1].1, serde_json::json!({ "uuid": "F", "to": "B" }));
+        assert_eq!(calls[2].1, serde_json::json!({ "uuid": "B0" }));
+    }
+
+    /// A replace puts one file in place of another. Onto a folder it set the
+    /// whole folder aside and trashed it, contents and all, to leave a file
+    /// under its name; a folder onto a file did the reverse. Both are refused
+    /// before any call.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_is_refused_before_any_call() {
+        let (mut provider, calls, server) = tree_gateway(&[], true).await;
+        for (from, to) in [("/a/f.txt", "/b"), ("/b", "/a/f.txt")] {
+            let outcome = provider.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+        }
+        server.abort();
+        assert!(endpoints(&calls).is_empty(), "{:?}", endpoints(&calls));
+    }
+
+    /// A replace whose move is refused gives the file it set aside its name
+    /// back: the destination is left as it was.
+    #[tokio::test]
+    async fn a_replace_whose_move_fails_gives_the_old_file_its_name_back() {
+        let (mut provider, calls, server) = tree_gateway(&["f.txt"], false).await;
+        let outcome = provider.replace("/a/f.txt", "/b/f.txt").await;
+        server.abort();
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(
+            endpoints(&calls),
+            ["/v3/file/rename", "/v3/file/move", "/v3/file/rename"]
+        );
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls[0].1["uuid"], "B0");
+        assert_eq!(calls[2].1["uuid"], "B0");
+    }
+
+    /// The key check ran after the move: the file ended up in the new
+    /// folder under its old name, behind an error.
+    #[tokio::test]
+    async fn a_file_without_a_key_is_refused_before_it_moves() {
+        let (mut provider, calls, server) = tree_gateway(&[], true).await;
+        let outcome = provider.rename("/a/nokey.txt", "/b/renamed.txt").await;
+        server.abort();
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(endpoints(&calls).is_empty(), "{:?}", endpoints(&calls));
+    }
+
+    /// The move keeps the old name. With `/b/f.txt` present, moving first
+    /// put a second `f.txt` in `/b` until the rename, and left it there if
+    /// the rename failed: the rename now goes first, in `/a`.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        let (mut provider, calls, server) = tree_gateway(&["f.txt"], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/g.txt").await;
+        server.abort();
+        outcome.expect("rename then move");
+        assert_eq!(endpoints(&calls), ["/v3/file/rename", "/v3/file/move"]);
+        assert_eq!(
+            calls.lock().unwrap()[1].1,
+            serde_json::json!({ "uuid": "F", "to": "B" })
+        );
+    }
+
+    /// Old name taken at the destination and new name taken at the source:
+    /// either order would put two items under one name.
+    #[tokio::test]
+    async fn a_move_that_cannot_avoid_a_shared_name_changes_nothing() {
+        let (mut provider, calls, server) = tree_gateway(&["f.txt"], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/nokey.txt").await;
+        server.abort();
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(endpoints(&calls).is_empty(), "{:?}", endpoints(&calls));
+    }
+
+    /// Filen identifies a name by the hash of its lowercased form, so
+    /// `F.TXT` in `/b` is the name `f.txt` would take.
+    #[tokio::test]
+    async fn the_destination_check_ignores_letter_case_as_filen_does() {
+        let (mut provider, calls, server) = tree_gateway(&["F.TXT"], true).await;
+        let outcome = provider.rename("/a/f.txt", "/b/f.txt").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(endpoints(&calls).is_empty(), "{:?}", endpoints(&calls));
+    }
+
+    /// The item itself does not occupy its own name: a rename that only
+    /// changes the letter case goes through.
+    #[tokio::test]
+    async fn a_rename_that_only_changes_the_case_goes_through() {
+        let (mut provider, calls, server) = tree_gateway(&[], true).await;
+        let outcome = provider.rename("/a/f.txt", "/a/F.txt").await;
+        server.abort();
+        outcome.expect("case-only rename");
+        assert_eq!(endpoints(&calls), ["/v3/file/rename"]);
     }
 
     /// Verify the chunk-count math used by `upload()`. Mirrors the boundary

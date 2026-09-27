@@ -64,23 +64,45 @@ fn classify_pcloud_result(result: u32, error: Option<&str>) -> Option<ProviderEr
         .map(str::to_string)
         .unwrap_or_else(|| format!("Error code: {result}"));
     let msg = sanitize_api_error(&raw_msg);
+    // `msg` with the code it came with, so a run records the number, which
+    // pCloud's own text does not carry (a message pCloud left out already
+    // names it).
+    let with_code = |msg: String| {
+        if error.is_some() {
+            format!("{msg} (pCloud result {result})")
+        } else {
+            msg
+        }
+    };
     Some(match result {
         // 1000: "Log in required", 2000: "Log in failed", 2094: "Invalid access_token"
         1000 | 2000 | 2094 => ProviderError::AuthenticationFailed(msg),
-        // 2005: "Directory does not exist", 2009: "File not found or invalid
-        // file/folder id", 2010: "Invalid path". All three are absence
-        // conditions: mapping them to NotFound lets `exists()` return
-        // Ok(false) (not a propagated error) so a probe for a missing file
-        // in an existing folder is a clean negative. Without 2005 here, the
-        // AeroCrypt overlay bootstrap probe (`exists(.aeroftp-crypt.json)`)
-        // saw a ServerError and failed "could not be unlocked" on pCloud.
-        2005 | 2009 | 2010 => ProviderError::NotFound(msg),
+        // 2002: "A component of parent directory does not exist", 2005:
+        // "Directory does not exist", 2009: "File not found or invalid
+        // file/folder id", 2010: "Invalid path". All are absence conditions:
+        // mapping them to NotFound lets `exists()` return Ok(false) (not a
+        // propagated error) so a probe for a missing file is a clean
+        // negative. Without 2005 here, the AeroCrypt overlay bootstrap probe
+        // (`exists(.aeroftp-crypt.json)`) saw a ServerError and failed "could
+        // not be unlocked" on pCloud.
+        2002 | 2005 | 2009 | 2010 => ProviderError::NotFound(with_code(msg)),
         2003 | 2028 => ProviderError::PermissionDenied(msg),
         2004 => ProviderError::AlreadyExists(msg),
         // 4006: "Throttle limit reached", often inside HTTP 200 JSON.
         // Map through a stable rate-limit phrase so AIMD sees RateLimited.
         PCLOUD_RESULT_THROTTLE => pcloud_throttle_error("API", Some(msg.as_str())),
-        _ => ProviderError::ServerError(msg),
+        // `stat` of a missing path answers "File or folder not found." (live,
+        // 2026-09-26) under a code its documentation does not list. The
+        // message is the absence; every other code stays an error.
+        _ if raw_msg
+            .trim()
+            .trim_end_matches('.')
+            .trim_end()
+            .eq_ignore_ascii_case("File or folder not found") =>
+        {
+            ProviderError::NotFound(with_code(msg))
+        }
+        _ => ProviderError::ServerError(with_code(msg)),
     })
 }
 
@@ -550,6 +572,31 @@ impl PCloudProvider {
             Some(e) => Err(e),
             None => Ok(()),
         }
+    }
+
+    /// `renamefile` or `renamefolder` from `from` to `to`, by the source's
+    /// type, with pCloud's own error.
+    async fn rename_on_server(
+        &self,
+        from: &str,
+        to: &str,
+        is_dir: bool,
+    ) -> Result<(), ProviderError> {
+        let auth = self.auth_header().await?;
+        let url = format!(
+            "{}/{}?path={}&topath={}",
+            self.api_base(),
+            if is_dir { "renamefolder" } else { "renamefile" },
+            urlencoding::encode(from),
+            urlencoding::encode(to)
+        );
+        let resp: PCloudResponse = self
+            .get_with_retry(&url, &auth)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+        Self::check_response(&resp)
     }
 
     /// Look up the `folderid` of a directory by path, creating the directory
@@ -1193,47 +1240,41 @@ impl StorageProvider for PCloudProvider {
         }
     }
 
+    /// `renamefile` with `topath` overwrites a file already there (found
+    /// live on 2026-09-26), so the destination is looked up first and a
+    /// taken one refused; `renamefolder` refuses on its own (2004). The call
+    /// is chosen by the source's type: a file error used to be replaced by
+    /// the error of the folder call tried after it.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_resolved = self.resolve_path(from);
         let to_resolved = self.resolve_path(to);
-        let auth = self.auth_header().await?;
-
-        // Try file rename first
-        let url = format!(
-            "{}/renamefile?path={}&topath={}",
-            self.api_base(),
-            urlencoding::encode(&from_resolved),
-            urlencoding::encode(&to_resolved)
-        );
-
-        let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
-            .await?
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
-
-        if resp.result == 0 {
+        if from_resolved == to_resolved {
             return Ok(());
         }
-
-        // Try folder rename
-        let url = format!(
-            "{}/renamefolder?path={}&topath={}",
-            self.api_base(),
-            urlencoding::encode(&from_resolved),
-            urlencoding::encode(&to_resolved)
-        );
-
-        let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
-            .await?
-            .json()
+        let source = self.stat(&from_resolved).await?;
+        super::refuse_occupied_destination(self, &from_resolved, &to_resolved).await?;
+        self.rename_on_server(&from_resolved, &to_resolved, source.is_dir)
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+    }
 
-        Self::check_response(&resp)?;
-        Ok(())
+    /// `renamefile` onto an existing file puts the new one in its place in
+    /// one call, which is what a replace asks for. A folder cannot be put in
+    /// place of another that way (`renamefolder` refuses), and a file never
+    /// in place of a folder.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_resolved = self.resolve_path(from);
+        let to_resolved = self.resolve_path(to);
+        if from_resolved == to_resolved {
+            return Ok(());
+        }
+        let source = self.stat(&from_resolved).await?;
+        match self.stat(&to_resolved).await {
+            Ok(occupant) => super::refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?,
+            Err(ProviderError::NotFound(_)) => {}
+            Err(e) => return Err(e),
+        }
+        self.rename_on_server(&from_resolved, &to_resolved, source.is_dir)
+            .await
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1254,7 +1295,20 @@ impl StorageProvider for PCloudProvider {
             .await
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
-        // PA-006: If stat fails, fall back to listfolder to get folder metadata
+        // PA-006: If stat fails, fall back to listfolder to get folder metadata.
+        // Only when stat says the path is absent (see classify_pcloud_result:
+        // 2002, 2005, 2009, 2010, and "File or folder not found."): any other
+        // refusal (an internal error, a throttle inside HTTP 200) says nothing
+        // about the path, and the listfolder that followed answered 2005 for a
+        // file, so the look before a rename read a taken name as free.
+        if resp.result != 0
+            && !matches!(
+                classify_pcloud_result(resp.result, resp.error.as_deref()),
+                Some(ProviderError::NotFound(_))
+            )
+        {
+            Self::check_response(&resp)?;
+        }
         if resp.result != 0 {
             let url = format!(
                 "{}/listfolder?path={}&nofiles=1",
@@ -2432,6 +2486,216 @@ mod tests {
 
     fn demo_cfg() -> PCloudConfig {
         PCloudConfig::new("client-id", "client-secret", "us")
+    }
+
+    /// A pCloud API double holding `tree` (paths; a name without a dot is a
+    /// folder). `stat` answers files and `listfolder` folders, as pCloud
+    /// does; `renamefile` answers `renamefile_answer` and `renamefolder`
+    /// succeeds. Returns a provider on it and every rename call as
+    /// `endpoint?query`.
+    async fn provider_on_pcloud_tree(
+        tree: &'static [&'static str],
+        renamefile_answer: &'static str,
+    ) -> (
+        PCloudProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::get(
+            move |uri: axum::http::Uri| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    let path = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "path")
+                        .map(|(_, v)| v.to_string())
+                        .unwrap_or_default();
+                    let name = path.rsplit('/').next().unwrap_or("").to_string();
+                    let parent = path.rsplit_once('/').map(|(a, _)| a).unwrap_or_default().to_string();
+                    let in_a_known_folder = parent.is_empty() || tree.contains(&parent.as_str());
+                    let is_folder = |p: &str| tree.contains(&p) && !p.contains('.');
+                    let is_file = |p: &str| tree.contains(&p) && p.contains('.');
+                    match uri.path() {
+                        "/stat" if path.contains("busy") => {
+                            r#"{"result":5000,"error":"Internal error."}"#.to_string()
+                        }
+                        "/stat" if is_file(&path) => format!(
+                            r#"{{"result":0,"metadata":{{"name":"{name}","isfolder":false,"fileid":7}}}}"#
+                        ),
+                        // As live pCloud answers (2026-09-26): a missing path
+                        // in an existing folder is "File or folder not found."
+                        // under a code the documentation does not list (the
+                        // double takes one outside the documented absence
+                        // codes); under a missing folder it is 2002.
+                        "/stat" if in_a_known_folder => {
+                            r#"{"result":2055,"error":"File or folder not found."}"#.to_string()
+                        }
+                        "/stat" => r#"{"result":2002,"error":"A component of parent directory does not exist."}"#
+                            .to_string(),
+                        "/listfolder" if is_folder(&path) => format!(
+                            r#"{{"result":0,"metadata":{{"name":"{name}","isfolder":true,"folderid":9}}}}"#
+                        ),
+                        "/listfolder" => {
+                            r#"{"result":2005,"error":"Directory does not exist."}"#.to_string()
+                        }
+                        endpoint => {
+                            seen.lock().unwrap().push(format!(
+                                "{endpoint}?{}",
+                                urlencoding::decode(uri.query().unwrap_or("")).unwrap()
+                            ));
+                            if endpoint == "/renamefile" {
+                                renamefile_answer.to_string()
+                            } else if endpoint == "/renamefolder" && is_file(&path) {
+                                r#"{"result":2005,"error":"Directory does not exist."}"#
+                                    .to_string()
+                            } else {
+                                r#"{"result":0}"#.to_string()
+                            }
+                        }
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, calls)
+    }
+
+    /// `renamefile` with `topath` overwrites a file already there (live on
+    /// 2026-09-26: `mv a.txt b.txt` answered 0 and b.txt then held a.txt's
+    /// content). A rename onto a file or a folder is refused before any call.
+    #[tokio::test]
+    async fn rename_refuses_an_occupied_destination_before_renaming() {
+        for to in ["/b.txt", "/d"] {
+            let (mut provider, calls) =
+                provider_on_pcloud_tree(&["/a.txt", "/b.txt", "/d"], r#"{"result":0}"#).await;
+            let outcome = provider.rename("/a.txt", to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{to}: {outcome:?}"
+            );
+            assert!(
+                calls.lock().unwrap().is_empty(),
+                "{to}: {:?}",
+                calls.lock().unwrap()
+            );
+        }
+    }
+
+    /// A folder goes to `renamefolder` directly. The file call went first and
+    /// its failure was replaced by the folder call's, so a file whose rename
+    /// was refused (here: no access) reported "Directory does not exist".
+    #[tokio::test]
+    async fn rename_takes_the_call_of_the_source_type_and_keeps_its_error() {
+        let (mut provider, calls) = provider_on_pcloud_tree(&["/d"], r#"{"result":0}"#).await;
+        provider.rename("/d", "/e").await.expect("folder rename");
+        assert_eq!(*calls.lock().unwrap(), ["/renamefolder?path=/d&topath=/e"]);
+
+        let (mut provider, _) =
+            provider_on_pcloud_tree(&["/a.txt"], r#"{"result":2003,"error":"Access denied."}"#)
+                .await;
+        let outcome = provider.rename("/a.txt", "/c.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::PermissionDenied(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// The text of an absence and of a server error carries pCloud's result
+    /// code, which a live run can then record; the text is matched past
+    /// surrounding spaces.
+    #[test]
+    fn an_absence_or_a_server_error_names_its_result_code() {
+        let absent = classify_pcloud_result(2055, Some(" File or folder not found.  "));
+        assert!(
+            matches!(&absent, Some(ProviderError::NotFound(m)) if m.contains("(pCloud result 2055)")),
+            "{absent:?}"
+        );
+        let failed = classify_pcloud_result(5000, Some("Internal error. Try again later."));
+        assert!(
+            matches!(&failed, Some(ProviderError::ServerError(m)) if m.contains("(pCloud result 5000)")),
+            "{failed:?}"
+        );
+        // Without pCloud's text the message is the code, once.
+        let bare = classify_pcloud_result(5000, None);
+        assert!(
+            matches!(&bare, Some(ProviderError::ServerError(m)) if m.matches("5000").count() == 1),
+            "{bare:?}"
+        );
+    }
+
+    /// Round 4 let only 2005, 2009 and 2010 count as absent, and every rename
+    /// to a free name failed live: pCloud answers the stat of a missing path
+    /// "File or folder not found." under a code it does not document, and a
+    /// path under a missing folder 2002. Both are absent; the rename to a
+    /// free name goes out.
+    #[tokio::test]
+    async fn a_missing_path_as_pcloud_answers_it_is_absent() {
+        let (mut provider, calls) = provider_on_pcloud_tree(&["/a.txt"], r#"{"result":0}"#).await;
+        provider
+            .rename("/a.txt", "/free.txt")
+            .await
+            .expect("a free name");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["/renamefile?path=/a.txt&topath=/free.txt"]
+        );
+        assert!(matches!(
+            provider.stat("/missing/free.txt").await,
+            Err(ProviderError::NotFound(_))
+        ));
+    }
+
+    /// A stat that pCloud refuses with anything but an absence code (here
+    /// 5000) said nothing about the path, but it fell to listfolder, whose
+    /// 2005 for a file read as NotFound: the look saw a free name and
+    /// `renamefile` overwrote. The rename now fails and sends nothing.
+    #[tokio::test]
+    async fn a_refused_stat_fails_the_rename_closed() {
+        let (mut provider, calls) =
+            provider_on_pcloud_tree(&["/a.txt", "/busy.txt"], r#"{"result":0}"#).await;
+        let outcome = provider.rename("/a.txt", "/busy.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// A rename onto its own path does nothing and sends nothing.
+    #[tokio::test]
+    async fn rename_onto_its_own_path_sends_nothing() {
+        let (mut provider, calls) = provider_on_pcloud_tree(&["/a.txt"], r#"{"result":0}"#).await;
+        provider.rename("/a.txt", "/a.txt").await.expect("no-op");
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths): there the overwrite of
+    /// `renamefile` is exactly what is asked for, in one call.
+    #[tokio::test]
+    async fn replace_renames_a_file_over_the_existing_one() {
+        let (mut provider, calls) =
+            provider_on_pcloud_tree(&["/a.txt", "/b.txt"], r#"{"result":0}"#).await;
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["/renamefile?path=/a.txt&topath=/b.txt"]
+        );
     }
 
     fn fixture_connected() -> PCloudProvider {

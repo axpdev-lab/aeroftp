@@ -299,6 +299,11 @@ impl From<GitHubError> for ProviderError {
             // GraphQL / Parse / Input
             GitHubError::GraphQLError { .. } => ProviderError::ServerError(text),
             GitHubError::ParseError(_) => ProviderError::ParseError(text),
+            // The Contents API refuses to create a file over an existing
+            // one: its sha, which an update must name, was not supplied.
+            GitHubError::Unprocessable(ref msg) if msg.contains("\"sha\" wasn't supplied") => {
+                ProviderError::AlreadyExists(text)
+            }
             GitHubError::InvalidInput(_) | GitHubError::Unprocessable(_) => {
                 ProviderError::Other(text)
             }
@@ -398,6 +403,11 @@ pub fn classify_api_error(
                 }
             } else if message.contains("pull request") {
                 GitHubError::RequiredPullRequest
+            } else if message.contains("\"sha\" wasn't supplied") {
+                // The Contents API refusing to create a file over an existing
+                // one: without this the REST path never reached the
+                // AlreadyExists mapping of `Unprocessable`.
+                GitHubError::Unprocessable(message)
             } else {
                 GitHubError::ApiError { status, message }
             }
@@ -411,6 +421,40 @@ pub fn classify_api_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Contents API refuses to create a file over an existing one with
+    /// 422 "\"sha\" wasn't supplied": that is a taken destination,
+    /// AlreadyExists (the CLI's exit 9), not a generic error.
+    #[test]
+    fn a_contents_put_onto_an_existing_file_is_already_exists() {
+        let taken: ProviderError =
+            GitHubError::Unprocessable("Invalid request. \"sha\" wasn't supplied.".to_string())
+                .into();
+        assert!(
+            matches!(taken, ProviderError::AlreadyExists(_)),
+            "{taken:?}"
+        );
+        let other: ProviderError =
+            GitHubError::Unprocessable("Validation failed".to_string()).into();
+        assert!(matches!(other, ProviderError::Other(_)), "{other:?}");
+    }
+
+    /// The Contents API's 422 comes through `classify_api_error`, which made
+    /// every unmatched 422 an `ApiError` (a ServerError): the mapping above
+    /// was reached only by a hand-built `Unprocessable`. The REST answer
+    /// itself is AlreadyExists now.
+    #[test]
+    fn the_rest_422_for_an_existing_file_is_already_exists() {
+        let body = serde_json::json!({
+            "message": "Invalid request.\n\n\"sha\" wasn't supplied.",
+            "documentation_url": "https://docs.github.com/rest/repos/contents"
+        });
+        let taken: ProviderError = classify_api_error(422, &body, Some("a.txt")).into();
+        assert!(
+            matches!(taken, ProviderError::AlreadyExists(_)),
+            "{taken:?}"
+        );
+    }
 
     #[test]
     fn test_format_bytes() {

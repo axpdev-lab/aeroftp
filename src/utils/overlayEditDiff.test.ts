@@ -85,6 +85,16 @@ describe('overlayEditDiffers (#369: OAuth Save without signing in again)', () =>
         expect(overlayEditDiffers(form('/keys/b.keyfile'), aero)).toBe(true);
     });
 
+    it('sees a password or salt form being recorded, and not a form left as it was', () => {
+        const forms = { password: 'clear' as const, salt: 'clear' as const };
+        expect(overlayEditDiffers(hydrated({ passwordForm: 'clear', saltForm: 'clear' }), stored({ secretForms: forms }))).toBe(false);
+        expect(overlayEditDiffers(hydrated({ passwordForm: 'obscured', saltForm: 'clear' }), stored({ secretForms: forms }))).toBe(true);
+        expect(overlayEditDiffers(hydrated({ passwordForm: 'clear', saltForm: 'obscured' }), stored({ secretForms: forms }))).toBe(true);
+        // A form that was never recorded stays unrecorded until the user says.
+        expect(overlayEditDiffers(hydrated(), stored())).toBe(false);
+        expect(overlayEditDiffers(hydrated({ passwordForm: 'clear' }), stored())).toBe(true);
+    });
+
     it('ignores the rclone-only fields on a native AeroCrypt overlay, which never persists them', () => {
         const aero = stored({ binding: { ...rcloneBinding, kind: 'aerocrypt', filenameEncryption: 'standard' } });
         expect(overlayEditDiffers(hydrated({ kind: 'aerocrypt', directoryNameEncryption: false, salt: 'x' }), aero)).toBe(false);
