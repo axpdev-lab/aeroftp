@@ -2600,6 +2600,13 @@ impl StorageProvider for FilenProvider {
         Ok(false)
     }
 
+    /// Yes: the replace above renames the item at the destination aside,
+    /// moves the new one in, and only then deletes the old one, which is
+    /// what an edit's non-atomic opt-in needs.
+    fn replace_sets_aside(&self) -> bool {
+        true
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let normalized = Self::normalize_path(path);
         let (parent_path, name) = match normalized.rfind('/') {
@@ -3852,6 +3859,7 @@ mod tests {
         assert_eq!(calls[0].1["uuid"], "B0");
         assert_eq!(calls[1].1, serde_json::json!({ "uuid": "F", "to": "B" }));
         assert_eq!(calls[2].1, serde_json::json!({ "uuid": "B0" }));
+        assert!(provider.replace_sets_aside(), "what the edit opt-in asks");
     }
 
     /// A replace puts one file in place of another. Onto a folder it set the

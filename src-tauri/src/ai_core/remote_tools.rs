@@ -1297,21 +1297,36 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     // Asked before the temporary exists, not after: a backend that cannot put
     // one file over another refuses while the server is still untouched, so
     // the refusal the agent reads can say that nothing was written (G119).
-    // `allow_non_atomic` skips the refusal and still publishes with `replace`.
-    if !allow_non_atomic
-        && !backend
-            .supports_atomic_replace()
-            .await
-            .map_err(ToolError::Exec)?
+    // `allow_non_atomic` accepts the set-aside replace, and only on a backend
+    // whose replace does set the previous file aside: on any other the
+    // replace would refuse the taken name after the temporary was uploaded.
+    if !backend
+        .supports_atomic_replace()
+        .await
+        .map_err(ToolError::Exec)?
     {
-        return Err(ToolError::Exec(format!(
-            "cannot edit `{path}` in place: this server offers no atomic way to put one \
-             file over another, and doing it in two steps would leave a moment with no \
-             file at all. Nothing was written and `{path}` is unchanged. Pass \
-             allow_non_atomic true to set the previous file aside, move the new one into \
-             its place, and then delete the old one: a short moment with no file, and \
-             the old one is not lost."
-        )));
+        const OPT_IN: &str = "`allow_non_atomic` true";
+        let sets_aside = backend
+            .replace_sets_aside()
+            .await
+            .map_err(ToolError::Exec)?;
+        if allow_non_atomic && !sets_aside {
+            return Err(ToolError::Exec(crate::providers::opt_in_cannot_set_aside(
+                &path, OPT_IN,
+            )));
+        }
+        if !allow_non_atomic {
+            let mut refusal = format!(
+                "cannot edit `{path}` in place: this server offers no atomic way to put one \
+                 file over another, and doing it in two steps would leave a moment with no \
+                 file at all. Nothing was written and `{path}` is unchanged."
+            );
+            if sets_aside {
+                refusal.push(' ');
+                refusal.push_str(&crate::providers::set_aside_opt_in_hint(OPT_IN));
+            }
+            return Err(ToolError::Exec(refusal));
+        }
     }
 
     let temp_path = edit_temp_path(&path);
@@ -3779,6 +3794,10 @@ mod tests {
         /// What `supports_atomic_replace` answers. True, matching the trait
         /// default, unless a test stands on a set-aside backend.
         atomic_replace: bool,
+        /// What `replace_sets_aside` answers. False, matching the trait
+        /// default: with `atomic_replace` false too, this is a backend whose
+        /// replace is its rename.
+        sets_aside: bool,
     }
 
     impl FakeBackend {
@@ -3823,6 +3842,7 @@ mod tests {
                 symlinks: std::collections::HashSet::new(),
                 provider_type: Some(ProviderType::Ftp),
                 atomic_replace: true,
+                sets_aside: false,
             }
         }
 
@@ -3943,6 +3963,9 @@ mod tests {
         }
         async fn supports_atomic_replace(&self) -> Result<bool, String> {
             Ok(self.atomic_replace)
+        }
+        async fn replace_sets_aside(&self) -> Result<bool, String> {
+            Ok(self.sets_aside)
         }
         async fn rename(&self, from: &str, to: &str) -> Result<(), String> {
             if let Some(msg) = &self.rename_fails_with {
@@ -4856,6 +4879,7 @@ mod tests {
     async fn edit_allow_non_atomic_replaces_when_the_backend_cannot() {
         let mut fake = FakeBackend::sample();
         fake.atomic_replace = false;
+        fake.sets_aside = true;
         fake.downloads
             .insert("/root/a.txt".to_string(), b"old text".to_vec());
         let backend = Arc::new(fake);
@@ -4900,6 +4924,53 @@ mod tests {
                 .get("/root/a.txt")
                 .map(Vec::as_slice),
             Some(b"new text".as_slice())
+        );
+    }
+
+    /// M1 of the 4.2.1 closeout: on a backend whose replace is its rename
+    /// (Box, 4shared, Internxt, WorkDrive, GitHub, SFTP without
+    /// posix-rename...) `allow_non_atomic` uploaded the temporary, the
+    /// replace refused the taken name, and the temporary was deleted again:
+    /// something was written. The opt-in is now refused before the upload,
+    /// and neither refusal offers an opt-in that cannot work there.
+    #[tokio::test]
+    async fn edit_allow_non_atomic_refuses_a_rename_only_backend_before_it_uploads() {
+        let mut fake = FakeBackend::sample();
+        fake.atomic_replace = false;
+        fake.downloads
+            .insert("/root/a.txt".to_string(), b"old text".to_vec());
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+        let args = |allow_non_atomic: bool| {
+            json!({
+                "server": "s",
+                "path": "/root/a.txt",
+                "find": "old",
+                "replace": "new",
+                "allow_non_atomic": allow_non_atomic,
+            })
+        };
+
+        let opted_in = edit(&ctx, &args(true)).await.unwrap_err().to_string();
+        assert!(
+            backend.uploads.lock().unwrap().is_empty(),
+            "the opt-in must be refused before anything is staged: {opted_in}"
+        );
+        assert!(
+            backend.renames.lock().unwrap().is_empty(),
+            "nothing may be published: {opted_in}"
+        );
+        assert!(
+            opted_in.contains("Nothing was written")
+                && opted_in.contains("set the previous file aside"),
+            "the refusal must say why the opt-in cannot work here: {opted_in}"
+        );
+
+        let default = edit(&ctx, &args(false)).await.unwrap_err().to_string();
+        assert!(backend.uploads.lock().unwrap().is_empty());
+        assert!(
+            !default.contains("allow_non_atomic"),
+            "a rename-only backend must not be offered the opt-in: {default}"
         );
     }
 

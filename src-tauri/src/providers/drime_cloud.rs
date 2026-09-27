@@ -1736,6 +1736,13 @@ impl StorageProvider for DrimeCloudProvider {
         Ok(false)
     }
 
+    /// Yes: the replace above renames the item at the destination aside,
+    /// moves the new one in, and only then deletes the old one, which is
+    /// what an edit's non-atomic opt-in needs.
+    fn replace_sets_aside(&self) -> bool {
+        true
+    }
+
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         self.delete(path).await
     }
@@ -3212,6 +3219,7 @@ mod tests {
     async fn drime_does_not_claim_an_atomic_replace() {
         let mut provider = test_provider();
         assert!(!provider.supports_atomic_replace().await.unwrap());
+        assert!(provider.replace_sets_aside());
     }
 
     #[test]

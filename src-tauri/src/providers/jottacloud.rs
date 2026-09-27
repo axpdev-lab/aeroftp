@@ -3307,6 +3307,7 @@ mod tests {
     async fn jottacloud_does_not_claim_an_atomic_replace() {
         let mut p = test_provider();
         assert!(!p.supports_atomic_replace().await.unwrap());
+        assert!(!p.replace_sets_aside());
     }
 
     /// A byte cut inside a multibyte character panics: masking must cut on a

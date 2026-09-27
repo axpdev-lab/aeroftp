@@ -327,6 +327,11 @@ impl RemoteBackend for McpRemoteBackend {
             .await
     }
 
+    async fn replace_sets_aside(&self) -> Result<bool, String> {
+        self.with_provider(move |p| Box::pin(async move { Ok(p.replace_sets_aside()) }))
+            .await
+    }
+
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
         let path = path.to_string();
         let pattern = pattern.to_string();

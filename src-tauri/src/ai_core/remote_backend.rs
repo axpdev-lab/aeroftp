@@ -106,6 +106,14 @@ pub trait RemoteBackend: Send + Sync {
         Ok(true)
     }
 
+    /// Whether [`replace`](RemoteBackend::replace) sets the previous file
+    /// aside when it cannot replace atomically, which is what an edit's
+    /// `allow_non_atomic` opt-in needs: see
+    /// `StorageProvider::replace_sets_aside`. Ask BEFORE staging.
+    async fn replace_sets_aside(&self) -> Result<bool, String> {
+        Ok(false)
+    }
+
     /// Search for files matching a pattern.
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String>;
 

@@ -622,6 +622,21 @@ impl RemoteBackend for TauriRemoteBackend {
         }
     }
 
+    async fn replace_sets_aside(&self) -> Result<bool, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref p) = *Self::active_provider(app).lock().await {
+                    return Ok(p.replace_sets_aside());
+                }
+                // Plain FTP: `RNFR`/`RNTO` replaces in one step where the
+                // server allows it (see `supports_atomic_replace` above) and
+                // sets nothing aside.
+                Ok(false)
+            }
+            TauriRemoteBackend::Temp { provider } => Ok(provider.lock().await.replace_sets_aside()),
+        }
+    }
+
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
         match self {
             TauriRemoteBackend::Active { app } => {

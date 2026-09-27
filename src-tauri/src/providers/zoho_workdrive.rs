@@ -3877,6 +3877,7 @@ mod tests {
     async fn zoho_does_not_claim_an_atomic_replace() {
         let mut p = ZohoWorkdriveProvider::new(config("com"));
         assert!(!p.supports_atomic_replace().await.unwrap());
+        assert!(!p.replace_sets_aside());
     }
 
     /// After `cd /docs`: `/x` and `x` name different folders, `/x` the

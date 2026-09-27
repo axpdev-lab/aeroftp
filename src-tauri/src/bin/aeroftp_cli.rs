@@ -1926,10 +1926,12 @@ enum Commands {
         /// Replace only the first occurrence
         #[arg(long)]
         first: bool,
-        /// On a server that cannot put one file over another in one step,
-        /// set the previous file aside, move the new one into its place, and
-        /// then delete the old one. There is a short moment with no file.
-        /// Without this flag the edit is refused and nothing is written.
+        /// On a server whose replace sets the previous file aside (MEGA
+        /// native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive): set it aside, move
+        /// the new one into its place, then delete the old one. There is a
+        /// short moment with no file. Without this flag such a server refuses
+        /// the edit and nothing is written; any other server that cannot
+        /// replace in one step refuses it with the flag too.
         #[arg(long)]
         allow_non_atomic: bool,
     },
@@ -35541,11 +35543,15 @@ async fn publish_cli_edit_via_temp_rename(
     // one file over another refuses here, while the server is still untouched,
     // so the refusal can say that nothing was written and be telling the truth
     // (G119). `--allow-non-atomic` is the explicit opt-in to the set-aside
-    // replace those backends already implement: a short moment with no file,
-    // and the previous one is not lost.
-    if !allow_non_atomic {
-        ftp_client_gui_lib::providers::ensure_atomic_replace(provider, remote_path).await?;
-    }
+    // replace some of those backends implement (a short moment with no file,
+    // and the previous one is not lost); on the others it is refused here too.
+    ftp_client_gui_lib::providers::ensure_edit_can_replace(
+        provider,
+        remote_path,
+        allow_non_atomic,
+        "`--allow-non-atomic`",
+    )
+    .await?;
 
     let remote_temp_path = cli_edit_temp_path(remote_path);
     if let Err(e) = provider
@@ -80607,6 +80613,8 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         replace_refuses_as_existing: bool,
         /// What this fake answers to `supports_atomic_replace`.
         atomic_replace: bool,
+        /// What this fake answers to `replace_sets_aside`.
+        sets_aside: bool,
         /// When set, `stat` fails with this instead of answering.
         stat_fails_with: Option<String>,
         /// When set, a replace that succeeds leaves this warning, as a
@@ -80626,6 +80634,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 replace_fails_with: None,
                 replace_refuses_as_existing: false,
                 atomic_replace: true,
+                sets_aside: false,
                 stat_fails_with: None,
                 replace_leaves_warning: None,
             }
@@ -80766,6 +80775,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
 
         async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
             Ok(self.atomic_replace)
+        }
+
+        fn replace_sets_aside(&self) -> bool {
+            self.sets_aside
         }
 
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -81217,8 +81230,69 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "the error must name the explicit alternative, got: {text}"
         );
         assert!(
-            text.contains("allow-non-atomic"),
+            !text.contains("allow-non-atomic"),
+            "a backend whose replace cannot set the file aside must not be offered \
+             the opt-in, got: {text}"
+        );
+
+        // A set-aside backend is refused the same way, and there the opt-in
+        // that would work is named.
+        provider.sets_aside = true;
+        let text =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await
+                .unwrap_err()
+                .to_string();
+        assert!(
+            provider.uploads.is_empty(),
+            "uploads: {:?}",
+            provider.uploads
+        );
+        assert!(
+            text.contains("--allow-non-atomic"),
             "the error must name the edit opt-in, got: {text}"
+        );
+    }
+
+    /// M1 of the 4.2.1 closeout: on a backend whose replace is its rename
+    /// (Box, 4shared, Internxt, WorkDrive, GitHub, SFTP without
+    /// posix-rename...) `--allow-non-atomic` uploaded the temporary before
+    /// the replace refused the taken name. It is now refused first.
+    #[tokio::test]
+    async fn cli_edit_publish_allow_non_atomic_refuses_a_rename_only_backend_before_it_uploads() {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.atomic_replace = false;
+
+        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", true)
+            .await
+            .unwrap_err();
+
+        assert!(
+            provider.uploads.is_empty(),
+            "the opt-in must be refused before anything is staged; uploads: {:?}",
+            provider.uploads
+        );
+        assert!(provider.replaces.is_empty() && provider.renames.is_empty());
+        assert!(
+            provider.deleted.is_empty(),
+            "deleted: {:?}",
+            provider.deleted
+        );
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"old text".as_slice())
+        );
+        let text = err.to_string();
+        assert!(
+            text.contains("Nothing was written") && text.contains("--allow-non-atomic"),
+            "the refusal must name the opt-in it refuses and say the server is untouched, \
+             got: {text}"
         );
     }
 
@@ -81236,6 +81310,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .remote_files
             .insert("/target.txt".to_string(), b"old text".to_vec());
         provider.atomic_replace = false;
+        provider.sets_aside = true;
 
         publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", true)
             .await

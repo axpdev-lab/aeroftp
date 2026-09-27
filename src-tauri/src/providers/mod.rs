@@ -877,7 +877,8 @@ pub trait StorageProvider: Send + Sync {
     /// backend that has actually measured its own ground says otherwise:
     /// `SftpProvider`, which asks the server whether it offers
     /// `posix-rename@openssh.com`; the backends whose replace sets the old
-    /// item aside (MEGA, Filen, FileLu, Dropbox, Koofr, Drime, kDrive); those whose move over a file is not
+    /// item aside (MEGA, Filen, FileLu, Dropbox, Koofr, Drime, kDrive, see
+    /// [`StorageProvider::replace_sets_aside`]); those whose move over a file is not
     /// documented as one step (MEGAcmd, Jottacloud); those with no replace
     /// at all, whose rename refuses a taken name or who have no rename (each
     /// says why on its own answer); and ImageKit and OpenDrive, which
@@ -887,6 +888,29 @@ pub trait StorageProvider: Send + Sync {
     /// [`replace`]: StorageProvider::replace
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
         Ok(true)
+    }
+
+    /// Whether [`replace`] puts a file over an existing one by setting the
+    /// previous item aside first: it is renamed to [`set_aside_name`], the
+    /// new one moves into its place, and only then is the old one deleted.
+    /// The name is empty between the first two steps, so these backends
+    /// answer `false` to [`StorageProvider::supports_atomic_replace`], but
+    /// their replace does put a file over another and loses neither.
+    ///
+    /// This is the question behind the edit opt-in (`--allow-non-atomic`,
+    /// `allow_non_atomic`), asked through [`ensure_edit_can_replace`] BEFORE
+    /// anything is staged. A backend whose replace is its rename, which
+    /// refuses a taken name, keeps the default `false`: there the opt-in
+    /// would upload a temporary that the replace then refuses to publish.
+    ///
+    /// `true` on MEGA through the native API, Filen, FileLu, Dropbox, Koofr,
+    /// Drime and kDrive. Not on MEGAcmd or Jottacloud: their replace is a
+    /// server move over the file whose atomicity is not documented, not a
+    /// set-aside. The overlays (crypt, compress) forward the inner answer.
+    ///
+    /// [`replace`]: StorageProvider::replace
+    fn replace_sets_aside(&self) -> bool {
+        false
     }
 
     /// Get file/directory info
@@ -1772,11 +1796,64 @@ pub async fn ensure_atomic_replace(
          file at all. Nothing was written and `{target}` is unchanged. To overwrite it \
          anyway, upload over it with `put`, which truncates and rewrites in place: that \
          is not atomic either, but it is your choice and its bad moment is a partial \
-         file rather than no file. `edit` can set the previous file aside instead: pass \
-         `--allow-non-atomic`, or `allow_non_atomic` true to the edit tool. The old file \
-         is renamed aside, the new one moves into its place, and the old one is then \
-         deleted. There is a short moment with no file, and the old one is not lost."
+         file rather than no file."
     )))
+}
+
+/// The preflight of an edit that publishes a staged temporary with
+/// [`StorageProvider::replace`] (CLI `edit`, AeroAgent `remote_edit`). Call it
+/// BEFORE the upload, so a refusal can say that nothing was written (G119).
+///
+/// A backend that replaces atomically passes. Without the opt-in any other
+/// one refuses as [`ensure_atomic_replace`] does, and the refusal names the
+/// opt-in (`opt_in`, the caller's spelling of it) only where it can work: a
+/// backend whose replace sets the previous file aside
+/// ([`StorageProvider::replace_sets_aside`]). With the opt-in that backend
+/// passes, and every other one is refused here: its replace would refuse
+/// the taken name after the temporary had been uploaded.
+///
+/// The crypt and AeroCrypt marker paths call [`ensure_atomic_replace`]
+/// directly: they have no opt-in, so their refusal names none.
+pub async fn ensure_edit_can_replace(
+    provider: &mut dyn StorageProvider,
+    target: &str,
+    allow_non_atomic: bool,
+    opt_in: &str,
+) -> Result<(), ProviderError> {
+    if allow_non_atomic {
+        if provider.supports_atomic_replace().await? || provider.replace_sets_aside() {
+            return Ok(());
+        }
+        return Err(ProviderError::NotSupported(opt_in_cannot_set_aside(
+            target, opt_in,
+        )));
+    }
+    match ensure_atomic_replace(provider, target).await {
+        Err(ProviderError::NotSupported(refusal)) if provider.replace_sets_aside() => Err(
+            ProviderError::NotSupported(format!("{refusal} {}", set_aside_opt_in_hint(opt_in))),
+        ),
+        other => other,
+    }
+}
+
+/// The sentence an edit refusal adds on a backend whose replace sets the
+/// previous file aside: the opt-in `opt_in` and what it does.
+pub fn set_aside_opt_in_hint(opt_in: &str) -> String {
+    format!(
+        "To edit it anyway, pass {opt_in}: the previous file is renamed aside, the new one \
+         moves into its place, and the old one is then deleted. There is a short moment \
+         with no file, and the old one is not lost."
+    )
+}
+
+/// The refusal of an edit's non-atomic opt-in on a backend whose replace
+/// neither works in one step nor sets the previous file aside.
+pub fn opt_in_cannot_set_aside(target: &str, opt_in: &str) -> String {
+    format!(
+        "cannot edit `{target}` with {opt_in}: this server can neither put one file over \
+         another in a single step nor set the previous file aside first, so the new file \
+         could not be put in its place. Nothing was written and `{target}` is unchanged."
+    )
 }
 
 /// The name an item displaced by a replace takes until it is deleted, on a
@@ -2936,5 +3013,202 @@ mod non_recursive_delete_tests {
         let mut unreadable = Scripted::new(dir, || Err(ProviderError::Timeout));
         assert!(remove_empty_directory(&mut unreadable, "/d").await.is_err());
         assert_eq!(unreadable.calls, ["list"]);
+    }
+}
+
+/// The edit preflight and its refusal texts, and the fake the GUI edit's
+/// tests share (`ai_core::gui_tools`).
+#[cfg(test)]
+pub(crate) mod edit_replace_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// A backend that answers the two replace questions as told and whose
+    /// `replace` behaves accordingly: atomic or set-aside, it puts the file
+    /// in place; otherwise it is the rename, which refuses a taken name.
+    /// Every upload, replace and delete is recorded.
+    pub(crate) struct EditFake {
+        pub(crate) files: HashMap<String, Vec<u8>>,
+        pub(crate) uploads: Vec<String>,
+        pub(crate) replaces: Vec<(String, String)>,
+        pub(crate) deleted: Vec<String>,
+        pub(crate) atomic: bool,
+        pub(crate) sets_aside: bool,
+    }
+
+    impl EditFake {
+        /// `/t.txt` holds `old`.
+        pub(crate) fn new(atomic: bool, sets_aside: bool) -> Self {
+            Self {
+                files: HashMap::from([("/t.txt".to_string(), b"old".to_vec())]),
+                uploads: Vec::new(),
+                replaces: Vec::new(),
+                deleted: Vec::new(),
+                atomic,
+                sets_aside,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl StorageProvider for EditFake {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "edit-fake".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(&mut self, path: &str) -> Result<Vec<u8>, ProviderError> {
+            self.files
+                .get(path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        }
+        async fn upload(
+            &mut self,
+            local_path: &str,
+            remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            let data = std::fs::read(local_path).map_err(ProviderError::IoError)?;
+            self.uploads.push(remote_path.to_string());
+            self.files.insert(remote_path.to_string(), data);
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.deleted.push(path.to_string());
+            self.files.remove(path);
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            if self.files.contains_key(to) {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            let data = self
+                .files
+                .remove(from)
+                .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+            self.files.insert(to.to_string(), data);
+            Ok(())
+        }
+        async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            if !self.atomic && !self.sets_aside {
+                return self.rename(from, to).await;
+            }
+            let data = self
+                .files
+                .remove(from)
+                .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+            self.files.insert(to.to_string(), data);
+            self.replaces.push((from.to_string(), to.to_string()));
+            Ok(())
+        }
+        async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+            Ok(self.atomic)
+        }
+        fn replace_sets_aside(&self) -> bool {
+            self.sets_aside
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(self.files.contains_key(path))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("edit-fake".to_string())
+        }
+    }
+
+    /// The four answers of the edit preflight: atomic passes either way; a
+    /// set-aside backend passes only with the opt-in and is offered it
+    /// without; a backend with neither refuses both, and never offers it.
+    #[tokio::test]
+    async fn the_edit_preflight_offers_the_opt_in_only_where_it_works() {
+        for (atomic, sets_aside, allow, passes, names_opt_in) in [
+            (true, false, false, true, false),
+            (true, false, true, true, false),
+            (false, true, false, false, true),
+            (false, true, true, true, false),
+            (false, false, false, false, false),
+            (false, false, true, false, true),
+        ] {
+            let mut p = EditFake::new(atomic, sets_aside);
+            let outcome = ensure_edit_can_replace(&mut p, "/t.txt", allow, "`--opt`").await;
+            let case = format!("atomic {atomic}, sets aside {sets_aside}, opt-in {allow}");
+            assert_eq!(outcome.is_ok(), passes, "{case}: {outcome:?}");
+            if let Err(e) = outcome {
+                let text = e.to_string();
+                assert!(text.contains("Nothing was written"), "{case}: {text}");
+                assert_eq!(text.contains("`--opt`"), names_opt_in, "{case}: {text}");
+            }
+            assert!(p.uploads.is_empty() && p.replaces.is_empty(), "{case}");
+        }
+    }
+
+    /// The crypt and AeroCrypt marker paths publish through
+    /// `ensure_atomic_replace` too, and they have no edit flag: the shared
+    /// refusal named `--allow-non-atomic` and `allow_non_atomic` there.
+    #[tokio::test]
+    async fn the_shared_refusal_names_no_edit_opt_in() {
+        for sets_aside in [false, true] {
+            let mut p = EditFake::new(false, sets_aside);
+            let text = ensure_atomic_replace(&mut p, "/.aerocrypt.tsv")
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(text.contains("Nothing was written"), "{text}");
+            assert!(
+                !text.contains("allow-non-atomic") && !text.contains("allow_non_atomic"),
+                "a marker refusal must not suggest an edit flag: {text}"
+            );
+        }
     }
 }
