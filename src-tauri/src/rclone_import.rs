@@ -394,8 +394,11 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
     };
 
     let get_str = |key: &str| remote.get(key).map(|s| s.as_str());
-    // A secret rclone writes as it is, in a field that is not `IsPassword`:
-    // taken verbatim, never through the reveal codec.
+    // A secret rclone writes as it is, in a field that is not `IsPassword`
+    // (S3 `secret_access_key`, the Azure, Swift and B2 `key`, the Drime,
+    // Cloudinary and ImageKit keys): taken verbatim. Through the reveal codec,
+    // a key that happens to decode came back as the noise it decodes to, and
+    // was stored with no warning.
     let get_plain_secret = |key: &str| get_str(key).filter(|v| !v.is_empty()).map(str::to_string);
     let get_port = |key: &str, default: u32| -> u32 {
         remote
@@ -522,7 +525,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
                 host,
                 port: 443,
                 username: get_str("access_key_id").unwrap_or("").to_string(),
-                password: get_password("secret_access_key"),
+                password: get_plain_secret("secret_access_key"),
                 options: Some(serde_json::Value::Object(options)),
                 initial_path: None,
                 oauth_token: None,
@@ -794,7 +797,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
                 host: format!("{}.blob.core.windows.net", account),
                 port: 443,
                 username: account,
-                password: get_password("key"),
+                password: get_plain_secret("key"),
                 options: if options.is_empty() {
                     None
                 } else {
@@ -850,7 +853,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
                 host,
                 port: 443,
                 username: get_str("user").unwrap_or("").to_string(),
-                password: get_password("key"),
+                password: get_plain_secret("key"),
                 options: if options.is_empty() {
                     None
                 } else {
@@ -972,7 +975,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
                 host: "api.backblazeb2.com".to_string(),
                 port: 443,
                 username: account,
-                password: get_password("key"),
+                password: get_plain_secret("key"),
                 options: Some(serde_json::Value::Object(options)),
                 initial_path: None,
                 oauth_token: None,
@@ -5264,6 +5267,70 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
     /// `rclone_token_to_aeroftp`. An rclone token blob converted into AeroFTP's
     /// `StoredTokens` shape and back must preserve every field, so an exported
     /// remote carries the same credentials rclone produced.
+    /// rclone writes these secrets plain (none is `IsPassword` in v1.75.1), so
+    /// the import must store them as they are. They used to go through the
+    /// reveal codec, and a value that happens to decode came back as a few
+    /// bytes of noise, stored with no error or warning. Among random keys of
+    /// each shape, that is 0.03% of AWS secret keys and 0.4% of B2
+    /// application keys. The values below are such keys. Real 88-character
+    /// Azure keys almost never decode, but the field was read the same way,
+    /// so a shorter padded one stands in.
+    #[test]
+    fn test_import_rclone_reads_plain_secrets_verbatim() {
+        let aws = "ouaVyjxSEguS+NiX/v56YGxMK4/J/lodDY+S/On5";
+        let azure = "iUSqbsCq1b4r8llxjuIJDCkAT8YhG3eK+hUtI5D113g=";
+        let swift = "0M5gBRXoIPaqWVKLxLethR6aS2Nlr0nz";
+        let b2 = "K005ACpVVct0jQ2rTOZSGY64zPV3rB8";
+        for value in [aws, azure, swift, b2] {
+            assert!(
+                matches!(reveal_obscured(value), Ok(ref r) if !r.is_empty()),
+                "{value} no longer decodes, so it no longer tests anything"
+            );
+        }
+        let conf = format!(
+            "\
+[aws]
+type = s3
+provider = AWS
+access_key_id = AKIAEXAMPLE
+secret_access_key = {aws}
+
+[az]
+type = azureblob
+account = demoaccount
+key = {azure}
+
+[sw]
+type = swift
+auth = https://auth.example.com/v3
+user = demo
+key = {swift}
+
+[b2]
+type = b2
+account = 0051234567890ab0000000001
+key = {b2}
+"
+        );
+        let path = tmp_write(
+            &conf,
+            &format!(
+                "aeroftp-test-import-plain-secrets-{}.conf",
+                std::process::id()
+            ),
+        );
+        let result = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        for (name, expected) in [("aws", aws), ("az", azure), ("sw", swift), ("b2", b2)] {
+            let server = result
+                .servers
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap_or_else(|| panic!("{name} not imported: {:?}", result.skipped.len()));
+            assert_eq!(server.credential.as_deref(), Some(expected), "{name}");
+        }
+    }
+
     #[test]
     fn test_token_conversion_roundtrips_both_ways() {
         let rclone_blob = r#"{
