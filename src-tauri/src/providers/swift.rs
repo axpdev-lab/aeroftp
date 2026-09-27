@@ -1551,31 +1551,57 @@ impl StorageProvider for SwiftProvider {
         }
         let prefix = Self::normalize_path(path);
 
-        // List all objects under prefix (no delimiter = flat recursive listing)
+        // Flat listing, every page. One page of `limit=10000` used to answer
+        // Ok after deleting only that page, and the rest of the folder stayed.
         let base = format!("{}/{}", self.storage_url()?, self.container);
-        let url = format!(
-            "{}?format=json&prefix={}/&limit=10000",
-            base,
-            urlencoding::encode(&prefix)
-        );
+        let mut marker = String::new();
+        let mut object_paths: Vec<String> = Vec::new();
+        loop {
+            let mut url = format!(
+                "{base}?format=json&prefix={}/&limit=10000",
+                urlencoding::encode(&prefix)
+            );
+            if !marker.is_empty() {
+                url.push_str(&format!("&marker={}", urlencoding::encode(&marker)));
+            }
+            let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
+            if !resp.status().is_success() {
+                return Err(ProviderError::ServerError(format!(
+                    "List for delete failed: HTTP {}",
+                    resp.status()
+                )));
+            }
+            let entries: Vec<ObjectEntry> = resp
+                .json()
+                .await
+                .map_err(|e| ProviderError::ServerError(format!("List for delete failed: {e}")))?;
+            if entries.is_empty() {
+                break;
+            }
+            let last_name = entries
+                .last()
+                .and_then(|entry| entry.name.clone())
+                .unwrap_or_default();
+            for entry in &entries {
+                if let Some(name) = &entry.name {
+                    object_paths.push(self.object_reference(name));
+                }
+            }
+            if entries.len() < 10000 {
+                break;
+            }
+            if last_name.is_empty() || last_name == marker {
+                return Err(ProviderError::ServerError(
+                    "Swift listing for delete did not advance past its page".into(),
+                ));
+            }
+            marker = last_name;
+        }
 
-        let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
-        let entries: Vec<ObjectEntry> = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("List for delete failed: {e}")))?;
-
-        if entries.is_empty() {
+        if object_paths.is_empty() {
             let _ = self.rmdir(path).await;
             return Ok(());
         }
-
-        // Collect all object paths for bulk delete
-        let mut object_paths: Vec<String> = entries
-            .iter()
-            .filter_map(|e| e.name.as_ref())
-            .map(|n| self.object_reference(n))
-            .collect();
 
         // Also delete the directory marker itself
         object_paths.push(self.object_reference(&format!("{prefix}/")));
@@ -2128,6 +2154,79 @@ mod tests {
         let log = log.lock().unwrap().clone();
         let bulk = log.iter().find(|r| r.0 == "POST").expect("a bulk delete");
         assert_eq!(bulk.3, "/my%20box/d/a%20b%25.txt\n/my%20box/d/");
+    }
+
+    /// A folder of more than one page used to be deleted only up to the first
+    /// `limit=10000`, and the call still answered Ok. Both pages are deleted.
+    #[tokio::test]
+    async fn recursive_delete_follows_the_listing_marker_until_the_page_is_short() {
+        let log: StorageLog = Default::default();
+        let seen = std::sync::Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = std::sync::Arc::clone(&seen);
+                async move {
+                    let method = req.method().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 8 << 20)
+                        .await
+                        .unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    seen.lock().unwrap().push((
+                        method.clone(),
+                        path,
+                        Some(query.clone()),
+                        body.clone(),
+                    ));
+                    let listing = if method == "GET" {
+                        if query.contains("marker=") {
+                            r#"[{"name":"d/last","bytes":1}]"#.to_string()
+                        } else {
+                            let mut page = String::from("[");
+                            for i in 0..10000 {
+                                if i > 0 {
+                                    page.push(',');
+                                }
+                                page.push_str(&format!(r#"{{"name":"d/f{i:05}","bytes":1}}"#));
+                            }
+                            page.push(']');
+                            page
+                        }
+                    } else {
+                        String::new()
+                    };
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(listing))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "my box".to_string();
+        p.rmdir_recursive("/d").await.expect("both pages");
+        let log = log.lock().unwrap().clone();
+        let gets = log.iter().filter(|row| row.0 == "GET").count();
+        assert_eq!(gets, 2, "a full page must ask for the next marker");
+        let bulk: String = log
+            .iter()
+            .filter(|row| row.0 == "POST")
+            .map(|row| row.3.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(bulk.contains("/my%20box/d/f00000"), "{bulk}");
+        assert!(bulk.contains("/my%20box/d/f09999"), "{bulk}");
+        assert!(bulk.contains("/my%20box/d/last"), "{bulk}");
+        assert!(bulk.contains("/my%20box/d/"), "{bulk}");
     }
 
     /// The GUI's default listing path is `"."`, not `"/"`, and Swift turned that
