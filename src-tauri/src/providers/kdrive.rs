@@ -1265,17 +1265,18 @@ impl StorageProvider for KDriveProvider {
         kdrive_log(&format!("Deleting {} (id={})", filename, file_id));
 
         let url = self.api_url_v2(&format!("/files/{}", file_id));
-        let resp = self.delete_with_retry(&url).await?;
+        let sent = self.delete_with_retry(&url).await;
+        // Whatever the answer, even none (a delete kDrive applied whose
+        // answer was lost), the folder ids cached for the path and everything
+        // under it may point at items now in the trash.
+        super::forget_cached_subtree(&mut self.dir_cache, &resolved);
+        let resp = sent?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(api_failure("Delete failed", Some(status), &body));
         }
-
-        // The folder ids cached for the path and everything under it point
-        // at items now in the trash.
-        super::forget_cached_subtree(&mut self.dir_cache, &resolved);
 
         Ok(())
     }
