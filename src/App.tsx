@@ -3253,6 +3253,9 @@ const App: React.FC = () => {
   const fetchStorageQuota = async (protocol?: string, freshSessionParams?: ConnectionParams) => {
     void fetchBucketEncryption(protocol, freshSessionParams);
     const version = ++quotaVersionRef.current;
+    // After profile I/O, discard the entire stale continuation, not just its UI
+    // update: an automatic scan would increment this ref and become current
+    // again, reading the new provider and persisting its data under the old ID.
 
     // InfiniCloud: use REST API for quota (more accurate than WebDAV PROPFIND)
     // freshSessionParams provides enriched options (infinicloudNode) immediately after connect,
@@ -3275,6 +3278,7 @@ const App: React.FC = () => {
         // the stale global savedServerId) so the API figure is not
         // written onto a different profile's card across open sessions.
         const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
+        if (version !== quotaVersionRef.current) return;
         const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
         const profileId = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId)?.id;
         void persistQuotaToProfile(profileId, { used: quota.used, total: quota.total, usedSource: 'api' });
@@ -3293,6 +3297,7 @@ const App: React.FC = () => {
         // manual-cap override come from the RIGHT profile, not another
         // open session's.
         const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
+        if (version !== quotaVersionRef.current) return;
         const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
         const prof = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId);
         const profileId = prof?.id;
@@ -3384,6 +3389,7 @@ const App: React.FC = () => {
       let seeded = false;
       try {
         const all = await loadSavedServerProfiles();
+        if (version !== quotaVersionRef.current) return;
         const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
         const prof = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId);
         if (prof) {
