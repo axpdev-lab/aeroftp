@@ -4442,12 +4442,15 @@ enum CorrectCommands {
 enum ExportCommands {
     /// Export profiles to rclone.conf format: FTP/FTPS, SFTP, WebDAV, S3,
     /// MEGA, Filen, Internxt, Azure, Swift, Koofr, OpenDrive, Backblaze B2,
-    /// Jottacloud, and the OAuth providers (Google Drive, Dropbox, OneDrive,
-    /// Box, pCloud, Yandex Disk, Zoho WorkDrive) with their token and the
-    /// client ID that minted it. An Internxt remote needs one
-    /// `rclone config reconnect "<remote>:"` before use, as the file says. Any
-    /// other profile is skipped and listed with the reason in the command
-    /// output; nothing is written for it.
+    /// Drime, Cloudinary, ImageKit, Jottacloud, and the OAuth providers
+    /// (Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex Disk, Zoho
+    /// WorkDrive) with their token and the client ID that minted it. An
+    /// Internxt remote needs one `rclone config reconnect "<remote>:"` before
+    /// use, as the file says. ImageKit needs the account public key, which only
+    /// a profile imported from rclone holds. FileLu is skipped: rclone signs in
+    /// with the FileLu Rclone key, not the API key AeroFTP holds. Any profile
+    /// that cannot be written is skipped and listed with the reason in the
+    /// command output; nothing is written for it.
     Rclone {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
@@ -36883,6 +36886,7 @@ fn collect_export_scaffold(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     servers_json: &serde_json::Value,
     name_filter: Option<&[String]>,
+    source: &str,
     supported_protocols: &[&str],
     oauth_protocols: &[&str],
 ) -> Result<ExportCollected, String> {
@@ -36980,10 +36984,11 @@ fn collect_export_scaffold(
             continue;
         }
         if !proto_supported {
-            out.skipped.push((
-                name.to_string(),
-                format!("protocol {} not exportable", protocol),
-            ));
+            let reason =
+                ftp_client_gui_lib::bridge_shared::bridge_export_refusal(source, &protocol)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("protocol {} not exportable", protocol));
+            out.skipped.push((name.to_string(), reason));
             continue;
         }
         // SFTP profiles authenticate by SSH key (path in
@@ -37087,15 +37092,20 @@ async fn cmd_export_rclone(
     supported.push("jottacloud");
     let oauth: [&str; 0] = [];
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
-        {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        "rclone",
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
 
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
@@ -37231,15 +37241,20 @@ async fn cmd_export_winscp(
     let supported = ["ftp", "ftps", "sftp"];
     let oauth: [&str; 0] = [];
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
-        {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        "winscp",
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
         return 4;
@@ -37306,15 +37321,20 @@ async fn cmd_export_filezilla(
     let supported = ["ftp", "ftps", "sftp"];
     let oauth: [&str; 0] = [];
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
-        {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        "filezilla",
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
         return 4;
@@ -37415,6 +37435,7 @@ async fn cmd_export_bridge(
         &store,
         &servers_json,
         filter.as_deref(),
+        src,
         supported,
         &oauth,
     ) {

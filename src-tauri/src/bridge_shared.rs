@@ -500,6 +500,10 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
         // export arms now emit the rclone `token` blob plus the BYO
         // client_id/secret that minted it, so rclone can refresh and the
         // remote is usable. Zoho also carries `region` and `root_folder_id`.
+        // Drime, Cloudinary and ImageKit export the API keys AeroFTP signs
+        // with (ImageKit only when the profile also holds the public key rclone
+        // requires). FileLu and Proton Drive have rclone backends that need a
+        // secret the vault does not hold: `bridge_export_refusal` says which.
         // Jottacloud is intentionally NOT here: it exports via a dedicated path
         // that rebuilds its persisted OIDC refresh token into a working rclone
         // token, which only the CLI (`cmd_export_rclone`/`collect_export_scaffold`)
@@ -526,10 +530,37 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
             "pcloud",
             "yandexdisk",
             "zohoworkdrive",
+            "drime",
+            "cloudinary",
+            "imagekit",
         ],
         "winscp" => &["ftp", "ftps", "sftp", "webdav", "s3"],
         "filezilla" => &["ftp", "ftps", "sftp", "s3"],
         _ => &[],
+    }
+}
+
+/// Why `src` cannot carry a `protocol` profile, where the generic "not
+/// exportable" would mislead: the target tool has a backend for the provider,
+/// but it signs in with a secret the AeroFTP vault does not hold. `None`
+/// leaves the caller's generic reason.
+pub fn bridge_export_refusal(src: &str, protocol: &str) -> Option<&'static str> {
+    match (src, protocol) {
+        // Measured on a live account: rclone v1.75.1 answers "Invalid FileLu
+        // Rclone Key" to the API key AeroFTP holds, since its backend calls
+        // filelu.com/rclone, not the filelu.com/api that key is for.
+        ("rclone", "filelu") => Some(
+            "rclone's filelu backend signs in with the FileLu Rclone key (RC_..., \
+             shown in My Account once Rclone is switched on), a different key from \
+             the API key AeroFTP uses. Create the remote with `rclone config` and \
+             that key.",
+        ),
+        ("rclone", "proton") => Some(
+            "AeroFTP reaches Proton Drive through Proton's own CLI, which keeps the \
+             session, so the vault holds no password for rclone's protondrive backend. \
+             Create the remote with `rclone config`.",
+        ),
+        _ => None,
     }
 }
 
@@ -854,6 +885,27 @@ impl ExportReport for crate::rclone_import::RcloneExportOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// FileLu and Proton Drive have rclone backends, so "not exportable" would
+    /// read as "rclone cannot reach this provider". They are refused because
+    /// the vault lacks the secret those backends sign in with, and the reason
+    /// says which. A refused protocol must also stay out of the gate: the
+    /// reason is only given for a protocol the gate turns away.
+    #[test]
+    fn rclone_refusals_name_the_missing_secret_and_stay_out_of_the_gate() {
+        let gated = bridge_supported_protocols("rclone");
+        for (proto, needle) in [("filelu", "Rclone key"), ("proton", "Proton's own CLI")] {
+            let reason = bridge_export_refusal("rclone", proto)
+                .unwrap_or_else(|| panic!("no refusal reason for {proto}"));
+            assert!(reason.contains(needle), "{proto}: {reason}");
+            assert!(
+                !gated.contains(&proto),
+                "{proto} is both exportable and refused"
+            );
+        }
+        assert_eq!(bridge_export_refusal("winscp", "filelu"), None);
+        assert_eq!(bridge_export_refusal("rclone", "ftp"), None);
+    }
 
     #[test]
     fn bridge_tables_are_consistent() {

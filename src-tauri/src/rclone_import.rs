@@ -394,6 +394,9 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
     };
 
     let get_str = |key: &str| remote.get(key).map(|s| s.as_str());
+    // A secret rclone writes as it is, in a field that is not `IsPassword`:
+    // taken verbatim, never through the reveal codec.
+    let get_plain_secret = |key: &str| get_str(key).filter(|v| !v.is_empty()).map(str::to_string);
     let get_port = |key: &str, default: u32| -> u32 {
         remote
             .get(key)
@@ -993,6 +996,119 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
             credential_warning: None,
         }),
 
+        // ---- Drime ----
+        // `access_token` is the API token AeroFTP sends as a Bearer token.
+        // AeroFTP opens the default workspace from its root, and rclone never
+        // writes `workspace_id` or `root_folder_id` itself: a remote carrying
+        // either was scoped by hand, and imported it would open other content.
+        "drime" => {
+            let token = get_plain_secret("access_token")
+                .ok_or_else(|| "drime remote has no access_token".to_string())?;
+            if let Some(ws) = get_str("workspace_id")
+                .map(str::trim)
+                .filter(|w| !w.is_empty() && *w != "0")
+            {
+                return Err(format!(
+                    "drime remote is pinned to workspace {ws}; AeroFTP opens the default workspace only"
+                ));
+            }
+            if let Some(folder) = get_str("root_folder_id")
+                .map(str::trim)
+                .filter(|f| !f.is_empty())
+            {
+                return Err(format!(
+                    "drime remote is rooted at folder id {folder}, which AeroFTP cannot open as a start folder"
+                ));
+            }
+            Ok(MappedProfile {
+                protocol: "drime".to_string(),
+                provider_id: Some("drime".to_string()),
+                host: "app.drime.cloud".to_string(),
+                port: 443,
+                username: "api-token".to_string(),
+                password: Some(token),
+                options: None,
+                initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
+                credential_warning: None,
+            })
+        }
+
+        // ---- Cloudinary ----
+        // `cloud_name` lands where the app's form keeps it, `options.bucket`.
+        // AeroFTP calls api.cloudinary.com only, so a remote pointed at another
+        // regional endpoint through `upload_prefix` is refused.
+        "cloudinary" => {
+            let cloud_name = get_str("cloud_name")
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .ok_or_else(|| "cloudinary remote has no cloud_name".to_string())?;
+            let api_key = get_str("api_key")
+                .map(str::trim)
+                .filter(|k| !k.is_empty())
+                .ok_or_else(|| "cloudinary remote has no api_key".to_string())?;
+            if let Some(prefix) = get_str("upload_prefix")
+                .map(|p| p.trim().trim_end_matches('/'))
+                .filter(|p| !p.is_empty() && *p != "https://api.cloudinary.com")
+            {
+                return Err(format!(
+                    "cloudinary remote uses the endpoint {prefix}; AeroFTP calls api.cloudinary.com only"
+                ));
+            }
+            Ok(MappedProfile {
+                protocol: "cloudinary".to_string(),
+                provider_id: Some("cloudinary".to_string()),
+                host: "api.cloudinary.com".to_string(),
+                port: 443,
+                username: api_key.to_string(),
+                password: get_plain_secret("api_secret"),
+                options: Some(serde_json::json!({ "bucket": cloud_name })),
+                initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
+                credential_warning: None,
+            })
+        }
+
+        // ---- ImageKit ----
+        // The URL endpoint becomes the profile's "URL Endpoint ID", which takes
+        // the whole URL. The public key AeroFTP does not use is kept, so the
+        // profile can be exported back to rclone, which requires it.
+        "imagekit" => {
+            let endpoint = get_str("endpoint")
+                .map(|e| e.trim().trim_end_matches('/'))
+                .filter(|e| !e.is_empty())
+                .ok_or_else(|| "imagekit remote has no endpoint".to_string())?;
+            let options = get_str("public_key")
+                .map(str::trim)
+                .filter(|k| !k.is_empty())
+                .map(|k| serde_json::json!({ "imagekit_public_key": k }));
+            Ok(MappedProfile {
+                protocol: "imagekit".to_string(),
+                provider_id: Some("imagekit".to_string()),
+                host: "api.imagekit.io".to_string(),
+                port: 443,
+                username: endpoint.to_string(),
+                password: get_plain_secret("private_key"),
+                options,
+                initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
+                credential_warning: None,
+            })
+        }
+
+        // ---- FileLu ----
+        // The remote holds the FileLu Rclone key, which rclone sends to
+        // filelu.com/rclone. AeroFTP signs in to filelu.com/api with the
+        // account's Developer API key, a different key the remote does not hold.
+        "filelu" => Err(
+            "filelu remote holds the FileLu Rclone key, not the Developer API key \
+             AeroFTP signs in with (Account Settings)"
+                .to_string(),
+        ),
+
         // Unsupported rclone types: skip gracefully
         _ => Err(format!("unsupported rclone type: {}", rclone_type)),
     }
@@ -1580,6 +1696,73 @@ fn crypt_export_remote_target(base_name: &str, options: &serde_json::Value) -> S
     }
 }
 
+/// Cloudinary's account name. The app's form keeps it in `options.bucket`;
+/// a profile keyed by hand may carry it as the host instead, which is how
+/// the provider reads it too (`provider_commands.rs` and the CLI's profile
+/// loader).
+fn cloudinary_cloud_name(server: &RcloneExportServer) -> Option<String> {
+    server
+        .options
+        .as_ref()
+        .and_then(|o| o.get("bucket"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            let host = server.host.trim();
+            (!host.is_empty() && host != "api.cloudinary.com").then(|| host.to_string())
+        })
+}
+
+/// The ImageKit public key, which AeroFTP itself never needs (it signs with
+/// the private key) and so only holds for a profile imported from an rclone
+/// remote.
+fn imagekit_public_key(options: Option<&serde_json::Value>) -> Option<&str> {
+    options
+        .and_then(|o| o.get("imagekit_public_key"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
+/// rclone's `endpoint` is the whole URL endpoint. The app's "URL Endpoint ID"
+/// field holds either the bare id or the URL pasted from the dashboard, and a
+/// bare id lives under `ik.imagekit.io`.
+fn imagekit_rclone_endpoint(id: &str) -> String {
+    let id = id.trim().trim_end_matches('/');
+    if id.starts_with("https://") || id.starts_with("http://") {
+        id.to_string()
+    } else {
+        format!("https://ik.imagekit.io/{}", id.trim_start_matches('/'))
+    }
+}
+
+/// Why a Cloudinary or ImageKit profile cannot become a working rclone
+/// remote, when a field rclone needs is not on the profile. Checked before a
+/// section name is claimed, like Zoho's region and root folder.
+fn rclone_required_field_missing(proto: &str, server: &RcloneExportServer) -> Option<String> {
+    match proto {
+        // Without `cloud_name` rclone v1.75.1 still creates the remote, and
+        // every listing then fails on the HTML page Cloudinary answers with.
+        "cloudinary" if cloudinary_cloud_name(server).is_none() => Some(
+            "the profile has no Cloudinary cloud name, which rclone's cloudinary \
+             backend needs as `cloud_name`"
+                .to_string(),
+        ),
+        // rclone v1.75.1 refuses the remote outright: "ImageKit.io public key
+        // is required".
+        "imagekit" if imagekit_public_key(server.options.as_ref()).is_none() => Some(
+            "rclone's imagekit backend requires the account public key, and this \
+             profile has none: AeroFTP signs with the private key only, so a profile \
+             created in the app does not store it. Create the remote with \
+             `rclone config`, using the public key from the ImageKit dashboard."
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
 /// rclone's s3 backend has no `bucket` key. A pinned bucket is exported as
 /// an `alias` remote `<base>-<bucket>` whose path is `<base>:<bucket>`, so
 /// keys stay bucket-relative (the way AeroFTP writes them). A crypt overlay
@@ -1965,6 +2148,15 @@ pub fn export_rclone(
                 outcome.skip(&server.name, &reason);
                 continue;
             }
+        }
+
+        if let Some(reason) = rclone_required_field_missing(proto, server) {
+            output.push_str(&format!(
+                "# skipped profile '{}': {}\n\n",
+                sanitized, reason
+            ));
+            outcome.skip(&server.name, &reason);
+            continue;
         }
 
         // The name this section will carry. A real profile name yields only to
@@ -2660,6 +2852,44 @@ pub fn export_rclone(
                     body.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
             }
+            // Drime, Cloudinary and ImageKit take the same secrets AeroFTP
+            // signs with. rclone v1.75.1 marks none of these fields
+            // `IsPassword`, so they are written plain, CR/LF stripped like the
+            // S3 and B2 keys; obscuring them would hand rclone a key it sends
+            // as is and the service refuses. FileLu is not among them: see
+            // `bridge_shared::bridge_export_refusal`.
+            "drime" => {
+                // The API token AeroFTP sends as a Bearer token. rclone reads
+                // the default workspace when `workspace_id` is left out, the
+                // same one AeroFTP addresses as `workspaceId=0`.
+                body.push_str("type = drime\n");
+                if let Some(pw) = password.filter(|p| !p.is_empty()) {
+                    body.push_str(&format!("access_token = {}\n", ini_value(pw)));
+                }
+            }
+            "cloudinary" => {
+                body.push_str("type = cloudinary\n");
+                if let Some(cloud_name) = cloudinary_cloud_name(server) {
+                    body.push_str(&format!("cloud_name = {}\n", cloud_name));
+                }
+                body.push_str(&format!("api_key = {}\n", server.username.trim()));
+                if let Some(pw) = password.filter(|p| !p.is_empty()) {
+                    body.push_str(&format!("api_secret = {}\n", ini_value(pw)));
+                }
+            }
+            "imagekit" => {
+                body.push_str("type = imagekit\n");
+                body.push_str(&format!(
+                    "endpoint = {}\n",
+                    imagekit_rclone_endpoint(&server.username)
+                ));
+                if let Some(public_key) = imagekit_public_key(options) {
+                    body.push_str(&format!("public_key = {}\n", public_key));
+                }
+                if let Some(pw) = password.filter(|p| !p.is_empty()) {
+                    body.push_str(&format!("private_key = {}\n", ini_value(pw)));
+                }
+            }
             // Protocols without rclone equivalent: skip
             _ => {
                 // Nothing was written, so the name goes back: a profile that
@@ -3019,11 +3249,15 @@ mod tests {
     #[test]
     fn every_gated_protocol_writes_a_section_with_a_backend() {
         for proto in crate::bridge_shared::bridge_supported_protocols("rclone") {
-            // Zoho needs both, or it is skipped for the reasons above.
-            let options = if *proto == "zohoworkdrive" {
-                Some(serde_json::json!({ "region": "us", "root_folder_id": "abc123" }))
-            } else {
-                None
+            // Zoho needs both, Cloudinary its cloud name and ImageKit its
+            // public key, or they are skipped for the reasons above.
+            let options = match *proto {
+                "zohoworkdrive" => {
+                    Some(serde_json::json!({ "region": "us", "root_folder_id": "abc123" }))
+                }
+                "cloudinary" => Some(serde_json::json!({ "bucket": "demo-cloud" })),
+                "imagekit" => Some(serde_json::json!({ "imagekit_public_key": "public_x" })),
+                _ => None,
             };
             let servers = vec![export_server("remote", proto, options)];
             let (outcome, conf) = export_to_string(&servers, &format!("gate-{proto}"));
@@ -4536,6 +4770,346 @@ token = {\"access_token\":\"eyJhbGciOi.x.y\",\"token_type\":\"Bearer\",\"expiry\
         assert_eq!(internxt.options, None, "no mnemonic or token in options");
         assert!(result.provider_secrets.is_empty(), "no token imported");
         assert!(result.warnings.is_empty());
+    }
+
+    fn api_key_server(
+        name: &str,
+        protocol: &str,
+        host: &str,
+        username: &str,
+        options: Option<serde_json::Value>,
+    ) -> RcloneExportServer {
+        RcloneExportServer {
+            name: name.to_string(),
+            host: host.to_string(),
+            port: 443,
+            username: username.to_string(),
+            protocol: Some(protocol.to_string()),
+            options,
+            provider_id: Some(protocol.to_string()),
+        }
+    }
+
+    /// Drime, Cloudinary and ImageKit used to be refused as "not
+    /// exportable". Their rclone fields are not `IsPassword` (rclone v1.75.1),
+    /// so the keys are written exactly as AeroFTP holds them: rclone sends
+    /// these fields as they are, and an obscured one is a wrong key.
+    #[test]
+    fn test_export_rclone_api_key_providers_write_their_keys_plain() {
+        let servers = vec![
+            api_key_server("dr", "drime", "app.drime.cloud", "api-token", None),
+            api_key_server(
+                "cl",
+                "cloudinary",
+                "api.cloudinary.com",
+                "599944212611461",
+                Some(serde_json::json!({ "bucket": "demo-cloud" })),
+            ),
+            api_key_server(
+                "ik",
+                "imagekit",
+                "api.imagekit.io",
+                "demo_id",
+                Some(serde_json::json!({ "imagekit_public_key": "public_abc=" })),
+            ),
+            // The dashboard URL pasted whole, trailing slash included.
+            api_key_server(
+                "ik-url",
+                "imagekit",
+                "api.imagekit.io",
+                "https://ik.imagekit.io/other_id/",
+                Some(serde_json::json!({ "imagekit_public_key": "public_def=" })),
+            ),
+        ];
+        let passwords: HashMap<String, String> = [
+            ("dr", "12|drimeTokenValue"),
+            ("cl", "hwPq3vxxVum2xqOoHU7bJ6Cqnp8"),
+            ("ik", "private_abc="),
+            ("ik-url", "private_def="),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp-test-export-api-key-providers-{}.conf",
+            std::process::id()
+        ));
+        let outcome = export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert_eq!(outcome.exported, 4, "{conf}");
+        assert!(outcome.skipped.is_empty(), "{:?}", outcome.skipped);
+        for section in [
+            "[dr]\ntype = drime\naccess_token = 12|drimeTokenValue\n",
+            "[cl]\ntype = cloudinary\ncloud_name = demo-cloud\napi_key = 599944212611461\n\
+             api_secret = hwPq3vxxVum2xqOoHU7bJ6Cqnp8\n",
+            "[ik]\ntype = imagekit\nendpoint = https://ik.imagekit.io/demo_id\n\
+             public_key = public_abc=\nprivate_key = private_abc=\n",
+            "[ik-url]\ntype = imagekit\nendpoint = https://ik.imagekit.io/other_id\n\
+             public_key = public_def=\nprivate_key = private_def=\n",
+        ] {
+            assert!(conf.contains(section), "missing:\n{section}\nin:\n{conf}");
+        }
+    }
+
+    /// Written by the real rclone binary (`rclone config create`, v1.75.1),
+    /// which stores all three backends' keys plain. The keys decode as
+    /// obscured values, so a reveal anywhere on this path would change them.
+    #[test]
+    fn test_import_rclone_api_key_providers_from_real_rclone_config() {
+        let conf = "\
+[dr]
+type = drime
+access_token = jux3pFx5rDYgmXi0rjy5CWhBCyCRMiJMswW7zVQl
+
+[cl]
+type = cloudinary
+cloud_name = demo-cloud
+api_key = 599944212611461
+api_secret = hwPq3vxxVum2xqOoHU7bJ6Cqnp8
+
+[ik]
+type = imagekit
+endpoint = https://ik.imagekit.io/demo_id
+public_key = public_Xy12AbCdEfGhIjKlMnOpQrStU=
+private_key = private_PaLkUDUPvkI4w8tUjcdPfljtLGJv
+
+[lu]
+type = filelu
+key = RC_abcdefghijklmnopqrst
+";
+        for key in [
+            "jux3pFx5rDYgmXi0rjy5CWhBCyCRMiJMswW7zVQl",
+            "hwPq3vxxVum2xqOoHU7bJ6Cqnp8",
+            "private_PaLkUDUPvkI4w8tUjcdPfljtLGJv",
+        ] {
+            assert!(
+                matches!(reveal_obscured(key), Ok(ref r) if !r.is_empty()),
+                "{key} no longer decodes, so it no longer tests anything"
+            );
+        }
+        let path = tmp_write(
+            conf,
+            &format!(
+                "aeroftp-test-import-api-key-real-{}.conf",
+                std::process::id()
+            ),
+        );
+        let result = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        let server = |name: &str| {
+            result
+                .servers
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap_or_else(|| panic!("{name} not imported"))
+        };
+
+        let dr = server("dr");
+        assert_eq!(dr.protocol.as_deref(), Some("drime"));
+        assert_eq!(dr.host, "app.drime.cloud");
+        assert_eq!(dr.username, "api-token");
+        assert_eq!(
+            dr.credential.as_deref(),
+            Some("jux3pFx5rDYgmXi0rjy5CWhBCyCRMiJMswW7zVQl")
+        );
+
+        let cl = server("cl");
+        assert_eq!(cl.protocol.as_deref(), Some("cloudinary"));
+        assert_eq!(cl.host, "api.cloudinary.com");
+        assert_eq!(cl.username, "599944212611461");
+        assert_eq!(
+            cl.credential.as_deref(),
+            Some("hwPq3vxxVum2xqOoHU7bJ6Cqnp8")
+        );
+        assert_eq!(
+            cl.options,
+            Some(serde_json::json!({ "bucket": "demo-cloud" }))
+        );
+
+        let ik = server("ik");
+        assert_eq!(ik.protocol.as_deref(), Some("imagekit"));
+        assert_eq!(ik.host, "api.imagekit.io");
+        assert_eq!(ik.username, "https://ik.imagekit.io/demo_id");
+        assert_eq!(
+            ik.credential.as_deref(),
+            Some("private_PaLkUDUPvkI4w8tUjcdPfljtLGJv")
+        );
+        assert_eq!(
+            ik.options,
+            Some(serde_json::json!({ "imagekit_public_key": "public_Xy12AbCdEfGhIjKlMnOpQrStU=" }))
+        );
+
+        let lu = result
+            .skipped
+            .iter()
+            .find(|s| s.name == "lu")
+            .expect("the FileLu remote is skipped");
+        assert!(lu.reason.contains("Rclone key"), "{}", lu.reason);
+        assert!(result.warnings.is_empty());
+    }
+
+    /// What AeroFTP exports for Drime, Cloudinary and ImageKit imports back as
+    /// the same profile, public key included.
+    #[test]
+    fn test_export_rclone_api_key_providers_roundtrip() {
+        let servers = vec![
+            api_key_server("dr", "drime", "app.drime.cloud", "api-token", None),
+            api_key_server(
+                "cl",
+                "cloudinary",
+                "api.cloudinary.com",
+                "599944212611461",
+                Some(serde_json::json!({ "bucket": "demo-cloud" })),
+            ),
+            api_key_server(
+                "ik",
+                "imagekit",
+                "api.imagekit.io",
+                "https://ik.imagekit.io/demo_id",
+                Some(serde_json::json!({ "imagekit_public_key": "public_abc=" })),
+            ),
+        ];
+        let passwords: HashMap<String, String> = [
+            ("dr", "12|drimeTokenValue"),
+            ("cl", "hwPq3vxxVum2xqOoHU7bJ6Cqnp8"),
+            ("ik", "private_abc="),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp-test-roundtrip-api-key-{}.conf",
+            std::process::id()
+        ));
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let result = import_rclone(&tmp).unwrap();
+        std::fs::remove_file(&tmp).ok();
+
+        assert_eq!(
+            result.servers.len(),
+            3,
+            "skipped: {:?}",
+            result.skipped.len()
+        );
+        for original in &servers {
+            let back = result
+                .servers
+                .iter()
+                .find(|s| s.name == original.name)
+                .unwrap_or_else(|| panic!("{} did not come back", original.name));
+            assert_eq!(back.protocol, original.protocol, "{}", original.name);
+            assert_eq!(back.host, original.host, "{}", original.name);
+            assert_eq!(back.username, original.username, "{}", original.name);
+            assert_eq!(back.options, original.options, "{}", original.name);
+            assert_eq!(
+                back.credential.as_deref(),
+                passwords.get(&original.name).map(String::as_str),
+                "{}",
+                original.name
+            );
+        }
+    }
+
+    /// Remotes AeroFTP would open onto other content, or cannot sign in to,
+    /// are skipped with the reason instead of imported.
+    #[test]
+    fn test_import_rclone_api_key_providers_refuse_what_aeroftp_cannot_open() {
+        let conf = "\
+[dr-ws]
+type = drime
+access_token = token
+workspace_id = 42
+
+[dr-root]
+type = drime
+access_token = token
+root_folder_id = 1234
+
+[dr-empty]
+type = drime
+
+[cl-eu]
+type = cloudinary
+cloud_name = demo-cloud
+api_key = 1
+api_secret = s
+upload_prefix = https://api-eu.cloudinary.com
+
+[cl-nameless]
+type = cloudinary
+api_key = 1
+api_secret = s
+
+[ik-no-endpoint]
+type = imagekit
+public_key = p
+private_key = k
+";
+        let path = tmp_write(
+            conf,
+            &format!(
+                "aeroftp-test-import-api-key-refused-{}.conf",
+                std::process::id()
+            ),
+        );
+        let result = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        assert!(result.servers.is_empty(), "{:?}", result.servers.len());
+        for (name, needle) in [
+            ("dr-ws", "workspace 42"),
+            ("dr-root", "folder id 1234"),
+            ("dr-empty", "no access_token"),
+            ("cl-eu", "api-eu.cloudinary.com"),
+            ("cl-nameless", "no cloud_name"),
+            ("ik-no-endpoint", "no endpoint"),
+        ] {
+            let skipped = result
+                .skipped
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap_or_else(|| panic!("{name} not reported"));
+            assert!(
+                skipped.reason.contains(needle),
+                "{name}: {}",
+                skipped.reason
+            );
+        }
+    }
+
+    /// A Cloudinary profile without its cloud name and an ImageKit profile
+    /// without the public key would be remotes rclone cannot use (ImageKit's
+    /// it refuses to create), so neither is written and each says why.
+    #[test]
+    fn test_export_rclone_skips_api_key_providers_missing_a_required_field() {
+        let servers = vec![
+            api_key_server(
+                "cl",
+                "cloudinary",
+                "api.cloudinary.com",
+                "599944212611461",
+                None,
+            ),
+            api_key_server("ik", "imagekit", "api.imagekit.io", "demo_id", None),
+            api_key_server("dr", "drime", "app.drime.cloud", "api-token", None),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "api-key-missing-field");
+
+        assert_eq!(outcome.exported, 1, "only Drime:\n{conf}");
+        assert!(!conf.contains("[cl]"), "{conf}");
+        assert!(!conf.contains("[ik]"), "{conf}");
+        let reason = |name: &str| {
+            outcome
+                .skipped
+                .iter()
+                .find(|s| s.name == name)
+                .map(|s| s.reason.clone())
+                .unwrap_or_else(|| panic!("{name} not reported: {:?}", outcome.skipped))
+        };
+        assert!(reason("cl").contains("cloud name"), "{}", reason("cl"));
+        assert!(reason("ik").contains("public key"), "{}", reason("ik"));
     }
 
     #[test]

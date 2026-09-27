@@ -1163,10 +1163,12 @@ pub async fn export_bridge_config(
                     .unwrap_or("ftp")
                     .to_string();
                 if !supported.contains(&proto.as_str()) {
-                    skipped.push(json!({
-                        "name": name,
-                        "reason": format!("protocol {} not exportable to {}", proto, source),
-                    }));
+                    let reason = crate::bridge_shared::bridge_export_refusal(&source, &proto)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| {
+                            format!("protocol {} not exportable to {}", proto, source)
+                        });
+                    skipped.push(json!({ "name": name, "reason": reason }));
                     continue;
                 }
                 // #128-D: rclone OAuth-token exports need the vaulted token plus
