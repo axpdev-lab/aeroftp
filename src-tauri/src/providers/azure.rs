@@ -1970,13 +1970,23 @@ impl StorageProvider for AzureProvider {
             .unwrap_or_else(|| path.to_string());
 
         // Hierarchical-namespace accounts answer HEAD 200 for a directory and
-        // mark it with this metadata. A flat account never sends the header,
-        // so a blob stays a file.
-        let is_dir = resp
-            .headers()
-            .get("x-ms-meta-hdi_isfolder")
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+        // name its kind in `x-ms-resource-type`, which is asked first: a
+        // directory the service made itself carries no metadata. Then the
+        // `hdi_isfolder` metadata, which those accounts and the stubs AzCopy
+        // and ADLS migrations leave on a flat account carry. A flat account
+        // sends neither for a blob, so it stays a file.
+        let header = |name: &str| {
+            resp.headers()
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .map(str::trim)
+        };
+        let is_dir = match header("x-ms-resource-type") {
+            Some(kind) => kind.eq_ignore_ascii_case("directory"),
+            None => {
+                header("x-ms-meta-hdi_isfolder").is_some_and(|v| v.eq_ignore_ascii_case("true"))
+            }
+        };
 
         Ok(RemoteEntry {
             name,
@@ -2841,6 +2851,10 @@ mod tests {
                     response = response.header("x-ms-meta-hdi_isfolder", "true");
                 } else if path.ends_with("/marked-false") {
                     response = response.header("x-ms-meta-hdi_isfolder", "false");
+                } else if path.ends_with("/hns-dir") {
+                    response = response.header("x-ms-resource-type", "Directory");
+                } else if path.ends_with("/hns-file") {
+                    response = response.header("x-ms-resource-type", "file");
                 }
                 response.body(axum::body::Body::empty()).unwrap()
             },
@@ -2859,6 +2873,16 @@ mod tests {
         assert!(!file.is_dir, "a blob with no flag stays a file");
         let marked = provider.stat("/marked-false").await.expect("stat");
         assert!(!marked.is_dir, "hdi_isfolder false stays a file");
+        // A hierarchical-namespace account names the kind of every path in
+        // `x-ms-resource-type`, with no metadata on a directory it made
+        // itself: that directory was reported as a file.
+        let hns_dir = provider.stat("/hns-dir").await.expect("stat");
+        assert!(
+            hns_dir.is_dir,
+            "x-ms-resource-type directory is a directory"
+        );
+        let hns_file = provider.stat("/hns-file").await.expect("stat");
+        assert!(!hns_file.is_dir, "x-ms-resource-type file is a file");
     }
 
     /// L3 of the 4.2.1 closeout: on a flat account an `hdi_isfolder` stub
