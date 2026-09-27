@@ -568,6 +568,18 @@ pub async fn extract_rar_entry(
     password: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
+    extract_rar_entry_impl(archive_path, entry_name, output_path, password, Some(app)).await
+}
+
+/// Implementation of `extract_rar_entry`; `app` is `None` for headless callers
+/// (tests), which get a silent progress emitter.
+pub(crate) async fn extract_rar_entry_impl(
+    archive_path: String,
+    entry_name: String,
+    output_path: String,
+    password: Option<String>,
+    app: Option<tauri::AppHandle>,
+) -> Result<String, String> {
     // M16: Validate entry name before extraction to prevent path traversal
     if !is_safe_archive_entry(&entry_name) {
         return Err(format!(
@@ -605,11 +617,31 @@ pub async fn extract_rar_entry(
             // RAR extracts in a single opaque call (no byte hook), so show an honest
             // indeterminate bar rather than a faked percentage (HANDOFF section 3.6).
             let total = header.entry().unpacked_size;
-            let mut progress =
-                ArchiveProgress::indeterminate_for_app(app, phase::EXTRACTING, total);
+            let mut progress = match app {
+                Some(app) => ArchiveProgress::indeterminate_for_app(app, phase::EXTRACTING, total),
+                None => {
+                    ArchiveProgress::new_indeterminate(phase::EXTRACTING, total, Box::new(|_| {}))
+                }
+            };
+            // UnRAR opens its output with overwrite-all and deletes it when the
+            // entry fails (a CRC error, which is also what a wrong password gives
+            // on a RAR 4 archive): extracting straight to `output_path` destroyed
+            // a file the user already had there. Extract into a fresh folder
+            // beside it and rename into place only on success.
+            let staging = tempfile::Builder::new()
+                .prefix(".aeroftp-extract-")
+                .tempdir_in(&out_dir)
+                .map_err(|e| format!("Failed to create temp folder: {}", e))?;
+            let staged = staging.path().join(
+                std::path::Path::new(&output_path)
+                    .file_name()
+                    .unwrap_or_else(|| std::ffi::OsStr::new("entry")),
+            );
             header
-                .extract_to(&output_path)
+                .extract_to(&staged)
                 .map_err(|e| format!("Failed to extract entry: {}", e))?;
+            std::fs::rename(&staged, &output_path)
+                .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
             progress.finish();
             return Ok(output_path);
         } else {

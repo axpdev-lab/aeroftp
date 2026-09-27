@@ -9641,10 +9641,41 @@ async fn extract_rar(
         unrar::Archive::new(&archive_path)
     };
 
-    let mut archive = archive
+    let archive = archive
         .open_for_processing()
         .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
 
+    // UnRAR opens an entry's output with overwrite-all and deletes it when the
+    // entry fails (a CRC error, which is also what a wrong password gives on a
+    // RAR 4 archive), so extracting straight into place destroyed a file the
+    // user already had at that path. Entries go into a staging folder inside
+    // the destination instead, and what UnRAR extracted there is moved into
+    // place when the loop ends, whether it failed or not: a failed entry leaves
+    // the existing file untouched, as write_entry_atomically does for the other
+    // formats. Moving what is in the folder, rather than the entry names,
+    // keeps the names UnRAR writes (it corrects a name the platform does not
+    // allow). Moving at the end rather than entry by entry keeps an earlier
+    // entry where UnRAR looks for it when a later one is a RAR 5 file
+    // reference or hard link to it (its extraction folder, on Windows and
+    // macOS).
+    let staging = tempfile::Builder::new()
+        .prefix(".aeroftp-extract-")
+        .tempdir_in(&final_output)
+        .map_err(|e| format!("Failed to create a staging folder: {}", e))?;
+    let extracted = extract_rar_entries(archive, staging.path());
+    let moved = move_staged_tree(staging.path(), &final_output);
+    extracted?;
+    moved?;
+
+    Ok(final_output.to_string_lossy().to_string())
+}
+
+/// The entry loop of `extract_rar`: extracts every safe, non-link file entry
+/// under `base`.
+fn extract_rar_entries(
+    mut archive: unrar::OpenArchive<unrar::Process, unrar::CursorBeforeHeader>,
+    base: &std::path::Path,
+) -> Result<(), String> {
     while let Some(header) = archive
         .read_header()
         .map_err(|e| format!("Failed to read RAR header: {}", e))?
@@ -9676,7 +9707,7 @@ async fn extract_rar(
 
         archive = if header.entry().is_file() {
             header
-                .extract_with_base(&final_output)
+                .extract_with_base(base)
                 .map_err(|e| format!("Failed to extract RAR entry: {}", e))?
         } else {
             header
@@ -9684,8 +9715,40 @@ async fn extract_rar(
                 .map_err(|e| format!("Failed to skip RAR entry: {}", e))?
         };
     }
+    Ok(())
+}
 
-    Ok(final_output.to_string_lossy().to_string())
+/// Moves everything under `staging` to the same relative path under `dest`,
+/// replacing a file already there. Folders are recreated, not moved, so they
+/// merge with folders the destination already has. Links are moved as links.
+fn move_staged_tree(staging: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
+    // Listed first, moved after: the tree changes as it is emptied.
+    let staged: Vec<walkdir::DirEntry> = walkdir::WalkDir::new(staging)
+        .min_depth(1)
+        .follow_links(false)
+        .into_iter()
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("Failed to read the staging folder: {}", e))?;
+    for entry in staged {
+        let relative = entry
+            .path()
+            .strip_prefix(staging)
+            .map_err(|e| format!("Failed to place an extracted entry: {}", e))?;
+        let to = dest.join(relative);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&to)
+                .map_err(|e| format!("Failed to create directory '{}': {}", to.display(), e))?;
+        } else {
+            std::fs::rename(entry.path(), &to).map_err(|e| {
+                format!(
+                    "Failed to move extracted '{}' into place: {}",
+                    relative.display(),
+                    e
+                )
+            })?;
+        }
+    }
+    Ok(())
 }
 
 /// Check if a RAR archive is password protected
@@ -22575,6 +22638,128 @@ mod sevenz_advanced_tests {
             err.contains("unknown 7z method"),
             "unexpected error message: {err}"
         );
+    }
+}
+
+#[cfg(test)]
+mod rar_extract_tests {
+    use super::extract_rar_core;
+
+    /// RAR 4, one encrypted entry `.gitignore`, password `unrar`: the `unrar`
+    /// crate's own test archive (tests/fixtures/rar/README.md).
+    const CRYPTED_RAR: &[u8] = include_bytes!("../tests/fixtures/rar/crypted.rar");
+    /// The first volume of a multi-volume RAR whose last entry continues in a
+    /// second volume that is not there (tests/fixtures/rar/README.md).
+    const PART1_RAR: &[u8] = include_bytes!("../tests/fixtures/rar/archive.part1.rar");
+    const CRYPTED_CONTENT: &[u8] = b"target\nCargo.lock\n";
+    const USERS_FILE: &[u8] = b"the user's own file";
+
+    fn names(dir: &std::path::Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    // UnRAR opens an entry's output with overwrite-all and deletes it when the
+    // entry fails (on a RAR 4 archive a wrong password is a CRC failure), so a
+    // failed entry destroyed the file the user already had at that path. Every
+    // other extractor leaves an existing file untouched on a failed entry.
+    #[tokio::test]
+    async fn a_failed_rar_entry_keeps_the_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("crypted.rar");
+        std::fs::write(&archive, CRYPTED_RAR).unwrap();
+        let archive = archive.to_string_lossy().to_string();
+        let mut failures = Vec::new();
+
+        // Whole archive, then single entry from the archive browser: a wrong
+        // password over the user's file, then the right one replacing it.
+        for path in ["whole", "browse"] {
+            let dest = dir.path().join(path);
+            std::fs::create_dir(&dest).unwrap();
+            let out = dest.join(".gitignore");
+            std::fs::write(&out, USERS_FILE).unwrap();
+            for (password, expected) in [("not-it", USERS_FILE), ("unrar", CRYPTED_CONTENT)] {
+                let result = if path == "whole" {
+                    extract_rar_core(
+                        archive.clone(),
+                        dest.to_string_lossy().to_string(),
+                        Some(password.to_string()),
+                        false,
+                    )
+                    .await
+                } else {
+                    crate::archive_browse::extract_rar_entry_impl(
+                        archive.clone(),
+                        ".gitignore".to_string(),
+                        out.to_string_lossy().to_string(),
+                        Some(password.to_string()),
+                        None,
+                    )
+                    .await
+                };
+                let got = std::fs::read(&out).ok();
+                let left = names(&dest);
+                if got.as_deref() != Some(expected)
+                    || result.is_ok() != (password == "unrar")
+                    || left != [".gitignore"]
+                {
+                    failures.push(format!(
+                        "{path}, password {password}: result {result:?}, file {:?}, folder {left:?}",
+                        got.map(|g| String::from_utf8_lossy(&g).into_owned())
+                    ));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    // Entries are staged and moved into place when the loop ends, also when it
+    // ends on an error: what extracted before the failure lands where it did
+    // before (nested folders included), the entry that failed leaves nothing,
+    // and no staging folder is left behind.
+    #[tokio::test]
+    async fn a_rar_extraction_that_stops_part_way_keeps_what_it_extracted() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("archive.part1.rar");
+        std::fs::write(&archive, PART1_RAR).unwrap();
+        let dest = dir.path().join("out");
+        std::fs::create_dir(&dest).unwrap();
+        let result = extract_rar_core(
+            archive.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+            None,
+            false,
+        )
+        .await;
+        let mut failures = Vec::new();
+        if result.is_ok() {
+            failures.push("the missing second volume did not fail".to_string());
+        }
+        for (name, size) in [
+            ("build.rs", 2396),
+            ("Cargo.toml", 313),
+            ("examples/lister.rs", 2693),
+            ("src/lib.rs", 7870),
+            ("vendor/unrar/acknow.txt", 4280),
+            ("vendor/unrar/arccmt.cpp", 4090),
+        ] {
+            let got = std::fs::metadata(dest.join(name)).map(|m| m.len()).ok();
+            if got != Some(size) {
+                failures.push(format!("{name}: {got:?} bytes, expected {size}"));
+            }
+        }
+        if dest.join("vendor/unrar/archive.cpp").exists() {
+            failures.push("the entry cut by the missing volume was left behind".to_string());
+        }
+        let top = names(&dest);
+        if top != ["Cargo.toml", "build.rs", "examples", "src", "vendor"] {
+            failures.push(format!("destination holds {top:?}"));
+        }
+        assert!(failures.is_empty(), "{failures:#?} (result: {result:?})");
     }
 }
 
