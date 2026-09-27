@@ -1462,8 +1462,9 @@ impl StorageProvider for CloudinaryProvider {
         // image `v` and a video `v`, a folder `photos` and an image
         // `photos`): that path is refused as ambiguous. It looked at the
         // folders first and then took the first asset matching by name or by
-        // public id, so an action on one item reached another (live on a
-        // fixed-folder account: `rm` of a video deleted the image beside it).
+        // public id, so an action on one item reached another (read from the
+        // code for a fixed-folder account: `rm` of a video deleted the image
+        // beside it).
         let parent = parent_segments(&resolved);
         let name = basename(&resolved).to_string();
         let wanted = format!("/{trimmed}");
@@ -2000,9 +2001,10 @@ fn normalize_path(path: &str) -> String {
 /// A path several items hold (see [`CloudinaryProvider::stat`]).
 fn ambiguous_path(path: &str, items: usize) -> ProviderError {
     ProviderError::InvalidPath(format!(
-        "{path} names {items} Cloudinary items (public ids are unique per resource type, so \
-         assets of two types, or an asset and a folder, can share one path): the one meant \
-         cannot be told apart, and nothing was done"
+        "{path} names {items} Cloudinary items (an asset and a folder, assets of two \
+         resource types, or assets with the same display name): the one meant cannot be told \
+         apart and nothing was done. Rename or delete one of them in the Cloudinary Media \
+         Library"
     ))
 }
 
@@ -2022,10 +2024,20 @@ fn names_listed_once(files: &[CloudinaryResource], dynamic: bool) -> HashSet<Str
         .collect()
 }
 
-/// Whether two listed entries are one asset: public ids are unique per
-/// resource type.
+/// Whether two listed entries are one asset: by `asset_id` when both carry
+/// one, otherwise by public id, resource type and delivery type (public ids
+/// are unique per resource type and delivery type, so an `upload` and a
+/// `private` asset can share one; a missing type is Cloudinary's `upload`).
 fn same_asset(a: &CloudinaryResource, b: &CloudinaryResource) -> bool {
-    a.public_id == b.public_id && a.resource_type == b.resource_type
+    if let (Some(x), Some(y)) = (&a.asset_id, &b.asset_id) {
+        return x == y;
+    }
+    let delivery = |r: &CloudinaryResource| {
+        r.delivery_type
+            .clone()
+            .unwrap_or_else(|| "upload".to_string())
+    };
+    a.public_id == b.public_id && a.resource_type == b.resource_type && delivery(a) == delivery(b)
 }
 
 fn basename(path: &str) -> &str {
@@ -2079,6 +2091,34 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The dedupe took an `upload` and a `private` asset with one public id
+    /// for one asset and dropped the second before the match.
+    #[test]
+    fn same_asset_tells_delivery_types_apart() {
+        let asset = |id: Option<&str>, delivery: Option<&str>| {
+            serde_json::from_value::<CloudinaryResource>(serde_json::json!({
+                "asset_id": id,
+                "public_id": "v",
+                "resource_type": "image",
+                "type": delivery,
+            }))
+            .expect("resource")
+        };
+        assert!(!same_asset(
+            &asset(None, Some("upload")),
+            &asset(None, Some("private"))
+        ));
+        assert!(same_asset(&asset(None, None), &asset(None, Some("upload"))));
+        assert!(!same_asset(
+            &asset(Some("a1"), Some("upload")),
+            &asset(Some("a2"), Some("upload"))
+        ));
+        assert!(same_asset(
+            &asset(Some("a1"), None),
+            &asset(Some("a1"), Some("upload"))
+        ));
+    }
 
     /// A Cloudinary double whose root holds `resource` and nothing else, on
     /// a dynamic-folder account (listing by `asset_folder`) or a fixed-folder
@@ -2486,7 +2526,10 @@ mod tests {
                         .filter(|(_, _, resource_type)| *resource_type == kind)
                         .map(|(public_id, format, resource_type)| {
                             let mut resource = serde_json::json!({
-                                "asset_id": format!("AID_{public_id}"), "public_id": public_id,
+                                // Cloudinary's asset id is unique across
+                                // types, unlike the public id.
+                                "asset_id": format!("AID_{resource_type}_{public_id}"),
+                                "public_id": public_id,
                                 "bytes": 3, "resource_type": resource_type, "type": "upload",
                             });
                             // A raw asset may come without a format.
