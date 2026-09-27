@@ -55,8 +55,6 @@ fn internxt_log(msg: &str) {
 /// All `/drive/*` and `/network/*` prefixed paths in this file rely on this routing.
 /// Reference: rclone-adapter uses the same gateway approach.
 const GATEWAY: &str = "https://gateway.internxt.com";
-/// Direct API URL: used as fallback when gateway blocks CLI access (402 on free tier).
-const API_URL: &str = "https://api.internxt.com";
 
 /// Well-known application-level crypto secret, identical across all Internxt clients
 /// (web, desktop, CLI, rclone adapter). Used for encrypting/decrypting the sKey (salt)
@@ -358,7 +356,7 @@ pub struct InternxtProvider {
     current_path: String,
     /// Current folder UUID
     current_folder_id: String,
-    /// Base URL for API requests (gateway or api.internxt.com)
+    /// Base URL for /drive/* requests: the gateway (a local fixture in tests)
     api_base: String,
     /// Cache: path → DirInfo (uuid, name)
     /// M3: Capped at DIR_CACHE_MAX_ENTRIES to prevent unbounded memory growth
@@ -652,7 +650,7 @@ impl InternxtProvider {
 
     /// Make authenticated request to /network/* endpoints (Basic auth).
     /// Network endpoints always use GATEWAY (gateway.internxt.com/network/* → api.internxt.com/*),
-    /// regardless of whether api_base was switched to API_URL for /drive/* requests.
+    /// whatever `api_base` the /drive/* requests use.
     /// This is because the Bridge/Network API only accepts Basic auth via the gateway.
     fn network_request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}/network{}", GATEWAY, path);
@@ -908,7 +906,10 @@ impl InternxtProvider {
         }
     }
 
-    /// Fallback auth using api.internxt.com /drive/auth/login/access (no CLI tier restriction)
+    /// Fallback auth on the gateway's web login, /drive/auth/login/access, which has
+    /// no CLI tier restriction (the CLI access endpoint answers 402 on free plans).
+    /// It used to go to api.internxt.com, a legacy host whose /drive/* paths now hang
+    /// until nginx answers 504; every official client uses the gateway.
     async fn connect_web_auth(
         &mut self,
         email: &str,
@@ -918,13 +919,13 @@ impl InternxtProvider {
     ) -> Result<(), ProviderError> {
         internxt_log(&format!(
             "[WEB AUTH] Trying {} /drive/auth/login/access...",
-            API_URL
+            GATEWAY
         ));
 
         // Re-use sKey from step 1 to encrypt password
         let encrypted_password = Self::encrypt_password_hash(password, s_key)?;
 
-        let web_access_url = format!("{}/drive/auth/login/access", API_URL);
+        let web_access_url = format!("{}/drive/auth/login/access", GATEWAY);
         internxt_log(&format!("[WEB AUTH] POST {}", web_access_url));
 
         let mut access_body = serde_json::json!({
@@ -1004,9 +1005,6 @@ impl InternxtProvider {
         self.current_folder_id = self.root_folder_id.clone();
         self.basic_auth =
             Self::compute_basic_auth(&access_data.user.bridge_user, &access_data.user.user_id);
-
-        // Use api.internxt.com for all subsequent API calls since gateway blocked CLI
-        self.api_base = API_URL.to_string();
 
         self.dir_cache_insert(
             "/".to_string(),
@@ -1160,7 +1158,7 @@ impl StorageProvider for InternxtProvider {
             if access_status.as_u16() == 402 {
                 internxt_log("[STEP 3] 402 = Free account blocked from CLI access. Trying web auth fallback...");
 
-                // Try alternative: api.internxt.com /drive/auth/login/access
+                // Try the web login on the gateway: /drive/auth/login/access
                 let password_clone = self.config.password.expose_secret().to_string();
                 let result = self
                     .connect_web_auth(&email, &password_clone, &tfa, &login_data.s_key)
