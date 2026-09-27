@@ -417,6 +417,25 @@ impl FtpProvider {
         super::ftp_listing::parse_mlsd_entry(line, base_path)
     }
 
+    /// The error of the reply that ends a transfer, read after the data. A
+    /// refusal there (`4xx`, `5xx`: `451`, `452`, `552`) is the server's
+    /// verdict on this transfer, not a session out of step, and it is phrased
+    /// without the "invalid response" that `is_stale_data_connection_error`
+    /// reads as one: the callers that reconnect and try again on a stale
+    /// session sent the whole file a second time for a refusal.
+    fn transfer_verdict_error(err: FtpError) -> ProviderError {
+        match err {
+            FtpError::UnexpectedResponse(response)
+                if matches!(response.status.code() / 100, 4 | 5) =>
+            {
+                ProviderError::TransferFailed(format!(
+                    "the server refused the transfer: {response}"
+                ))
+            }
+            other => ProviderError::TransferFailed(other.to_string()),
+        }
+    }
+
     fn is_stale_data_connection_error(err: &ProviderError) -> bool {
         let message = match err {
             ProviderError::ServerError(msg)
@@ -1566,7 +1585,7 @@ impl StorageProvider for FtpProvider {
         channel
             .close()
             .await?
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(Self::transfer_verdict_error)?;
 
         if bytes_read as u64 > limit {
             return Err(ProviderError::TransferFailed(format!(
@@ -1942,7 +1961,7 @@ impl StorageProvider for FtpProvider {
         channel
             .close()
             .await?
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(Self::transfer_verdict_error)?;
 
         Ok(())
     }
@@ -2037,7 +2056,7 @@ impl StorageProvider for FtpProvider {
             // leaves the control channel mid-sentence, and the guard is already
             // settled, so nothing else would discard it: do it here.
             self.stream = None;
-            return Err(ProviderError::TransferFailed(e.to_string()));
+            return Err(Self::transfer_verdict_error(e));
         }
 
         if let Some(progress) = on_progress {
@@ -3439,15 +3458,10 @@ impl FtpProvider {
             // and the reader's buffer, which the peek cannot see.
             let mut probe = [0u8; 1];
             let mut got = tokio::io::ReadBuf::new(&mut probe);
-            // Polled exactly once and always Ready: "is there something now",
-            // never "wait until there is".
-            let queued = std::future::poll_fn(|cx| {
-                std::task::Poll::Ready(match control.poll_peek(cx, &mut got) {
-                    std::task::Poll::Ready(Ok(bytes)) => bytes,
-                    _ => 0,
-                })
-            })
-            .await;
+            let queued = match Self::peek_once(control, &mut got).await {
+                std::task::Poll::Ready(Ok(bytes)) => bytes,
+                _ => 0,
+            };
             return if queued > 0 || !buffered.is_empty() {
                 Ok(DataStep::ControlRefused)
             } else {
@@ -3468,39 +3482,70 @@ impl FtpProvider {
                 }
             };
         }
-        tokio::select! {
-            biased;
-            _ = control.readable() => {
-                // Non-blocking on purpose: `readable()` can wake spuriously,
-                // and an awaiting `peek` would then stall the data loop it was
-                // meant to protect.
-                let mut probe = [0u8; 1];
-                let mut got = tokio::io::ReadBuf::new(&mut probe);
-                // Polled once: on Windows tokio does not clear read readiness
-                // after a short read, and an awaited peek could wait on a
-                // control channel that has nothing to say.
-                let peeked = std::future::poll_fn(|cx| {
-                    std::task::Poll::Ready(match control.poll_peek(cx, &mut got) {
-                        std::task::Poll::Ready(Ok(bytes)) => bytes,
-                        _ => 0,
-                    })
-                })
-                .await;
-                let first = got.filled().first().copied();
-                match first {
-                    Some(b'4') | Some(b'5') if peeked > 0 => Ok(DataStep::ControlRefused),
-                    // Anything else: a completion reply, a TLS record whose
-                    // content cannot be read, or a spurious wake. The server
-                    // spoke or may have; either way the classification is not
-                    // available and the deadline takes over.
-                    _ => {
-                        *watch = ControlWatch::Spoke;
-                        Self::read_with_deadline(data, buf, DATA_IDLE_AFTER_CONTROL_SPOKE).await
+        // A wake whose peek finds nothing is looked at once more before it is
+        // taken for the server having spoken. On Windows tokio clears read
+        // readiness after a short read only on epoll and kqueue, so the
+        // readiness the read of the `150` left is still set at the first data
+        // read of every transfer: that wake is empty, and taking it for a
+        // reply ran the whole transfer on the short deadline. The peek that
+        // found nothing cleared the readiness, so the second `readable()`
+        // waits for real bytes; a second empty wake goes to the deadline, and
+        // the loop cannot spin.
+        let mut looked_again = false;
+        loop {
+            tokio::select! {
+                biased;
+                _ = control.readable() => {
+                    // Non-blocking on purpose: `readable()` can wake spuriously,
+                    // and an awaiting `peek` would then stall the data loop it
+                    // was meant to protect.
+                    let mut probe = [0u8; 1];
+                    let mut got = tokio::io::ReadBuf::new(&mut probe);
+                    let peeked = Self::peek_once(control, &mut got).await;
+                    match peeked {
+                        std::task::Poll::Pending if !looked_again => {
+                            looked_again = true;
+                            continue;
+                        }
+                        std::task::Poll::Ready(Ok(bytes))
+                            if bytes > 0 && matches!(got.filled().first(), Some(b'4' | b'5')) =>
+                        {
+                            return Ok(DataStep::ControlRefused);
+                        }
+                        // Anything else: a completion reply, a TLS record whose
+                        // content cannot be read, or a spurious wake. The server
+                        // spoke or may have; either way the classification is
+                        // not available and the deadline takes over.
+                        _ => {
+                            *watch = ControlWatch::Spoke;
+                            return Self::read_with_deadline(
+                                data,
+                                buf,
+                                DATA_IDLE_AFTER_CONTROL_SPOKE,
+                            )
+                            .await;
+                        }
                     }
                 }
+                step = Self::read_with_deadline(data, buf, DATA_IDLE_TIMEOUT) => return step,
             }
-            step = Self::read_with_deadline(data, buf, DATA_IDLE_TIMEOUT) => step,
         }
+    }
+
+    /// Peek the control socket once: "is there something now", never "wait
+    /// until there is" (an awaited peek could wait on a channel with nothing
+    /// to say). Outside the task's cooperative budget, which the control lock
+    /// in `DataChannel::read` also draws on: with the budget spent the peek
+    /// would answer `Pending` whatever is queued, and a refusal already in the
+    /// socket would be read up to the short deadline late.
+    async fn peek_once(
+        control: &tokio::net::TcpStream,
+        got: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        tokio::task::unconstrained(std::future::poll_fn(|cx| {
+            std::task::Poll::Ready(control.poll_peek(cx, got))
+        }))
+        .await
     }
 
     /// One data read that cannot wait for ever.
@@ -3585,7 +3630,7 @@ impl FtpProvider {
         channel
             .close()
             .await?
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(Self::transfer_verdict_error)?;
 
         Ok(())
     }
@@ -3697,7 +3742,7 @@ impl FtpProvider {
         channel
             .close()
             .await?
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(Self::transfer_verdict_error)?;
 
         // Preserve local file's mtime on the remote file via MFMT (draft-somers-ftp-mfxx).
         // MFMT is a standalone FTP command, NOT a SITE sub-command.
@@ -5052,6 +5097,45 @@ mod data_channel_watch_tests {
         (client, server)
     }
 
+    /// Verification of the last round of #950: tokio clears read readiness
+    /// after a short read only on epoll and kqueue, so on Windows the
+    /// readiness the read of the `150` leaves is still set at the first data
+    /// read of every transfer. Its peek finds nothing, and that empty wake was
+    /// taken for the server having spoken: the whole transfer ran on the 30 s
+    /// deadline, and a slow server quiet for longer failed. Linux keeps the
+    /// readiness the same way after a `try_read` that took everything, which
+    /// is how this test leaves it. Before the peek was polled once, the same
+    /// setup waited on the silent control channel for ever.
+    ///
+    /// The clock is virtual, so the 31 s the data take pass at once.
+    #[tokio::test(start_paused = true)]
+    async fn readiness_left_by_the_150_does_not_shorten_the_data_deadline() {
+        let (mut data, mut data_peer) = silent_pair().await;
+        let (control, mut control_peer) = silent_pair().await;
+        control_peer.write_all(b"150 opening\r\n").await.unwrap();
+        control.readable().await.unwrap();
+        let mut reply = [0u8; 64];
+        let n = control.try_read(&mut reply).unwrap();
+        assert_eq!(&reply[..n], b"150 opening\r\n");
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(31)).await;
+            data_peer.write_all(b"late").await.unwrap();
+            // Kept open: an end of file would be an answer too.
+            std::future::pending::<()>().await;
+        });
+
+        let mut buf = [0u8; 64];
+        let mut watch = ControlWatch::Quiet;
+        let step = tokio::time::timeout(
+            std::time::Duration::from_secs(120),
+            FtpProvider::read_watching_control(&mut data, &control, &[], &mut buf, &mut watch),
+        )
+        .await
+        .expect("the read waited on a control channel with nothing to say");
+        assert!(matches!(step, Ok(DataStep::Read(4))), "{step:?}");
+        drop(control_peer);
+    }
+
     /// A wait that simply ended is not a refusal, and must not be reported as
     /// one.
     ///
@@ -6301,7 +6385,9 @@ mod transfer_verdict_tests {
     }
 
     /// The same for an upload: `451`, `452` and `552` after the data refuse
-    /// the file, and the upload is an error.
+    /// the file, and the upload is an error. Sent once (verification of the
+    /// last round of #950): the refusal read as "invalid response" was taken
+    /// for a stale session, and the whole file went up a second time.
     #[tokio::test]
     async fn an_upload_the_server_refuses_after_the_data_is_an_error() {
         for reply in [
@@ -6309,7 +6395,7 @@ mod transfer_verdict_tests {
             "452 Insufficient storage space.\r\n",
             "552 Exceeded storage allocation.\r\n",
         ] {
-            let (port, _) = scripted_server(Script {
+            let (port, log) = scripted_server(Script {
                 retr_payload: Vec::new(),
                 retr_reply: "226 done\r\n",
                 retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
@@ -6329,6 +6415,13 @@ mod transfer_verdict_tests {
             .await
             .expect("the upload must end");
             assert!(outcome.is_err(), "{reply:?} was read as success");
+            let stors = log
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|line| line.starts_with("STOR"))
+                .count();
+            assert_eq!(stors, 1, "{reply:?}: the file was sent again");
         }
     }
 
@@ -6441,12 +6534,19 @@ mod transfer_verdict_tests {
             assert_eq!(read.ok(), Some(vec![b'x'; 10]), "{word:?}");
             // None of the words is `226` or `250`: where the server saw the
             // early close and answered it, the session is not handed on.
-            if log
+            let saw_early_close = log
                 .lock()
                 .unwrap()
                 .iter()
-                .any(|line| line == EARLY_CLOSE_SEEN)
-            {
+                .any(|line| line == EARLY_CLOSE_SEEN);
+            // Everywhere but Windows the payload outgrows the send buffer and
+            // the server sees the close, so the check below never goes quiet.
+            #[cfg(not(windows))]
+            assert!(
+                saw_early_close,
+                "{word:?}: the server never saw the early close"
+            );
+            if saw_early_close {
                 assert!(provider.stream.is_none(), "{word:?}");
             }
         }
