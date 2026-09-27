@@ -473,9 +473,11 @@ pub fn resolve_crypt_salt(value: &str, form: Option<CryptSecretForm>) -> Result<
 /// What the eye button of the profile form shows for a stored rclone-crypt
 /// password or salt: the secret itself when the value is recorded as
 /// obscured, the stored value as it is otherwise (recorded clear, or not
-/// recorded, which the form shows as saved).
+/// recorded, which the form shows as saved). Async so it stays off the main
+/// thread, as every command does (`sync_command_audit`); the work is a reveal
+/// in memory and needs no blocking pool.
 #[tauri::command]
-pub fn rclone_crypt_secret_for_display(
+pub async fn rclone_crypt_secret_for_display(
     value: String,
     form: Option<String>,
     field: String,
