@@ -3989,7 +3989,7 @@ async fn sftp_readahead_range_into(
                     Ok(r) => r,
                     Err(_) => {
                         return Err(ProviderError::TransferFailed(
-                            "Transfer cancelled by user".to_string(),
+                            SFTP_TRANSFER_CANCELLED.to_string(),
                         ));
                     }
                 }
@@ -4007,7 +4007,7 @@ async fn sftp_readahead_range_into(
         if cancelled {
             close_sftp_files(ok, &sftp.ended).await;
             return Err(ProviderError::TransferFailed(
-                "Transfer cancelled by user".to_string(),
+                SFTP_TRANSFER_CANCELLED.to_string(),
             ));
         }
         match err {
@@ -4055,7 +4055,7 @@ async fn sftp_readahead_range_into(
                         loop {
                             if work_cancel.is_cancelled() {
                                 return Err(ProviderError::TransferFailed(
-                                    "Transfer cancelled by user".to_string(),
+                                    SFTP_TRANSFER_CANCELLED.to_string(),
                                 ));
                             }
                             let j = next_chunk.fetch_add(1, Ordering::Relaxed);
@@ -4068,7 +4068,7 @@ async fn sftp_readahead_range_into(
                             let buf = tokio::select! {
                                 _ = work_cancel.cancelled() => {
                                     return Err(ProviderError::TransferFailed(
-                                        "Transfer cancelled by user".to_string(),
+                                        SFTP_TRANSFER_CANCELLED.to_string(),
                                     ));
                                 }
                                 r = sftp_pipelined_read_window(&mut file, abs_off, want, &sftp.ended) => r?,
@@ -4084,7 +4084,7 @@ async fn sftp_readahead_range_into(
                             tokio::select! {
                                 _ = work_cancel.cancelled() => {
                                     return Err(ProviderError::TransferFailed(
-                                        "Transfer cancelled by user".to_string(),
+                                        SFTP_TRANSFER_CANCELLED.to_string(),
                                     ));
                                 }
                                 sent = tx.send((abs_off, buf)) => {
@@ -4122,7 +4122,7 @@ async fn sftp_readahead_range_into(
             while let Some((abs_off, buf)) = rx.recv().await {
                 if work_cancel.is_cancelled() {
                     return Err(ProviderError::TransferFailed(
-                        "Transfer cancelled by user".to_string(),
+                        SFTP_TRANSFER_CANCELLED.to_string(),
                     ));
                 }
                 if fail_write.swap(false, Ordering::SeqCst) {
@@ -4153,15 +4153,9 @@ async fn sftp_readahead_range_into(
     match (reader_res, writer_res) {
         (Ok(()), Ok(())) => Ok(()),
         (Ok(()), Err(e)) | (Err(e), Ok(())) => Err(e),
-        (Err(a), Err(b)) => {
-            let a_cancel = a.to_string().contains("cancelled");
-            let b_cancel = b.to_string().contains("cancelled");
-            if a_cancel && !b_cancel {
-                Err(b)
-            } else {
-                Err(a)
-            }
-        }
+        // The readers' error, unless it is a cancellation and the writer's
+        // is not (the readers stopped because the writer failed).
+        (Err(a), Err(b)) => first_reader_cause(vec![Err(a), Err(b)]),
     }
 }
 
@@ -4172,18 +4166,36 @@ async fn sftp_readahead_range_into(
 /// the command layer does not retry. The first error that is not such a
 /// cancellation is the cause; a cancellation is reported only when every
 /// failure was one (the caller's own cancel).
+///
+/// A cancellation is the error this module writes for one
+/// ([`SFTP_TRANSFER_CANCELLED`]) or [`ProviderError::Cancelled`], nothing
+/// else: a real error whose text merely contains the word (a path such as
+/// `/data/cancelled/x.bin`) is a cause.
 fn first_reader_cause(results: Vec<Result<(), ProviderError>>) -> Result<(), ProviderError> {
     let mut cancelled = None;
     for result in results {
         match result {
             Ok(()) => {}
-            Err(e) if e.to_string().contains("cancelled") => {
+            Err(e) if is_transfer_cancellation(&e) => {
                 cancelled.get_or_insert(e);
             }
             Err(e) => return Err(e),
         }
     }
     cancelled.map_or(Ok(()), Err)
+}
+
+/// What a transfer of this module reports when it was cancelled, by the
+/// caller or by a sibling reader that failed.
+const SFTP_TRANSFER_CANCELLED: &str = "Transfer cancelled by user";
+
+/// Whether `error` is a cancellation (see [`first_reader_cause`]).
+fn is_transfer_cancellation(error: &ProviderError) -> bool {
+    match error {
+        ProviderError::Cancelled => true,
+        ProviderError::TransferFailed(message) => message == SFTP_TRANSFER_CANCELLED,
+        _ => false,
+    }
 }
 
 /// Single-connection sliding-window read-ahead download of a whole file, over
@@ -4624,7 +4636,7 @@ async fn sftp_pipelined_range_into(
             let results = tokio::select! {
                 _ = cancel.cancelled() => {
                     return Err(ProviderError::TransferFailed(
-                        "Transfer cancelled by user".to_string(),
+                        SFTP_TRANSFER_CANCELLED.to_string(),
                     ));
                 }
                 r = futures_util::future::try_join_all(futs) => r?,
@@ -4810,7 +4822,7 @@ async fn sftp_download_one_range(
             tokio::select! {
                 _ = cancel.cancelled() => {
                     return Err(ProviderError::TransferFailed(
-                        "Transfer cancelled by user".to_string(),
+                        SFTP_TRANSFER_CANCELLED.to_string(),
                     ));
                 }
                 _ = global_bw.charge(crate::transfer_dag::governor::TransferDirection::Download, allowance) => {}
@@ -4818,7 +4830,7 @@ async fn sftp_download_one_range(
             tokio::select! {
                 _ = cancel.cancelled() => {
                     return Err(ProviderError::TransferFailed(
-                        "Transfer cancelled by user".to_string(),
+                        SFTP_TRANSFER_CANCELLED.to_string(),
                     ));
                 }
                 read = until_sftp_ends(&sftp.ended, remote_file.read(&mut buf)) => {
@@ -6144,6 +6156,33 @@ mod tests {
         assert!(
             wrong.is_empty(),
             "a lost connection at once, not a timeout 10 s later: {wrong:#?}"
+        );
+    }
+
+    /// Only a cancellation counts as one: a real error whose text merely
+    /// contains the word (a path such as `/data/cancelled/x.bin`) is the
+    /// cause, and it is reported over the cancellations it caused.
+    #[test]
+    fn a_reader_error_that_names_a_cancelled_path_is_the_cause() {
+        let cancelled = || {
+            Err(ProviderError::TransferFailed(
+                "Transfer cancelled by user".to_string(),
+            ))
+        };
+        let real = || {
+            Err(ProviderError::TransferFailed(
+                "Read error (pipeline): Failure: /data/cancelled/x.bin".to_string(),
+            ))
+        };
+        let picked = first_reader_cause(vec![cancelled(), real()]);
+        assert!(
+            matches!(&picked, Err(ProviderError::TransferFailed(m)) if m.contains("/data/cancelled/")),
+            "{picked:?}"
+        );
+        let picked = first_reader_cause(vec![Err(ProviderError::Cancelled), real()]);
+        assert!(
+            matches!(&picked, Err(ProviderError::TransferFailed(m)) if m.contains("/data/cancelled/")),
+            "{picked:?}"
         );
     }
 }
