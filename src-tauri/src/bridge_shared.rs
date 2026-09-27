@@ -540,28 +540,42 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
     }
 }
 
-/// Why `src` cannot carry a `protocol` profile, where the generic "not
-/// exportable" would mislead: the target tool has a backend for the provider,
-/// but it signs in with a secret the AeroFTP vault does not hold. `None`
-/// leaves the caller's generic reason.
-pub fn bridge_export_refusal(src: &str, protocol: &str) -> Option<&'static str> {
-    match (src, protocol) {
+/// Profiles `src` cannot carry although the target tool has a backend for
+/// their provider, each with the reason: that backend signs in with a secret
+/// the AeroFTP vault does not hold. The generic "not exportable" would read as
+/// "the tool cannot reach this provider". Read by the CLI's skipped list and by
+/// the GUI Export, which shows the reason next to the profile it greys out.
+pub fn bridge_export_refusals(src: &str) -> &'static [(&'static str, &'static str)] {
+    match src {
         // Measured on a live account: rclone v1.75.1 answers "Invalid FileLu
         // Rclone Key" to the API key AeroFTP holds, since its backend calls
         // filelu.com/rclone, not the filelu.com/api that key is for.
-        ("rclone", "filelu") => Some(
-            "rclone's filelu backend signs in with the FileLu Rclone key (RC_..., \
-             shown in My Account once Rclone is switched on), a different key from \
-             the API key AeroFTP uses. Create the remote with `rclone config` and \
-             that key.",
-        ),
-        ("rclone", "proton") => Some(
-            "AeroFTP reaches Proton Drive through Proton's own CLI, which keeps the \
-             session, so the vault holds no password for rclone's protondrive backend. \
-             Create the remote with `rclone config`.",
-        ),
-        _ => None,
+        "rclone" => &[
+            (
+                "filelu",
+                "rclone's filelu backend signs in with the FileLu Rclone key (RC_..., \
+                 shown in My Account once Rclone is switched on), a different key from \
+                 the API key AeroFTP uses. Create the remote with `rclone config` and \
+                 that key.",
+            ),
+            (
+                "proton",
+                "AeroFTP reaches Proton Drive through Proton's own CLI, which keeps the \
+                 session, so the vault holds no password for rclone's protondrive backend. \
+                 Create the remote with `rclone config`.",
+            ),
+        ],
+        _ => &[],
     }
+}
+
+/// The reason [`bridge_export_refusals`] gives for `protocol`, if any. `None`
+/// leaves the caller's generic reason.
+pub fn bridge_export_refusal(src: &str, protocol: &str) -> Option<&'static str> {
+    bridge_export_refusals(src)
+        .iter()
+        .find(|(refused, _)| *refused == protocol)
+        .map(|(_, reason)| *reason)
 }
 
 /// `(extension, human label)` for the file an export writes. `None` for

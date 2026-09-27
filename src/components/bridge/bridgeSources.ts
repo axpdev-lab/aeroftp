@@ -40,6 +40,8 @@ export interface BridgeSourceMeta {
     exportExt: string;
     exportLabel: string;
     secretPolicy: 'full' | 'limited' | 'metadata';
+    /** Why profiles of these protocols cannot be exported, where "not supported" would mislead. */
+    exportRefusals?: Record<string, string>;
 }
 
 // Distinct file-format extensions across all GENERIC_BRIDGE_SOURCES, shown in

@@ -77,6 +77,12 @@ pub async fn bridge_source_meta(source: String) -> Result<Value, String> {
         "exportExt": export_ext,
         "exportLabel": export_label,
         "secretPolicy": bridge_secret_policy(&source),
+        // Why a profile this source cannot carry is left out, for the
+        // protocols where "not supported" would mislead.
+        "exportRefusals": crate::bridge_shared::bridge_export_refusals(&source)
+            .iter()
+            .map(|(protocol, reason)| (protocol.to_string(), Value::from(*reason)))
+            .collect::<serde_json::Map<String, Value>>(),
     }))
 }
 
@@ -1338,6 +1344,26 @@ pub async fn export_bridge_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The GUI Export greys out a profile whose protocol is not in
+    /// `supportedProtocols` and, for FileLu and Proton Drive, used to say the
+    /// tool does not support it: rclone does, with a secret the vault lacks.
+    /// The reason has to reach the panel, which filters before any export runs.
+    #[tokio::test]
+    async fn rclone_source_meta_carries_the_export_refusal_reasons() {
+        let meta = bridge_source_meta("rclone".to_string()).await.unwrap();
+        let refusals = meta["exportRefusals"].as_object().expect("exportRefusals");
+        for protocol in ["filelu", "proton"] {
+            let reason = refusals[protocol].as_str().unwrap_or_default();
+            assert_eq!(
+                Some(reason),
+                crate::bridge_shared::bridge_export_refusal("rclone", protocol),
+                "{protocol}"
+            );
+        }
+        let winscp = bridge_source_meta("winscp".to_string()).await.unwrap();
+        assert_eq!(winscp["exportRefusals"], json!({}));
+    }
 
     /// The rclone importer reports a password it left out in `warnings`. The
     /// GUI import rebuilds its response from the parsed result, and once kept
