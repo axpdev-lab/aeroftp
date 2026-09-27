@@ -16520,7 +16520,9 @@ fn flatpak_config_import_status_blocking() -> serde_json::Value {
 /// import. Accept copies the native config into the sandbox with copy-only,
 /// never-overwrite semantics; either way the decision is recorded so the prompt
 /// is shown once. `vault_imported` and `vault_skipped` say whether the host
-/// vault came in or stayed behind because this install already has its own.
+/// vault came in or stayed behind because this install already has its own;
+/// `nothing_importable` says that no file was copied because the host config
+/// holds none the import copies (see [`portable::FlatpakImportReport::to_json`]).
 #[tauri::command]
 async fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, String> {
     tokio::task::spawn_blocking(move || flatpak_config_import_apply_blocking(accept))
@@ -16530,15 +16532,7 @@ async fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, 
 
 /// The body of `flatpak_config_import_apply`, kept synchronous and run on the blocking pool.
 fn flatpak_config_import_apply_blocking(accept: bool) -> Result<serde_json::Value, String> {
-    let report = portable::flatpak_host_import_apply(accept)?;
-    Ok(serde_json::json!({
-        "imported": report.imported(),
-        "copied": report.copied,
-        "vault_imported": report.vault_imported(),
-        "vault_skipped": report.vault_skipped(),
-        "source": report.source.map(|p| p.to_string_lossy().into_owned()),
-        "target": report.target.map(|p| p.to_string_lossy().into_owned()),
-    }))
+    portable::flatpak_host_import_apply(accept).map(|report| report.to_json())
 }
 
 #[tauri::command]

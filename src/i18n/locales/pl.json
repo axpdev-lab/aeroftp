@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Twoja konfiguracja została zaimportowana. Uruchom ponownie AeroFTP, aby ją wczytać.",
             "importedVaultSkippedBody": "Część Twojej konfiguracji została zaimportowana, ale nie zapisane serwery i sejf: ta instalacja Flatpak ma już własny sejf, a istniejące pliki nigdy nie są nadpisywane. Uruchom ponownie AeroFTP, aby wczytać to, co zostało zaimportowane.",
             "importNothingVaultSkippedBody": "Nie skopiowano żadnego pliku, więc zapisane serwery i sejf nie zostały zaimportowane: ta instalacja Flatpak ma już własny sejf, dla każdego pliku Twojej istniejącej konfiguracji istnieje tu już plik o tej samej nazwie, a istniejące pliki nigdy nie są nadpisywane.",
-            "importUnreadableResult": "AeroFTP nie mógł odczytać wyniku importu"
+            "importUnreadableResult": "AeroFTP nie mógł odczytać wyniku importu",
+            "importNothingToImportBody": "Nie skopiowano żadnego pliku: Twoja istniejąca konfiguracja nie zawiera żadnego pliku, który import kopiuje (dowiązania symboliczne i pliki tymczasowe SQLite nigdy nie są kopiowane)."
         },
         "picker": {
             "unavailable": {

@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Din konfiguration importerades. Starta om AeroFTP för att läsa in den.",
             "importedVaultSkippedBody": "En del av din konfiguration importerades, men inte dina sparade servrar och ditt valv: den här Flatpak-installationen har redan ett eget valv, och befintliga filer skrivs aldrig över. Starta om AeroFTP för att läsa in det som importerades.",
             "importNothingVaultSkippedBody": "Ingen fil kopierades, så dina sparade servrar och ditt valv importerades inte: den här Flatpak-installationen har redan ett eget valv, för varje fil i din befintliga konfiguration finns det redan en fil med samma namn här, och befintliga filer skrivs aldrig över.",
-            "importUnreadableResult": "AeroFTP kunde inte läsa resultatet av importen"
+            "importUnreadableResult": "AeroFTP kunde inte läsa resultatet av importen",
+            "importNothingToImportBody": "Ingen fil kopierades: din befintliga konfiguration innehåller ingen fil som importen kopierar (symboliska länkar och tillfälliga SQLite-filer kopieras aldrig)."
         },
         "picker": {
             "unavailable": {

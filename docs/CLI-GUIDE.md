@@ -1716,7 +1716,7 @@ aeroftp-cli flatpak-import --status
 aeroftp-cli flatpak-import --json
 ```
 
-The host vault and the saved servers encrypted under it come in only when the sandbox has no vault of its own. The GUI creates one at its first start, so after a first start they stay behind, and the output says so. The JSON result carries `imported` and `requires_restart` (both true only when files were copied), `copied` (the number of files), `vault_imported`, `vault_skipped` (the host has a vault and the sandbox already had its own), `source` and `target`.
+The host vault and the saved servers encrypted under it come in only when the sandbox has no vault of its own. The GUI creates one at its first start, so after a first start they stay behind, and the output says so. The JSON result carries `imported` and `requires_restart` (both true only when files were copied), `copied` (the number of files), `vault_imported`, `vault_skipped` (the host has a vault and the sandbox already had its own), `nothing_importable` (no file was copied because the host configuration holds none the import copies), `source` and `target`.
 
 Exit codes: `0` when files were imported, when no file was copied (every file already has a file with the same name in the sandbox, or the host configuration holds nothing the import copies), with `--status`, and outside a Flatpak, where the command does nothing; `1` when there is no host configuration at `~/.config/aeroftp`, or when the copy failed (files copied before the error stay in the sandbox, and nothing is overwritten).
 

@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Teie konfiguratsioon imporditi. Taaskäivitage AeroFTP, et see laadida.",
             "importedVaultSkippedBody": "Osa teie konfiguratsioonist imporditi, kuid mitte teie salvestatud serverid ja hoidla: selles Flatpaki paigalduses on juba oma hoidla ning olemasolevaid faile ei kirjutata kunagi üle. Taaskäivitage AeroFTP, et laadida imporditu.",
             "importNothingVaultSkippedBody": "Ühtegi faili ei kopeeritud, seega teie salvestatud servereid ja hoidlat ei imporditud: selles Flatpaki paigalduses on juba oma hoidla, iga teie olemasoleva konfiguratsiooni faili jaoks on siin juba sama nimega fail ning olemasolevaid faile ei kirjutata kunagi üle.",
-            "importUnreadableResult": "AeroFTP ei suutnud importimise tulemust lugeda"
+            "importUnreadableResult": "AeroFTP ei suutnud importimise tulemust lugeda",
+            "importNothingToImportBody": "Ühtegi faili ei kopeeritud: teie olemasolevas konfiguratsioonis pole ühtegi faili, mille import kopeerib (sümboolseid linke ja SQLite'i ajutisi faile ei kopeerita kunagi)."
         },
         "picker": {
             "unavailable": {

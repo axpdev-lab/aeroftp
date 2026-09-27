@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Yapılandırmanız içe aktarıldı. Yüklemek için AeroFTP'yi yeniden başlatın.",
             "importedVaultSkippedBody": "Yapılandırmanızın bir kısmı içe aktarıldı, ancak kayıtlı sunucularınız ve kasanız aktarılmadı: bu Flatpak kurulumunun zaten kendi kasası var ve mevcut dosyaların üzerine asla yazılmaz. İçe aktarılanları yüklemek için AeroFTP'yi yeniden başlatın.",
             "importNothingVaultSkippedBody": "Hiçbir dosya kopyalanmadı, bu nedenle kayıtlı sunucularınız ve kasanız içe aktarılmadı: bu Flatpak kurulumunun zaten kendi kasası var, mevcut yapılandırmanızdaki her dosya için burada zaten aynı ada sahip bir dosya var ve mevcut dosyaların üzerine asla yazılmaz.",
-            "importUnreadableResult": "AeroFTP içe aktarmanın sonucunu okuyamadı"
+            "importUnreadableResult": "AeroFTP içe aktarmanın sonucunu okuyamadı",
+            "importNothingToImportBody": "Hiçbir dosya kopyalanmadı: mevcut yapılandırmanızda içe aktarmanın kopyaladığı hiçbir dosya yok (sembolik bağlantılar ve SQLite geçici dosyaları asla kopyalanmaz)."
         },
         "picker": {
             "unavailable": {

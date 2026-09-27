@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Jūsu konfigurācija tika importēta. Restartējiet AeroFTP, lai to ielādētu.",
             "importedVaultSkippedBody": "Daļa jūsu konfigurācijas tika importēta, bet ne jūsu saglabātie serveri un seifs: šajā Flatpak instalācijā jau ir savs seifs, un esošie faili nekad netiek pārrakstīti. Restartējiet AeroFTP, lai ielādētu importēto.",
             "importNothingVaultSkippedBody": "Netika nokopēts neviens fails, tāpēc jūsu saglabātie serveri un seifs netika importēti: šajā Flatpak instalācijā jau ir savs seifs, katram jūsu esošās konfigurācijas failam šeit jau ir fails ar tādu pašu nosaukumu, un esošie faili nekad netiek pārrakstīti.",
-            "importUnreadableResult": "AeroFTP neizdevās nolasīt importēšanas rezultātu"
+            "importUnreadableResult": "AeroFTP neizdevās nolasīt importēšanas rezultātu",
+            "importNothingToImportBody": "Netika nokopēts neviens fails: jūsu esošajā konfigurācijā nav neviena faila, ko importēšana kopē (simboliskās saites un SQLite pagaidu faili nekad netiek kopēti)."
         },
         "picker": {
             "unavailable": {

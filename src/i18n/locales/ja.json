@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "構成をインポートしました。読み込むには AeroFTP を再起動してください。",
             "importedVaultSkippedBody": "構成の一部をインポートしましたが、保存済みのサーバーと保管庫はインポートされていません: この Flatpak インストールには既に独自の保管庫があり、既存のファイルが上書きされることはありません。インポートした内容を読み込むには AeroFTP を再起動してください。",
             "importNothingVaultSkippedBody": "ファイルがコピーされなかったため、保存済みのサーバーと保管庫はインポートされていません: この Flatpak インストールには既に独自の保管庫があり、既存の構成のすべてのファイルについてここに同じ名前のファイルが既にあり、既存のファイルが上書きされることはありません。",
-            "importUnreadableResult": "AeroFTP はインポートの結果を読み取れませんでした"
+            "importUnreadableResult": "AeroFTP はインポートの結果を読み取れませんでした",
+            "importNothingToImportBody": "ファイルはコピーされませんでした: 既存の構成には、インポートでコピーされるファイルがありません（シンボリックリンクと SQLite の一時ファイルがコピーされることはありません）。"
         },
         "picker": {
             "unavailable": {

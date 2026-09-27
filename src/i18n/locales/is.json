@@ -5898,7 +5898,8 @@
             "importedNoVaultBody": "Stillingarnar þínar voru fluttar inn. Endurræstu AeroFTP til að hlaða þeim inn.",
             "importedVaultSkippedBody": "Hluti af stillingunum þínum var fluttur inn, en ekki vistuðu þjónarnir þínir og hirslan: þessi Flatpak-uppsetning hefur þegar sína eigin hirslu, og aldrei er skrifað yfir skrár sem fyrir eru. Endurræstu AeroFTP til að hlaða inn því sem var flutt inn.",
             "importNothingVaultSkippedBody": "Engin skrá var afrituð, svo vistuðu þjónarnir þínir og hirslan voru ekki flutt inn: þessi Flatpak-uppsetning hefur þegar sína eigin hirslu, fyrir hverja skrá í fyrirliggjandi stillingum þínum er þegar til skrá með sama nafni hér, og aldrei er skrifað yfir skrár sem fyrir eru.",
-            "importUnreadableResult": "AeroFTP gat ekki lesið niðurstöðu innflutningsins"
+            "importUnreadableResult": "AeroFTP gat ekki lesið niðurstöðu innflutningsins",
+            "importNothingToImportBody": "Engin skrá var afrituð: fyrirliggjandi stillingar þínar innihalda enga skrá sem innflutningurinn afritar (táknrænir tenglar og tímabundnar SQLite-skrár eru aldrei afrituð)."
         },
         "picker": {
             "unavailable": {

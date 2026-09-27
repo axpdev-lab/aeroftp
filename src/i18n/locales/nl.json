@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Uw configuratie is geïmporteerd. Start AeroFTP opnieuw op om deze te laden.",
             "importedVaultSkippedBody": "Een deel van uw configuratie is geïmporteerd, maar niet uw opgeslagen servers en kluis: deze Flatpak-installatie heeft al een eigen kluis, en bestaande bestanden worden nooit overschreven. Start AeroFTP opnieuw op om te laden wat is geïmporteerd.",
             "importNothingVaultSkippedBody": "Er is geen bestand gekopieerd, dus uw opgeslagen servers en kluis zijn niet geïmporteerd: deze Flatpak-installatie heeft al een eigen kluis, voor elk bestand van uw bestaande configuratie staat hier al een bestand met dezelfde naam, en bestaande bestanden worden nooit overschreven.",
-            "importUnreadableResult": "AeroFTP kon het resultaat van het importeren niet lezen"
+            "importUnreadableResult": "AeroFTP kon het resultaat van het importeren niet lezen",
+            "importNothingToImportBody": "Er is geen bestand gekopieerd: uw bestaande configuratie bevat geen bestand dat de import kopieert (symbolische koppelingen en tijdelijke SQLite-bestanden worden nooit gekopieerd)."
         },
         "picker": {
             "unavailable": {

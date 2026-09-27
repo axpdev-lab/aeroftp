@@ -17,6 +17,13 @@ export interface FlatpakImportReport {
      * never overwrites, so the host vault and saved servers stayed behind.
      */
     vault_skipped: boolean;
+    /**
+     * No file was copied because the host config holds none the import copies
+     * (only symbolic links, SQLite sidecars or empty folders), not because this
+     * install already had them. The offer is never shown for such a config, but
+     * the host config can change between the offer and the click.
+     */
+    nothing_importable: boolean;
     source: string | null;
     target: string | null;
 }
@@ -31,14 +38,16 @@ export type HostVault = 'imported' | 'skipped' | 'absent';
 /** The three results the user must be able to tell apart after accepting. */
 export type FlatpakImportOutcome =
     | { kind: 'imported'; copied: number; vault: HostVault }
-    | { kind: 'nothing'; vault: HostVault }
+    /** `nothingImportable`: the host config holds no file the import copies. */
+    | { kind: 'nothing'; vault: HostVault; nothingImportable: boolean }
     /** `error` is the backend's text, or `null` when the result could not be read. */
     | { kind: 'failed'; error: string | null };
 
 /**
  * Run the accepted import and say what it did. Only files actually copied
- * count as an import: a failure, or a sandbox that already had every host
- * file, must not end in the "imported, restart now" dialog.
+ * count as an import: a failure, a sandbox that already had every file the
+ * import copies, or a host config that holds none, must not end in the
+ * "imported, restart now" dialog.
  */
 export async function acceptFlatpakImport(): Promise<FlatpakImportOutcome> {
     let report: FlatpakImportReport;
@@ -51,7 +60,9 @@ export async function acceptFlatpakImport(): Promise<FlatpakImportOutcome> {
         return { kind: 'failed', error: null };
     }
     const vault: HostVault = report.vault_skipped ? 'skipped' : report.vault_imported ? 'imported' : 'absent';
-    return report.copied > 0 ? { kind: 'imported', copied: report.copied, vault } : { kind: 'nothing', vault };
+    return report.copied > 0
+        ? { kind: 'imported', copied: report.copied, vault }
+        : { kind: 'nothing', vault, nothingImportable: report.nothing_importable === true };
 }
 
 /** What the offer's buttons need from the GUI. */
@@ -121,12 +132,16 @@ export function flatpakImportResultDialog(
             }[outcome.vault];
             return { message: t(body), confirmLabel: t('flatpak.restartNow'), restart: true };
         }
-        case 'nothing':
-            return {
-                message: t(outcome.vault === 'skipped' ? 'flatpak.importNothingVaultSkippedBody' : 'flatpak.importNothingBody'),
-                confirmLabel: t('common.ok'),
-                restart: false,
-            };
+        case 'nothing': {
+            // A config with nothing the import copies has no vault it could
+            // copy either, so the two never meet; the order matches the CLI.
+            const body = outcome.vault === 'skipped'
+                ? 'flatpak.importNothingVaultSkippedBody'
+                : outcome.nothingImportable
+                    ? 'flatpak.importNothingToImportBody'
+                    : 'flatpak.importNothingBody';
+            return { message: t(body), confirmLabel: t('common.ok'), restart: false };
+        }
         case 'failed':
             return {
                 message: t('flatpak.importFailedBody', {

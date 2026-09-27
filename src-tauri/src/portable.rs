@@ -565,6 +565,23 @@ impl FlatpakImportReport {
     pub fn vault_skipped(&self) -> bool {
         self.vault == HostVault::Skipped
     }
+
+    /// The report as the GUI command `flatpak_config_import_apply` and
+    /// `aeroftp-cli flatpak-import --json` return it. One serializer for both,
+    /// so every caller can tell "nothing to import" from "every file the import
+    /// copies is already here", and a field added to the report reaches both.
+    pub fn to_json(&self) -> serde_json::Value {
+        let path = |p: Option<&PathBuf>| p.map(|p| p.to_string_lossy().into_owned());
+        serde_json::json!({
+            "imported": self.imported(),
+            "copied": self.copied,
+            "vault_imported": self.vault_imported(),
+            "vault_skipped": self.vault_skipped(),
+            "nothing_importable": self.nothing_importable,
+            "source": path(self.source.as_ref()),
+            "target": path(self.target.as_ref()),
+        })
+    }
 }
 
 fn flatpak_import_marker_path() -> Option<PathBuf> {
@@ -1343,6 +1360,38 @@ mod tests {
             report.nothing_importable,
             "a host config with nothing to copy was reported as if its files were already here"
         );
+    }
+
+    /// The GUI reads the report as JSON: without `nothing_importable` it tells a
+    /// user whose host config holds only links and sidecars that this install
+    /// already has a file with the same name for each of them.
+    #[test]
+    fn the_import_report_json_says_when_there_was_nothing_to_import() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("history.db-wal"), b"stale").unwrap();
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+        let source = host_config_dir_impl(true, Some(home), "aeroftp", Some(sandbox.clone()));
+
+        let json = apply_flatpak_host_import(true, source, Some(sandbox))
+            .unwrap()
+            .to_json();
+
+        assert_eq!(json["copied"], 0);
+        assert_eq!(json["imported"], false);
+        assert_eq!(
+            json["nothing_importable"], true,
+            "the report JSON does not say the host config held nothing to import: {json}"
+        );
+
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        std::fs::create_dir_all(&sandbox).unwrap();
+        std::fs::write(sandbox.join("servers.json"), b"sandbox servers").unwrap();
+        let json = apply_flatpak_host_import(true, Some(host), Some(sandbox))
+            .unwrap()
+            .to_json();
+        assert_eq!(json["copied"], 0);
+        assert_eq!(json["nothing_importable"], false, "{json}");
     }
 
     /// What the GUI offer sees for the host config under `home`, through the

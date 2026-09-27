@@ -5898,7 +5898,8 @@
             "importedNoVaultBody": "Oppsettet ditt ble importert. Start AeroFTP på nytt for å laste det inn.",
             "importedVaultSkippedBody": "En del av oppsettet ditt ble importert, men ikke de lagrede serverne dine og hvelvet: denne Flatpak-installasjonen har allerede sitt eget hvelv, og eksisterende filer blir aldri overskrevet. Start AeroFTP på nytt for å laste inn det som ble importert.",
             "importNothingVaultSkippedBody": "Ingen fil ble kopiert, så de lagrede serverne dine og hvelvet ble ikke importert: denne Flatpak-installasjonen har allerede sitt eget hvelv, for hver fil i det eksisterende oppsettet ditt finnes det allerede en fil med samme navn her, og eksisterende filer blir aldri overskrevet.",
-            "importUnreadableResult": "AeroFTP kunne ikke lese resultatet av importen"
+            "importUnreadableResult": "AeroFTP kunne ikke lese resultatet av importen",
+            "importNothingToImportBody": "Ingen fil ble kopiert: det eksisterende oppsettet ditt inneholder ingen fil som importen kopierer (symbolske lenker og midlertidige SQLite-filer blir aldri kopiert)."
         },
         "picker": {
             "unavailable": {

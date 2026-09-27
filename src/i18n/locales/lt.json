@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Jūsų konfigūracija importuota. Iš naujo paleiskite AeroFTP, kad ją įkeltumėte.",
             "importedVaultSkippedBody": "Dalis jūsų konfigūracijos importuota, bet ne jūsų įrašyti serveriai ir seifas: šis Flatpak diegimas jau turi savo seifą, o esami failai niekada neperrašomi. Iš naujo paleiskite AeroFTP, kad įkeltumėte tai, kas importuota.",
             "importNothingVaultSkippedBody": "Nenukopijuotas nė vienas failas, todėl jūsų įrašyti serveriai ir seifas nebuvo importuoti: šis Flatpak diegimas jau turi savo seifą, kiekvienam jūsų esamos konfigūracijos failui čia jau yra failas tuo pačiu pavadinimu, o esami failai niekada neperrašomi.",
-            "importUnreadableResult": "AeroFTP nepavyko nuskaityti importavimo rezultato"
+            "importUnreadableResult": "AeroFTP nepavyko nuskaityti importavimo rezultato",
+            "importNothingToImportBody": "Nenukopijuotas nė vienas failas: jūsų esamoje konfigūracijoje nėra nė vieno failo, kurį importavimas kopijuoja (simbolinės nuorodos ir SQLite laikinieji failai niekada nekopijuojami)."
         },
         "picker": {
             "unavailable": {

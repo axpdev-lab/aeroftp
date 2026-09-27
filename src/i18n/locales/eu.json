@@ -5898,7 +5898,8 @@
             "importedNoVaultBody": "Zure konfigurazioa inportatu da. Berrabiarazi AeroFTP hura kargatzeko.",
             "importedVaultSkippedBody": "Zure konfigurazioaren zati bat inportatu da, baina ez gordetako zerbitzariak eta kutxa gotorra: Flatpak instalazio honek badu dagoeneko bere kutxa gotorra, eta lehendik dauden fitxategiak ez dira inoiz gainidazten. Berrabiarazi AeroFTP inportatutakoa kargatzeko.",
             "importNothingVaultSkippedBody": "Ez da fitxategirik kopiatu, beraz, gordetako zerbitzariak eta kutxa gotorra ez dira inportatu: Flatpak instalazio honek badu dagoeneko bere kutxa gotorra, zure konfigurazioko fitxategi bakoitzak badu dagoeneko izen bereko fitxategi bat hemen, eta lehendik dauden fitxategiak ez dira inoiz gainidazten.",
-            "importUnreadableResult": "AeroFTP-k ezin izan du inportazioaren emaitza irakurri"
+            "importUnreadableResult": "AeroFTP-k ezin izan du inportazioaren emaitza irakurri",
+            "importNothingToImportBody": "Ez da fitxategirik kopiatu: lehendik dagoen zure konfigurazioak ez du inportazioak kopiatzen duen fitxategirik (esteka sinbolikoak eta SQLite-ren aldi baterako fitxategiak ez dira inoiz kopiatzen)."
         },
         "picker": {
             "unavailable": {

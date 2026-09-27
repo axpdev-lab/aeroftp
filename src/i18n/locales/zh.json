@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "您的配置已导入。请重新启动 AeroFTP 以加载它。",
             "importedVaultSkippedBody": "您的部分配置已导入，但您保存的服务器和保险库未导入：此 Flatpak 安装已有自己的保险库，且现有文件永远不会被覆盖。请重新启动 AeroFTP 以加载已导入的内容。",
             "importNothingVaultSkippedBody": "未复制任何文件，因此您保存的服务器和保险库未导入：此 Flatpak 安装已有自己的保险库，您现有配置中的每个文件在此处都已有同名文件，且现有文件永远不会被覆盖。",
-            "importUnreadableResult": "AeroFTP 无法读取导入结果"
+            "importUnreadableResult": "AeroFTP 无法读取导入结果",
+            "importNothingToImportBody": "未复制任何文件：您现有配置中没有导入会复制的文件（符号链接和 SQLite 临时文件永远不会被复制）。"
         },
         "picker": {
             "unavailable": {

@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Cấu hình của bạn đã được nhập. Khởi động lại AeroFTP để tải cấu hình.",
             "importedVaultSkippedBody": "Một phần cấu hình của bạn đã được nhập, nhưng không bao gồm các máy chủ đã lưu và két an toàn của bạn: bản cài đặt Flatpak này đã có két an toàn riêng, và các tệp hiện có không bao giờ bị ghi đè. Khởi động lại AeroFTP để tải những gì đã được nhập.",
             "importNothingVaultSkippedBody": "Không có tệp nào được sao chép, vì vậy các máy chủ đã lưu và két an toàn của bạn không được nhập: bản cài đặt Flatpak này đã có két an toàn riêng, mỗi tệp trong cấu hình hiện có của bạn đều đã có một tệp cùng tên ở đây, và các tệp hiện có không bao giờ bị ghi đè.",
-            "importUnreadableResult": "AeroFTP không thể đọc kết quả của quá trình nhập"
+            "importUnreadableResult": "AeroFTP không thể đọc kết quả của quá trình nhập",
+            "importNothingToImportBody": "Không có tệp nào được sao chép: cấu hình hiện có của bạn không chứa tệp nào mà quá trình nhập sao chép (liên kết tượng trưng và tệp tạm thời của SQLite không bao giờ được sao chép)."
         },
         "picker": {
             "unavailable": {

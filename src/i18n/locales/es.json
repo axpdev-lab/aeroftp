@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Se importó tu configuración. Reinicia AeroFTP para cargarla.",
             "importedVaultSkippedBody": "Se importó parte de tu configuración, pero no tus servidores guardados ni la bóveda: esta instalación de Flatpak ya tiene su propia bóveda, y los archivos existentes nunca se sobrescriben. Reinicia AeroFTP para cargar lo que se importó.",
             "importNothingVaultSkippedBody": "No se copió ningún archivo, por lo que tus servidores guardados y la bóveda no se importaron: esta instalación de Flatpak ya tiene su propia bóveda, cada archivo de tu configuración existente ya tiene un archivo con el mismo nombre aquí, y los archivos existentes nunca se sobrescriben.",
-            "importUnreadableResult": "AeroFTP no pudo leer el resultado de la importación"
+            "importUnreadableResult": "AeroFTP no pudo leer el resultado de la importación",
+            "importNothingToImportBody": "No se copió ningún archivo: tu configuración existente no contiene ningún archivo que la importación copie (los enlaces simbólicos y los archivos temporales de SQLite nunca se copian)."
         },
         "picker": {
             "unavailable": {

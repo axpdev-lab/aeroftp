@@ -5898,7 +5898,8 @@
             "importedNoVaultBody": "Mewnforiwyd eich ffurfweddiad. Ailgychwynnwch AeroFTP i'w lwytho.",
             "importedVaultSkippedBody": "Mewnforiwyd rhan o'ch ffurfweddiad, ond nid eich gweinyddwyr wedi'u cadw na'ch cell ddiogel: mae gan y gosodiad Flatpak hwn ei gell ddiogel ei hun eisoes, ac ni chaiff ffeiliau sy'n bodoli byth eu trosysgrifo. Ailgychwynnwch AeroFTP i lwytho'r hyn a fewnforiwyd.",
             "importNothingVaultSkippedBody": "Ni chopïwyd unrhyw ffeil, felly ni fewnforiwyd eich gweinyddwyr wedi'u cadw na'ch cell ddiogel: mae gan y gosodiad Flatpak hwn ei gell ddiogel ei hun eisoes, ar gyfer pob ffeil yn eich ffurfweddiad presennol mae ffeil â'r un enw yma eisoes, ac ni chaiff ffeiliau sy'n bodoli byth eu trosysgrifo.",
-            "importUnreadableResult": "nid oedd AeroFTP yn gallu darllen canlyniad y mewnforio"
+            "importUnreadableResult": "nid oedd AeroFTP yn gallu darllen canlyniad y mewnforio",
+            "importNothingToImportBody": "Ni chopïwyd unrhyw ffeil: nid yw eich ffurfweddiad presennol yn cynnwys unrhyw ffeil y mae'r mewnforio yn ei chopïo (ni chaiff dolenni symbolaidd na ffeiliau dros dro SQLite byth eu copïo)."
         },
         "picker": {
             "unavailable": {

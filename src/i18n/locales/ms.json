@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Konfigurasi anda telah diimport. Mulakan semula AeroFTP untuk memuatkannya.",
             "importedVaultSkippedBody": "Sebahagian konfigurasi anda telah diimport, tetapi bukan pelayan tersimpan dan bilik kebal anda: pemasangan Flatpak ini sudah mempunyai bilik kebalnya sendiri, dan fail sedia ada tidak sekali-kali ditulis ganti. Mulakan semula AeroFTP untuk memuatkan apa yang telah diimport.",
             "importNothingVaultSkippedBody": "Tiada fail disalin, jadi pelayan tersimpan dan bilik kebal anda tidak diimport: pemasangan Flatpak ini sudah mempunyai bilik kebalnya sendiri, setiap fail dalam konfigurasi sedia ada anda sudah mempunyai fail dengan nama yang sama di sini, dan fail sedia ada tidak sekali-kali ditulis ganti.",
-            "importUnreadableResult": "AeroFTP tidak dapat membaca hasil import"
+            "importUnreadableResult": "AeroFTP tidak dapat membaca hasil import",
+            "importNothingToImportBody": "Tiada fail disalin: konfigurasi sedia ada anda tidak mengandungi fail yang disalin oleh import (pautan simbolik dan fail sementara SQLite tidak sekali-kali disalin)."
         },
         "picker": {
             "unavailable": {

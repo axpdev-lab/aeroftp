@@ -5898,7 +5898,8 @@
             "importedNoVaultBody": "Importouse a túa configuración. Reinicia AeroFTP para cargala.",
             "importedVaultSkippedBody": "Importouse parte da túa configuración, pero non os teus servidores gardados nin a caixa forte: esta instalación de Flatpak xa ten a súa propia caixa forte, e os ficheiros existentes nunca se sobrescriben. Reinicia AeroFTP para cargar o que se importou.",
             "importNothingVaultSkippedBody": "Non se copiou ningún ficheiro, polo que os teus servidores gardados e a caixa forte non se importaron: esta instalación de Flatpak xa ten a súa propia caixa forte, cada ficheiro da túa configuración existente xa ten un ficheiro co mesmo nome aquí, e os ficheiros existentes nunca se sobrescriben.",
-            "importUnreadableResult": "AeroFTP non puido ler o resultado da importación"
+            "importUnreadableResult": "AeroFTP non puido ler o resultado da importación",
+            "importNothingToImportBody": "Non se copiou ningún ficheiro: a túa configuración existente non contén ningún ficheiro que a importación copie (as ligazóns simbólicas e os ficheiros temporais de SQLite nunca se copian)."
         },
         "picker": {
             "unavailable": {

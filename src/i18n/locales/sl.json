@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Vaša konfiguracija je bila uvožena. Znova zaženite AeroFTP, da jo naložite.",
             "importedVaultSkippedBody": "Del vaše konfiguracije je bil uvožen, vaši shranjeni strežniki in trezor pa ne: ta namestitev Flatpak že ima svoj trezor, obstoječe datoteke pa se nikoli ne prepišejo. Znova zaženite AeroFTP, da naložite, kar je bilo uvoženo.",
             "importNothingVaultSkippedBody": "Nobena datoteka ni bila kopirana, zato vaši shranjeni strežniki in trezor niso bili uvoženi: ta namestitev Flatpak že ima svoj trezor, za vsako datoteko vaše obstoječe konfiguracije tukaj že obstaja datoteka z enakim imenom, obstoječe datoteke pa se nikoli ne prepišejo.",
-            "importUnreadableResult": "AeroFTP ni mogel prebrati rezultata uvoza"
+            "importUnreadableResult": "AeroFTP ni mogel prebrati rezultata uvoza",
+            "importNothingToImportBody": "Nobena datoteka ni bila kopirana: vaša obstoječa konfiguracija ne vsebuje nobene datoteke, ki jo uvoz kopira (simbolne povezave in začasne datoteke SQLite se nikoli ne kopirajo)."
         },
         "picker": {
             "unavailable": {

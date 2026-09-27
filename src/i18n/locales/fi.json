@@ -5879,7 +5879,8 @@
             "importedNoVaultBody": "Määrityksesi tuotiin. Käynnistä AeroFTP uudelleen ladataksesi sen.",
             "importedVaultSkippedBody": "Osa määrityksestäsi tuotiin, mutta ei tallennettuja palvelimiasi eikä holvia: tässä Flatpak-asennuksessa on jo oma holvi, eikä olemassa olevia tiedostoja koskaan korvata. Käynnistä AeroFTP uudelleen ladataksesi tuodut tiedot.",
             "importNothingVaultSkippedBody": "Yhtään tiedostoa ei kopioitu, joten tallennettuja palvelimiasi ja holvia ei tuotu: tässä Flatpak-asennuksessa on jo oma holvi, jokaiselle olemassa olevan määrityksesi tiedostolle on täällä jo samanniminen tiedosto, eikä olemassa olevia tiedostoja koskaan korvata.",
-            "importUnreadableResult": "AeroFTP ei voinut lukea tuonnin tulosta"
+            "importUnreadableResult": "AeroFTP ei voinut lukea tuonnin tulosta",
+            "importNothingToImportBody": "Yhtään tiedostoa ei kopioitu: olemassa olevassa määrityksessäsi ei ole yhtään tiedostoa, jonka tuonti kopioi (symbolisia linkkejä ja SQLiten väliaikaistiedostoja ei koskaan kopioida)."
         },
         "picker": {
             "unavailable": {

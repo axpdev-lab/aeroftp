@@ -38618,18 +38618,12 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
         Ok(report) => {
             let imported = report.imported();
             match format {
-                OutputFormat::Json => println!(
-                    "{}",
-                    serde_json::json!({
-                        "imported": imported,
-                        "copied": report.copied,
-                        "vault_imported": report.vault_imported(),
-                        "vault_skipped": report.vault_skipped(),
-                        "source": path_str(report.source.clone()),
-                        "target": path_str(report.target.clone()),
-                        "requires_restart": imported,
-                    })
-                ),
+                OutputFormat::Json => {
+                    // The GUI command's fields, plus the restart flag of the CLI.
+                    let mut json = report.to_json();
+                    json["requires_restart"] = serde_json::Value::Bool(imported);
+                    println!("{json}");
+                }
                 OutputFormat::Text => println!("{}", flatpak_import_summary(&report)),
             }
             0
