@@ -855,7 +855,11 @@ impl CloudinaryProvider {
                 "it was listed without a public id".to_string(),
             ))
         } else {
-            match self.delete_resource(&public_id, &kind).await {
+            let delivery = occupant
+                .metadata
+                .get("delivery_type")
+                .map_or("upload", String::as_str);
+            match self.delete_resource(&public_id, &kind, delivery).await {
                 Ok(true) => Ok(()),
                 Ok(false) => Err(ProviderError::Other(
                     "Cloudinary did not delete it".to_string(),
@@ -885,15 +889,21 @@ impl CloudinaryProvider {
         }
     }
 
+    /// Delete one asset, named by public id, resource type and delivery type
+    /// (`upload`, `private`, `authenticated`): public ids are unique only
+    /// within the pair of types, so an upload `v` and a private `v` are two
+    /// assets.
     async fn delete_resource(
         &self,
         public_id: &str,
         resource_type: &str,
+        delivery_type: &str,
     ) -> Result<bool, ProviderError> {
         let url = format!(
-            "{}/resources/{}/upload?type=upload&public_ids[]={}",
+            "{}/resources/{}/{}?public_ids[]={}",
             self.api_base(),
             resource_type,
+            urlencoding::encode(delivery_type),
             urlencoding::encode(public_id)
         );
         let resp = self
@@ -921,12 +931,12 @@ impl CloudinaryProvider {
 
     async fn delete_file_with_fallback(&self, public_id: &str) -> Result<(), ProviderError> {
         if let Some(kind) = self.cached_resource_type(public_id) {
-            if self.delete_resource(public_id, &kind).await? {
+            if self.delete_resource(public_id, &kind, "upload").await? {
                 return Ok(());
             }
         }
         for kind in ["image", "video", "raw"] {
-            match self.delete_resource(public_id, kind).await {
+            match self.delete_resource(public_id, kind, "upload").await {
                 Ok(true) => return Ok(()),
                 Ok(false) => continue,
                 Err(ProviderError::NotFound(_)) => continue,
@@ -1340,9 +1350,13 @@ impl StorageProvider for CloudinaryProvider {
             // The type of the asset the path names. An image `v` and a video
             // `v` share the public id, and the cache keyed by public id holds
             // the type listed last: `rm /v.png` deleted the video.
+            let delivery = entry
+                .metadata
+                .get("delivery_type")
+                .map_or("upload", String::as_str);
             match entry.metadata.get("resource_type") {
                 Some(kind) => {
-                    if self.delete_resource(&public_id, kind).await? {
+                    if self.delete_resource(&public_id, kind, delivery).await? {
                         Ok(())
                     } else {
                         Err(ProviderError::NotFound(resolved))
@@ -1413,7 +1427,8 @@ impl StorageProvider for CloudinaryProvider {
             let files = self.list_files(&dir).await?;
             for f in files {
                 let kind = self.primary_resource_type(&f);
-                let _ = self.delete_resource(&f.public_id, &kind).await?;
+                let delivery = f.delivery_type.as_deref().unwrap_or("upload");
+                let _ = self.delete_resource(&f.public_id, &kind, delivery).await?;
             }
             dirs.push(dir);
         }
@@ -2616,6 +2631,60 @@ mod tests {
             provider_on_fixed_folders(&[("v", "png", "image"), ("v", "mp4", "video")], &[]).await;
         provider.delete("/v.png").await.expect("rm");
         assert_eq!(*calls.lock().unwrap(), ["DELETE /resources/image/upload"]);
+    }
+
+    /// A private `v` and an upload `v` are two assets (public ids are unique
+    /// per resource type and delivery type), and the delete always named the
+    /// upload one: `rm` of the private asset's path deleted the other.
+    #[tokio::test]
+    async fn rm_deletes_the_asset_of_the_delivery_type_its_path_names() {
+        use std::sync::{Arc, Mutex};
+        let deletes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&deletes);
+        let asset = |display: &str, delivery: &str| {
+            serde_json::json!({
+                "asset_id": format!("AID_{delivery}"), "public_id": "v",
+                "display_name": display, "format": "jpg", "bytes": 3,
+                "resource_type": "image", "type": delivery, "asset_folder": "",
+            })
+        };
+        let listing = serde_json::json!({
+            "resources": [asset("u", "upload"), asset("p", "private")]
+        })
+        .to_string();
+        let app = axum::Router::new()
+            .route(
+                "/resources/by_asset_folder",
+                axum::routing::get(move || {
+                    let listing = listing.clone();
+                    async move { listing }
+                }),
+            )
+            .route(
+                "/resources/{kind}/{delivery}",
+                axum::routing::delete(move |uri: axum::http::Uri| {
+                    seen.lock().unwrap().push(uri.path().to_string());
+                    async { r#"{"deleted":{"v":"deleted"}}"# }
+                }),
+            )
+            .route(
+                "/folders",
+                axum::routing::get(|| async { r#"{"folders":[]}"# }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = CloudinaryProvider::new(CloudinaryConfig {
+            cloud_name: "test".to_string(),
+            api_key: "test".to_string(),
+            api_secret: SecretString::from("test".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        provider.delete("/p.jpg").await.expect("rm");
+        assert_eq!(*deletes.lock().unwrap(), ["/resources/image/private"]);
     }
 
     /// On a fixed-folder account the listed path was the public id, which
