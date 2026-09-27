@@ -494,18 +494,26 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         })
         .collect();
 
-    Ok(json!({
+    Ok(bridge_import_response(&value, redacted, servers.len()))
+}
+
+/// What an import hands back to the renderer: the redacted profiles, what the
+/// parser skipped, and what it imported without a credential, each with the
+/// reason. A profile in `warnings` arrives with no stored secret, and without
+/// the reason the operator could not tell why it will not sign in.
+fn bridge_import_response(parsed: &Value, redacted: Vec<Value>, imported: usize) -> Value {
+    json!({
         "servers": redacted,
-        "skipped": value.get("skipped").cloned().unwrap_or_else(|| json!([])),
+        "skipped": parsed.get("skipped").cloned().unwrap_or_else(|| json!([])),
         // Remotes that imported without everything they carried (rclone: a
         // password that does not reveal); only the rclone importer fills it.
-        "warnings": value.get("warnings").cloned().unwrap_or_else(|| json!([])),
-        "sourcePath": value.get("sourcePath").cloned().unwrap_or(Value::Null),
-        "totalRemotes": value
+        "warnings": parsed.get("warnings").cloned().unwrap_or_else(|| json!([])),
+        "sourcePath": parsed.get("sourcePath").cloned().unwrap_or(Value::Null),
+        "totalRemotes": parsed
             .get("totalRemotes")
             .and_then(|v| v.as_u64())
-            .unwrap_or(servers.len() as u64),
-    }))
+            .unwrap_or(imported as u64),
+    })
 }
 
 /// The vault singleton key prefix that holds a provider's BYO OAuth app
@@ -1330,6 +1338,35 @@ pub async fn export_bridge_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The rclone importer reports a password it left out in `warnings`. The
+    /// GUI import rebuilds its response from the parsed result, and once kept
+    /// only the servers, the skipped remotes, the path and the count: the
+    /// profile reached the panel with no secret and no reason.
+    #[test]
+    fn bridge_import_response_carries_the_rclone_import_warnings() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("rclone.conf");
+        std::fs::write(
+            &config,
+            "[box1]\ntype = ftp\nhost = ftp.example.com\nuser = demo\npass = S3cr3tPass!\n",
+        )
+        .unwrap();
+        let result = crate::rclone_import::import_rclone(&config).unwrap();
+        let parsed = serde_json::to_value(&result).unwrap();
+
+        let response = bridge_import_response(&parsed, Vec::new(), result.servers.len());
+
+        let warnings = response["warnings"].as_array().expect("warnings list");
+        assert_eq!(warnings.len(), 1, "{response}");
+        assert_eq!(warnings[0]["name"], "box1");
+        assert!(
+            warnings[0]["reason"]
+                .as_str()
+                .is_some_and(|r| r.contains("imported without")),
+            "{response}"
+        );
+    }
 
     #[test]
     fn imported_koofr_crypt_becomes_a_bound_profile_with_optional_salt() {
