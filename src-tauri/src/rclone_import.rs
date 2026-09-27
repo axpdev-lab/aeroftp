@@ -73,6 +73,37 @@ fn reveal_rclone_password(value: &str) -> Result<String, String> {
     reveal_obscured(value)
 }
 
+/// An rclone `IsPassword` field of `remote`, revealed the way rclone does it
+/// ([`reveal_rclone_password`]). `Ok(None)` when it is absent or empty. `Err`
+/// is the note for the import report when the value does not reveal: rclone
+/// could not use it either, so the profile is imported without it rather than
+/// with the obscured text stored as if it were the secret.
+fn rclone_password_field(remote: &RcloneRemote, key: &str) -> Result<Option<String>, String> {
+    let Some(value) = remote.get(key).map(|v| v.trim()).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    match reveal_rclone_password(value) {
+        Ok(revealed) => Ok(Some(revealed).filter(|pw| !pw.is_empty())),
+        Err(e) => Err(format!(
+            "{} does not reveal as an rclone-obscured password ({}); imported without it",
+            key, e
+        )),
+    }
+}
+
+/// Appends the notes about credentials left out to the warning the profile
+/// already carries, so a crypt overlay keeps its base remote's note too.
+fn with_credential_notes(mut mapped: MappedProfile, notes: Vec<String>) -> MappedProfile {
+    if !notes.is_empty() {
+        let notes = notes.join("; ");
+        mapped.credential_warning = Some(match mapped.credential_warning.take() {
+            Some(previous) => format!("{previous}; {notes}"),
+            None => notes,
+        });
+    }
+    mapped
+}
+
 /// Obscure a plaintext password using rclone's AES-256-CTR scheme.
 /// Output: base64url(random_IV_16 || AES-256-CTR(plaintext))
 pub(crate) fn obscure_password(plaintext: &str) -> Result<String, String> {
@@ -379,17 +410,13 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
         .ok_or_else(|| "missing type field".to_string())?
         .to_lowercase();
 
-    // Helper to get and optionally reveal password
+    // An rclone `IsPassword` field. A value that does not reveal is left out,
+    // and the reason goes to the import report through `credential_notes`.
+    let credential_notes = std::cell::RefCell::new(Vec::new());
     let get_password = |key: &str| -> Option<String> {
-        remote.get(key).and_then(|v| {
-            if v.is_empty() {
-                return None;
-            }
-            // Try to reveal obscured password; fall back to plaintext
-            match reveal_obscured(v) {
-                Ok(revealed) if !revealed.is_empty() => Some(revealed),
-                _ => Some(v.clone()),
-            }
+        rclone_password_field(remote, key).unwrap_or_else(|note| {
+            credential_notes.borrow_mut().push(note);
+            None
         })
     };
 
@@ -407,7 +434,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
             .unwrap_or(default)
     };
 
-    match rclone_type.as_str() {
+    let mapped = match rclone_type.as_str() {
         // ---- FTP ----
         "ftp" => {
             let host = get_str("host").unwrap_or("").to_string();
@@ -659,37 +686,18 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
             if email.is_empty() {
                 return Err("internxt remote has no email".to_string());
             }
-            // `pass` is an rclone `IsPassword` field, so it is revealed the
-            // strict way: a value that does not reveal is left out and
-            // reported, never stored as if it were the password.
-            let (password, credential_warning) =
-                match get_str("pass").map(str::trim).filter(|v| !v.is_empty()) {
-                    None => (None, None),
-                    Some(v) => match reveal_rclone_password(v) {
-                        Ok(pw) if !pw.is_empty() => (Some(pw), None),
-                        Ok(_) => (None, None),
-                        Err(e) => (
-                            None,
-                            Some(format!(
-                                "pass does not reveal as an rclone-obscured password ({}); \
-                                 imported without a password",
-                                e
-                            )),
-                        ),
-                    },
-                };
             Ok(MappedProfile {
                 protocol: "internxt".to_string(),
                 provider_id: Some("internxt".to_string()),
                 host: "gateway.internxt.com".to_string(),
                 port: 443,
                 username: email,
-                password,
+                password: get_password("pass"),
                 options: None,
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
-                credential_warning,
+                credential_warning: None,
             })
         }
 
@@ -1114,7 +1122,11 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Result<MappedProfile, String
 
         // Unsupported rclone types: skip gracefully
         _ => Err(format!("unsupported rclone type: {}", rclone_type)),
-    }
+    };
+    Ok(with_credential_notes(
+        mapped?,
+        credential_notes.into_inner(),
+    ))
 }
 
 /// Map AeroFTP's Zoho region slug to rclone's `zoho` backend `region`.
@@ -1223,13 +1235,13 @@ fn map_crypt_remote(
         .map_err(|e| format!("crypt remote wraps '{}': {}", base_remote_name, e))?;
 
     let get_str = |k: &str| remote.get(k).map(|s| s.as_str());
-    let get_password = |k: &str| {
-        get_str(k).and_then(|v| {
-            if v.is_empty() {
-                None
-            } else {
-                reveal_obscured(v).ok().or_else(|| Some(v.to_string()))
-            }
+    // `password` and `password2` are `IsPassword` fields, revealed like the
+    // base remote's own.
+    let mut credential_notes = Vec::new();
+    let mut get_password = |k: &str| {
+        rclone_password_field(remote, k).unwrap_or_else(|note| {
+            credential_notes.push(note);
+            None
         })
     };
 
@@ -1277,7 +1289,7 @@ fn map_crypt_remote(
         mapped.initial_path = crypt_subpath;
     }
 
-    Ok(mapped)
+    Ok(with_credential_notes(mapped, credential_notes))
 }
 
 /// Parse a WebDAV URL into (host, basePath, port).
@@ -3500,8 +3512,18 @@ region = eu-west-1
         let mut crypt = HashMap::new();
         crypt.insert("type".into(), "crypt".into());
         crypt.insert("remote".into(), "mynas:/encrypted".into());
-        crypt.insert("password".into(), "topsecret".into());
-        crypt.insert("password2".into(), "saltsecret".into());
+        // `rclone obscure topsecret` and `rclone obscure saltsecret` (rclone
+        // v1.75.1): rclone refuses a crypt remote whose passwords are not
+        // obscured ("is it obscured?"), so plain text here is not a config
+        // rclone could have written.
+        crypt.insert(
+            "password".into(),
+            "I0foQLrVcrxA3fTR32MLs51K2uCFdW1sgw".into(),
+        );
+        crypt.insert(
+            "password2".into(),
+            "R7Q09CWMcogQNXenlf7eB09NfisKl3wFr9k".into(),
+        );
         crypt.insert("filename_encryption".into(), "standard".into());
         crypt.insert("directory_name_encryption".into(), "true".into());
 
@@ -4732,7 +4754,11 @@ type = definitely-not-a-backend
             assert_eq!(result.warnings.len(), 1, "'{bad}': no warning");
             assert_eq!(result.warnings[0].name, "internxt-bad");
             let reason = &result.warnings[0].reason;
-            assert!(reason.contains("imported without a password"), "{reason}");
+            assert!(
+                reason.starts_with("pass does not reveal")
+                    && reason.contains("imported without it"),
+                "{reason}"
+            );
             // The decoder names the offending symbol and its offset: for a
             // plaintext password that is a piece of it, and this goes to logs.
             assert!(
@@ -5328,6 +5354,144 @@ key = {b2}
                 .find(|s| s.name == name)
                 .unwrap_or_else(|| panic!("{name} not imported: {:?}", result.skipped.len()));
             assert_eq!(server.credential.as_deref(), Some(expected), "{name}");
+        }
+    }
+
+    /// Every field rclone marks `IsPassword` (v1.75.1) is revealed the way
+    /// rclone reveals it. A value rclone could not reveal used to be stored as
+    /// the secret itself, or, in the standard alphabet, revealed anyway: now
+    /// the profile imports without it and the import report says which field.
+    /// A value rclone did obscure still reveals, in every one of them.
+    #[test]
+    fn test_import_rclone_reveals_every_password_field_strictly() {
+        // `rclone obscure TestPass123` (rclone v1.75.1), and the same bytes in
+        // the standard base64 alphabet, which rclone's Reveal refuses.
+        let good = "ANMkm3ZpMPvnz_0z5dZ-68G17MaOiI2s3wiL";
+        let std_alphabet = "ANMkm3ZpMPvnz/0z5dZ+68G17MaOiI2s3wiL";
+        let remotes = |value: &str| {
+            format!(
+                "\
+[ftp]
+type = ftp
+host = ftp.example.com
+user = demo
+pass = {value}
+
+[sftp]
+type = sftp
+host = sftp.example.com
+user = demo
+pass = {value}
+
+[dav]
+type = webdav
+url = https://dav.example.com/remote.php/dav/files/demo
+user = demo
+pass = {value}
+
+[mega]
+type = mega
+user = me@example.com
+pass = {value}
+
+[filen]
+type = filen
+email = me@example.com
+password = {value}
+api_key = {value}
+
+[koofr]
+type = koofr
+user = me@example.com
+password = {value}
+
+[opendrive]
+type = opendrive
+username = me@example.com
+password = {value}
+
+[vault]
+type = crypt
+remote = ftp:/vault
+password = {value}
+password2 = {value}
+"
+            )
+        };
+        let import = |conf: String, tag: &str| {
+            let path = tmp_write(
+                &conf,
+                &format!(
+                    "aeroftp-test-import-strict-{tag}-{}.conf",
+                    std::process::id()
+                ),
+            );
+            let result = import_rclone(&path).unwrap();
+            std::fs::remove_file(&path).ok();
+            result
+        };
+        let secrets = |s: &ServerProfileExport| -> Vec<Option<String>> {
+            let opt = |k: &str| {
+                s.options
+                    .as_ref()
+                    .and_then(|o| o.get(k))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            };
+            match s.name.as_str() {
+                "filen" => vec![s.credential.clone(), opt("filen_api_key")],
+                "vault" => vec![opt("rcloneCryptPassword"), opt("rcloneCryptPassword2")],
+                _ => vec![s.credential.clone()],
+            }
+        };
+        let names = [
+            "ftp",
+            "sftp",
+            "dav",
+            "mega",
+            "filen",
+            "koofr",
+            "opendrive",
+            "vault",
+        ];
+
+        let result = import(remotes(good), "good");
+        assert!(result.warnings.is_empty(), "{:?}", result.warnings.len());
+        for name in names {
+            let server = result.servers.iter().find(|s| s.name == name).expect(name);
+            for secret in secrets(server) {
+                assert_eq!(secret.as_deref(), Some("TestPass123"), "{name}");
+            }
+        }
+
+        for (tag, bad) in [("plain", "S3cr3tPass!"), ("std", std_alphabet)] {
+            let result = import(remotes(bad), tag);
+            for name in names {
+                let server = result
+                    .servers
+                    .iter()
+                    .find(|s| s.name == name)
+                    .unwrap_or_else(|| panic!("{name} still imports ('{bad}')"));
+                for secret in secrets(server) {
+                    assert_eq!(secret, None, "{name}: '{bad}' is not a password");
+                }
+                let warning = result
+                    .warnings
+                    .iter()
+                    .find(|w| w.name == name)
+                    .unwrap_or_else(|| panic!("{name}: no warning for '{bad}'"));
+                assert!(
+                    warning.reason.contains("imported without"),
+                    "{name}: {}",
+                    warning.reason
+                );
+            }
+            let filen = result.warnings.iter().find(|w| w.name == "filen").unwrap();
+            assert!(
+                filen.reason.contains("password") && filen.reason.contains("api_key"),
+                "both filen fields are named: {}",
+                filen.reason
+            );
         }
     }
 
