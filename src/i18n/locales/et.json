@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Vaikimisi salti sisselülitamiseks sisestage tugev genereeritud parool.",
             "defaultSaltOneSaltNote": "Salt on ainult üks: 32 baiti, avalik, sama kõigi vaikesaltiga hoidlate puhul.",
             "defaultSaltValueLabel": "Avalik vaikesool (AeroCrypt v3), järgneva teksti SHA-256",
-            "defaultSaltTierMeaning": "Vaikimisi sool tähendab, et hoidla avab ainuüksi parool: kaasas ei pea olema midagi muud ja miski muu seda ei kaitse."
+            "defaultSaltTierMeaning": "Vaikimisi sool tähendab, et hoidla avab ainuüksi parool: kaasas ei pea olema midagi muud ja miski muu seda ei kaitse.",
+            "pastedObscured": "Kleebitud failist rclone.conf (hägustatud)",
+            "pastedObscuredHint": "Valige „Kleebitud failist rclone.conf“ ainult siis, kui kopeerisite selle väärtuse failist rclone.conf, kus rclone hoiab seda hägustatuna.",
+            "formNotRecorded": "Pole märgitud: see väärtus salvestati enne, kui AeroFTP seda küsima hakkas. Valige, kuidas see sisestati; väärtus, mille AeroFTP importis failist rclone.conf, salvestati kui „Trükitud“.",
+            "secretFormTyped": "Trükitud",
+            "secretFormChangeConfirm": "See muudab, kuidas salvestatud väärtust loetakse, ja seega võtit, millega failid avanevad: need avab ainult õige valik. Kas muuta seda valikut?"
         },
         "modalGuard": {
             "busyTitle": "Toiming käib",

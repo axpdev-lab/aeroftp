@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Masukkan kata laluan kuat yang dijana untuk menghidupkan salt lalai.",
             "defaultSaltOneSaltNote": "Hanya ada satu salt: 32 bait, awam, sama untuk setiap peti besi dengan salt lalai.",
             "defaultSaltValueLabel": "Salt lalai awam (AeroCrypt v3), SHA-256 bagi",
-            "defaultSaltTierMeaning": "Garam lalai bermakna kata laluan sahaja membuka peti besi: tiada apa-apa lagi yang perlu dibawa, dan tiada apa-apa lagi yang melindunginya."
+            "defaultSaltTierMeaning": "Garam lalai bermakna kata laluan sahaja membuka peti besi: tiada apa-apa lagi yang perlu dibawa, dan tiada apa-apa lagi yang melindunginya.",
+            "pastedObscured": "Ditampal daripada rclone.conf (dikaburkan)",
+            "pastedObscuredHint": "Pilih \"Ditampal daripada rclone.conf\" hanya jika anda menyalin nilai ini daripada fail rclone.conf, tempat rclone menyimpannya dalam bentuk dikaburkan.",
+            "formNotRecorded": "Tidak direkodkan: nilai ini disimpan sebelum AeroFTP bertanya. Pilih cara nilai ini dimasukkan; nilai yang diimport oleh AeroFTP daripada rclone.conf disimpan sebagai ditaip.",
+            "secretFormTyped": "Ditaip",
+            "secretFormChangeConfirm": "Ini mengubah cara nilai yang disimpan dibaca, dan oleh itu kunci yang membuka fail: hanya pilihan yang betul dapat membukanya. Tukar pilihan ini?"
         },
         "modalGuard": {
             "busyTitle": "Operasi sedang berjalan",

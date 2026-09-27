@@ -21,6 +21,10 @@ import {
   SyncDirection, VerifyPolicy, DeltaTransferStats,
   CompareReport, RetryPolicy, SyncJournal
 } from './types';
+import type { CryptSecretForm } from './types';
+import { bannerOverlayParams } from './utils/rcloneCryptBanner';
+import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
+import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
 
 interface DownloadFolderParams {
   remote_path: string;
@@ -97,6 +101,9 @@ interface ProviderCryptOverlayApply {
   directoryNameEncryption?: boolean | null;
   password: string;
   salt?: string | null;
+  /** rclone-crypt: how `password` / `salt` are written; null = not known (read automatically). */
+  passwordForm?: CryptSecretForm | null;
+  saltForm?: CryptSecretForm | null;
   /** AeroCrypt Tier 1 optional keyfile second factor (local path, resolved to a digest backend-side). */
   keyfilePath?: string | null;
   profileId?: string | null;
@@ -1224,7 +1231,11 @@ const App: React.FC = () => {
   const [lockedOverlayProfile, setLockedOverlayProfile] = useState<{
     savedServerId: string;
     kind: 'rclone-crypt' | 'aerocrypt';
+    /** Why the backend refused it, when it said (rclone-crypt: how to answer). */
+    reason?: string;
   } | null>(null);
+  // The last refusal the auto-unlock saw, read when the locked banner is armed.
+  const overlayRefusalRef = useRef<OverlayRefusal | null>(null);
   const [overlayDecrypting, setOverlayDecrypting] = useState(false);
   // The owner of the active (or in-progress) encrypted overlay. Both the provider
   // decorator state and the decryption animation are gated on
@@ -5631,6 +5642,8 @@ const App: React.FC = () => {
         directoryNameEncryption: params.directoryNameEncryption ?? true,
         password: params.password,
         salt: params.salt || null,
+        passwordForm: params.passwordForm ?? null,
+        saltForm: params.saltForm ?? null,
         keyfilePath: params.keyfilePath || null,
         // Headerless AeroCrypt REQUIRES the profile id to persist/read its vault
         // config in the keystore (no remote marker). Every caller sets it; not
@@ -5644,12 +5657,12 @@ const App: React.FC = () => {
     // Backend returns ApplyOverlayResult { scope, markerRestored, warning, … };
     // tolerate a plain string for forward/back compat during hot reload.
     const appliedScope = typeof result === 'string' ? result : result.scope;
-    // Only auto-toast the missing-marker rebuild safety warning.
-    // Legacy JSON→TSV is a retrocompatible design update: opt-in via the
-    // AEROCRYPT badge context menu "Convert marker", never a connect nag.
+    // The backend's one-time notices (the AeroCrypt marker notices, or an
+    // rclone-crypt key under which no name decrypts), titled by what they are
+    // about rather than all as a restored marker.
     if (typeof result !== 'string' && result.warning) {
       notify.warning(
-        t('aerocryptNative.markerMissingRestoredTitle'),
+        t(overlayWarningTitleKey(params.kind, result.markerRestored)),
         result.warning,
       );
     }
@@ -5785,6 +5798,8 @@ const App: React.FC = () => {
     savedServerId?: string,
   ): Promise<{ vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null> => {
     if (!savedServerId) return null;
+    // Only this attempt's refusal may reach the locked banner.
+    overlayRefusalRef.current = null;
     try {
       const profiles = await loadSavedServerProfiles();
       const profile = profiles.find((p) => p.id === savedServerId);
@@ -5835,6 +5850,10 @@ const App: React.FC = () => {
             directoryNameEncryption: binding.directoryNameEncryption ?? true,
             password,
             salt: salt || null,
+            // No forms here: the backend reads them from the saved profile
+            // (profileId), by the rule every other reader uses.
+            passwordForm: null,
+            saltForm: null,
             keyfilePath: keyfilePath || null,
             profileId: savedServerId,
             // Headed intent from the saved profile: missing remote marker is
@@ -5858,6 +5877,10 @@ const App: React.FC = () => {
           humanLog.updateEntry(overlayLogIdRef.current, { status: 'error', message: t('activity.overlay_failed') });
           overlayLogIdRef.current = null;
         }
+        // rclone-crypt opens with any key, so a failure here is a secret it
+        // refuses to guess at (or one it cannot read). The locked banner shows
+        // why, with how to answer it; a toast would close before it is read.
+        overlayRefusalRef.current = { savedServerId, kind: binding.kind, reason: String(e) };
         throw e;
       }
     } catch (e) {
@@ -5923,13 +5946,17 @@ const App: React.FC = () => {
         // arm". The second case must NOT look like a plain listing with no
         // recovery: keep the path-bar capability badge and surface a locked
         // affordance so the user can re-enter the password in-panel.
-        let locked: { savedServerId: string; kind: 'rclone-crypt' | 'aerocrypt' } | null = null;
+        let locked: { savedServerId: string; kind: 'rclone-crypt' | 'aerocrypt'; reason?: string } | null = null;
         try {
           const profiles = await loadSavedServerProfiles();
           const profile = profiles.find((p) => p.id === savedId);
           const binding = profile?.aeroCryptOverlay;
           if (binding?.enabled) {
-            locked = { savedServerId: savedId, kind: binding.kind };
+            locked = {
+              savedServerId: savedId,
+              kind: binding.kind,
+              reason: refusalFor(overlayRefusalRef.current, savedId),
+            };
             markSessionOverlayKind({ savedServerId: savedId }, binding.kind, binding.remoteScope ?? null);
           }
         } catch {
@@ -8428,6 +8455,7 @@ const App: React.FC = () => {
               setLockedOverlayProfile({
                 savedServerId: targetSession.savedServerId,
                 kind: targetOverlay.kind,
+                reason: refusalFor(overlayRefusalRef.current, targetSession.savedServerId),
               });
               lockSessionCryptOverlay({ sessionId });
             } else {
@@ -16580,6 +16608,8 @@ const App: React.FC = () => {
                       directoryNameEncryption: details.directoryNameEncryption,
                       password: details.password,
                       salt: details.salt || null,
+                      passwordForm: details.passwordForm,
+                      saltForm: details.saltForm,
                       profileId: sessions.find(s => s.id === activeSessionId)?.savedServerId
                         ?? lockedOverlayProfile?.savedServerId
                         ?? null,
@@ -16681,6 +16711,11 @@ const App: React.FC = () => {
                 <div className="text-xs opacity-80">
                   {t('aerocrypt.lockedOverlayDesc')}
                 </div>
+                {lockedOverlayProfile.reason && (
+                  <div className="text-xs mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words select-text">
+                    {lockedOverlayProfile.reason}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex gap-2 justify-end">
@@ -16728,14 +16763,7 @@ const App: React.FC = () => {
                     setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
                     await activateProviderCryptOverlay(
                       { sessionId: activeSessionId ?? undefined },
-                      {
-                        kind: 'rclone-crypt',
-                        remoteScope: banner.initialPath ?? '',
-                        filenameEncryption: banner.filenameEncryption || 'standard',
-                        directoryNameEncryption: banner.directoryNameEncryption !== false,
-                        password: banner.password,
-                        salt: banner.salt || null,
-                      },
+                      bannerOverlayParams(banner),
                       activeSessionId,
                     );
                     await loadRemoteFiles(undefined, true, true);

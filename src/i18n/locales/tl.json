@@ -5623,7 +5623,12 @@
             "defaultSaltNeedsStronger": "Maglagay ng malakas na binuong password para i-on ang default na salt.",
             "defaultSaltOneSaltNote": "Iisa lang ang salt: 32 byte, pampubliko, pareho para sa bawat vault na gumagamit ng default na salt.",
             "defaultSaltValueLabel": "Pampublikong default na salt (AeroCrypt v3), SHA-256 ng",
-            "defaultSaltTierMeaning": "Ang default na salt ay nangangahulugang ang password lamang ang nagbubukas ng vault: wala nang iba pang dapat dalhin, at wala nang iba pang nagpoprotekta rito."
+            "defaultSaltTierMeaning": "Ang default na salt ay nangangahulugang ang password lamang ang nagbubukas ng vault: wala nang iba pang dapat dalhin, at wala nang iba pang nagpoprotekta rito.",
+            "pastedObscured": "Na-paste mula sa rclone.conf (nakakubli)",
+            "pastedObscuredHint": "Piliin lamang ang \"Na-paste mula sa rclone.conf\" kung kinopya mo ang value na ito mula sa isang rclone.conf file, kung saan ito itinatago ng rclone nang nakakubli.",
+            "formNotRecorded": "Hindi naitala: na-save ang value na ito bago nagtanong ang AeroFTP. Piliin kung paano ito inilagay; ang value na in-import ng AeroFTP mula sa rclone.conf ay na-save bilang na-type.",
+            "secretFormTyped": "Na-type",
+            "secretFormChangeConfirm": "Binabago nito kung paano binabasa ang naka-save na value, at kaya pati ang key na nagbubukas sa mga file: tanging ang tamang pagpili ang magbubukas sa mga ito. Baguhin ang pagpiling ito?"
         },
         "modalGuard": {
             "busyTitle": "May isinasagawang operasyon",

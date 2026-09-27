@@ -5623,7 +5623,12 @@
             "defaultSaltNeedsStronger": "Sláðu inn sterkt myndað lykilorð til að kveikja á sjálfgefna saltinu.",
             "defaultSaltOneSaltNote": "Það er aðeins eitt salt: 32 bæti, opinbert, eins fyrir allar hvelfingar með sjálfgefið salt.",
             "defaultSaltValueLabel": "Opinbert sjálfgefið salt (AeroCrypt v3), SHA-256 af",
-            "defaultSaltTierMeaning": "Sjálfgefið salt þýðir að lykilorðið eitt opnar hvelfinguna: ekkert annað þarf að hafa meðferðis og ekkert annað verndar hana."
+            "defaultSaltTierMeaning": "Sjálfgefið salt þýðir að lykilorðið eitt opnar hvelfinguna: ekkert annað þarf að hafa meðferðis og ekkert annað verndar hana.",
+            "pastedObscured": "Límt úr rclone.conf (hulið)",
+            "pastedObscuredHint": "Veldu „Límt úr rclone.conf“ aðeins ef þú afritaðir þetta gildi úr rclone.conf-skrá, þar sem rclone geymir það hulið.",
+            "formNotRecorded": "Ekki skráð: þetta gildi var vistað áður en AeroFTP spurði. Veldu hvernig það var slegið inn; gildi sem AeroFTP flutti inn úr rclone.conf var vistað sem slegið inn.",
+            "secretFormTyped": "Slegið inn",
+            "secretFormChangeConfirm": "Þetta breytir því hvernig vistaða gildið er lesið, og þar með lyklinum sem opnar skrárnar: aðeins rétt val opnar þær. Breyta þessu vali?"
         },
         "modalGuard": {
             "busyTitle": "Aðgerð í gangi",

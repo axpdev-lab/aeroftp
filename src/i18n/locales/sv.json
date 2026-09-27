@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Ange ett starkt genererat lösenord för att aktivera standardsaltet.",
             "defaultSaltOneSaltNote": "Det finns bara ett salt: 32 byte, offentligt, identiskt för alla valv med standardsalt.",
             "defaultSaltValueLabel": "Offentligt standardsalt (AeroCrypt v3), SHA-256 av",
-            "defaultSaltTierMeaning": "Standardsalt betyder att lösenordet ensamt öppnar valvet: inget annat behöver bäras med, och inget annat skyddar det."
+            "defaultSaltTierMeaning": "Standardsalt betyder att lösenordet ensamt öppnar valvet: inget annat behöver bäras med, och inget annat skyddar det.",
+            "pastedObscured": "Inklistrat från rclone.conf (maskerat)",
+            "pastedObscuredHint": "Välj ”Inklistrat från rclone.conf” endast om du kopierade värdet från en rclone.conf-fil, där rclone lagrar det maskerat.",
+            "formNotRecorded": "Inte registrerat: värdet sparades innan AeroFTP frågade. Välj hur det angavs; ett värde som AeroFTP importerade från rclone.conf sparades som ”Inskriven”.",
+            "secretFormTyped": "Inskriven",
+            "secretFormChangeConfirm": "Detta ändrar hur det sparade värdet läses, och därmed nyckeln som filerna öppnas med: bara rätt val öppnar dem. Ändra detta val?"
         },
         "modalGuard": {
             "busyTitle": "Åtgärd pågår",

@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Lock, Unlock, Loader2, X, Download, FileText } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import type { CryptSecretForm } from '../types';
+import { CryptSecretFormChoice } from './CryptSecretFormChoice';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { PasswordInput } from './common/PasswordInput';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
@@ -18,6 +20,8 @@ interface RcloneCryptUnlockProps {
         vaultId: string;
         password: string;
         salt?: string | null;
+        passwordForm: CryptSecretForm;
+        saltForm: CryptSecretForm;
         filenameEncryption: string;
         directoryNameEncryption: boolean;
         remoteScope?: string;
@@ -38,6 +42,10 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [salt, setSalt] = useState('');
+    // How the typed values are written: as typed unless the user says they
+    // were pasted from rclone.conf. Only asked when opening an existing remote.
+    const [passwordForm, setPasswordForm] = useState<CryptSecretForm>('clear');
+    const [saltForm, setSaltForm] = useState<CryptSecretForm>('clear');
     const [filenameEncryption, setFilenameEncryption] = useState('standard');
     const [dirNameEncryption, setDirNameEncryption] = useState(true);
     const [createSubpath, setCreateSubpath] = useState('');
@@ -87,12 +95,16 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                 salt: salt || null,
                 filenameEncryption,
                 directoryNameEncryption: dirNameEncryption,
+                passwordForm,
+                saltForm,
             });
             setVaultInfo(info);
             onUnlocked?.({
                 vaultId: info.vault_id,
                 password,
                 salt: salt || null,
+                passwordForm,
+                saltForm,
                 filenameEncryption,
                 directoryNameEncryption: dirNameEncryption,
                 remoteScope: '',
@@ -118,12 +130,17 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                 filenameEncryption,
                 directoryNameEncryption: dirNameEncryption,
                 targetSubpath: createSubpath.trim() ? createSubpath.trim() : null,
+                passwordForm: 'clear',
+                saltForm: 'clear',
             });
             setVaultInfo(info);
             onUnlocked?.({
                 vaultId: info.vault_id,
                 password,
                 salt: salt || null,
+                // A remote created here is keyed from what was typed.
+                passwordForm: 'clear',
+                saltForm: 'clear',
                 filenameEncryption,
                 directoryNameEncryption: dirNameEncryption,
                 remoteScope: '',
@@ -266,6 +283,9 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                         <PasswordStrengthBar password={password} />
                                     </div>
                                 )}
+                                {mode === 'open' && (
+                                    <CryptSecretFormChoice legend={t('aerocrypt.password')} value={passwordForm} onChange={setPasswordForm} />
+                                )}
                             </div>
 
                             {mode === 'create' && (
@@ -295,6 +315,9 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                     placeholder={t('aerocrypt.saltPlaceholder')}
                                 />
+                                {mode === 'open' && (
+                                    <CryptSecretFormChoice legend={t('aerocrypt.salt')} value={saltForm} onChange={setSaltForm} />
+                                )}
                             </div>
 
                             <div>

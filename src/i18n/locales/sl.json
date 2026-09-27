@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Vnesite močno ustvarjeno geslo, da vklopite privzeti salt.",
             "defaultSaltOneSaltNote": "Obstaja samo en salt: 32 bajtov, javen, enak za vse trezorje s privzetim saltom.",
             "defaultSaltValueLabel": "Javni privzeti salt (AeroCrypt v3), SHA-256 od",
-            "defaultSaltTierMeaning": "Privzeta sol pomeni, da trezor odpre že samo geslo: ničesar drugega ni treba nositi s seboj in nič drugega ga ne varuje."
+            "defaultSaltTierMeaning": "Privzeta sol pomeni, da trezor odpre že samo geslo: ničesar drugega ni treba nositi s seboj in nič drugega ga ne varuje.",
+            "pastedObscured": "Prilepljeno iz rclone.conf (zakrito)",
+            "pastedObscuredHint": "Izberite »Prilepljeno iz rclone.conf« samo, če ste to vrednost kopirali iz datoteke rclone.conf, v kateri jo rclone hrani zakrito.",
+            "formNotRecorded": "Ni zabeleženo: ta vrednost je bila shranjena, preden je AeroFTP to vprašal. Izberite, kako je bila vnesena; vrednost, ki jo je AeroFTP uvozil iz rclone.conf, je bila shranjena kot „Vtipkano“.",
+            "secretFormTyped": "Vtipkano",
+            "secretFormChangeConfirm": "To spremeni način branja shranjene vrednosti in s tem ključ, s katerim se datoteke odprejo: odpre jih le pravilna izbira. Želite spremeniti to izbiro?"
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",

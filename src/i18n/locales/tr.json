@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Varsayılan salt'ı açmak için güçlü, oluşturulmuş bir parola girin.",
             "defaultSaltOneSaltNote": "Tek bir salt vardır: 32 bayt, herkese açık ve varsayılan salt kullanan tüm kasalarda aynıdır.",
             "defaultSaltValueLabel": "Herkese açık varsayılan tuz (AeroCrypt v3), şunun SHA-256'sı",
-            "defaultSaltTierMeaning": "Varsayılan tuz, kasayı yalnızca parolanın açtığı anlamına gelir: yanınızda taşımanız gereken başka bir şey yoktur ve onu koruyan başka bir şey de yoktur."
+            "defaultSaltTierMeaning": "Varsayılan tuz, kasayı yalnızca parolanın açtığı anlamına gelir: yanınızda taşımanız gereken başka bir şey yoktur ve onu koruyan başka bir şey de yoktur.",
+            "pastedObscured": "rclone.conf'tan yapıştırıldı (gizlenmiş)",
+            "pastedObscuredHint": "\"rclone.conf'tan yapıştırıldı\" seçeneğini yalnızca bu değeri, rclone'un onu gizlenmiş olarak sakladığı bir rclone.conf dosyasından kopyaladıysanız seçin.",
+            "formNotRecorded": "Bilgi yok: bu değer, AeroFTP bunu sormaya başlamadan önce kaydedildi. Nasıl girildiğini seçin; AeroFTP'nin rclone.conf'tan içe aktardığı bir değer \"Yazıldı\" olarak kaydedildi.",
+            "secretFormTyped": "Yazıldı",
+            "secretFormChangeConfirm": "Bu, kayıtlı değerin nasıl okunduğunu ve dolayısıyla dosyaları açan anahtarı değiştirir: yalnızca doğru seçim onları açar. Bu seçim değiştirilsin mi?"
         },
         "modalGuard": {
             "busyTitle": "İşlem sürüyor",

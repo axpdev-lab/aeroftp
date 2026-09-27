@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Indtast en stærk genereret adgangskode for at aktivere standardsaltet.",
             "defaultSaltOneSaltNote": "Der findes kun ét salt: 32 byte, offentligt, identisk for alle bokse med standardsalt.",
             "defaultSaltValueLabel": "Offentligt standardsalt (AeroCrypt v3), SHA-256 af",
-            "defaultSaltTierMeaning": "Standardsalt betyder, at adgangskoden alene åbner boksen: der skal ikke medbringes andet, og intet andet beskytter den."
+            "defaultSaltTierMeaning": "Standardsalt betyder, at adgangskoden alene åbner boksen: der skal ikke medbringes andet, og intet andet beskytter den.",
+            "pastedObscured": "Indsat fra rclone.conf (sløret)",
+            "pastedObscuredHint": "Vælg \"Indsat fra rclone.conf\" kun hvis du har kopieret denne værdi fra en rclone.conf-fil, hvor rclone gemmer den sløret.",
+            "formNotRecorded": "Ikke registreret: denne værdi blev gemt, før AeroFTP spurgte. Vælg, hvordan den blev angivet; en værdi, som AeroFTP importerede fra rclone.conf, blev gemt som indtastet.",
+            "secretFormTyped": "Indtastet",
+            "secretFormChangeConfirm": "Dette ændrer, hvordan den gemte værdi læses, og dermed den nøgle, filerne åbnes med: kun det rigtige valg åbner dem. Vil du ændre dette valg?"
         },
         "modalGuard": {
             "busyTitle": "Handling i gang",

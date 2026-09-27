@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Syötä vahva luotu salasana ottaaksesi oletussuolan käyttöön.",
             "defaultSaltOneSaltNote": "Saltteja on vain yksi: 32 tavua, julkinen, sama kaikissa oletussalttia käyttävissä holveissa.",
             "defaultSaltValueLabel": "Julkinen oletussuola (AeroCrypt v3), SHA-256 merkkijonosta",
-            "defaultSaltTierMeaning": "Oletussuola tarkoittaa, että pelkkä salasana avaa holvin: mitään muuta ei tarvitse kantaa mukana, eikä mikään muu suojaa sitä."
+            "defaultSaltTierMeaning": "Oletussuola tarkoittaa, että pelkkä salasana avaa holvin: mitään muuta ei tarvitse kantaa mukana, eikä mikään muu suojaa sitä.",
+            "pastedObscured": "Liitetty rclone.conf-tiedostosta (hämärretty)",
+            "pastedObscuredHint": "Valitse \"Liitetty rclone.conf-tiedostosta\" vain, jos kopioit tämän arvon rclone.conf-tiedostosta, jossa rclone säilyttää sen hämärrettynä.",
+            "formNotRecorded": "Ei kirjattu: tämä arvo tallennettiin ennen kuin AeroFTP alkoi kysyä asiaa. Valitse, miten se syötettiin; AeroFTP:n rclone.conf-tiedostosta tuoma arvo tallennettiin valinnalla ”Kirjoitettu”.",
+            "secretFormTyped": "Kirjoitettu",
+            "secretFormChangeConfirm": "Tämä muuttaa sitä, miten tallennettu arvo luetaan, ja siten avainta, jolla tiedostot avautuvat: vain oikea valinta avaa ne. Muutetaanko tätä valintaa?"
         },
         "modalGuard": {
             "busyTitle": "Toiminto käynnissä",

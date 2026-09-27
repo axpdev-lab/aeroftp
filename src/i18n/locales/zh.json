@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "输入生成的强密码以启用默认盐值。",
             "defaultSaltOneSaltNote": "只有一个盐值：32 字节，公开，所有使用默认盐值的保险库都相同。",
             "defaultSaltValueLabel": "公开默认盐值（AeroCrypt v3），即以下字符串的 SHA-256",
-            "defaultSaltTierMeaning": "默认盐值意味着仅凭密码即可打开保险库：无需随身携带其他东西，也没有其他东西在保护它。"
+            "defaultSaltTierMeaning": "默认盐值意味着仅凭密码即可打开保险库：无需随身携带其他东西，也没有其他东西在保护它。",
+            "pastedObscured": "从 rclone.conf 粘贴（已混淆）",
+            "pastedObscuredHint": "仅当你从 rclone.conf 文件复制了此值时，才选择“从 rclone.conf 粘贴”；rclone 在该文件中以混淆形式保存它。",
+            "formNotRecorded": "未记录：此值是在 AeroFTP 询问之前保存的。请选择它的输入方式；AeroFTP 从 rclone.conf 导入的值是按“手动输入”保存的。",
+            "secretFormTyped": "手动输入",
+            "secretFormChangeConfirm": "这会改变读取已存储值的方式，从而改变打开文件所用的密钥：只有正确的选择才能打开它们。要更改此选择吗？"
         },
         "modalGuard": {
             "busyTitle": "操作进行中",

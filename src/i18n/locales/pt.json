@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Insira uma senha gerada forte para ativar o sal padrão.",
             "defaultSaltOneSaltNote": "Existe um único salt: 32 bytes, público, idêntico para todos os cofres com salt padrão.",
             "defaultSaltValueLabel": "Salt padrão público (AeroCrypt v3), SHA-256 de",
-            "defaultSaltTierMeaning": "O sal predefinido significa que apenas a palavra-passe abre o cofre: não há mais nada para levar consigo, e não há mais nada que o proteja."
+            "defaultSaltTierMeaning": "O sal predefinido significa que apenas a palavra-passe abre o cofre: não há mais nada para levar consigo, e não há mais nada que o proteja.",
+            "pastedObscured": "Colado do rclone.conf (ofuscado)",
+            "pastedObscuredHint": "Escolha \"Colado do rclone.conf\" somente se você copiou este valor de um arquivo rclone.conf, onde o rclone o mantém ofuscado.",
+            "formNotRecorded": "Não registrado: este valor foi salvo antes de o AeroFTP perguntar. Escolha como ele foi inserido; um valor que o AeroFTP importou do rclone.conf foi salvo como digitado.",
+            "secretFormTyped": "Digitado",
+            "secretFormChangeConfirm": "Isto altera como o valor salvo é lido e, portanto, a chave com que os arquivos abrem: só a escolha certa os abre. Alterar esta escolha?"
         },
         "modalGuard": {
             "busyTitle": "Operação em curso",

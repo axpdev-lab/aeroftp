@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Introduceți o parolă generată puternică pentru a activa saltul implicit.",
             "defaultSaltOneSaltNote": "Există un singur salt: 32 de octeți, public, identic pentru fiecare seif cu salt implicit.",
             "defaultSaltValueLabel": "Salt implicit public (AeroCrypt v3), SHA-256 al șirului",
-            "defaultSaltTierMeaning": "Sarea implicită înseamnă că doar parola deschide seiful: nu mai e nimic de purtat cu tine și nimic altceva nu îl protejează."
+            "defaultSaltTierMeaning": "Sarea implicită înseamnă că doar parola deschide seiful: nu mai e nimic de purtat cu tine și nimic altceva nu îl protejează.",
+            "pastedObscured": "Lipit din rclone.conf (obscurizat)",
+            "pastedObscuredHint": "Alegeți „Lipit din rclone.conf” doar dacă ați copiat această valoare dintr-un fișier rclone.conf, unde rclone o păstrează obscurizată.",
+            "formNotRecorded": "Neînregistrat: această valoare a fost salvată înainte ca AeroFTP să întrebe. Alegeți cum a fost introdusă; o valoare pe care AeroFTP a importat-o din rclone.conf a fost salvată ca „Tastat”.",
+            "secretFormTyped": "Tastat",
+            "secretFormChangeConfirm": "Aceasta schimbă modul în care este citită valoarea salvată și, prin urmare, cheia cu care se deschid fișierele: doar alegerea corectă le deschide. Schimbați această alegere?"
         },
         "modalGuard": {
             "busyTitle": "Operațiune în curs",

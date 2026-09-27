@@ -5623,7 +5623,12 @@
             "defaultSaltNeedsStronger": "Rhowch gyfrinair cryf wedi'i gynhyrchu i droi'r salt rhagosodedig ymlaen.",
             "defaultSaltOneSaltNote": "Dim ond un salt sydd: 32 beit, cyhoeddus, yr un peth ar gyfer pob cell ddiogel sy'n defnyddio'r salt rhagosodedig.",
             "defaultSaltValueLabel": "Halen rhagosodedig cyhoeddus (AeroCrypt v3), SHA-256 o",
-            "defaultSaltTierMeaning": "Mae halen rhagosodedig yn golygu mai'r cyfrinair yn unig sy'n agor y gladdgell: nid oes rhaid cario dim arall, ac nid oes dim arall yn ei diogelu."
+            "defaultSaltTierMeaning": "Mae halen rhagosodedig yn golygu mai'r cyfrinair yn unig sy'n agor y gladdgell: nid oes rhaid cario dim arall, ac nid oes dim arall yn ei diogelu.",
+            "pastedObscured": "Wedi'i ludo o rclone.conf (wedi'i guddio)",
+            "pastedObscuredHint": "Dewiswch \"Wedi'i ludo o rclone.conf\" dim ond os gwnaethoch gopïo'r gwerth hwn o ffeil rclone.conf, lle mae rclone yn ei gadw wedi'i guddio.",
+            "formNotRecorded": "Heb ei gofnodi: cafodd y gwerth hwn ei gadw cyn i AeroFTP ofyn. Dewiswch sut y cafodd ei roi; cafodd gwerth a fewnforiodd AeroFTP o rclone.conf ei gadw fel un wedi'i deipio.",
+            "secretFormTyped": "Wedi'i deipio",
+            "secretFormChangeConfirm": "Mae hyn yn newid sut mae'r gwerth sydd wedi'i gadw yn cael ei ddarllen, ac felly'r allwedd sy'n agor y ffeiliau: dim ond y dewis cywir sy'n eu hagor. Newid y dewis hwn?"
         },
         "modalGuard": {
             "busyTitle": "Gweithrediad ar y gweill",

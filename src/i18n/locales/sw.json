@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Weka nenosiri imara lililozalishwa ili kuwasha salt chaguo-msingi.",
             "defaultSaltOneSaltNote": "Kuna salt moja tu: baiti 32, ya umma, sawa kwa kila hazina inayotumia salt chaguo-msingi.",
             "defaultSaltValueLabel": "Chumvi chaguo-msingi ya umma (AeroCrypt v3), SHA-256 ya",
-            "defaultSaltTierMeaning": "Chumvi chaguo-msingi inamaanisha nywila peke yake hufungua kasha: hakuna kingine cha kubeba, na hakuna kingine kinachokilinda."
+            "defaultSaltTierMeaning": "Chumvi chaguo-msingi inamaanisha nywila peke yake hufungua kasha: hakuna kingine cha kubeba, na hakuna kingine kinachokilinda.",
+            "pastedObscured": "Imebandikwa kutoka rclone.conf (imefichwa)",
+            "pastedObscuredHint": "Chagua \"Imebandikwa kutoka rclone.conf\" tu ikiwa ulinakili thamani hii kutoka kwenye faili la rclone.conf, ambamo rclone huihifadhi ikiwa imefichwa.",
+            "formNotRecorded": "Haijarekodiwa: thamani hii ilihifadhiwa kabla AeroFTP haijauliza. Chagua jinsi ilivyoingizwa; thamani ambayo AeroFTP iliingiza kutoka rclone.conf ilihifadhiwa kama “Imechapwa”.",
+            "secretFormTyped": "Imechapwa",
+            "secretFormChangeConfirm": "Hii inabadilisha jinsi thamani iliyohifadhiwa inavyosomwa, na hivyo ufunguo unaofungua faili: ni chaguo sahihi pekee linalozifungua. Badilisha chaguo hili?"
         },
         "modalGuard": {
             "busyTitle": "Operesheni inaendelea",

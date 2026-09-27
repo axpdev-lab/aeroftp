@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Az alapértelmezett salt bekapcsolásához adjon meg egy erős, generált jelszót.",
             "defaultSaltOneSaltNote": "Egyetlen salt létezik: 32 bájt, nyilvános, és minden alapértelmezett saltot használó széf esetében azonos.",
             "defaultSaltValueLabel": "Nyilvános alapértelmezett só (AeroCrypt v3), az alábbi szöveg SHA-256 értéke",
-            "defaultSaltTierMeaning": "Az alapértelmezett só azt jelenti, hogy a széfet önmagában a jelszó nyitja: semmi mást nem kell magával vinni, és semmi más nem védi."
+            "defaultSaltTierMeaning": "Az alapértelmezett só azt jelenti, hogy a széfet önmagában a jelszó nyitja: semmi mást nem kell magával vinni, és semmi más nem védi.",
+            "pastedObscured": "Beillesztve az rclone.conf fájlból (álcázott)",
+            "pastedObscuredHint": "Csak akkor válassza a „Beillesztve az rclone.conf fájlból” lehetőséget, ha ezt az értéket egy rclone.conf fájlból másolta, ahol az rclone álcázva tárolja.",
+            "formNotRecorded": "Nincs rögzítve: ez az érték még azelőtt lett mentve, hogy az AeroFTP rákérdezett volna. Válassza ki, hogyan adta meg; az AeroFTP által az rclone.conf fájlból importált érték „Begépelve” módon lett tárolva.",
+            "secretFormTyped": "Begépelve",
+            "secretFormChangeConfirm": "Ez megváltoztatja, hogyan olvassa be a program a tárolt értéket, és így azt a kulcsot is, amellyel a fájlok megnyílnak: csak a helyes választás nyitja meg őket. Módosítja ezt a választást?"
         },
         "modalGuard": {
             "busyTitle": "Művelet folyamatban",

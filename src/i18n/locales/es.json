@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Introduce una contraseña generada segura para activar la sal predeterminada.",
             "defaultSaltOneSaltNote": "Existe un único salt: 32 bytes, público, idéntico para todas las bóvedas con salt predeterminado.",
             "defaultSaltValueLabel": "Salt predeterminado público (AeroCrypt v3), SHA-256 de",
-            "defaultSaltTierMeaning": "La sal predeterminada significa que solo la contraseña abre la caja fuerte: no hay que llevar nada más, y nada más la protege."
+            "defaultSaltTierMeaning": "La sal predeterminada significa que solo la contraseña abre la caja fuerte: no hay que llevar nada más, y nada más la protege.",
+            "pastedObscured": "Pegado desde rclone.conf (ofuscado)",
+            "pastedObscuredHint": "Elija \"Pegado desde rclone.conf\" solo si copió este valor de un archivo rclone.conf, donde rclone lo guarda ofuscado.",
+            "formNotRecorded": "No registrado: este valor se guardó antes de que AeroFTP lo preguntara. Elija cómo se introdujo; un valor que AeroFTP importó desde rclone.conf se guardó como escrito.",
+            "secretFormTyped": "Escrito",
+            "secretFormChangeConfirm": "Esto cambia cómo se lee el valor guardado y, por tanto, la clave con la que se abren los archivos: solo la opción correcta los abre. ¿Cambiar esta opción?"
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

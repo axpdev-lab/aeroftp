@@ -5622,7 +5622,12 @@
             "defaultSaltNeedsStronger": "Enter a Strong generated password to turn on default salt.",
             "defaultSaltOneSaltNote": "There is a single salt: 32 bytes, public, identical for every default-salt vault.",
             "defaultSaltValueLabel": "Public default salt (AeroCrypt v3), SHA-256 of",
-            "defaultSaltTierMeaning": "Default salt means the password alone opens the vault: nothing else has to be carried, and nothing else protects it."
+            "defaultSaltTierMeaning": "Default salt means the password alone opens the vault: nothing else has to be carried, and nothing else protects it.",
+            "pastedObscured": "Pasted from rclone.conf (obscured)",
+            "pastedObscuredHint": "Choose \"Pasted from rclone.conf\" only if you copied this value from an rclone.conf file, where rclone keeps it obscured.",
+            "formNotRecorded": "Not recorded: this value was saved before AeroFTP asked. Choose how it was entered; a value AeroFTP imported from rclone.conf was stored as typed.",
+            "secretFormTyped": "Typed",
+            "secretFormChangeConfirm": "This changes how the stored value is read, and so the key the files open with: only the right choice opens them. Change this choice?"
         },
         "modalView": {
             "listView": "List view",

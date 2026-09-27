@@ -5623,7 +5623,12 @@
             "defaultSaltNeedsStronger": "Introduce un contrasinal xerado forte para activar o sal predeterminado.",
             "defaultSaltOneSaltNote": "Existe un único salt: 32 bytes, público, idéntico para todos os cofres con salt predeterminado.",
             "defaultSaltValueLabel": "Salt público predeterminado (AeroCrypt v3), SHA-256 de",
-            "defaultSaltTierMeaning": "O sal predeterminado significa que só o contrasinal abre a caixa forte: non hai que levar nada máis, e nada máis a protexe."
+            "defaultSaltTierMeaning": "O sal predeterminado significa que só o contrasinal abre a caixa forte: non hai que levar nada máis, e nada máis a protexe.",
+            "pastedObscured": "Pegado desde rclone.conf (ofuscado)",
+            "pastedObscuredHint": "Escolla \"Pegado desde rclone.conf\" só se copiou este valor dun ficheiro rclone.conf, onde rclone o garda ofuscado.",
+            "formNotRecorded": "Non rexistrado: este valor gardouse antes de que AeroFTP o preguntase. Escolla como se introduciu; un valor que AeroFTP importou desde rclone.conf gardouse como escrito.",
+            "secretFormTyped": "Escrito",
+            "secretFormChangeConfirm": "Isto cambia como se le o valor gardado e, polo tanto, a chave coa que se abren os ficheiros: só a opción correcta os abre. Cambiar esta opción?"
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",

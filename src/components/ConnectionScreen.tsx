@@ -12,6 +12,9 @@ import { pickFile, pickSave } from '../utils/pickPath';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
+import type { CryptSecretForm } from '../types';
+import { cryptSecretForms, hydratedSecretForms, secretFormsHalfRecorded } from '../utils/cryptSecretForm';
+import { CryptSecretFormChoice } from './CryptSecretFormChoice';
 import type { MtpDeviceInfo } from '../types/aerofile';
 import { deviceFingerprintFromMtpInfo, matchLiveDevice } from '../utils/mtpFingerprint';
 import { listMtpDevices } from '../utils/mtpListDevices';
@@ -681,6 +684,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // modal. Native AeroCrypt ignores these (config lives in its marker).
     const [aeroCryptSalt, setAeroCryptSalt] = useState('');
     const [showAeroCryptSalt, setShowAeroCryptSalt] = useState(false);
+    // rclone-crypt: how the password and salt are written, as typed ('clear')
+    // or as rclone.conf keeps them ('obscured'). Editable even on a locked
+    // binding, since it describes the stored value without changing it.
+    // undefined = not recorded (a binding saved before forms were): it stays
+    // that way, read automatically, until the user says.
+    const [aeroCryptPasswordForm, setAeroCryptPasswordForm] = useState<CryptSecretForm | undefined>('clear');
+    const [aeroCryptSaltForm, setAeroCryptSaltForm] = useState<CryptSecretForm | undefined>('clear');
     // Ehud #215: the stored Crypt password and rclone salt, read back from the
     // vault only when the user presses the eye on a locked (already bound)
     // overlay. Kept apart from aeroCryptPassword/aeroCryptSalt on purpose: those
@@ -718,6 +728,45 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [overlaysRemotePath, quickConnectDirs.remoteDir, t]);
 
+    // The overlay section back to the fresh-form default. A profile made after
+    // an edit session must not inherit that session's overlay: its locked
+    // binding, its secrets, or a form choice ("pasted from rclone.conf") that
+    // would then be recorded for values typed as they are.
+    const resetOverlayForm = () => {
+        setAeroCryptEnabled(false);
+        setOverlaysExpanded(false);
+        setOverlayBindingLocked(false);
+        setAeroCryptKind(null);
+        setAeroCryptPassword('');
+        setAeroCryptConfirm('');
+        setRevealedCrypt({});
+        setShowAeroCryptPassword(false);
+        setShowAeroCryptSalt(false);
+        setAeroCryptSalt('');
+        setAeroCryptPasswordForm('clear');
+        setAeroCryptSaltForm('clear');
+        setAeroCryptFilenameEnc('standard');
+        setAeroCryptDirNameEnc(true);
+        setAeroCryptWithHeader(false);
+        setAeroCryptDefaultSalt(false);
+        setAeroCryptKeyfilePath('');
+        setKeyfileJustGenerated(false);
+        setKeyfileError(null);
+        setOverlaysRemotePath('');
+        setOverlaysRemotePathError(null);
+        editHydratedPasswordRef.current = '';
+        editHydratedKeyfilePathRef.current = '';
+    };
+
+    // The only way an edit session ends (save, save as new, convert, cancel,
+    // protocol change), so none of them can skip the overlay reset.
+    const endEditSession = () => {
+        setEditingProfileId(null);
+        editingProfileIdRef.current = null;
+        setOriginalEditMode(null);
+        resetOverlayForm();
+    };
+
     // Issue #215: MEGAcmd WebDAV endpoint auto-fetch state. Running
     // `mega-webdav /` (same idempotent call that warms the bridge for the
     // quota probe) prints the served URL, so the operator no longer has to
@@ -754,8 +803,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 });
                 setSelectedProviderId(null);
                 if (editingProfileId) {
-                    setEditingProfileId(null);
-                    editingProfileIdRef.current = null;
+                    endEditSession();
                     setConnectionName('');
                     setCustomIconForSave(undefined);
                     setFaviconForSave(undefined);
@@ -1218,9 +1266,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const defaultSaltEntropyMismatch =
         aeroCryptEnabled && overlayEligible && !overlayFieldsLocked
         && aeroCryptKind === 'aerocrypt' && aeroCryptDefaultSalt && !meetsEntropy;
+    // rclone-crypt: a form recorded for one secret and not the other, as after
+    // answering a refusal for the password only. Saved that way, the other
+    // stays on the reading the refusal was about: both, before Save.
+    const cryptFormsHalfRecorded =
+        aeroCryptEnabled && overlayEligible && aeroCryptKind === 'rclone-crypt'
+        && secretFormsHalfRecorded({ password: aeroCryptPasswordForm, salt: aeroCryptSaltForm });
     // The overlay gates saveToServers applies, for the OAuth edit Save that
     // bypasses it (handleOAuthMetadataSave).
-    const oauthOverlaySaveBlocked = aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch;
+    const oauthOverlaySaveBlocked = aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch || cryptFormsHalfRecorded;
 
     // P3: build the overlay-binding profile fields + stash the overlay password
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
@@ -1264,6 +1318,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 localScope: quickConnectDirs.localDir || '',
                 filenameEncryption: isRclone ? aeroCryptFilenameEnc : 'standard',
                 ...(isRclone ? { directoryNameEncryption: aeroCryptDirNameEnc } : {}),
+                // Written only when known: an unrecorded form stays unrecorded.
+                ...(isRclone && aeroCryptPasswordForm ? { passwordForm: aeroCryptPasswordForm } : {}),
+                ...(isRclone && aeroCryptSaltForm ? { saltForm: aeroCryptSaltForm } : {}),
                 aead: 'auto',
             },
             hasStoredAeroCryptPassword: pwStored,
@@ -1280,7 +1337,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const id = editingProfileId;
         if (!id || !overlayFieldsLocked || revealedCrypt[which] !== undefined) return;
         const account = which === 'pw' ? `aerocrypt_overlay_pw_${id}` : `aerocrypt_overlay_salt_${id}`;
-        const value = await invoke<string>('get_credential', { account }).catch(() => '');
+        const stored = await invoke<string>('get_credential', { account }).catch(() => '');
+        // A value recorded as obscured is shown as the secret it stands for.
+        const form = which === 'pw' ? aeroCryptPasswordForm : aeroCryptSaltForm;
+        const value = stored && aeroCryptKind === 'rclone-crypt' && form === 'obscured'
+            ? await invoke<string>('rclone_crypt_secret_for_display', {
+                value: stored,
+                form,
+                field: which === 'pw' ? 'password' : 'salt',
+            }).catch(() => stored)
+            : stored;
         if (editingProfileIdRef.current === id) {
             setRevealedCrypt((prev) => ({ ...prev, [which]: value || '' }));
         }
@@ -1407,6 +1473,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // the vault can never be created with a per-vault salt behind an on-
         // looking toggle.
         if (defaultSaltEntropyMismatch) return;
+
+        // rclone-crypt forms: both or neither (cryptFormsHalfRecorded). The
+        // button is disabled in that state; defense-in-depth.
+        if (cryptFormsHalfRecorded) return;
 
         // #369: the Remote Path is editable with a bound overlay, but it must
         // still contain the pinned anchor. Saving it elsewhere would leave the
@@ -1792,9 +1862,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (editingProfileId) {
             // Edit mode: save changes and reset form
             await saveToServers();
-            setEditingProfileId(null);
-            editingProfileIdRef.current = null;
-            setOriginalEditMode(null);
+            endEditSession();
             setConnectionName('');
             setSaveConnection(false);
             setPersistModeCredentials(false);
@@ -1952,11 +2020,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     password: aeroCryptPassword,
                     salt: aeroCryptSalt,
                     keyfilePath: aeroCryptKeyfilePath,
+                    passwordForm: aeroCryptPasswordForm,
+                    saltForm: aeroCryptSaltForm,
                 },
                 {
                     binding: ep.aeroCryptOverlay,
                     remotePath: ep.initialPath || '',
                     hydratedKeyfilePath: editHydratedKeyfilePathRef.current,
+                    secretForms: cryptSecretForms(ep),
                 },
             )
         );
@@ -1970,6 +2041,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // profile straight into the orphaned state. Defense-in-depth behind
         // the disabled button.
         if (remotePathEscapesOverlay) return;
+        if (cryptFormsHalfRecorded) return;
         // Validate name is different
         const existingServers = await loadSavedServerProfiles();
         const originalServer = existingServers.find((s: ServerProfile) => s.id === editingProfileId);
@@ -2088,13 +2160,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setSavedServersUpdate(Date.now());
 
         // Reset form
-        setEditingProfileId(null);
-        editingProfileIdRef.current = null;
-        setOriginalEditMode(null);
+        endEditSession();
         setConnectionName('');
         setSaveConnection(false);
-        setOverlaysRemotePath('');
-        setOverlaysRemotePathError(null);
         onConnectionParamsChange({ server: '', username: '', password: '' });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
         onFormSaved?.();
@@ -2113,6 +2181,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // persisted with a Remote Path that leaves the pinned anchor outside.
         // Defense-in-depth behind the disabled button.
         if (remotePathEscapesOverlay) return;
+        if (cryptFormsHalfRecorded) return;
 
         const existingServers = await loadSavedServerProfiles();
         const originalIdx = existingServers.findIndex(s => s.id === editingProfileId);
@@ -2247,13 +2316,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }));
 
         // Reset form
-        setEditingProfileId(null);
-        editingProfileIdRef.current = null;
-        setOriginalEditMode(null);
+        endEditSession();
         setConnectionName('');
         setSaveConnection(false);
-        setOverlaysRemotePath('');
-        setOverlaysRemotePathError(null);
         onConnectionParamsChange({ server: '', username: '', password: '' });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
         onFormSaved?.();
@@ -2371,6 +2436,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setShowAeroCryptSalt(false);
         // rclone-crypt interop options (P3.3b). Salt is never prefilled (vault).
         setAeroCryptSalt('');
+        {
+            const forms = hydratedSecretForms(profile);
+            setAeroCryptPasswordForm(forms.password);
+            setAeroCryptSaltForm(forms.salt);
+        }
         setAeroCryptFilenameEnc(overlayBinding?.filenameEncryption || 'standard');
         setAeroCryptDirNameEnc(overlayBinding?.directoryNameEncryption ?? true);
         setAeroCryptWithHeader(!!overlayBinding?.withHeader);
@@ -2493,38 +2563,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const handleCancelEdit = () => {
-        setEditingProfileId(null);
-        editingProfileIdRef.current = null;
-        setOriginalEditMode(null);
+        endEditSession();
         setConnectionName('');
         setCustomIconForSave(undefined);
         setFaviconForSave(undefined);
         setSaveConnection(false);
         setPersistModeCredentials(false);
-        setAeroCryptEnabled(false);
-        // Back to the fresh-form default: an unbound profile must not inherit
-        // the expanded section from the edit session just closed.
-        setOverlaysExpanded(false);
-        setOverlayBindingLocked(false);
-        setAeroCryptKind(null);
-        setAeroCryptPassword('');
-        setAeroCryptConfirm('');
-        setRevealedCrypt({});
-        setShowAeroCryptPassword(false);
-        setShowAeroCryptSalt(false);
-        setAeroCryptSalt('');
-        setAeroCryptFilenameEnc('standard');
-        setAeroCryptDirNameEnc(true);
-        setAeroCryptWithHeader(false);
-        setAeroCryptDefaultSalt(false);
-        setAeroCryptKeyfilePath('');
-        setKeyfileJustGenerated(false);
-        setKeyfileError(null);
-        setOverlaysRemotePath('');
-        setOverlaysRemotePathError(null);
         modeCredentialSnapshotsRef.current = {};
-        editHydratedPasswordRef.current = '';
-        editHydratedKeyfilePathRef.current = '';
         // Reset params
         onConnectionParamsChange({ ...connectionParams, server: '', username: '', password: '', options: {} });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
@@ -2694,12 +2739,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
         // Exit edit mode when changing to an incompatible protocol
         if (editingProfileId) {
-            setEditingProfileId(null);
-            editingProfileIdRef.current = null;
-            setOriginalEditMode(null);
+            endEditSession();
             setConnectionName('');
             setSaveConnection(false);
-            editHydratedPasswordRef.current = '';
         }
 
         // Reset provider selection when protocol changes
@@ -3324,13 +3366,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             value={overlayFieldsLocked ? (showAeroCryptPassword ? (revealedCrypt.pw ?? '') : '') : aeroCryptPassword}
                                             disabled={overlayFieldsLocked && !(showAeroCryptPassword && revealedCrypt.pw)}
                                             readOnly={overlayFieldsLocked}
-                                            onChange={(e) => setAeroCryptPassword(e.target.value)}
+                                            onChange={(e) => {
+                                                setAeroCryptPassword(e.target.value);
+                                                // A value typed now has a form: as typed, until said otherwise.
+                                                if (aeroCryptPasswordForm === undefined) setAeroCryptPasswordForm('clear');
+                                            }}
                                             placeholder={editingProfileId && !aeroCryptPassword ? t('aerocryptProfile.passwordStored') : t('aerocryptProfile.passwordPlaceholder')}
                                             className="w-full px-4 py-2.5 pr-20 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                         />
                                         {!overlayFieldsLocked && (
                                             <InlinePasswordGenerator
-                                                onGenerated={(value) => { setAeroCryptPassword(value); setAeroCryptConfirm(value); }}
+                                                onGenerated={(value) => {
+                                                    setAeroCryptPassword(value);
+                                                    setAeroCryptConfirm(value);
+                                                    // Generated here, so as typed: never an rclone.conf value.
+                                                    setAeroCryptPasswordForm('clear');
+                                                }}
                                                 className="absolute right-9 top-1/2 -translate-y-1/2"
                                             />
                                         )}
@@ -3353,6 +3404,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </button>
                                     </div>
                                 </div>
+                                {aeroCryptKind === 'rclone-crypt' && (
+                                    <CryptSecretFormChoice
+                                        legend={t('aerocryptProfile.passwordLabel')}
+                                        value={aeroCryptPasswordForm}
+                                        confirmChange={overlayFieldsLocked}
+                                        missing={cryptFormsHalfRecorded}
+                                        onChange={(form) => {
+                                            setAeroCryptPasswordForm(form);
+                                            // What the eye showed was read in the old form.
+                                            setRevealedCrypt((prev) => ({ ...prev, pw: undefined }));
+                                            setShowAeroCryptPassword(false);
+                                        }}
+                                    />
+                                )}
                                 {/* #322: strength meter + a set-once confirm with live match.
                                     The overlay credentials are immutable once data exists, so a
                                     confirm guards against a typo that would lock the blobs forever.
@@ -3557,7 +3622,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     value={overlayFieldsLocked ? (showAeroCryptSalt ? (revealedCrypt.salt ?? '') : '') : aeroCryptSalt}
                                                     disabled={overlayFieldsLocked && !(showAeroCryptSalt && revealedCrypt.salt)}
                                                     readOnly={overlayFieldsLocked}
-                                                    onChange={(e) => setAeroCryptSalt(e.target.value)}
+                                                    onChange={(e) => {
+                                                        setAeroCryptSalt(e.target.value);
+                                                        if (aeroCryptSaltForm === undefined) setAeroCryptSaltForm('clear');
+                                                    }}
                                                     placeholder={editingProfileId && !aeroCryptSalt ? t('aerocryptProfile.passwordStored') : t('aerocrypt.saltPlaceholder')}
                                                     className="w-full px-4 py-2.5 pr-20 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                                 />
@@ -3579,6 +3647,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {showAeroCryptSalt ? <EyeOff size={16} /> : <Eye size={16} />}
                                                 </button>
                                             </div>
+                                            <CryptSecretFormChoice
+                                                legend={t('aerocrypt.salt')}
+                                                value={aeroCryptSaltForm}
+                                                confirmChange={overlayFieldsLocked}
+                                                missing={cryptFormsHalfRecorded}
+                                                onChange={(form) => {
+                                                    setAeroCryptSaltForm(form);
+                                                    // What the eye showed was read in the old form.
+                                                    setRevealedCrypt((prev) => ({ ...prev, salt: undefined }));
+                                                    setShowAeroCryptSalt(false);
+                                                }}
+                                            />
                                         </div>
                                         <select
                                             value={aeroCryptFilenameEnc}
@@ -3686,7 +3766,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </button>
                         )}
                         {showCancelSaveAsNew && editingProfileId && (
-                            <button onClick={handleSaveAsNew} disabled={remotePathEscapesOverlay} className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" title={t('connection.saveAsNew')}>
+                            <button onClick={handleSaveAsNew} disabled={remotePathEscapesOverlay || cryptFormsHalfRecorded} className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" title={t('connection.saveAsNew')}>
                                 <Copy size={18} />
                             </button>
                         )}
@@ -3697,7 +3777,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         )}
                         <button
                             onClick={saveOverride || handleConnectAndSave}
-                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch || remotePathEscapesOverlay)}
+                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch || cryptFormsHalfRecorded || remotePathEscapesOverlay)}
                             className={`${(showCancelSaveAsNew || cancelOverride) ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
                         >
                             {loading ? (

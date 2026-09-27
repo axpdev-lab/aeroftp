@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Masukkan kata sandi kuat yang dibuat untuk mengaktifkan salt bawaan.",
             "defaultSaltOneSaltNote": "Hanya ada satu salt: 32 byte, publik, sama untuk setiap vault dengan salt bawaan.",
             "defaultSaltValueLabel": "Salt bawaan publik (AeroCrypt v3), SHA-256 dari",
-            "defaultSaltTierMeaning": "Salt bawaan berarti kata sandi saja yang membuka brankas: tidak ada lagi yang perlu dibawa, dan tidak ada lagi yang melindunginya."
+            "defaultSaltTierMeaning": "Salt bawaan berarti kata sandi saja yang membuka brankas: tidak ada lagi yang perlu dibawa, dan tidak ada lagi yang melindunginya.",
+            "pastedObscured": "Ditempel dari rclone.conf (disamarkan)",
+            "pastedObscuredHint": "Pilih \"Ditempel dari rclone.conf\" hanya jika Anda menyalin nilai ini dari file rclone.conf, tempat rclone menyimpannya dalam bentuk tersamar.",
+            "formNotRecorded": "Tidak tercatat: nilai ini disimpan sebelum AeroFTP menanyakannya. Pilih cara nilai ini dimasukkan; nilai yang diimpor AeroFTP dari rclone.conf disimpan sebagai diketik.",
+            "secretFormTyped": "Diketik",
+            "secretFormChangeConfirm": "Ini mengubah cara nilai tersimpan dibaca, dan karenanya kunci yang membuka file: hanya pilihan yang benar yang dapat membukanya. Ubah pilihan ini?"
         },
         "modalGuard": {
             "busyTitle": "Operasi berlangsung",

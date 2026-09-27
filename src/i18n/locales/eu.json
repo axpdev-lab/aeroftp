@@ -5623,7 +5623,12 @@
             "defaultSaltNeedsStronger": "Sartu sortutako pasahitz sendo bat lehenetsitako salt-a aktibatzeko.",
             "defaultSaltOneSaltNote": "Salt bakarra dago: 32 byte, publikoa, salt lehenetsia darabilten kutxa guztietan berdina.",
             "defaultSaltValueLabel": "Gatz lehenetsi publikoa (AeroCrypt v3), honako kate honen SHA-256",
-            "defaultSaltTierMeaning": "Gatz lehenetsiak esan nahi du pasahitzak bakarrik irekitzen duela kutxa gotorra: ez da beste ezer eraman behar, eta beste ezerk ez du babesten."
+            "defaultSaltTierMeaning": "Gatz lehenetsiak esan nahi du pasahitzak bakarrik irekitzen duela kutxa gotorra: ez da beste ezer eraman behar, eta beste ezerk ez du babesten.",
+            "pastedObscured": "rclone.conf-etik itsatsia (ezkutatua)",
+            "pastedObscuredHint": "Aukeratu \"rclone.conf-etik itsatsia\" balio hau rclone.conf fitxategi batetik kopiatu baduzu soilik; bertan, rclone-k ezkutatuta gordetzen du.",
+            "formNotRecorded": "Erregistratu gabe: balio hau AeroFTP-k galdetu aurretik gorde zen. Aukeratu nola sartu zen; AeroFTP-k rclone.conf-etik inportatutako balio bat «Idatzia» gisa gorde zen.",
+            "secretFormTyped": "Idatzia",
+            "secretFormChangeConfirm": "Honek gordetako balioa nola irakurtzen den aldatzen du, eta, beraz, fitxategiak irekitzen dituen gakoa: aukera zuzenak soilik irekitzen ditu. Aukera hau aldatu?"
         },
         "modalGuard": {
             "busyTitle": "Eragiketa abian",

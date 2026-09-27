@@ -5623,7 +5623,12 @@
             "defaultSaltNeedsStronger": "Skriv inn et sterkt generert passord for å slå på standardsaltet.",
             "defaultSaltOneSaltNote": "Det finnes bare ett salt: 32 byte, offentlig, likt for alle hvelv med standardsalt.",
             "defaultSaltValueLabel": "Offentlig standardsalt (AeroCrypt v3), SHA-256 av",
-            "defaultSaltTierMeaning": "Standardsalt betyr at passordet alene åpner hvelvet: ingenting annet må bæres med, og ingenting annet beskytter det."
+            "defaultSaltTierMeaning": "Standardsalt betyr at passordet alene åpner hvelvet: ingenting annet må bæres med, og ingenting annet beskytter det.",
+            "pastedObscured": "Limt inn fra rclone.conf (tilslørt)",
+            "pastedObscuredHint": "Velg «Limt inn fra rclone.conf» bare hvis du kopierte denne verdien fra en rclone.conf-fil, der rclone lagrer den tilslørt.",
+            "formNotRecorded": "Ikke registrert: denne verdien ble lagret før AeroFTP spurte. Velg hvordan den ble angitt; en verdi som AeroFTP importerte fra rclone.conf, ble lagret som skrevet inn.",
+            "secretFormTyped": "Skrevet inn",
+            "secretFormChangeConfirm": "Dette endrer hvordan den lagrede verdien leses, og dermed nøkkelen filene åpnes med: bare riktig valg åpner dem. Vil du endre dette valget?"
         },
         "modalGuard": {
             "busyTitle": "Operasjon pågår",

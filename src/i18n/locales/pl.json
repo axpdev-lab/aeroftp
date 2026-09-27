@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Wprowadź silne wygenerowane hasło, aby włączyć domyślny salt.",
             "defaultSaltOneSaltNote": "Istnieje tylko jeden salt: 32 bajty, publiczny, identyczny dla każdego sejfu z domyślnym saltem.",
             "defaultSaltValueLabel": "Publiczny domyślny salt (AeroCrypt v3), SHA-256 z",
-            "defaultSaltTierMeaning": "Domyślna sól oznacza, że sejf otwiera samo hasło: nie trzeba nosić ze sobą niczego więcej i nic więcej go nie chroni."
+            "defaultSaltTierMeaning": "Domyślna sól oznacza, że sejf otwiera samo hasło: nie trzeba nosić ze sobą niczego więcej i nic więcej go nie chroni.",
+            "pastedObscured": "Wklejono z rclone.conf (zaciemnione)",
+            "pastedObscuredHint": "Wybierz „Wklejono z rclone.conf” tylko wtedy, gdy ta wartość została skopiowana z pliku rclone.conf, w którym rclone przechowuje ją w postaci zaciemnionej.",
+            "formNotRecorded": "Nie odnotowano: ta wartość została zapisana, zanim AeroFTP zaczął o to pytać. Wybierz, jak została wprowadzona; wartość zaimportowana przez AeroFTP z rclone.conf została zapisana jako „Wpisane”.",
+            "secretFormTyped": "Wpisane",
+            "secretFormChangeConfirm": "To zmienia sposób odczytu zapisanej wartości, a więc i klucz, którym otwierają się pliki: otworzy je tylko właściwy wybór. Zmienić ten wybór?"
         },
         "modalGuard": {
             "busyTitle": "Operacja w toku",

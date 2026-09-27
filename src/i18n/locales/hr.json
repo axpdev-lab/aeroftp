@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Unesite jaku generiranu lozinku da biste uključili zadani salt.",
             "defaultSaltOneSaltNote": "Postoji samo jedan salt: 32 bajta, javni, jednak za svaki trezor sa zadanim saltom.",
             "defaultSaltValueLabel": "Javna zadana sol (AeroCrypt v3), SHA-256 od",
-            "defaultSaltTierMeaning": "Zadana sol znači da trezor otvara samo lozinka: ništa se drugo ne mora nositi i ništa ga drugo ne štiti."
+            "defaultSaltTierMeaning": "Zadana sol znači da trezor otvara samo lozinka: ništa se drugo ne mora nositi i ništa ga drugo ne štiti.",
+            "pastedObscured": "Zalijepljeno iz rclone.conf (prikriveno)",
+            "pastedObscuredHint": "Odaberite \"Zalijepljeno iz rclone.conf\" samo ako ste ovu vrijednost kopirali iz datoteke rclone.conf, u kojoj je rclone čuva prikrivenu.",
+            "formNotRecorded": "Nije zabilježeno: ova je vrijednost spremljena prije nego što je AeroFTP to pitao. Odaberite kako je unesena; vrijednost koju je AeroFTP uvezao iz rclone.conf spremljena je kao „Utipkano”.",
+            "secretFormTyped": "Utipkano",
+            "secretFormChangeConfirm": "Ovo mijenja način čitanja spremljene vrijednosti, a time i ključ kojim se datoteke otvaraju: otvara ih samo ispravan odabir. Promijeniti ovaj odabir?"
         },
         "modalGuard": {
             "busyTitle": "Operacija u tijeku",

@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "デフォルトのソルトを有効にするには、強力な生成済みパスワードを入力してください。",
             "defaultSaltOneSaltNote": "ソルトは 1 つだけです。32 バイトで公開されており、既定ソルトを使うすべてのボールトで同一です。",
             "defaultSaltValueLabel": "公開デフォルトソルト (AeroCrypt v3)、次の文字列の SHA-256",
-            "defaultSaltTierMeaning": "既定のソルトとは、パスワードだけで保管庫が開くという意味です。ほかに持ち歩くものはなく、ほかに守るものもありません。"
+            "defaultSaltTierMeaning": "既定のソルトとは、パスワードだけで保管庫が開くという意味です。ほかに持ち歩くものはなく、ほかに守るものもありません。",
+            "pastedObscured": "rclone.conf から貼り付け（難読化済み）",
+            "pastedObscuredHint": "「rclone.conf から貼り付け」は、この値を rclone.conf ファイルからコピーした場合にのみ選択してください。rclone はこのファイルに値を難読化して保存しています。",
+            "formNotRecorded": "未記録：この値は AeroFTP が確認するようになる前に保存されました。入力方法を選択してください。AeroFTP が rclone.conf からインポートした値は「手入力」として保存されています。",
+            "secretFormTyped": "手入力",
+            "secretFormChangeConfirm": "保存された値の読み取り方が変わり、それに伴いファイルを開く鍵も変わります。正しい選択でなければファイルは開けません。この選択を変更しますか？"
         },
         "modalGuard": {
             "busyTitle": "操作の実行中",

@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Ievadiet spēcīgu ģenerētu paroli, lai ieslēgtu noklusējuma salt.",
             "defaultSaltOneSaltNote": "Ir tikai viena sāls: 32 baiti, publiska, vienāda visām glabātavām ar noklusējuma sāli.",
             "defaultSaltValueLabel": "Publiskā noklusējuma sāls (AeroCrypt v3), šādas virknes SHA-256",
-            "defaultSaltTierMeaning": "Noklusējuma sāls nozīmē, ka glabātavu atver vienīgi parole: nekas cits nav jānēsā līdzi, un nekas cits to nesargā."
+            "defaultSaltTierMeaning": "Noklusējuma sāls nozīmē, ka glabātavu atver vienīgi parole: nekas cits nav jānēsā līdzi, un nekas cits to nesargā.",
+            "pastedObscured": "Ielīmēts no rclone.conf (maskēts)",
+            "pastedObscuredHint": "Izvēlieties „Ielīmēts no rclone.conf“ tikai tad, ja šo vērtību nokopējāt no rclone.conf faila, kurā rclone to glabā maskētu.",
+            "formNotRecorded": "Nav reģistrēts: šī vērtība tika saglabāta, pirms AeroFTP to jautāja. Izvēlieties, kā tā tika ievadīta; vērtība, ko AeroFTP importēja no rclone.conf, tika saglabāta kā „Ierakstīts”.",
+            "secretFormTyped": "Ierakstīts",
+            "secretFormChangeConfirm": "Tas maina to, kā tiek nolasīta saglabātā vērtība, un līdz ar to atslēgu, ar kuru atveras faili: tos atver tikai pareizā izvēle. Mainīt šo izvēli?"
         },
         "modalGuard": {
             "busyTitle": "Notiek darbība",

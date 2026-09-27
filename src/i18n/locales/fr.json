@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Saisissez un mot de passe généré fort pour activer le sel par défaut.",
             "defaultSaltOneSaltNote": "Il n'existe qu'un seul salt : 32 octets, public, identique pour tous les coffres en salt par défaut.",
             "defaultSaltValueLabel": "Salt public par défaut (AeroCrypt v3), SHA-256 de",
-            "defaultSaltTierMeaning": "Le sel par défaut signifie que le mot de passe seul ouvre le coffre : il n'y a rien d'autre à emporter, et rien d'autre ne le protège."
+            "defaultSaltTierMeaning": "Le sel par défaut signifie que le mot de passe seul ouvre le coffre : il n'y a rien d'autre à emporter, et rien d'autre ne le protège.",
+            "pastedObscured": "Collé depuis rclone.conf (obscurci)",
+            "pastedObscuredHint": "Choisissez « Collé depuis rclone.conf » uniquement si vous avez copié cette valeur depuis un fichier rclone.conf, où rclone la conserve obscurcie.",
+            "formNotRecorded": "Non renseigné : cette valeur a été enregistrée avant qu'AeroFTP ne pose la question. Choisissez comment elle a été saisie ; une valeur importée par AeroFTP depuis rclone.conf a été enregistrée comme « Saisi ».",
+            "secretFormTyped": "Saisi",
+            "secretFormChangeConfirm": "Cela change la façon dont la valeur enregistrée est lue, et donc la clé qui ouvre les fichiers : seul le bon choix les ouvre. Modifier ce choix ?"
         },
         "modalGuard": {
             "busyTitle": "Opération en cours",

@@ -5623,7 +5623,12 @@
             "defaultSaltNeedsStronger": "Introduïu una contrasenya generada forta per activar la sal predeterminada.",
             "defaultSaltOneSaltNote": "Hi ha un únic salt: 32 bytes, públic, idèntic per a tots els magatzems amb salt predeterminat.",
             "defaultSaltValueLabel": "Salt públic predeterminat (AeroCrypt v3), SHA-256 de",
-            "defaultSaltTierMeaning": "La sal per defecte significa que només la contrasenya obre la caixa forta: no cal portar res més, i res més la protegeix."
+            "defaultSaltTierMeaning": "La sal per defecte significa que només la contrasenya obre la caixa forta: no cal portar res més, i res més la protegeix.",
+            "pastedObscured": "Enganxat des de rclone.conf (ofuscat)",
+            "pastedObscuredHint": "Trieu \"Enganxat des de rclone.conf\" només si heu copiat aquest valor d'un fitxer rclone.conf, on rclone el desa ofuscat.",
+            "formNotRecorded": "No registrat: aquest valor es va desar abans que AeroFTP ho preguntés. Trieu com es va introduir; un valor que AeroFTP va importar des de rclone.conf es va desar com a escrit.",
+            "secretFormTyped": "Escrit",
+            "secretFormChangeConfirm": "Això canvia com es llegeix el valor desat i, per tant, la clau amb què s'obren els fitxers: només l'opció correcta els obre. Voleu canviar aquesta opció?"
         },
         "modalGuard": {
             "busyTitle": "Operació en curs",

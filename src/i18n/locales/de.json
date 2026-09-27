@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Geben Sie ein starkes generiertes Passwort ein, um das Standard-Salt zu aktivieren.",
             "defaultSaltOneSaltNote": "Es gibt genau ein Salt: 32 Byte, öffentlich, identisch für jeden Tresor mit Standard-Salt.",
             "defaultSaltValueLabel": "Öffentliches Standard-Salt (AeroCrypt v3), SHA-256 von",
-            "defaultSaltTierMeaning": "Standard-Salt bedeutet, dass allein das Passwort den Tresor öffnet: es muss nichts weiter mitgeführt werden, und nichts weiter schützt ihn."
+            "defaultSaltTierMeaning": "Standard-Salt bedeutet, dass allein das Passwort den Tresor öffnet: es muss nichts weiter mitgeführt werden, und nichts weiter schützt ihn.",
+            "pastedObscured": "Aus rclone.conf eingefügt (verschleiert)",
+            "pastedObscuredHint": "Wählen Sie „Aus rclone.conf eingefügt“ nur, wenn Sie diesen Wert aus einer rclone.conf-Datei kopiert haben, in der rclone ihn verschleiert speichert.",
+            "formNotRecorded": "Nicht erfasst: Dieser Wert wurde gespeichert, bevor AeroFTP danach gefragt hat. Wählen Sie, wie er eingegeben wurde; ein Wert, den AeroFTP aus rclone.conf importiert hat, wurde als eingetippt gespeichert.",
+            "secretFormTyped": "Eingetippt",
+            "secretFormChangeConfirm": "Dies ändert, wie der gespeicherte Wert gelesen wird, und damit den Schlüssel, mit dem sich die Dateien öffnen lassen: Nur die richtige Wahl öffnet sie. Diese Wahl ändern?"
         },
         "modalGuard": {
             "busyTitle": "Vorgang läuft",

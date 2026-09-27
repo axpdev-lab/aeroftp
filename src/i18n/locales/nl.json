@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Voer een sterk gegenereerd wachtwoord in om de standaard-salt in te schakelen.",
             "defaultSaltOneSaltNote": "Er is één enkel salt: 32 bytes, openbaar, identiek voor elke kluis met standaardsalt.",
             "defaultSaltValueLabel": "Openbare standaardsalt (AeroCrypt v3), SHA-256 van",
-            "defaultSaltTierMeaning": "Standaardsalt betekent dat het wachtwoord alleen de kluis opent: er hoeft niets anders meegedragen te worden, en niets anders beschermt hem."
+            "defaultSaltTierMeaning": "Standaardsalt betekent dat het wachtwoord alleen de kluis opent: er hoeft niets anders meegedragen te worden, en niets anders beschermt hem.",
+            "pastedObscured": "Geplakt uit rclone.conf (versluierd)",
+            "pastedObscuredHint": "Kies \"Geplakt uit rclone.conf\" alleen als u deze waarde uit een rclone.conf-bestand hebt gekopieerd, waarin rclone de waarde versluierd bewaart.",
+            "formNotRecorded": "Niet vastgelegd: deze waarde is opgeslagen voordat AeroFTP ernaar vroeg. Kies hoe ze is ingevoerd; een waarde die AeroFTP uit rclone.conf heeft geïmporteerd, is als getypt opgeslagen.",
+            "secretFormTyped": "Getypt",
+            "secretFormChangeConfirm": "Dit verandert hoe de opgeslagen waarde wordt gelezen, en dus de sleutel waarmee de bestanden opengaan: alleen de juiste keuze opent ze. Deze keuze wijzigen?"
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",

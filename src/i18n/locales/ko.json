@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "기본 솔트를 켜려면 강력하게 생성된 비밀번호를 입력하세요.",
             "defaultSaltOneSaltNote": "솔트는 하나뿐입니다. 32바이트이며 공개되어 있고, 기본 솔트를 사용하는 모든 보관소에서 동일합니다.",
             "defaultSaltValueLabel": "공개 기본 솔트 (AeroCrypt v3), 다음 문자열의 SHA-256",
-            "defaultSaltTierMeaning": "기본 솔트는 비밀번호만으로 보관함이 열린다는 뜻입니다. 따로 지녀야 할 것도, 따로 보호해 주는 것도 없습니다."
+            "defaultSaltTierMeaning": "기본 솔트는 비밀번호만으로 보관함이 열린다는 뜻입니다. 따로 지녀야 할 것도, 따로 보호해 주는 것도 없습니다.",
+            "pastedObscured": "rclone.conf에서 붙여넣음(난독화됨)",
+            "pastedObscuredHint": "이 값을 rclone.conf 파일에서 복사한 경우에만 \"rclone.conf에서 붙여넣음\"을 선택하세요. rclone은 이 파일에 값을 난독화하여 보관합니다.",
+            "formNotRecorded": "기록되지 않음: 이 값은 AeroFTP가 묻기 전에 저장되었습니다. 입력 방식을 선택하세요. AeroFTP가 rclone.conf에서 가져온 값은 '직접 입력'으로 저장되었습니다.",
+            "secretFormTyped": "직접 입력",
+            "secretFormChangeConfirm": "저장된 값을 읽는 방식이 바뀌며, 따라서 파일을 여는 키도 바뀝니다. 올바른 선택만 파일을 열 수 있습니다. 이 선택을 변경하시겠습니까?"
         },
         "modalGuard": {
             "busyTitle": "작업 진행 중",

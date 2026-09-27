@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Zadejte silné vygenerované heslo pro zapnutí výchozího saltu.",
             "defaultSaltOneSaltNote": "Existuje jediný salt: 32 bajtů, veřejný, stejný pro každý trezor s výchozím saltem.",
             "defaultSaltValueLabel": "Veřejný výchozí salt (AeroCrypt v3), SHA-256 z",
-            "defaultSaltTierMeaning": "Výchozí sůl znamená, že trezor otevře samotné heslo: nic dalšího není třeba nosit s sebou a nic dalšího ho nechrání."
+            "defaultSaltTierMeaning": "Výchozí sůl znamená, že trezor otevře samotné heslo: nic dalšího není třeba nosit s sebou a nic dalšího ho nechrání.",
+            "pastedObscured": "Vloženo z rclone.conf (zamaskováno)",
+            "pastedObscuredHint": "Zvolte „Vloženo z rclone.conf“ pouze tehdy, pokud jste tuto hodnotu zkopírovali ze souboru rclone.conf, kde ji rclone uchovává zamaskovanou.",
+            "formNotRecorded": "Nezaznamenáno: tato hodnota byla uložena dříve, než se AeroFTP začal ptát. Zvolte, jak byla zadána; hodnota, kterou AeroFTP importoval z rclone.conf, byla uložena jako „Zadáno ručně“.",
+            "secretFormTyped": "Zadáno ručně",
+            "secretFormChangeConfirm": "Tím se změní způsob čtení uložené hodnoty, a tedy i klíč, kterým se soubory otevírají: otevře je jen správná volba. Změnit tuto volbu?"
         },
         "modalGuard": {
             "busyTitle": "Probíhá operace",

@@ -5604,7 +5604,12 @@
             "defaultSaltNeedsStronger": "Įveskite stiprų sugeneruotą slaptažodį, kad įjungtumėte numatytąjį salt.",
             "defaultSaltOneSaltNote": "Yra tik vienas salt: 32 baitai, viešas, vienodas visoms saugykloms su numatytuoju salt.",
             "defaultSaltValueLabel": "Vieša numatytoji druska (AeroCrypt v3), SHA-256 nuo",
-            "defaultSaltTierMeaning": "Numatytoji druska reiškia, kad saugyklą atrakina vien slaptažodis: nieko daugiau nereikia nešiotis ir niekas kitas jos nesaugo."
+            "defaultSaltTierMeaning": "Numatytoji druska reiškia, kad saugyklą atrakina vien slaptažodis: nieko daugiau nereikia nešiotis ir niekas kitas jos nesaugo.",
+            "pastedObscured": "Įklijuota iš rclone.conf (užmaskuota)",
+            "pastedObscuredHint": "Pasirinkite „Įklijuota iš rclone.conf“ tik jei šią reikšmę nukopijavote iš rclone.conf failo, kuriame rclone ją laiko užmaskuotą.",
+            "formNotRecorded": "Neužfiksuota: ši reikšmė buvo įrašyta dar prieš AeroFTP pradedant to klausti. Pasirinkite, kaip ji buvo įvesta; reikšmė, kurią AeroFTP importavo iš rclone.conf, buvo įrašyta kaip „Įvesta ranka“.",
+            "secretFormTyped": "Įvesta ranka",
+            "secretFormChangeConfirm": "Tai pakeičia, kaip nuskaitoma įrašyta reikšmė, taigi ir raktą, kuriuo atidaromi failai: juos atidaro tik teisingas pasirinkimas. Pakeisti šį pasirinkimą?"
         },
         "modalGuard": {
             "busyTitle": "Vykdoma operacija",
