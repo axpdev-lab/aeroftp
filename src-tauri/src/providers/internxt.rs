@@ -71,10 +71,17 @@ const SALTED_PREFIX: &[u8] = b"Salted__";
 const PLAN_WITHOUT_CLI_ACCESS: &str =
     "this Internxt plan does not include CLI/WebDAV/Rclone access";
 
-/// The error of a refused Internxt login step, `context` naming the step. Only
-/// the server's own 401 blames the credentials; a 402 or 403 is the plan or the
-/// account being refused, anything else a server failure.
-fn internxt_login_refused(context: &str, status: reqwest::StatusCode, body: &str) -> ProviderError {
+/// The error of a refused Internxt login step, `context` naming the step. Every
+/// step reads the status the same way: only the server's own 401 blames the
+/// credentials; a 402 or 403 is the plan or the account being refused; a 429 is
+/// Internxt limiting logins, with the wait it asked for when it sent
+/// `Retry-After`; anything else is a server failure.
+fn internxt_login_refused(
+    context: &str,
+    status: reqwest::StatusCode,
+    retry_after: Option<&str>,
+    body: &str,
+) -> ProviderError {
     let detail = format!(
         "{} ({}): {}",
         context,
@@ -84,8 +91,32 @@ fn internxt_login_refused(context: &str, status: reqwest::StatusCode, body: &str
     match status.as_u16() {
         401 => ProviderError::AuthenticationFailed(detail),
         402 | 403 => ProviderError::PermissionDenied(detail),
+        429 => {
+            let wait = match retry_after.map(str::trim).filter(|raw| !raw.is_empty()) {
+                Some(raw) => match super::retry_after::parse_retry_after_seconds(raw) {
+                    Some(wait) => format!("retry in {} seconds", wait.as_secs()),
+                    None => format!("retry after {}", &raw[..raw.floor_char_boundary(64)]),
+                },
+                None => "retry later".to_string(),
+            };
+            ProviderError::ServerError(format!(
+                "{}: Internxt is limiting logins, {} ({}): {}",
+                context,
+                wait,
+                status,
+                super::sanitize_api_error(body)
+            ))
+        }
         _ => ProviderError::ServerError(detail),
     }
+}
+
+/// The `Retry-After` header of a login response, read before its body.
+fn login_retry_after(resp: &reqwest::Response) -> Option<String> {
+    resp.headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
 }
 
 fn internxt_auth_failure(context: &str, detail: &str) -> ProviderError {
@@ -1040,6 +1071,7 @@ impl InternxtProvider {
         internxt_log(&format!("[WEB AUTH] Response status: {}", status));
 
         if !status.is_success() {
+            let retry_after = login_retry_after(&access_resp);
             let body = access_resp.text().await.unwrap_or_default();
             internxt_log(&format!(
                 "[WEB AUTH FAIL] Body: {}",
@@ -1048,6 +1080,7 @@ impl InternxtProvider {
             return Err(internxt_login_refused(
                 &format!("{}, and the web login fallback failed", plan_refused),
                 status,
+                retry_after.as_deref(),
                 &body,
             ));
         }
@@ -1174,25 +1207,33 @@ impl StorageProvider for InternxtProvider {
             .await
             .map_err(|e| {
                 internxt_log(&format!("[STEP 1 FAIL] Request error: {}", e));
-                ProviderError::ConnectionFailed(format!("Login request failed: {}", e))
+                ProviderError::ConnectionFailed(format!(
+                    "Internxt login could not be reached: {}",
+                    e
+                ))
             })?;
 
         let login_status = login_resp.status();
         tracing::debug!(target: "internxt", "[STEP 1] Response status: {}", login_status);
 
         if !login_status.is_success() {
+            let retry_after = login_retry_after(&login_resp);
             let body = login_resp.text().await.unwrap_or_default();
             tracing::debug!(target: "internxt", "[STEP 1 FAIL] Body: {}", &body[..body.floor_char_boundary(200)]);
-            return Err(ProviderError::AuthenticationFailed(format!(
-                "Login failed ({}): {}",
+            return Err(internxt_login_refused(
+                "Internxt login failed",
                 login_status,
-                super::sanitize_api_error(&body)
-            )));
+                retry_after.as_deref(),
+                &body,
+            ));
         }
 
         let login_data: LoginResponse = login_resp.json().await.map_err(|e| {
             internxt_log(&format!("[STEP 1 FAIL] JSON parse: {}", e));
-            ProviderError::AuthenticationFailed(format!("Failed to parse login response: {}", e))
+            ProviderError::ServerError(format!(
+                "Internxt login answered an unreadable response: {}",
+                e
+            ))
         })?;
 
         tracing::debug!(target: "internxt", "[STEP 1 OK] sKey length={}, tfa_required={}", login_data.s_key.len(), login_data.tfa);
@@ -1231,13 +1272,17 @@ impl StorageProvider for InternxtProvider {
             .await
             .map_err(|e| {
                 internxt_log(&format!("[STEP 3 FAIL] Request error: {}", e));
-                ProviderError::ConnectionFailed(format!("Access request failed: {}", e))
+                ProviderError::ConnectionFailed(format!(
+                    "Internxt CLI login could not be reached: {}",
+                    e
+                ))
             })?;
 
         let access_status = access_resp.status();
         tracing::debug!(target: "internxt", "[STEP 3] Response status: {}", access_status);
 
         if !access_status.is_success() {
+            let retry_after = login_retry_after(&access_resp);
             let body = access_resp.text().await.unwrap_or_default();
             tracing::debug!(target: "internxt", "[STEP 3 FAIL] Body: {}", &body[..body.floor_char_boundary(200)]);
 
@@ -1265,13 +1310,17 @@ impl StorageProvider for InternxtProvider {
             return Err(internxt_login_refused(
                 "Internxt CLI login failed",
                 access_status,
+                retry_after.as_deref(),
                 &body,
             ));
         }
 
         let access_data: AccessResponse = access_resp.json().await.map_err(|e| {
             internxt_log(&format!("[STEP 3 FAIL] JSON parse: {}", e));
-            ProviderError::AuthenticationFailed(format!("Failed to parse access response: {}", e))
+            ProviderError::ServerError(format!(
+                "Internxt CLI login answered an unreadable response: {}",
+                e
+            ))
         })?;
 
         tracing::debug!(target: "internxt", "[STEP 3 OK] token_len={}", access_data.token.len());
@@ -3049,6 +3098,20 @@ mod tests {
         );
     }
 
+    /// One answer of the local login server: status, body and the
+    /// Retry-After header it sends, if any.
+    type LoginAnswer = (u16, String, Option<&'static str>);
+
+    /// Step 1's answer on a working account: an sKey and no 2FA.
+    fn login_hands_out_an_s_key() -> LoginAnswer {
+        let s_key = InternxtProvider::encrypt_text("00112233445566778899aabbccddeeff").unwrap();
+        (
+            200,
+            serde_json::json!({ "hasKeys": true, "sKey": s_key, "tfa": false }).to_string(),
+            None,
+        )
+    }
+
     /// A provider pointed at a local login server. Step 1 hands out an sKey,
     /// the CLI access endpoint answers `cli` and the web login fallback
     /// answers `web` (status and body). Every request is recorded as
@@ -3060,19 +3123,31 @@ mod tests {
         InternxtProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_on_login_steps(
+            login_hands_out_an_s_key(),
+            (cli.0, cli.1.to_string(), None),
+            (web.0, web.1.to_string(), None),
+        )
+        .await
+    }
+
+    /// A provider pointed at a local login server that answers step 1
+    /// (`/drive/auth/login`), the CLI access endpoint and the web login
+    /// fallback with `login`, `cli` and `web`.
+    async fn provider_on_login_steps(
+        login: LoginAnswer,
+        cli: LoginAnswer,
+        web: LoginAnswer,
+    ) -> (
+        InternxtProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         use axum::response::IntoResponse;
         use std::sync::{Arc, Mutex};
-        let s_key = InternxtProvider::encrypt_text("00112233445566778899aabbccddeeff").unwrap();
-        let answers: Arc<HashMap<&'static str, (u16, String)>> = Arc::new(HashMap::from([
-            (
-                "/drive/auth/login",
-                (
-                    200,
-                    serde_json::json!({ "hasKeys": true, "sKey": s_key, "tfa": false }).to_string(),
-                ),
-            ),
-            ("/drive/auth/cli/login/access", (cli.0, cli.1.to_string())),
-            ("/drive/auth/login/access", (web.0, web.1.to_string())),
+        let answers: Arc<HashMap<&'static str, LoginAnswer>> = Arc::new(HashMap::from([
+            ("/drive/auth/login", login),
+            ("/drive/auth/cli/login/access", cli),
+            ("/drive/auth/login/access", web),
         ]));
         let requests: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&requests);
@@ -3085,12 +3160,21 @@ mod tests {
                         .unwrap()
                         .push(format!("{} {}", req.method(), path));
                     match answers.get(path.as_str()) {
-                        Some((status, body)) => (
-                            axum::http::StatusCode::from_u16(*status).unwrap(),
-                            [(axum::http::header::CONTENT_TYPE, "application/json")],
-                            body.clone(),
-                        )
-                            .into_response(),
+                        Some((status, body, retry_after)) => {
+                            let mut response = (
+                                axum::http::StatusCode::from_u16(*status).unwrap(),
+                                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                                body.clone(),
+                            )
+                                .into_response();
+                            if let Some(retry_after) = retry_after {
+                                response.headers_mut().insert(
+                                    axum::http::header::RETRY_AFTER,
+                                    axum::http::HeaderValue::from_static(retry_after),
+                                );
+                            }
+                            response
+                        }
                         None => axum::http::StatusCode::NOT_FOUND.into_response(),
                     }
                 }
@@ -3234,5 +3318,120 @@ mod tests {
             other => panic!("{other:?}"),
         }
         assert_eq!(requests.lock().unwrap().len(), 2, "no fallback after a 500");
+    }
+
+    const RATE_LIMITED: &str =
+        r#"{"statusCode":429,"message":"ThrottlerException: Too Many Requests"}"#;
+
+    /// After many logins in a row the gateway answers 429 on step 1 itself.
+    /// That is Internxt limiting logins, not a wrong password: the error says
+    /// so, asks to retry later and keeps the wait the server asked for.
+    #[tokio::test]
+    async fn a_rate_limited_login_says_so_and_keeps_retry_after() {
+        let (mut provider, requests) = provider_on_login_steps(
+            (429, RATE_LIMITED.to_string(), Some("30")),
+            (200, "{}".to_string(), None),
+            (200, "{}".to_string(), None),
+        )
+        .await;
+        match provider.connect().await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(message.contains("Internxt is limiting logins"), "{message}");
+                assert!(message.contains("429"), "{message}");
+                assert!(message.contains("retry in 30 seconds"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(
+            *requests.lock().unwrap(),
+            ["POST /drive/auth/login"],
+            "no further login step after a 429"
+        );
+
+        let (mut provider, _) = provider_on_login_steps(
+            (429, RATE_LIMITED.to_string(), None),
+            (200, "{}".to_string(), None),
+            (200, "{}".to_string(), None),
+        )
+        .await;
+        match provider.connect().await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(message.contains("Internxt is limiting logins"), "{message}");
+                assert!(message.contains("retry later"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The CLI access endpoint and the web login fallback read a 429 the same
+    /// way as step 1.
+    #[tokio::test]
+    async fn every_login_step_reads_a_429_as_rate_limiting() {
+        let rate_limited = || (429, RATE_LIMITED.to_string(), Some("12"));
+        for (cli, web) in [
+            (rate_limited(), (200, "{}".to_string(), None)),
+            ((TIER_402.0, TIER_402.1.to_string(), None), rate_limited()),
+        ] {
+            let (mut provider, _) =
+                provider_on_login_steps(login_hands_out_an_s_key(), cli, web).await;
+            match provider.connect().await {
+                Err(ProviderError::ServerError(message)) => {
+                    assert!(message.contains("Internxt is limiting logins"), "{message}");
+                    assert!(message.contains("retry in 12 seconds"), "{message}");
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+    }
+
+    /// Step 1 classifies its other refusals like the later steps: only a 401
+    /// blames the credentials, a 403 is the account refused, a 5xx or an
+    /// unreadable answer is the server failing.
+    #[tokio::test]
+    async fn step_one_classifies_its_refusals_like_the_later_steps() {
+        let unused = || (200, "{}".to_string(), None);
+        type Expected = fn(&ProviderError) -> bool;
+        let cases: [(LoginAnswer, Expected); 4] = [
+            (
+                (401, r#"{"message":"Wrong login credentials"}"#.to_string(), None),
+                |e| matches!(e, ProviderError::AuthenticationFailed(m) if m.contains("Wrong login credentials")),
+            ),
+            (
+                (403, r#"{"message":"Your account has been blocked for security reasons. Please reach out to us","error":"ACCOUNT_BLOCKED"}"#.to_string(), None),
+                |e| matches!(e, ProviderError::PermissionDenied(m) if m.contains("403")),
+            ),
+            (
+                (503, "<html>503 Service Temporarily Unavailable</html>".to_string(), None),
+                |e| matches!(e, ProviderError::ServerError(m) if m.contains("503")),
+            ),
+            (
+                (200, "<html>not json</html>".to_string(), None),
+                |e| matches!(e, ProviderError::ServerError(_)),
+            ),
+        ];
+        let mut wrong = Vec::new();
+        for (login, expected) in cases {
+            let label = format!("{} {}", login.0, login.1);
+            let (mut provider, _) = provider_on_login_steps(login, unused(), unused()).await;
+            match provider.connect().await {
+                Err(e) if expected(&e) => {}
+                other => wrong.push(format!("{label}: {other:?}")),
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// A login server nobody answers on is a connection failure at step 1.
+    #[tokio::test]
+    async fn an_unreachable_login_server_is_a_connection_failure() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        let mut provider = test_provider();
+        provider.api_base = format!("http://{addr}");
+        match provider.connect().await {
+            Err(ProviderError::ConnectionFailed(_)) => {}
+            other => panic!("{other:?}"),
+        }
     }
 }
