@@ -497,6 +497,9 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
     Ok(json!({
         "servers": redacted,
         "skipped": value.get("skipped").cloned().unwrap_or_else(|| json!([])),
+        // Remotes that imported without everything they carried (rclone: a
+        // password that does not reveal); only the rclone importer fills it.
+        "warnings": value.get("warnings").cloned().unwrap_or_else(|| json!([])),
         "sourcePath": value.get("sourcePath").cloned().unwrap_or(Value::Null),
         "totalRemotes": value
             .get("totalRemotes")

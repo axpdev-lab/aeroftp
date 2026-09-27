@@ -494,7 +494,7 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
         // rclone round-trips every provider whose secret AeroFTP actually holds
         // and whose rclone backend takes that same secret directly: the cloud
         // accounts authenticated by a stored password / access key (Filen, MEGA,
-        // Azure, Swift, Koofr, OpenDrive, Backblaze B2) on top of the standard
+        // Internxt, Azure, Swift, Koofr, OpenDrive, Backblaze B2) on top of the standard
         // ftp/sftp/s3/webdav set (issue #128). #128-D adds the OAuth-token
         // providers (Drive/Dropbox/OneDrive/Box/pCloud/Yandex/Zoho): their
         // export arms now emit the rclone `token` blob plus the BYO
@@ -513,6 +513,7 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
             "s3",
             "filen",
             "mega",
+            "internxt",
             "azure",
             "swift",
             "koofr",
