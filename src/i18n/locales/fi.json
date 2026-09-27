@@ -5874,8 +5874,8 @@
             "importAccept": "Tuo",
             "importedBody": "Määrityksesi tuotiin. Käynnistä AeroFTP uudelleen ladataksesi palvelimesi ja holvisi.",
             "restartNow": "Käynnistä uudelleen nyt",
-            "importNothingBody": "Ei mitään tuotavaa: tässä Flatpak-asennuksessa on jo kaikki tiedostot nykyisestä asetuksestasi.",
-            "importFailedBody": "Tuonti pysähtyi virheeseen: {error}. Ennen virhettä kopioidut tiedostot pysyvät paikallaan, eikä mitään korvattu. AeroFTP tarjoaa tuontia uudelleen seuraavalla käynnistyskerralla."
+            "importNothingBody": "Ei mitään tuotavaa: mitään tiedostoja nykyisestä asetuksestasi ei tarvinnut kopioida tähän Flatpak-asennukseen.",
+            "importFailedBody": "Tuonti pysähtyi virheeseen: {error}. Tähän Flatpak-asennukseen jo kopioidut tiedostot jäävät sinne, eikä mitään korvattu. AeroFTP tarjoaa tuontia uudelleen seuraavalla käynnistyskerralla."
         },
         "picker": {
             "unavailable": {

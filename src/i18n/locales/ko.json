@@ -5874,8 +5874,8 @@
             "importAccept": "가져오기",
             "importedBody": "구성을 가져왔습니다. 서버와 보관소를 불러오려면 AeroFTP를 다시 시작하세요.",
             "restartNow": "지금 다시 시작",
-            "importNothingBody": "가져올 항목이 없습니다: 이 Flatpak 설치에는 기존 구성의 모든 파일이 이미 있습니다.",
-            "importFailedBody": "가져오기가 오류로 중단되었습니다: {error}. 오류 발생 전에 복사된 파일은 그대로 유지되며 아무것도 덮어쓰지 않았습니다. AeroFTP는 다음 시작 시 가져오기를 다시 제안합니다."
+            "importNothingBody": "가져올 항목이 없습니다: 기존 구성에서 이 Flatpak 설치로 복사해야 할 파일이 없었습니다.",
+            "importFailedBody": "가져오기가 오류로 중단되었습니다: {error}. 이 Flatpak 설치에 이미 복사된 파일은 그대로 남아 있으며, 덮어쓴 항목은 없습니다. AeroFTP는 다음 시작 시 가져오기를 다시 제안합니다."
         },
         "picker": {
             "unavailable": {

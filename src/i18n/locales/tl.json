@@ -5893,8 +5893,8 @@
             "importAccept": "Import",
             "importedBody": "Na-import ang iyong configuration. I-restart ang AeroFTP para i-load ang iyong mga server at vault.",
             "restartNow": "I-restart ngayon",
-            "importNothingBody": "Walang dapat i-import: mayroon nang lahat ng file mula sa iyong kasalukuyang configuration ang Flatpak install na ito.",
-            "importFailedBody": "Huminto ang pag-import dahil sa error: {error}. Ang mga file na kinopya bago mangyari ang error ay nananatili sa kinaroroonan at walang na-overwrite. Muling ihahandog ng AeroFTP ang pag-import sa susunod na pagsisimula."
+            "importNothingBody": "Walang dapat i-import: walang file mula sa iyong umiiral na configuration ang kailangang kopyahin sa Flatpak install na ito.",
+            "importFailedBody": "Huminto ang pag-import dahil sa error: {error}. Ang mga file na na-kopya na sa Flatpak install na ito ay nananatili roon, at walang na-overwrite. Muling iaalok ng AeroFTP ang pag-import sa susunod na pagsisimula."
         },
         "picker": {
             "unavailable": {

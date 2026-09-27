@@ -5873,8 +5873,8 @@
             "importBody": "AeroFTP found an existing configuration in your home folder. This Flatpak install uses its own separate storage, so your saved servers and encrypted vault are not visible here yet. Import them now? Files are only copied and nothing is overwritten, and your vault unlocks here the same way it does now.",
             "importAccept": "Import",
             "importedBody": "Your configuration was imported. Restart AeroFTP to load your servers and vault.",
-            "importNothingBody": "Nothing to import: this Flatpak install already has every file from your existing configuration.",
-            "importFailedBody": "The import stopped with an error: {error}. Files copied before the error stay in place and nothing was overwritten. AeroFTP will offer the import again at the next start.",
+            "importNothingBody": "Nothing to import: no files from your existing configuration needed copying into this Flatpak install.",
+            "importFailedBody": "The import stopped with an error: {error}. Files already copied into this Flatpak install stay there, and nothing was overwritten. AeroFTP will offer the import again at the next start.",
             "restartNow": "Restart now"
         },
         "picker": {

@@ -5893,8 +5893,8 @@
             "importAccept": "Importa",
             "importedBody": "S'ha importat la configuració. Reinicieu AeroFTP per carregar els servidors i la caixa forta.",
             "restartNow": "Reinicia ara",
-            "importNothingBody": "Res a importar: aquesta instal·lació de Flatpak ja té tots els fitxers de la vostra configuració existent.",
-            "importFailedBody": "La importació s'ha aturat amb un error: {error}. Els fitxers copiats abans de l'error es mantenen al seu lloc i no s'ha sobreescrit res. AeroFTP tornarà a oferir la importació en el proper inici."
+            "importNothingBody": "Res a importar: cap fitxer de la vostra configuració existent necessitava copiar-se en aquesta instal·lació de Flatpak.",
+            "importFailedBody": "La importació s'ha aturat amb un error: {error}. Els fitxers ja copiats en aquesta instal·lació de Flatpak hi romanen, i no s'ha sobreescrit res. AeroFTP tornarà a oferir la importació en el pròxim inici."
         },
         "picker": {
             "unavailable": {

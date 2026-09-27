@@ -5893,8 +5893,8 @@
             "importAccept": "Flytja inn",
             "importedBody": "Stillingarnar þínar voru fluttar inn. Endurræstu AeroFTP til að hlaða inn þjónunum þínum og hirslunni.",
             "restartNow": "Endurræsa núna",
-            "importNothingBody": "Ekkert til að flytja inn: þessi Flatpak uppsetning hefur nú þegar allar skrár úr núverandi stillingum þínum.",
-            "importFailedBody": "Innflutningur stöðvaðist með villu: {error}. Skrár sem afritaðar voru fyrir villuna haldast á sínum stað og engu var skrifað yfir. AeroFTP mun bjóða upp á innflutninginn aftur við næstu ræsingu."
+            "importNothingBody": "Ekkert til að flytja inn: engar skrár úr núverandi stillingum þínum þurfti að afrita í þessa Flatpak-uppsetningu.",
+            "importFailedBody": "Innflutningur stöðvaðist með villu: {error}. Skrár sem þegar hafa verið afritaðar í þessa Flatpak-uppsetningu haldast þar, og engu var skrifað yfir. AeroFTP mun bjóða upp á innflutninginn aftur við næstu ræsingu."
         },
         "picker": {
             "unavailable": {

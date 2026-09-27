@@ -5874,8 +5874,8 @@
             "importAccept": "Importera",
             "importedBody": "Din konfiguration importerades. Starta om AeroFTP för att läsa in dina servrar och ditt valv.",
             "restartNow": "Starta om nu",
-            "importNothingBody": "Inget att importera: den här Flatpak-installationen har redan alla filer från din befintliga konfiguration.",
-            "importFailedBody": "Importen stoppades med ett fel: {error}. Filer som kopierades innan felet ligger kvar och inget skrevs över. AeroFTP kommer att föreslå importen igen vid nästa start."
+            "importNothingBody": "Inget att importera: inga filer från din befintliga konfiguration behövde kopieras in i denna Flatpak-installation.",
+            "importFailedBody": "Importen stoppades med ett fel: {error}. Filer som redan kopierats in i denna Flatpak-installation ligger kvar där, och inget skrevs över. AeroFTP kommer att erbjuda importen igen vid nästa start."
         },
         "picker": {
             "unavailable": {

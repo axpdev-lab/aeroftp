@@ -5874,8 +5874,8 @@
             "importAccept": "Importēt",
             "importedBody": "Jūsu konfigurācija tika importēta. Restartējiet AeroFTP, lai ielādētu savus serverus un seifu.",
             "restartNow": "Restartēt tagad",
-            "importNothingBody": "Nav ko importēt: šajā Flatpak instalācijā jau ir visi faili no jūsu esošās konfigurācijas.",
-            "importFailedBody": "Importēšana apstājās ar kļūdu: {error}. Faili, kas nokopēti pirms kļūdas, paliek savā vietā, un nekas netika pārrakstīts. AeroFTP nākamajā palaišanas reizē piedāvās importēšanu vēlreiz."
+            "importNothingBody": "Nav ko importēt: neviens fails no jūsu esošās konfigurācijas nebija jākopē šajā Flatpak instalācijā.",
+            "importFailedBody": "Importēšana apstājās ar kļūdu: {error}. Faili, kas jau nokopēti šajā Flatpak instalācijā, paliek tur, un nekas netika pārrakstīts. AeroFTP nākamajā palaišanas reizē piedāvās importēšanu vēlreiz."
         },
         "picker": {
             "unavailable": {

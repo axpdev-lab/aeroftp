@@ -5893,8 +5893,8 @@
             "importAccept": "Importar",
             "importedBody": "Importouse a túa configuración. Reinicia AeroFTP para cargar os teus servidores e a caixa forte.",
             "restartNow": "Reiniciar agora",
-            "importNothingBody": "Nada que importar: esta instalación de Flatpak xa ten todos os ficheiros da súa configuración existente.",
-            "importFailedBody": "A importación detívose cun erro: {error}. Os ficheiros copiados antes do erro permanecen no seu lugar e non se sobrescribiu nada. AeroFTP volverá ofrecer a importación no seguinte inicio."
+            "importNothingBody": "Nada que importar: ningún ficheiro da túa configuración existente necesitaba copiarse nesta instalación de Flatpak.",
+            "importFailedBody": "A importación detívose cun erro: {error}. Os ficheiros xa copiados nesta instalación de Flatpak permanecen alí, e non se sobrescribiu nada. AeroFTP volverá ofrecer a importación no seguinte inicio."
         },
         "picker": {
             "unavailable": {

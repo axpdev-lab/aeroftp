@@ -5874,8 +5874,8 @@
             "importAccept": "Importér",
             "importedBody": "Din konfiguration blev importeret. Genstart AeroFTP for at indlæse dine servere og din boks.",
             "restartNow": "Genstart nu",
-            "importNothingBody": "Intet at importere: denne Flatpak-installation har allerede alle filer fra din eksisterende konfiguration.",
-            "importFailedBody": "Importen stoppede med en fejl: {error}. Filer, der blev kopieret før fejlen, forbliver på plads, og intet blev overskrevet. AeroFTP vil tilbyde importen igen ved næste start."
+            "importNothingBody": "Intet at importere: ingen filer fra din eksisterende konfiguration skulle kopieres ind i denne Flatpak-installation.",
+            "importFailedBody": "Importen stoppede med en fejl: {error}. Filer, der allerede er kopieret ind i denne Flatpak-installation, forbliver der, og intet blev overskrevet. AeroFTP vil tilbyde importen igen ved næste start."
         },
         "picker": {
             "unavailable": {

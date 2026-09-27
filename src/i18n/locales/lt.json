@@ -5874,8 +5874,8 @@
             "importAccept": "Importuoti",
             "importedBody": "Jūsų konfigūracija importuota. Iš naujo paleiskite „AeroFTP“, kad įkeltumėte savo serverius ir seifą.",
             "restartNow": "Paleisti iš naujo dabar",
-            "importNothingBody": "Nėra ko importuoti: šioje Flatpak diegimo versijoje jau yra visi failai iš jūsų dabartinės konfigūracijos.",
-            "importFailedBody": "Importavimas sustojo dėl klaidos: {error}. Prieš klaidą nukopijuoti failai lieka savo vietose ir niekas nebuvo perrašyta. AeroFTP vėl pasiūlys importavimą kito paleidimo metu."
+            "importNothingBody": "Nėra ko importuoti: nė vieno failo iš jūsų esamos konfigūracijos nereikėjo kopijuoti į šį Flatpak diegimą.",
+            "importFailedBody": "Importavimas sustojo dėl klaidos: {error}. Failai, jau nukopijuoti į šį Flatpak diegimą, ten ir lieka, ir niekas nebuvo perrašyta. Kitą kartą paleidus, AeroFTP vėl pasiūlys importavimą."
         },
         "picker": {
             "unavailable": {
