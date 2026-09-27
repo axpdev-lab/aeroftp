@@ -28,10 +28,11 @@ const MAX_V1_TOTAL_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 /// inflate it (CLAUDE-AV-015).
 const MAX_V1_META_BYTES: u64 = 16 * 1024 * 1024;
 
-/// Read a ZIP entry into memory bounded by its declared uncompressed size, an
+/// Read a ZIP entry into memory held to its declared uncompressed size, an
 /// absolute per-entry ceiling, and a running cumulative budget. `declared` is
 /// the central-directory uncompressed size; reading `declared + 1` lets us
-/// detect a stream that expands past what it declared (CLAUDE-AV-015).
+/// detect a stream that expands past what it declared (CLAUDE-AV-015), and a
+/// stream that ends before it is refused as well.
 fn read_zip_entry_bounded<R: Read>(
     entry: R,
     declared: u64,
@@ -58,6 +59,20 @@ fn read_zip_entry_bounded<R: Read>(
         data.zeroize();
         return Err(format!(
             "Vault entry '{name}' is larger than its declared size (compression bomb?)"
+        ));
+    }
+    // A short entry is refused as well. The zip layer catches most early ends
+    // first (the CRC of an AE-1 entry, the HMAC once the whole ciphertext has been
+    // read), but not every one: an AE-2 entry carries no CRC, and a deflate stream
+    // that ends before its ciphertext is fully read never reaches the HMAC check.
+    // Accepting a short entry would let add, remove and change-password rewrite
+    // the vault with it silently truncated.
+    if (data.len() as u64) < declared {
+        let got = data.len();
+        data.zeroize();
+        return Err(format!(
+            "Vault entry '{name}' ended before its declared size ({got} of {declared} bytes): \
+             the vault is corrupt or the password is wrong"
         ));
     }
     Ok(data)
@@ -394,4 +409,31 @@ fn write_vault(
     fsync_parent_dir(std::path::Path::new(vault_path));
 
     Ok(vault_path.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_zip_entry_bounded;
+
+    // A v1 vault entry that ends before its declared size is refused: add,
+    // remove and change-password read every entry through here and write the
+    // vault back, so a short read accepted here would be persisted as a
+    // silently truncated entry. A truthful entry still reads whole.
+    #[test]
+    fn read_zip_entry_bounded_refuses_an_entry_that_ends_early() {
+        let mut cumulative = 0;
+        let err = read_zip_entry_bounded(&b"short"[..], 64, &mut cumulative, "doc.txt")
+            .expect_err("a short entry must be refused");
+        assert!(
+            err.contains("'doc.txt' ended before its declared size (5 of 64 bytes)"),
+            "unhelpful error: {err}"
+        );
+
+        let data = read_zip_entry_bounded(&b"exact"[..], 5, &mut cumulative, "doc.txt")
+            .expect("a truthful entry reads whole");
+        assert_eq!(data, b"exact");
+
+        read_zip_entry_bounded(&b"longer than declared"[..], 5, &mut cumulative, "doc.txt")
+            .expect_err("an entry longer than declared is still refused");
+    }
 }

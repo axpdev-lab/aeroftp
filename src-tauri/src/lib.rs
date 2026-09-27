@@ -8088,13 +8088,19 @@ pub(crate) fn is_safe_archive_entry(entry_name: &str) -> bool {
     true
 }
 
-/// Copy an archive entry into `writer` but never write more than the entry's
-/// declared uncompressed size: a stream that expands past what its header claims
-/// is a decompression bomb (or a corrupt archive) and is rejected. Mirrors the
-/// single-entry browse path (archive_browse.rs, CLAUDE-AV-015) so the
-/// whole-archive extractors get the same defense the preview path already had.
-/// (CLAUDE-AV-B1-04)
-fn copy_entry_bounded<R: std::io::Read + ?Sized, W: std::io::Write>(
+/// Copy an archive entry into `writer`, holding the stream to the entry's
+/// declared uncompressed size in both directions. A stream that expands past what
+/// its header claims is a decompression bomb (or a corrupt archive) and is
+/// rejected (CLAUDE-AV-015, CLAUDE-AV-B1-04). A stream that ends before it is
+/// rejected too: sevenz-rust2 verifies an entry's CRC only once the full declared
+/// size has been read, and a tar entry cut short by a truncated archive simply
+/// reaches end of file, so a truncated or corrupt archive, or a 7z opened with a
+/// wrong password whose decrypted stream happens to decode to an early end,
+/// otherwise extracted a short or empty file and reported success. The message
+/// names no password: a caller that holds one words the error for it (7z maps it
+/// to "Wrong password"). Shared by every extractor that knows an entry's size,
+/// whole-archive and single-entry alike.
+pub(crate) fn copy_entry_bounded<R: std::io::Read + ?Sized, W: std::io::Write>(
     reader: &mut R,
     writer: &mut W,
     declared: u64,
@@ -8105,6 +8111,15 @@ fn copy_entry_bounded<R: std::io::Read + ?Sized, W: std::io::Write>(
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "archive entry expands past its declared size (compression bomb?)",
+        ));
+    }
+    if written < declared {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "archive entry ended before its declared size ({written} of {declared} bytes): \
+                 the archive is truncated or corrupt"
+            ),
         ));
     }
     Ok(written)
@@ -8158,7 +8173,14 @@ where
 /// A 7z extraction error in words: the library's Debug form
 /// (`MaybeBadPassword(Custom { kind: InvalidData, .. })`) told neither the user
 /// nor AeroAgent that the password was the problem.
-fn describe_7z_error(err: &sevenz_rust2::Error) -> String {
+///
+/// sevenz-rust2 turns an I/O error returned from inside `for_each_entries` into
+/// `MaybeBadPassword` whenever a password is set, so on an encrypted archive an
+/// entry that ends before its declared size (see `copy_entry_bounded`) reads as
+/// a wrong password, which is what an early end under a password almost always
+/// is. Without a password the same error stays `Io` and is shown as its own
+/// message (truncated or corrupt), not as the Debug wrapper around it.
+pub(crate) fn describe_7z_error(err: &sevenz_rust2::Error) -> String {
     match err {
         sevenz_rust2::Error::PasswordRequired => {
             "This 7z archive is encrypted: a password is required to extract it".to_string()
@@ -8166,6 +8188,8 @@ fn describe_7z_error(err: &sevenz_rust2::Error) -> String {
         sevenz_rust2::Error::MaybeBadPassword(_) => {
             "Wrong password for this 7z archive (or the archive is damaged)".to_string()
         }
+        sevenz_rust2::Error::Io(e, context) if context.is_empty() => e.to_string(),
+        sevenz_rust2::Error::Io(e, context) => format!("{context}: {e}"),
         other => other.to_string(),
     }
 }
@@ -8245,6 +8269,12 @@ async fn extract_7z(
             if entry.is_directory() {
                 fs::create_dir_all(&out_path)?;
             } else {
+                // A wrong password usually fails inside the decoder, but when its
+                // noise decodes to an early end the entry is just short, with no
+                // checksum error (sevenz-rust2 checks the CRC only after the full
+                // declared size). The size check fails it, and `?` hands the error
+                // back to sevenz-rust2, which reports it as MaybeBadPassword when a
+                // password is set.
                 let declared = entry.size();
                 write_entry_atomically(&out_path, |outfile| {
                     copy_entry_bounded(reader, outfile, declared)
@@ -9402,7 +9432,13 @@ fn tar_unpack(
                 })?;
             }
 
-            let declared = entry.header().size().unwrap_or(0);
+            // `Entry::size` is the byte count the tar crate streams for this entry,
+            // a PAX `size` record and a GNU sparse real size included.
+            // `header().size()` ignores a PAX size, so an entry sized there (past
+            // the 8 GiB ustar field, or a header crafted to disagree) was held to
+            // the wrong bound. There is no unknown size to default: the tar crate
+            // refuses an entry whose size field does not parse.
+            let declared = entry.size();
             write_entry_atomically(&out_path, |outfile| {
                 copy_entry_bounded(&mut entry, outfile, declared)
             })
@@ -20916,6 +20952,19 @@ mod sevenz_mhe_tests {
     // cover. A wrong 7z password is only detected while decoding, so this also
     // pins what a failed extraction leaves behind: nothing, and in particular
     // not a truncated copy of a file that was already at the destination.
+    //
+    // The wrong-password leg runs on the random salt and IV that compress_7z_core
+    // draws. About one block in 256 decrypts to a stream whose first byte is the
+    // LZMA2 end marker, which decodes to an empty entry with no error. Entries are
+    // now held to their declared size, so every wrong-password outcome is an
+    // error (short of a CRC-32 collision on a stream that decodes to exactly the
+    // declared length) and this leg no longer passes or fails by luck on correct
+    // code. Without that check it fails only when the first block (test1.txt)
+    // ends early, about one run in 256: the empty test1.txt then replaces the
+    // user's file before the second block fails, or, when both blocks end early,
+    // the extraction succeeds. That is too rare to guard the fix, so the early
+    // end is pinned deterministically, on a committed fixture, by
+    // `wrong_7z_password_that_decodes_to_an_early_end_is_refused`.
     #[tokio::test]
     async fn password_7z_content_only_multi_file_roundtrips_and_fails_cleanly() {
         let dir = tempfile::tempdir().unwrap();
@@ -20999,6 +21048,156 @@ mod sevenz_mhe_tests {
             "unhelpful error: {err}"
         );
         assert_eq!(std::fs::read_dir(&none).unwrap().count(), 0);
+    }
+
+    /// A 7-Zip archive (content-only AES, one LZMA2 block, `payload.txt` of 512
+    /// bytes) with a wrong password chosen so that its key decrypts the first
+    /// packed byte to 0x00, the LZMA2 end-of-stream marker. See
+    /// tests/fixtures/7z-underrun/README.md.
+    const EARLY_END_7Z: &[u8] = include_bytes!("../tests/fixtures/7z-underrun/early-end.7z");
+    const EARLY_END_RIGHT: &str = "right-password";
+    const EARLY_END_WRONG: &str = "wrong-388";
+
+    // The deterministic form of the wrong-password early end: the entry decodes
+    // to nothing, sevenz-rust2 checks the CRC only after the full declared size,
+    // and the extraction used to write an empty payload.txt and succeed. Both
+    // the whole-archive path and the single-entry browse path must now refuse it
+    // as a wrong password and leave the destination as it was.
+    #[tokio::test]
+    async fn wrong_7z_password_that_decodes_to_an_early_end_is_refused() {
+        // Precondition, measured on the library itself: with the wrong password
+        // the entry yields 0 of its 512 bytes and no error. Should a decoder
+        // change turn this into an error, this fails here instead of the test
+        // quietly no longer exercising the early end.
+        {
+            use sevenz_rust2::{ArchiveReader, Password};
+            let mut reader = ArchiveReader::new(
+                std::io::Cursor::new(EARLY_END_7Z),
+                Password::from(EARLY_END_WRONG),
+            )
+            .expect("the header is in the clear");
+            let mut seen = Vec::new();
+            reader
+                .for_each_entries(|entry, stream| {
+                    let mut buf = Vec::new();
+                    stream.read_to_end(&mut buf)?;
+                    seen.push((entry.size(), buf.len()));
+                    Ok(true)
+                })
+                .expect("the early end carries no error of its own");
+            assert_eq!(seen, vec![(512, 0)], "fixture no longer ends early");
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("early-end.7z");
+        std::fs::write(&archive, EARLY_END_7Z).unwrap();
+        let archive = archive.to_string_lossy().to_string();
+
+        let good = dir.path().join("good");
+        extract_7z_core(
+            archive.clone(),
+            good.to_string_lossy().to_string(),
+            Some(EARLY_END_RIGHT.to_string()),
+            false,
+        )
+        .await
+        .expect("the right password extracts");
+        let payload = std::fs::read(good.join("payload.txt")).unwrap();
+        assert_eq!(payload.len(), 512);
+        assert!(payload.starts_with(b"AeroFTP 7z underrun fixture"));
+
+        let wrong = dir.path().join("wrong");
+        std::fs::create_dir(&wrong).unwrap();
+        std::fs::write(wrong.join("payload.txt"), b"the user's own file").unwrap();
+        let result = extract_7z_core(
+            archive.clone(),
+            wrong.to_string_lossy().to_string(),
+            Some(EARLY_END_WRONG.to_string()),
+            false,
+        )
+        .await;
+        let kept = std::fs::read(wrong.join("payload.txt")).unwrap();
+        assert!(
+            kept == b"the user's own file",
+            "the existing file was replaced by {} bytes (result: {result:?})",
+            kept.len()
+        );
+        let err = result.expect_err("a wrong password that decodes to an early end must fail");
+        assert!(err.contains("Wrong password"), "unhelpful error: {err}");
+        let names: Vec<String> = std::fs::read_dir(&wrong)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["payload.txt".to_string()],
+            "left behind: {names:?}"
+        );
+
+        let browse = dir.path().join("browse");
+        std::fs::create_dir(&browse).unwrap();
+        let out = browse.join("payload.txt");
+        let err = crate::archive_browse::extract_7z_entry_impl(
+            archive,
+            "payload.txt".to_string(),
+            out.to_string_lossy().to_string(),
+            Some(EARLY_END_WRONG.to_string()),
+            None,
+        )
+        .await
+        .expect_err("the browse path must refuse the early end too");
+        assert!(err.contains("Wrong password"), "unhelpful error: {err}");
+        assert_eq!(
+            std::fs::read_dir(&browse).unwrap().count(),
+            0,
+            "the browse path left a file behind"
+        );
+    }
+
+    // Without a password the same early end is a truncated or corrupt archive,
+    // and the error must say so rather than blame a password the archive does
+    // not have. The first packed stream starts right after the 32-byte signature
+    // header; setting its first byte, an LZMA2 chunk control byte, to 0x00 (the
+    // end marker) makes the entry decode to nothing with no decoder error, and
+    // sevenz-rust2 does not verify the packed stream itself.
+    #[tokio::test]
+    async fn unencrypted_7z_entry_that_ends_early_is_refused_as_corrupt() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("data.txt");
+        std::fs::write(&src, b"a line that compresses well\n".repeat(128)).unwrap();
+        let out = dir.path().join("plain.7z");
+        compress_7z_core(
+            vec![src.to_string_lossy().to_string()],
+            out.to_string_lossy().to_string(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("compress");
+        let mut bytes = std::fs::read(&out).unwrap();
+        assert_ne!(bytes[32], 0x00, "expected an LZMA2 chunk at offset 32");
+        bytes[32] = 0x00;
+        std::fs::write(&out, &bytes).unwrap();
+
+        let dest = dir.path().join("out");
+        let err = extract_7z_core(
+            out.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+            None,
+            false,
+        )
+        .await
+        .expect_err("an entry that ends early must fail");
+        // Exact: the message itself, not the library's Debug wrapper around it,
+        // and no password blamed.
+        assert_eq!(
+            err,
+            "Failed to extract 7z archive: archive entry ended before its declared size \
+             (0 of 3584 bytes): the archive is truncated or corrupt"
+        );
+        assert!(!dest.join("data.txt").exists(), "a short file was written");
     }
 
     // Overwriting a file that already exists keeps its permissions: before the
@@ -21576,6 +21775,248 @@ mod standalone_stream_tests {
         let err = copy_entry_bounded(&mut &big[..], &mut out2, 8)
             .expect_err("an over-declared stream must be rejected");
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    // The other direction: a stream that ends before its declared size (a
+    // truncated or corrupt archive, or a 7z whose wrong password decodes to an
+    // early end) is rejected too, since not every decoder notices on its own.
+    // The message names no password: callers that hold one add that.
+    #[test]
+    fn copy_entry_bounded_rejects_an_entry_that_ends_early() {
+        use super::copy_entry_bounded;
+
+        let short = b"only nine".to_vec();
+        let mut out = Vec::new();
+        let err = copy_entry_bounded(&mut &short[..], &mut out, 512)
+            .expect_err("a stream shorter than declared must be rejected");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        let msg = err.to_string();
+        assert!(
+            msg.contains("ended before its declared size (9 of 512 bytes)")
+                && msg.contains("truncated or corrupt"),
+            "unhelpful error: {msg}"
+        );
+        assert!(!msg.contains("password"), "blames a password: {msg}");
+
+        // Nothing at all for a non-empty entry: the wrong-password shape.
+        copy_entry_bounded(&mut &b""[..], &mut Vec::new(), 1)
+            .expect_err("an empty stream for a one-byte entry must be rejected");
+
+        // An empty entry that is empty is fine.
+        assert_eq!(
+            copy_entry_bounded(&mut &b""[..], &mut Vec::new(), 0).unwrap(),
+            0
+        );
+    }
+
+    /// One regular 2000-byte entry, `doc.txt`, as a complete plain tar.
+    fn one_entry_tar() -> (Vec<u8>, Vec<u8>) {
+        let payload: Vec<u8> = (0..2000u32).map(|i| b'a' + (i % 26) as u8).collect();
+        let mut builder = tar::Builder::new(Vec::new());
+        let mut header = tar::Header::new_gnu();
+        header.set_size(payload.len() as u64);
+        header.set_mode(0o644);
+        header.set_entry_type(tar::EntryType::Regular);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "doc.txt", &payload[..])
+            .unwrap();
+        (builder.into_inner().unwrap(), payload)
+    }
+
+    // A tar cut in the middle of an entry's data: the tar crate's entry reader
+    // just reaches end of file, so the short entry used to be renamed into
+    // place (over a file the user already had) before the next header read
+    // failed. The entry must fail on its own size and leave the file untouched.
+    #[test]
+    fn tar_unpack_refuses_an_entry_cut_short_and_keeps_the_existing_file() {
+        use super::tar_unpack;
+
+        let (full, _) = one_entry_tar();
+        let truncated = full[..512 + 1000].to_vec();
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("extracted");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(out.join("doc.txt"), b"the user's own file").unwrap();
+
+        let reader: Box<dyn std::io::Read> = Box::new(std::io::Cursor::new(truncated));
+        let result = tar_unpack(reader, &out);
+        let kept = std::fs::read(out.join("doc.txt")).unwrap();
+        assert!(
+            kept == b"the user's own file",
+            "the existing file was replaced by {} bytes (result: {result:?})",
+            kept.len()
+        );
+        let err = result.expect_err("a truncated tar must fail");
+        assert!(
+            err.contains("ended before its declared size (1000 of 2000 bytes)"),
+            "unhelpful error: {err}"
+        );
+        let names: Vec<String> = std::fs::read_dir(&out)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["doc.txt".to_string()], "left behind: {names:?}");
+    }
+
+    // The single-entry browse path returned right after copying its entry, so
+    // there a truncated tar was not even an error: the short file was persisted
+    // and reported as extracted.
+    #[tokio::test]
+    async fn tar_browse_entry_cut_short_is_refused() {
+        let (full, _) = one_entry_tar();
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("cut.tar");
+        std::fs::write(&archive, &full[..512 + 1000]).unwrap();
+        let browse = dir.path().join("browse");
+        std::fs::create_dir(&browse).unwrap();
+        let out = browse.join("doc.txt");
+
+        let result = crate::archive_browse::extract_tar_entry_impl(
+            archive.to_string_lossy().to_string(),
+            "doc.txt".to_string(),
+            out.to_string_lossy().to_string(),
+            None,
+        )
+        .await;
+        let err = result.expect_err("a truncated tar entry must fail");
+        assert!(
+            err.contains("ended before its declared size (1000 of 2000 bytes)"),
+            "unhelpful error: {err}"
+        );
+        assert_eq!(
+            std::fs::read_dir(&browse).unwrap().count(),
+            0,
+            "a short file was left behind"
+        );
+
+        // The intact archive still extracts whole through the same path.
+        std::fs::write(&archive, &full).unwrap();
+        crate::archive_browse::extract_tar_entry_impl(
+            archive.to_string_lossy().to_string(),
+            "doc.txt".to_string(),
+            out.to_string_lossy().to_string(),
+            None,
+        )
+        .await
+        .expect("an intact entry extracts");
+        assert_eq!(std::fs::read(&out).unwrap(), one_entry_tar().1);
+    }
+
+    // An entry whose PAX `size` record (11) disagrees with its header field (0).
+    // The PAX record is authoritative and the tar crate streams that size, but
+    // the extractor bounded the entry by the header field and refused the entry
+    // as a compression bomb, while the browse listing showed 0 bytes. Both now
+    // use the size the tar crate streams.
+    #[tokio::test]
+    async fn tar_entry_sized_by_pax_extracts_and_lists_that_size() {
+        use super::tar_unpack;
+
+        let payload = b"hello world";
+        let record = b"11 size=11\n";
+        let mut builder = tar::Builder::new(Vec::new());
+        let mut pax = tar::Header::new_ustar();
+        pax.set_entry_type(tar::EntryType::XHeader);
+        pax.set_path("PaxHeaders/pax.txt").unwrap();
+        pax.set_size(record.len() as u64);
+        pax.set_mode(0o644);
+        pax.set_cksum();
+        builder.append(&pax, &record[..]).unwrap();
+        let mut file = tar::Header::new_ustar();
+        file.set_entry_type(tar::EntryType::Regular);
+        file.set_path("pax.txt").unwrap();
+        file.set_size(0);
+        file.set_mode(0o644);
+        file.set_cksum();
+        builder.append(&file, &payload[..]).unwrap();
+        let bytes = builder.into_inner().unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("extracted");
+        std::fs::create_dir_all(&out).unwrap();
+        let reader: Box<dyn std::io::Read> = Box::new(std::io::Cursor::new(bytes.clone()));
+        tar_unpack(reader, &out).expect("a PAX-sized entry must extract");
+        assert_eq!(std::fs::read(out.join("pax.txt")).unwrap(), payload);
+
+        let archive = dir.path().join("pax.tar");
+        std::fs::write(&archive, &bytes).unwrap();
+        let listed = crate::archive_browse::list_tar(archive.to_string_lossy().to_string())
+            .await
+            .expect("list");
+        let sizes: Vec<(String, u64)> = listed.into_iter().map(|e| (e.name, e.size)).collect();
+        assert_eq!(sizes, vec![("pax.txt".to_string(), 11)]);
+    }
+
+    // A stored zip member whose central directory declares 20 bytes over 10
+    // bytes of data (with the CRC of those 10): the zip crate yields the 10
+    // bytes, its CRC check passes, and both zip extractors used to write the
+    // short file as a success.
+    #[tokio::test]
+    async fn zip_entry_shorter_than_its_declared_size_is_refused() {
+        use std::io::Write;
+        let mut zw = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        zw.start_file("payload.txt", opts).unwrap();
+        zw.write_all(b"0123456789").unwrap();
+        let mut bytes = zw.finish().unwrap().into_inner();
+        // Local header: uncompressed size at offset 22. Central directory
+        // entry: uncompressed size at offset 24 from its signature.
+        assert_eq!(&bytes[0..4], b"PK\x03\x04");
+        assert_eq!(&bytes[22..26], &10u32.to_le_bytes());
+        bytes[22..26].copy_from_slice(&20u32.to_le_bytes());
+        let cd = bytes
+            .windows(4)
+            .position(|w| w == b"PK\x01\x02")
+            .expect("central directory entry");
+        assert_eq!(&bytes[cd + 24..cd + 28], &10u32.to_le_bytes());
+        bytes[cd + 24..cd + 28].copy_from_slice(&20u32.to_le_bytes());
+
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("short.zip");
+        std::fs::write(&archive, &bytes).unwrap();
+        let archive = archive.to_string_lossy().to_string();
+
+        let dest = dir.path().join("whole");
+        let err = super::extract_archive_core(
+            archive.clone(),
+            dest.to_string_lossy().to_string(),
+            false,
+            None,
+        )
+        .await
+        .expect_err("a zip entry shorter than declared must fail");
+        assert!(
+            err.contains("ended before its declared size (10 of 20 bytes)"),
+            "unhelpful error: {err}"
+        );
+        assert!(
+            !dest.join("payload.txt").exists(),
+            "a short file was written"
+        );
+
+        let browse = dir.path().join("browse");
+        std::fs::create_dir(&browse).unwrap();
+        let out = browse.join("payload.txt");
+        let err = crate::archive_browse::extract_zip_entry_impl(
+            archive,
+            "payload.txt".to_string(),
+            out.to_string_lossy().to_string(),
+            None,
+            None,
+        )
+        .await
+        .expect_err("the browse path must refuse it too");
+        assert!(
+            err.contains("ended before its declared size (10 of 20 bytes)"),
+            "unhelpful error: {err}"
+        );
+        assert_eq!(
+            std::fs::read_dir(&browse).unwrap().count(),
+            0,
+            "the browse path left a file behind"
+        );
     }
 
     // The single consolidated guard rejects traversal/absolute/drive/null/empty
