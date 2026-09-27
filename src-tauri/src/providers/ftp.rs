@@ -2287,12 +2287,18 @@ impl StorageProvider for FtpProvider {
         // Bounded FTP reads intentionally stop before EOF. Some servers will report an
         // error while finalizing that partial RETR; when that happens we proactively
         // disconnect so the disposable chunk connection cannot be reused in a bad state.
-        // A read that ended SHORT of the range is another matter: a file that ends
-        // inside the range is confirmed with `226`, and an error after a short read is
-        // the server cutting the transfer, so those bytes are not the range.
+        // That complaint is a transient one (426, "transfer aborted", a 4xx). A read
+        // that ended SHORT of the range is another matter: a file that ends inside the
+        // range is confirmed with `226`, and an error after a short read is the server
+        // cutting the transfer, so those bytes are not the range; nor are they after a
+        // permanent refusal (5xx), which is not how a server answers an early close.
         if let Err(err) = data_stream.finish().await {
             let _ = self.disconnect().await;
-            if !stopped_before_the_end {
+            let early_close_complaint = matches!(
+                &err,
+                FtpError::UnexpectedResponse(reply) if (400..500).contains(&reply.status.code())
+            );
+            if !stopped_before_the_end || !early_close_complaint {
                 return Err(ProviderError::TransferFailed(format!(
                     "reading a range of {path}: the server ended the transfer after {total_read} of {len} bytes: {err}"
                 )));
