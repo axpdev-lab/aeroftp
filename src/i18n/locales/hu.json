@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "Az AeroFTP meglévő konfigurációt talált a saját mappájában. Ez a Flatpak-telepítés saját, külön tárolót használ, ezért a mentett kiszolgálói és a titkosított széf itt még nem láthatók. Importálja őket most? A fájlok csak másolódnak, semmi sem íródik felül, és a széf itt ugyanúgy oldódik fel, ahogy most.",
+            "importBody": "Az AeroFTP meglévő konfigurációt talált a saját mappájában. Ez a Flatpak-telepítés saját, külön tárolót használ, ezért a mentett kiszolgálói és a titkosított széf itt még nem láthatók. Importálja most a konfigurációját? A fájlok csak másolódnak, és az a fájl, amely ebben a Flatpak-telepítésben már megvan, soha nem íródik felül.",
             "importAccept": "Importálás",
             "importedBody": "A konfigurációja importálva lett. Indítsa újra az AeroFTP-t a kiszolgálói és a széf betöltéséhez.",
             "restartNow": "Újraindítás most",
-            "importNothingBody": "Nincs mit importálni: egyetlen fájlt sem kellett átmásolni ebbe a Flatpak telepítésbe.",
-            "importFailedBody": "Az importálás hibával leállt: {error}. Az ebbe a Flatpak telepítésbe már átmásolt fájlok ott maradnak, és semmi sem lett felülírva. Az AeroFTP a következő indításkor újra felajánlja az importálást."
+            "importNothingBody": "Egyetlen fájl sem lett átmásolva: a meglévő konfigurációja minden fájljához már van azonos nevű fájl ebben a Flatpak-telepítésben, és a meglévő fájlok soha nem íródnak felül.",
+            "importFailedBody": "Az importálás hibával leállt: {error}. Az ebbe a Flatpak telepítésbe már átmásolt fájlok ott maradnak, és semmi sem lett felülírva. Az AeroFTP a következő indításkor újra felajánlja az importálást.",
+            "importedNoVaultBody": "A konfigurációja importálva lett. Indítsa újra az AeroFTP-t a betöltéséhez.",
+            "importedVaultSkippedBody": "A konfigurációja egy része importálva lett, de a mentett kiszolgálói és a széf nem: ennek a Flatpak-telepítésnek már saját széfje van, és a meglévő fájlok soha nem íródnak felül. Indítsa újra az AeroFTP-t az importált elemek betöltéséhez.",
+            "importNothingVaultSkippedBody": "Egyetlen fájl sem lett átmásolva, ezért a mentett kiszolgálói és a széf nem lettek importálva: ennek a Flatpak-telepítésnek már saját széfje van, a meglévő konfigurációja minden fájljához már van itt azonos nevű fájl, és a meglévő fájlok soha nem íródnak felül.",
+            "importUnreadableResult": "az AeroFTP nem tudta beolvasni az importálás eredményét"
         },
         "picker": {
             "unavailable": {

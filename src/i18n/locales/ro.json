@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP a găsit o configurație existentă în folderul dumneavoastră personal. Această instalare Flatpak folosește propriul spațiu de stocare separat, așa că serverele salvate și seiful criptat nu sunt încă vizibile aici. Le importați acum? Fișierele sunt doar copiate, nimic nu este suprascris, iar seiful se deblochează aici la fel ca acum.",
+            "importBody": "AeroFTP a găsit o configurație existentă în folderul dumneavoastră personal. Această instalare Flatpak folosește propriul spațiu de stocare separat, așa că serverele salvate și seiful criptat nu sunt încă vizibile aici. Importați configurația acum? Fișierele sunt doar copiate, iar un fișier pe care această instalare Flatpak îl are deja nu este niciodată suprascris.",
             "importAccept": "Importă",
             "importedBody": "Configurația dumneavoastră a fost importată. Reporniți AeroFTP pentru a încărca serverele și seiful.",
             "restartNow": "Repornește acum",
-            "importNothingBody": "Nimic de importat: niciun fișier nu a trebuit copiat în această instalare Flatpak.",
-            "importFailedBody": "Importul s-a oprit cu o eroare: {error}. Fișierele deja copiate în această instalare Flatpak rămân acolo, și nimic nu a fost suprascris. AeroFTP va propune din nou importul la următoarea pornire."
+            "importNothingBody": "Niciun fișier nu a fost copiat: pentru fiecare fișier din configurația dumneavoastră existentă există deja un fișier cu același nume în această instalare Flatpak, iar fișierele existente nu sunt niciodată suprascrise.",
+            "importFailedBody": "Importul s-a oprit cu o eroare: {error}. Fișierele deja copiate în această instalare Flatpak rămân acolo, și nimic nu a fost suprascris. AeroFTP va propune din nou importul la următoarea pornire.",
+            "importedNoVaultBody": "Configurația dumneavoastră a fost importată. Reporniți AeroFTP pentru a o încărca.",
+            "importedVaultSkippedBody": "O parte din configurația dumneavoastră a fost importată, dar nu și serverele salvate și seiful: această instalare Flatpak are deja propriul seif, iar fișierele existente nu sunt niciodată suprascrise. Reporniți AeroFTP pentru a încărca ce a fost importat.",
+            "importNothingVaultSkippedBody": "Niciun fișier nu a fost copiat, așa că serverele salvate și seiful nu au fost importate: această instalare Flatpak are deja propriul seif, pentru fiecare fișier din configurația dumneavoastră existentă există deja aici un fișier cu același nume, iar fișierele existente nu sunt niciodată suprascrise.",
+            "importUnreadableResult": "AeroFTP nu a putut citi rezultatul importului"
         },
         "picker": {
             "unavailable": {

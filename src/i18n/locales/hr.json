@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP je pronašao postojeću konfiguraciju u vašoj početnoj mapi. Ova Flatpak instalacija koristi vlastitu odvojenu pohranu, pa vaši spremljeni poslužitelji i šifrirani trezor ovdje još nisu vidljivi. Želite li ih sada uvesti? Datoteke se samo kopiraju, ništa se ne prepisuje, a trezor se ovdje otključava na isti način kao i sada.",
+            "importBody": "AeroFTP je pronašao postojeću konfiguraciju u vašoj početnoj mapi. Ova Flatpak instalacija koristi vlastitu odvojenu pohranu, pa vaši spremljeni poslužitelji i šifrirani trezor ovdje još nisu vidljivi. Želite li sada uvesti svoju konfiguraciju? Datoteke se samo kopiraju, a datoteka koju ova Flatpak instalacija već ima nikada se ne prepisuje.",
             "importAccept": "Uvezi",
             "importedBody": "Vaša je konfiguracija uvezena. Ponovno pokrenite AeroFTP da učitate svoje poslužitelje i trezor.",
             "restartNow": "Ponovno pokreni sada",
-            "importNothingBody": "Nema ništa za uvoz: nijedna datoteka nije trebala biti kopirana u ovu Flatpak instalaciju.",
-            "importFailedBody": "Uvoz je zaustavljen s pogreškom: {error}. Datoteke koje su već kopirane u ovu Flatpak instalaciju ostaju ondje, i ništa nije prepisano. AeroFTP će ponovno ponuditi uvoz pri sljedećem pokretanju."
+            "importNothingBody": "Nijedna datoteka nije kopirana: za svaku datoteku vaše postojeće konfiguracije u ovoj Flatpak instalaciji već postoji datoteka s istim nazivom, a postojeće datoteke nikada se ne prepisuju.",
+            "importFailedBody": "Uvoz je zaustavljen s pogreškom: {error}. Datoteke koje su već kopirane u ovu Flatpak instalaciju ostaju ondje, i ništa nije prepisano. AeroFTP će ponovno ponuditi uvoz pri sljedećem pokretanju.",
+            "importedNoVaultBody": "Vaša je konfiguracija uvezena. Ponovno pokrenite AeroFTP da je učitate.",
+            "importedVaultSkippedBody": "Dio vaše konfiguracije je uvezen, ali ne i vaši spremljeni poslužitelji i trezor: ova Flatpak instalacija već ima vlastiti trezor, a postojeće datoteke nikada se ne prepisuju. Ponovno pokrenite AeroFTP da učitate ono što je uvezeno.",
+            "importNothingVaultSkippedBody": "Nijedna datoteka nije kopirana, pa vaši spremljeni poslužitelji i trezor nisu uvezeni: ova Flatpak instalacija već ima vlastiti trezor, za svaku datoteku vaše postojeće konfiguracije ovdje već postoji datoteka s istim nazivom, a postojeće datoteke nikada se ne prepisuju.",
+            "importUnreadableResult": "AeroFTP nije mogao pročitati rezultat uvoza"
         },
         "picker": {
             "unavailable": {

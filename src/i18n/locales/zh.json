@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP 在您的主目录中发现了现有配置。此 Flatpak 安装使用自己独立的存储空间，因此您保存的服务器和加密保险库目前尚未在此处显示。现在导入它们吗？文件仅会被复制，不会覆盖任何内容，并且您的保险库在这里的解锁方式与现在相同。",
+            "importBody": "AeroFTP 在您的主目录中发现了现有配置。此 Flatpak 安装使用自己独立的存储空间，因此您保存的服务器和加密保险库目前尚未在此处显示。现在导入您的配置吗？文件仅会被复制，此 Flatpak 安装中已有的文件永远不会被覆盖。",
             "importAccept": "导入",
             "importedBody": "您的配置已导入。请重新启动 AeroFTP 以加载您的服务器和保险库。",
             "restartNow": "立即重新启动",
-            "importNothingBody": "没有可导入的内容:此 Flatpak 安装无需复制任何文件。",
-            "importFailedBody": "导入因错误而停止：{error}。已复制到此 Flatpak 安装中的文件会保留在那里，并且没有任何内容被覆盖。AeroFTP 将在下次启动时再次提议导入。"
+            "importNothingBody": "未复制任何文件：您现有配置中的每个文件在此 Flatpak 安装中都已有同名文件，且现有文件永远不会被覆盖。",
+            "importFailedBody": "导入因错误而停止：{error}。已复制到此 Flatpak 安装中的文件会保留在那里，并且没有任何内容被覆盖。AeroFTP 将在下次启动时再次提议导入。",
+            "importedNoVaultBody": "您的配置已导入。请重新启动 AeroFTP 以加载它。",
+            "importedVaultSkippedBody": "您的部分配置已导入，但您保存的服务器和保险库未导入：此 Flatpak 安装已有自己的保险库，且现有文件永远不会被覆盖。请重新启动 AeroFTP 以加载已导入的内容。",
+            "importNothingVaultSkippedBody": "未复制任何文件，因此您保存的服务器和保险库未导入：此 Flatpak 安装已有自己的保险库，您现有配置中的每个文件在此处都已有同名文件，且现有文件永远不会被覆盖。",
+            "importUnreadableResult": "AeroFTP 无法读取导入结果"
         },
         "picker": {
             "unavailable": {

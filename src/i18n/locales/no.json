@@ -5889,12 +5889,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP fant et eksisterende oppsett i hjemmemappen din. Denne Flatpak-installasjonen bruker sitt eget separate lager, så de lagrede serverne dine og det krypterte hvelvet er ikke synlige her ennå. Vil du importere dem nå? Filene bare kopieres, ingenting overskrives, og hvelvet låses opp her på samme måte som nå.",
+            "importBody": "AeroFTP fant et eksisterende oppsett i hjemmemappen din. Denne Flatpak-installasjonen bruker sitt eget separate lager, så de lagrede serverne dine og det krypterte hvelvet er ikke synlige her ennå. Vil du importere oppsettet ditt nå? Filene bare kopieres, og en fil som denne Flatpak-installasjonen allerede har, blir aldri overskrevet.",
             "importAccept": "Importer",
             "importedBody": "Oppsettet ditt ble importert. Start AeroFTP på nytt for å laste inn serverne og hvelvet ditt.",
             "restartNow": "Start på nytt nå",
-            "importNothingBody": "Ingenting å importere: ingen filer trengte å kopieres til denne Flatpak-installasjonen.",
-            "importFailedBody": "Importen stoppet med en feil: {error}. Filer som allerede er kopiert inn i denne Flatpak-installasjonen, blir værende der, og ingenting ble overskrevet. AeroFTP vil tilby importen på nytt ved neste oppstart."
+            "importNothingBody": "Ingen fil ble kopiert: for hver fil i det eksisterende oppsettet ditt finnes det allerede en fil med samme navn i denne Flatpak-installasjonen, og eksisterende filer blir aldri overskrevet.",
+            "importFailedBody": "Importen stoppet med en feil: {error}. Filer som allerede er kopiert inn i denne Flatpak-installasjonen, blir værende der, og ingenting ble overskrevet. AeroFTP vil tilby importen på nytt ved neste oppstart.",
+            "importedNoVaultBody": "Oppsettet ditt ble importert. Start AeroFTP på nytt for å laste det inn.",
+            "importedVaultSkippedBody": "En del av oppsettet ditt ble importert, men ikke de lagrede serverne dine og hvelvet: denne Flatpak-installasjonen har allerede sitt eget hvelv, og eksisterende filer blir aldri overskrevet. Start AeroFTP på nytt for å laste inn det som ble importert.",
+            "importNothingVaultSkippedBody": "Ingen fil ble kopiert, så de lagrede serverne dine og hvelvet ble ikke importert: denne Flatpak-installasjonen har allerede sitt eget hvelv, for hver fil i det eksisterende oppsettet ditt finnes det allerede en fil med samme navn her, og eksisterende filer blir aldri overskrevet.",
+            "importUnreadableResult": "AeroFTP kunne ikke lese resultatet av importen"
         },
         "picker": {
             "unavailable": {

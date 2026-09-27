@@ -5889,12 +5889,16 @@
             }
         },
         "flatpak": {
-            "importBody": "Mae AeroFTP wedi canfod ffurfweddiad presennol yn eich ffolder cartref. Mae'r gosodiad Flatpak hwn yn defnyddio ei storfa ar wahân ei hun, felly nid yw eich gweinyddwyr wedi'u cadw a'ch cell ddiogel wedi'i hamgryptio i'w gweld yma eto. A hoffech eu mewnforio nawr? Dim ond copïo'r ffeiliau a wneir, ni chaiff dim ei drosysgrifo, ac mae eich cell ddiogel yn datgloi yma yn union fel y mae'n ei wneud nawr.",
+            "importBody": "Mae AeroFTP wedi canfod ffurfweddiad presennol yn eich ffolder cartref. Mae'r gosodiad Flatpak hwn yn defnyddio ei storfa ar wahân ei hun, felly nid yw eich gweinyddwyr wedi'u cadw a'ch cell ddiogel wedi'i hamgryptio i'w gweld yma eto. Mewnforio eich ffurfweddiad nawr? Dim ond copïo'r ffeiliau a wneir, ac ni chaiff ffeil sydd gan y gosodiad Flatpak hwn eisoes byth ei throsysgrifo.",
             "importAccept": "Mewnforio",
             "importedBody": "Mewnforiwyd eich ffurfweddiad. Ailgychwynnwch AeroFTP i lwytho eich gweinyddwyr a'ch cell ddiogel.",
             "restartNow": "Ailgychwyn nawr",
-            "importNothingBody": "Dim byd i'w fewnforio: nid oedd angen copïo unrhyw ffeiliau i'r gosodiad Flatpak hwn.",
-            "importFailedBody": "Daeth y mewnforio i ben gyda gwall: {error}. Mae'r ffeiliau sydd eisoes wedi'u copïo i mewn i'r gosodiad Flatpak hwn yn aros yno, ac ni chafodd dim ei drosysgrifo. Bydd AeroFTP yn cynnig y mewnforio eto adeg y cychwyn nesaf."
+            "importNothingBody": "Ni chopïwyd unrhyw ffeil: ar gyfer pob ffeil yn eich ffurfweddiad presennol, mae ffeil â'r un enw eisoes yn y gosodiad Flatpak hwn, ac ni chaiff ffeiliau sy'n bodoli byth eu trosysgrifo.",
+            "importFailedBody": "Daeth y mewnforio i ben gyda gwall: {error}. Mae'r ffeiliau sydd eisoes wedi'u copïo i mewn i'r gosodiad Flatpak hwn yn aros yno, ac ni chafodd dim ei drosysgrifo. Bydd AeroFTP yn cynnig y mewnforio eto adeg y cychwyn nesaf.",
+            "importedNoVaultBody": "Mewnforiwyd eich ffurfweddiad. Ailgychwynnwch AeroFTP i'w lwytho.",
+            "importedVaultSkippedBody": "Mewnforiwyd rhan o'ch ffurfweddiad, ond nid eich gweinyddwyr wedi'u cadw na'ch cell ddiogel: mae gan y gosodiad Flatpak hwn ei gell ddiogel ei hun eisoes, ac ni chaiff ffeiliau sy'n bodoli byth eu trosysgrifo. Ailgychwynnwch AeroFTP i lwytho'r hyn a fewnforiwyd.",
+            "importNothingVaultSkippedBody": "Ni chopïwyd unrhyw ffeil, felly ni fewnforiwyd eich gweinyddwyr wedi'u cadw na'ch cell ddiogel: mae gan y gosodiad Flatpak hwn ei gell ddiogel ei hun eisoes, ar gyfer pob ffeil yn eich ffurfweddiad presennol mae ffeil â'r un enw yma eisoes, ac ni chaiff ffeiliau sy'n bodoli byth eu trosysgrifo.",
+            "importUnreadableResult": "nid oedd AeroFTP yn gallu darllen canlyniad y mewnforio"
         },
         "picker": {
             "unavailable": {

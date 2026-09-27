@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "O AeroFTP encontrou uma configuração existente na sua pasta pessoal. Esta instalação Flatpak usa o seu próprio armazenamento separado, por isso os seus servidores guardados e o cofre cifrado ainda não são visíveis aqui. Importá-los agora? Os ficheiros são apenas copiados, nada é substituído, e o cofre é desbloqueado aqui da mesma forma que agora.",
+            "importBody": "O AeroFTP encontrou uma configuração existente na sua pasta pessoal. Esta instalação Flatpak usa seu próprio armazenamento separado, então seus servidores salvos e o cofre criptografado ainda não aparecem aqui. Importar sua configuração agora? Os arquivos são apenas copiados, e um arquivo que esta instalação Flatpak já tem nunca é sobrescrito.",
             "importAccept": "Importar",
-            "importedBody": "A sua configuração foi importada. Reinicie o AeroFTP para carregar os seus servidores e o cofre.",
+            "importedBody": "Sua configuração foi importada. Reinicie o AeroFTP para carregar seus servidores e o cofre.",
             "restartNow": "Reiniciar agora",
-            "importNothingBody": "Nada para importar: nenhum arquivo precisou ser copiado para esta instalação do Flatpak.",
-            "importFailedBody": "A importação parou com um erro: {error}. Os ficheiros já copiados para esta instalação Flatpak permanecem lá, e nada foi substituído. O AeroFTP voltará a propor a importação no próximo arranque."
+            "importNothingBody": "Nenhum arquivo foi copiado: cada arquivo da sua configuração existente já tem um arquivo com o mesmo nome nesta instalação Flatpak, e arquivos existentes nunca são sobrescritos.",
+            "importFailedBody": "A importação parou com um erro: {error}. Os arquivos já copiados para esta instalação Flatpak permanecem lá, e nada foi sobrescrito. O AeroFTP oferecerá a importação novamente na próxima inicialização.",
+            "importedNoVaultBody": "Sua configuração foi importada. Reinicie o AeroFTP para carregá-la.",
+            "importedVaultSkippedBody": "Parte da sua configuração foi importada, mas não seus servidores salvos e o cofre: esta instalação Flatpak já tem seu próprio cofre, e arquivos existentes nunca são sobrescritos. Reinicie o AeroFTP para carregar o que foi importado.",
+            "importNothingVaultSkippedBody": "Nenhum arquivo foi copiado, então seus servidores salvos e o cofre não foram importados: esta instalação Flatpak já tem seu próprio cofre, cada arquivo da sua configuração existente já tem um arquivo com o mesmo nome aqui, e arquivos existentes nunca são sobrescritos.",
+            "importUnreadableResult": "o AeroFTP não conseguiu ler o resultado da importação"
         },
         "picker": {
             "unavailable": {

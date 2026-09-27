@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP hittade en befintlig konfiguration i din hemmapp. Den här Flatpak-installationen använder sitt eget separata lagringsutrymme, så dina sparade servrar och det krypterade valvet syns inte här ännu. Vill du importera dem nu? Filerna kopieras bara, inget skrivs över, och valvet låses upp här på samma sätt som nu.",
+            "importBody": "AeroFTP hittade en befintlig konfiguration i din hemmapp. Den här Flatpak-installationen använder sitt eget separata lagringsutrymme, så dina sparade servrar och det krypterade valvet syns inte här ännu. Vill du importera din konfiguration nu? Filerna kopieras bara, och en fil som den här Flatpak-installationen redan har skrivs aldrig över.",
             "importAccept": "Importera",
             "importedBody": "Din konfiguration importerades. Starta om AeroFTP för att läsa in dina servrar och ditt valv.",
             "restartNow": "Starta om nu",
-            "importNothingBody": "Inget att importera: inga filer behövde kopieras till denna Flatpak-installation.",
-            "importFailedBody": "Importen stoppades med ett fel: {error}. Filer som redan kopierats in i denna Flatpak-installation ligger kvar där, och inget skrevs över. AeroFTP kommer att erbjuda importen igen vid nästa start."
+            "importNothingBody": "Ingen fil kopierades: för varje fil i din befintliga konfiguration finns det redan en fil med samma namn i den här Flatpak-installationen, och befintliga filer skrivs aldrig över.",
+            "importFailedBody": "Importen stoppades med ett fel: {error}. Filer som redan kopierats in i denna Flatpak-installation ligger kvar där, och inget skrevs över. AeroFTP kommer att erbjuda importen igen vid nästa start.",
+            "importedNoVaultBody": "Din konfiguration importerades. Starta om AeroFTP för att läsa in den.",
+            "importedVaultSkippedBody": "En del av din konfiguration importerades, men inte dina sparade servrar och ditt valv: den här Flatpak-installationen har redan ett eget valv, och befintliga filer skrivs aldrig över. Starta om AeroFTP för att läsa in det som importerades.",
+            "importNothingVaultSkippedBody": "Ingen fil kopierades, så dina sparade servrar och ditt valv importerades inte: den här Flatpak-installationen har redan ett eget valv, för varje fil i din befintliga konfiguration finns det redan en fil med samma namn här, och befintliga filer skrivs aldrig över.",
+            "importUnreadableResult": "AeroFTP kunde inte läsa resultatet av importen"
         },
         "picker": {
             "unavailable": {

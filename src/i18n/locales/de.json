@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP hat eine vorhandene Konfiguration in Ihrem Persönlichen Ordner gefunden. Diese Flatpak-Installation verwendet ihren eigenen getrennten Speicher, daher sind Ihre gespeicherten Server und der verschlüsselte Tresor hier noch nicht sichtbar. Jetzt importieren? Die Dateien werden nur kopiert, nichts wird überschrieben, und der Tresor wird hier auf dieselbe Weise entsperrt wie jetzt.",
+            "importBody": "AeroFTP hat eine vorhandene Konfiguration in Ihrem Persönlichen Ordner gefunden. Diese Flatpak-Installation verwendet ihren eigenen getrennten Speicher, daher sind Ihre gespeicherten Server und der verschlüsselte Tresor hier noch nicht sichtbar. Ihre Konfiguration jetzt importieren? Die Dateien werden nur kopiert, und eine Datei, die diese Flatpak-Installation bereits hat, wird nie überschrieben.",
             "importAccept": "Importieren",
             "importedBody": "Ihre Konfiguration wurde importiert. Starten Sie AeroFTP neu, um Ihre Server und den Tresor zu laden.",
             "restartNow": "Jetzt neu starten",
-            "importNothingBody": "Nichts zu importieren: Es mussten keine Dateien in diese Flatpak-Installation kopiert werden.",
-            "importFailedBody": "Der Import wurde mit einem Fehler abgebrochen: {error}. Dateien, die bereits in diese Flatpak-Installation kopiert wurden, bleiben dort, und nichts wurde überschrieben. AeroFTP bietet den Import beim nächsten Start erneut an."
+            "importNothingBody": "Es wurde keine Datei kopiert: Zu jeder Datei Ihrer vorhandenen Konfiguration gibt es in dieser Flatpak-Installation bereits eine Datei mit demselben Namen, und vorhandene Dateien werden nie überschrieben.",
+            "importFailedBody": "Der Import wurde mit einem Fehler abgebrochen: {error}. Dateien, die bereits in diese Flatpak-Installation kopiert wurden, bleiben dort, und nichts wurde überschrieben. AeroFTP bietet den Import beim nächsten Start erneut an.",
+            "importedNoVaultBody": "Ihre Konfiguration wurde importiert. Starten Sie AeroFTP neu, um sie zu laden.",
+            "importedVaultSkippedBody": "Ein Teil Ihrer Konfiguration wurde importiert, nicht jedoch Ihre gespeicherten Server und der Tresor: Diese Flatpak-Installation hat bereits einen eigenen Tresor, und vorhandene Dateien werden nie überschrieben. Starten Sie AeroFTP neu, um das Importierte zu laden.",
+            "importNothingVaultSkippedBody": "Es wurde keine Datei kopiert, daher wurden Ihre gespeicherten Server und der Tresor nicht importiert: Diese Flatpak-Installation hat bereits einen eigenen Tresor, zu jeder Datei Ihrer vorhandenen Konfiguration gibt es hier bereits eine Datei mit demselben Namen, und vorhandene Dateien werden nie überschrieben.",
+            "importUnreadableResult": "AeroFTP konnte das Ergebnis des Imports nicht lesen"
         },
         "picker": {
             "unavailable": {

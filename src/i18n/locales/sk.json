@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP našiel existujúcu konfiguráciu vo vašom domovskom priečinku. Táto inštalácia cez Flatpak používa vlastné oddelené úložisko, takže vaše uložené servery a šifrovaný trezor tu zatiaľ nie sú viditeľné. Chcete ich teraz importovať? Súbory sa iba skopírujú, nič sa neprepíše a trezor sa tu odomyká rovnako ako teraz.",
+            "importBody": "AeroFTP našiel existujúcu konfiguráciu vo vašom domovskom priečinku. Táto inštalácia cez Flatpak používa vlastné oddelené úložisko, takže vaše uložené servery a šifrovaný trezor tu zatiaľ nie sú viditeľné. Chcete teraz importovať svoju konfiguráciu? Súbory sa iba kopírujú a súbor, ktorý táto inštalácia Flatpak už má, sa nikdy neprepíše.",
             "importAccept": "Importovať",
             "importedBody": "Vaša konfigurácia bola importovaná. Reštartujte AeroFTP, aby sa načítali vaše servery a trezor.",
             "restartNow": "Reštartovať teraz",
-            "importNothingBody": "Nie je čo importovať: do tejto inštalácie Flatpak nebolo potrebné skopírovať žiadne súbory.",
-            "importFailedBody": "Import sa zastavil s chybou: {error}. Súbory už skopírované do tejto inštalácie Flatpak tam zostávajú a nič nebolo prepísané. AeroFTP ponúkne import znova pri ďalšom spustení."
+            "importNothingBody": "Nebol skopírovaný žiadny súbor: ku každému súboru vašej existujúcej konfigurácie už v tejto inštalácii Flatpak existuje súbor s rovnakým názvom a existujúce súbory sa nikdy neprepisujú.",
+            "importFailedBody": "Import sa zastavil s chybou: {error}. Súbory už skopírované do tejto inštalácie Flatpak tam zostávajú a nič nebolo prepísané. AeroFTP ponúkne import znova pri ďalšom spustení.",
+            "importedNoVaultBody": "Vaša konfigurácia bola importovaná. Reštartujte AeroFTP, aby sa načítala.",
+            "importedVaultSkippedBody": "Časť vašej konfigurácie bola importovaná, ale nie vaše uložené servery a trezor: táto inštalácia Flatpak už má vlastný trezor a existujúce súbory sa nikdy neprepisujú. Reštartujte AeroFTP, aby sa načítalo to, čo bolo importované.",
+            "importNothingVaultSkippedBody": "Nebol skopírovaný žiadny súbor, takže vaše uložené servery a trezor neboli importované: táto inštalácia Flatpak už má vlastný trezor, ku každému súboru vašej existujúcej konfigurácie tu už existuje súbor s rovnakým názvom a existujúce súbory sa nikdy neprepisujú.",
+            "importUnreadableResult": "AeroFTP nemohol prečítať výsledok importu"
         },
         "picker": {
             "unavailable": {

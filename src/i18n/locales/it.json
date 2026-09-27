@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP ha trovato una configurazione esistente nella tua cartella home. Questa installazione Flatpak usa un proprio spazio di archiviazione separato, quindi i server salvati e la cassaforte cifrata non sono ancora visibili qui. Importarli ora? I file vengono solo copiati, nulla viene sovrascritto e la cassaforte si sblocca qui nello stesso modo in cui si sblocca ora.",
+            "importBody": "AeroFTP ha trovato una configurazione esistente nella tua cartella home. Questa installazione Flatpak usa un proprio spazio di archiviazione separato, quindi i server salvati e la cassaforte cifrata non sono ancora visibili qui. Importare ora la tua configurazione? I file vengono solo copiati, e un file che questa installazione Flatpak ha già non viene mai sovrascritto.",
             "importAccept": "Importa",
             "importedBody": "La tua configurazione è stata importata. Riavvia AeroFTP per caricare i tuoi server e la cassaforte.",
             "restartNow": "Riavvia ora",
-            "importNothingBody": "Niente da importare: non c'era nessun file da copiare in questa installazione Flatpak.",
-            "importFailedBody": "L'importazione si è interrotta con un errore: {error}. I file già copiati in questa installazione Flatpak restano lì, e nulla è stato sovrascritto. AeroFTP proporrà di nuovo l'importazione al prossimo avvio."
+            "importNothingBody": "Nessun file è stato copiato: ogni file della configurazione esistente ha già un file con lo stesso nome in questa installazione Flatpak, e i file esistenti non vengono mai sovrascritti.",
+            "importFailedBody": "L'importazione si è interrotta con un errore: {error}. I file già copiati in questa installazione Flatpak restano lì, e nulla è stato sovrascritto. AeroFTP proporrà di nuovo l'importazione al prossimo avvio.",
+            "importedNoVaultBody": "La tua configurazione è stata importata. Riavvia AeroFTP per caricarla.",
+            "importedVaultSkippedBody": "Una parte della tua configurazione è stata importata, ma non i server salvati e la cassaforte: questa installazione Flatpak ha già una propria cassaforte, e i file esistenti non vengono mai sovrascritti. Riavvia AeroFTP per caricare ciò che è stato importato.",
+            "importNothingVaultSkippedBody": "Nessun file è stato copiato, quindi i server salvati e la cassaforte non sono stati importati: questa installazione Flatpak ha già una propria cassaforte, ogni file della configurazione esistente ha già qui un file con lo stesso nome, e i file esistenti non vengono mai sovrascritti.",
+            "importUnreadableResult": "AeroFTP non è riuscito a leggere il risultato dell'importazione"
         },
         "picker": {
             "unavailable": {

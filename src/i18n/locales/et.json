@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP leidis teie kodukaustast olemasoleva konfiguratsiooni. See Flatpaki paigaldus kasutab oma eraldi salvestusruumi, seega pole teie salvestatud serverid ja krüptitud hoidla siin veel nähtavad. Kas importida need kohe? Failid ainult kopeeritakse, midagi ei kirjutata üle ning hoidla avaneb siin samamoodi nagu praegu.",
+            "importBody": "AeroFTP leidis teie kodukaustast olemasoleva konfiguratsiooni. See Flatpaki paigaldus kasutab oma eraldi salvestusruumi, seega pole teie salvestatud serverid ja krüptitud hoidla siin veel nähtavad. Kas importida teie konfiguratsioon kohe? Failid ainult kopeeritakse ning faili, mis selles Flatpaki paigalduses juba olemas on, ei kirjutata kunagi üle.",
             "importAccept": "Impordi",
             "importedBody": "Teie konfiguratsioon imporditi. Taaskäivitage AeroFTP, et laadida oma serverid ja hoidla.",
             "restartNow": "Taaskäivita kohe",
-            "importNothingBody": "Pole midagi importida: sellesse Flatpaki paigaldusse ei olnud vaja ühtegi faili kopeerida.",
-            "importFailedBody": "Importimine peatus veaga: {error}. Sellesse Flatpaki paigaldusse juba kopeeritud failid jäävad sinna alles ja midagi ei kirjutatud üle. AeroFTP pakub importimist uuesti järgmisel käivitamisel."
+            "importNothingBody": "Ühtegi faili ei kopeeritud: iga teie olemasoleva konfiguratsiooni faili jaoks on selles Flatpaki paigalduses juba sama nimega fail ning olemasolevaid faile ei kirjutata kunagi üle.",
+            "importFailedBody": "Importimine peatus veaga: {error}. Sellesse Flatpaki paigaldusse juba kopeeritud failid jäävad sinna alles ja midagi ei kirjutatud üle. AeroFTP pakub importimist uuesti järgmisel käivitamisel.",
+            "importedNoVaultBody": "Teie konfiguratsioon imporditi. Taaskäivitage AeroFTP, et see laadida.",
+            "importedVaultSkippedBody": "Osa teie konfiguratsioonist imporditi, kuid mitte teie salvestatud serverid ja hoidla: selles Flatpaki paigalduses on juba oma hoidla ning olemasolevaid faile ei kirjutata kunagi üle. Taaskäivitage AeroFTP, et laadida imporditu.",
+            "importNothingVaultSkippedBody": "Ühtegi faili ei kopeeritud, seega teie salvestatud servereid ja hoidlat ei imporditud: selles Flatpaki paigalduses on juba oma hoidla, iga teie olemasoleva konfiguratsiooni faili jaoks on siin juba sama nimega fail ning olemasolevaid faile ei kirjutata kunagi üle.",
+            "importUnreadableResult": "AeroFTP ei suutnud importimise tulemust lugeda"
         },
         "picker": {
             "unavailable": {

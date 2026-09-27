@@ -804,7 +804,7 @@
             "keystoreDecisionKeepBoth": "Bakiza zote mbili",
             "keystoreCopyName": "{name} (kutoka nakala)",
             "keystorePreviewLocalFromVault": "Orodha ya wasifu wa seva ya kifaa hiki haikuweza kusomwa, kwa hivyo ulinganisho unatumia orodha ya seva iliyohifadhiwa kwenye hifadhi salama.",
-            "keystoreDecisionsFailed": "Uletaji umekamilika, lakini chaguo zako za wasifu wa seva hazikuweza kutumika: {error}",
+            "keystoreDecisionsFailed": "Uingizaji umekamilika, lakini chaguo zako za wasifu wa seva hazikuweza kutumika: {error}",
             "exportKeystoreDesc": "Hamisha vitambulisho vyote vilivyosimbwa kwenye faili ya hifadhi rudufu",
             "importKeystoreDesc": "Ingiza vitambulisho kutoka faili ya hifadhi rudufu",
             "keystoreExported": "Hazina imehamishwa kwa mafanikio (vipengele {count})",
@@ -1194,7 +1194,7 @@
             "uiTokensReset": "Futa mabadiliko",
             "uiTokensApplied": "Mabadiliko yaliyotumika: {count}",
             "uiTokensRejected": "Maingizo yaliyokataliwa: {count}",
-            "keystorePreferencesFailed": "Uletaji umekamilika, lakini mapendeleo yako ya programu hayakuweza kurejeshwa: {error}"
+            "keystorePreferencesFailed": "Uingizaji umekamilika, lakini mapendeleo yako ya programu hayakuweza kurejeshwa: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP imepata usanidi uliopo katika folda yako ya nyumbani. Usakinishaji huu wa Flatpak hutumia hifadhi yake tofauti, kwa hivyo seva zako zilizohifadhiwa na kasha lililosimbwa hazionekani hapa bado. Uziingize sasa? Faili hunakiliwa tu, hakuna kinachoandikwa juu, na kasha lako hufunguliwa hapa kwa njia ile ile kama sasa.",
+            "importBody": "AeroFTP imepata usanidi uliopo katika folda yako ya nyumbani. Usakinishaji huu wa Flatpak hutumia hifadhi yake tofauti, kwa hivyo seva zako zilizohifadhiwa na kasha lako lililosimbwa hazionekani hapa bado. Uingize usanidi wako sasa? Faili hunakiliwa tu, na faili ambayo usakinishaji huu wa Flatpak tayari unayo haiandikwi juu kamwe.",
             "importAccept": "Ingiza",
             "importedBody": "Usanidi wako umeingizwa. Anzisha upya AeroFTP ili kupakia seva zako na kasha lako.",
             "restartNow": "Anzisha upya sasa",
-            "importNothingBody": "Hakuna kitu cha kuingiza: hakuna faili zilizohitaji kunakiliwa katika usakinishaji huu wa Flatpak.",
-            "importFailedBody": "Uagizaji umesimama na hitilafu: {error}. Faili tayari zilizonakiliwa kwenye usakinishaji huu wa Flatpak zinabaki hapo, na hakuna kilichoandikwa upya. AeroFTP itapendekeza tena uagizaji katika kuanza kwa mara nyingine."
+            "importNothingBody": "Hakuna faili iliyonakiliwa: kila faili ya usanidi wako uliopo tayari ina faili yenye jina lile lile katika usakinishaji huu wa Flatpak, na faili zilizopo haziandikwi juu kamwe.",
+            "importFailedBody": "Uingizaji umesimama na hitilafu: {error}. Faili ambazo tayari zimenakiliwa kwenye usakinishaji huu wa Flatpak zinabaki hapo, na hakuna kilichoandikwa juu. AeroFTP itapendekeza uingizaji tena wakati wa kuanza unaofuata.",
+            "importedNoVaultBody": "Usanidi wako umeingizwa. Anzisha upya AeroFTP ili kuupakia.",
+            "importedVaultSkippedBody": "Sehemu ya usanidi wako imeingizwa, lakini si seva zako zilizohifadhiwa na kasha lako: usakinishaji huu wa Flatpak tayari una kasha lake lenyewe, na faili zilizopo haziandikwi juu kamwe. Anzisha upya AeroFTP ili kupakia kilichoingizwa.",
+            "importNothingVaultSkippedBody": "Hakuna faili iliyonakiliwa, kwa hivyo seva zako zilizohifadhiwa na kasha lako havikuingizwa: usakinishaji huu wa Flatpak tayari una kasha lake lenyewe, kila faili ya usanidi wako uliopo tayari ina faili yenye jina lile lile hapa, na faili zilizopo haziandikwi juu kamwe.",
+            "importUnreadableResult": "AeroFTP haikuweza kusoma matokeo ya uingizaji"
         },
         "picker": {
             "unavailable": {

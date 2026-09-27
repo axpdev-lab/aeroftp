@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP atrada esošu konfigurāciju jūsu mājas mapē. Šī Flatpak instalācija izmanto savu atsevišķu krātuvi, tāpēc jūsu saglabātie serveri un šifrētais seifs šeit vēl nav redzami. Vai importēt tos tagad? Faili tiek tikai kopēti, nekas netiek pārrakstīts, un seifs šeit tiek atbloķēts tāpat kā tagad.",
+            "importBody": "AeroFTP atrada esošu konfigurāciju jūsu mājas mapē. Šī Flatpak instalācija izmanto savu atsevišķu krātuvi, tāpēc jūsu saglabātie serveri un šifrētais seifs šeit vēl nav redzami. Vai importēt jūsu konfigurāciju tagad? Faili tiek tikai kopēti, un fails, kas šajā Flatpak instalācijā jau ir, nekad netiek pārrakstīts.",
             "importAccept": "Importēt",
             "importedBody": "Jūsu konfigurācija tika importēta. Restartējiet AeroFTP, lai ielādētu savus serverus un seifu.",
             "restartNow": "Restartēt tagad",
-            "importNothingBody": "Nav ko importēt: šajā Flatpak instalācijā nebija jākopē neviens fails.",
-            "importFailedBody": "Importēšana apstājās ar kļūdu: {error}. Faili, kas jau nokopēti šajā Flatpak instalācijā, paliek tur, un nekas netika pārrakstīts. AeroFTP nākamajā palaišanas reizē piedāvās importēšanu vēlreiz."
+            "importNothingBody": "Netika nokopēts neviens fails: katram jūsu esošās konfigurācijas failam šajā Flatpak instalācijā jau ir fails ar tādu pašu nosaukumu, un esošie faili nekad netiek pārrakstīti.",
+            "importFailedBody": "Importēšana apstājās ar kļūdu: {error}. Faili, kas jau nokopēti šajā Flatpak instalācijā, paliek tur, un nekas netika pārrakstīts. AeroFTP nākamajā palaišanas reizē piedāvās importēšanu vēlreiz.",
+            "importedNoVaultBody": "Jūsu konfigurācija tika importēta. Restartējiet AeroFTP, lai to ielādētu.",
+            "importedVaultSkippedBody": "Daļa jūsu konfigurācijas tika importēta, bet ne jūsu saglabātie serveri un seifs: šajā Flatpak instalācijā jau ir savs seifs, un esošie faili nekad netiek pārrakstīti. Restartējiet AeroFTP, lai ielādētu importēto.",
+            "importNothingVaultSkippedBody": "Netika nokopēts neviens fails, tāpēc jūsu saglabātie serveri un seifs netika importēti: šajā Flatpak instalācijā jau ir savs seifs, katram jūsu esošās konfigurācijas failam šeit jau ir fails ar tādu pašu nosaukumu, un esošie faili nekad netiek pārrakstīti.",
+            "importUnreadableResult": "AeroFTP neizdevās nolasīt importēšanas rezultātu"
         },
         "picker": {
             "unavailable": {

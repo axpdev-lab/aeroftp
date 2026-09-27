@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP, ev klasörünüzde mevcut bir yapılandırma buldu. Bu Flatpak kurulumu kendi ayrı depolamasını kullandığından, kayıtlı sunucularınız ve şifreli kasanız burada henüz görünmüyor. Şimdi içe aktarılsın mı? Dosyalar yalnızca kopyalanır, hiçbir şeyin üzerine yazılmaz ve kasanız burada şu anki ile aynı şekilde açılır.",
+            "importBody": "AeroFTP, ev klasörünüzde mevcut bir yapılandırma buldu. Bu Flatpak kurulumu kendi ayrı depolamasını kullandığından, kayıtlı sunucularınız ve şifreli kasanız burada henüz görünmüyor. Yapılandırmanız şimdi içe aktarılsın mı? Dosyalar yalnızca kopyalanır ve bu Flatpak kurulumunda zaten bulunan bir dosyanın üzerine asla yazılmaz.",
             "importAccept": "İçe aktar",
             "importedBody": "Yapılandırmanız içe aktarıldı. Sunucularınızı ve kasanızı yüklemek için AeroFTP'yi yeniden başlatın.",
             "restartNow": "Şimdi yeniden başlat",
-            "importNothingBody": "İçe aktarılacak bir şey yok: bu Flatpak kurulumuna kopyalanması gereken herhangi bir dosya yoktu.",
-            "importFailedBody": "İçe aktarma bir hatayla durdu: {error}. Bu Flatpak kurulumuna zaten kopyalanmış olan dosyalar orada kalır ve hiçbir şeyin üzerine yazılmadı. AeroFTP, içe aktarmayı bir sonraki başlatmada yeniden önerecek."
+            "importNothingBody": "Hiçbir dosya kopyalanmadı: mevcut yapılandırmanızdaki her dosya için bu Flatpak kurulumunda zaten aynı ada sahip bir dosya var ve mevcut dosyaların üzerine asla yazılmaz.",
+            "importFailedBody": "İçe aktarma bir hatayla durdu: {error}. Bu Flatpak kurulumuna zaten kopyalanmış olan dosyalar orada kalır ve hiçbir şeyin üzerine yazılmadı. AeroFTP, içe aktarmayı bir sonraki başlatmada yeniden önerecek.",
+            "importedNoVaultBody": "Yapılandırmanız içe aktarıldı. Yüklemek için AeroFTP'yi yeniden başlatın.",
+            "importedVaultSkippedBody": "Yapılandırmanızın bir kısmı içe aktarıldı, ancak kayıtlı sunucularınız ve kasanız aktarılmadı: bu Flatpak kurulumunun zaten kendi kasası var ve mevcut dosyaların üzerine asla yazılmaz. İçe aktarılanları yüklemek için AeroFTP'yi yeniden başlatın.",
+            "importNothingVaultSkippedBody": "Hiçbir dosya kopyalanmadı, bu nedenle kayıtlı sunucularınız ve kasanız içe aktarılmadı: bu Flatpak kurulumunun zaten kendi kasası var, mevcut yapılandırmanızdaki her dosya için burada zaten aynı ada sahip bir dosya var ve mevcut dosyaların üzerine asla yazılmaz.",
+            "importUnreadableResult": "AeroFTP içe aktarmanın sonucunu okuyamadı"
         },
         "picker": {
             "unavailable": {

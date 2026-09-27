@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP menemukan konfigurasi yang ada di folder beranda Anda. Pemasangan Flatpak ini menggunakan penyimpanannya sendiri yang terpisah, jadi server tersimpan dan brankas terenkripsi Anda belum terlihat di sini. Impor sekarang? File hanya disalin, tidak ada yang ditimpa, dan brankas terbuka di sini dengan cara yang sama seperti sekarang.",
+            "importBody": "AeroFTP menemukan konfigurasi yang ada di folder beranda Anda. Instalasi Flatpak ini menggunakan penyimpanannya sendiri yang terpisah, jadi server tersimpan dan brankas terenkripsi Anda belum terlihat di sini. Impor konfigurasi Anda sekarang? File hanya disalin, dan file yang sudah dimiliki instalasi Flatpak ini tidak pernah ditimpa.",
             "importAccept": "Impor",
             "importedBody": "Konfigurasi Anda telah diimpor. Mulai ulang AeroFTP untuk memuat server dan brankas Anda.",
             "restartNow": "Mulai ulang sekarang",
-            "importNothingBody": "Tidak ada yang perlu diimpor: tidak ada file yang perlu disalin ke instalasi Flatpak ini.",
-            "importFailedBody": "Impor berhenti karena galat: {error}. File yang sudah disalin ke instalasi Flatpak ini tetap berada di sana, dan tidak ada yang ditimpa. AeroFTP akan menawarkan impor lagi saat aplikasi dijalankan berikutnya."
+            "importNothingBody": "Tidak ada file yang disalin: setiap file dari konfigurasi Anda yang ada sudah memiliki file dengan nama yang sama di instalasi Flatpak ini, dan file yang sudah ada tidak pernah ditimpa.",
+            "importFailedBody": "Impor berhenti karena galat: {error}. File yang sudah disalin ke instalasi Flatpak ini tetap berada di sana, dan tidak ada yang ditimpa. AeroFTP akan menawarkan impor lagi saat aplikasi dijalankan berikutnya.",
+            "importedNoVaultBody": "Konfigurasi Anda telah diimpor. Mulai ulang AeroFTP untuk memuatnya.",
+            "importedVaultSkippedBody": "Sebagian konfigurasi Anda telah diimpor, tetapi tidak termasuk server tersimpan dan brankas Anda: instalasi Flatpak ini sudah memiliki brankasnya sendiri, dan file yang sudah ada tidak pernah ditimpa. Mulai ulang AeroFTP untuk memuat apa yang telah diimpor.",
+            "importNothingVaultSkippedBody": "Tidak ada file yang disalin, jadi server tersimpan dan brankas Anda tidak diimpor: instalasi Flatpak ini sudah memiliki brankasnya sendiri, setiap file dari konfigurasi Anda yang ada sudah memiliki file dengan nama yang sama di sini, dan file yang sudah ada tidak pernah ditimpa.",
+            "importUnreadableResult": "AeroFTP tidak dapat membaca hasil impor"
         },
         "picker": {
             "unavailable": {

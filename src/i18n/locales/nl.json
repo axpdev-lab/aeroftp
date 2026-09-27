@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP heeft een bestaande configuratie in uw persoonlijke map gevonden. Deze Flatpak-installatie gebruikt zijn eigen aparte opslag, dus uw opgeslagen servers en versleutelde kluis zijn hier nog niet zichtbaar. Nu importeren? Bestanden worden alleen gekopieerd, er wordt niets overschreven, en de kluis wordt hier op dezelfde manier ontgrendeld als nu.",
+            "importBody": "AeroFTP heeft een bestaande configuratie in uw persoonlijke map gevonden. Deze Flatpak-installatie gebruikt zijn eigen aparte opslag, dus uw opgeslagen servers en versleutelde kluis zijn hier nog niet zichtbaar. Uw configuratie nu importeren? Bestanden worden alleen gekopieerd, en een bestand dat deze Flatpak-installatie al heeft, wordt nooit overschreven.",
             "importAccept": "Importeren",
             "importedBody": "Uw configuratie is geïmporteerd. Start AeroFTP opnieuw op om uw servers en kluis te laden.",
             "restartNow": "Nu opnieuw opstarten",
-            "importNothingBody": "Niets te importeren: er hoefden geen bestanden naar deze Flatpak-installatie te worden gekopieerd.",
-            "importFailedBody": "Het importeren is gestopt met een fout: {error}. Bestanden die al naar deze Flatpak-installatie zijn gekopieerd, blijven daar staan, en er is niets overschreven. AeroFTP zal het importeren bij de volgende start opnieuw aanbieden."
+            "importNothingBody": "Er is geen bestand gekopieerd: voor elk bestand van uw bestaande configuratie staat in deze Flatpak-installatie al een bestand met dezelfde naam, en bestaande bestanden worden nooit overschreven.",
+            "importFailedBody": "Het importeren is gestopt met een fout: {error}. Bestanden die al naar deze Flatpak-installatie zijn gekopieerd, blijven daar staan, en er is niets overschreven. AeroFTP zal het importeren bij de volgende start opnieuw aanbieden.",
+            "importedNoVaultBody": "Uw configuratie is geïmporteerd. Start AeroFTP opnieuw op om deze te laden.",
+            "importedVaultSkippedBody": "Een deel van uw configuratie is geïmporteerd, maar niet uw opgeslagen servers en kluis: deze Flatpak-installatie heeft al een eigen kluis, en bestaande bestanden worden nooit overschreven. Start AeroFTP opnieuw op om te laden wat is geïmporteerd.",
+            "importNothingVaultSkippedBody": "Er is geen bestand gekopieerd, dus uw opgeslagen servers en kluis zijn niet geïmporteerd: deze Flatpak-installatie heeft al een eigen kluis, voor elk bestand van uw bestaande configuratie staat hier al een bestand met dezelfde naam, en bestaande bestanden worden nooit overschreven.",
+            "importUnreadableResult": "AeroFTP kon het resultaat van het importeren niet lezen"
         },
         "picker": {
             "unavailable": {

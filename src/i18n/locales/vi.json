@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP đã tìm thấy một cấu hình hiện có trong thư mục chính của bạn. Bản cài đặt Flatpak này sử dụng bộ lưu trữ riêng biệt của nó, vì vậy các máy chủ đã lưu và két an toàn được mã hóa của bạn chưa hiển thị ở đây. Nhập chúng ngay bây giờ? Các tệp chỉ được sao chép, không có gì bị ghi đè, và két an toàn của bạn được mở khóa ở đây theo cùng cách như hiện tại.",
+            "importBody": "AeroFTP đã tìm thấy một cấu hình hiện có trong thư mục chính của bạn. Bản cài đặt Flatpak này sử dụng bộ lưu trữ riêng biệt của nó, vì vậy các máy chủ đã lưu và két an toàn được mã hóa của bạn chưa hiển thị ở đây. Nhập cấu hình của bạn ngay bây giờ? Các tệp chỉ được sao chép, và một tệp mà bản cài đặt Flatpak này đã có sẽ không bao giờ bị ghi đè.",
             "importAccept": "Nhập",
             "importedBody": "Cấu hình của bạn đã được nhập. Khởi động lại AeroFTP để tải các máy chủ và két an toàn của bạn.",
             "restartNow": "Khởi động lại ngay",
-            "importNothingBody": "Không có gì để nhập: không có tệp nào cần sao chép vào bản cài đặt Flatpak này.",
-            "importFailedBody": "Quá trình nhập đã dừng do lỗi: {error}. Các tệp đã được sao chép vào bản cài đặt Flatpak này vẫn giữ nguyên ở đó, và không có gì bị ghi đè. AeroFTP sẽ đề xuất nhập lại vào lần khởi động tiếp theo."
+            "importNothingBody": "Không có tệp nào được sao chép: mỗi tệp trong cấu hình hiện có của bạn đều đã có một tệp cùng tên trong bản cài đặt Flatpak này, và các tệp hiện có không bao giờ bị ghi đè.",
+            "importFailedBody": "Quá trình nhập đã dừng do lỗi: {error}. Các tệp đã được sao chép vào bản cài đặt Flatpak này vẫn giữ nguyên ở đó, và không có gì bị ghi đè. AeroFTP sẽ đề xuất nhập lại vào lần khởi động tiếp theo.",
+            "importedNoVaultBody": "Cấu hình của bạn đã được nhập. Khởi động lại AeroFTP để tải cấu hình.",
+            "importedVaultSkippedBody": "Một phần cấu hình của bạn đã được nhập, nhưng không bao gồm các máy chủ đã lưu và két an toàn của bạn: bản cài đặt Flatpak này đã có két an toàn riêng, và các tệp hiện có không bao giờ bị ghi đè. Khởi động lại AeroFTP để tải những gì đã được nhập.",
+            "importNothingVaultSkippedBody": "Không có tệp nào được sao chép, vì vậy các máy chủ đã lưu và két an toàn của bạn không được nhập: bản cài đặt Flatpak này đã có két an toàn riêng, mỗi tệp trong cấu hình hiện có của bạn đều đã có một tệp cùng tên ở đây, và các tệp hiện có không bao giờ bị ghi đè.",
+            "importUnreadableResult": "AeroFTP không thể đọc kết quả của quá trình nhập"
         },
         "picker": {
             "unavailable": {

@@ -5889,12 +5889,16 @@
             }
         },
         "flatpak": {
-            "importBody": "May natagpuang umiiral na configuration ang AeroFTP sa iyong home folder. Ang Flatpak install na ito ay gumagamit ng sarili nitong hiwalay na storage, kaya hindi pa nakikita rito ang iyong mga na-save na server at naka-encrypt na vault. Iimport ba ang mga ito ngayon? Kinokopya lang ang mga file, walang na-o-overwrite, at na-a-unlock ang iyong vault dito sa parehong paraan tulad ngayon.",
+            "importBody": "May natagpuang umiiral na configuration ang AeroFTP sa iyong home folder. Ang Flatpak install na ito ay gumagamit ng sarili nitong hiwalay na storage, kaya hindi pa nakikita rito ang iyong mga na-save na server at naka-encrypt na vault. I-import ba ang iyong configuration ngayon? Kinokopya lang ang mga file, at hindi kailanman na-o-overwrite ang file na mayroon na ang Flatpak install na ito.",
             "importAccept": "Import",
             "importedBody": "Na-import ang iyong configuration. I-restart ang AeroFTP para i-load ang iyong mga server at vault.",
             "restartNow": "I-restart ngayon",
-            "importNothingBody": "Walang dapat i-import: walang file na kailangang kopyahin sa pag-install na ito ng Flatpak.",
-            "importFailedBody": "Huminto ang pag-import dahil sa error: {error}. Ang mga file na na-kopya na sa Flatpak install na ito ay nananatili roon, at walang na-overwrite. Muling iaalok ng AeroFTP ang pag-import sa susunod na pagsisimula."
+            "importNothingBody": "Walang file na nakopya: bawat file ng iyong umiiral na configuration ay mayroon nang file na may parehong pangalan sa Flatpak install na ito, at hindi kailanman na-o-overwrite ang mga umiiral na file.",
+            "importFailedBody": "Huminto ang pag-import dahil sa error: {error}. Ang mga file na na-kopya na sa Flatpak install na ito ay nananatili roon, at walang na-overwrite. Muling iaalok ng AeroFTP ang pag-import sa susunod na pagsisimula.",
+            "importedNoVaultBody": "Na-import ang iyong configuration. I-restart ang AeroFTP para i-load ito.",
+            "importedVaultSkippedBody": "Na-import ang bahagi ng iyong configuration, pero hindi ang iyong mga na-save na server at vault: may sarili nang vault ang Flatpak install na ito, at hindi kailanman na-o-overwrite ang mga umiiral na file. I-restart ang AeroFTP para i-load ang na-import.",
+            "importNothingVaultSkippedBody": "Walang file na nakopya, kaya hindi na-import ang iyong mga na-save na server at vault: may sarili nang vault ang Flatpak install na ito, bawat file ng iyong umiiral na configuration ay mayroon nang file na may parehong pangalan dito, at hindi kailanman na-o-overwrite ang mga umiiral na file.",
+            "importUnreadableResult": "hindi nagawang basahin ng AeroFTP ang resulta ng pag-import"
         },
         "picker": {
             "unavailable": {

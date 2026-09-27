@@ -5889,12 +5889,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP ha trobat una configuració existent a la vostra carpeta personal. Aquesta instal·lació de Flatpak utilitza el seu propi emmagatzematge separat, de manera que els servidors desats i la caixa forta xifrada encara no es veuen aquí. Els voleu importar ara? Els fitxers només es copien, no se sobreescriu res, i la caixa forta es desbloqueja aquí de la mateixa manera que ara.",
+            "importBody": "AeroFTP ha trobat una configuració existent a la vostra carpeta personal. Aquesta instal·lació de Flatpak utilitza el seu propi emmagatzematge separat, de manera que els servidors desats i la caixa forta xifrada encara no es veuen aquí. Voleu importar la configuració ara? Els fitxers només es copien, i mai no se sobreescriu un fitxer que aquesta instal·lació de Flatpak ja tingui.",
             "importAccept": "Importa",
             "importedBody": "S'ha importat la configuració. Reinicieu AeroFTP per carregar els servidors i la caixa forta.",
             "restartNow": "Reinicia ara",
-            "importNothingBody": "Res per importar: no calia copiar cap fitxer en aquesta instal·lació de Flatpak.",
-            "importFailedBody": "La importació s'ha aturat amb un error: {error}. Els fitxers ja copiats en aquesta instal·lació de Flatpak hi romanen, i no s'ha sobreescrit res. AeroFTP tornarà a oferir la importació en el pròxim inici."
+            "importNothingBody": "No s'ha copiat cap fitxer: cada fitxer de la configuració existent ja té un fitxer amb el mateix nom en aquesta instal·lació de Flatpak, i els fitxers existents mai no se sobreescriuen.",
+            "importFailedBody": "La importació s'ha aturat amb un error: {error}. Els fitxers ja copiats en aquesta instal·lació de Flatpak hi romanen, i no s'ha sobreescrit res. AeroFTP tornarà a oferir la importació en el pròxim inici.",
+            "importedNoVaultBody": "S'ha importat la configuració. Reinicieu AeroFTP per carregar-la.",
+            "importedVaultSkippedBody": "S'ha importat una part de la configuració, però no els servidors desats ni la caixa forta: aquesta instal·lació de Flatpak ja té la seva pròpia caixa forta, i els fitxers existents mai no se sobreescriuen. Reinicieu AeroFTP per carregar el que s'ha importat.",
+            "importNothingVaultSkippedBody": "No s'ha copiat cap fitxer, de manera que els servidors desats i la caixa forta no s'han importat: aquesta instal·lació de Flatpak ja té la seva pròpia caixa forta, cada fitxer de la configuració existent ja té un fitxer amb el mateix nom aquí, i els fitxers existents mai no se sobreescriuen.",
+            "importUnreadableResult": "AeroFTP no ha pogut llegir el resultat de la importació"
         },
         "picker": {
             "unavailable": {

@@ -5870,12 +5870,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP je našel obstoječo konfiguracijo v vaši domači mapi. Ta namestitev Flatpak uporablja svojo ločeno shrambo, zato vaši shranjeni strežniki in šifrirani trezor tukaj še niso vidni. Jih želite zdaj uvoziti? Datoteke se samo kopirajo, nič se ne prepiše, trezor pa se tukaj odklene na enak način kot zdaj.",
+            "importBody": "AeroFTP je našel obstoječo konfiguracijo v vaši domači mapi. Ta namestitev Flatpak uporablja svojo ločeno shrambo, zato vaši shranjeni strežniki in šifrirani trezor tukaj še niso vidni. Želite zdaj uvoziti svojo konfiguracijo? Datoteke se samo kopirajo, datoteka, ki jo ta namestitev Flatpak že ima, pa se nikoli ne prepiše.",
             "importAccept": "Uvozi",
             "importedBody": "Vaša konfiguracija je bila uvožena. Znova zaženite AeroFTP, da naložite svoje strežnike in trezor.",
             "restartNow": "Znova zaženi zdaj",
-            "importNothingBody": "Ni česa uvoziti: v to namestitev Flatpak ni bilo treba kopirati nobenih datotek.",
-            "importFailedBody": "Uvoz se je ustavil z napako: {error}. Datoteke, ki so že kopirane v to namestitev Flatpak, ostanejo tam, in nič ni bilo prepisano. AeroFTP bo uvoz znova ponudil ob naslednjem zagonu."
+            "importNothingBody": "Nobena datoteka ni bila kopirana: za vsako datoteko vaše obstoječe konfiguracije v tej namestitvi Flatpak že obstaja datoteka z enakim imenom, obstoječe datoteke pa se nikoli ne prepišejo.",
+            "importFailedBody": "Uvoz se je ustavil z napako: {error}. Datoteke, ki so že kopirane v to namestitev Flatpak, ostanejo tam, in nič ni bilo prepisano. AeroFTP bo uvoz znova ponudil ob naslednjem zagonu.",
+            "importedNoVaultBody": "Vaša konfiguracija je bila uvožena. Znova zaženite AeroFTP, da jo naložite.",
+            "importedVaultSkippedBody": "Del vaše konfiguracije je bil uvožen, vaši shranjeni strežniki in trezor pa ne: ta namestitev Flatpak že ima svoj trezor, obstoječe datoteke pa se nikoli ne prepišejo. Znova zaženite AeroFTP, da naložite, kar je bilo uvoženo.",
+            "importNothingVaultSkippedBody": "Nobena datoteka ni bila kopirana, zato vaši shranjeni strežniki in trezor niso bili uvoženi: ta namestitev Flatpak že ima svoj trezor, za vsako datoteko vaše obstoječe konfiguracije tukaj že obstaja datoteka z enakim imenom, obstoječe datoteke pa se nikoli ne prepišejo.",
+            "importUnreadableResult": "AeroFTP ni mogel prebrati rezultata uvoza"
         },
         "picker": {
             "unavailable": {

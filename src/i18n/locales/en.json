@@ -5870,11 +5870,15 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP found an existing configuration in your home folder. This Flatpak install uses its own separate storage, so your saved servers and encrypted vault are not visible here yet. Import them now? Files are only copied and nothing is overwritten, and your vault unlocks here the same way it does now.",
+            "importBody": "AeroFTP found an existing configuration in your home folder. This Flatpak install uses its own separate storage, so your saved servers and encrypted vault are not visible here yet. Import your configuration now? Files are only copied, and a file this Flatpak install already has is never overwritten.",
             "importAccept": "Import",
             "importedBody": "Your configuration was imported. Restart AeroFTP to load your servers and vault.",
-            "importNothingBody": "Nothing to import: no files needed copying into this Flatpak install.",
+            "importedNoVaultBody": "Your configuration was imported. Restart AeroFTP to load it.",
+            "importedVaultSkippedBody": "Part of your configuration was imported, but not your saved servers and vault: this Flatpak install already has its own vault, and existing files are never overwritten. Restart AeroFTP to load what was imported.",
+            "importNothingBody": "No file was copied: every file of your existing configuration already has a file with the same name in this Flatpak install, and existing files are never overwritten.",
+            "importNothingVaultSkippedBody": "No file was copied, so your saved servers and vault were not imported: this Flatpak install already has its own vault, every file of your existing configuration already has a file with the same name here, and existing files are never overwritten.",
             "importFailedBody": "The import stopped with an error: {error}. Files already copied into this Flatpak install stay there, and nothing was overwritten. AeroFTP will offer the import again at the next start.",
+            "importUnreadableResult": "AeroFTP could not read the result of the import",
             "restartNow": "Restart now"
         },
         "picker": {
