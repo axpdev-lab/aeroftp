@@ -544,20 +544,16 @@ impl SwiftProvider {
     /// redirects and, when Keystone points at another path on the same
     /// origin (the trailing slash), posts again itself. An off-host 301 is
     /// not a URL we built: one retry of the same POST, then the status stands.
+    ///
+    /// Returns the last response and the URL it answered.
     async fn post_keystone_v2(
         &self,
         url: &str,
         body: &serde_json::Value,
-    ) -> Result<reqwest::Response, ProviderError> {
+    ) -> Result<(reqwest::Response, String), ProviderError> {
         let resp = self.post_keystone_json(url, body).await?;
-        if !matches!(
-            resp.status(),
-            StatusCode::MOVED_PERMANENTLY
-                | StatusCode::FOUND
-                | StatusCode::TEMPORARY_REDIRECT
-                | StatusCode::PERMANENT_REDIRECT
-        ) {
-            return Ok(resp);
+        if !Self::is_keystone_redirect(resp.status()) {
+            return Ok((resp, url.to_string()));
         }
         let location = resp
             .headers()
@@ -566,9 +562,39 @@ impl SwiftProvider {
             .unwrap_or("");
         match Self::keystone_redirect_target(url, location) {
             Some(next) if !Self::urls_match(url, &next) && Self::same_origin_url(url, &next) => {
-                self.post_keystone_json(&next, body).await
+                let resp = self.post_keystone_json(&next, body).await?;
+                Ok((resp, next))
             }
-            _ => self.post_keystone_json(url, body).await,
+            _ => Ok((self.post_keystone_json(url, body).await?, url.to_string())),
+        }
+    }
+
+    fn is_keystone_redirect(status: StatusCode) -> bool {
+        matches!(
+            status,
+            StatusCode::MOVED_PERMANENTLY
+                | StatusCode::FOUND
+                | StatusCode::TEMPORARY_REDIRECT
+                | StatusCode::PERMANENT_REDIRECT
+        )
+    }
+
+    /// Where a redirect that was not followed pointed, for the error: the
+    /// origin and path of its `Location` resolved against `from`, never the
+    /// user, password, query or fragment it may carry.
+    fn redirect_origin_and_path(from: &str, location: Option<&str>) -> String {
+        let Some(location) = location.filter(|l| !l.trim().is_empty()) else {
+            return "no Location header".to_string();
+        };
+        match reqwest::Url::parse(from).and_then(|base| base.join(location)) {
+            Ok(next) if next.has_host() => {
+                format!(
+                    "Location {}{}",
+                    next.origin().ascii_serialization(),
+                    next.path()
+                )
+            }
+            _ => "a Location that is not a URL".to_string(),
         }
     }
 
@@ -591,7 +617,7 @@ impl SwiftProvider {
             }
         });
 
-        let resp = self.post_keystone_v2(&url, &body).await?;
+        let (resp, answered) = self.post_keystone_v2(&url, &body).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -674,6 +700,15 @@ impl SwiftProvider {
             StatusCode::FORBIDDEN => Err(ProviderError::AuthenticationFailed(
                 "Account suspended or forbidden".into(),
             )),
+            // Not followed (see `post_keystone_v2`). Where it pointed says
+            // whether an intermittent 301 left the host or named a path.
+            status if Self::is_keystone_redirect(status) => {
+                let location = resp.headers().get("location").and_then(|v| v.to_str().ok());
+                Err(ProviderError::AuthenticationFailed(format!(
+                    "Keystone v2 failed: HTTP {status}, redirect not followed ({})",
+                    Self::redirect_origin_and_path(&answered, location)
+                )))
+            }
             status => Err(ProviderError::AuthenticationFailed(format!(
                 "Keystone v2 failed: HTTP {status}"
             ))),
@@ -2591,7 +2626,10 @@ mod tests {
                     if path == "/off/v2.0/tokens" {
                         return axum::response::Response::builder()
                             .status(301)
-                            .header("location", "http://127.0.0.1:1/steal")
+                            .header(
+                                "location",
+                                "http://leak:hunter2@127.0.0.1:1/steal?token=abc#frag",
+                            )
                             .body(axum::body::Body::empty())
                             .unwrap();
                     }
@@ -2651,6 +2689,16 @@ mod tests {
             text.contains("301"),
             "the retry still answers 301, got: {text}"
         );
+        // L5 of the 4.2.1 closeout: the 301 that is not followed names where
+        // it pointed, so the next intermittent one says whether it left the
+        // host. Origin and path only: no user, password, query or fragment.
+        assert!(
+            text.contains("http://127.0.0.1:1/steal"),
+            "the error must name the Location's origin and path, got: {text}"
+        );
+        for secret in ["leak", "hunter2", "token=abc", "frag", "\"pw\""] {
+            assert!(!text.contains(secret), "{secret} leaked into: {text}");
+        }
         let off_log = log.lock().unwrap().clone();
         assert_eq!(off_log.len(), 2, "one retry, not a follow: {off_log:?}");
         assert!(
