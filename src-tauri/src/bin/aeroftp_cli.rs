@@ -10854,7 +10854,8 @@ async fn connect_transfer_worker(
 const WORKER_CONNECTION_MAX_JOBS: u32 = 128;
 
 /// Failed dials, or jobs lost on connections that had not completed one, that
-/// a worker accepts since it last completed a job; at this count it stops.
+/// a worker accepts since its last job that kept its session; at this count
+/// it stops.
 const WORKER_MAX_STRIKES: u32 = 2;
 
 /// Pause before a worker dials again after a failed dial, so that a short
@@ -10922,10 +10923,11 @@ struct WorkerQueue<J> {
 ///   authentication, Jottacloud a network error in its OIDC discovery, FTP
 ///   any login reply, 421 and 530 "too many connections" included).
 /// - A worker stops at its second failed dial, or its second job failed by
-///   losing fresh connections, since it last completed a job: past that the
-///   endpoint, not a file, is the problem, and dialling on would be the login
-///   storm this replaces. So a failure streak costs a worker at most five
-///   dials: four accepted and one refused, or three and two.
+///   losing fresh connections, since its last job that kept its session (an
+///   upload, a skip, an error of the file's own): past that the endpoint, not
+///   a file, is the problem, and dialling on would be the login storm this
+///   replaces. So a failure streak costs a worker at most five dials: four
+///   accepted and one refused, or three and two.
 /// - A worker that finds the queue empty while other workers still hold jobs
 ///   waits for them: a job that comes back runs on its connection instead of
 ///   failing for want of one. A connection that waited no longer counts as
@@ -11090,9 +11092,16 @@ where
                 continue;
             };
             let jobs = jobs + 1;
-            if done.result.is_ok() {
+            if !done.session_lost {
+                // The session answered, whatever the file's outcome (an
+                // upload, a skip, an error of the file's own): the endpoint
+                // works, and the strikes start over. Reset on uploads alone, a
+                // rerun that skips every file never reset them, and two
+                // refused logins across a whole batch stopped the worker.
                 failed_dials = 0;
                 lost_jobs = 0;
+            }
+            if done.result.is_ok() {
                 held = Some(HeldConnection {
                     conn,
                     proven: true,
@@ -79587,10 +79596,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!((results.len(), errors(&results)), (2, 0), "{results:?}");
     }
 
-    /// Only a completed job resets a worker's counts. An endpoint that
-    /// refuses every other dial and drops every session it accepts stops the
-    /// worker at its second failed dial: three attempts, where resetting the
-    /// count on each accepted dial let it go on to eight.
+    /// Only a job that kept its session resets a worker's counts. An endpoint
+    /// that refuses every other dial and drops every session it accepts stops
+    /// the worker at its second failed dial: three attempts, where resetting
+    /// the count on each accepted dial let it go on to eight.
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn worker_connections_count_a_failure_streak_until_a_job_completes() {
         let state = WorkerFake::state();
@@ -80391,6 +80400,52 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             }
         }
         assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// A worker's strikes count the failures since its last job that kept its
+    /// session, not since its last upload. A rerun that skips every file
+    /// completed nothing, so with the connection closed every
+    /// `WORKER_CONNECTION_MAX_JOBS` jobs, two refused logins spread over the
+    /// whole batch stopped the worker, and the files left reported that no
+    /// connection was left for them (exit 4).
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_strikes_reset_on_a_job_that_kept_its_session() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().refuse_alternate = true;
+        let total = 2 * WORKER_CONNECTION_MAX_JOBS as usize + 10;
+        let results = run_on_worker_connections(
+            None,
+            1,
+            job_paths(total),
+            &AtomicBool::new(false),
+            None,
+            WorkerFake::dial(&state),
+            |conn, path| async move {
+                let conn = match conn {
+                    Ok(conn) => conn,
+                    Err(err) => return WorkerJobDone::without_transfer(None, err),
+                };
+                let skip = format!("{UPLOAD_SKIP_PREFIX}--no-clobber): {path}");
+                WorkerJobDone::from_transfer(
+                    conn,
+                    Err(TransferOnError::skipped(skip)),
+                    || path,
+                    |err| err,
+                )
+            },
+        )
+        .await;
+        let count = |needle: &str| {
+            results
+                .iter()
+                .filter(|r| r.as_ref().err().is_some_and(|e| e.contains(needle)))
+                .count()
+        };
+        assert_eq!(
+            (count(UPLOAD_SKIP_PREFIX), count("no connection left")),
+            (total, 0),
+            "every file skipped, none left without a connection"
+        );
     }
 
     /// `sync` opens a base connection for its transfer batch, which a
