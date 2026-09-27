@@ -299,7 +299,7 @@ pub(crate) async fn extract_7z_entry_impl(
     password: Option<String>,
     app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
-    use sevenz_rust2::{ArchiveReader, Password};
+    use sevenz_rust2::{Archive, BlockDecoder, Password};
     use std::fs::{self, File};
     use std::io::BufReader;
 
@@ -314,19 +314,23 @@ pub(crate) async fn extract_7z_entry_impl(
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
     let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::new(file);
 
     let pwd = secret_password
         .as_ref()
         .map(|p| Password::from(p.expose_secret()))
         .unwrap_or_else(Password::empty);
 
-    let mut archive = ArchiveReader::new(reader, pwd).map_err(|e| {
+    let archive = Archive::read(&mut reader, &pwd).map_err(|e| {
         format!(
             "Failed to read 7z archive: {}",
             crate::describe_7z_error(&e)
         )
     })?;
+    let Some(index) = archive.files.iter().position(|f| f.name() == entry_name) else {
+        return Err(format!("Entry '{}' not found in archive", entry_name));
+    };
+    let target = &archive.files[index];
 
     let out_path = std::path::Path::new(&output_path);
     if let Some(parent) = out_path.parent() {
@@ -347,46 +351,46 @@ pub(crate) async fn extract_7z_entry_impl(
         .tempfile_in(parent)
         .map_err(|e| format!("Failed to create temp file: {}", e))?;
 
-    // Take the temp file out as a `&mut File` up front: `for_each_entries` borrows the
-    // closure (and its captures) only until it returns, so the borrow of `tmp` clears
-    // before we persist it below.
-    let mut found = false;
+    // The entry's uncompressed size is the honest denominator for the bar.
+    let declared = target.size();
+    let mut progress = ArchiveProgress::for_optional_app(app, phase::EXTRACTING, declared);
+    // Held to the declared size: sevenz-rust2 checks the CRC only once all of it
+    // is read, so a wrong password whose stream decodes to an early end left a
+    // short or empty file here and reported success. The error goes back to
+    // sevenz-rust2, which reports it as MaybeBadPassword when a password is set.
     let tmp_file = tmp.as_file_mut();
-    archive
-        .for_each_entries(|entry, reader| {
-            if entry.name() == entry_name {
-                found = true;
-                // The entry's uncompressed size is the honest denominator; create the
-                // emitter here where it is known, count bytes streamed to disk.
-                let declared = entry.size();
-                let mut progress =
-                    ArchiveProgress::for_optional_app(app.clone(), phase::EXTRACTING, declared);
-                {
-                    // Held to the declared size: sevenz-rust2 checks the CRC only
-                    // once all of it is read, so a wrong password whose stream
-                    // decodes to an early end left a short or empty file here and
-                    // reported success. The error goes back to sevenz-rust2, which
-                    // reports it as MaybeBadPassword when a password is set.
-                    let mut counted = ProgressReader::new(reader, &mut progress);
-                    crate::copy_entry_bounded(&mut counted, tmp_file, declared)?;
-                }
-                progress.finish();
-                // Stop iterating once our entry is extracted: continuing would keep
-                // decoding the rest of the solid stream for nothing, and a later-entry
-                // error would surface as a failure AFTER the bar already hit 100%.
-                return Ok(false);
-            }
-            Ok(true)
-        })
-        .map_err(|e| format!("Failed to extract: {}", crate::describe_7z_error(&e)))?;
-
-    if !found {
-        // Entry never matched: drop `tmp` (auto-removed) and report not found.
-        return Err(format!("Entry '{}' not found in archive", entry_name));
-    }
+    let mut copy_target = |stream: &mut dyn std::io::Read| -> Result<(), sevenz_rust2::Error> {
+        let mut counted = ProgressReader::new(stream, &mut progress);
+        crate::copy_entry_bounded(&mut counted, &mut *tmp_file, declared)?;
+        Ok(())
+    };
+    let decoded = match archive.stream_map.file_block_index[index] {
+        // No data of its own (an empty file or a folder): nothing to decode.
+        None => copy_target(&mut std::io::empty()),
+        // Decode only the block that holds the entry. In a solid block (7-Zip's
+        // default) every entry continues one decoded stream, and sevenz-rust2
+        // hands each entry the next bytes of it without skipping what a caller
+        // leaves unread: the entries before the wanted one are read through, or
+        // it would start inside them and fail its CRC check.
+        Some(block) => {
+            let threads = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
+            BlockDecoder::new(threads, block, &archive, &pwd, &mut reader)
+                .for_each_entries(&mut |entry, stream| {
+                    if std::ptr::eq(entry, target) {
+                        copy_target(stream)?;
+                        return Ok(false);
+                    }
+                    std::io::copy(stream, &mut std::io::sink())?;
+                    Ok(true)
+                })
+                .map(|_| ())
+        }
+    };
+    decoded.map_err(|e| format!("Failed to extract: {}", crate::describe_7z_error(&e)))?;
 
     tmp.persist(out_path)
         .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
+    progress.finish();
 
     Ok(output_path)
 }

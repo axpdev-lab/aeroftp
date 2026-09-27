@@ -8255,8 +8255,13 @@ async fn extract_7z(
         .for_each_entries(|entry, reader| {
             let name = entry.name();
 
-            // Skip entries with unsafe paths (traversal, absolute, drive letters)
+            // Skip entries with unsafe paths (traversal, absolute, drive letters).
+            // Read through the entry all the same: in a solid block every entry
+            // continues one decoded stream, and sevenz-rust2 does not skip the
+            // bytes a caller leaves unread, so the next entry would start inside
+            // this one and fail its CRC check.
             if !is_safe_archive_entry(name) {
+                std::io::copy(reader, &mut std::io::sink())?;
                 return Ok(true); // skip this entry, continue to next
             }
 
@@ -22610,6 +22615,102 @@ mod sevenz_advanced_tests {
             assert_eq!(ra, a, "{method} solid={solid}: a.txt round-trip mismatch");
             assert_eq!(rb, b, "{method} solid={solid}: b.txt round-trip mismatch");
         }
+    }
+
+    // sevenz-rust2 decodes a solid block as one stream and hands each entry the
+    // next bytes of it; it does not skip bytes a caller leaves unread. The
+    // single-entry browse extractor returned without reading the entries before
+    // the one it wanted, so in a solid archive (7-Zip's default) that entry was
+    // read from the start of the previous one and failed its CRC check: only
+    // the first file of a solid block could be extracted from the browser.
+    #[tokio::test]
+    async fn a_solid_7z_extracts_any_entry_from_the_browser() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = [
+            ("a.txt", "first file of the solid block\n".repeat(40)),
+            (
+                "b.txt",
+                "second file, the one the browser asks for\n".repeat(30),
+            ),
+            ("c.txt", "third\n".repeat(20)),
+        ];
+        let mut inputs = Vec::new();
+        for (name, body) in &files {
+            let path = dir.path().join(name);
+            std::fs::write(&path, body).unwrap();
+            inputs.push(path.to_string_lossy().to_string());
+        }
+        let archive = dir.path().join("solid.7z").to_string_lossy().to_string();
+        let adv = SevenZAdvanced {
+            solid: Some(true),
+            ..Default::default()
+        };
+        compress_7z_core(inputs, archive.clone(), None, Some(5), None, Some(adv))
+            .await
+            .expect("compress solid");
+        {
+            let reader = sevenz_rust2::ArchiveReader::new(
+                std::fs::File::open(&archive).unwrap(),
+                sevenz_rust2::Password::empty(),
+            )
+            .unwrap();
+            let parsed = reader.archive();
+            assert!(parsed.is_solid, "not a solid archive");
+            assert_eq!(parsed.stream_map.file_block_index, vec![Some(0); 3]);
+        }
+
+        for (name, body) in &files {
+            let out = dir.path().join(format!("got-{name}"));
+            crate::archive_browse::extract_7z_entry_impl(
+                archive.clone(),
+                name.to_string(),
+                out.to_string_lossy().to_string(),
+                None,
+                None,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(std::fs::read(&out).unwrap(), body.as_bytes(), "{name}");
+        }
+    }
+
+    // The whole-archive extractor skips an entry with an unsafe name without
+    // reading it, so in a solid block the entry after it was read from the
+    // start of the skipped one and failed its CRC check.
+    #[tokio::test]
+    async fn a_solid_7z_entry_after_a_skipped_unsafe_one_extracts() {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter, SourceReader};
+        let evil = b"must never be written anywhere".repeat(8);
+        let good = b"the entry after the skipped one".repeat(12);
+        let mut writer = ArchiveWriter::new(std::io::Cursor::new(Vec::new())).unwrap();
+        writer
+            .push_archive_entries(
+                vec![
+                    ArchiveEntry::new_file("../evil.txt"),
+                    ArchiveEntry::new_file("good.txt"),
+                ],
+                vec![SourceReader::new(&evil[..]), SourceReader::new(&good[..])],
+            )
+            .unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("mixed.7z");
+        std::fs::write(&archive, bytes).unwrap();
+        let dest = dir.path().join("out");
+        extract_7z_core(
+            archive.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+            None,
+            false,
+        )
+        .await
+        .expect("the safe entry extracts");
+        assert_eq!(std::fs::read(dest.join("good.txt")).unwrap(), good);
+        assert!(
+            !dir.path().join("evil.txt").exists(),
+            "the unsafe entry was written"
+        );
     }
 
     // An unknown method must be rejected, not silently downgraded to the default
