@@ -1311,15 +1311,17 @@ impl StorageProvider for KDriveProvider {
         let body_json = serde_json::json!({ "name": to_name })
             .to_string()
             .into_bytes();
-        let resp = self
+        let sent = self
             .post_with_retry(&url, "application/json", body_json)
-            .await?;
-        // Whatever the answer, the folder ids cached for either path and
-        // everything under them may now point at a moved folder or at one in
-        // the trash (the one a replace set aside): a later `put` into
-        // `/dst/sub` wrote into the trashed folder.
+            .await;
+        // Whatever the answer, even none (a move kDrive applied whose answer
+        // was lost), the folder ids cached for either path and everything
+        // under them may now point at a moved folder or at one in the trash
+        // (the one a replace set aside): a later `put` into `/dst/sub` wrote
+        // into the trashed folder.
         super::forget_cached_subtree(&mut self.dir_cache, &resolved_from);
         super::forget_cached_subtree(&mut self.dir_cache, &resolved_to);
+        let resp = sent?;
 
         if !resp.status().is_success() {
             let status = resp.status();
