@@ -16684,11 +16684,7 @@ async fn remove_tui_session_via_cli_handler(
     let result = if recursive {
         provider.rmdir_recursive(&resolved).await
     } else {
-        // Try file delete first, fall back to empty-directory removal.
-        match provider.delete(&resolved).await {
-            Ok(()) => Ok(()),
-            Err(_) => provider.rmdir(&resolved).await,
-        }
+        delete_file_or_empty_dir(provider, &resolved).await
     };
     result
         .map(|_| resolved)
@@ -30099,6 +30095,36 @@ fn webdav_move_may_overwrite(headers: &HeaderMap) -> bool {
         .is_some_and(|value| value.trim().eq_ignore_ascii_case("F"))
 }
 
+/// A served WebDAV DELETE: a file, or a collection with everything under it
+/// (RFC 4918 section 9.6.1).
+///
+/// It used to escalate after ANY `delete` failure: `rmdir`, then
+/// `rmdir_recursive`. A file `delete` refused for a transient reason then
+/// erased the directory of the same name (an S3 key `x` beside the prefix
+/// `x/`), and an ambiguous path (Cloudinary: an asset and a folder sharing a
+/// name) emptied the folder. The escalation now happens only for a path `stat`
+/// calls a directory, or one `stat` cannot see at all (S3 without the
+/// trailing slash), where the old chain is kept.
+async fn served_webdav_delete(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<(), ProviderError> {
+    let refused = match provider.delete(path).await {
+        Ok(()) => return Ok(()),
+        Err(ProviderError::Cancelled) => return Err(ProviderError::Cancelled),
+        Err(e) => e,
+    };
+    match provider.stat(path).await {
+        Ok(entry) if !entry.is_dir => return Err(refused),
+        Err(ProviderError::InvalidPath(_)) | Err(ProviderError::Cancelled) => return Err(refused),
+        _ => {}
+    }
+    match provider.rmdir(path).await {
+        Ok(()) => Ok(()),
+        Err(_) => provider.rmdir_recursive(path).await,
+    }
+}
+
 async fn webdav_dispatch(
     state: ServeHttpState,
     method: Method,
@@ -30256,30 +30282,13 @@ async fn webdav_dispatch(
 
         "DELETE" => {
             let mut provider = state.provider.lock().await;
-            // Try file delete first; on any failure try rmdir (target may be a directory)
-            match provider.delete(&remote_path).await {
+            match served_webdav_delete(provider.as_mut(), &remote_path).await {
                 Ok(()) => {
                     let mut response = Response::new(Body::empty());
                     *response.status_mut() = StatusCode::NO_CONTENT;
                     response
                 }
-                Err(_file_err) => match provider.rmdir(&remote_path).await {
-                    Ok(()) => {
-                        let mut response = Response::new(Body::empty());
-                        *response.status_mut() = StatusCode::NO_CONTENT;
-                        response
-                    }
-                    Err(_) => match provider.rmdir_recursive(&remote_path).await {
-                        Ok(()) => {
-                            let mut response = Response::new(Body::empty());
-                            *response.status_mut() = StatusCode::NO_CONTENT;
-                            response
-                        }
-                        Err(e) => {
-                            serve_error_response(provider_error_to_status_code(&e), &e.to_string())
-                        }
-                    },
-                },
+                Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
             }
         }
 
@@ -34904,6 +34913,32 @@ async fn run_rm_dry_run(
     0
 }
 
+/// Delete `path` as a file, or as an empty directory when it is one.
+///
+/// `rm` and the TUI used to fall back to `rmdir` after ANY `delete` failure. A
+/// path the provider cannot resolve to one item (Cloudinary answers
+/// `InvalidPath` for a name an asset and a folder share) then removed the
+/// folder, and a file `delete` refused for another reason was sent to `rmdir`.
+/// The fallback now asks `stat`: a directory goes to `rmdir`, a file or an
+/// ambiguous path keeps the `delete` error. A `stat` that cannot answer (S3
+/// sees no directory behind a path without its trailing slash) keeps the old
+/// fallback, so `rm` of an empty directory still works where it did.
+async fn delete_file_or_empty_dir(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<(), ProviderError> {
+    let refused = match provider.delete(path).await {
+        Ok(()) => return Ok(()),
+        Err(ProviderError::Cancelled) => return Err(ProviderError::Cancelled),
+        Err(e) => e,
+    };
+    match provider.stat(path).await {
+        Ok(entry) if entry.is_dir => provider.rmdir(path).await,
+        Ok(_) | Err(ProviderError::InvalidPath(_)) | Err(ProviderError::Cancelled) => Err(refused),
+        Err(_) => provider.rmdir(path).await,
+    }
+}
+
 /// The real `rm`/`purge` when the global filter flags narrow the delete.
 ///
 /// It runs the same walk `--dry-run` prints and then deletes exactly that plan,
@@ -35116,11 +35151,7 @@ async fn cmd_rm(
     let result = if recursive {
         provider.rmdir_recursive(path).await
     } else {
-        // Try file delete first, then directory
-        match provider.delete(path).await {
-            Ok(()) => Ok(()),
-            Err(_) => provider.rmdir(path).await,
-        }
+        delete_file_or_empty_dir(provider.as_mut(), path).await
     };
 
     match result {
@@ -77144,6 +77175,234 @@ mod tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("mem-tree".to_string())
         }
+    }
+
+    /// Scripted answers for the delete fallbacks of `rm`, the TUI and the
+    /// served WebDAV DELETE; every call is recorded by name.
+    struct DeleteFallbackProvider {
+        delete: fn() -> Result<(), ProviderError>,
+        stat: fn() -> Result<RemoteEntry, ProviderError>,
+        rmdir: fn() -> Result<(), ProviderError>,
+        calls: Vec<&'static str>,
+    }
+
+    impl DeleteFallbackProvider {
+        fn new(
+            delete: fn() -> Result<(), ProviderError>,
+            stat: fn() -> Result<RemoteEntry, ProviderError>,
+        ) -> Self {
+            Self {
+                delete,
+                stat,
+                rmdir: || Ok(()),
+                calls: Vec::new(),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for DeleteFallbackProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "delete-fallback".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("delete");
+            (self.delete)()
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("rmdir");
+            (self.rmdir)()
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("rmdir_recursive");
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, _path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.calls.push("stat");
+            (self.stat)()
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("delete-fallback".to_string())
+        }
+    }
+
+    fn ambiguous() -> ProviderError {
+        ProviderError::InvalidPath("'/photos' names an asset and a folder".to_string())
+    }
+
+    /// Scenario C of the #944 review: Cloudinary refuses `rm /photos` because
+    /// an image and a folder share the name, and `rm` used to answer the
+    /// refusal with `rmdir`, removing the folder.
+    #[tokio::test]
+    async fn rm_does_not_turn_an_ambiguous_path_into_rmdir() {
+        let mut p = DeleteFallbackProvider::new(|| Err(ambiguous()), || Err(ambiguous()));
+        let result = delete_file_or_empty_dir(&mut p, "/photos").await;
+        assert!(
+            matches!(result, Err(ProviderError::InvalidPath(_))),
+            "{result:?}"
+        );
+        assert_eq!(p.calls, ["delete", "stat"]);
+    }
+
+    /// A file `delete` refused keeps its own error instead of the `rmdir` one.
+    #[tokio::test]
+    async fn rm_returns_the_delete_error_for_a_file() {
+        let mut p = DeleteFallbackProvider::new(
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Ok(RemoteEntry::file("a".to_string(), "/a".to_string(), 1)),
+        );
+        let result = delete_file_or_empty_dir(&mut p, "/a").await;
+        assert!(
+            matches!(result, Err(ProviderError::ServerError(_))),
+            "{result:?}"
+        );
+        assert_eq!(p.calls, ["delete", "stat"]);
+    }
+
+    /// A cancelled `delete` stops there.
+    #[tokio::test]
+    async fn rm_stops_on_a_cancelled_delete() {
+        let mut p = DeleteFallbackProvider::new(
+            || Err(ProviderError::Cancelled),
+            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
+        );
+        let result = delete_file_or_empty_dir(&mut p, "/d").await;
+        assert!(
+            matches!(result, Err(ProviderError::Cancelled)),
+            "{result:?}"
+        );
+        assert_eq!(p.calls, ["delete"]);
+    }
+
+    /// The fallback still serves what it exists for: a directory `delete`
+    /// refuses (MTP answers InvalidPath "is a directory"), and a directory
+    /// `stat` cannot see (S3 without the trailing slash).
+    #[tokio::test]
+    async fn rm_still_removes_an_empty_directory() {
+        let mut dir = DeleteFallbackProvider::new(
+            || {
+                Err(ProviderError::InvalidPath(
+                    "/d is a directory; use rmdir".to_string(),
+                ))
+            },
+            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
+        );
+        assert!(delete_file_or_empty_dir(&mut dir, "/d").await.is_ok());
+        assert_eq!(dir.calls, ["delete", "stat", "rmdir"]);
+
+        let mut unseen = DeleteFallbackProvider::new(
+            || Err(ProviderError::NotFound("/d".to_string())),
+            || Err(ProviderError::NotFound("/d".to_string())),
+        );
+        assert!(delete_file_or_empty_dir(&mut unseen, "/d").await.is_ok());
+        assert_eq!(unseen.calls, ["delete", "stat", "rmdir"]);
+    }
+
+    /// The served DELETE used to escalate to `rmdir_recursive` after any
+    /// failure: an ambiguous path emptied the folder, and a file refused for a
+    /// transient reason erased the directory of the same name.
+    #[tokio::test]
+    async fn served_delete_escalates_only_for_a_directory() {
+        let mut amb = DeleteFallbackProvider::new(|| Err(ambiguous()), || Err(ambiguous()));
+        amb.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        let result = served_webdav_delete(&mut amb, "/photos").await;
+        assert!(
+            matches!(result, Err(ProviderError::InvalidPath(_))),
+            "{result:?}"
+        );
+        assert_eq!(amb.calls, ["delete", "stat"]);
+
+        let mut file = DeleteFallbackProvider::new(
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Ok(RemoteEntry::file("x".to_string(), "/x".to_string(), 1)),
+        );
+        file.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        let result = served_webdav_delete(&mut file, "/x").await;
+        assert!(
+            matches!(result, Err(ProviderError::ServerError(_))),
+            "{result:?}"
+        );
+        assert_eq!(file.calls, ["delete", "stat"]);
+
+        let mut dir = DeleteFallbackProvider::new(
+            || Err(ProviderError::InvalidPath("/d is a directory".to_string())),
+            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
+        );
+        dir.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        assert!(served_webdav_delete(&mut dir, "/d").await.is_ok());
+        assert_eq!(dir.calls, ["delete", "stat", "rmdir", "rmdir_recursive"]);
+
+        let mut unseen = DeleteFallbackProvider::new(
+            || Err(ProviderError::NotFound("/d".to_string())),
+            || Err(ProviderError::NotFound("/d".to_string())),
+        );
+        unseen.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        assert!(served_webdav_delete(&mut unseen, "/d").await.is_ok());
+        assert_eq!(unseen.calls, ["delete", "stat", "rmdir", "rmdir_recursive"]);
     }
 
     /// `import rclone` printed section names, types and reasons from the file
