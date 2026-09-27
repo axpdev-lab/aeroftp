@@ -98,12 +98,16 @@ export function needsPasswordPrompt(probe: Pick<ExtractProbe, 'encrypted'>): boo
  * password-shaped errors should re-open the prompt; everything else is a real
  * error. Matches the decryption-failure strings the extract lanes emit
  * (`Invalid password or corrupt archive`, `Decryption failed`, `wrong password
- * or tampered crypt config`, ...). Pure, so the routing is unit-tested.
+ * or tampered crypt config`, ...). Quoted text is left out first: the lanes
+ * quote entry and file names, and a failure on `'passwords.txt'` is not a
+ * password error. Pure, so the routing is unit-tested.
  */
 export function isWrongPasswordError(err: unknown): boolean {
     const msg = String(
         err instanceof Error ? err.message : (err ?? ''),
-    ).toLowerCase();
+    )
+        .toLowerCase()
+        .replace(/'[^']*'|"[^"]*"/g, "''");
     return (
         msg.includes('password') ||
         msg.includes('decrypt') ||
