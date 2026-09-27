@@ -10,7 +10,8 @@
 //! Imported credentials are stored in our AES-256-GCM vault, upgrading security
 //! from rclone's reversible obfuscation to proper authenticated encryption.
 
-use crate::profile_export::ServerProfileExport;
+// Public: it is the element type of `RcloneImportResult::servers`.
+pub use crate::profile_export::ServerProfileExport;
 use crate::util::endpoint_stays_on_this_machine;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -72,7 +73,7 @@ pub(crate) fn reveal_obscured(obscured: &str) -> Result<String, String> {
 /// always is. rclone only ever writes these fields obscured and cannot use one
 /// that does not reveal, so a failure here means the remote carries no usable
 /// password, not that the value is the password.
-fn reveal_rclone_password(value: &str) -> Result<String, String> {
+pub(crate) fn reveal_rclone_password(value: &str) -> Result<String, String> {
     use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
     use base64::Engine;
 
@@ -88,6 +89,22 @@ fn reveal_rclone_password(value: &str) -> Result<String, String> {
     let bytes = RCLONE_REVEAL_BASE64
         .decode(value)
         .map_err(|_| "not raw URL-safe base64".to_string())?;
+    String::from_utf8(decrypt_obscured(&bytes)?)
+        .map_err(|_| "it reveals to bytes that are not UTF-8".to_string())
+}
+
+/// [`reveal_rclone_password`] for a value exactly as rclone writes one: raw
+/// URL-safe base64 whose discarded low bits are zero, as `obscure.Obscure`
+/// always leaves them. A probe for "could rclone have written this?": the
+/// lenient decoder also accepts values rclone never produces (about one
+/// 26-character string in twenty), which a probe must not count.
+pub(crate) fn reveal_canonical_rclone(value: &str) -> Result<String, String> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+
+    let bytes = URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|_| "not canonical raw URL-safe base64".to_string())?;
     String::from_utf8(decrypt_obscured(&bytes)?)
         .map_err(|_| "it reveals to bytes that are not UTF-8".to_string())
 }
@@ -2070,6 +2087,15 @@ fn append_crypt_remote_section(
         Some(o) if o.get("rcloneCryptEnabled").and_then(|v| v.as_bool()) == Some(true) => o,
         _ => return CryptSection::None,
     };
+    // A stored crypt secret that cannot be read safely (see
+    // `bridge_commands::put_stored_crypt_secrets`): no remote beats one with a
+    // key AeroFTP does not use.
+    if let Some(problem) = opts
+        .get("rcloneCryptSecretProblem")
+        .and_then(|v| v.as_str())
+    {
+        return CryptSection::Refused(problem.to_string());
+    }
     let section = match crypt_section_name(base_name, opts, names) {
         CryptName::Free(name) => name,
         CryptName::Taken(name) => {
@@ -2080,10 +2106,13 @@ fn append_crypt_remote_section(
             ));
         }
     };
+    // Never trimmed, not even to decide whether there is one: the key is
+    // derived from the secret as it is, spaces and all (a salt of spaces
+    // left out would select rclone's default salt), so the exported one must
+    // be the same.
     let password = opts
         .get("rcloneCryptPassword")
         .and_then(|v| v.as_str())
-        .map(str::trim)
         .filter(|s| !s.is_empty());
     // Above the header, where rclone keeps it with this section (see
     // `export_rclone`).
@@ -2109,7 +2138,6 @@ fn append_crypt_remote_section(
     if let Some(pw2) = opts
         .get("rcloneCryptPassword2")
         .and_then(|v| v.as_str())
-        .map(str::trim)
         .filter(|s| !s.is_empty())
     {
         output.push_str(&format!(
@@ -6436,6 +6464,57 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                 .and_then(|v| v.as_str()),
             Some("eu")
         );
+    }
+
+    /// The key is derived from a crypt password as it is, spaces included, so
+    /// the export must not trim it: rclone would derive another key.
+    #[test]
+    fn test_export_rclone_crypt_password_is_not_trimmed() {
+        let servers = vec![export_server(
+            "vault",
+            "sftp",
+            Some(serde_json::json!({
+                "rcloneCryptEnabled": true,
+                "rcloneCryptPassword": " pass with spaces ",
+                "rcloneCryptPassword2": " salt ",
+            })),
+        )];
+        let (_, conf) = export_to_string(&servers, "crypt-no-trim");
+        let value = |key: &str| {
+            conf.lines()
+                .find_map(|l| l.strip_prefix(&format!("{key} = ")))
+                .unwrap_or_else(|| panic!("no {key}:\n{conf}"))
+                .to_string()
+        };
+        assert_eq!(
+            reveal_obscured(&value("password")).as_deref(),
+            Ok(" pass with spaces ")
+        );
+        assert_eq!(
+            reveal_obscured(&value("password2")).as_deref(),
+            Ok(" salt ")
+        );
+
+        // Spaces only are a secret too: left out, a salt of spaces would
+        // select rclone's default salt.
+        let servers = vec![export_server(
+            "vault",
+            "sftp",
+            Some(serde_json::json!({
+                "rcloneCryptEnabled": true,
+                "rcloneCryptPassword": "   ",
+                "rcloneCryptPassword2": "  ",
+            })),
+        )];
+        let (_, conf) = export_to_string(&servers, "crypt-spaces-only");
+        let value = |key: &str| {
+            conf.lines()
+                .find_map(|l| l.strip_prefix(&format!("{key} = ")))
+                .unwrap_or_else(|| panic!("no {key}:\n{conf}"))
+                .to_string()
+        };
+        assert_eq!(reveal_obscured(&value("password")).as_deref(), Ok("   "));
+        assert_eq!(reveal_obscured(&value("password2")).as_deref(), Ok("  "));
     }
 
     #[test]

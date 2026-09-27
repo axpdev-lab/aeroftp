@@ -67,6 +67,7 @@ import { useI18n, Language, AVAILABLE_LANGUAGES } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { KeystoreImportPreview } from './KeystoreImportPreview';
 import { decisionsPayload, defaultDecisions, type ProfileDecision, type ProfilePreview } from '../utils/keystoreImportPreview';
+import { keystoreImportSummary } from '../utils/keystoreImportSummary';
 
 // Operation types for activity log - must match useActivityLog.ts
 type ActivityLogOperation = 'CONNECT' | 'DISCONNECT' | 'UPLOAD' | 'DOWNLOAD' | 'DELETE' | 'RENAME' | 'MOVE' | 'MKDIR' | 'NAVIGATE' | 'UPDATE' | 'ERROR' | 'INFO' | 'SUCCESS';
@@ -3680,10 +3681,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         // Apply the localStorage map returned by the
                                                                         // backend. The backend deliberately stays out of
                                                                         // WebView storage so the keystore is OS-agnostic.
+                                                                        let preferencesError: string | null = null;
                                                                         if (result.localStorage && Object.keys(result.localStorage).length > 0) {
                                                                             try {
                                                                                 const { applyLocalStorage } = await import('../utils/keystoreLocalStorage');
-                                                                                await applyLocalStorage(result.localStorage);
+                                                                                const restored = await applyLocalStorage(result.localStorage);
+                                                                                if (restored.error) {
+                                                                                    console.warn('Failed to apply restored localStorage:', restored.error);
+                                                                                    preferencesError = restored.error;
+                                                                                }
                                                                                 // The import may have toggled OS-level
                                                                                 // autostart through applyLocalStorage; pull
                                                                                 // the new state back into the local toggle
@@ -3698,38 +3704,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                 }
                                                                             } catch (e) {
                                                                                 console.warn('Failed to apply restored localStorage:', e);
+                                                                                preferencesError = e instanceof Error ? e.message : String(e);
                                                                             }
                                                                         }
-                                                                        // Audit 2026-05-11 C2: append the restart hint to
-                                                                        // the success toast and trigger the dedicated
-                                                                        // banner. Two channels (text + banner) cover the
-                                                                        // case where the toast scrolls off-screen before
-                                                                        // the user reads it.
-                                                                        const successText = t('settings.keystoreImported', {
-                                                                            imported: result.imported,
-                                                                            skipped: result.skipped,
-                                                                        });
-                                                                        // F-012: surface the cross-machine re-key outcome so a
-                                                                        // backup import never silently leaves an empty "My
-                                                                        // Servers" with no explanation.
-                                                                        const extraNotes: string[] = [];
-                                                                        if ((result.userPartitionsRekeyed ?? 0) > 0) {
-                                                                            extraNotes.push(t('settings.keystoreRekeyedPartitions', { count: result.userPartitionsRekeyed ?? 0, defaultValue: 'Re-keyed {count} account(s) to this device.' }));
-                                                                        }
-                                                                        if ((result.userPartitionsUnreadable ?? 0) > 0) {
-                                                                            extraNotes.push(t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0, defaultValue: '{count} account(s) could not be unlocked on this device. The backup was made on another computer: re-export it there with a password set on those accounts, then import it here.' }));
-                                                                        }
-                                                                        if (result.profileDecisionsError) {
-                                                                            extraNotes.push(t('settings.keystoreDecisionsFailed', { error: result.profileDecisionsError }));
-                                                                        }
-                                                                        if (result.requiresRestart) {
-                                                                            extraNotes.push(t('settings.keystoreRestartRequired', { defaultValue: 'Restart AeroFTP to apply restored databases and plugins.' }));
-                                                                        }
-                                                                        const importHadWarning = (result.userPartitionsUnreadable ?? 0) > 0 || !!result.requiresRestart || !!result.profileDecisionsError;
-                                                                        setKeystoreMessage({
-                                                                            type: importHadWarning ? 'info' : 'success',
-                                                                            text: extraNotes.length > 0 ? `${successText}. ${extraNotes.join(' ')}` : successText,
-                                                                        });
+                                                                        setKeystoreMessage(keystoreImportSummary(result, preferencesError, t));
                                                                         // F-012 W1/W2: an unmissable modal for the cases that
                                                                         // matter (restart needed, cross-machine re-key/unreadable,
                                                                         // or a reversible snapshot was taken). The inline message

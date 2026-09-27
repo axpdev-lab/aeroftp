@@ -84,8 +84,14 @@ jobs:
       # on device" (or wedging until the job timeout) once the crate outgrew
       # the runner headroom (first red at d744affc). Same reclaim step
       # cli-smoke.yml and build.yml already use.
+      # Best effort: a runner whose disk is slow can spend more than the
+      # step's budget in `rm -rf`, and that alone must not fail the job
+      # (red on 5d2e00026, run 36333451673). The budget stays, so a hang
+      # still names this step; a disk that is then really too small fails
+      # later with its own "No space left on device".
       - name: Free disk space
         timeout-minutes: 6
+        continue-on-error: true
         run: |
           echo "Before:"; df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
@@ -373,8 +379,14 @@ jobs:
       # Same disk reclaim as the key-auth lane above (this lane hit the same
       # "No space left on device" while rebuilding the lib for the second
       # cargo test invocation).
+      # Best effort: a runner whose disk is slow can spend more than the
+      # step's budget in `rm -rf`, and that alone must not fail the job
+      # (red on 5d2e00026, run 36333451673). The budget stays, so a hang
+      # still names this step; a disk that is then really too small fails
+      # later with its own "No space left on device".
       - name: Free disk space
         timeout-minutes: 6
+        continue-on-error: true
         run: |
           echo "Before:"; df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \

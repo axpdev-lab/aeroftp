@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Újratöltés",
             "uiTokensReset": "Felülbírálások törlése",
             "uiTokensApplied": "Alkalmazott felülírások: {count}",
-            "uiTokensRejected": "Elutasított bejegyzések: {count}"
+            "uiTokensRejected": "Elutasított bejegyzések: {count}",
+            "keystorePreferencesFailed": "Az importálás befejeződött, de az alkalmazás beállításait nem sikerült visszaállítani: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5604,7 +5605,12 @@
             "defaultSaltNeedsStronger": "Az alapértelmezett salt bekapcsolásához adjon meg egy erős, generált jelszót.",
             "defaultSaltOneSaltNote": "Egyetlen salt létezik: 32 bájt, nyilvános, és minden alapértelmezett saltot használó széf esetében azonos.",
             "defaultSaltValueLabel": "Nyilvános alapértelmezett só (AeroCrypt v3), az alábbi szöveg SHA-256 értéke",
-            "defaultSaltTierMeaning": "Az alapértelmezett só azt jelenti, hogy a széfet önmagában a jelszó nyitja: semmi mást nem kell magával vinni, és semmi más nem védi."
+            "defaultSaltTierMeaning": "Az alapértelmezett só azt jelenti, hogy a széfet önmagában a jelszó nyitja: semmi mást nem kell magával vinni, és semmi más nem védi.",
+            "pastedObscured": "Beillesztve az rclone.conf fájlból (álcázott)",
+            "pastedObscuredHint": "Csak akkor válassza a „Beillesztve az rclone.conf fájlból” lehetőséget, ha ezt az értéket egy rclone.conf fájlból másolta, ahol az rclone álcázva tárolja.",
+            "formNotRecorded": "Nincs rögzítve: ez az érték még azelőtt lett mentve, hogy az AeroFTP rákérdezett volna. Válassza ki, hogyan adta meg; az AeroFTP által az rclone.conf fájlból importált érték „Begépelve” módon lett tárolva.",
+            "secretFormTyped": "Begépelve",
+            "secretFormChangeConfirm": "Ez megváltoztatja, hogyan olvassa be a program a tárolt értéket, és így azt a kulcsot is, amellyel a fájlok megnyílnak: csak a helyes választás nyitja meg őket. Módosítja ezt a választást?"
         },
         "modalGuard": {
             "busyTitle": "Művelet folyamatban",
@@ -5869,10 +5875,17 @@
             }
         },
         "flatpak": {
-            "importBody": "Az AeroFTP meglévő konfigurációt talált a saját mappájában. Ez a Flatpak-telepítés saját, külön tárolót használ, ezért a mentett kiszolgálói és a titkosított széf itt még nem láthatók. Importálja őket most? A fájlok csak másolódnak, semmi sem íródik felül, és a széf itt ugyanúgy oldódik fel, ahogy most.",
+            "importBody": "Az AeroFTP meglévő konfigurációt talált a saját mappájában. Ez a Flatpak-telepítés saját, külön tárolót használ, ezért a mentett kiszolgálói és a titkosított széf itt még nem láthatók. Importálja most a konfigurációját? A fájlok csak másolódnak, és az a fájl, amely ebben a Flatpak-telepítésben már megvan, soha nem íródik felül.",
             "importAccept": "Importálás",
             "importedBody": "A konfigurációja importálva lett. Indítsa újra az AeroFTP-t a kiszolgálói és a széf betöltéséhez.",
-            "restartNow": "Újraindítás most"
+            "restartNow": "Újraindítás most",
+            "importNothingBody": "Egyetlen fájl sem lett átmásolva: minden olyan fájlhoz, amelyet az importálás átmásolna, már van azonos nevű fájl ebben a Flatpak-telepítésben, és a meglévő fájlok soha nem íródnak felül.",
+            "importFailedBody": "Az importálás hibával leállt: {error}. Az ebbe a Flatpak telepítésbe már átmásolt fájlok ott maradnak, és semmi sem lett felülírva. Az AeroFTP a következő indításkor újra felajánlja az importálást.",
+            "importedNoVaultBody": "A konfigurációja importálva lett, de nem tartalmazott olyan mentett kiszolgálókat vagy széfet, amelyeket az importálás át tudott volna másolni. Indítsa újra az AeroFTP-t az importált elemek betöltéséhez.",
+            "importedVaultSkippedBody": "A konfigurációja egy része importálva lett, de a mentett kiszolgálói és a széf nem: ennek a Flatpak-telepítésnek már saját széfje van, és a meglévő fájlok soha nem íródnak felül. Indítsa újra az AeroFTP-t az importált elemek betöltéséhez.",
+            "importNothingVaultSkippedBody": "Egyetlen fájl sem lett átmásolva, ezért a mentett kiszolgálói és a széf nem lettek importálva: ennek a Flatpak-telepítésnek már saját széfje van, minden olyan fájlhoz, amelyet az importálás átmásolna, már van itt azonos nevű fájl, és a meglévő fájlok soha nem íródnak felül.",
+            "importUnreadableResult": "az AeroFTP nem tudta beolvasni az importálás eredményét",
+            "importNothingToImportBody": "Egyetlen fájl sem lett átmásolva: a meglévő konfigurációja nem tartalmaz olyan fájlt, amelyet az importálás átmásol (a szimbolikus hivatkozások és az SQLite ideiglenes fájljai soha nem másolódnak át)."
         },
         "picker": {
             "unavailable": {

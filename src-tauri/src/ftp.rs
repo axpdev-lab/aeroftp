@@ -462,8 +462,8 @@ impl FtpManager {
         data_stream.read_to_end(&mut buf).await?;
 
         // Finalize the stream
-        stream
-            .finalize_retr_stream(data_stream)
+        data_stream
+            .finish()
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
 
@@ -528,8 +528,8 @@ impl FtpManager {
         let bytes_read = buf.len();
 
         // Finalize the stream
-        stream
-            .finalize_retr_stream(data_stream)
+        data_stream
+            .finish()
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
 
@@ -607,7 +607,7 @@ impl FtpManager {
 
         // Finalize the stream (must always finalize to keep FTP connection clean)
         // On cancel, FTP server sends 426: ignore that error
-        let finalize_result = stream.finalize_retr_stream(data_stream).await;
+        let finalize_result = data_stream.finish().await;
         if cancelled {
             let _ = finalize_result; // Ignore 426 error on cancel
             let _ = tokio::fs::remove_file(local_path).await;
@@ -718,7 +718,7 @@ impl FtpManager {
         }
 
         // Finalize the stream (must always finalize to keep FTP connection clean)
-        let finalize_result = stream.finalize_put_stream(data_stream).await;
+        let finalize_result = data_stream.finish().await;
         if cancelled {
             let _ = finalize_result; // Ignore error on cancel
                                      // Try to remove the partial remote file

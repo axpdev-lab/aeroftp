@@ -804,7 +804,7 @@
             "keystoreDecisionKeepBoth": "Bakiza zote mbili",
             "keystoreCopyName": "{name} (kutoka nakala)",
             "keystorePreviewLocalFromVault": "Orodha ya wasifu wa seva ya kifaa hiki haikuweza kusomwa, kwa hivyo ulinganisho unatumia orodha ya seva iliyohifadhiwa kwenye hifadhi salama.",
-            "keystoreDecisionsFailed": "Uletaji umekamilika, lakini chaguo zako za wasifu wa seva hazikuweza kutumika: {error}",
+            "keystoreDecisionsFailed": "Uingizaji umekamilika, lakini chaguo zako za wasifu wa seva hazikuweza kutumika: {error}",
             "exportKeystoreDesc": "Hamisha vitambulisho vyote vilivyosimbwa kwenye faili ya hifadhi rudufu",
             "importKeystoreDesc": "Ingiza vitambulisho kutoka faili ya hifadhi rudufu",
             "keystoreExported": "Hazina imehamishwa kwa mafanikio (vipengele {count})",
@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Pakia upya",
             "uiTokensReset": "Futa mabadiliko",
             "uiTokensApplied": "Mabadiliko yaliyotumika: {count}",
-            "uiTokensRejected": "Maingizo yaliyokataliwa: {count}"
+            "uiTokensRejected": "Maingizo yaliyokataliwa: {count}",
+            "keystorePreferencesFailed": "Uingizaji umekamilika, lakini mapendeleo yako ya programu hayakuweza kurejeshwa: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5604,7 +5605,12 @@
             "defaultSaltNeedsStronger": "Weka nenosiri imara lililozalishwa ili kuwasha salt chaguo-msingi.",
             "defaultSaltOneSaltNote": "Kuna salt moja tu: baiti 32, ya umma, sawa kwa kila hazina inayotumia salt chaguo-msingi.",
             "defaultSaltValueLabel": "Chumvi chaguo-msingi ya umma (AeroCrypt v3), SHA-256 ya",
-            "defaultSaltTierMeaning": "Chumvi chaguo-msingi inamaanisha nywila peke yake hufungua kasha: hakuna kingine cha kubeba, na hakuna kingine kinachokilinda."
+            "defaultSaltTierMeaning": "Chumvi chaguo-msingi inamaanisha nywila peke yake hufungua kasha: hakuna kingine cha kubeba, na hakuna kingine kinachokilinda.",
+            "pastedObscured": "Imebandikwa kutoka rclone.conf (imefichwa)",
+            "pastedObscuredHint": "Chagua \"Imebandikwa kutoka rclone.conf\" tu ikiwa ulinakili thamani hii kutoka kwenye faili la rclone.conf, ambamo rclone huihifadhi ikiwa imefichwa.",
+            "formNotRecorded": "Haijarekodiwa: thamani hii ilihifadhiwa kabla AeroFTP haijauliza. Chagua jinsi ilivyoingizwa; thamani ambayo AeroFTP iliingiza kutoka rclone.conf ilihifadhiwa kama “Imechapwa”.",
+            "secretFormTyped": "Imechapwa",
+            "secretFormChangeConfirm": "Hii inabadilisha jinsi thamani iliyohifadhiwa inavyosomwa, na hivyo ufunguo unaofungua faili: ni chaguo sahihi pekee linalozifungua. Badilisha chaguo hili?"
         },
         "modalGuard": {
             "busyTitle": "Operesheni inaendelea",
@@ -5869,10 +5875,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP imepata usanidi uliopo katika folda yako ya nyumbani. Usakinishaji huu wa Flatpak hutumia hifadhi yake tofauti, kwa hivyo seva zako zilizohifadhiwa na kasha lililosimbwa hazionekani hapa bado. Uziingize sasa? Faili hunakiliwa tu, hakuna kinachoandikwa juu, na kasha lako hufunguliwa hapa kwa njia ile ile kama sasa.",
+            "importBody": "AeroFTP imepata usanidi uliopo katika folda yako ya nyumbani. Usakinishaji huu wa Flatpak hutumia hifadhi yake tofauti, kwa hivyo seva zako zilizohifadhiwa na kasha lako lililosimbwa hazionekani hapa bado. Uingize usanidi wako sasa? Faili hunakiliwa tu, na faili ambayo usakinishaji huu wa Flatpak tayari unayo haiandikwi juu kamwe.",
             "importAccept": "Ingiza",
             "importedBody": "Usanidi wako umeingizwa. Anzisha upya AeroFTP ili kupakia seva zako na kasha lako.",
-            "restartNow": "Anzisha upya sasa"
+            "restartNow": "Anzisha upya sasa",
+            "importNothingBody": "Hakuna faili iliyonakiliwa: usakinishaji huu wa Flatpak tayari una faili yenye jina lile lile kwa kila faili ambayo uingizaji ungenakili, na faili zilizopo haziandikwi juu kamwe.",
+            "importFailedBody": "Uingizaji umesimama na hitilafu: {error}. Faili ambazo tayari zimenakiliwa kwenye usakinishaji huu wa Flatpak zinabaki hapo, na hakuna kilichoandikwa juu. AeroFTP itapendekeza uingizaji tena wakati wa kuanza unaofuata.",
+            "importedNoVaultBody": "Usanidi wako umeingizwa, lakini haukuwa na seva zilizohifadhiwa wala kasha ambavyo uingizaji ungeweza kunakili. Anzisha upya AeroFTP ili kupakia kilichoingizwa.",
+            "importedVaultSkippedBody": "Sehemu ya usanidi wako imeingizwa, lakini si seva zako zilizohifadhiwa na kasha lako: usakinishaji huu wa Flatpak tayari una kasha lake lenyewe, na faili zilizopo haziandikwi juu kamwe. Anzisha upya AeroFTP ili kupakia kilichoingizwa.",
+            "importNothingVaultSkippedBody": "Hakuna faili iliyonakiliwa, kwa hivyo seva zako zilizohifadhiwa na kasha lako havikuingizwa: usakinishaji huu wa Flatpak tayari una kasha lake lenyewe na faili yenye jina lile lile kwa kila faili ambayo uingizaji ungenakili, na faili zilizopo haziandikwi juu kamwe.",
+            "importUnreadableResult": "AeroFTP haikuweza kusoma matokeo ya uingizaji",
+            "importNothingToImportBody": "Hakuna faili iliyonakiliwa: usanidi wako uliopo hauna faili yoyote ambayo uingizaji hunakili (viungo vya kiishara na faili za muda za SQLite hazinakiliwi kamwe)."
         },
         "picker": {
             "unavailable": {

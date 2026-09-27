@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Berriz kargatu",
             "uiTokensReset": "Garbitu gainidazketak",
             "uiTokensApplied": "Aplikatutako gainidatziak: {count}",
-            "uiTokensRejected": "Baztertutako sarrerak: {count}"
+            "uiTokensRejected": "Baztertutako sarrerak: {count}",
+            "keystorePreferencesFailed": "Inportazioa amaitu da, baina ezin izan dira aplikazioaren hobespenak berrezarri: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5623,7 +5624,12 @@
             "defaultSaltNeedsStronger": "Sartu sortutako pasahitz sendo bat lehenetsitako salt-a aktibatzeko.",
             "defaultSaltOneSaltNote": "Salt bakarra dago: 32 byte, publikoa, salt lehenetsia darabilten kutxa guztietan berdina.",
             "defaultSaltValueLabel": "Gatz lehenetsi publikoa (AeroCrypt v3), honako kate honen SHA-256",
-            "defaultSaltTierMeaning": "Gatz lehenetsiak esan nahi du pasahitzak bakarrik irekitzen duela kutxa gotorra: ez da beste ezer eraman behar, eta beste ezerk ez du babesten."
+            "defaultSaltTierMeaning": "Gatz lehenetsiak esan nahi du pasahitzak bakarrik irekitzen duela kutxa gotorra: ez da beste ezer eraman behar, eta beste ezerk ez du babesten.",
+            "pastedObscured": "rclone.conf-etik itsatsia (ezkutatua)",
+            "pastedObscuredHint": "Aukeratu \"rclone.conf-etik itsatsia\" balio hau rclone.conf fitxategi batetik kopiatu baduzu soilik; bertan, rclone-k ezkutatuta gordetzen du.",
+            "formNotRecorded": "Erregistratu gabe: balio hau AeroFTP-k galdetu aurretik gorde zen. Aukeratu nola sartu zen; AeroFTP-k rclone.conf-etik inportatutako balio bat «Idatzia» gisa gorde zen.",
+            "secretFormTyped": "Idatzia",
+            "secretFormChangeConfirm": "Honek gordetako balioa nola irakurtzen den aldatzen du, eta, beraz, fitxategiak irekitzen dituen gakoa: aukera zuzenak soilik irekitzen ditu. Aukera hau aldatu?"
         },
         "modalGuard": {
             "busyTitle": "Eragiketa abian",
@@ -5888,10 +5894,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP-k lehendik dagoen konfigurazio bat aurkitu du zure karpeta pertsonalean. Flatpak instalazio honek bere biltegiratze bereizia erabiltzen du, beraz, gordetako zerbitzariak eta zifratutako kutxa gotorra ez dira oraindik hemen ikusten. Orain inportatu nahi dituzu? Fitxategiak kopiatu baino ez dira egiten, ez da ezer gainidazten, eta kutxa gotorra hemen orain bezala desblokeatzen da.",
+            "importBody": "AeroFTP-k lehendik dagoen konfigurazio bat aurkitu du zure karpeta pertsonalean. Flatpak instalazio honek bere biltegiratze bereizia erabiltzen du, beraz, gordetako zerbitzariak eta zifratutako kutxa gotorra ez dira oraindik hemen ikusten. Zure konfigurazioa orain inportatu nahi duzu? Fitxategiak kopiatu baino ez dira egiten, eta Flatpak instalazio honek dagoeneko duen fitxategi bat ez da inoiz gainidazten.",
             "importAccept": "Inportatu",
             "importedBody": "Zure konfigurazioa inportatu da. Berrabiarazi AeroFTP zure zerbitzariak eta kutxa gotorra kargatzeko.",
-            "restartNow": "Berrabiarazi orain"
+            "restartNow": "Berrabiarazi orain",
+            "importNothingBody": "Ez da fitxategirik kopiatu: inportazioak kopiatuko lukeen fitxategi bakoitzeko, badago dagoeneko izen bereko fitxategi bat Flatpak instalazio honetan, eta lehendik dauden fitxategiak ez dira inoiz gainidazten.",
+            "importFailedBody": "Inportazioa errore batekin gelditu da: {error}. Flatpak instalazio honetara jadanik kopiatutako fitxategiak bertan geratzen dira, eta ez da ezer gainidatzi. AeroFTPk inportazioa berriro eskainiko du hurrengo abioan.",
+            "importedNoVaultBody": "Zure konfigurazioa inportatu da, baina ez zuen inportazioak kopiatu zezakeen gordetako zerbitzaririk ez kutxa gotorrik. Berrabiarazi AeroFTP inportatutakoa kargatzeko.",
+            "importedVaultSkippedBody": "Zure konfigurazioaren zati bat inportatu da, baina ez gordetako zerbitzariak eta kutxa gotorra: Flatpak instalazio honek badu dagoeneko bere kutxa gotorra, eta lehendik dauden fitxategiak ez dira inoiz gainidazten. Berrabiarazi AeroFTP inportatutakoa kargatzeko.",
+            "importNothingVaultSkippedBody": "Ez da fitxategirik kopiatu, beraz, gordetako zerbitzariak eta kutxa gotorra ez dira inportatu: Flatpak instalazio honek badu dagoeneko bere kutxa gotorra, baita izen bereko fitxategi bat ere inportazioak kopiatuko lukeen fitxategi bakoitzeko, eta lehendik dauden fitxategiak ez dira inoiz gainidazten.",
+            "importUnreadableResult": "AeroFTP-k ezin izan du inportazioaren emaitza irakurri",
+            "importNothingToImportBody": "Ez da fitxategirik kopiatu: lehendik dagoen zure konfigurazioak ez du inportazioak kopiatzen duen fitxategirik (esteka sinbolikoak eta SQLite-ren aldi baterako fitxategiak ez dira inoiz kopiatzen)."
         },
         "picker": {
             "unavailable": {

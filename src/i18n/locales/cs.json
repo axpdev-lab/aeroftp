@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Znovu načíst",
             "uiTokensReset": "Vymazat přepsání",
             "uiTokensApplied": "Použitá přepsání: {count}",
-            "uiTokensRejected": "Odmítnuté položky: {count}"
+            "uiTokensRejected": "Odmítnuté položky: {count}",
+            "keystorePreferencesFailed": "Import skončil, ale vaše předvolby aplikace se nepodařilo obnovit: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5604,7 +5605,12 @@
             "defaultSaltNeedsStronger": "Zadejte silné vygenerované heslo pro zapnutí výchozího saltu.",
             "defaultSaltOneSaltNote": "Existuje jediný salt: 32 bajtů, veřejný, stejný pro každý trezor s výchozím saltem.",
             "defaultSaltValueLabel": "Veřejný výchozí salt (AeroCrypt v3), SHA-256 z",
-            "defaultSaltTierMeaning": "Výchozí sůl znamená, že trezor otevře samotné heslo: nic dalšího není třeba nosit s sebou a nic dalšího ho nechrání."
+            "defaultSaltTierMeaning": "Výchozí sůl znamená, že trezor otevře samotné heslo: nic dalšího není třeba nosit s sebou a nic dalšího ho nechrání.",
+            "pastedObscured": "Vloženo z rclone.conf (zamaskováno)",
+            "pastedObscuredHint": "Zvolte „Vloženo z rclone.conf“ pouze tehdy, pokud jste tuto hodnotu zkopírovali ze souboru rclone.conf, kde ji rclone uchovává zamaskovanou.",
+            "formNotRecorded": "Nezaznamenáno: tato hodnota byla uložena dříve, než se AeroFTP začal ptát. Zvolte, jak byla zadána; hodnota, kterou AeroFTP importoval z rclone.conf, byla uložena jako „Zadáno ručně“.",
+            "secretFormTyped": "Zadáno ručně",
+            "secretFormChangeConfirm": "Tím se změní způsob čtení uložené hodnoty, a tedy i klíč, kterým se soubory otevírají: otevře je jen správná volba. Změnit tuto volbu?"
         },
         "modalGuard": {
             "busyTitle": "Probíhá operace",
@@ -5869,10 +5875,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP našel existující konfiguraci ve vaší domovské složce. Tato instalace přes Flatpak používá vlastní oddělené úložiště, takže vaše uložené servery a šifrovaný trezor zde zatím nejsou vidět. Chcete je nyní importovat? Soubory se pouze zkopírují, nic se nepřepíše a trezor se zde odemyká stejně jako nyní.",
+            "importBody": "AeroFTP našel existující konfiguraci ve vaší domovské složce. Tato instalace přes Flatpak používá vlastní oddělené úložiště, takže vaše uložené servery a šifrovaný trezor zde zatím nejsou vidět. Chcete nyní importovat svou konfiguraci? Soubory se pouze kopírují a soubor, který tato instalace Flatpak už má, se nikdy nepřepíše.",
             "importAccept": "Importovat",
             "importedBody": "Vaše konfigurace byla importována. Restartujte AeroFTP, abyste načetli své servery a trezor.",
-            "restartNow": "Restartovat nyní"
+            "restartNow": "Restartovat nyní",
+            "importNothingBody": "Nebyl zkopírován žádný soubor: ke každému souboru, který by import zkopíroval, už v této instalaci Flatpak existuje soubor se stejným názvem a existující soubory se nikdy nepřepisují.",
+            "importFailedBody": "Import se zastavil s chybou: {error}. Soubory už zkopírované do této instalace Flatpak zůstávají na místě a nic nebylo přepsáno. AeroFTP nabídne import znovu při příštím spuštění.",
+            "importedNoVaultBody": "Vaše konfigurace byla importována, ale neobsahovala žádné uložené servery ani trezor, které by import mohl zkopírovat. Restartujte AeroFTP, aby se načetlo to, co bylo importováno.",
+            "importedVaultSkippedBody": "Část vaší konfigurace byla importována, ale ne vaše uložené servery a trezor: tato instalace Flatpak už má vlastní trezor a existující soubory se nikdy nepřepisují. Restartujte AeroFTP, aby se načetlo to, co bylo importováno.",
+            "importNothingVaultSkippedBody": "Nebyl zkopírován žádný soubor, takže vaše uložené servery a trezor nebyly importovány: tato instalace Flatpak už má vlastní trezor i soubor se stejným názvem ke každému souboru, který by import zkopíroval, a existující soubory se nikdy nepřepisují.",
+            "importUnreadableResult": "AeroFTP nemohl přečíst výsledek importu",
+            "importNothingToImportBody": "Nebyl zkopírován žádný soubor: vaše existující konfigurace neobsahuje žádný soubor, který import kopíruje (symbolické odkazy a dočasné soubory SQLite se nikdy nekopírují)."
         },
         "picker": {
             "unavailable": {
