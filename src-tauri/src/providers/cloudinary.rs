@@ -693,6 +693,15 @@ impl CloudinaryProvider {
             };
         }
         if entry.is_dir {
+            // The folder endpoint answers 409 for an existing destination,
+            // and a folder has no single item to set aside: refuse before
+            // the request, with the reason.
+            if displaced.is_some() {
+                return Err(ProviderError::NotSupported(format!(
+                    "cannot replace the folder {to} with {from}: Cloudinary moves a folder only \
+                     to a free name, and nothing was changed"
+                )));
+            }
             // PUT /folders/<from> with form to_folder=<to>
             let from_seg = source.trim_matches('/');
             let url = format!(
@@ -2533,6 +2542,9 @@ mod tests {
                             .into_response();
                     }
                     if path.starts_with("/folders/") {
+                        if req.method() == axum::http::Method::PUT {
+                            seen.lock().unwrap().push(format!("PUT {path}"));
+                        }
                         return axum::Json(serde_json::json!({ "folders": [] })).into_response();
                     }
                     let kind = path.trim_start_matches("/resources/");
@@ -2619,6 +2631,30 @@ mod tests {
             "{:?}",
             renames.lock().unwrap()
         );
+    }
+
+    /// A folder replace onto an existing folder reached `PUT /folders`,
+    /// which Cloudinary answers with 409: it is refused before the request.
+    /// A folder move to a free name still goes through.
+    #[tokio::test]
+    async fn a_folder_replace_onto_an_existing_folder_is_refused_before_the_request() {
+        let (mut provider, calls) = provider_on_fixed_folders(&[], &["a", "b"]).await;
+        let outcome = provider.replace("/a", "/b").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotSupported(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+
+        provider
+            .replace("/a", "/c")
+            .await
+            .expect("move to a free name");
+        assert_eq!(*calls.lock().unwrap(), ["PUT /folders/a"]);
     }
 
     /// With an image `v` (`v.png`) and a video `v` (`v.mp4`), `rm /v.png`
