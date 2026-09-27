@@ -2052,6 +2052,7 @@ enum CryptName {
 /// the clear.
 fn crypt_section_name(
     base_name: &str,
+    profile_section: &str,
     options: &serde_json::Value,
     names: &mut RcloneNamespace,
 ) -> CryptName {
@@ -2061,7 +2062,14 @@ fn crypt_section_name(
             .and_then(|v| v.as_str())
             .unwrap_or(""),
     );
-    if !requested.is_empty() && requested != base_name {
+    // The operator's name is used only when it is neither the clear remote's
+    // section nor the base this crypt wraps. Both of those would make
+    // `rclone sync <name>:` point at the crypt while that name is still the
+    // clear remote. Root and subfolder fall through to `<base>-crypt` the
+    // same way: in a subfolder `base` is the start-folder alias, not the
+    // profile section, so comparing only with `base` used to claim the
+    // profile's own name and refuse.
+    if !requested.is_empty() && requested != base_name && requested != profile_section {
         return if names.claim_exact(&requested) {
             CryptName::Free(requested)
         } else {
@@ -2090,6 +2098,7 @@ enum CryptSection {
 fn append_crypt_remote_section(
     output: &mut String,
     base_name: &str,
+    profile_section: &str,
     options: Option<&serde_json::Value>,
     names: &mut RcloneNamespace,
 ) -> CryptSection {
@@ -2097,7 +2106,12 @@ fn append_crypt_remote_section(
         Some(o) if o.get("rcloneCryptEnabled").and_then(|v| v.as_bool()) == Some(true) => o,
         _ => return CryptSection::None,
     };
-    let section = match crypt_section_name(base_name, opts, names) {
+    let requested = sanitize_rclone_remote_name(
+        opts.get("rcloneCryptOverlayName")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    );
+    let section = match crypt_section_name(base_name, profile_section, opts, names) {
         CryptName::Free(name) => name,
         CryptName::Taken(name) => {
             return CryptSection::Refused(format!(
@@ -2107,6 +2121,12 @@ fn append_crypt_remote_section(
             ));
         }
     };
+    if !requested.is_empty() && requested != section {
+        output.push_str(&format!(
+            "# crypt section is '{section}', not '{requested}': '{requested}' stays the clear \
+             remote, so `rclone sync {requested}:` keeps pointing at it\n"
+        ));
+    }
     let password = opts
         .get("rcloneCryptPassword")
         .and_then(|v| v.as_str())
@@ -3214,8 +3234,13 @@ pub fn export_rclone(
         // this remote's header, where it stays when rclone rewrites the file;
         // the names it claims come after this remote's in either order.
         let mut crypt_section = String::new();
-        let crypt =
-            append_crypt_remote_section(&mut crypt_section, &crypt_base, options, &mut names);
+        let crypt = append_crypt_remote_section(
+            &mut crypt_section,
+            &crypt_base,
+            &remote_name,
+            options,
+            &mut names,
+        );
         if let CryptSection::Refused(reason) = &crypt {
             notes.push_str(&format!(
                 "# crypt overlay for '{}' not written: {}\n",
@@ -6640,6 +6665,82 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         assert!(
             conf.contains("directory_name_encryption = true"),
             "dir mode:\n{conf}"
+        );
+    }
+
+    /// A crypt remote `vault` whose base is `base:/enc` imports as one sftp
+    /// profile named vault, starting in /enc. Export must not claim the
+    /// section `vault` for the crypt remote: that name is the clear profile,
+    /// and `rclone sync vault:` has to keep pointing at it. The crypt section
+    /// wraps the start-folder alias, the same fallback the root case uses.
+    #[test]
+    fn test_export_rclone_crypt_in_a_subfolder_does_not_take_the_profile_name() {
+        let password = obscure_password("topsecret").expect("obscure");
+        let conf = format!(
+            "[base]\ntype = sftp\nhost = sftp.example.com\nuser = demo\npass = {password}\n\n\
+             [vault]\ntype = crypt\nremote = base:/enc\npassword = {password}\n"
+        );
+        let path = tmp_write(
+            &conf,
+            &format!("aeroftp-test-crypt-subfolder-{}.conf", std::process::id()),
+        );
+        let imported = import_rclone(&path).expect("import");
+        std::fs::remove_file(&path).ok();
+        let vault = imported
+            .servers
+            .iter()
+            .find(|s| s.name == "vault")
+            .expect("profile vault");
+        assert_eq!(vault.initial_path.as_deref(), Some("/enc"));
+        let mut options = vault.options.clone().unwrap_or_default();
+        options
+            .as_object_mut()
+            .unwrap()
+            .insert("initial_path".into(), serde_json::json!("/enc"));
+        let servers = vec![RcloneExportServer {
+            name: vault.name.clone(),
+            host: vault.host.clone(),
+            port: vault.port,
+            username: vault.username.clone(),
+            protocol: vault.protocol.clone(),
+            options: Some(options),
+            provider_id: vault.provider_id.clone(),
+        }];
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp-test-export-crypt-subfolder-{}.conf",
+            std::process::id()
+        ));
+        let outcome = export_rclone(&servers, &HashMap::new(), &tmp).expect("export");
+        let exported = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(
+            outcome.skipped.is_empty(),
+            "the crypt section must be written, not refused: {:?}\n{exported}",
+            outcome.skipped
+        );
+        assert!(
+            exported.contains("type = crypt"),
+            "crypt section:\n{exported}"
+        );
+        assert!(
+            exported.contains("[vault-path]"),
+            "start-folder alias:\n{exported}"
+        );
+        assert!(
+            exported.contains("remote = vault-path:"),
+            "crypt must wrap the alias:\n{exported}"
+        );
+        assert!(
+            exported.contains("rclone sync vault:"),
+            "the note must say why the section is not named vault:\n{exported}"
+        );
+        let crypt_header = exported
+            .lines()
+            .find(|line| line.starts_with('[') && line.contains("crypt"))
+            .unwrap_or("");
+        assert_ne!(
+            crypt_header, "[vault]",
+            "crypt must not take the clear name"
         );
     }
 
