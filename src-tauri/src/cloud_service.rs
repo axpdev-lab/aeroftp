@@ -163,6 +163,12 @@ pub struct CloudService {
     /// What each transfer of the running cycle left (relative path), for the
     /// baseline.
     landed: Arc<std::sync::Mutex<HashMap<String, Landed>>>,
+    /// Files of the running cycle that kept changing while they uploaded
+    /// (relative path): the cycle reports them once its baseline is saved.
+    unsettled: Arc<std::sync::Mutex<Vec<String>>>,
+    /// How long an upload waits for its file to be left alone (see
+    /// `SEND_QUIET_WINDOW`), a field so a test can give it a length.
+    send_quiet_window: std::time::Duration,
 }
 
 /// What a transfer left, for the baseline: the time it left on the local file
@@ -187,6 +193,21 @@ struct LocalFileState {
 /// remote copy recorded as the synced one would hide the edit.
 const UPLOAD_SENDS_WHILE_EDITED: usize = 3;
 
+/// How long a file must have been left alone before an upload reads it. A
+/// write inside the tick of the file's timestamps moves none of them (the
+/// change time moves at the kernel's timer tick on Linux, and shares the 2 s
+/// time field on FAT), so a file read sooner could change unseen. Zero under
+/// test, whose files are written by the test itself right before.
+const SEND_QUIET_WINDOW: std::time::Duration = if cfg!(test) {
+    std::time::Duration::ZERO
+} else {
+    std::time::Duration::from_secs(2)
+};
+
+/// The longest an upload waits for its file to be left alone: a file written
+/// without pause is then sent as it is, and the resend loop reads it again.
+const SEND_QUIET_BOUND: std::time::Duration = std::time::Duration::from_secs(10);
+
 impl CloudService {
     /// Create a new cloud service
     pub fn new() -> Self {
@@ -197,6 +218,8 @@ impl CloudService {
             task_tx: None,
             app_handle: None,
             landed: Arc::default(),
+            unsettled: Arc::default(),
+            send_quiet_window: SEND_QUIET_WINDOW,
         }
     }
 
@@ -228,8 +251,14 @@ impl CloudService {
     }
 
     /// The local file as an upload reads it: size and time, and on Unix its
-    /// inode and change time, which a same-size save inside the time's tick
-    /// (1 to 2 s on FAT, exFAT, SMB) still moves.
+    /// inode and change time. The change time moves on an in-place save that
+    /// puts the time back, the inode on a save that renames a new file over
+    /// the old one. Neither moves inside the tick of the timestamps
+    /// themselves (on FAT the change time shares the 2 s time field, exFAT
+    /// keeps 10 ms, Linux moves it at the kernel's timer tick): the quiet
+    /// window before each send covers that. Stores through a shared memory
+    /// map to pages already dirty move no time at all, and no reading of the
+    /// metadata sees them.
     fn local_file_state(path: &Path) -> Option<LocalFileState> {
         let meta = std::fs::metadata(path).ok()?;
         #[cfg(unix)]
@@ -246,10 +275,61 @@ impl CloudService {
         })
     }
 
+    /// Wait until `path` has been left alone for `window`, at most `bound`
+    /// (see `SEND_QUIET_WINDOW`). A file that cannot be read is not waited
+    /// for: the upload reports what is wrong with it.
+    async fn wait_until_quiet(
+        path: &Path,
+        window: std::time::Duration,
+        bound: std::time::Duration,
+    ) {
+        let deadline = tokio::time::Instant::now() + bound;
+        while let Some(quiet_for) = Self::quiet_for(path) {
+            let now = tokio::time::Instant::now();
+            if quiet_for >= window || now >= deadline {
+                return;
+            }
+            tokio::time::sleep((window - quiet_for).min(deadline - now)).await;
+        }
+    }
+
+    /// How long ago `path` last changed, by its time and, on Unix, its change
+    /// time. A time ahead of the clock (a stamp from a server whose clock is
+    /// ahead, a copied time) says nothing about the last write and is left
+    /// out.
+    fn quiet_for(path: &Path) -> Option<std::time::Duration> {
+        let meta = std::fs::metadata(path).ok()?;
+        #[cfg(unix)]
+        let changed = {
+            use std::os::unix::fs::MetadataExt;
+            u64::try_from(meta.ctime()).ok().map(|secs| {
+                std::time::UNIX_EPOCH
+                    + std::time::Duration::new(secs, meta.ctime_nsec().clamp(0, 999_999_999) as u32)
+            })
+        };
+        #[cfg(not(unix))]
+        let changed = None;
+        let now = std::time::SystemTime::now();
+        [meta.modified().ok(), changed]
+            .into_iter()
+            .flatten()
+            .filter_map(|time| now.duration_since(time).ok())
+            .min()
+    }
+
     fn forget_landed(&self) {
         if let Ok(mut landed) = self.landed.lock() {
             landed.clear();
         }
+    }
+
+    /// The files of the cycle that kept changing while they uploaded, taken:
+    /// the cycle ends with none left.
+    fn take_unsettled(&self) -> Vec<String> {
+        self.unsettled
+            .lock()
+            .map(|mut unsettled| std::mem::take(&mut *unsettled))
+            .unwrap_or_default()
     }
 
     /// Initialize with config and optional app handle for status events
@@ -931,6 +1011,15 @@ impl CloudService {
             index.as_ref(),
         );
 
+        // After the save, which a cycle with errors skips: the baseline of a
+        // file that kept changing while it uploaded is what makes the next
+        // cycle read it as a conflict.
+        for path in self.take_unsettled() {
+            result.errors.push(format!(
+                "{path}: it kept changing while it uploaded; the next cycle reads it as a conflict"
+            ));
+        }
+
         // Update status
         if result.conflicts > 0 {
             self.set_status(CloudSyncStatus::HasConflicts {
@@ -1398,6 +1487,12 @@ impl CloudService {
                     let mut sends = 0;
                     loop {
                         sends += 1;
+                        Self::wait_until_quiet(
+                            local_path,
+                            self.send_quiet_window,
+                            SEND_QUIET_BOUND,
+                        )
+                        .await;
                         let sent = Self::local_file_state(local_path);
                         tracing::info!(
                             "AeroCloud: uploading local '{}' ({} bytes) to remote '{}'",
@@ -1436,20 +1531,36 @@ impl CloudService {
                                 );
                                 continue;
                             }
-                            // Nothing is noted: the baseline keeps the scan's
-                            // time, and the next cycle reads both sides as
-                            // changed, a conflict, instead of a remote copy
-                            // recorded as the synced one.
+                            // The remote holds one of the sends. The baseline
+                            // names no time either side has, so the next cycle
+                            // reads both as changed, a conflict, whatever time
+                            // the server gives the remote (the scan's time
+                            // could read identical within the 2 s window), and
+                            // the cycle reports the file.
                             tracing::warn!(
                                 "AeroCloud: '{}' kept changing while it uploaded; left as a conflict",
                                 comparison.relative_path
                             );
+                            self.note_landed_as(
+                                &comparison.relative_path,
+                                Landed {
+                                    size: None,
+                                    modified: DateTime::<Utc>::UNIX_EPOCH,
+                                },
+                            );
+                            if let Ok(mut unsettled) = self.unsettled.lock() {
+                                unsettled.push(comparison.relative_path.clone());
+                            }
                             break;
                         };
-                        if uploaded.as_ref().is_ok_and(|entry| entry.size != sent.len) {
+                        if provider.reports_exact_size()
+                            && uploaded.as_ref().is_ok_and(|entry| entry.size != sent.len)
+                        {
                             // The remote is not what was sent: another client
                             // wrote it between the end of the upload and the
-                            // stat. The local file is not stamped with a time
+                            // stat (an overlay that reports the size on the
+                            // wire, compressed or encrypted, never matches, and
+                            // is not asked). The local file is not stamped with a time
                             // that belongs to that write, and the baseline
                             // records what was sent: the next cycle reads the
                             // remote as changed.
@@ -2094,8 +2205,11 @@ mod baseline_tests {
         edit_during_stat: Option<std::path::PathBuf>,
         stat_time: StatTime,
         /// The size `stat` reports instead of the size sent: another client
-        /// wrote the file right after the upload.
+        /// wrote the file right after the upload, or an overlay that reports
+        /// the size on the wire.
         stat_size: Option<u64>,
+        /// Reports sizes that are not the plain size (an overlay).
+        inexact_size: bool,
         /// What each upload sent, in order.
         sent: Vec<Vec<u8>>,
         /// The local file of the last upload.
@@ -2112,6 +2226,9 @@ mod baseline_tests {
         }
         fn display_name(&self) -> String {
             "stamping".to_string()
+        }
+        fn reports_exact_size(&self) -> bool {
+            !self.inexact_size
         }
         async fn connect(&mut self) -> Result<(), ProviderError> {
             Ok(())
@@ -2286,7 +2403,10 @@ mod baseline_tests {
         let next = build_comparison_results_with_index(
             HashMap::from([("f.txt".to_string(), now_local)]),
             HashMap::from([("f.txt".to_string(), remote)]),
-            &CompareOptions::default(),
+            &CompareOptions {
+                compare_size: provider.reports_exact_size(),
+                ..CompareOptions::default()
+            },
             Some(&index),
         );
         let status = next
@@ -2375,14 +2495,172 @@ mod baseline_tests {
                 stat_time,
                 ..Default::default()
             };
-            let (_, next) = upload_then_next_cycle(&mut provider, root.path()).await;
+            let (baseline, next) = upload_then_next_cycle(&mut provider, root.path()).await;
             assert_eq!(
                 provider.sent.len(),
                 3,
                 "three sends, then it is left ({stat_time:?})"
             );
+            assert_eq!(
+                baseline.get("f.txt").and_then(|entry| entry.modified),
+                Some(DateTime::<Utc>::UNIX_EPOCH),
+                "a time neither side has ({stat_time:?})"
+            );
             assert_eq!(next, SyncStatus::Conflict, "{stat_time:?}");
         }
+    }
+
+    /// Minor 2 (verification of the sixth round): with the scan's time as the
+    /// baseline, a burst of same-size edits right after the scan, and a
+    /// server time within 2 s of it, the next cycle read identical over the
+    /// last send. The baseline now names a time neither side has, and the
+    /// cycle reports the file, after saving the baseline (a cycle with
+    /// errors saves none, and the conflict would be lost with it).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_file_that_keeps_changing_is_reported_after_its_baseline_is_saved() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime")
+                .block_on(async {
+                    let local = tempfile::tempdir().unwrap();
+                    std::fs::write(local.path().join("f.txt"), b"payload").unwrap();
+                    let config = CloudConfig {
+                        enabled: true,
+                        local_folder: local.path().to_path_buf(),
+                        remote_folder: "/keeps-changing".into(),
+                        sync_direction: CompareDirection::Bidirectional,
+                        ..Default::default()
+                    };
+                    let mut provider = StampingProvider {
+                        edits_during_upload: usize::MAX,
+                        ..Default::default()
+                    };
+                    let svc = CloudService::new();
+                    svc.init(config.clone()).await;
+                    let result = svc
+                        .perform_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap();
+                    assert_eq!(provider.sent.len(), 3);
+                    assert_eq!(
+                        result.errors,
+                        vec![
+                            "f.txt: it kept changing while it uploaded; the next cycle reads it as a conflict"
+                                .to_string()
+                        ]
+                    );
+                    let baseline = svc.load_index(&config).expect("the baseline is saved");
+                    assert_eq!(
+                        baseline.files.get("f.txt").and_then(|entry| entry.modified),
+                        Some(DateTime::<Utc>::UNIX_EPOCH)
+                    );
+                })
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    /// Minor 1 (verification of the sixth round): a save inside the tick of
+    /// the file's timestamps moves none of them, so an upload reads its file
+    /// only once it has been left alone for the quiet window (300 ms here),
+    /// its change time included, and waits no longer than the bound.
+    #[tokio::test]
+    async fn an_upload_waits_for_its_file_to_be_left_alone() {
+        let window = std::time::Duration::from_millis(300);
+        let at_least = window - std::time::Duration::from_millis(50);
+        let root = tempfile::tempdir().expect("local root");
+        let file = root.path().join("f.txt");
+        std::fs::write(&file, b"payload").unwrap();
+        let mut local = fi(7, 1_700_000_000);
+        local.path = file.to_string_lossy().into_owned();
+        let uploaded = cmp(
+            SyncStatus::LocalNewer,
+            Some(local),
+            Some(fi(3, 1)),
+            true,
+            false,
+        );
+        let mut config = cfg(
+            CompareDirection::Bidirectional,
+            false,
+            ConflictStrategy::AskUser,
+        );
+        config.local_folder = root.path().to_path_buf();
+        config.remote_folder = "/remote".to_string();
+        let mut svc = CloudService::new();
+        svc.send_quiet_window = window;
+        let started = std::time::Instant::now();
+        svc.process_comparison_with_provider(&mut StampingProvider::default(), &config, &uploaded)
+            .await
+            .expect("the upload succeeds");
+        assert!(
+            started.elapsed() >= at_least,
+            "a file written just now was sent after {:?}",
+            started.elapsed()
+        );
+
+        // Left alone past the window: no wait.
+        std::fs::write(&file, b"payload").unwrap();
+        tokio::time::sleep(window + std::time::Duration::from_millis(50)).await;
+        let started = std::time::Instant::now();
+        CloudService::wait_until_quiet(&file, window, SEND_QUIET_BOUND).await;
+        assert!(started.elapsed() < std::time::Duration::from_millis(100));
+
+        // Written without pause: the bound ends the wait.
+        std::fs::write(&file, b"payload").unwrap();
+        let started = std::time::Instant::now();
+        CloudService::wait_until_quiet(&file, std::time::Duration::from_secs(60), window).await;
+        let waited = started.elapsed();
+        assert!(
+            waited >= at_least && waited < std::time::Duration::from_secs(5),
+            "{waited:?}"
+        );
+
+        // An old time put back on a file written just now: only the change
+        // time says so.
+        #[cfg(unix)]
+        {
+            tokio::time::sleep(window + std::time::Duration::from_millis(50)).await;
+            std::fs::write(&file, b"payload").unwrap();
+            stamp(&file, 1_700_000_000);
+            let started = std::time::Instant::now();
+            CloudService::wait_until_quiet(&file, window, SEND_QUIET_BOUND).await;
+            assert!(started.elapsed() >= at_least, "{:?}", started.elapsed());
+        }
+    }
+
+    /// Major of the sixth verification: an overlay that reports the size on
+    /// the wire (AeroCompress, a legacy AeroCrypt: 13 bytes of header at
+    /// least) never gives back the size sent, and the check for another
+    /// client's write fired on every upload through it: no stamp, and the
+    /// remote read as changed the next cycle (a download, and a conflict for
+    /// an edit made meanwhile). The check is left to exact-size providers,
+    /// as the comparison leaves sizes to them.
+    #[tokio::test]
+    async fn an_upload_through_an_overlay_that_reports_the_size_on_the_wire_is_in_sync() {
+        let root = tempfile::tempdir().expect("local root");
+        let file = root.path().join("f.txt");
+        std::fs::write(&file, b"payload").unwrap();
+        stamp(&file, 1_700_000_000);
+        let mut provider = StampingProvider {
+            inexact_size: true,
+            stat_size: Some(7 + 13),
+            ..Default::default()
+        };
+        let (_, next) = upload_then_next_cycle(&mut provider, root.path()).await;
+        assert_eq!(next, SyncStatus::Identical);
     }
 
     /// m1 (verification of the fourth round): a save made while the remote
@@ -2417,11 +2695,17 @@ mod baseline_tests {
             stat_size: Some(9),
             ..Default::default()
         };
-        let (_, next) = upload_then_next_cycle(&mut provider, root.path()).await;
+        let (baseline, next) = upload_then_next_cycle(&mut provider, root.path()).await;
         assert_eq!(
             std::fs::metadata(&file).unwrap().modified().unwrap(),
             std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000),
             "the local file keeps its own time"
+        );
+        let entry = baseline.get("f.txt").expect("the upload is recorded");
+        assert_eq!(
+            (entry.size, entry.modified),
+            (7, DateTime::<Utc>::from_timestamp(1_700_000_000, 0)),
+            "what was sent"
         );
         assert_eq!(next, SyncStatus::RemoteNewer);
     }

@@ -58124,8 +58124,12 @@ async fn cmd_sync_watch(
     // /private/var for /var), and the incremental scan strips the root off
     // each one: a relative root, as every example in the guide uses, failed
     // that for every event and dropped it, so an edit waited for the periodic
-    // rescan and a remote change meanwhile downloaded over it.
-    let watch_root = std::fs::canonicalize(local).unwrap_or_else(|_| PathBuf::from(local));
+    // rescan and a remote change meanwhile downloaded over it. A directory
+    // that cannot be resolved (a Windows filesystem in user space, some
+    // network redirectors) is still made absolute.
+    let watch_root = std::fs::canonicalize(local)
+        .or_else(|_| std::path::absolute(local))
+        .unwrap_or_else(|_| PathBuf::from(local));
     let local_path = watch_root.as_path();
     if !local_path.is_dir() {
         if matches!(format, OutputFormat::Json) {
@@ -80740,6 +80744,15 @@ mod tests {
             deferred.take(local_path),
             vec![std::path::PathBuf::from("/l/a.txt")]
         );
+        // The limit itself is kept (nit, verification of the sixth round).
+        deferred.defer(
+            (0..WATCH_DEFERRED_LIMIT)
+                .map(|i| std::path::PathBuf::from(format!("/l/{i}.txt")))
+                .collect(),
+            cooldown_end,
+        );
+        assert!(!deferred.overflowed);
+        assert_eq!(deferred.take(local_path).len(), WATCH_DEFERRED_LIMIT);
         // Past the limit the paths are dropped, and the cycle for them is a
         // full one: the root alone (nit, verification of the fifth round).
         deferred.defer(
@@ -80887,7 +80900,16 @@ mod tests {
         let files = Arc::clone(&remote.files);
         let cancelled = Arc::new(AtomicBool::new(false));
         let stop = Arc::clone(&cancelled);
+        let locked = Arc::new(AtomicBool::new(false));
+        let watch_locked = Arc::clone(&locked);
         let user = std::thread::spawn(move || {
+            // The clock starts once the watch holds the session lock: a test
+            // holding it before could use up the wait while the watcher did
+            // not exist yet (verification of the sixth round).
+            let lock_deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
+            while !locked.load(Ordering::Relaxed) && std::time::Instant::now() < lock_deadline {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
             std::thread::sleep(std::time::Duration::from_millis(1500));
             std::fs::write(Path::new(&absolute).join("new.txt"), b"hello").unwrap();
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
@@ -80923,6 +80945,7 @@ mod tests {
                         .expect("test runtime")
                         .block_on(async move {
                             let _session = SESSION_TRANSFER_TEST_LOCK.lock().await;
+                            watch_locked.store(true, Ordering::Relaxed);
                             cmd_sync_watch(
                                 "memory://",
                                 &relative,

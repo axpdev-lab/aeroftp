@@ -1056,7 +1056,9 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
             retry_policy: RETRY,
             verify_policy: 'none',
             entries: [
-                { relative_path: 'done.txt', action: 'download', status: 'completed', attempts: 1, last_error: null, verified: null, bytes_transferred: 7, local_size: 7, local_modified: '2026-09-26T09:04:00Z' },
+                // The size it recorded is not the one listed now (8 against 7),
+                // so the test tells which of the two the index takes.
+                { relative_path: 'done.txt', action: 'download', status: 'completed', attempts: 1, last_error: null, verified: null, bytes_transferred: 7, local_size: 8, local_modified: '2026-09-26T09:04:00Z' },
                 // Written before the journal kept these: no time.
                 { relative_path: 'resized.txt', action: 'download', status: 'completed', attempts: 1, last_error: null, verified: null, bytes_transferred: 9 },
             ],
@@ -1090,8 +1092,8 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
             noWaitDeps(invoke, { writeIndex: true, resumeJournal }),
         );
         expect(calls.filter((c) => c.cmd === 'download_file')).toHaveLength(0);
-        const files = (savedIndex?.files ?? {}) as Record<string, { modified: string | null }>;
-        expect(files['done.txt']?.modified).toBe('2026-09-26T09:04:00Z');
+        const files = (savedIndex?.files ?? {}) as Record<string, { modified: string | null; size: number }>;
+        expect(files['done.txt']).toMatchObject({ size: 8, modified: '2026-09-26T09:04:00Z' });
         expect(files['resized.txt']?.modified).toBeNull();
     });
 
