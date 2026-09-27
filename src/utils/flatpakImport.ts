@@ -32,7 +32,8 @@ export type HostVault = 'imported' | 'skipped' | 'absent';
 export type FlatpakImportOutcome =
     | { kind: 'imported'; copied: number; vault: HostVault }
     | { kind: 'nothing'; vault: HostVault }
-    | { kind: 'failed'; error: string };
+    /** `error` is the backend's text, or `null` when the result could not be read. */
+    | { kind: 'failed'; error: string | null };
 
 /**
  * Run the accepted import and say what it did. Only files actually copied
@@ -47,7 +48,7 @@ export async function acceptFlatpakImport(): Promise<FlatpakImportOutcome> {
         return { kind: 'failed', error: e instanceof Error ? e.message : String(e) };
     }
     if (typeof report?.copied !== 'number') {
-        return { kind: 'failed', error: 'unexpected response from the import' };
+        return { kind: 'failed', error: null };
     }
     const vault: HostVault = report.vault_skipped ? 'skipped' : report.vault_imported ? 'imported' : 'absent';
     return report.copied > 0 ? { kind: 'imported', copied: report.copied, vault } : { kind: 'nothing', vault };
@@ -128,7 +129,9 @@ export function flatpakImportResultDialog(
             };
         case 'failed':
             return {
-                message: t('flatpak.importFailedBody', { error: outcome.error }),
+                message: t('flatpak.importFailedBody', {
+                    error: outcome.error ?? t('flatpak.importUnreadableResult'),
+                }),
                 confirmLabel: t('common.ok'),
                 restart: false,
             };

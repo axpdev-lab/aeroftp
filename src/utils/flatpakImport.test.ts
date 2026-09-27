@@ -71,7 +71,8 @@ describe('acceptFlatpakImport', () => {
 
     it('does not read a response without a count as an import', async () => {
         mockInvoke.mockResolvedValueOnce({ imported: true, source: null, target: null });
-        expect((await acceptFlatpakImport()).kind).toBe('failed');
+        // No English text of its own: the dialog translates the reason.
+        expect(await acceptFlatpakImport()).toEqual({ kind: 'failed', error: null });
     });
 });
 
@@ -102,6 +103,11 @@ describe('flatpakImportResultDialog', () => {
             .toBe('flatpak.importedNoVaultBody');
         expect(flatpakImportResultDialog({ kind: 'nothing', vault: 'absent' }, t).message)
             .toBe('flatpak.importNothingBody');
+    });
+
+    it('says in the user language that the result could not be read', () => {
+        expect(flatpakImportResultDialog({ kind: 'failed', error: null }, t).message)
+            .toBe('flatpak.importFailedBody(error=flatpak.importUnreadableResult)');
     });
 
     it('shows the error of a failed import, without a restart', () => {
