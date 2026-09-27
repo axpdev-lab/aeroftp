@@ -243,11 +243,26 @@ fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
     if !legacy_dir.is_dir() || legacy_dir == new_dir {
         return;
     }
-    match merge_legacy_config_once(&legacy_dir, new_dir) {
-        Ok(_) => tracing::info!(
+    merge_legacy_config_and_log(&legacy_dir, new_dir);
+    let _ = LEGACY_APP_CONFIG_MIGRATED.set(());
+}
+
+/// Run the one-time merge and report what it did. Every start after the first
+/// finds the marker and copies nothing, so only `Ok(true)` may say "Migrated":
+/// a support log that reports a migration on each run describes one that never
+/// happened.
+fn merge_legacy_config_and_log(legacy_dir: &Path, new_dir: &Path) {
+    match merge_legacy_config_once(legacy_dir, new_dir) {
+        Ok(true) => tracing::info!(
             "Migrated legacy AeroFTP app config from {} to {}",
             legacy_dir.display(),
             new_dir.display()
+        ),
+        Ok(false) => tracing::debug!(
+            "Legacy AeroFTP app config already merged into {} ({} present), nothing copied from {}",
+            new_dir.display(),
+            LEGACY_CONFIG_MERGED_MARKER,
+            legacy_dir.display()
         ),
         Err(e) => tracing::warn!(
             "Failed to migrate legacy AeroFTP app config from {} to {}: {}",
@@ -256,7 +271,6 @@ fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
             e
         ),
     }
-    let _ = LEGACY_APP_CONFIG_MIGRATED.set(());
 }
 
 /// Resolve the per-app config directory. In portable mode this is
@@ -898,6 +912,64 @@ mod tests {
             .query_row("SELECT name FROM profiles", [], |r| r.get(0))
             .unwrap();
         assert_eq!(name, "latest committed profile");
+    }
+
+    struct CaptureWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Run one merge the way a release start does and return everything it
+    /// wrote to the log, at every level.
+    fn merge_log_of_one_start(legacy: &Path, current: &Path) -> String {
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_writer(move || CaptureWriter(sink.clone()))
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            merge_legacy_config_and_log(legacy, current)
+        });
+        let bytes = buf.lock().unwrap().clone();
+        String::from_utf8(bytes).unwrap()
+    }
+
+    #[test]
+    fn legacy_merge_reports_a_migration_only_when_it_copied() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("legacy");
+        let current = root.path().join("current");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("settings.json"), b"{}").unwrap();
+
+        // First start after the upgrade: the file is copied and the log says so.
+        // This also proves the capture sees the line the next start must not print.
+        let first = merge_log_of_one_start(&legacy, &current);
+        assert!(current.join("settings.json").is_file());
+        assert!(
+            first.contains("Migrated legacy AeroFTP app config"),
+            "the start that copied did not report it: {first:?}"
+        );
+
+        // Every later start finds the marker and copies nothing: the file removed
+        // from the data root stays removed, and the log must not claim otherwise.
+        std::fs::remove_file(current.join("settings.json")).unwrap();
+        let later = merge_log_of_one_start(&legacy, &current);
+        assert!(!current.join("settings.json").exists());
+        assert!(
+            !later.contains("Migrated"),
+            "a start that copied nothing reported a migration: {later:?}"
+        );
     }
 
     /// Marker absent ⇒ not portable, all helpers fall through to Tauri/dirs.
