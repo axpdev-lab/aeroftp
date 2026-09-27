@@ -4445,7 +4445,7 @@ enum ExportCommands {
     /// Jottacloud, and the OAuth providers (Google Drive, Dropbox, OneDrive,
     /// Box, pCloud, Yandex Disk, Zoho WorkDrive) with their token and the
     /// client ID that minted it. An Internxt remote needs one
-    /// `rclone config reconnect <remote>:` before use, as the file says. Any
+    /// `rclone config reconnect "<remote>:"` before use, as the file says. Any
     /// other profile is skipped and listed with the reason in the command
     /// output; nothing is written for it.
     Rclone {
@@ -36333,6 +36333,7 @@ async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &
                         "hasCredential": s.credential.is_some(),
                     })).collect::<Vec<_>>(),
                     "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+                    "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
                     "sourcePath": result.source_path,
                     "totalRemotes": result.total_remotes,
                     "applied": apply,
@@ -36383,6 +36384,16 @@ async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &
                     println!("Skipped ({}):", result.skipped.len());
                     for s in &result.skipped {
                         println!("  {} - {} ({})", s.name, s.rclone_type, s.reason);
+                    }
+                    println!();
+                }
+
+                // Imported, but not whole: e.g. a password that does not reveal
+                // left the profile without a credential.
+                if !result.warnings.is_empty() {
+                    println!("Warnings ({}):", result.warnings.len());
+                    for w in &result.warnings {
+                        println!("  {} - {}", w.name, w.reason);
                     }
                     println!();
                 }
