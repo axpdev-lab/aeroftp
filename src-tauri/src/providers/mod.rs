@@ -1739,6 +1739,15 @@ pub async fn remove_empty_directory(
     provider.rmdir(path).await
 }
 
+/// Whether a failed listing of `path` says there is no folder there, so a
+/// `delete` of it cannot take a folder's content along: only NotFound. Any
+/// other failure (a timeout, a 503, a lost connection, a permission or parse
+/// error) says nothing about the path, and acting on it as if the path were
+/// a file could remove a folder nobody had looked at.
+fn listing_says_no_folder(error: &ProviderError) -> bool {
+    matches!(error, ProviderError::NotFound(_))
+}
+
 /// Delete `path` without recursing: a file, a link, or an empty directory.
 ///
 /// `delete` of a folder removes it with its content on the backends listed
@@ -1747,8 +1756,10 @@ pub async fn remove_empty_directory(
 /// describe (see [`stat_cannot_describe`]) is found by listing it: a listing
 /// with entries is refused the same way, an empty one is removed with
 /// `rmdir` (an object-store directory marker) and, when that fails, `delete`
-/// (a file `stat` could not see). Any other `stat` failure is returned as it
-/// is, with nothing removed.
+/// (a file `stat` could not see). A listing that failed goes on to `delete`
+/// only when it says there is no folder there ([`listing_says_no_folder`]);
+/// any other listing failure, and any other `stat` failure, is returned as
+/// it is, with nothing removed.
 pub async fn delete_non_recursive(
     provider: &mut dyn StorageProvider,
     path: &str,
@@ -1764,7 +1775,8 @@ pub async fn delete_non_recursive(
                 Ok(()) => Ok(()),
                 Err(_) => provider.delete(path).await,
             },
-            Err(_) => provider.delete(path).await,
+            Err(list_error) if listing_says_no_folder(&list_error) => provider.delete(path).await,
+            Err(list_error) => Err(list_error),
         },
         Err(e) => Err(e),
     }
@@ -3148,6 +3160,28 @@ mod non_recursive_delete_tests {
             "{result:?}"
         );
         assert_eq!(missing.calls, ["stat", "list", "delete"]);
+    }
+
+    /// A listing that failed says nothing about the path. A timeout, a 503
+    /// or a lost connection sent a path nobody had looked at to `delete`,
+    /// which takes a folder's content along on several backends: the very
+    /// thing a non-recursive delete refuses. Only a listing that says there
+    /// is no folder there (NotFound) lets the delete go.
+    #[tokio::test]
+    async fn a_listing_that_failed_removes_nothing() {
+        for list in [
+            (|| Err(ProviderError::Timeout)) as Answer<Vec<RemoteEntry>>,
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Err(ProviderError::ConnectionLost("reset".to_string())),
+            || Err(ProviderError::NetworkError("reset".to_string())),
+            || Err(ProviderError::PermissionDenied("/d".to_string())),
+            || Err(ProviderError::ParseError("an html page".to_string())),
+        ] {
+            let mut p = Scripted::new(not_found, list);
+            let result = delete_non_recursive(&mut p, "/d").await;
+            assert!(result.is_err(), "{result:?}");
+            assert_eq!(p.calls, ["stat", "list"], "{result:?}");
+        }
     }
 
     /// An ambiguous path (Cloudinary) and a failed `stat` remove nothing.
