@@ -148,6 +148,7 @@ struct ListFolderResult {
 struct TrashProbeError {
     error: ProviderError,
     throttled: bool,
+    retry_after: Option<std::time::Duration>,
 }
 
 impl TrashProbeError {
@@ -155,6 +156,7 @@ impl TrashProbeError {
         Self {
             error,
             throttled: false,
+            retry_after: None,
         }
     }
 }
@@ -544,6 +546,14 @@ impl DropboxProvider {
             return Err(TrashProbeError {
                 error: ProviderError::Other(msg),
                 throttled: true,
+                retry_after: serde_json::from_str::<serde_json::Value>(&body)
+                    .ok()
+                    .and_then(|json| super::retry_after::parse_retry_after_dropbox_value(&json))
+                    .or_else(|| {
+                        retry_header
+                            .as_deref()
+                            .and_then(super::retry_after::parse_retry_after_seconds)
+                    }),
             });
         }
         parse_trash_revision(status, &body).map_err(TrashProbeError::hard)
@@ -582,41 +592,51 @@ impl DropboxProvider {
             .map(|e| self.to_remote_entry(e))
             .collect();
 
-        // Enrich tombstones without turning a failed probe into a guessed file
-        // or hiding the entry. Bounded concurrency avoids one serial RTT per row.
-        // A throttled probe fails the whole listing. Four concurrent probes make
-        // 429 reachable on a large trash, and swallowing it would hand the UI a
-        // successful list in which throttled rows are indistinguishable from
-        // genuinely unidentifiable ones.
-        use futures_util::{stream, StreamExt, TryStreamExt};
-        let this = &*self;
-        let deleted: Vec<RemoteEntry> =
-            stream::iter(deleted.into_iter().map(|mut entry| async move {
-                match this.trash_revision(&entry.path).await {
-                    Ok(TrashRevision::Folder) => {
-                        entry.is_dir = true;
-                        entry.metadata.insert("trash_kind".into(), "folder".into());
+        // #397: serialize revision probes so one trash listing cannot burst four
+        // requests into the same account limit. Retry only the refused lookup,
+        // keeping earlier rows, with a shared wait budget for the entire listing.
+        let mut wait_budget = std::time::Duration::from_secs(30);
+        let mut enriched = Vec::with_capacity(deleted.len());
+        for mut entry in deleted {
+            let mut retries = 0;
+            let revision = loop {
+                match self.trash_revision(&entry.path).await {
+                    Err(probe) if probe.throttled => {
+                        let delay = probe
+                            .retry_after
+                            .unwrap_or_else(|| std::time::Duration::from_secs(1 << retries));
+                        if retries >= 2 || delay > wait_budget {
+                            return Err(probe.error);
+                        }
+                        wait_budget = wait_budget.saturating_sub(delay);
+                        retries += 1;
+                        tokio::time::sleep(delay).await;
                     }
-                    Ok(TrashRevision::File {
-                        rev,
-                        size,
-                        deleted_at,
-                    }) => {
-                        entry.size = size;
-                        entry.modified = deleted_at;
-                        entry.metadata.insert("rev".into(), rev);
-                        entry.metadata.insert("trash_kind".into(), "file".into());
-                    }
-                    Err(probe) if probe.throttled => return Err(probe.error),
-                    Err(_) => {
-                        entry.metadata.insert("trash_kind".into(), "unknown".into());
-                    }
+                    result => break result,
                 }
-                Ok(entry)
-            }))
-            .buffered(4)
-            .try_collect()
-            .await?;
+            };
+            match revision {
+                Ok(TrashRevision::Folder) => {
+                    entry.is_dir = true;
+                    entry.metadata.insert("trash_kind".into(), "folder".into());
+                }
+                Ok(TrashRevision::File {
+                    rev,
+                    size,
+                    deleted_at,
+                }) => {
+                    entry.size = size;
+                    entry.modified = deleted_at;
+                    entry.metadata.insert("rev".into(), rev);
+                    entry.metadata.insert("trash_kind".into(), "file".into());
+                }
+                Err(_) => {
+                    entry.metadata.insert("trash_kind".into(), "unknown".into());
+                }
+            }
+            enriched.push(entry);
+        }
+        let deleted = enriched;
 
         info!("Listed {} deleted entries in {}", deleted.len(), path);
         Ok(deleted)
@@ -3285,6 +3305,62 @@ mod tests {
             text.contains(&crate::transfer_dag::adaptive::embed_retry_after_marker(7)),
             "{text}"
         );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn ehud_trash_recovers_from_throttle_without_repeating_completed_probes() {
+        use axum::{http::StatusCode, routing::post, Json, Router};
+        use serde_json::{json, Value};
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = calls.clone();
+        let app = Router::new()
+            .route(
+                "/files/list_folder",
+                post(|| async {
+                    Json(json!({"entries":[
+                    {".tag":"deleted","name":"first","path_display":"/first"},
+                    {".tag":"deleted","name":"busy","path_display":"/busy"}
+                ],"cursor":"done","has_more":false}))
+                }),
+            )
+            .route(
+                "/files/list_revisions",
+                post(move |Json(request): Json<Value>| {
+                    let seen = seen.clone();
+                    async move {
+                        let path = request["path"].as_str().unwrap().to_owned();
+                        let mut calls = seen.lock().unwrap();
+                        let throttle = path == "/busy" && !calls.contains(&path);
+                        calls.push(path);
+                        if throttle {
+                            (
+                                StatusCode::TOO_MANY_REQUESTS,
+                                Json(json!({"error":{".tag":"too_many_requests"},"retry_after":0})),
+                            )
+                        } else {
+                            (
+                                StatusCode::OK,
+                                Json(json!({"is_deleted":true,
+                            "entries":[{"rev":"good","size":7,"is_restorable":true}]})),
+                            )
+                        }
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let rows = provider.list_deleted("/").await.unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows
+            .iter()
+            .all(|row| row.metadata.get("trash_kind").map(String::as_str) == Some("file")));
+        assert_eq!(*calls.lock().unwrap(), ["/first", "/busy", "/busy"]);
         server.abort();
     }
 
