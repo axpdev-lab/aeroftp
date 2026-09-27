@@ -2287,18 +2287,14 @@ impl StorageProvider for FtpProvider {
         // Bounded FTP reads intentionally stop before EOF. Some servers will report an
         // error while finalizing that partial RETR; when that happens we proactively
         // disconnect so the disposable chunk connection cannot be reused in a bad state.
-        // That complaint is a transient one (426, "transfer aborted", a 4xx). A read
-        // that ended SHORT of the range is another matter: a file that ends inside the
-        // range is confirmed with `226`, and an error after a short read is the server
-        // cutting the transfer, so those bytes are not the range; nor are they after a
-        // permanent refusal (5xx), which is not how a server answers an early close.
+        // That complaint is a `426` (see `is_early_close_complaint`). A read that ended
+        // SHORT of the range is another matter: a file that ends inside the range is
+        // confirmed with `226`, and an error after a short read is the server cutting
+        // the transfer, so those bytes are not the range; nor are they after any other
+        // reply, which is not how a server answers an early close.
         if let Err(err) = data_stream.finish().await {
             let _ = self.disconnect().await;
-            let early_close_complaint = matches!(
-                &err,
-                FtpError::UnexpectedResponse(reply) if (400..500).contains(&reply.status.code())
-            );
-            if !stopped_before_the_end || !early_close_complaint {
+            if !stopped_before_the_end || !is_early_close_complaint(&err) {
                 return Err(ProviderError::TransferFailed(format!(
                     "reading a range of {path}: the server ended the transfer after {total_read} of {len} bytes: {err}"
                 )));
@@ -3776,6 +3772,14 @@ impl FtpProvider {
     }
 }
 
+/// Whether an error from finishing a transfer the client stopped before its
+/// end is the server's complaint about that early close: `426` (connection
+/// closed, transfer aborted). Anything else (a `451` processing error, a `550`
+/// refusal) says the server did not stand behind the bytes that came.
+fn is_early_close_complaint(err: &FtpError) -> bool {
+    matches!(err, FtpError::UnexpectedResponse(reply) if reply.status.code() == 426)
+}
+
 /// PD-FTP-1 per-range writer. Dials a fresh independent FTP connection from
 /// `spec`, REST+RETR from `start`, and streams **exactly** `end - start + 1`
 /// bytes into `temp_path` at absolute offset `start`. One call == one fresh
@@ -3880,11 +3884,21 @@ async fn ftp_download_one_range(
     out.flush().await.map_err(ProviderError::IoError)?;
     out.sync_all().await.map_err(ProviderError::IoError)?;
 
-    // The bounded RETR intentionally stopped before EOF; finalizing that
-    // partial RETR may error. The connection is disposable (one per range),
-    // so disconnect regardless: the same posture as `read_range`.
-    let _ = data_stream.finish().await;
+    // The bounded RETR intentionally stopped before EOF, and the server may
+    // complain about that close (a `426`), which is expected; any other reply
+    // after the bytes means it did not stand behind them, and the window fails
+    // rather than letting the file be published. The connection is disposable
+    // (one per range), so disconnect regardless: the same posture as
+    // `read_range`.
+    let finished = data_stream.finish().await;
     let _ = worker.disconnect().await;
+    if let Err(err) = finished {
+        if !is_early_close_complaint(&err) {
+            return Err(ProviderError::TransferFailed(format!(
+                "FTP range at offset {start}: the server did not confirm it: {err}"
+            )));
+        }
+    }
 
     Ok(ConcurrentRangeOutcome::Completed)
 }
