@@ -161,6 +161,9 @@ pub struct CloudService {
     conflicts: Arc<RwLock<Vec<FileConflict>>>,
     task_tx: Option<mpsc::Sender<SyncTask>>,
     app_handle: Option<AppHandle>,
+    /// The local file's time as each transfer of the running cycle left it
+    /// (relative path), read when the transfer ended, after any time stamp.
+    landed: Arc<std::sync::Mutex<HashMap<String, DateTime<Utc>>>>,
 }
 
 impl CloudService {
@@ -172,6 +175,26 @@ impl CloudService {
             conflicts: Arc::new(RwLock::new(Vec::new())),
             task_tx: None,
             app_handle: None,
+            landed: Arc::default(),
+        }
+    }
+
+    /// Note the time a transfer left on the local file, read now: the
+    /// baseline records it, and a local edit made later in the cycle stays a
+    /// change the next cycle sees.
+    fn note_landed(&self, config: &CloudConfig, relative_path: &str) {
+        let on_disk = std::fs::metadata(config.local_folder.join(relative_path))
+            .and_then(|meta| meta.modified())
+            .ok()
+            .map(DateTime::<Utc>::from);
+        if let (Some(time), Ok(mut landed)) = (on_disk, self.landed.lock()) {
+            landed.insert(relative_path.to_string(), time);
+        }
+    }
+
+    fn forget_landed(&self) {
+        if let Ok(mut landed) = self.landed.lock() {
+            landed.clear();
         }
     }
 
@@ -415,28 +438,23 @@ impl CloudService {
                 c.is_dir,
             ) {
                 // The next cycle reads the local side against this time with
-                // the local clock, so it must be the time the local file has
-                // now. A download keeps the remote time, which it stamped on
-                // the local copy; a backend that lists none (FTP `LIST` dates)
-                // leaves the downloaded file's own, read back from disk, or the
-                // local side would be compared by size alone and a same-size
-                // local edit would go unseen. An upload is stamped with the
-                // server's time on the provider path, so the time the scan saw
-                // before it is stale: kept, both sides would read as changed
-                // and the pair would be a conflict every cycle.
-                let read_back = !c.is_dir
-                    && match action {
-                        SyncAction::Upload => true,
-                        SyncAction::Download => entry.modified.is_none(),
-                        _ => false,
-                    };
-                if read_back {
-                    let on_disk = std::fs::metadata(config.local_folder.join(&c.relative_path))
-                        .and_then(|meta| meta.modified())
+                // the local clock, so it must be the time the transfer left on
+                // the local file: an upload is stamped with the server's time
+                // on the provider path (kept, the scan's time would read as a
+                // change on both sides, a conflict every cycle), and a download
+                // from a backend that lists no time (FTP `LIST` dates) keeps
+                // the file's own (without it, the local side would be compared
+                // by size alone). It is the time read when the transfer ended,
+                // not now: a same-size edit made later in the cycle must stay a
+                // change the next cycle sees.
+                if matches!(action, SyncAction::Upload | SyncAction::Download) && !c.is_dir {
+                    if let Some(time) = self
+                        .landed
+                        .lock()
                         .ok()
-                        .map(DateTime::<Utc>::from);
-                    if on_disk.is_some() || matches!(action, SyncAction::Download) {
-                        entry.modified = on_disk;
+                        .and_then(|landed| landed.get(&c.relative_path).copied())
+                    {
+                        entry.modified = Some(time);
                     }
                 }
                 index_files.insert(c.relative_path.clone(), entry);
@@ -610,6 +628,7 @@ impl CloudService {
         // P1-7: Throttle status updates to every 100 files or 500ms to reduce lock contention
         let mut last_status_update = std::time::Instant::now();
         let status_interval = std::time::Duration::from_millis(500);
+        self.forget_landed();
         for (index, comparison) in comparisons.iter().enumerate() {
             // Update progress (throttled)
             let is_last = index == comparisons.len() - 1;
@@ -979,6 +998,7 @@ impl CloudService {
         // P1-7: Throttle status updates to every 100 files or 500ms to reduce lock contention
         let mut last_status_update = std::time::Instant::now();
         let status_interval = std::time::Duration::from_millis(500);
+        self.forget_landed();
         for (index, comparison) in comparisons.iter().enumerate() {
             // Update progress (throttled)
             let is_last = index == comparisons.len() - 1;
@@ -1644,6 +1664,9 @@ impl CloudService {
             _ => {}
         }
 
+        if matches!(action, SyncAction::Upload | SyncAction::Download) && !comparison.is_dir {
+            self.note_landed(config, &comparison.relative_path);
+        }
         Ok(action)
     }
 
@@ -1947,6 +1970,9 @@ impl CloudService {
             _ => {}
         }
 
+        if matches!(action, SyncAction::Upload | SyncAction::Download) && !comparison.is_dir {
+            self.note_landed(config, &comparison.relative_path);
+        }
         Ok(action)
     }
 }
@@ -2341,13 +2367,17 @@ mod baseline_tests {
             ConflictStrategy::AskUser,
         );
         config.local_folder = root.path().to_path_buf();
-        let files = CloudService::new().post_sync_baseline(&[downloaded], &config, None);
+        let svc = CloudService::new();
+        // The download ends; a same-size edit lands later in the cycle.
+        svc.note_landed(&config, "f.txt");
+        stamp(&file, 1_750_000_000);
+        let files = svc.post_sync_baseline(&[downloaded], &config, None);
         let entry = files.get("f.txt").expect("the download is recorded");
         assert_eq!(entry.size, 7);
         assert_eq!(
             entry.modified,
             DateTime::<Utc>::from_timestamp(1_700_000_000, 0),
-            "the local side needs a time of its own clock to be compared with"
+            "the time the download left, of the local clock, not the later edit's"
         );
     }
 
@@ -2356,7 +2386,9 @@ mod baseline_tests {
     /// the file had before: the next cycle saw both sides differ from it and
     /// raised a conflict every cycle (AskUser asking again, KeepBoth making
     /// copies, PreferLocal uploading again). The baseline takes the local
-    /// file's time as it is on disk after the upload.
+    /// file's time as the upload left it, not as it is when the cycle ends
+    /// (CodeRabbit on #949: a same-size edit made in between would be
+    /// recorded as synced).
     #[test]
     fn an_upload_records_the_local_time_after_the_stamp() {
         let root = tempfile::tempdir().expect("local root");
@@ -2382,13 +2414,161 @@ mod baseline_tests {
             ConflictStrategy::AskUser,
         );
         config.local_folder = root.path().to_path_buf();
-        let files = CloudService::new().post_sync_baseline(&[uploaded], &config, None);
+        let svc = CloudService::new();
+        svc.note_landed(&config, "f.txt");
+        stamp(&file, 1_850_000_000);
+        let files = svc.post_sync_baseline(&[uploaded], &config, None);
         let entry = files.get("f.txt").expect("the upload is recorded");
         assert_eq!(entry.size, 7);
         assert_eq!(
             entry.modified,
             DateTime::<Utc>::from_timestamp(1_800_000_000, 0),
-            "the time the file has now, not the one before the stamp"
+            "the time after the stamp, not the scan's nor the later edit's"
+        );
+    }
+
+    fn stamp(file: &std::path::Path, secs: u64) {
+        std::fs::File::options()
+            .write(true)
+            .open(file)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+            .unwrap();
+    }
+
+    /// Accepts every upload and reports every file with one server time: the
+    /// provider path stamps that time on the local file after an upload.
+    struct StampingProvider;
+
+    #[async_trait::async_trait]
+    impl StorageProvider for StampingProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "stamping".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<ProviderRemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<ProviderRemoteEntry, ProviderError> {
+            let mut entry = ProviderRemoteEntry::file("f.txt".to_string(), path.to_string(), 7);
+            entry.modified = Some("2027-01-15 08:00:00".to_string());
+            Ok(entry)
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(7)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("stamping".to_string())
+        }
+    }
+
+    /// Through the provider executor: an upload is stamped with the server's
+    /// time, the time is noted as the transfer ends, and the baseline records
+    /// it even when the file is edited before the cycle is over.
+    #[tokio::test]
+    async fn an_upload_through_the_provider_path_records_the_stamp() {
+        let root = tempfile::tempdir().expect("local root");
+        let file = root.path().join("f.txt");
+        std::fs::write(&file, b"payload").unwrap();
+        stamp(&file, 1_700_000_000);
+        let mut local = fi(7, 1_700_000_000);
+        local.path = file.to_string_lossy().into_owned();
+        let uploaded = cmp(
+            SyncStatus::LocalNewer,
+            Some(local),
+            Some(fi(3, 1)),
+            true,
+            false,
+        );
+        let mut config = cfg(
+            CompareDirection::Bidirectional,
+            false,
+            ConflictStrategy::AskUser,
+        );
+        config.local_folder = root.path().to_path_buf();
+        config.remote_folder = "/remote".to_string();
+        let svc = CloudService::new();
+        let action = svc
+            .process_comparison_with_provider(&mut StampingProvider, &config, &uploaded)
+            .await
+            .expect("the upload succeeds");
+        assert!(matches!(action, SyncAction::Upload));
+        stamp(&file, 1_900_000_000);
+        let files = svc.post_sync_baseline(&[uploaded], &config, None);
+        let server_time =
+            chrono::NaiveDateTime::parse_from_str("2027-01-15 08:00:00", "%Y-%m-%d %H:%M:%S")
+                .unwrap()
+                .and_utc();
+        assert_eq!(
+            files.get("f.txt").and_then(|entry| entry.modified),
+            Some(server_time),
+            "the server's time, stamped on the local file after the upload"
         );
     }
 
