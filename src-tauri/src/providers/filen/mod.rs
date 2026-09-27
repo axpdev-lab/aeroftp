@@ -2474,7 +2474,15 @@ impl StorageProvider for FilenProvider {
                 }))
                 .build()
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-            let _ = self.send_retry(meta_request).await;
+            // Best effort, as on rename: the web app wants this metadata, and
+            // a failure does not undo the folder that was just created. The
+            // warning names the folder, never the master key or the encrypted
+            // payload (those stay in the request that was sent).
+            if let Err(error) = self.send_retry(meta_request).await {
+                tracing::warn!(
+                    "Filen mkdir: best-effort v3/dir/metadata failed for {path}: {error}"
+                );
+            }
         }
 
         filen_log(&format!("mkdir OK '{}' uuid={}", path, folder_uuid));
