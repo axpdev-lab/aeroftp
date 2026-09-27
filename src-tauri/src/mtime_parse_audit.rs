@@ -29,8 +29,8 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ("chat_history.rs", 1, "chat timestamps, not file times"),
     (
         "rclone_import.rs",
-        1,
-        "OAuth token expiry of an imported rclone remote",
+        3,
+        "OAuth token expiry of an imported rclone remote, the export header's timestamp and a constant cut-over time of old exports: none is a file time",
     ),
     (
         "providers/drime_cloud.rs",
