@@ -933,13 +933,16 @@ pub async fn dispatch_gui_tool(
             let warnings = crate::providers::CallWarnings::default();
             let upload_result = if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = match provider.as_mut() {
-                    Some(p) => p.as_mut(),
-                    None => return Err("No active provider connection".into()),
-                };
-                warnings
-                    .scope(publish_remote_edit(provider, &tmp_path, &path, allow_non_atomic))
-                    .await
+                // No early return: the local temporary is removed below
+                // whatever happens here.
+                match provider.as_mut() {
+                    Some(p) => {
+                        let publish =
+                            publish_remote_edit(p.as_mut(), &tmp_path, &path, allow_non_atomic);
+                        warnings.scope(publish).await
+                    }
+                    None => Err("No active provider connection".to_string()),
+                }
             } else if has_ftp(&app_state).await {
                 let mut manager = app_state.ftp_manager.lock().await;
                 manager
