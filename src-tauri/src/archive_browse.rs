@@ -356,12 +356,14 @@ pub(crate) async fn extract_7z_entry_impl(
     let mut progress = ArchiveProgress::for_optional_app(app, phase::EXTRACTING, declared);
     // Held to the declared size: sevenz-rust2 checks the CRC only once all of it
     // is read, so a wrong password whose stream decodes to an early end left a
-    // short or empty file here and reported success. The error goes back to
-    // sevenz-rust2, which reports it as MaybeBadPassword when a password is set.
+    // short or empty file here and reported success. Read errors go back to
+    // sevenz-rust2 as they are, which reports them as MaybeBadPassword when a
+    // password is set; write errors carry a context (`sevenz_entry_error`), so a
+    // full disk does not read as a wrong password.
     let tmp_file = tmp.as_file_mut();
     let mut copy_target = |stream: &mut dyn std::io::Read| -> Result<(), sevenz_rust2::Error> {
         let mut counted = ProgressReader::new(stream, &mut progress);
-        crate::copy_entry_bounded(&mut counted, &mut *tmp_file, declared)?;
+        crate::copy_7z_entry(&mut counted, &mut *tmp_file, declared)?;
         Ok(())
     };
     let decoded = match archive.stream_map.file_block_index[index] {

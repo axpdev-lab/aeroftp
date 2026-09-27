@@ -8132,6 +8132,11 @@ pub(crate) fn copy_entry_bounded<R: std::io::Read + ?Sized, W: std::io::Write>(
 /// path then left a partial file behind or, worse, truncated a file the user
 /// already had at that path. With this, a failed entry leaves the destination
 /// exactly as it was.
+///
+/// Its own errors (creating, finishing or renaming the temporary file) are
+/// marked with `destination_error`; errors from `fill` pass through as they are,
+/// so a caller that must tell a write error from a read error wraps its writer
+/// in `DestinationWriter`.
 fn write_entry_atomically<F>(out_path: &std::path::Path, fill: F) -> std::io::Result<u64>
 where
     F: FnOnce(&mut std::fs::File) -> std::io::Result<u64>,
@@ -8152,22 +8157,101 @@ where
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(&tmp_path)?;
+        .open(&tmp_path)
+        .map_err(destination_error)?;
     let outcome = fill(&mut file).and_then(|written| {
         drop(file);
         // Replacing an existing regular file keeps its permissions, as the
         // in-place truncation this replaces did (an executable stays one).
         if let Ok(existing) = std::fs::symlink_metadata(out_path) {
             if existing.is_file() {
-                std::fs::set_permissions(&tmp_path, existing.permissions())?;
+                std::fs::set_permissions(&tmp_path, existing.permissions())
+                    .map_err(destination_error)?;
             }
         }
-        std::fs::rename(&tmp_path, out_path).map(|()| written)
+        std::fs::rename(&tmp_path, out_path)
+            .map(|()| written)
+            .map_err(destination_error)
     });
     if outcome.is_err() {
         let _ = std::fs::remove_file(&tmp_path);
     }
     outcome
+}
+
+/// An I/O error on the extraction destination (creating, writing or renaming
+/// the output), told apart from an error reading the archive. It reads as the
+/// error it wraps.
+#[derive(Debug)]
+struct DestinationError(std::io::Error);
+
+impl std::fmt::Display for DestinationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for DestinationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+}
+
+/// Marks `e` as a destination error (see `DestinationError`), keeping its kind.
+fn destination_error(e: std::io::Error) -> std::io::Error {
+    if is_destination_error(&e) {
+        return e;
+    }
+    std::io::Error::new(e.kind(), DestinationError(e))
+}
+
+fn is_destination_error(e: &std::io::Error) -> bool {
+    e.get_ref()
+        .is_some_and(|inner| inner.is::<DestinationError>())
+}
+
+/// A writer whose errors are marked with `destination_error`, so that an entry
+/// copy that fails can say whether writing the output or reading the archive
+/// failed.
+struct DestinationWriter<W>(W);
+
+impl<W: std::io::Write> std::io::Write for DestinationWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write(buf).map_err(destination_error)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush().map_err(destination_error)
+    }
+}
+
+/// The error a 7z extractor hands back to sevenz-rust2 from inside
+/// `for_each_entries`. With a password set, sevenz-rust2 reports every I/O
+/// error without context as `MaybeBadPassword`. That is right for an error
+/// reading the entry (see `describe_7z_error`), so such an error goes back
+/// as it is. It is wrong for the destination: a full disk or a read-only
+/// folder read as "Wrong password", and the GUI asked for the password again.
+/// A destination error therefore goes back with a context, which sevenz-rust2
+/// leaves alone. The context names no path: the GUI takes any error that
+/// mentions "password" for a wrong password, and a file or folder name can.
+fn sevenz_entry_error(e: std::io::Error) -> sevenz_rust2::Error {
+    if is_destination_error(&e) {
+        sevenz_rust2::Error::Io(e, "Cannot write to the destination".into())
+    } else {
+        e.into()
+    }
+}
+
+/// Copies a 7z entry's stream into `writer`, held to `declared` (see
+/// `copy_entry_bounded`), failing with the error sevenz-rust2 expects back from
+/// inside `for_each_entries`: a read error as it is, a write error with a
+/// context (see `sevenz_entry_error`).
+pub(crate) fn copy_7z_entry<W: std::io::Write>(
+    stream: &mut dyn std::io::Read,
+    writer: W,
+    declared: u64,
+) -> Result<u64, sevenz_rust2::Error> {
+    copy_entry_bounded(stream, &mut DestinationWriter(writer), declared).map_err(sevenz_entry_error)
 }
 
 /// A 7z extraction error in words: the library's Debug form
@@ -8181,7 +8265,9 @@ where
 /// is. Without a password the same error stays `Io` and is shown as its own
 /// message (truncated or corrupt), not as the Debug wrapper around it. A CRC
 /// mismatch travels as an `Io` error around sevenz-rust2's own
-/// `ChecksumVerificationFailed`, which is worded too.
+/// `ChecksumVerificationFailed`, which is worded too. Destination errors carry
+/// a context (`sevenz_entry_error`) and read "Cannot write to the destination:
+/// <error>".
 pub(crate) fn describe_7z_error(err: &sevenz_rust2::Error) -> String {
     match err {
         sevenz_rust2::Error::PasswordRequired => {
@@ -8285,22 +8371,25 @@ async fn extract_7z(
             let out_path = dest.join(name);
 
             if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent)?;
+                fs::create_dir_all(parent).map_err(|e| sevenz_entry_error(destination_error(e)))?;
             }
 
             if entry.is_directory() {
-                fs::create_dir_all(&out_path)?;
+                fs::create_dir_all(&out_path)
+                    .map_err(|e| sevenz_entry_error(destination_error(e)))?;
             } else {
                 // A wrong password usually fails inside the decoder, but when its
                 // noise decodes to an early end the entry is just short, with no
                 // checksum error (sevenz-rust2 checks the CRC only after the full
-                // declared size). The size check fails it, and `?` hands the error
-                // back to sevenz-rust2, which reports it as MaybeBadPassword when a
-                // password is set.
+                // declared size). The size check fails it, and the error goes
+                // back to sevenz-rust2 as it is, which reports it as
+                // MaybeBadPassword when a password is set. Destination errors go
+                // back with a context instead (`sevenz_entry_error`).
                 let declared = entry.size();
                 write_entry_atomically(&out_path, |outfile| {
-                    copy_entry_bounded(reader, outfile, declared)
-                })?;
+                    copy_entry_bounded(reader, &mut DestinationWriter(outfile), declared)
+                })
+                .map_err(sevenz_entry_error)?;
             }
 
             Ok(true) // continue
@@ -21413,6 +21502,121 @@ mod sevenz_mhe_tests {
              (0 of 3584 bytes): the archive is truncated or corrupt"
         );
         assert!(!dest.join("data.txt").exists(), "a short file was written");
+    }
+
+    // With a password set, sevenz-rust2 reports every I/O error without context
+    // raised while extracting as MaybeBadPassword, so an output that could not
+    // be written read as "Wrong password" and the GUI asked for the password
+    // again. Here the right password meets a folder where a file goes and a
+    // file where a folder goes (neither depends on permissions, so this holds
+    // when the tests run as root); both must say that writing failed, and not
+    // mention a password at all: the GUI's isWrongPasswordError takes any
+    // error containing "password" for a wrong password.
+    #[tokio::test]
+    async fn a_7z_destination_that_cannot_be_written_is_not_a_wrong_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::write(src.join("a.txt"), b"alpha").unwrap();
+        std::fs::write(src.join("sub").join("b.txt"), b"beta").unwrap();
+        let archive = dir.path().join("pw.7z").to_string_lossy().to_string();
+        compress_7z_core(
+            vec![
+                src.join("a.txt").to_string_lossy().to_string(),
+                src.join("sub").to_string_lossy().to_string(),
+            ],
+            archive.clone(),
+            Some("Test123!".to_string()),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("compress");
+
+        // A non-empty folder where the file a.txt goes: the rename fails.
+        let folder_in_the_way = dir.path().join("dest1");
+        std::fs::create_dir_all(folder_in_the_way.join("a.txt")).unwrap();
+        std::fs::write(folder_in_the_way.join("a.txt").join("keep"), b"x").unwrap();
+        let folder_result = extract_7z_core(
+            archive.clone(),
+            folder_in_the_way.to_string_lossy().to_string(),
+            Some("Test123!".to_string()),
+            false,
+        )
+        .await;
+
+        // A file where the folder sub goes: creating the folder fails.
+        let file_in_the_way = dir.path().join("dest2");
+        std::fs::create_dir_all(&file_in_the_way).unwrap();
+        std::fs::write(file_in_the_way.join("sub"), b"a file, not a folder").unwrap();
+        let file_result = extract_7z_core(
+            archive,
+            file_in_the_way.to_string_lossy().to_string(),
+            Some("Test123!".to_string()),
+            false,
+        )
+        .await;
+
+        let mut failures = Vec::new();
+        for (case, result) in [("folder", folder_result), ("file", file_result)] {
+            match result {
+                Err(err)
+                    if err.starts_with(
+                        "Failed to extract 7z archive: Cannot write to the destination: ",
+                    ) && !err.to_lowercase().contains("password") => {}
+                other => failures.push(format!("{case} in the way: {other:?}")),
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    // The single-entry browse extractor copies inside sevenz-rust2's closure
+    // into a temporary file it created beforehand, so there the destination
+    // error is a failed write (a full disk). copy_7z_entry, which it copies
+    // through, must keep that error from reading as a wrong password.
+    #[tokio::test]
+    async fn a_7z_write_error_under_a_password_is_not_a_wrong_password() {
+        struct FullDisk;
+        impl std::io::Write for FullDisk {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("no space left (simulated)"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("a.txt");
+        std::fs::write(&src, b"alpha ".repeat(100)).unwrap();
+        let archive = dir.path().join("pw.7z");
+        compress_7z_core(
+            vec![src.to_string_lossy().to_string()],
+            archive.to_string_lossy().to_string(),
+            Some("Test123!".to_string()),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("compress");
+
+        let mut reader = sevenz_rust2::ArchiveReader::new(
+            std::fs::File::open(&archive).unwrap(),
+            sevenz_rust2::Password::from("Test123!"),
+        )
+        .unwrap();
+        let err = reader
+            .for_each_entries(|entry, stream| {
+                super::copy_7z_entry(stream, FullDisk, entry.size())?;
+                Ok(true)
+            })
+            .expect_err("the write fails");
+        assert_eq!(
+            super::describe_7z_error(&err),
+            "Cannot write to the destination: no space left (simulated)"
+        );
     }
 
     // Overwriting a file that already exists keeps its permissions: before the
