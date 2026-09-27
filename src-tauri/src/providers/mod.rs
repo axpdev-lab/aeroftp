@@ -1856,6 +1856,180 @@ pub fn opt_in_cannot_set_aside(target: &str, opt_in: &str) -> String {
     )
 }
 
+/// The Unix mode in a permission string as providers report it: nine
+/// `rwx` letters (`rw-r--r--`), the same after a type letter as `ls` and
+/// SFTP write it (`-rw-r--r--`), or octal (`644`, `0644`, the MLSD
+/// `unix.mode` fact). `s`, `S`, `t` and `T` carry the setuid, setgid and
+/// sticky bits. `None` for anything else, such as the MLSD `perm` fact
+/// (`adfrw`), which lists the operations allowed and is not a mode.
+pub fn permission_mode(permissions: &str) -> Option<u32> {
+    let text = permissions.trim();
+    if !text.is_ascii() || text.is_empty() {
+        return None;
+    }
+    if text.len() <= 6 && text.bytes().all(|b| (b'0'..=b'7').contains(&b)) {
+        return u32::from_str_radix(text, 8).ok().map(|mode| mode & 0o7777);
+    }
+    // `ls -l` marks an ACL or extended attributes after the nine letters.
+    let letters = text.trim_end_matches(['+', '@', '.']);
+    let letters = match letters.len() {
+        10 => &letters[1..],
+        9 => letters,
+        _ => return None,
+    };
+    let mut mode = 0;
+    // Owner, group, others; the third letter of each also carries setuid,
+    // setgid and sticky: lower case with `x`, upper case without.
+    for (class, triplet) in letters.as_bytes().chunks(3).enumerate() {
+        let shift = 6 - 3 * class as u32;
+        let (special, with_x, without_x) = match class {
+            0 => (0o4000, b's', b'S'),
+            1 => (0o2000, b's', b'S'),
+            _ => (0o1000, b't', b'T'),
+        };
+        match triplet[0] {
+            b'r' => mode |= 4 << shift,
+            b'-' => {}
+            _ => return None,
+        }
+        match triplet[1] {
+            b'w' => mode |= 2 << shift,
+            b'-' => {}
+            _ => return None,
+        }
+        match triplet[2] {
+            b'x' => mode |= 1 << shift,
+            b'-' => {}
+            letter if letter == with_x => mode |= (1 << shift) | special,
+            letter if letter == without_x => mode |= special,
+            _ => return None,
+        }
+    }
+    Some(mode)
+}
+
+/// What an edit that publishes a staged temporary with
+/// [`StorageProvider::replace`] carries over from the file it replaces
+/// (CLI `edit`, MCP and CLI-agent `aeroftp_edit`, AeroAgent `remote_edit`).
+///
+/// The replace puts a NEW file in the target's place, so nothing the server
+/// kept on the old one survives unless the edit copies it: on SFTP the mode
+/// came back as the server default (a 0600 `.env` became 0644, a 0755
+/// script lost its `x`). An upload over the file in place, which the GUI
+/// edit made until 4.2.0, truncated the same file and kept it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditOriginal {
+    /// Nothing to carry over: the provider reports no permissions, or has no
+    /// `chmod` to set them with.
+    Nothing,
+    /// The Unix mode to set on the temporary before the replace.
+    Mode(u32),
+    /// Permissions the provider reports that are not a Unix mode (an MLSD
+    /// `perm` fact), so the new file gets the server's default ones.
+    Unreadable(String),
+}
+
+impl EditOriginal {
+    /// What an edit of `entry` carries over; `can_chmod` is
+    /// [`StorageProvider::supports_chmod`].
+    pub fn of(entry: &RemoteEntry, can_chmod: bool) -> Self {
+        match entry.permissions.as_deref() {
+            Some(permissions) if can_chmod => match permission_mode(permissions) {
+                Some(mode) => Self::Mode(mode),
+                None => Self::Unreadable(permissions.to_string()),
+            },
+            _ => Self::Nothing,
+        }
+    }
+}
+
+/// Refuse an edit of a symbolic link, BEFORE anything is staged. The
+/// replace would put a regular file in the link's place, and the file the
+/// link points to, the one the caller meant, would stay as it was. The
+/// refusal names that file, resolved against the link's folder when the
+/// link is relative, so the caller can edit it instead.
+pub fn refuse_edit_of_symlink(entry: &RemoteEntry, target: &str) -> Result<(), String> {
+    if !entry.is_symlink {
+        return Ok(());
+    }
+    let instead = match entry.link_target.as_deref() {
+        Some(link) if !link.is_empty() => {
+            let resolved = match (link.starts_with('/'), target.rsplit_once('/')) {
+                (false, Some((parent, _))) => format!("{parent}/{link}"),
+                _ => link.to_string(),
+            };
+            format!("edit the file it points to, `{resolved}`, instead")
+        }
+        _ => "edit the file it points to instead".to_string(),
+    };
+    Err(format!(
+        "cannot edit `{target}`: it is a symbolic link, and publishing the edit would put a \
+         regular file in the link's place while the file it points to stays unchanged; \
+         {instead}. Nothing was written and `{target}` is unchanged."
+    ))
+}
+
+/// The warning of an edit of `target` whose new file could not be given the
+/// mode `mode` of the old one because `chmod` failed with `error`.
+pub fn edit_mode_not_kept(target: &str, mode: u32, error: &str) -> String {
+    format!(
+        "edited `{target}`, but its permissions ({mode:04o}) could not be set on the new \
+         file ({error}): it has the server's default permissions now; set them again with \
+         chmod"
+    )
+}
+
+/// The warning of an edit of `target` whose permissions, as the provider
+/// reports them (`permissions`), are not a mode that can be set again.
+pub fn edit_permissions_not_readable(target: &str, permissions: &str) -> String {
+    format!(
+        "edited `{target}`, but its permissions (`{permissions}`) are not a Unix mode that \
+         can be set again: the new file has the server's default permissions"
+    )
+}
+
+/// Look at the target of an edit BEFORE anything is staged: a symbolic
+/// link is refused ([`refuse_edit_of_symlink`]), and the answer is what the
+/// temporary must carry ([`EditOriginal`]). A `stat` that cannot describe
+/// the path ([`stat_cannot_describe`]) leaves nothing to carry over, as
+/// before this look existed; any other `stat` failure is returned, with
+/// nothing written.
+pub async fn inspect_edit_target(
+    provider: &mut dyn StorageProvider,
+    target: &str,
+) -> Result<EditOriginal, ProviderError> {
+    let entry = match provider.stat(target).await {
+        Ok(entry) => entry,
+        Err(e) if stat_cannot_describe(&e) => return Ok(EditOriginal::Nothing),
+        Err(e) => return Err(e),
+    };
+    refuse_edit_of_symlink(&entry, target).map_err(ProviderError::InvalidPath)?;
+    Ok(EditOriginal::of(&entry, provider.supports_chmod()))
+}
+
+/// Carry `original` over to the staged temporary `temp` of an edit of
+/// `target`: after its upload, before the replace. Best effort: a `chmod`
+/// the server refuses does not fail an edit that is otherwise done, and the
+/// answer is the warning that says what was not kept, for the caller to
+/// show once the replace has succeeded.
+pub async fn keep_edit_original(
+    provider: &mut dyn StorageProvider,
+    temp: &str,
+    target: &str,
+    original: &EditOriginal,
+) -> Option<String> {
+    match original {
+        EditOriginal::Nothing => None,
+        EditOriginal::Unreadable(permissions) => {
+            Some(edit_permissions_not_readable(target, permissions))
+        }
+        EditOriginal::Mode(mode) => match provider.chmod(temp, *mode).await {
+            Ok(()) => None,
+            Err(e) => Some(edit_mode_not_kept(target, *mode, &e.to_string())),
+        },
+    }
+}
+
 /// The name an item displaced by a replace takes until it is deleted, on a
 /// backend that can neither overwrite on a move nor swap two items in one
 /// call (MEGA, Filen, FileLu, Google Drive for folders, and through
@@ -3027,6 +3201,10 @@ pub(crate) mod edit_replace_tests {
     /// `replace` behaves accordingly: atomic or set-aside, it puts the file
     /// in place; otherwise it is the rename, which refuses a taken name.
     /// Every upload, replace and delete is recorded.
+    ///
+    /// `stat` finds nothing unless `modes` or `links` name the path, so the
+    /// tests that do not stand on either see the answer of a backend that
+    /// cannot describe a file.
     pub(crate) struct EditFake {
         pub(crate) files: HashMap<String, Vec<u8>>,
         pub(crate) uploads: Vec<String>,
@@ -3034,6 +3212,16 @@ pub(crate) mod edit_replace_tests {
         pub(crate) deleted: Vec<String>,
         pub(crate) atomic: bool,
         pub(crate) sets_aside: bool,
+        /// Unix mode per path, reported by `stat` as `-rw-r--r--`, the way
+        /// SFTP reports it. A new path gets 0644, the server default, and a
+        /// replace moves the mode of the file it moves, as posix-rename does.
+        pub(crate) modes: HashMap<String, u32>,
+        /// Symbolic links: path to the target `stat` reports.
+        pub(crate) links: HashMap<String, String>,
+        /// What `supports_chmod` answers.
+        pub(crate) chmod: bool,
+        /// When set, `chmod` fails with this.
+        pub(crate) chmod_fails_with: Option<String>,
     }
 
     impl EditFake {
@@ -3046,6 +3234,10 @@ pub(crate) mod edit_replace_tests {
                 deleted: Vec::new(),
                 atomic,
                 sets_aside,
+                modes: HashMap::new(),
+                links: HashMap::new(),
+                chmod: false,
+                chmod_fails_with: None,
             }
         }
     }
@@ -3104,6 +3296,7 @@ pub(crate) mod edit_replace_tests {
         ) -> Result<(), ProviderError> {
             let data = std::fs::read(local_path).map_err(ProviderError::IoError)?;
             self.uploads.push(remote_path.to_string());
+            self.modes.entry(remote_path.to_string()).or_insert(0o644);
             self.files.insert(remote_path.to_string(), data);
             Ok(())
         }
@@ -3141,6 +3334,10 @@ pub(crate) mod edit_replace_tests {
                 .remove(from)
                 .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
             self.files.insert(to.to_string(), data);
+            if let Some(mode) = self.modes.remove(from) {
+                self.modes.insert(to.to_string(), mode);
+            }
+            self.links.remove(to);
             self.replaces.push((from.to_string(), to.to_string()));
             Ok(())
         }
@@ -3150,8 +3347,44 @@ pub(crate) mod edit_replace_tests {
         fn replace_sets_aside(&self) -> bool {
             self.sets_aside
         }
+        fn supports_chmod(&self) -> bool {
+            self.chmod
+        }
+        async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
+            if let Some(message) = &self.chmod_fails_with {
+                return Err(ProviderError::ServerError(message.clone()));
+            }
+            self.modes.insert(path.to_string(), mode);
+            Ok(())
+        }
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
-            Err(ProviderError::NotFound(path.to_string()))
+            let link = self.links.get(path).cloned();
+            let mode = self.modes.get(path).copied();
+            if link.is_none() && mode.is_none() {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            let size = self.files.get(path).map_or(0, |data| data.len() as u64);
+            let mut entry = RemoteEntry::file(path.to_string(), path.to_string(), size);
+            entry.is_symlink = link.is_some();
+            entry.link_target = link;
+            entry.permissions = mode.map(|mode| {
+                let bit = |mask: u32, letter: char| if mode & mask != 0 { letter } else { '-' };
+                [
+                    '-',
+                    bit(0o400, 'r'),
+                    bit(0o200, 'w'),
+                    bit(0o100, 'x'),
+                    bit(0o040, 'r'),
+                    bit(0o020, 'w'),
+                    bit(0o010, 'x'),
+                    bit(0o004, 'r'),
+                    bit(0o002, 'w'),
+                    bit(0o001, 'x'),
+                ]
+                .iter()
+                .collect()
+            });
+            Ok(entry)
         }
         async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
             Err(ProviderError::NotFound(path.to_string()))
@@ -3191,6 +3424,64 @@ pub(crate) mod edit_replace_tests {
             }
             assert!(p.uploads.is_empty() && p.replaces.is_empty(), "{case}");
         }
+    }
+
+    #[test]
+    fn permission_mode_reads_the_forms_providers_report() {
+        for (text, mode) in [
+            ("rw-------", Some(0o600)),
+            ("-rw-------", Some(0o600)),
+            ("-rwxr-xr-x", Some(0o755)),
+            ("-rw-r--r--+", Some(0o644)),
+            ("-rwsr-xr-x", Some(0o4755)),
+            ("-rwxr-sr-T", Some(0o3754)),
+            ("drwxrwxrwt", Some(0o1777)),
+            ("0644", Some(0o644)),
+            ("644", Some(0o644)),
+            ("100600", Some(0o600)),
+            ("adfrw", None),
+            ("public", None),
+            ("-rw-r--r", None),
+            ("-rw-r--r-q", None),
+            ("", None),
+        ] {
+            assert_eq!(permission_mode(text), mode, "{text:?}");
+        }
+    }
+
+    /// A link's target is named so the caller can edit it instead: as it
+    /// is when absolute, resolved against the link's folder when relative.
+    #[test]
+    fn an_edit_of_a_link_names_the_file_it_points_to() {
+        let mut entry = RemoteEntry::file(".env".into(), "/srv/app/.env".into(), 0);
+        assert!(refuse_edit_of_symlink(&entry, "/srv/app/.env").is_ok());
+        entry.is_symlink = true;
+        entry.link_target = Some("../shared/.env".into());
+        let text = refuse_edit_of_symlink(&entry, "/srv/app/.env").unwrap_err();
+        assert!(text.contains("`/srv/app/../shared/.env`"), "{text}");
+        assert!(text.contains("Nothing was written"), "{text}");
+        entry.link_target = Some("/etc/app.env".into());
+        let text = refuse_edit_of_symlink(&entry, "/srv/app/.env").unwrap_err();
+        assert!(text.contains("`/etc/app.env`"), "{text}");
+        entry.link_target = None;
+        let text = refuse_edit_of_symlink(&entry, "/srv/app/.env").unwrap_err();
+        assert!(text.contains("symbolic link"), "{text}");
+    }
+
+    /// Only a provider with `chmod` has a mode to carry over, and a
+    /// permission string that is not a mode is reported, not guessed.
+    #[test]
+    fn an_edit_carries_the_mode_only_where_chmod_can_set_it() {
+        let mut entry = RemoteEntry::file("f".into(), "/f".into(), 0);
+        assert_eq!(EditOriginal::of(&entry, true), EditOriginal::Nothing);
+        entry.permissions = Some("-rw-------".into());
+        assert_eq!(EditOriginal::of(&entry, false), EditOriginal::Nothing);
+        assert_eq!(EditOriginal::of(&entry, true), EditOriginal::Mode(0o600));
+        entry.permissions = Some("adfrw".into());
+        assert_eq!(
+            EditOriginal::of(&entry, true),
+            EditOriginal::Unreadable("adfrw".into())
+        );
     }
 
     /// The crypt and AeroCrypt marker paths publish through

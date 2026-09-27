@@ -332,6 +332,17 @@ impl RemoteBackend for McpRemoteBackend {
             .await
     }
 
+    async fn supports_chmod(&self) -> Result<bool, String> {
+        self.with_provider(move |p| Box::pin(async move { Ok(p.supports_chmod()) }))
+            .await
+    }
+
+    async fn chmod(&self, path: &str, mode: u32) -> Result<(), String> {
+        let path = path.to_string();
+        self.with_provider(move |p| Box::pin(async move { p.chmod(&path, mode).await }))
+            .await
+    }
+
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
         let path = path.to_string();
         let pattern = pattern.to_string();

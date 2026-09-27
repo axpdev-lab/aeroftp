@@ -35552,6 +35552,11 @@ async fn publish_cli_edit_via_temp_rename(
         "`--allow-non-atomic`",
     )
     .await?;
+    // The replace puts a new file in the target's place: a link is refused
+    // here, while nothing is written, and the mode of the file is read to
+    // be set on the temporary (M-A of the 4.2.1 closeout).
+    let original =
+        ftp_client_gui_lib::providers::inspect_edit_target(provider, remote_path).await?;
 
     let remote_temp_path = cli_edit_temp_path(remote_path);
     if let Err(e) = provider
@@ -35561,12 +35566,23 @@ async fn publish_cli_edit_via_temp_rename(
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
     }
+    let not_kept = ftp_client_gui_lib::providers::keep_edit_original(
+        provider,
+        &remote_temp_path,
+        remote_path,
+        &original,
+    )
+    .await;
     // `replace` and not `rename`: the destination exists by definition here,
     // and `rename` deliberately keeps refusing that case so an ordinary `mv`
     // cannot destroy a file the user did not mean to lose.
     if let Err(e) = provider.replace(&remote_temp_path, remote_path).await {
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
+    }
+    if let Some(warning) = not_kept {
+        tracing::warn!("{warning}");
+        ftp_client_gui_lib::providers::report_warning(warning);
     }
     Ok(())
 }
@@ -80620,6 +80636,16 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         /// When set, a replace that succeeds leaves this warning, as a
         /// set-aside replace does when it cannot delete the old copy.
         replace_leaves_warning: Option<String>,
+        /// Unix mode per path, reported by `stat` as `-rw-r--r--`, the way
+        /// SFTP reports it. A new path gets 0644, the server default, and a
+        /// replace moves the mode of the file it moves, as posix-rename does.
+        modes: HashMap<String, u32>,
+        /// Symbolic links: path to the target `stat` reports.
+        links: HashMap<String, String>,
+        /// What `supports_chmod` answers.
+        chmod_supported: bool,
+        /// When set, `chmod` fails with this.
+        chmod_fails_with: Option<String>,
     }
 
     impl CliEditFakeProvider {
@@ -80637,6 +80663,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 sets_aside: false,
                 stat_fails_with: None,
                 replace_leaves_warning: None,
+                modes: HashMap::new(),
+                links: HashMap::new(),
+                chmod_supported: false,
+                chmod_fails_with: None,
             }
         }
     }
@@ -80711,6 +80741,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         ) -> Result<(), ProviderError> {
             let data = std::fs::read(local_path).map_err(ProviderError::IoError)?;
             self.uploads.push((remote_path.to_string(), data.clone()));
+            self.modes.entry(remote_path.to_string()).or_insert(0o644);
             self.remote_files.insert(remote_path.to_string(), data);
             Ok(())
         }
@@ -80766,6 +80797,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 .remove(from)
                 .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
             self.remote_files.insert(to.to_string(), data);
+            if let Some(mode) = self.modes.remove(from) {
+                self.modes.insert(to.to_string(), mode);
+            }
+            self.links.remove(to);
             self.replaces.push((from.to_string(), to.to_string()));
             if let Some(warning) = &self.replace_leaves_warning {
                 ftp_client_gui_lib::providers::report_warning(warning.clone());
@@ -80781,16 +80816,49 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             self.sets_aside
         }
 
+        fn supports_chmod(&self) -> bool {
+            self.chmod_supported
+        }
+
+        async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
+            if let Some(message) = &self.chmod_fails_with {
+                return Err(ProviderError::ServerError(message.clone()));
+            }
+            self.modes.insert(path.to_string(), mode);
+            Ok(())
+        }
+
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
             if let Some(msg) = &self.stat_fails_with {
                 return Err(ProviderError::ConnectionFailed(msg.clone()));
             }
-            self.remote_files
+            let mut entry = self
+                .remote_files
                 .get(path)
                 .map(|data| {
                     RemoteEntry::file(path.to_string(), path.to_string(), data.len() as u64)
                 })
-                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            entry.link_target = self.links.get(path).cloned();
+            entry.is_symlink = entry.link_target.is_some();
+            entry.permissions = self.modes.get(path).map(|mode| {
+                let bit = |mask: u32, letter: char| if mode & mask != 0 { letter } else { '-' };
+                [
+                    '-',
+                    bit(0o400, 'r'),
+                    bit(0o200, 'w'),
+                    bit(0o100, 'x'),
+                    bit(0o040, 'r'),
+                    bit(0o020, 'w'),
+                    bit(0o010, 'x'),
+                    bit(0o004, 'r'),
+                    bit(0o002, 'w'),
+                    bit(0o001, 'x'),
+                ]
+                .iter()
+                .collect()
+            });
+            Ok(entry)
         }
 
         async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -81326,6 +81394,103 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(
             provider.remote_files.get("/target.txt").map(Vec::as_slice),
             Some(b"new text".as_slice())
+        );
+    }
+
+    /// An SFTP-like target of mode 0600 and a local replacement to publish.
+    fn cli_edit_on_a_0600_target() -> (NamedTempFile, String, CliEditFakeProvider) {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.modes.insert("/target.txt".to_string(), 0o600);
+        provider.chmod_supported = true;
+        (local, local_path, provider)
+    }
+
+    /// M-A of the 4.2.1 closeout: the replace puts a NEW file over the
+    /// target, which on SFTP came back with the server default, so a 0600
+    /// `.env` became 0644. The mode is copied onto the temporary before the
+    /// replace.
+    #[tokio::test]
+    async fn cli_edit_publish_keeps_the_mode_of_the_file_it_replaces() {
+        let (_local, local_path, mut provider) = cli_edit_on_a_0600_target();
+
+        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+            .await
+            .expect("publish");
+
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+        assert_eq!(
+            provider.modes.get("/target.txt").copied(),
+            Some(0o600),
+            "the edited file must keep its mode, not the server default"
+        );
+    }
+
+    /// A chmod the server refuses leaves the edit done, and the warning says
+    /// which mode was not kept.
+    #[tokio::test]
+    async fn cli_edit_publish_says_which_permissions_it_could_not_keep() {
+        let (_local, local_path, mut provider) = cli_edit_on_a_0600_target();
+        provider.chmod_fails_with = Some("SITE CHMOD not understood".to_string());
+
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        warnings
+            .scope(publish_cli_edit_via_temp_rename(
+                &mut provider,
+                &local_path,
+                "/target.txt",
+                false,
+            ))
+            .await
+            .expect("the edit itself is done");
+
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+        let taken = warnings.take();
+        assert!(
+            taken
+                .iter()
+                .any(|w| w.contains("0600") && w.contains("SITE CHMOD not understood")),
+            "the warning must name the mode that was not kept and why: {taken:?}"
+        );
+    }
+
+    /// The replace would put a regular file in the link's place and leave the
+    /// file it points to unchanged: a link is refused before anything is
+    /// staged.
+    #[tokio::test]
+    async fn cli_edit_publish_refuses_a_symlink_before_it_uploads() {
+        let (_local, local_path, mut provider) = cli_edit_on_a_0600_target();
+        provider
+            .links
+            .insert("/target.txt".to_string(), "/srv/real.txt".to_string());
+
+        let outcome =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await;
+
+        assert!(
+            provider.uploads.is_empty() && provider.replaces.is_empty(),
+            "nothing may be staged over a link: {outcome:?}"
+        );
+        let text = outcome.unwrap_err().to_string();
+        assert!(
+            text.contains("symbolic link") && text.contains("/srv/real.txt"),
+            "{text}"
+        );
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"old text".as_slice())
         );
     }
 

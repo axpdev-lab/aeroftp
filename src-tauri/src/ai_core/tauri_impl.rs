@@ -637,6 +637,37 @@ impl RemoteBackend for TauriRemoteBackend {
         }
     }
 
+    async fn supports_chmod(&self) -> Result<bool, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref p) = *Self::active_provider(app).lock().await {
+                    return Ok(p.supports_chmod());
+                }
+                // Plain FTP: `stat` is not available on this fallback, so no
+                // mode is ever read here to be set again.
+                Ok(false)
+            }
+            TauriRemoteBackend::Temp { provider } => Ok(provider.lock().await.supports_chmod()),
+        }
+    }
+
+    async fn chmod(&self, path: &str, mode: u32) -> Result<(), String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.chmod(path, mode).await.map_err(|e| e.to_string());
+                }
+                Err("chmod is not supported on the FTP fallback".to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .chmod(path, mode)
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
         match self {
             TauriRemoteBackend::Active { app } => {

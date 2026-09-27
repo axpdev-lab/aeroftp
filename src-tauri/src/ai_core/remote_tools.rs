@@ -1236,6 +1236,10 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     let entry = backend.stat(&path).await.map_err(ToolError::Exec)?;
     reject_uneditable_entry(&entry)?;
+    // The edit publishes a new file in the target's place: over a link that
+    // is a regular file where the link was, and the file it points to left
+    // as it was. Refused before anything is read or written.
+    crate::providers::refuse_edit_of_symlink(&entry, &path).map_err(ToolError::Exec)?;
 
     // Capped, streaming download: the backend refuses mid-read once the buffer
     // would cross MAX_EDIT_BYTES, so a server that under-reports its size in
@@ -1329,6 +1333,12 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         }
     }
 
+    // The new file does not inherit the mode of the one it replaces (on SFTP
+    // it gets the server default): it is set on the temporary before the
+    // replace, where the backend reports one and can set it.
+    let can_chmod = backend.supports_chmod().await.map_err(ToolError::Exec)?;
+    let original = crate::providers::EditOriginal::of(&entry, can_chmod);
+
     let temp_path = edit_temp_path(&path);
     reject_restricted_leaf(backend.as_ref(), &temp_path).await?;
     if let Err(e) = backend
@@ -1338,6 +1348,19 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         let _ = backend.delete(&temp_path).await;
         return Err(ToolError::Exec(e));
     }
+    // Best effort: a refused chmod does not fail an edit that is otherwise
+    // done, and the answer says what was not kept.
+    let not_kept = match &original {
+        crate::providers::EditOriginal::Nothing => None,
+        crate::providers::EditOriginal::Unreadable(permissions) => Some(
+            crate::providers::edit_permissions_not_readable(&path, permissions),
+        ),
+        crate::providers::EditOriginal::Mode(mode) => backend
+            .chmod(&temp_path, *mode)
+            .await
+            .err()
+            .map(|error| crate::providers::edit_mode_not_kept(&path, *mode, &error)),
+    };
     // `replace` and not `rename`: the destination exists by definition here,
     // and `rename` keeps refusing that case so an ordinary move cannot
     // destroy a file the caller did not mean to lose.
@@ -1346,13 +1369,18 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         return Err(ToolError::Exec(e));
     }
 
-    Ok(json!({
+    let mut answer = json!({
         "server": server,
         "path": path,
         "replacements": replacements,
         "bytes_before": bytes_before,
         "bytes_after": bytes_after
-    }))
+    });
+    if let Some(warning) = not_kept {
+        tracing::warn!("{warning}");
+        answer["warnings"] = json!([warning]);
+    }
+    Ok(answer)
 }
 
 /// `remote_versions`: browse and manage a file's version history.
@@ -3798,6 +3826,14 @@ mod tests {
         /// default: with `atomic_replace` false too, this is a backend whose
         /// replace is its rename.
         sets_aside: bool,
+        /// Unix mode per path, reported by `stat` as `-rw-r--r--`. A new
+        /// path gets 0644, the server default; `rename` moves the mode of
+        /// the file it moves, as an SFTP posix-rename does.
+        modes: Mutex<std::collections::HashMap<String, u32>>,
+        /// What `supports_chmod` answers.
+        chmod_supported: bool,
+        /// When set, `chmod` fails with this message.
+        chmod_fails_with: Option<String>,
     }
 
     impl FakeBackend {
@@ -3843,6 +3879,9 @@ mod tests {
                 provider_type: Some(ProviderType::Ftp),
                 atomic_replace: true,
                 sets_aside: false,
+                modes: Mutex::new(std::collections::HashMap::new()),
+                chmod_supported: false,
+                chmod_fails_with: None,
             }
         }
 
@@ -3881,6 +3920,23 @@ mod tests {
                 .ok_or_else(|| format!("not found: {path}"))?;
             let mut e = entry(path, is_dir, size);
             e.is_symlink = self.symlinks.contains(path);
+            e.permissions = self.modes.lock().unwrap().get(path).map(|mode| {
+                let bit = |mask: u32, letter: char| if mode & mask != 0 { letter } else { '-' };
+                [
+                    '-',
+                    bit(0o400, 'r'),
+                    bit(0o200, 'w'),
+                    bit(0o100, 'x'),
+                    bit(0o040, 'r'),
+                    bit(0o020, 'w'),
+                    bit(0o010, 'x'),
+                    bit(0o004, 'r'),
+                    bit(0o002, 'w'),
+                    bit(0o001, 'x'),
+                ]
+                .iter()
+                .collect()
+            });
             Ok(e)
         }
         async fn download_to_bytes(&self, _path: &str) -> Result<Vec<u8>, String> {
@@ -3923,6 +3979,11 @@ mod tests {
             Ok(data)
         }
         async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String> {
+            self.modes
+                .lock()
+                .unwrap()
+                .entry(path.to_string())
+                .or_insert(0o644);
             self.uploads
                 .lock()
                 .unwrap()
@@ -3967,6 +4028,16 @@ mod tests {
         async fn replace_sets_aside(&self) -> Result<bool, String> {
             Ok(self.sets_aside)
         }
+        async fn supports_chmod(&self) -> Result<bool, String> {
+            Ok(self.chmod_supported)
+        }
+        async fn chmod(&self, path: &str, mode: u32) -> Result<(), String> {
+            if let Some(msg) = &self.chmod_fails_with {
+                return Err(msg.clone());
+            }
+            self.modes.lock().unwrap().insert(path.to_string(), mode);
+            Ok(())
+        }
         async fn rename(&self, from: &str, to: &str) -> Result<(), String> {
             if let Some(msg) = &self.rename_fails_with {
                 return Err(msg.clone());
@@ -3981,6 +4052,10 @@ mod tests {
                 .lock()
                 .unwrap()
                 .insert(to.to_string(), data);
+            let moved = self.modes.lock().unwrap().remove(from);
+            if let Some(mode) = moved {
+                self.modes.lock().unwrap().insert(to.to_string(), mode);
+            }
             self.renames
                 .lock()
                 .unwrap()
@@ -4971,6 +5046,103 @@ mod tests {
         assert!(
             !default.contains("allow_non_atomic"),
             "a rename-only backend must not be offered the opt-in: {default}"
+        );
+    }
+
+    fn edit_args() -> Value {
+        json!({
+            "server": "s",
+            "path": "/root/a.txt",
+            "find": "old",
+            "replace": "new",
+        })
+    }
+
+    /// M-A of the 4.2.1 closeout: the edit publishes a NEW file over the
+    /// target, so the mode of the old one was lost (on SFTP a 0600 `.env`
+    /// came back with the server default, 0644). It is copied onto the
+    /// temporary before the replace.
+    #[tokio::test]
+    async fn edit_keeps_the_mode_of_the_file_it_replaces() {
+        let mut fake = FakeBackend::sample();
+        fake.downloads
+            .insert("/root/a.txt".to_string(), b"old text".to_vec());
+        fake.chmod_supported = true;
+        fake.modes
+            .lock()
+            .unwrap()
+            .insert("/root/a.txt".to_string(), 0o600);
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+
+        let value = edit(&ctx, &edit_args()).await.expect("edit");
+
+        assert_eq!(value["replacements"], json!(1));
+        assert_eq!(
+            backend.modes.lock().unwrap().get("/root/a.txt").copied(),
+            Some(0o600),
+            "the edited file must keep its mode, not the server default"
+        );
+        assert!(value.get("warnings").is_none(), "{value}");
+    }
+
+    /// A chmod the server refuses does not fail an edit that is otherwise
+    /// done, and the answer says what was not kept.
+    #[tokio::test]
+    async fn edit_says_which_permissions_it_could_not_keep() {
+        let mut fake = FakeBackend::sample();
+        fake.downloads
+            .insert("/root/a.txt".to_string(), b"old text".to_vec());
+        fake.chmod_supported = true;
+        fake.chmod_fails_with = Some("SITE CHMOD refused".to_string());
+        fake.modes
+            .lock()
+            .unwrap()
+            .insert("/root/a.txt".to_string(), 0o600);
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+
+        let value = edit(&ctx, &edit_args()).await.expect("edit");
+
+        assert_eq!(
+            backend
+                .remote_files
+                .lock()
+                .unwrap()
+                .get("/root/a.txt")
+                .map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+        let warning = value["warnings"][0].as_str().unwrap_or_default();
+        assert!(
+            warning.contains("0600") && warning.contains("SITE CHMOD refused"),
+            "the answer must name the mode that was not kept and why: {value}"
+        );
+    }
+
+    /// The replace would put a regular file in the link's place and leave
+    /// the file it points to unchanged. A link is refused before anything
+    /// is read or written.
+    #[tokio::test]
+    async fn edit_refuses_a_symlink_before_it_downloads() {
+        let mut fake = FakeBackend::sample();
+        fake.downloads
+            .insert("/root/a.txt".to_string(), b"old text".to_vec());
+        fake.symlinks.insert("/root/a.txt".to_string());
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+
+        let outcome = edit(&ctx, &edit_args()).await;
+
+        assert!(
+            backend.uploads.lock().unwrap().is_empty()
+                && backend.renames.lock().unwrap().is_empty(),
+            "nothing may be staged over a link: {outcome:?}"
+        );
+        let text = outcome.unwrap_err().to_string();
+        assert!(
+            text.contains("symbolic link") && text.contains("Nothing was written"),
+            "{text}"
         );
     }
 
