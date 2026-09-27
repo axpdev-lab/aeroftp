@@ -863,8 +863,9 @@ impl FourSharedProvider {
     /// which the API guide documents for a folder holding one item. An empty
     /// body or `null` is an empty folder (what 4shared answers for one is not
     /// documented, so both are taken as that); anything else, a JSON error
-    /// object with HTTP 200 among them, is a ParseError. The lenient parse of the listing wraps such an object as
-    /// one nameless entry, and the name looked for then read as free.
+    /// object with HTTP 200 among them, is a ParseError. The lenient parse of
+    /// the listing wraps such an object as one nameless entry, and the name
+    /// looked for then read as free.
     fn strict_listing_items(
         body: &str,
         keys: &[&str],
