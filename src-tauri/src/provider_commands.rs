@@ -10258,15 +10258,24 @@ pub async fn provider_scan_used(
 ) -> Result<UsedScanResult, String> {
     run_used_scan(
         &state.used_scan_cancel,
-        provider_scan_used_inner(&state, &app, path),
+        provider_scan_used_inner(&state, path, |files, bytes, scanning| {
+            let _ = app.emit(
+                "used-scan-progress",
+                UsedScanProgress {
+                    used: bytes,
+                    file_count: files,
+                    scanning,
+                },
+            );
+        }),
     )
     .await
 }
 
 async fn provider_scan_used_inner(
     state: &ProviderState,
-    app: &AppHandle,
     path: String,
+    emit_progress: impl Fn(u64, u64, bool),
 ) -> Result<UsedScanResult, String> {
     let scan_cancel = AtomicBool::new(false);
 
@@ -10276,17 +10285,6 @@ async fn provider_scan_used_inner(
         "/".to_string()
     } else {
         path
-    };
-
-    let emit_progress = |files: u64, bytes: u64, scanning: bool| {
-        let _ = app.emit(
-            "used-scan-progress",
-            UsedScanProgress {
-                used: bytes,
-                file_count: files,
-                scanning,
-            },
-        );
     };
 
     // --- Single-shot specializations (one short lock each) -------------
@@ -10358,12 +10356,20 @@ async fn provider_scan_used_inner(
             let provider = guard
                 .as_mut()
                 .ok_or_else(|| "Not connected to any provider".to_string())?;
-            match storage_metadata_read(provider.list(&dir)).await? {
-                Ok(e) => e,
-                Err(e) => {
+            match storage_metadata_read(provider.list(&dir)).await {
+                Ok(Ok(e)) => e,
+                Ok(Err(e)) => {
                     // A single unreadable directory must not abort the
                     // whole figure: the result is a lower bound.
                     tracing::warn!("[provider_scan_used] failed to list {}: {}", dir, e);
+                    truncated = true;
+                    unreadable_dirs += 1;
+                    continue;
+                }
+                Err(e) => {
+                    // A timeout is also an unreadable directory, not a reason
+                    // to discard prior counts or skip the remaining siblings.
+                    tracing::warn!("[provider_scan_used] timed out listing {}: {}", dir, e);
                     truncated = true;
                     unreadable_dirs += 1;
                     continue;
@@ -15058,6 +15064,97 @@ mod tests {
         .await;
         assert!(result.unwrap_err().contains("timed out"));
         assert!(lock.try_lock().is_ok());
+    }
+
+    #[tokio::test]
+    async fn ehud_used_scan_keeps_counts_and_siblings_after_a_directory_timeout() {
+        use crate::providers::{webdav::WebDavProvider, StorageProvider, WebDavConfig};
+        use axum::{http::StatusCode, routing::any, Router};
+        fn listing(entries: &[(&str, Option<u64>)]) -> String {
+            let mut xml = String::from(r#"<d:multistatus xmlns:d="DAV:">"#);
+            for (path, size) in entries {
+                let props = match size {
+                    Some(size) => {
+                        format!("<d:resourcetype/><d:getcontentlength>{size}</d:getcontentlength>")
+                    }
+                    None => "<d:resourcetype><d:collection/></d:resourcetype>".into(),
+                };
+                xml.push_str(&format!("<d:response><d:href>{path}</d:href><d:propstat><d:prop>{props}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"));
+            }
+            xml.push_str("</d:multistatus>");
+            xml
+        }
+        let app = Router::new().fallback(any(|request: axum::extract::Request| async move {
+            if request
+                .headers()
+                .get("depth")
+                .is_some_and(|v| v == "infinity")
+            {
+                return (StatusCode::FORBIDDEN, String::new()); // Exercise the real BFS fallback.
+            }
+            let entries = match request.uri().path().trim_end_matches('/') {
+                "" => vec![
+                    ("/", None),
+                    ("/first.txt", Some(5)),
+                    ("/healthy/", None),
+                    ("/denied/", None),
+                    ("/slow/", None),
+                ],
+                "/slow" => std::future::pending().await,
+                "/denied" => return (StatusCode::FORBIDDEN, String::new()),
+                "/healthy" => vec![("/healthy/", None), ("/healthy/last.txt", Some(7))],
+                path => panic!("unexpected path: {path}"),
+            };
+            (StatusCode::MULTI_STATUS, listing(&entries))
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = WebDavProvider::new(WebDavConfig {
+            url: format!("http://{addr}"),
+            username: "fixture".into(),
+            password: secrecy::SecretString::from("fixture".to_string()),
+            initial_path: None,
+            provider_id: None,
+            verify_cert: true,
+            anonymous: true,
+        })
+        .unwrap();
+        provider.connect().await.unwrap();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(provider));
+        let progress = std::sync::Mutex::new(Vec::new());
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(35),
+            super::provider_scan_used_inner(&state, "/".into(), |files, bytes, scanning| {
+                progress.lock().unwrap().push((files, bytes, scanning));
+            }),
+        )
+        .await;
+        server.abort();
+        let result = result
+            .expect("directory timeout must release the read")
+            .expect("return a lower bound");
+        assert_eq!(
+            (result.used, result.file_count, result.dir_count),
+            (12, 2, 3)
+        );
+        assert_eq!(
+            result.unreadable_dirs, 2,
+            "timeout and HTTP failure are both unreadable"
+        );
+        assert!(
+            result.truncated,
+            "partial totals must never be persisted as complete"
+        );
+        assert!(!result.cancelled && !result.hit_cap);
+        assert_eq!(result.method, "bfs");
+        let progress = progress.lock().unwrap();
+        assert_eq!(progress.first(), Some(&(1, 5, true)));
+        assert_eq!(progress.last(), Some(&(2, 12, false)));
+        assert!(state.provider.try_lock().is_ok());
     }
 
     #[tokio::test]
