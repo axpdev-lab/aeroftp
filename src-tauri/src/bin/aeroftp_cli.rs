@@ -7479,13 +7479,16 @@ fn immutable_size_mismatch(
 /// Whether the size `provider` reports for `entry` is the file's exact size.
 /// Not when the provider says its sizes are not (`reports_exact_size`: the
 /// AeroCrypt v1/v2 and compress overlays), not on Proton Drive (a file
-/// without a `claimedSize` reports its encrypted size), and not a 0 on WebDAV
-/// or Google Drive, which is what they report when the server sends no
-/// length or the object has none (a native Google Doc). Elsewhere a 0 is
-/// exact, and it is what an upload cut between its create and its first
-/// write leaves.
+/// without a `claimedSize` reports its encrypted size), not a size FTP could
+/// not read (an MLST without a size fact and a SIZE the server refuses, a
+/// LIST row without a readable one: it reads 0), and not a 0 on WebDAV or
+/// Google Drive, which is what they report when the server sends no length
+/// or the object has none (a native Google Doc). Elsewhere a 0 is exact, and
+/// it is what an upload cut between its create and its first write leaves.
 fn remote_size_is_exact(provider: &dyn StorageProvider, entry: &RemoteEntry) -> bool {
-    if !provider.reports_exact_size() {
+    if !provider.reports_exact_size()
+        || ftp_client_gui_lib::providers::ftp_listing::size_is_unreadable(entry)
+    {
         return false;
     }
     match provider.provider_type() {
@@ -78653,6 +78656,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         /// upload that may follow still goes through, as an SFTP upload does:
         /// it dials again by itself (`ensure_connected`).
         stat_session_lost: HashMap<String, u32>,
+        /// `stat` cannot read sizes: it reports 0 and the FTP marker, as for
+        /// an MLST without a size fact.
+        unreadable_sizes: bool,
     }
 
     /// A provider without a transfer pool (SFTP type, no `clone_for_transfer`),
@@ -78892,6 +78898,12 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             let name = path.rsplit('/').next().unwrap_or(path).to_string();
             let mut entry = RemoteEntry::file(name, path.to_string(), bytes.len() as u64);
             entry.modified = Some(FIXTURE_MTIME.to_string());
+            if st.unreadable_sizes {
+                entry.size = 0;
+                entry
+                    .metadata
+                    .insert("ftp.size_unreadable".to_string(), "1".to_string());
+            }
             Ok(entry)
         }
         async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -79456,6 +79468,19 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert!(
             !exact(ProviderType::Proton, false, 5),
             "maybe the encrypted size"
+        );
+        // FTP marks a size it could not read (an MLST without a size fact, a
+        // LIST row without a readable one): the 0 it reads is not a size.
+        assert!(exact(ProviderType::Ftp, false, 0), "a 0 FTP read is exact");
+        let state = WorkerFake::state();
+        state.lock().unwrap().kind = Some(ProviderType::Ftp);
+        let mut unread = there(0);
+        unread
+            .metadata
+            .insert("ftp.size_unreadable".to_string(), "1".to_string());
+        assert!(
+            !remote_size_is_exact(WorkerFake::held(&state).as_ref(), &unread),
+            "a size FTP could not read"
         );
     }
 
@@ -80261,6 +80286,41 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             }
         }
         assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// `put -r --immutable` to an FTP server whose MLST sends no size fact:
+    /// every size reads 0, which was trusted as exact, so every complete file
+    /// was refused as a partial (exit 4, and the retries stopped there). A
+    /// size FTP could not read is not compared, and the files are skipped.
+    #[test]
+    fn put_recursive_immutable_skips_files_whose_size_ftp_could_not_read() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        cli.immutable = true;
+        let state = WorkerFake::state();
+        // Every file is there already, complete.
+        remote_batch(&state);
+        {
+            let mut st = state.lock().unwrap();
+            st.kind = Some(ProviderType::Ftp);
+            st.unreadable_sizes = true;
+        }
+        let code = run_on_fake(&state, || async {
+            cmd_put_recursive(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 9, "every file skipped: {:?}", st.served);
+        assert!(st.served.is_empty(), "nothing uploaded: {:?}", st.served);
     }
 
     /// `sync` opens a base connection for its transfer batch, which a
