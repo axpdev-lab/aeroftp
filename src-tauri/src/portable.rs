@@ -116,7 +116,10 @@ fn legacy_app_config_dir() -> Option<PathBuf> {
     dirs::config_dir().map(|base| base.join(LEGACY_APP_IDENTIFIER))
 }
 
-fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+/// Copy into `dst` every file of `src` that `dst` does not have yet, never
+/// replacing one, and return how many files were copied: zero when `dst`
+/// already had all of them, so a caller can report only what happened.
+fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
     // SQLite sidecars belong to one database generation, not to a directory.
     // In particular, after a keystore restore removed -wal/-shm, copying the
     // legacy sidecars on the next boot can replay OLD pages over the restored
@@ -127,7 +130,7 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
         .iter()
         .any(|suffix| name.ends_with(suffix))
     {
-        return Ok(());
+        return Ok(0);
     }
     // The tree we import here is a config tree the user consented to copy, but a
     // symlink inside it can point anywhere: outside the consented tree (dragging
@@ -138,7 +141,7 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
     // `is_dir`/`is_file` checks below already no-op on a missing path.
     if let Ok(meta) = src.symlink_metadata() {
         if meta.file_type().is_symlink() {
-            return Ok(());
+            return Ok(0);
         }
     }
     if src.is_dir() {
@@ -148,11 +151,13 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o700));
         }
+        let mut copied = 0;
         for entry in std::fs::read_dir(src)? {
             let entry = entry?;
             let name = entry.file_name();
-            copy_missing_tree(&entry.path(), &dst.join(name))?;
+            copied += copy_missing_tree(&entry.path(), &dst.join(name))?;
         }
+        Ok(copied)
     } else if src.is_file() && !dst.exists() {
         if let Some(parent) = dst.parent() {
             std::fs::create_dir_all(parent)?;
@@ -177,19 +182,21 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
             snapshot.as_file().sync_all()?;
             match snapshot.persist_noclobber(dst) {
                 Ok(_) => {}
-                Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
+                Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(0),
                 Err(e) => return Err(e.error),
             }
         } else if !copy_file_noclobber(src, dst)? {
-            return Ok(());
+            return Ok(0);
         }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o600));
         }
+        Ok(1)
+    } else {
+        Ok(0)
     }
-    Ok(())
 }
 
 /// Copy `src` to `dst` unless `dst` exists, without ever replacing it. The bytes
@@ -216,18 +223,28 @@ fn copy_file_noclobber(src: &Path, dst: &Path) -> std::io::Result<bool> {
 
 const LEGACY_CONFIG_MERGED_MARKER: &str = ".legacy-config-merged";
 
+/// What one call of [`merge_legacy_config_once`] did.
+#[derive(Debug, PartialEq, Eq)]
+enum LegacyMerge {
+    /// The marker was there: an earlier start merged, nothing was looked at.
+    AlreadyMerged,
+    /// The merge ran now and copied this many files, zero when the data root
+    /// already had all of them. The marker is written either way.
+    Merged { copied: usize },
+}
+
 /// Merge the legacy tree into `new_dir` once per data root. Without a durable
 /// record every start copied again whatever was missing, so a file the user
 /// deleted from the data root (a database, a plugin) came back from the legacy
 /// tree on the next start.
-fn merge_legacy_config_once(legacy_dir: &Path, new_dir: &Path) -> std::io::Result<bool> {
+fn merge_legacy_config_once(legacy_dir: &Path, new_dir: &Path) -> std::io::Result<LegacyMerge> {
     let marker = new_dir.join(LEGACY_CONFIG_MERGED_MARKER);
     if marker.exists() {
-        return Ok(false);
+        return Ok(LegacyMerge::AlreadyMerged);
     }
-    copy_missing_tree(legacy_dir, new_dir)?;
+    let copied = copy_missing_tree(legacy_dir, new_dir)?;
     std::fs::write(&marker, b"merged\n")?;
-    Ok(true)
+    Ok(LegacyMerge::Merged { copied })
 }
 
 fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
@@ -243,11 +260,35 @@ fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
     if !legacy_dir.is_dir() || legacy_dir == new_dir {
         return;
     }
-    match merge_legacy_config_once(&legacy_dir, new_dir) {
-        Ok(_) => tracing::info!(
-            "Migrated legacy AeroFTP app config from {} to {}",
+    merge_legacy_config_and_log(&legacy_dir, new_dir);
+    let _ = LEGACY_APP_CONFIG_MIGRATED.set(());
+}
+
+/// Run the one-time merge and report what it did. Every start after the first
+/// finds the marker, and a first start can find every legacy file already in
+/// the data root: in both cases nothing is copied, so only a merge that copied
+/// files may say "Migrated". A support log that reports a migration that did
+/// not happen misleads whoever reads it.
+fn merge_legacy_config_and_log(legacy_dir: &Path, new_dir: &Path) {
+    match merge_legacy_config_once(legacy_dir, new_dir) {
+        Ok(LegacyMerge::Merged { copied }) if copied > 0 => tracing::info!(
+            "Migrated legacy AeroFTP app config from {} to {} ({} {} copied)",
             legacy_dir.display(),
-            new_dir.display()
+            new_dir.display(),
+            copied,
+            if copied == 1 { "file" } else { "files" }
+        ),
+        Ok(LegacyMerge::Merged { .. }) => tracing::debug!(
+            "Legacy AeroFTP app config at {} had nothing missing from {}, nothing copied ({} written)",
+            legacy_dir.display(),
+            new_dir.display(),
+            LEGACY_CONFIG_MERGED_MARKER
+        ),
+        Ok(LegacyMerge::AlreadyMerged) => tracing::debug!(
+            "Legacy AeroFTP app config already merged into {} ({} present), nothing copied from {}",
+            new_dir.display(),
+            LEGACY_CONFIG_MERGED_MARKER,
+            legacy_dir.display()
         ),
         Err(e) => tracing::warn!(
             "Failed to migrate legacy AeroFTP app config from {} to {}: {}",
@@ -256,7 +297,6 @@ fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
             e
         ),
     }
-    let _ = LEGACY_APP_CONFIG_MIGRATED.set(());
 }
 
 /// Resolve the per-app config directory. In portable mode this is
@@ -898,6 +938,121 @@ mod tests {
             .query_row("SELECT name FROM profiles", [], |r| r.get(0))
             .unwrap();
         assert_eq!(name, "latest committed profile");
+    }
+
+    struct CaptureWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Run one merge the way a release start does and return everything it
+    /// wrote to the log, at every level.
+    fn merge_log_of_one_start(legacy: &Path, current: &Path) -> String {
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_writer(move || CaptureWriter(sink.clone()))
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            merge_legacy_config_and_log(legacy, current)
+        });
+        let bytes = buf.lock().unwrap().clone();
+        String::from_utf8(bytes).unwrap()
+    }
+
+    #[test]
+    fn legacy_merge_reports_a_migration_only_when_it_copied() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("legacy");
+        let current = root.path().join("current");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("settings.json"), b"{}").unwrap();
+
+        // First start after the upgrade: the file is copied and the log says so.
+        // This also proves the capture sees the line the next start must not print.
+        let first = merge_log_of_one_start(&legacy, &current);
+        assert!(current.join("settings.json").is_file());
+        assert!(
+            first.contains("Migrated legacy AeroFTP app config"),
+            "the start that copied did not report it: {first:?}"
+        );
+
+        // Every later start finds the marker and copies nothing: the file removed
+        // from the data root stays removed, and the log must not claim otherwise.
+        std::fs::remove_file(current.join("settings.json")).unwrap();
+        let later = merge_log_of_one_start(&legacy, &current);
+        assert!(!current.join("settings.json").exists());
+        assert!(
+            !later.contains("Migrated"),
+            "a start that copied nothing reported a migration: {later:?}"
+        );
+    }
+
+    #[test]
+    fn legacy_merge_with_nothing_missing_reports_no_migration() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("legacy");
+        let current = root.path().join("current");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::create_dir_all(&current).unwrap();
+        std::fs::write(legacy.join("settings.json"), b"{\"old\":true}").unwrap();
+        std::fs::write(current.join("settings.json"), b"{\"new\":true}").unwrap();
+
+        // No marker yet, so the merge runs, but the data root already has every
+        // legacy file: nothing is copied and the log must not say otherwise.
+        let log = merge_log_of_one_start(&legacy, &current);
+        assert_eq!(
+            std::fs::read(current.join("settings.json")).unwrap(),
+            b"{\"new\":true}"
+        );
+        assert!(
+            !log.contains("Migrated"),
+            "a merge that copied nothing reported a migration: {log:?}"
+        );
+        // The merge still counts as done: the next start must skip it.
+        assert!(current.join(LEGACY_CONFIG_MERGED_MARKER).is_file());
+    }
+
+    #[test]
+    fn copy_missing_tree_counts_only_the_files_it_copied() {
+        let root = tempfile::tempdir().unwrap();
+        let src = root.path().join("legacy");
+        let dst = root.path().join("current");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::create_dir_all(&dst).unwrap();
+        std::fs::write(src.join("a.json"), b"a").unwrap();
+        std::fs::write(src.join("b.json"), b"legacy b").unwrap();
+        std::fs::write(src.join("sub").join("c.json"), b"c").unwrap();
+        {
+            let c = rusqlite::Connection::open(src.join("x.db")).unwrap();
+            c.execute_batch("CREATE TABLE t(v TEXT); INSERT INTO t VALUES('x');")
+                .unwrap();
+        }
+        // A sidecar never travels on its own, so it is not a copied file.
+        std::fs::write(src.join("orphan.db-wal"), b"stale").unwrap();
+        // Already in the data root: kept as it is, and not counted.
+        std::fs::write(dst.join("b.json"), b"current b").unwrap();
+
+        // Copied and skipped siblings in whatever order read_dir yields them, plus
+        // a subfolder: the result is the sum, not the outcome of the last child.
+        assert_eq!(copy_missing_tree(&src, &dst).unwrap(), 3);
+        assert_eq!(std::fs::read(dst.join("b.json")).unwrap(), b"current b");
+        assert!(dst.join("a.json").is_file());
+        assert!(dst.join("sub").join("c.json").is_file());
+        assert!(dst.join("x.db").is_file());
+        assert!(!dst.join("orphan.db-wal").exists());
+
+        assert_eq!(copy_missing_tree(&src, &dst).unwrap(), 0);
     }
 
     /// Marker absent ⇒ not portable, all helpers fall through to Tauri/dirs.

@@ -34,6 +34,9 @@ pub struct MegaCmdProvider {
     config: MegaConfig,
     connected: bool,
     current_path: String,
+    /// A folder of stand-in `mega-*` scripts, in tests.
+    #[cfg(test)]
+    cmd_dir: Option<std::path::PathBuf>,
 }
 
 impl MegaCmdProvider {
@@ -42,6 +45,8 @@ impl MegaCmdProvider {
             config,
             connected: false,
             current_path: "/".to_string(),
+            #[cfg(test)]
+            cmd_dir: None,
         }
     }
 
@@ -121,8 +126,23 @@ impl MegaCmdProvider {
     /// Helper to run mega-* commands with timeout, error classification, and retry (ARCH-04, ERR-01, ERR-02).
     async fn run_mega_cmd(&self, cmd: &str, args: &[&str]) -> Result<String, ProviderError> {
         self.log_debug(&format!("[CMD] {} {:?}", cmd, args));
+        #[cfg(test)]
+        if let Some(dir) = &self.cmd_dir {
+            return self
+                .run_resolved_mega_cmd(cmd, &dir.join(cmd).to_string_lossy(), args)
+                .await;
+        }
         let resolved_cmd = Self::resolve_mega_cmd(cmd);
+        self.run_resolved_mega_cmd(cmd, &resolved_cmd, args).await
+    }
 
+    /// [`run_mega_cmd`] with the executable already resolved.
+    async fn run_resolved_mega_cmd(
+        &self,
+        cmd: &str,
+        resolved_cmd: &str,
+        args: &[&str],
+    ) -> Result<String, ProviderError> {
         let mut last_err = ProviderError::Unknown("No attempts made".to_string());
 
         for attempt in 0..=MAX_RETRIES {
@@ -131,7 +151,7 @@ impl MegaCmdProvider {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS)).await;
             }
 
-            let mut cmd_builder = Command::new(&resolved_cmd);
+            let mut cmd_builder = Command::new(resolved_cmd);
             cmd_builder.args(args);
             cmd_builder.kill_on_drop(true);
             #[cfg(windows)]
@@ -409,7 +429,11 @@ impl MegaCmdProvider {
         let date_str = parts[3];
         let time_str = parts[4];
 
-        let name = parts[5..].join(" ");
+        // The name is the rest of the line after the fifth column, as it
+        // came: joining the split words collapsed a double space and dropped
+        // a trailing one, so the look before a rename never found `a  b.txt`
+        // or `b.txt ` and `mega-mv` went over it.
+        let name = rest_after_columns(line, 5).to_string();
         if name.is_empty() {
             tracing::debug!(target: "mega", "[PARSE] Skipping line with empty name: {:?}", line);
             return None;
@@ -795,11 +819,49 @@ impl StorageProvider for MegaCmdProvider {
         }
     }
 
+    /// `mega-mv` onto an existing file replaces it, and onto an existing
+    /// folder it moves the source inside that folder and answers Ok, so the
+    /// destination is looked up first and a taken one refused.
     async fn rename(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {
         let f = self.resolve_path(f);
         let t = self.resolve_path(t);
+        if f == t {
+            return Ok(());
+        }
+        super::refuse_occupied_destination(self, &f, &t).await?;
         self.run_mega_cmd_with_reauth("mega-mv", &[&f, &t]).await?;
         Ok(())
+    }
+
+    /// `mega-mv` of a file onto an existing file, as before. Never onto a
+    /// folder: there `mega-mv` moves the source inside it.
+    async fn replace(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {
+        let f = self.resolve_path(f);
+        let t = self.resolve_path(t);
+        if f == t {
+            return Ok(());
+        }
+        let source = self.stat(&f).await?;
+        match self.stat(&t).await {
+            Ok(occupant) if source.is_dir && occupant.is_dir => {
+                return Err(ProviderError::AlreadyExists(format!(
+                    "{t} is a folder, and MEGAcmd would move {f} inside it instead of in \
+                     its place: nothing was changed"
+                )));
+            }
+            Ok(occupant) => super::refuse_replace_across_types(&t, source.is_dir, occupant.is_dir)?,
+            Err(ProviderError::NotFound(_)) => {}
+            Err(e) => return Err(e),
+        }
+        self.run_mega_cmd_with_reauth("mega-mv", &[&f, &t]).await?;
+        Ok(())
+    }
+
+    /// No: MEGAcmd does not document whether `mega-mv` over a file swaps
+    /// the two in one step, so callers that need atomicity refuse before
+    /// they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1241,6 +1303,18 @@ fn map_mega_exists(result: Result<String, ProviderError>) -> Result<bool, Provid
     }
 }
 
+/// What follows the first `columns` whitespace-separated columns of `line`
+/// and the whitespace after them, with its own spaces kept.
+fn rest_after_columns(line: &str, columns: usize) -> &str {
+    let mut rest = line;
+    for _ in 0..columns {
+        rest = rest.trim_start();
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        rest = &rest[end..];
+    }
+    rest.trim_start()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1293,6 +1367,71 @@ mod tests {
         );
     }
 
+    /// A provider whose `mega-ls` and `mega-mv` are links to the checked-in
+    /// stand-in `tests/fixtures/megacmd_shim.sh`, over a root holding the
+    /// files `a.txt` and `b.txt` and the folder `d`. Every `mega-mv` is
+    /// logged, one line of arguments each. Returns the provider, the log file
+    /// and the folder that keeps the links.
+    #[cfg(unix)]
+    fn provider_on_stand_in_megacmd() -> (MegaCmdProvider, std::path::PathBuf, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let shim =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/megacmd_shim.sh");
+        for name in ["mega-ls", "mega-mv"] {
+            std::os::unix::fs::symlink(&shim, dir.path().join(name)).unwrap();
+        }
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        (provider, dir.path().join("mv.log"), dir)
+    }
+
+    #[cfg(unix)]
+    fn moves(log: &std::path::Path) -> Vec<String> {
+        std::fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// `mega-mv` onto an existing file replaces it, and onto an existing
+    /// folder it moves the source INSIDE it and answers Ok. A rename onto
+    /// either is refused before `mega-mv` runs.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn rename_refuses_an_occupied_destination_before_mega_mv() {
+        let (mut provider, log, _dir) = provider_on_stand_in_megacmd();
+        for to in ["/b.txt", "/d"] {
+            let outcome = provider.rename("/a.txt", to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{to}: {outcome:?}"
+            );
+        }
+        assert!(moves(&log).is_empty(), "{:?}", moves(&log));
+        provider
+            .rename("/a.txt", "/c.txt")
+            .await
+            .expect("free name");
+        assert_eq!(moves(&log), ["/a.txt /c.txt"]);
+    }
+
+    /// `replace` keeps `mega-mv` over an existing file, but never lets a file
+    /// land inside a folder that merely has the target name. Whether MEGAcmd
+    /// swaps the two in one step is not documented, so the provider does not
+    /// claim an atomic replace.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn replace_moves_over_a_file_but_not_into_a_folder() {
+        let (mut provider, log, _dir) = provider_on_stand_in_megacmd();
+        assert!(!provider.supports_atomic_replace().await.unwrap());
+        let outcome = provider.replace("/a.txt", "/d").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(moves(&log).is_empty(), "{:?}", moves(&log));
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        assert_eq!(moves(&log), ["/a.txt /b.txt"]);
+    }
+
     fn test_provider() -> MegaCmdProvider {
         let config = MegaConfig {
             email: "u@example.com".to_string(),
@@ -1327,6 +1466,17 @@ mod tests {
         assert!(MegaCmdProvider::parse_ls_line("/photos:", "/").is_none());
         assert!(MegaCmdProvider::parse_ls_line("", "/").is_none());
         assert!(MegaCmdProvider::parse_ls_line("too few columns", "/").is_none());
+    }
+
+    /// A name with a double space or a trailing space is the name: joined
+    /// from split words it was `a b.txt`, so the look before a rename never
+    /// found the item and `mega-mv` went over it.
+    #[test]
+    fn parse_ls_line_keeps_the_spaces_of_a_name() {
+        let line = "----  1  3  15Jan2026  14:30  a  b.txt ";
+        let entry = MegaCmdProvider::parse_ls_line(line, "/").unwrap();
+        assert_eq!(entry.name, "a  b.txt ");
+        assert_eq!(entry.path, "/a  b.txt ");
     }
 
     #[test]

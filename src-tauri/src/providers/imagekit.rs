@@ -141,6 +141,13 @@ struct IkBulkJob {
     job_id: String,
 }
 
+/// `GET /bulkJobs/{jobId}`: `status` is `Pending` or `Completed`.
+#[derive(Debug, Deserialize)]
+struct IkBulkJobStatus {
+    #[serde(default)]
+    status: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RenameFileRequest<'a> {
@@ -185,12 +192,38 @@ struct BulkFolderRequest<'a> {
     include_file_versions: bool,
 }
 
+/// How the wait for a folder job ended.
+#[derive(Debug)]
+enum FolderJob {
+    Completed,
+    /// Still pending, or not seen: it may complete, and asking again for the
+    /// same move waits for it.
+    Unfinished(ProviderError),
+    /// Over for good without completing, as far as this session can tell.
+    Over(ProviderError),
+}
+
 pub struct ImageKitProvider {
     config: ImageKitConfig,
     client: reqwest::Client,
     connected: bool,
     current_path: String,
+    /// Folder jobs a call queued and could not see finish, by
+    /// `folder_job_key`: a later call for the same move waits for that job
+    /// instead of queueing a second one.
+    unfinished_folder_jobs: std::sync::Mutex<HashMap<String, String>>,
+    #[cfg(test)]
+    api_base_override: Option<String>,
 }
+
+/// How long a folder move or copy may stay a pending bulk job before the
+/// call gives up waiting and says so. The job keeps running server side, and
+/// the wait holds the provider (the trait gives `rename` no way to be
+/// cancelled), so it is kept short: a later call for the same move picks the
+/// same job up again instead of queueing another.
+const FOLDER_JOB_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+const FOLDER_JOB_FIRST_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+const FOLDER_JOB_MAX_POLL: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl ImageKitProvider {
     pub fn new(config: ImageKitConfig) -> Self {
@@ -205,7 +238,18 @@ impl ImageKitProvider {
             client,
             connected: false,
             current_path,
+            unfinished_folder_jobs: std::sync::Mutex::default(),
+            #[cfg(test)]
+            api_base_override: None,
         }
+    }
+
+    fn api_base(&self) -> String {
+        #[cfg(test)]
+        if let Some(base) = &self.api_base_override {
+            return base.clone();
+        }
+        API_BASE.to_string()
     }
 
     fn auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -265,7 +309,7 @@ impl ImageKitProvider {
         // which is what the rest of this provider already expects.
         let url = format!(
             "{}/files?path={}&type=all&limit=1000&skip=0",
-            API_BASE,
+            self.api_base(),
             urlencoding::encode(path)
         );
         let resp = self
@@ -326,7 +370,7 @@ impl ImageKitProvider {
         let resp = self
             .auth(
                 self.client
-                    .delete(format!("{}/files/{}", API_BASE, item.file_id)),
+                    .delete(format!("{}/files/{}", self.api_base(), item.file_id)),
             )
             .send()
             .await
@@ -342,7 +386,7 @@ impl ImageKitProvider {
     async fn delete_folder_by_path(&self, path: &str) -> Result<(), ProviderError> {
         let folder_path = folder_path(path);
         let resp = self
-            .auth(self.client.delete(format!("{}/folder/", API_BASE)))
+            .auth(self.client.delete(format!("{}/folder/", self.api_base())))
             .json(&DeleteFolderRequest {
                 folder_path: &folder_path,
             })
@@ -361,7 +405,7 @@ impl ImageKitProvider {
         let source = normalize_path(from);
         let dest_parent = folder_path(&parent_path(&normalize_path(to)));
         let resp = self
-            .auth(self.client.post(format!("{}/files/copy", API_BASE)))
+            .auth(self.client.post(format!("{}/files/copy", self.api_base())))
             .json(&CopyFileRequest {
                 source_file_path: &source,
                 destination_path: &dest_parent,
@@ -388,7 +432,7 @@ impl ImageKitProvider {
     async fn rename_file(&self, from: &str, new_name: &str) -> Result<(), ProviderError> {
         let source = normalize_path(from);
         let resp = self
-            .auth(self.client.put(format!("{}/files/rename", API_BASE)))
+            .auth(self.client.put(format!("{}/files/rename", self.api_base())))
             .json(&RenameFileRequest {
                 file_path: &source,
                 new_file_name: new_name,
@@ -405,35 +449,207 @@ impl ImageKitProvider {
         }
     }
 
-    async fn move_file(&self, from: &str, to: &str) -> Result<(), ProviderError> {
+    /// Whether `path` names a file or folder.
+    async fn path_exists(&self, path: &str) -> Result<bool, ProviderError> {
+        match self.find_entry(path).await {
+            Ok(_) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// `PUT /files/move`: move the file at `source` into `dest_parent`
+    /// under its name. A same-named file there does not stop it: the moved
+    /// file becomes that file's newest version.
+    async fn files_move(&self, source: &str, dest_parent: &str) -> Result<(), ProviderError> {
+        let resp = self
+            .auth(self.client.put(format!("{}/files/move", self.api_base())))
+            .json(&MoveFileRequest {
+                source_file_path: source,
+                destination_path: &folder_path(dest_parent),
+            })
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(self.parse_error(resp).await)
+        }
+    }
+
+    /// Move and/or rename the file `from` to `to`. ImageKit moves and renames
+    /// with two calls: the move keeps the name and lands on top of a
+    /// same-named file (as its newest version), the rename refuses a taken
+    /// name (409). So the rename goes first, in the source folder, when the
+    /// destination folder holds the old name, or when `overwrite` must put
+    /// the file on top of the one at `to`.
+    async fn move_file(&self, from: &str, to: &str, overwrite: bool) -> Result<(), ProviderError> {
         let source = normalize_path(from);
         let target = normalize_path(to);
         let src_parent = parent_path(&source);
-        let dest_parent = folder_path(&parent_path(&target));
-
-        if folder_path(&src_parent) != dest_parent {
-            let resp = self
-                .auth(self.client.put(format!("{}/files/move", API_BASE)))
-                .json(&MoveFileRequest {
-                    source_file_path: &source,
-                    destination_path: &dest_parent,
-                })
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-            if !resp.status().is_success() {
-                return Err(self.parse_error(resp).await);
-            }
-        }
-
+        let dest_parent = parent_path(&target);
         let src_name = basename(&source);
         let dest_name = basename(&target);
-        if src_name != dest_name {
-            let moved_path = format!("{}/{}", dest_parent.trim_end_matches('/'), src_name);
-            self.rename_file(&moved_path, dest_name).await?;
+        let moves = folder_path(&src_parent) != folder_path(&dest_parent);
+        if !moves {
+            return if src_name == dest_name {
+                Ok(())
+            } else {
+                self.rename_file(&source, dest_name).await
+            };
         }
-        Ok(())
+        if src_name == dest_name {
+            return self.files_move(&source, &dest_parent).await;
+        }
+        let intermediate = format!("{}/{src_name}", dest_parent.trim_end_matches('/'));
+        let rename_first = self.path_exists(&intermediate).await?
+            || (overwrite && self.path_exists(&target).await?);
+        if !rename_first {
+            self.files_move(&source, &dest_parent).await?;
+            return self
+                .rename_file(&intermediate, dest_name)
+                .await
+                .map_err(|e| {
+                    ProviderError::Other(format!(
+                        "moved {source} to {intermediate}, but renaming it to {dest_name} \
+                         failed, so it is still there: {e}"
+                    ))
+                });
+        }
+        let renamed = format!("{}/{dest_name}", src_parent.trim_end_matches('/'));
+        if self.path_exists(&renamed).await? {
+            return Err(ProviderError::Other(format!(
+                "Cannot move {source} to {target} in two steps without two items sharing a \
+                 name: {intermediate} and {renamed} both exist"
+            )));
+        }
+        self.rename_file(&source, dest_name).await?;
+        self.files_move(&renamed, &dest_parent).await.map_err(|e| {
+            ProviderError::Other(format!(
+                "renamed {source} to {renamed}, but moving it to {dest_parent} failed, so it \
+                 is still there: {e}"
+            ))
+        })
+    }
+
+    /// Rename or replace. With `overwrite` false an occupied destination is
+    /// refused before anything changes (the `rename` contract): `files/move`
+    /// would put the file on top of a same-named one as its newest version,
+    /// and `moveFolder` would merge into an existing folder. With it true
+    /// (the `replace` contract) a file lands on top of the one at `to`, which
+    /// keeps its version history; a replace across file and folder, and a
+    /// folder onto a folder (which `moveFolder` would merge), are refused
+    /// before anything changes.
+    async fn move_entry(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let source = self.resolve_path(from);
+        let target = self.resolve_path(to);
+        if source == target {
+            return Ok(());
+        }
+        // The same folder move queued earlier and not seen to finish: wait for
+        // that job. Its source may already be gone, and a second job would
+        // run after the first.
+        if let Some(outcome) = self
+            .resume_folder_job("moveFolder", &source, &parent_path(&target))
+            .await
+        {
+            return outcome;
+        }
+        let entry = self.stat(&source).await?;
+        // The look reads the listing (`GET /v1/files`), the one lookup by
+        // path the API has: there is no folder-details endpoint, and a
+        // folder created a moment earlier is not in that index yet, so for
+        // that window its name reads free and a file lands beside it (live,
+        // 2026-09-27: `mkdir` then `mv` onto the new folder). Declared, not
+        // closed: nothing in the API answers sooner.
+        let occupant = match self.find_entry(&target).await {
+            Ok(found) => Some(file_to_entry(&found)),
+            Err(ProviderError::NotFound(_)) => None,
+            Err(e) => return Err(e),
+        };
+        if let Some(occupant) = occupant {
+            if !overwrite {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            super::refuse_replace_across_types(to, entry.is_dir, occupant.is_dir)?;
+            if entry.is_dir {
+                return Err(ProviderError::NotSupported(format!(
+                    "{to} is a folder, and ImageKit's moveFolder would merge {from} into it \
+                     instead of replacing it: nothing was changed"
+                )));
+            }
+        }
+        if entry.is_dir {
+            let src_name = basename(&source);
+            let dest_name = basename(&target);
+            if src_name != dest_name {
+                return Err(ProviderError::NotSupported(
+                    "ImageKit folder rename is not exposed as a synchronous API; move to a destination folder is supported".to_string(),
+                ));
+            }
+            self.start_folder_job("moveFolder", &source, &parent_path(&target), false)
+                .await
+        } else {
+            self.move_file(&source, &target, overwrite).await
+        }
+    }
+
+    fn folder_job_key(endpoint: &str, source: &str, destination: &str) -> String {
+        format!(
+            "{endpoint} {} {}",
+            folder_path(source),
+            folder_path(destination)
+        )
+    }
+
+    /// Wait for the job an earlier call queued for this same folder job and
+    /// could not see finish, if there is one.
+    async fn resume_folder_job(
+        &self,
+        endpoint: &str,
+        source: &str,
+        destination: &str,
+    ) -> Option<Result<(), ProviderError>> {
+        let key = Self::folder_job_key(endpoint, source, destination);
+        let job_id = self
+            .unfinished_folder_jobs
+            .lock()
+            .ok()?
+            .get(&key)
+            .cloned()?;
+        Some(self.wait_remembering(&key, &job_id).await)
+    }
+
+    /// Wait for `job_id`. Remember it under `key` only while it may still
+    /// complete (still pending, or a poll that failed in transport or with a
+    /// server error); forget it once it completed or is over for good (a job
+    /// ImageKit does not know, a status it does not document), so a later
+    /// call queues a job of its own instead of polling a dead one forever.
+    async fn wait_remembering(&self, key: &str, job_id: &str) -> Result<(), ProviderError> {
+        let outcome = self.wait_for_folder_job(job_id, FOLDER_JOB_WAIT).await;
+        if let Ok(mut jobs) = self.unfinished_folder_jobs.lock() {
+            match &outcome {
+                FolderJob::Unfinished(_) => {
+                    jobs.insert(key.to_string(), job_id.to_string());
+                }
+                FolderJob::Completed | FolderJob::Over(_) => {
+                    jobs.remove(key);
+                }
+            }
+        }
+        match outcome {
+            FolderJob::Completed => Ok(()),
+            FolderJob::Unfinished(e) | FolderJob::Over(e) => Err(e),
+        }
     }
 
     async fn start_folder_job(
@@ -443,12 +659,15 @@ impl ImageKitProvider {
         to: &str,
         include_versions: bool,
     ) -> Result<(), ProviderError> {
+        if let Some(outcome) = self.resume_folder_job(endpoint, from, to).await {
+            return outcome;
+        }
         let source = folder_path(from);
         let destination = folder_path(to);
         let resp = self
             .auth(
                 self.client
-                    .post(format!("{}/bulkJobs/{}", API_BASE, endpoint)),
+                    .post(format!("{}/bulkJobs/{}", self.api_base(), endpoint)),
             )
             .json(&BulkFolderRequest {
                 source_folder_path: &source,
@@ -463,12 +682,97 @@ impl ImageKitProvider {
             return Err(self.parse_error(resp).await);
         }
 
-        if let Ok(job) = resp.json::<IkBulkJob>().await {
-            if !job.job_id.is_empty() {
-                tracing::debug!("ImageKit folder job started: {}", job.job_id);
-            }
+        // The POST answers as soon as the job is queued. Returning then told
+        // the caller a folder had moved while it still sat at the source.
+        let job = resp
+            .json::<IkBulkJob>()
+            .await
+            .map_err(|e| ProviderError::ParseError(format!("bulk job response: {e}")))?;
+        if job.job_id.is_empty() {
+            return Err(ProviderError::ParseError(
+                "ImageKit queued the folder job without a jobId, so its outcome cannot be checked"
+                    .to_string(),
+            ));
         }
-        Ok(())
+        tracing::debug!("ImageKit folder job started: {}", job.job_id);
+        self.wait_remembering(&Self::folder_job_key(endpoint, from, to), &job.job_id)
+            .await
+    }
+
+    /// Poll `GET /bulkJobs/{jobId}` (official SDK, `folders/job.ts`) until
+    /// the job is `Completed`. A job still `Pending` after `budget` is an
+    /// error that says so: the folder may yet finish moving, and the caller
+    /// must not take it as done.
+    async fn wait_for_folder_job(&self, job_id: &str, budget: std::time::Duration) -> FolderJob {
+        let started = std::time::Instant::now();
+        let mut interval = FOLDER_JOB_FIRST_POLL;
+        // The job is queued before the first poll: a poll that fails in
+        // transport or with a server error says nothing about the job, which
+        // may still complete.
+        let unknown = |e: ProviderError| {
+            FolderJob::Unfinished(ProviderError::Other(format!(
+                "ImageKit folder job {job_id} was queued, but checking on it failed ({e}); it \
+                 may still complete, check the destination before retrying"
+            )))
+        };
+        loop {
+            let resp = match self
+                .auth(self.client.get(format!(
+                    "{}/bulkJobs/{}",
+                    self.api_base(),
+                    urlencoding::encode(job_id)
+                )))
+                .send()
+                .await
+            {
+                Ok(resp) => resp,
+                Err(e) => return unknown(ProviderError::NetworkError(e.to_string())),
+            };
+            let status = resp.status();
+            if !status.is_success() {
+                // A refusal to show the job (401, 403: a key that expired or
+                // lost a permission) says nothing about the job itself, which
+                // may still be running: like a server error, it is unknown.
+                let unknown_status = status.is_server_error()
+                    || status == StatusCode::TOO_MANY_REQUESTS
+                    || status == StatusCode::UNAUTHORIZED
+                    || status == StatusCode::FORBIDDEN;
+                let error = self.parse_error(resp).await;
+                if unknown_status {
+                    return unknown(error);
+                }
+                // A job ImageKit does not know (404) is over for this
+                // session: nothing is left to wait for.
+                return FolderJob::Over(ProviderError::Other(format!(
+                    "ImageKit no longer reports folder job {job_id} ({error}); check the \
+                     destination to see whether it ran"
+                )));
+            }
+            let job = match resp.json::<IkBulkJobStatus>().await {
+                Ok(job) => job,
+                Err(e) => {
+                    return unknown(ProviderError::ParseError(format!("bulk job status: {e}")))
+                }
+            };
+            match job.status.as_str() {
+                "Completed" => return FolderJob::Completed,
+                "Pending" if started.elapsed() < budget => {}
+                "Pending" => {
+                    return FolderJob::Unfinished(ProviderError::Other(format!(
+                        "ImageKit folder job {job_id} is still pending after {} s; \
+                         it may complete later, check the destination before retrying",
+                        budget.as_secs()
+                    )))
+                }
+                other => {
+                    return FolderJob::Over(ProviderError::ServerError(format!(
+                        "ImageKit folder job {job_id} reports the unknown status {other:?}"
+                    )))
+                }
+            }
+            tokio::time::sleep(interval).await;
+            interval = (interval * 2).min(FOLDER_JOB_MAX_POLL);
+        }
     }
 }
 
@@ -498,7 +802,7 @@ impl StorageProvider for ImageKitProvider {
         let resp = self
             .auth(
                 self.client
-                    .get(format!("{}/files?limit=1&skip=0", API_BASE)),
+                    .get(format!("{}/files?limit=1&skip=0", self.api_base())),
             )
             .send()
             .await
@@ -816,7 +1120,7 @@ impl StorageProvider for ImageKitProvider {
         let parent = folder_path(&parent_path(&resolved));
 
         let resp = self
-            .auth(self.client.post(format!("{}/folder/", API_BASE)))
+            .auth(self.client.post(format!("{}/folder/", self.api_base())))
             .json(&FolderRequest {
                 folder_name: name,
                 parent_folder_path: &parent,
@@ -880,25 +1184,25 @@ impl StorageProvider for ImageKitProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
-        let source = self.resolve_path(from);
-        let target = self.resolve_path(to);
-        let entry = self.stat(&source).await?;
-        if entry.is_dir {
-            let src_name = basename(&source);
-            let dest_name = basename(&target);
-            if src_name != dest_name {
-                return Err(ProviderError::NotSupported(
-                    "ImageKit folder rename is not exposed as a synchronous API; move to a destination folder is supported".to_string(),
-                ));
-            }
-            self.start_folder_job("moveFolder", &source, &parent_path(&target), false)
-                .await
-        } else {
-            self.move_file(&source, &target).await
-        }
+        self.move_entry(from, to, false).await
+    }
+
+    /// A file moved into another folder lands on top of the one at `to` as
+    /// its newest version, the version history kept: see `move_entry`. In
+    /// one folder ImageKit only renames, and its rename refuses a taken name
+    /// (409, AlreadyExists), so a replace there is refused, as it was before.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.move_entry(from, to, true).await
+    }
+
+    /// No. The callers that need atomicity (CLI `edit`, MCP `remote_edit`,
+    /// the crypt marker paths) stage their temporary next to the target, and
+    /// in one folder ImageKit only renames, which refuses a taken name: the
+    /// edit uploaded its temporary and then failed on the replace (found
+    /// live on 2026-09-26). Answering no makes them refuse before they write
+    /// anything. A replace across folders still lands in one step.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1167,6 +1471,356 @@ mod tests {
             folder_copy_destination("/src/photos", "/dst/photos").unwrap(),
             "/dst"
         );
+    }
+
+    /// An ImageKit double holding the folder `/src/photos` (listed only
+    /// under `/src`, as the API lists a folder's children). A folder move
+    /// queues job `J`, whose status reads `Pending` for the first
+    /// `pending_polls` polls and `Completed` after. Returns the provider and
+    /// the number of status polls.
+    async fn provider_with_folder_job(
+        pending_polls: usize,
+    ) -> (
+        ImageKitProvider,
+        std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let polls = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&polls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let listing_src = req.uri().query().unwrap_or("").contains("path=%2Fsrc&");
+                    let body = match (req.method().as_str(), req.uri().path()) {
+                        ("GET", "/files") if listing_src => serde_json::json!([{
+                            "fileId": "", "name": "photos", "filePath": "/src/photos", "type": "folder",
+                        }]),
+                        ("GET", "/files") => serde_json::json!([]),
+                        ("POST", "/bulkJobs/moveFolder") => serde_json::json!({ "jobId": "J" }),
+                        ("GET", "/bulkJobs/J") => {
+                            let done = seen.fetch_add(1, Ordering::SeqCst) >= pending_polls;
+                            serde_json::json!({
+                                "jobId": "J",
+                                "type": "MOVE_FOLDER",
+                                "status": if done { "Completed" } else { "Pending" },
+                            })
+                        }
+                        _ => serde_json::json!({ "message": "unexpected" }),
+                    };
+                    axum::Json(body)
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, polls)
+    }
+
+    #[tokio::test]
+    async fn folder_move_returns_only_once_the_bulk_job_completed() {
+        let (mut provider, polls) = provider_with_folder_job(1).await;
+        provider
+            .rename("/src/photos", "/dst/photos")
+            .await
+            .expect("move");
+        assert_eq!(
+            polls.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "one Pending, then Completed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_folder_job_still_pending_after_the_wait_is_an_error() {
+        let (provider, _) = provider_with_folder_job(usize::MAX).await;
+        let outcome = provider
+            .wait_for_folder_job("J", std::time::Duration::ZERO)
+            .await;
+        assert!(
+            matches!(outcome, FolderJob::Unfinished(ProviderError::Other(ref m)) if m.contains("still pending")),
+            "{outcome:?}"
+        );
+    }
+
+    /// A poll refused with 403 (a key that lost a permission) says nothing
+    /// about the job, which may still run: it was forgotten as over, and a
+    /// retry queued a second job. It is unfinished, and remembered.
+    #[tokio::test]
+    async fn a_job_poll_refused_by_permissions_is_unfinished() {
+        let (provider, _) = provider_on_tree(&[], &[403]).await;
+        let outcome = provider
+            .wait_for_folder_job("J", std::time::Duration::ZERO)
+            .await;
+        assert!(matches!(outcome, FolderJob::Unfinished(_)), "{outcome:?}");
+    }
+
+    /// A file moved onto a folder at the destination is refused, like a move
+    /// onto a file: ImageKit's rename would put a file `d` beside the folder.
+    #[tokio::test]
+    async fn a_file_move_onto_an_existing_folder_is_refused() {
+        let (mut provider, calls) = provider_on_tree(&["/D", "/D/c.txt", "/D/d"], &[]).await;
+        let outcome = provider.rename("/D/c.txt", "/D/d").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// An ImageKit double holding `tree` (paths; a name without a dot is a
+    /// folder), listed per folder as the API does. Moves, renames and folder
+    /// jobs succeed without changing the tree; the status polls of job `J`
+    /// answer `job_polls` in turn (an HTTP status, 200 meaning `Completed`).
+    /// Returns the provider and every mutating call, as `METHOD path body`.
+    async fn provider_on_tree(
+        tree: &'static [&'static str],
+        job_polls: &'static [u16],
+    ) -> (
+        ImageKitProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let polls = Arc::new(AtomicUsize::new(0));
+        let (seen, polled) = (Arc::clone(&calls), Arc::clone(&polls));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (seen, polled) = (Arc::clone(&seen), Arc::clone(&polled));
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let path = url.path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                        .await
+                        .unwrap();
+                    let json = |status: u16, value: serde_json::Value| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(value.to_string()))
+                            .unwrap()
+                    };
+                    match (method.as_str(), path.as_str()) {
+                        ("GET", "/files") => {
+                            let folder = url
+                                .query_pairs()
+                                .find(|(k, _)| k == "path")
+                                .map(|(_, v)| v.to_string())
+                                .unwrap_or_default();
+                            let items: Vec<serde_json::Value> = tree
+                                .iter()
+                                .filter(|p| parent_path(p) == normalize_path(&folder))
+                                .map(|p| {
+                                    let name = basename(p);
+                                    let kind = if name.contains('.') { "file" } else { "folder" };
+                                    serde_json::json!({
+                                        "fileId": format!("id-{name}"), "name": name,
+                                        "filePath": p, "type": kind,
+                                    })
+                                })
+                                .collect();
+                            json(200, serde_json::json!(items))
+                        }
+                        ("GET", "/bulkJobs/J") => {
+                            let n = polled.fetch_add(1, Ordering::SeqCst);
+                            match job_polls.get(n).copied().unwrap_or(200) {
+                                200 => json(
+                                    200,
+                                    serde_json::json!({ "jobId": "J", "status": "Completed" }),
+                                ),
+                                status => json(status, serde_json::json!({ "message": "busy" })),
+                            }
+                        }
+                        _ => {
+                            seen.lock().unwrap().push(format!(
+                                "{method} {path} {}",
+                                String::from_utf8_lossy(&body)
+                            ));
+                            json(200, serde_json::json!({ "jobId": "J" }))
+                        }
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, calls)
+    }
+
+    /// `files/move` puts the moved file on top of a same-named one at the
+    /// destination, as its newest version: a rename must refuse first.
+    #[tokio::test]
+    async fn a_file_move_onto_an_existing_file_is_refused() {
+        let (mut provider, calls) = provider_on_tree(&["/src/a.jpg", "/dst/a.jpg"], &[]).await;
+        let outcome = provider.rename("/src/a.jpg", "/dst/a.jpg").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// `moveFolder` merges into an existing folder of the same name.
+    #[tokio::test]
+    async fn a_folder_move_onto_an_existing_folder_is_refused() {
+        let (mut provider, calls) =
+            provider_on_tree(&["/src", "/dst", "/src/photos", "/dst/photos"], &[]).await;
+        let outcome = provider.rename("/src/photos", "/dst/photos").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// Moving first would land `a.jpg` on top of `/dst/a.jpg` (as its newest
+    /// version) and then rename that file, with the other's history, to
+    /// `b.jpg`: the rename goes first, in `/src`.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        let (mut provider, calls) = provider_on_tree(&["/src/a.jpg", "/dst/a.jpg"], &[]).await;
+        provider
+            .rename("/src/a.jpg", "/dst/b.jpg")
+            .await
+            .expect("rename then move");
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 2, "{calls:?}");
+        assert!(calls[0].starts_with("PUT /files/rename"), "{calls:?}");
+        assert!(calls[0].contains(r#""filePath":"/src/a.jpg""#), "{calls:?}");
+        assert!(calls[1].starts_with("PUT /files/move"), "{calls:?}");
+        assert!(
+            calls[1].contains(r#""sourceFilePath":"/src/b.jpg""#),
+            "{calls:?}"
+        );
+    }
+
+    /// `replace` puts the file on top of the one at the destination, which
+    /// keeps the old content as a previous version.
+    #[tokio::test]
+    async fn replace_moves_the_file_on_top_of_the_existing_one() {
+        let (mut provider, calls) = provider_on_tree(&["/src/a.jpg", "/dst/a.jpg"], &[]).await;
+        provider
+            .replace("/src/a.jpg", "/dst/a.jpg")
+            .await
+            .expect("replace");
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1, "{calls:?}");
+        assert!(calls[0].starts_with("PUT /files/move"), "{calls:?}");
+        assert!(
+            calls[0].contains(r#""destinationPath":"/dst/""#),
+            "{calls:?}"
+        );
+    }
+
+    /// With `overwrite` the destination was not looked at: a file replaced
+    /// onto a folder was moved in beside it under its name, and a folder
+    /// replaced onto a folder queued a `moveFolder` that merges the two
+    /// trees. Both are refused before any call.
+    #[tokio::test]
+    async fn a_replace_across_types_or_onto_a_folder_is_refused() {
+        let (mut provider, calls) =
+            provider_on_tree(&["/src", "/dst", "/src/a.jpg", "/dst/photos"], &[]).await;
+        let across = provider.replace("/src/a.jpg", "/dst/photos").await;
+        assert!(
+            matches!(across, Err(ProviderError::AlreadyExists(_))),
+            "{across:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+        let (mut provider, calls) =
+            provider_on_tree(&["/src", "/dst", "/src/photos", "/dst/photos"], &[]).await;
+        let merge = provider.replace("/src/photos", "/dst/photos").await;
+        assert!(
+            matches!(merge, Err(ProviderError::NotSupported(_))),
+            "{merge:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// A poll that fails says nothing about the job, which was queued and may
+    /// still complete; retrying the move waits for that job instead of
+    /// queueing a second one.
+    #[tokio::test]
+    async fn a_failed_poll_says_the_job_may_complete_and_a_retry_does_not_requeue() {
+        let (mut provider, calls) = provider_on_tree(&["/src", "/src/photos"], &[500, 200]).await;
+        let first = provider.rename("/src/photos", "/dst/photos").await;
+        assert!(
+            matches!(first, Err(ProviderError::Other(ref m)) if m.contains("may still complete")),
+            "{first:?}"
+        );
+        provider
+            .rename("/src/photos", "/dst/photos")
+            .await
+            .expect("the retry sees the first job complete");
+        let posts = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("POST /bulkJobs/moveFolder"))
+            .count();
+        assert_eq!(posts, 1, "{:?}", calls.lock().unwrap());
+    }
+
+    /// A job ImageKit no longer knows (404) is over: remembering it made
+    /// every later move of that folder poll the dead job again, so the folder
+    /// could not be moved for the rest of the session. The next attempt
+    /// queues a job of its own.
+    #[tokio::test]
+    async fn a_job_imagekit_does_not_know_is_forgotten() {
+        let (mut provider, calls) = provider_on_tree(&["/src", "/src/photos"], &[404]).await;
+        let first = provider.rename("/src/photos", "/dst/photos").await;
+        assert!(first.is_err(), "{first:?}");
+        provider
+            .rename("/src/photos", "/dst/photos")
+            .await
+            .expect("a new job, which completes");
+        let posts = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("POST /bulkJobs/moveFolder"))
+            .count();
+        assert_eq!(posts, 2, "{:?}", calls.lock().unwrap());
+    }
+
+    /// Every caller that needs atomicity stages its temporary next to the
+    /// target, and in one folder ImageKit can only rename, which refuses a
+    /// taken name (409): the edit uploaded its temporary and then failed on
+    /// the replace (found live on 2026-09-26, the temporary left behind). The
+    /// answer is no, so those callers refuse before writing anything.
+    #[tokio::test]
+    async fn imagekit_does_not_claim_an_atomic_replace() {
+        let mut provider = empty_provider();
+        assert!(!provider.supports_atomic_replace().await.unwrap());
     }
 
     fn empty_provider() -> ImageKitProvider {

@@ -377,6 +377,22 @@ impl DropboxProvider {
         Ok(())
     }
 
+    /// `path` in the user's own form, absolute: relative to the current
+    /// folder unless it starts with `/`, and not yet encoded.
+    fn absolute_user_path(&self, path: &str) -> String {
+        let joined = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("{}/{}", self.current_path, path)
+        };
+        format!("/{}", joined.trim_matches('/'))
+    }
+
+    /// `path` as Dropbox names it: [`Self::absolute_user_path`], encoded.
+    fn absolute_path(&self, path: &str) -> String {
+        self.normalize_path(&self.absolute_user_path(path))
+    }
+
     /// Normalize path for Dropbox API (empty string = root, paths start with /).
     ///
     /// This is the single chokepoint through which every outgoing remote path
@@ -1436,27 +1452,53 @@ impl StorageProvider for DropboxProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let from_path = if from.starts_with('/') {
-            self.normalize_path(from)
-        } else {
-            self.normalize_path(&format!("{}/{}", self.current_path, from))
-        };
+        let from_path = self.absolute_path(from);
+        let to_path = self.absolute_path(to);
 
-        let to_path = if to.starts_with('/') {
-            self.normalize_path(to)
-        } else {
-            self.normalize_path(&format!("{}/{}", self.current_path, to))
-        };
+        if from_path == to_path {
+            return Ok(());
+        }
 
         let body = serde_json::json!({
             "from_path": from_path,
             "to_path": to_path
         });
 
-        let _: serde_json::Value = self.rpc_call("files/move_v2", &body).await?;
+        // Dropbox refuses a taken destination itself (409 `to/conflict/file`
+        // or `to/conflict/folder`): that is the AlreadyExists sync and
+        // `mkdir -p` handle. `to/conflict/file_ancestor` is a file where a
+        // parent folder should be, not a taken name.
+        let _: serde_json::Value = match self.rpc_call("files/move_v2", &body).await {
+            Err(ProviderError::Other(message))
+                if message.contains("to/conflict/file/")
+                    || message.contains("to/conflict/folder/") =>
+            {
+                return Err(ProviderError::AlreadyExists(to.to_string()))
+            }
+            other => other?,
+        };
 
         info!("Renamed {} to {}", from, to);
         Ok(())
+    }
+
+    /// `files/move_v2` never overwrites (it offers only `autorename`), so a
+    /// replace sets the item at `to` aside, moves `from` in, and then deletes
+    /// the one set aside, which Dropbox keeps among its deleted files: see
+    /// [`super::replace_by_setting_aside`].
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        // In the user's form: every call the helper makes encodes it once,
+        // and the encoding is not idempotent.
+        let (from, to) = (self.absolute_user_path(from), self.absolute_user_path(to));
+        super::replace_by_setting_aside(self, &from, &to).await
+    }
+
+    /// No: a replace sets the old item aside, so the name is empty for a
+    /// moment. The callers that need atomicity (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write
+    /// anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2881,6 +2923,251 @@ mod tests {
 
     fn demo_cfg() -> DropboxConfig {
         DropboxConfig::new("app-key", "app-secret")
+    }
+
+    /// A Dropbox double whose `files/move_v2` answers 409 `to/conflict`, as
+    /// Dropbox does for a taken destination, and records every call.
+    async fn provider_refusing_moves() -> (
+        DropboxProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        provider_refusing_moves_with("file").await
+    }
+
+    /// A Dropbox double whose `files/move_v2` answers 409
+    /// `to/conflict/{conflict}`, and records every call.
+    async fn provider_refusing_moves_with(
+        conflict: &'static str,
+    ) -> (
+        DropboxProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::post(
+            move |uri: axum::http::Uri| {
+                seen.lock().unwrap().push(uri.path().to_string());
+                async move {
+                    (
+                        axum::http::StatusCode::CONFLICT,
+                        format!(
+                            r#"{{"error":{{".tag":"to","to":{{".tag":"conflict","conflict":{{".tag":"{conflict}"}}}}}},"error_summary":"to/conflict/{conflict}/.."}}"#
+                        ),
+                    )
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        (provider, calls)
+    }
+
+    /// Dropbox refuses a move onto a taken name with 409 `to/conflict`,
+    /// which reached the caller as a generic error (CLI exit 99, live on
+    /// 2026-09-26) instead of AlreadyExists (exit 9).
+    #[tokio::test]
+    async fn a_move_dropbox_refuses_for_a_taken_name_is_already_exists() {
+        let (mut provider, _) = provider_refusing_moves().await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// `to/conflict/file_ancestor` says a parent of the destination is a
+    /// file, not that the name is taken: it is not AlreadyExists (exit 9),
+    /// which tells the caller that something sits at the destination.
+    #[tokio::test]
+    async fn a_file_where_a_parent_folder_should_be_is_not_a_taken_name() {
+        let (mut provider, _) = provider_refusing_moves_with("file_ancestor").await;
+        let outcome = provider.rename("/a.txt", "/f/b.txt").await;
+        assert!(
+            outcome.is_err() && !matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// A move onto its own path is a no-op everywhere else; Dropbox refused
+    /// it (live on 2026-09-26). Nothing is sent.
+    #[tokio::test]
+    async fn a_rename_onto_its_own_path_sends_nothing() {
+        let (mut provider, calls) = provider_refusing_moves().await;
+        provider.rename("/a.txt", "/a.txt").await.expect("no-op");
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// A Dropbox double that keeps `items` (path, content, is a folder) in
+    /// memory: `get_metadata` finds them, `move_v2` moves one (409
+    /// `to/conflict` onto a taken path, 500 for a source named `locked`),
+    /// `delete_v2` removes one. Returns a provider on it, the items, and every
+    /// change as `move FROM TO` or `delete PATH`.
+    #[allow(clippy::type_complexity)]
+    async fn provider_on_dropbox_items(
+        items: &[(&str, &str, bool)],
+    ) -> (
+        DropboxProvider,
+        std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, (String, bool)>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let store: Arc<Mutex<std::collections::BTreeMap<String, (String, bool)>>> =
+            Arc::new(Mutex::new(
+                items
+                    .iter()
+                    .map(|(path, content, dir)| (path.to_string(), (content.to_string(), *dir)))
+                    .collect(),
+            ));
+        let changes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (items, seen) = (Arc::clone(&store), Arc::clone(&changes));
+        let app = axum::Router::new().fallback(axum::routing::post(
+            move |uri: axum::http::Uri, body: String| {
+                let (items, seen) = (Arc::clone(&items), Arc::clone(&seen));
+                async move {
+                    let args: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                    let arg = |key: &str| args[key].as_str().unwrap_or("").to_string();
+                    let refused = |status: u16, summary: &str| {
+                        (
+                            axum::http::StatusCode::from_u16(status).unwrap(),
+                            format!(r#"{{"error_summary":"{summary}","error":{{}}}}"#),
+                        )
+                            .into_response()
+                    };
+                    let mut items = items.lock().unwrap();
+                    match uri.path() {
+                        "/files/get_metadata" => match items.get(&arg("path")) {
+                            Some((_, dir)) => {
+                                let path = arg("path");
+                                axum::Json(serde_json::json!({
+                                    ".tag": if *dir { "folder" } else { "file" },
+                                    "name": path.rsplit('/').next().unwrap(),
+                                    "path_display": path,
+                                }))
+                                .into_response()
+                            }
+                            None => refused(409, "path/not_found/.."),
+                        },
+                        "/files/move_v2" => {
+                            let (from, to) = (arg("from_path"), arg("to_path"));
+                            if from.contains("locked") {
+                                return refused(500, "internal_error/..");
+                            }
+                            if items.contains_key(&to) {
+                                return refused(409, "to/conflict/file/..");
+                            }
+                            let Some(item) = items.remove(&from) else {
+                                return refused(409, "from_lookup/not_found/..");
+                            };
+                            items.insert(to.clone(), item);
+                            seen.lock().unwrap().push(format!("move {from} {to}"));
+                            axum::Json(serde_json::json!({})).into_response()
+                        }
+                        "/files/delete_v2" => {
+                            items.remove(&arg("path"));
+                            seen.lock().unwrap().push(format!("delete {}", arg("path")));
+                            axum::Json(serde_json::json!({})).into_response()
+                        }
+                        other => refused(400, other),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        (provider, store, changes)
+    }
+
+    /// `move_v2` never overwrites, so the replace behind CLI `edit` and the
+    /// served WebDAV MOVE with `Overwrite: T` was the rename, which Dropbox
+    /// refuses onto the file it is meant to replace (409, live on
+    /// 2026-09-26). It now sets the old file aside, moves the new one in and
+    /// deletes the one set aside.
+    #[tokio::test]
+    async fn a_replace_sets_the_old_file_aside_moves_the_new_one_in_then_deletes_it() {
+        let (mut provider, store, changes) =
+            provider_on_dropbox_items(&[("/a.txt", "A", false), ("/b.txt", "B", false)]).await;
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        let changes = changes.lock().unwrap().clone();
+        assert_eq!(changes.len(), 3, "{changes:?}");
+        assert!(
+            changes[0].starts_with("move /b.txt /.b.txt.aeroftp-replaced-"),
+            "{changes:?}"
+        );
+        assert_eq!(changes[1], "move /a.txt /b.txt");
+        assert!(
+            changes[2].starts_with("delete /.b.txt.aeroftp-replaced-"),
+            "{changes:?}"
+        );
+        let store = store.lock().unwrap().clone();
+        assert_eq!(store.len(), 1, "{store:?}");
+        assert_eq!(store["/b.txt"].0, "A");
+    }
+
+    /// A name Dropbox cannot store as it is (here a trailing space, stored as
+    /// `b\u{2420}`) was encoded once by the replace and once more by every
+    /// call it made: the look found nothing, and the file went to a third
+    /// name while `b ` kept its old content.
+    #[tokio::test]
+    async fn a_replace_encodes_a_restricted_name_once() {
+        let (mut provider, store, _) =
+            provider_on_dropbox_items(&[("/a.txt", "A", false), ("/b\u{2420}", "B", false)]).await;
+        provider.replace("/a.txt", "/b ").await.expect("replace");
+        let store = store.lock().unwrap().clone();
+        assert_eq!(store.len(), 1, "{store:?}");
+        assert_eq!(store["/b\u{2420}"].0, "A");
+    }
+
+    /// When the new file cannot be moved in, the one set aside gets its name
+    /// back and the refusal is reported: nothing is lost and nothing moved.
+    #[tokio::test]
+    async fn a_replace_whose_move_in_fails_puts_the_old_file_back() {
+        let (mut provider, store, _) =
+            provider_on_dropbox_items(&[("/locked.txt", "L", false), ("/b.txt", "B", false)]).await;
+        let outcome = provider.replace("/locked.txt", "/b.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let store = store.lock().unwrap().clone();
+        assert_eq!(store.len(), 2, "{store:?}");
+        assert_eq!(store["/b.txt"].0, "B");
+        assert_eq!(store["/locked.txt"].0, "L");
+    }
+
+    /// A replace puts a file in place of a file: onto a folder nothing is
+    /// moved.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_moves_nothing() {
+        let (mut provider, _, changes) =
+            provider_on_dropbox_items(&[("/a.txt", "A", false), ("/d", "", true)]).await;
+        let outcome = provider.replace("/a.txt", "/d").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
+    }
+
+    /// The replace sets the old item aside, so the name is empty for a
+    /// moment: no atomic replace is claimed, and the callers that need one
+    /// refuse before they write.
+    #[tokio::test]
+    async fn dropbox_does_not_claim_an_atomic_replace() {
+        let mut provider = fixture_connected();
+        assert!(!provider.supports_atomic_replace().await.unwrap());
     }
 
     fn fixture_connected() -> DropboxProvider {

@@ -37,7 +37,6 @@ struct ApiResponse<T> {
     #[allow(dead_code)]
     result: Option<String>,
     data: Option<T>,
-    #[allow(dead_code)]
     error: Option<ApiError>,
 }
 
@@ -87,9 +86,7 @@ fn explain_root_refusal(err: ProviderError, parent: &str) -> ProviderError {
 
 #[derive(Debug, Deserialize)]
 struct ApiError {
-    #[allow(dead_code)]
     code: Option<String>,
-    #[allow(dead_code)]
     description: Option<String>,
 }
 
@@ -1268,7 +1265,12 @@ impl StorageProvider for KDriveProvider {
         kdrive_log(&format!("Deleting {} (id={})", filename, file_id));
 
         let url = self.api_url_v2(&format!("/files/{}", file_id));
-        let resp = self.delete_with_retry(&url).await?;
+        let sent = self.delete_with_retry(&url).await;
+        // Whatever the answer, even none (a delete kDrive applied whose
+        // answer was lost), the folder ids cached for the path and everything
+        // under it may point at items now in the trash.
+        super::forget_cached_subtree(&mut self.dir_cache, &resolved);
+        let resp = sent?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1276,15 +1278,20 @@ impl StorageProvider for KDriveProvider {
             return Err(api_failure("Delete failed", Some(status), &body));
         }
 
-        // Remove from cache if directory
-        self.dir_cache.remove(&resolved);
-
         Ok(())
     }
 
+    /// One move to the destination folder under the new name. kDrive's move
+    /// names no conflict behaviour, so the destination is looked up first
+    /// and a taken one refused; a name taken since then is refused by kDrive
+    /// (409) and reported as AlreadyExists too.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let resolved_from = self.resolve_path(from);
         let resolved_to = self.resolve_path(to);
+        if resolved_from == resolved_to {
+            return Ok(());
+        }
+        super::refuse_occupied_destination(self, &resolved_from, &resolved_to).await?;
         let (from_parent, from_name) = Self::split_path(&resolved_from);
         let (to_parent, to_name) = Self::split_path(&resolved_to);
         let from_parent_id = self.resolve_folder_id(from_parent).await?;
@@ -1305,19 +1312,52 @@ impl StorageProvider for KDriveProvider {
         let body_json = serde_json::json!({ "name": to_name })
             .to_string()
             .into_bytes();
-        let resp = self
+        let sent = self
             .post_with_retry(&url, "application/json", body_json)
-            .await?;
+            .await;
+        // Whatever the answer, even none (a move kDrive applied whose answer
+        // was lost), the folder ids cached for either path and everything
+        // under them may now point at a moved folder or at one in the trash
+        // (the one a replace set aside): a later `put` into `/dst/sub` wrote
+        // into the trashed folder.
+        super::forget_cached_subtree(&mut self.dir_cache, &resolved_from);
+        super::forget_cached_subtree(&mut self.dir_cache, &resolved_to);
+        let resp = sent?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
+            // Only the error code that says the name is taken: a status or a
+            // word in the body (a file named `conflict.txt`) says nothing of it.
+            let code = serde_json::from_str::<ApiResponse<serde_json::Value>>(&body)
+                .ok()
+                .and_then(|r| r.error)
+                .and_then(|e| e.code)
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if code == "conflict_error" || code.contains("already_exist") {
+                return Err(ProviderError::AlreadyExists(resolved_to));
+            }
             return Err(api_failure("Rename failed", Some(status), &body));
         }
 
-        // Update cache
-        self.dir_cache.remove(&resolved_from);
         Ok(())
+    }
+
+    /// kDrive's move has no documented overwrite, and the rename refuses the
+    /// file a replace is meant to replace: the item at the destination is set
+    /// aside, the source renamed in, and the one set aside deleted (into
+    /// kDrive's trash), as on Koofr.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let (from, to) = (self.resolve_path(from), self.resolve_path(to));
+        super::replace_by_setting_aside(self, &from, &to).await
+    }
+
+    /// No: a replace sets the old item aside, so the name is empty for a
+    /// moment, and the callers that need a one-step replace refuse before
+    /// they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -2130,6 +2170,15 @@ mod api_failure_tests {
 mod tests {
     use super::*;
 
+    /// kDrive's move has no documented overwrite, so there is no one-step
+    /// replace. The answer is no, so the callers that need one (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write.
+    #[tokio::test]
+    async fn kdrive_does_not_claim_an_atomic_replace() {
+        let mut p = test_provider();
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
+
     #[test]
     fn drive_discovery_reads_numeric_or_string_current_account_id() {
         let numeric = serde_json::json!({
@@ -2305,6 +2354,254 @@ mod tests {
             initial_path: None,
         };
         KDriveProvider::new(config)
+    }
+
+    /// A kDrive double whose root (id 1) holds `a.txt` (11) and, when
+    /// `b_taken`, `b.txt` (12). A move answers that status and error code
+    /// when `move_refusal` is `Some((status, error code))`, success
+    /// otherwise.
+    /// Returns a provider on it and the path of every move.
+    async fn provider_on_kdrive_root(
+        b_taken: bool,
+        move_refusal: Option<(u16, &'static str)>,
+    ) -> (
+        KDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let moves: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&moves);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let file = |id: i64, name: &str| {
+                        serde_json::json!({ "id": id, "name": name, "type": "file", "size": 3 })
+                    };
+                    if path.contains("/move/") {
+                        seen.lock().unwrap().push(path);
+                        return match move_refusal {
+                            Some((status, code)) => (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                format!(
+                                    r#"{{"result":"error","error":{{"code":"{code}","description":"refused, see conflict.txt"}}}}"#
+                                ),
+                            )
+                                .into_response(),
+                            None => axum::Json(serde_json::json!({ "result": "success", "data": {} }))
+                                .into_response(),
+                        };
+                    }
+                    let body = match path.as_str() {
+                        "/3/drive/987654/files/1/files" => {
+                            let mut data = vec![file(11, "a.txt")];
+                            if b_taken {
+                                data.push(file(12, "b.txt"));
+                            }
+                            serde_json::json!({ "result": "success", "data": data })
+                        }
+                        "/3/drive/987654/files/11" => {
+                            serde_json::json!({ "result": "success", "data": file(11, "a.txt") })
+                        }
+                        "/3/drive/987654/files/12" => {
+                            serde_json::json!({ "result": "success", "data": file(12, "b.txt") })
+                        }
+                        _ => serde_json::json!({ "result": "error" }),
+                    };
+                    axum::Json(body).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, moves)
+    }
+
+    /// kDrive's move names no conflict behaviour, so the destination is
+    /// looked up first and a taken one refused before any move.
+    #[tokio::test]
+    async fn rename_refuses_a_taken_destination_before_moving() {
+        let (mut provider, moves) = provider_on_kdrive_root(true, None).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            moves.lock().unwrap().is_empty(),
+            "{:?}",
+            moves.lock().unwrap()
+        );
+    }
+
+    /// A name taken between the look and the move is refused by kDrive with
+    /// 409; that is AlreadyExists, not a server error.
+    #[tokio::test]
+    async fn a_move_kdrive_refuses_for_a_taken_name_is_already_exists() {
+        let (mut provider, moves) =
+            provider_on_kdrive_root(false, Some((409, "conflict_error"))).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(moves.lock().unwrap().len(), 1);
+    }
+
+    /// A refused move whose error code is not `conflict_error` is not a
+    /// taken name, whatever its status or its text says (here a 409 about a
+    /// missing folder, whose description mentions `conflict.txt`).
+    #[tokio::test]
+    async fn only_a_conflict_error_code_is_a_taken_name() {
+        let (mut provider, _) =
+            provider_on_kdrive_root(false, Some((409, "destination_not_found"))).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            outcome.is_err() && !matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// A kDrive double whose root (id 1) holds the files `files` (id, name)
+    /// and keeps them: a move renames (409 `conflict_error` onto a name taken
+    /// by another file) and a delete removes. Returns a provider on it, the
+    /// files, and every change as `move ID NAME` or `delete ID`.
+    #[allow(clippy::type_complexity)]
+    async fn provider_on_kdrive_files(
+        files: &[(i64, &str)],
+    ) -> (
+        KDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<(i64, String)>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let store: Arc<Mutex<Vec<(i64, String)>>> = Arc::new(Mutex::new(
+            files
+                .iter()
+                .map(|(id, name)| (*id, name.to_string()))
+                .collect(),
+        ));
+        let changes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (items, seen) = (Arc::clone(&store), Arc::clone(&changes));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let (items, seen) = (Arc::clone(&items), Arc::clone(&seen));
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                    let args: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+                    let mut items = items.lock().unwrap();
+                    let file = |id: i64, name: &str| {
+                        serde_json::json!({ "id": id, "name": name, "type": "file", "size": 3 })
+                    };
+                    let ok = |data: serde_json::Value| {
+                        axum::Json(serde_json::json!({ "result": "success", "data": data }))
+                            .into_response()
+                    };
+                    let id_in = |p: &str, prefix: &str| -> i64 {
+                        p.trim_start_matches(prefix)
+                            .split('/')
+                            .next()
+                            .unwrap()
+                            .parse()
+                            .unwrap()
+                    };
+                    if path == "/3/drive/987654/files/1/files" {
+                        return ok(serde_json::json!(items
+                            .iter()
+                            .map(|(id, name)| file(*id, name))
+                            .collect::<Vec<_>>()));
+                    }
+                    if path.contains("/move/") {
+                        let id = id_in(&path, "/3/drive/987654/files/");
+                        let name = args["name"].as_str().unwrap_or("").to_string();
+                        if items.iter().any(|(other, n)| *other != id && *n == name) {
+                            return (
+                                axum::http::StatusCode::CONFLICT,
+                                r#"{"result":"error","error":{"code":"conflict_error"}}"#,
+                            )
+                                .into_response();
+                        }
+                        seen.lock().unwrap().push(format!("move {id} {name}"));
+                        if let Some(item) = items.iter_mut().find(|(other, _)| *other == id) {
+                            item.1 = name;
+                        }
+                        return ok(serde_json::json!({}));
+                    }
+                    if method == axum::http::Method::DELETE {
+                        let id = id_in(&path, "/2/drive/987654/files/");
+                        seen.lock().unwrap().push(format!("delete {id}"));
+                        items.retain(|(other, _)| *other != id);
+                        return ok(serde_json::json!({}));
+                    }
+                    let id = id_in(&path, "/3/drive/987654/files/");
+                    match items.iter().find(|(other, _)| *other == id) {
+                        Some((id, name)) => ok(file(*id, name)),
+                        None => (
+                            axum::http::StatusCode::NOT_FOUND,
+                            r#"{"result":"error","error":{"code":"object_not_found"}}"#,
+                        )
+                            .into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, store, changes)
+    }
+
+    /// A rename or a delete forgot only the folder id cached for its own
+    /// path, while a listing caches every subfolder: after `/dst` was
+    /// replaced (its old folder set aside and trashed) `/dst/sub` still
+    /// resolved to the trashed folder, and a `put` there wrote into it. The
+    /// ids under both paths are forgotten.
+    #[tokio::test]
+    async fn a_rename_or_delete_forgets_the_folder_ids_cached_under_it() {
+        let (mut provider, _, _) =
+            provider_on_kdrive_files(&[(21, "dst"), (22, "gone"), (23, "dstx")]).await;
+        for (path, id) in [
+            ("/dst", 21),
+            ("/dst/sub", 31),
+            ("/moved/old", 32),
+            ("/gone/deep/er", 33),
+            ("/dstx", 23),
+        ] {
+            provider.dir_cache_insert(path.to_string(), DirInfo { id });
+        }
+        provider.rename("/dst", "/moved").await.expect("rename");
+        provider.delete("/gone").await.expect("delete");
+        let mut cached: Vec<&str> = provider.dir_cache.keys().map(String::as_str).collect();
+        cached.sort();
+        assert_eq!(cached, ["/dstx"], "a sibling sharing the prefix stays");
+    }
+
+    /// A replace forwarded to the rename, which refuses the file it is meant
+    /// to replace: the served WebDAV MOVE with `Overwrite: T` failed with
+    /// AlreadyExists. The file at the destination is set aside, the source
+    /// renamed in, and the one set aside deleted.
+    #[tokio::test]
+    async fn a_replace_sets_the_old_file_aside_and_deletes_it() {
+        let (mut provider, store, changes) =
+            provider_on_kdrive_files(&[(11, "a.txt"), (12, "b.txt")]).await;
+        provider.replace("/a.txt", "/b.txt").await.expect("replace");
+        assert_eq!(*store.lock().unwrap(), [(11, "b.txt".to_string())]);
+        let changes = changes.lock().unwrap().clone();
+        assert_eq!(changes.len(), 3, "{changes:?}");
+        assert!(changes[0].starts_with("move 12 .b.txt."), "{changes:?}");
+        assert_eq!(changes[1..], ["move 11 b.txt", "delete 12"]);
     }
 
     /// Upload a 300 KB file to the v3 upload route of a local fixture that

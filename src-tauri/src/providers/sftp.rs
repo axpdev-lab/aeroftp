@@ -2765,15 +2765,68 @@ impl StorageProvider for SftpProvider {
         let from_path = self.normalize_path(from);
         let to_path = self.normalize_path(to);
 
+        if from_path == to_path {
+            // OpenSSH answers a rename onto itself with an error; everywhere
+            // else it is a no-op.
+            return Ok(());
+        }
+
         tracing::info!("SFTP: Renaming {} to {}", from_path, to_path);
 
-        sftp.rename(&from_path, &to_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to rename: {}", s))
-            })
-        })?;
-
-        Ok(())
+        let refusal = match sftp.rename(&from_path, &to_path).await {
+            Ok(()) => return Ok(()),
+            Err(e) => e,
+        };
+        // SFTP v3 refuses a taken destination with the bare SSH_FX_FAILURE,
+        // which says nothing more. The destination being there is what makes
+        // it AlreadyExists (the CLI's exit 9); anything else stays the
+        // server's refusal.
+        let failure = matches!(
+            &refusal,
+            russh_sftp::client::error::Error::Status(status)
+                if status.status_code == russh_sftp::protocol::StatusCode::Failure
+        );
+        let error = classify_russh_err(refusal, |s| {
+            ProviderError::ServerError(format!("Failed to rename: {}", s))
+        });
+        // A rename that only changes the letter case needs its own look: a
+        // case-insensitive server finds the source itself at `to`. There the
+        // parent listing of `to` decides, since it names each entry as
+        // stored: an entry spelled exactly like `to` is another item. When
+        // only the name changes case in one folder (byte-identical parents),
+        // one entry is the source whichever spelling it is stored under, so
+        // the name is taken only when entries spelled like `to` and like
+        // `from` are both there (a case-sensitive server holding both). A
+        // listing that cannot be read leaves the server's refusal as it came.
+        let taken = if !failure {
+            false
+        } else if from_path.to_lowercase() == to_path.to_lowercase() {
+            let split = |path: &str| -> (String, String) {
+                match path.rsplit_once('/') {
+                    Some(("", name)) => ("/".to_string(), name.to_string()),
+                    Some((parent, name)) => (parent.to_string(), name.to_string()),
+                    None => (".".to_string(), path.to_string()),
+                }
+            };
+            let (to_parent, to_name) = split(&to_path);
+            let (from_parent, from_name) = split(&from_path);
+            let one_folder_two_spellings = from_parent == to_parent && from_name != to_name;
+            match sftp.read_dir(&to_parent).await {
+                Ok(entries) => {
+                    let names: Vec<String> =
+                        entries.into_iter().map(|entry| entry.file_name()).collect();
+                    names.contains(&to_name)
+                        && (!one_folder_two_spellings || names.contains(&from_name))
+                }
+                Err(_) => false,
+            }
+        } else {
+            map_sftp_try_exists(sftp.try_exists(&to_path).await).unwrap_or(false)
+        };
+        if taken {
+            return Err(ProviderError::AlreadyExists(to_path));
+        }
+        Err(error)
     }
 
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {

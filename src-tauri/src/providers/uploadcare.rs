@@ -649,6 +649,12 @@ impl StorageProvider for UploadcareProvider {
         ))
     }
 
+    /// No: there is no rename here, so there is no replace either, and the
+    /// callers that need one refuse before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1108,6 +1114,15 @@ mod tests {
 
     // Row 4 (#347): human text is taken from detail/error/message (in that order)
     // and the HTTP status selects the variant; auth folds 401 and 403 together.
+    /// There is no rename here, so a replace could only fail after a caller
+    /// staged its temporary. The answer is no, so those callers (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write.
+    #[tokio::test]
+    async fn uploadcare_does_not_claim_an_atomic_replace() {
+        let mut p = UploadcareProvider::new(demo_cfg());
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
+
     #[test]
     fn classify_uploadcare_error_maps_status_and_prefers_detail() {
         // `detail` wins over `error`/`message`.

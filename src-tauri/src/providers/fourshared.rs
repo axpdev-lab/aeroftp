@@ -27,6 +27,26 @@ const UPLOAD_BASE: &str = "https://upload.4shared.com/v1_2";
 /// Maximum items per page for 4shared API list operations
 const PAGE_SIZE: u32 = 100;
 
+/// The most pages a lookup reads: 100 000 entries, beyond any folder a
+/// rename looks into. A lookup that reaches it fails: what it has not read
+/// may hold the name.
+const MAX_LOOKUP_PAGES: usize = 1000;
+
+/// Whether the listing shows `folder`: it hides deleted and trashed ones,
+/// and a lookup must see what the listing sees.
+fn folder_is_listed(folder: &FourSharedFolder) -> bool {
+    !matches!(folder.status.as_deref(), Some("deleted") | Some("trashed"))
+}
+
+/// Whether the listing shows `file`: it hides deleted, trashed and
+/// incomplete ones, and a lookup must see what the listing sees.
+fn file_is_listed(file: &FourSharedFile) -> bool {
+    !matches!(
+        file.status.as_deref(),
+        Some("deleted") | Some("trashed") | Some("incomplete")
+    )
+}
+
 // FS-008: StatusBar path/quota overlap is a frontend CSS issue, fixed in
 // src/components/StatusBar.tsx (min-w-0 flex-1). Not applicable to this file.
 
@@ -201,6 +221,9 @@ pub struct FourSharedProvider {
     /// Replaces `UPLOAD_BASE` in tests.
     #[cfg(test)]
     upload_base_override: Option<String>,
+    /// Replaces `self.api_base()` in tests.
+    #[cfg(test)]
+    api_base_override: Option<String>,
 }
 
 impl FourSharedProvider {
@@ -223,7 +246,18 @@ impl FourSharedProvider {
             account_email: None,
             #[cfg(test)]
             upload_base_override: None,
+            #[cfg(test)]
+            api_base_override: None,
         }
+    }
+
+    /// `self.api_base()`, pointed at a local server in tests.
+    fn api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(base) = &self.api_base_override {
+            return base;
+        }
+        API_BASE
     }
 
     /// `UPLOAD_BASE`, pointed at a local server in tests.
@@ -422,6 +456,63 @@ impl FourSharedProvider {
         Self::normalize_path(&format!("{}/{}", base, trimmed))
     }
 
+    /// Move the file or folder `id` (`kind` is `files` or `folders`) into
+    /// the folder `target_folder_id`. The move API expects the folder as a
+    /// query parameter, not a form body.
+    async fn move_item(
+        &self,
+        kind: &str,
+        id: &str,
+        target_folder_id: &str,
+    ) -> Result<(), ProviderError> {
+        let sign_url = format!("{}/{}/{}/move", self.api_base(), kind, id);
+        let extra = [("folderId", target_folder_id)];
+        let auth = oauth1::authorization_header("PUT", &sign_url, &self.credentials(), &extra);
+        let full_url = format!(
+            "{}/{}/{}/move?folderId={}",
+            self.api_base(),
+            kind,
+            id,
+            oauth1::percent_encode(target_folder_id)
+        );
+        let request = self
+            .client
+            .put(&full_url)
+            .header("Authorization", &auth)
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = send_with_retry(&self.client, request, &Self::retry_config())
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Move failed ({}): {}",
+                status,
+                &body[..body.floor_char_boundary(300)]
+            )));
+        }
+        Ok(())
+    }
+
+    /// Rename the file or folder `id` (`kind` is `files` or `folders`) to
+    /// `new_name` in the folder it is in.
+    async fn rename_item(&self, kind: &str, id: &str, new_name: &str) -> Result<(), ProviderError> {
+        let url = format!("{}/{}/{}", self.api_base(), kind, id);
+        let form = [("name", new_name)];
+        let resp = self.signed_put_form(&url, &form).await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Rename failed ({}): {}",
+                status, body
+            )));
+        }
+        Ok(())
+    }
+
     /// Split path into (parent_path, name)
     fn split_path(normalized: &str) -> (String, String) {
         match normalized.rfind('/') {
@@ -465,33 +556,11 @@ impl FourSharedProvider {
                 continue;
             }
 
-            let url = format!("{}/folders/{}/children", API_BASE, current_id);
-            let resp = self.signed_get(&url).await?;
-
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                info!(
-                    "resolve_folder_id children failed ({}): {}",
-                    status,
-                    &body[..body.floor_char_boundary(200)]
-                );
-                return Err(ProviderError::NotFound(path.to_string()));
-            }
-
-            let body = resp
-                .text()
-                .await
-                .map_err(|e| ProviderError::ParseError(format!("Read children body: {}", e)))?;
-            let folders = Self::parse_folder_list(&body);
-
-            let found = folders
-                .iter()
-                .find(|f| f.name.as_deref().unwrap_or("") == part);
+            let found = self.find_child_folder(&current_id, part, path).await?;
 
             match found {
                 Some(folder) => {
-                    let fid = folder.id.clone().unwrap_or_default();
+                    let fid = folder.id.unwrap_or_default();
                     current_id = fid.clone();
                     Self::enforce_cache_limit(&mut self.folder_cache);
                     self.folder_cache.insert(built_path.clone(), fid);
@@ -514,42 +583,185 @@ impl FourSharedProvider {
         let (parent_path, file_name) = Self::split_path(&normalized);
         let folder_id = self.resolve_folder_id(&parent_path).await?;
 
-        let url = format!("{}/folders/{}/files", API_BASE, folder_id);
-        let resp = self.signed_get(&url).await?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            info!(
-                "resolve_file_id files failed ({}): {}",
-                status,
-                &body[..body.floor_char_boundary(200)]
-            );
-            return Err(ProviderError::NotFound(path.to_string()));
-        }
-
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::ParseError(format!("Read files body: {}", e)))?;
-        let files = Self::parse_file_list(&body);
-
+        // Every page, until the name is found: a folder holds more files
+        // than one page lists.
+        let mut listed: Vec<(String, String)> = Vec::new();
+        self.walk_lookup_pages(
+            &format!("{}/folders/{}/files", self.api_base(), folder_id),
+            path,
+            Self::parse_file_list_strict,
+            |f: &FourSharedFile| f.id.as_ref(),
+            |page| {
+                for file in page.into_iter().filter(file_is_listed) {
+                    if let (Some(name), Some(id)) = (file.name, file.id) {
+                        listed.push((name, id));
+                    }
+                }
+                listed.iter().any(|(name, _)| *name == file_name)
+            },
+        )
+        .await?;
         Self::enforce_cache_limit(&mut self.file_cache);
-        for file in &files {
-            if let (Some(name), Some(id)) = (&file.name, &file.id) {
-                let fpath = if parent_path == "/" {
-                    format!("/{}", name)
-                } else {
-                    format!("{}/{}", parent_path, name)
-                };
-                self.file_cache.insert(fpath, id.clone());
-            }
+        for (name, id) in listed {
+            let fpath = if parent_path == "/" {
+                format!("/{}", name)
+            } else {
+                format!("{}/{}", parent_path, name)
+            };
+            self.file_cache.insert(fpath, id);
         }
 
         self.file_cache
             .get(&normalized)
             .cloned()
             .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))
+    }
+
+    /// The subfolder `name` of the folder `folder_id`, looked for on every
+    /// page of its listing; `path` names the lookup in errors.
+    async fn find_child_folder(
+        &self,
+        folder_id: &str,
+        name: &str,
+        path: &str,
+    ) -> Result<Option<FourSharedFolder>, ProviderError> {
+        let mut found = None;
+        self.walk_lookup_pages(
+            &format!("{}/folders/{}/children", self.api_base(), folder_id),
+            path,
+            Self::parse_folder_list_strict,
+            |f: &FourSharedFolder| f.id.as_ref(),
+            |page| {
+                found = page
+                    .into_iter()
+                    .filter(folder_is_listed)
+                    .find(|f| f.name.as_deref().unwrap_or("") == name);
+                found.is_some()
+            },
+        )
+        .await?;
+        Ok(found)
+    }
+
+    /// Refuse to undo a first step onto `name` in the folder `parent` when
+    /// an item other than `id` took that name since: what 4shared does with
+    /// a taken name is not documented. The look reads the folder afresh, as
+    /// the cache still holds the path from before the first step. `path`
+    /// names the way back in the error.
+    async fn way_back_is_free(
+        &mut self,
+        id: &str,
+        parent: &str,
+        name: &str,
+        path: &str,
+    ) -> Result<(), ProviderError> {
+        super::forget_cached_subtree(&mut self.file_cache, path);
+        super::forget_cached_subtree(&mut self.folder_cache, path);
+        let parent_id = self.resolve_folder_id(parent).await?;
+        let holder = match self.find_child_folder(&parent_id, name, path).await? {
+            Some(folder) => folder.id,
+            None => self.find_child_file(&parent_id, name, path).await?,
+        };
+        match holder {
+            Some(holder) if holder != id => Err(ProviderError::AlreadyExists(format!(
+                "{path} was taken by another item, so the first step was not undone"
+            ))),
+            _ => Ok(()),
+        }
+    }
+
+    /// The id of the file `name` in the folder `folder_id`, looked for on
+    /// every page of its listing; `path` names the lookup in errors.
+    async fn find_child_file(
+        &self,
+        folder_id: &str,
+        name: &str,
+        path: &str,
+    ) -> Result<Option<String>, ProviderError> {
+        let mut found = None;
+        self.walk_lookup_pages(
+            &format!("{}/folders/{}/files", self.api_base(), folder_id),
+            path,
+            Self::parse_file_list_strict,
+            |f: &FourSharedFile| f.id.as_ref(),
+            |page| {
+                found = page
+                    .into_iter()
+                    .filter(file_is_listed)
+                    .find(|f| f.name.as_deref().unwrap_or("") == name)
+                    .and_then(|f| f.id);
+                found.is_some()
+            },
+        )
+        .await?;
+        Ok(found)
+    }
+
+    /// Read the pages of a listing a lookup needs, handing each to `visit`
+    /// until it answers that it is done. A server that ignores `offset`
+    /// answers the first page again, and the walk never ended. A page that
+    /// starts with the id the previous one started with, or a walk past
+    /// [`MAX_LOOKUP_PAGES`], is a ServerError: the entries not read may hold
+    /// the name, so the lookup cannot answer "absent" (the listing, which
+    /// guards nothing, stops there instead).
+    async fn walk_lookup_pages<T>(
+        &self,
+        base_url: &str,
+        path: &str,
+        parse: fn(&str) -> Result<Vec<T>, ProviderError>,
+        id_of: fn(&T) -> Option<&String>,
+        mut visit: impl FnMut(Vec<T>) -> bool,
+    ) -> Result<(), ProviderError> {
+        let mut offset: u32 = 0;
+        let mut previous_first: Option<String> = None;
+        for _ in 0..MAX_LOOKUP_PAGES {
+            let page = self.lookup_page(base_url, offset, path, parse).await?;
+            let page_count = page.len() as u32;
+            let first = page.first().and_then(|item| id_of(item).cloned());
+            if first.is_some() && first == previous_first {
+                return Err(ProviderError::ServerError(format!(
+                    "4shared answered the same page again past offset {offset} while looking \
+                     up {path}: the rest of the folder cannot be read"
+                )));
+            }
+            if visit(page) || page_count < PAGE_SIZE {
+                return Ok(());
+            }
+            previous_first = first;
+            offset += page_count;
+        }
+        Err(ProviderError::ServerError(format!(
+            "looking up {path} read {MAX_LOOKUP_PAGES} pages without reaching the end of the folder"
+        )))
+    }
+
+    /// One page of a listing a lookup reads, from `offset`. A refusal is
+    /// [`refused_lookup`]; a body that is not a listing is a ParseError, not
+    /// an empty page: read as empty it made a taken name look free.
+    async fn lookup_page<T>(
+        &self,
+        base_url: &str,
+        offset: u32,
+        path: &str,
+        parse: fn(&str) -> Result<Vec<T>, ProviderError>,
+    ) -> Result<Vec<T>, ProviderError> {
+        let url = format!("{base_url}?offset={offset}&limit={PAGE_SIZE}");
+        let resp = self.signed_get(&url).await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            info!(
+                "4shared lookup of {path} failed ({}): {}",
+                status,
+                &body[..body.floor_char_boundary(200)]
+            );
+            return Err(refused_lookup(status, &body, path));
+        }
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| ProviderError::ParseError(format!("Read listing body: {}", e)))?;
+        parse(&body)
     }
 
     /// Set file visibility using FourShared file metadata endpoint.
@@ -561,7 +773,7 @@ impl FourSharedProvider {
     ) -> Result<(), ProviderError> {
         let normalized = self.resolve_path(path);
         let file_id = self.resolve_file_id(&normalized).await?;
-        let url = format!("{}/files/{}", API_BASE, file_id);
+        let url = format!("{}/files/{}", self.api_base(), file_id);
         let owner_only = if is_public { "false" } else { "true" };
         let form = [("ownerOnly", owner_only)];
         let resp = self.signed_put_form(&url, &form).await?;
@@ -587,7 +799,7 @@ impl FourSharedProvider {
     ) -> Result<(), ProviderError> {
         let normalized = self.resolve_path(path);
         let folder_id = self.resolve_folder_id(&normalized).await?;
-        let url = format!("{}/folders/{}", API_BASE, folder_id);
+        let url = format!("{}/folders/{}", self.api_base(), folder_id);
         let access = if is_public { "public" } else { "private" };
         let form = [("access", access)];
         let resp = self.signed_put_form(&url, &form).await?;
@@ -606,7 +818,7 @@ impl FourSharedProvider {
 
     /// Download file bytes from 4shared (uses retry via signed_get: FS-009)
     async fn download_bytes(&self, file_id: &str) -> Result<Vec<u8>, ProviderError> {
-        let url = format!("{}/files/{}/download", API_BASE, file_id);
+        let url = format!("{}/files/{}/download", self.api_base(), file_id);
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
@@ -643,6 +855,78 @@ impl FourSharedProvider {
         }
 
         None
+    }
+
+    /// The entries of a listing a lookup reads, strictly: an array, an
+    /// object holding one under `keys`, or a single entry not wrapped in an
+    /// array (a string `id` and `name`, and no `code`, `message` or `error`),
+    /// which the API guide documents for a folder holding one item. An empty
+    /// body or `null` is an empty folder (what 4shared answers for one is not
+    /// documented, so both are taken as that); anything else, a JSON error
+    /// object with HTTP 200 among them, is a ParseError. The lenient parse of
+    /// the listing wraps such an object as one nameless entry, and the name
+    /// looked for then read as free.
+    fn strict_listing_items(
+        body: &str,
+        keys: &[&str],
+        what: &str,
+    ) -> Result<Vec<serde_json::Value>, ProviderError> {
+        let trimmed = body.trim();
+        if trimmed.is_empty() || trimmed == "null" {
+            return Ok(Vec::new());
+        }
+        let not_a_listing = || {
+            ProviderError::ParseError(format!(
+                "4shared answered a {what} listing that is not one: {}",
+                &body[..body.floor_char_boundary(200)]
+            ))
+        };
+        let value: serde_json::Value =
+            serde_json::from_str(trimmed).map_err(|_| not_a_listing())?;
+        if let Some(items) = value.as_array() {
+            return Ok(items.clone());
+        }
+        // The wrapper first, as the listing reads it: an object with an `id`,
+        // a `name` and a `files` array read as that one entry, and a name
+        // among the files read free.
+        if let Some(items) = keys
+            .iter()
+            .find_map(|key| value.get(*key).and_then(|v| v.as_array()).cloned())
+        {
+            return Ok(items);
+        }
+        let is_an_error = ["code", "message", "error"]
+            .iter()
+            .any(|field| value.get(*field).is_some());
+        let is_an_entry = ["id", "name"]
+            .iter()
+            .all(|field| value.get(*field).is_some_and(|v| v.is_string()));
+        if is_an_entry && !is_an_error {
+            return Ok(vec![value]);
+        }
+        Err(not_a_listing())
+    }
+
+    /// The folders of a listing a lookup reads (see
+    /// [`Self::strict_listing_items`]).
+    fn parse_folder_list_strict(body: &str) -> Result<Vec<FourSharedFolder>, ProviderError> {
+        let items =
+            Self::strict_listing_items(body, &["children", "folders", "items", "data"], "folder")?;
+        Ok(items
+            .into_iter()
+            .filter_map(|item| serde_json::from_value::<FourSharedFolder>(item).ok())
+            .collect())
+    }
+
+    /// The files of a listing a lookup reads (see
+    /// [`Self::strict_listing_items`]).
+    fn parse_file_list_strict(body: &str) -> Result<Vec<FourSharedFile>, ProviderError> {
+        let items =
+            Self::strict_listing_items(body, &["files", "children", "items", "data"], "file")?;
+        Ok(items
+            .into_iter()
+            .filter_map(|item| serde_json::from_value::<FourSharedFile>(item).ok())
+            .collect())
     }
 
     /// Parse folder list response with per-entry fallback.
@@ -742,7 +1026,7 @@ impl StorageProvider for FourSharedProvider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         info!("Connecting to 4shared...");
 
-        let url = format!("{}/user", API_BASE);
+        let url = format!("{}/user", self.api_base());
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
@@ -809,10 +1093,14 @@ impl StorageProvider for FourSharedProvider {
 
         // 1. List subfolders with pagination (FS-006)
         let mut offset: u32 = 0;
+        let mut previous_first: Option<String> = None;
         loop {
             let folders_url = format!(
                 "{}/folders/{}/children?offset={}&limit={}",
-                API_BASE, folder_id, offset, PAGE_SIZE
+                self.api_base(),
+                folder_id,
+                offset,
+                PAGE_SIZE
             );
             tracing::debug!("[4shared] 4shared GET folders: {}", folders_url);
             let resp = self.signed_get(&folders_url).await?;
@@ -840,6 +1128,12 @@ impl StorageProvider for FourSharedProvider {
             );
             let folders = Self::parse_folder_list(&body);
             let page_count = folders.len() as u32;
+            // A server that ignores `offset` answers the first page again.
+            let first = folders.first().and_then(|f| f.id.clone());
+            if first.is_some() && first == previous_first {
+                break;
+            }
+            previous_first = first;
 
             for f in &folders {
                 // Skip deleted/trashed entries
@@ -887,10 +1181,14 @@ impl StorageProvider for FourSharedProvider {
 
         // 2. List files with pagination (FS-006)
         offset = 0;
+        previous_first = None;
         loop {
             let files_url = format!(
                 "{}/folders/{}/files?offset={}&limit={}",
-                API_BASE, folder_id, offset, PAGE_SIZE
+                self.api_base(),
+                folder_id,
+                offset,
+                PAGE_SIZE
             );
             tracing::debug!("[4shared] 4shared GET files: {}", files_url);
             let resp = self.signed_get(&files_url).await?;
@@ -918,6 +1216,12 @@ impl StorageProvider for FourSharedProvider {
             );
             let files = Self::parse_file_list(&body);
             let page_count = files.len() as u32;
+            // A server that ignores `offset` answers the first page again.
+            let first = files.first().and_then(|f| f.id.clone());
+            if first.is_some() && first == previous_first {
+                break;
+            }
+            previous_first = first;
 
             for f in &files {
                 // Skip deleted/trashed/incomplete entries
@@ -1011,7 +1315,7 @@ impl StorageProvider for FourSharedProvider {
         let file_id = self.resolve_file_id(&resolved).await?;
 
         // FS-009: Use signed_get which includes retry logic
-        let url = format!("{}/files/{}/download", API_BASE, file_id);
+        let url = format!("{}/files/{}/download", self.api_base(), file_id);
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
@@ -1065,7 +1369,7 @@ impl StorageProvider for FourSharedProvider {
         let resolved = self.resolve_path(remote_path);
         let file_id = self.resolve_file_id(&resolved).await?;
 
-        let url = format!("{}/files/{}/download", API_BASE, file_id);
+        let url = format!("{}/files/{}/download", self.api_base(), file_id);
         let creds = self.credentials();
         let auth = oauth1::authorization_header("GET", &url, &creds, &[]);
 
@@ -1172,7 +1476,7 @@ impl StorageProvider for FourSharedProvider {
         let (parent_path, folder_name) = Self::split_path(&normalized);
         let parent_id = self.resolve_folder_id(&parent_path).await?;
 
-        let url = format!("{}/folders", API_BASE);
+        let url = format!("{}/folders", self.api_base());
         let form = [
             ("parentId", parent_id.as_str()),
             ("name", folder_name.as_str()),
@@ -1202,7 +1506,7 @@ impl StorageProvider for FourSharedProvider {
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let normalized = self.resolve_path(path);
         let file_id = self.resolve_file_id(&normalized).await?;
-        let url = format!("{}/files/{}", API_BASE, file_id);
+        let url = format!("{}/files/{}", self.api_base(), file_id);
         let resp = self.signed_delete(&url).await?;
 
         if !resp.status().is_success() {
@@ -1220,7 +1524,7 @@ impl StorageProvider for FourSharedProvider {
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let normalized = self.resolve_path(path);
         let folder_id = self.resolve_folder_id(&normalized).await?;
-        let url = format!("{}/folders/{}", API_BASE, folder_id);
+        let url = format!("{}/folders/{}", self.api_base(), folder_id);
         let resp = self.signed_delete(&url).await?;
 
         if !resp.status().is_success() {
@@ -1240,146 +1544,145 @@ impl StorageProvider for FourSharedProvider {
         self.rmdir(path).await
     }
 
+    /// A move to the new folder and/or a rename, by id. What 4shared does
+    /// with a taken name is not documented, so the destination is looked up
+    /// first and a taken one refused. The move keeps the old name: when the
+    /// destination folder already holds it the rename goes first, in the
+    /// source folder, so neither step puts two items under one name.
     async fn rename(&mut self, old_path: &str, new_path: &str) -> Result<(), ProviderError> {
         let old_normalized = self.resolve_path(old_path);
         let new_normalized = self.resolve_path(new_path);
+        if old_normalized == new_normalized {
+            return Ok(());
+        }
+        super::refuse_occupied_destination(self, &old_normalized, &new_normalized).await?;
         let (old_parent, old_name) = Self::split_path(&old_normalized);
         let (new_parent, new_name) = Self::split_path(&new_normalized);
 
         let is_cross_folder = old_parent != new_parent;
+        let renames = old_name != new_name;
 
-        // Try as file first, then as folder
-        if let Ok(file_id) = self.resolve_file_id(&old_normalized).await {
-            // Step 1: Move to new folder if cross-folder operation
-            if is_cross_folder {
-                let target_folder_id = self.resolve_folder_id(&new_parent).await?;
-                // 4shared move API expects folderId as query param, not form body
-                let sign_url = format!("{}/files/{}/move", API_BASE, file_id);
-                let extra = [("folderId", target_folder_id.as_str())];
-                let auth =
-                    oauth1::authorization_header("PUT", &sign_url, &self.credentials(), &extra);
-                let full_url = format!(
-                    "{}/files/{}/move?folderId={}",
-                    API_BASE,
-                    file_id,
-                    oauth1::percent_encode(&target_folder_id)
-                );
-                let request = self
-                    .client
-                    .put(&full_url)
-                    .header("Authorization", &auth)
-                    .build()
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-                let resp = send_with_retry(&self.client, request, &Self::retry_config())
-                    .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-                if !resp.status().is_success() {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!(
-                        "Move file failed ({}): {}",
-                        status,
-                        &body[..body.floor_char_boundary(300)]
-                    )));
-                }
-                info!(
-                    "4shared moved file {} to folder {}",
-                    old_normalized, new_parent
-                );
+        // Files first, then folders, as before.
+        let (kind, id) = match self.resolve_file_id(&old_normalized).await {
+            Ok(file_id) => ("files", file_id),
+            Err(ProviderError::NotFound(_)) => {
+                ("folders", self.resolve_folder_id(&old_normalized).await?)
             }
-
-            // Step 2: Rename if the name changed
-            if old_name != new_name {
-                let url = format!("{}/files/{}", API_BASE, file_id);
-                let form = [("name", new_name.as_str())];
-                let resp = self.signed_put_form(&url, &form).await?;
-
-                if !resp.status().is_success() {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!(
-                        "Rename failed ({}): {}",
-                        status, body
-                    )));
-                }
-            }
-
-            if let Some(id) = self.file_cache.remove(&old_normalized) {
-                self.file_cache.insert(new_normalized, id);
-            }
+            Err(e) => return Err(e),
+        };
+        let target_folder_id = if is_cross_folder {
+            Some(self.resolve_folder_id(&new_parent).await?)
         } else {
-            let folder_id = self.resolve_folder_id(&old_normalized).await?;
-
-            // Step 1: Move to new parent folder if cross-folder operation
-            if is_cross_folder {
-                let target_folder_id = self.resolve_folder_id(&new_parent).await?;
-                // 4shared move API expects folderId as query param, not form body
-                let sign_url = format!("{}/folders/{}/move", API_BASE, folder_id);
-                let extra = [("folderId", target_folder_id.as_str())];
-                let auth =
-                    oauth1::authorization_header("PUT", &sign_url, &self.credentials(), &extra);
-                let full_url = format!(
-                    "{}/folders/{}/move?folderId={}",
-                    API_BASE,
-                    folder_id,
-                    oauth1::percent_encode(&target_folder_id)
-                );
-                let request = self
-                    .client
-                    .put(&full_url)
-                    .header("Authorization", &auth)
-                    .build()
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-                let resp = send_with_retry(&self.client, request, &Self::retry_config())
-                    .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-                if !resp.status().is_success() {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!(
-                        "Move folder failed ({}): {}",
-                        status,
-                        &body[..body.floor_char_boundary(300)]
-                    )));
-                }
-                info!("4shared moved folder {} to {}", old_normalized, new_parent);
-            }
-
-            // Step 2: Rename if the name changed
-            if old_name != new_name {
-                let url = format!("{}/folders/{}", API_BASE, folder_id);
-                let form = [("name", new_name.as_str())];
-                let resp = self.signed_put_form(&url, &form).await?;
-
-                if !resp.status().is_success() {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!(
-                        "Rename folder failed ({}): {}",
-                        status, body
-                    )));
-                }
-            }
-
-            if let Some(id) = self.folder_cache.remove(&old_normalized) {
-                self.folder_cache.insert(new_normalized, id);
+            None
+        };
+        let old_name_at_destination = format!("{}/{}", new_parent.trim_end_matches('/'), old_name);
+        let rename_first =
+            is_cross_folder && renames && self.exists(&old_name_at_destination).await?;
+        if rename_first {
+            let new_name_at_source = format!("{}/{}", old_parent.trim_end_matches('/'), new_name);
+            if self.exists(&new_name_at_source).await? {
+                return Err(ProviderError::Other(format!(
+                    "Cannot move {old_normalized} to {new_normalized} in two steps without two \
+                     items sharing a name: {old_name_at_destination} and {new_name_at_source} \
+                     both exist"
+                )));
             }
         }
+        let outcome = match &target_folder_id {
+            None => self.rename_item(kind, &id, &new_name).await,
+            // If the second step fails, the first is undone, and if that fails
+            // too the error says where the item is.
+            Some(target_folder_id) if rename_first => {
+                let renamed_at = format!("{}/{}", old_parent.trim_end_matches('/'), new_name);
+                self.rename_item(kind, &id, &new_name).await?;
+                match self.move_item(kind, &id, target_folder_id).await {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        let undone = match self
+                            .way_back_is_free(&id, &old_parent, &old_name, &old_normalized)
+                            .await
+                        {
+                            Ok(()) => self.rename_item(kind, &id, &old_name).await,
+                            Err(e) => Err(e),
+                        };
+                        Err(super::second_step_failed(
+                            &old_normalized,
+                            &new_normalized,
+                            &renamed_at,
+                            e,
+                            undone,
+                        ))
+                    }
+                }
+            }
+            Some(target_folder_id) => {
+                self.move_item(kind, &id, target_folder_id).await?;
+                info!(
+                    "4shared moved {} {} to {}",
+                    kind, old_normalized, new_parent
+                );
+                if !renames {
+                    Ok(())
+                } else if let Err(e) = self.rename_item(kind, &id, &new_name).await {
+                    let undone = match self
+                        .way_back_is_free(&id, &old_parent, &old_name, &old_normalized)
+                        .await
+                    {
+                        Ok(()) => match self.resolve_folder_id(&old_parent).await {
+                            Ok(source) => self.move_item(kind, &id, &source).await,
+                            Err(lookup) => Err(lookup),
+                        },
+                        Err(e) => Err(e),
+                    };
+                    Err(super::second_step_failed(
+                        &old_normalized,
+                        &new_normalized,
+                        &old_name_at_destination,
+                        e,
+                        undone,
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+        };
 
-        Ok(())
+        // Whatever happened, the ids cached for either path, and for
+        // everything under them, may now point at moved items.
+        for path in [&old_normalized, &new_normalized] {
+            super::forget_cached_subtree(&mut self.file_cache, path);
+            super::forget_cached_subtree(&mut self.folder_cache, path);
+        }
+        outcome
+    }
+
+    /// No: 4shared documents no overwrite on rename or move, so there is no
+    /// one-step replace, and the callers that need one refuse before they
+    /// write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let normalized = self.resolve_path(path);
 
-        // Try as file
-        if let Ok(file_id) = self.resolve_file_id(&normalized).await {
-            let url = format!("{}/files/{}", API_BASE, file_id);
+        // Try as file. Only an absence sends the look on to the folders: a
+        // refused listing or file lookup says nothing about the path.
+        let file_id = match self.resolve_file_id(&normalized).await {
+            Ok(file_id) => Some(file_id),
+            Err(ProviderError::NotFound(_)) => None,
+            Err(e) => return Err(e),
+        };
+        if let Some(file_id) = file_id {
+            let url = format!("{}/files/{}", self.api_base(), file_id);
             let resp = self.signed_get(&url).await?;
+            let status = resp.status();
+            if !status.is_success() && status != reqwest::StatusCode::NOT_FOUND {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(refused_lookup(status, &body, &normalized));
+            }
 
-            if resp.status().is_success() {
+            if status.is_success() {
                 let body = resp
                     .text()
                     .await
@@ -1411,11 +1714,13 @@ impl StorageProvider for FourSharedProvider {
 
         // Try as folder
         let folder_id = self.resolve_folder_id(&normalized).await?;
-        let url = format!("{}/folders/{}", API_BASE, folder_id);
+        let url = format!("{}/folders/{}", self.api_base(), folder_id);
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::NotFound(path.to_string()));
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(refused_lookup(status, &body, path));
         }
 
         let body = resp
@@ -1463,7 +1768,7 @@ impl StorageProvider for FourSharedProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let url = format!("{}/user", API_BASE);
+        let url = format!("{}/user", self.api_base());
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
@@ -1501,14 +1806,14 @@ impl StorageProvider for FourSharedProvider {
 
         // FS-009: Use signed_get with retry for the search request.
         // The 4shared search API requires OAuth-signed query parameters.
-        let base_url = format!("{}/files", API_BASE);
+        let base_url = format!("{}/files", self.api_base());
         let extra = [("searchName", pattern)];
         let auth = oauth1::authorization_header("GET", &base_url, &self.credentials(), &extra);
 
         // Build full URL with query parameter
         let url = format!(
             "{}/files?searchName={}",
-            API_BASE,
+            self.api_base(),
             oauth1::percent_encode(pattern)
         );
 
@@ -1620,6 +1925,21 @@ impl StorageProvider for FourSharedProvider {
     }
 }
 
+/// The error of a lookup 4shared refused: NotFound only for a 404, since
+/// any other refusal says nothing about whether `path` is there, and a look
+/// before a rename must not read it as free.
+fn refused_lookup(status: reqwest::StatusCode, body: &str, path: &str) -> ProviderError {
+    let detail = format!(
+        "{path}: 4shared answered {status}: {}",
+        &body[..body.floor_char_boundary(200)]
+    );
+    match status.as_u16() {
+        404 => ProviderError::NotFound(path.to_string()),
+        403 => ProviderError::PermissionDenied(detail),
+        _ => ProviderError::ServerError(detail),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1652,6 +1972,448 @@ mod tests {
         server.abort();
         let updates = updates.lock().unwrap().clone();
         (outcome, updates)
+    }
+
+    /// A 4shared API double: the root `R` holds the folders `src` (`S`),
+    /// `dst` (`D`), `busy` (`B`, whose file listing answers 500), `paged`
+    /// (`P`, 100 files on its first page and `a.txt` on the second),
+    /// `unreadable` (`U`, whose file listing is not JSON), `empty` (`E`,
+    /// listed as an empty body and `null`), `jsonerror` (`J`, a JSON error
+    /// object with HTTP 200), `looping` (`L`, the same full page whatever the
+    /// offset) and `trashy` (`T`, holding a trashed `a.txt`, `FT`, which a
+    /// GET of the file still answers) and `single` (`G`, whose one file
+    /// `only.txt`, `FG`, is listed as a bare object) and `endless` (`N`, a
+    /// full page of new files at every offset), `wrapped` (`W`, whose file
+    /// listing is a wrapper that also has an `id` and a `name`, holding
+    /// `a.txt`, `FW`) and `errorentry` (`X`, an error object with an `id` and
+    /// a `name`); `src`
+    /// holds `a.txt` (`FA`), `dst` holds `b.txt` (`FB`)
+    /// and, when `dst_holds_a`, an `a.txt` of its own (`FA2`). Every PUT (a
+    /// move or a rename) succeeds, except a rename to a name starting with
+    /// `fail` (403). Returns a provider on it and every PUT that succeeded,
+    /// as its path and, for a move, the target folder.
+    async fn provider_on_fourshared(
+        dst_holds_a: bool,
+    ) -> (
+        FourSharedProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        provider_on_fourshared_with(dst_holds_a, false).await
+    }
+
+    /// [`provider_on_fourshared`]; with `source_retaken`, every listing of
+    /// `src` after the first shows another `a.txt` (`FX`), as if a new file
+    /// took the name the moment the source left.
+    async fn provider_on_fourshared_with(
+        dst_holds_a: bool,
+        source_retaken: bool,
+    ) -> (
+        FourSharedProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+        let puts: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&puts);
+        let source_listings = Arc::new(AtomicUsize::new(0));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                let source_listings = Arc::clone(&source_listings);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let page_offset = req
+                        .uri()
+                        .query()
+                        .unwrap_or("")
+                        .split('&')
+                        .find_map(|pair| pair.strip_prefix("offset="))
+                        .unwrap_or("0")
+                        .to_string();
+                    if req.method() == axum::http::Method::PUT {
+                        let query = req.uri().query().unwrap_or("").to_string();
+                        let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                            .await
+                            .unwrap();
+                        let body = String::from_utf8_lossy(&body).to_string();
+                        if body.contains("name=fail") {
+                            return axum::http::StatusCode::FORBIDDEN.into_response();
+                        }
+                        let folder = query
+                            .split('&')
+                            .find_map(|pair| pair.strip_prefix("folderId="))
+                            .map(|id| format!(" {id}"))
+                            .unwrap_or_default();
+                        seen.lock().unwrap().push(format!("{path}{folder}"));
+                        return axum::Json(serde_json::json!({})).into_response();
+                    }
+                    let item = |id: &str, name: &str| serde_json::json!({ "id": id, "name": name });
+                    let body = match path.as_str() {
+                        "/folders/R/children" => serde_json::json!([
+                            item("S", "src"),
+                            item("D", "dst"),
+                            item("B", "busy"),
+                            item("P", "paged"),
+                            item("U", "unreadable"),
+                            item("E", "empty"),
+                            item("J", "jsonerror"),
+                            item("L", "looping"),
+                            item("T", "trashy"),
+                            item("G", "single"),
+                            item("N", "endless"),
+                            item("W", "wrapped"),
+                            item("X", "errorentry"),
+                        ]),
+                        "/folders/E/files" => return "".into_response(),
+                        "/folders/E/children" => return "null".into_response(),
+                        "/folders/J/files" => {
+                            return r#"{"code":500,"message":"try again"}"#.into_response()
+                        }
+                        // Ignores `offset`: the same 100 files on every page.
+                        "/folders/L/files" => serde_json::json!((0..100)
+                            .map(|i| item(&format!("L{i}"), &format!("l{i}.txt")))
+                            .collect::<Vec<_>>()),
+                        // A full page of new files at every offset.
+                        "/folders/N/files" => {
+                            let from: usize = page_offset.parse().unwrap_or(0);
+                            serde_json::json!((from..from + 100)
+                                .map(|i| item(&format!("N{i}"), &format!("n{i}.txt")))
+                                .collect::<Vec<_>>())
+                        }
+                        // A wrapper that also carries an `id` and a `name`.
+                        "/folders/W/files" => serde_json::json!({
+                            "id": "W", "name": "wrapped", "files": [item("FW", "a.txt")]
+                        }),
+                        "/files/FW" => item("FW", "a.txt"),
+                        // An error object that also carries an `id` and a `name`.
+                        "/folders/X/files" => serde_json::json!({
+                            "id": "X", "name": "errorentry", "code": 500, "message": "try again"
+                        }),
+                        // One file, listed as that entry alone.
+                        "/folders/G/files" => item("FG", "only.txt"),
+                        "/files/FG" => item("FG", "only.txt"),
+                        "/folders/T/files" => serde_json::json!([
+                            { "id": "FT", "name": "a.txt", "status": "trashed" }
+                        ]),
+                        // 100 files on the first page, `a.txt` on the second.
+                        "/folders/P/files" if page_offset == "0" => serde_json::json!((0..100)
+                            .map(|i| item(&format!("F{i}"), &format!("f{i}.txt")))
+                            .collect::<Vec<_>>()),
+                        "/folders/P/files" => serde_json::json!([item("FP", "a.txt")]),
+                        "/folders/U/files" => return "not a listing".into_response(),
+                        "/folders/B/files" => {
+                            return (
+                                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                [(axum::http::header::RETRY_AFTER, "0")],
+                            )
+                                .into_response()
+                        }
+                        "/folders/S/files" => {
+                            let listed = source_listings.fetch_add(1, Ordering::SeqCst);
+                            if source_retaken && listed > 0 {
+                                serde_json::json!([item("FX", "a.txt")])
+                            } else {
+                                serde_json::json!([item("FA", "a.txt")])
+                            }
+                        }
+                        "/folders/D/files" if dst_holds_a => {
+                            serde_json::json!([item("FB", "b.txt"), item("FA2", "a.txt")])
+                        }
+                        "/folders/D/files" => serde_json::json!([item("FB", "b.txt")]),
+                        "/files/FA" => item("FA", "a.txt"),
+                        "/files/FA2" => item("FA2", "a.txt"),
+                        "/files/FB" => item("FB", "b.txt"),
+                        "/files/FP" => item("FP", "a.txt"),
+                        "/files/FT" => {
+                            serde_json::json!({ "id": "FT", "name": "a.txt", "status": "trashed" })
+                        }
+                        "/folders/S" => item("S", "src"),
+                        "/folders/D" => item("D", "dst"),
+                        p if p.ends_with("/children") || p.ends_with("/files") => {
+                            serde_json::json!([])
+                        }
+                        _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                    };
+                    axum::Json(body).into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.root_folder_id = "R".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, puts)
+    }
+
+    /// What 4shared does with a taken name is not documented, and the move
+    /// and the rename went out without a look. A rename onto a taken name is
+    /// refused before either.
+    #[tokio::test]
+    async fn a_rename_onto_a_taken_name_is_refused_before_any_change() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/dst/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// The lookups read one page: an `a.txt` on the second page of a folder
+    /// was not there, and a rename onto it went out. A listing 4shared
+    /// answered with a body that is not one read as an empty folder, with
+    /// the same result. Both now stop the rename before any change.
+    #[tokio::test]
+    async fn a_name_on_a_later_page_or_behind_an_unreadable_listing_is_not_free() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let later_page = provider.rename("/src/a.txt", "/paged/a.txt").await;
+        assert!(
+            matches!(later_page, Err(ProviderError::AlreadyExists(_))),
+            "{later_page:?}"
+        );
+        let unreadable = provider.rename("/src/a.txt", "/unreadable/a.txt").await;
+        assert!(
+            matches!(unreadable, Err(ProviderError::ParseError(_))),
+            "{unreadable:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// An empty body or `null` is an empty folder: a ParseError stopped a
+    /// move into one.
+    #[tokio::test]
+    async fn a_lookup_reads_an_empty_or_null_listing_as_an_empty_folder() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        provider
+            .rename("/src/a.txt", "/empty/a.txt")
+            .await
+            .expect("an empty folder holds nothing");
+        assert_eq!(*puts.lock().unwrap(), ["/files/FA/move E"]);
+    }
+
+    /// A JSON error object with HTTP 200 was wrapped as one nameless file,
+    /// and the name looked for read as free. It is an error, and nothing is
+    /// sent.
+    #[tokio::test]
+    async fn a_lookup_reads_a_json_error_object_as_an_error() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/jsonerror/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// A server that ignores `offset` answers its first page again: the
+    /// lookup never ended, and then ended reading the name as free although
+    /// the pages it could not read may hold it. It fails, and nothing is
+    /// sent.
+    #[tokio::test]
+    async fn a_lookup_whose_pages_repeat_fails() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.rename("/src/a.txt", "/looping/a.txt"),
+        )
+        .await
+        .expect("the walk ends on a repeated page");
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// A wrapper that also carries an `id` and a `name` was read as that one
+    /// entry before its `files` array, which the listing reads: the `a.txt`
+    /// there read free. The wrapper comes first.
+    #[tokio::test]
+    async fn a_lookup_reads_a_wrapper_before_a_single_entry() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/wrapped/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// An error object that also carries an `id` and a `name` was read as a
+    /// single entry, and the name looked for read free. It is an error.
+    #[tokio::test]
+    async fn a_lookup_reads_an_error_object_with_an_id_as_an_error() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/errorentry/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// A lookup that read its page limit ended as if the name were free,
+    /// although the pages it did not read may hold it. It fails, and nothing
+    /// is sent.
+    #[tokio::test]
+    async fn a_lookup_past_its_page_limit_fails() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/endless/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("pages")),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// The API guide documents a folder holding one item listed as that
+    /// item alone, not in an array: a lookup read it as a ParseError, and
+    /// every stat, rm or mv in such a folder failed. An object with a string
+    /// id and name is that one entry (an error object stays an error, see
+    /// the test above).
+    #[tokio::test]
+    async fn a_lookup_reads_a_single_entry_listing_as_that_entry() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/single/only.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// A trashed file held its name for a lookup, while the listing does
+    /// not show it: the move was refused onto a name `ls` shows free.
+    #[tokio::test]
+    async fn a_lookup_skips_a_trashed_file_as_list_does() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        provider
+            .rename("/src/a.txt", "/trashy/a.txt")
+            .await
+            .expect("a trashed a.txt does not hold the name");
+        assert_eq!(*puts.lock().unwrap(), ["/files/FA/move T"]);
+    }
+
+    /// A server that ignores `offset` answers its first page again, and the
+    /// listing never ended. A page that starts where the previous one
+    /// started ends it, and each file is listed once.
+    #[tokio::test]
+    async fn a_listing_whose_pages_repeat_ends() {
+        let (mut provider, _) = provider_on_fourshared(false).await;
+        let listed = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.list("/looping"),
+        )
+        .await
+        .expect("the listing ends on a repeated page")
+        .expect("list");
+        assert_eq!(listed.len(), 100);
+    }
+
+    /// When the rename after the move was refused, the file stayed in the
+    /// new folder under its old name while the error said nothing of it. The
+    /// move is undone.
+    #[tokio::test]
+    async fn a_move_whose_rename_is_refused_is_moved_back() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/dst/fail.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(
+            *puts.lock().unwrap(),
+            ["/files/FA/move D", "/files/FA/move S"]
+        );
+    }
+
+    /// When the name the undo would take back was taken meanwhile, moving
+    /// back would meet it: what 4shared does then is not documented. The
+    /// move stays, and the error says where the item is. The look reads the
+    /// folder afresh, past the cache that still held the source's path.
+    #[tokio::test]
+    async fn an_undo_whose_way_back_is_taken_is_not_made() {
+        let (mut provider, puts) = provider_on_fourshared_with(false, true).await;
+        let outcome = provider.rename("/src/a.txt", "/dst/fail.txt").await;
+        match outcome {
+            Err(ProviderError::Other(message)) => {
+                assert!(message.contains("now at /dst/a.txt"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(*puts.lock().unwrap(), ["/files/FA/move D"], "no move back");
+    }
+
+    /// A listing 4shared refused (here 500) read as "not there": the look
+    /// saw a free name and the move and rename went out. The rename now fails
+    /// and sends nothing.
+    #[tokio::test]
+    async fn a_refused_listing_fails_the_rename_closed() {
+        let (mut provider, puts) = provider_on_fourshared(false).await;
+        let outcome = provider.rename("/src/a.txt", "/busy/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            puts.lock().unwrap().is_empty(),
+            "{:?}",
+            puts.lock().unwrap()
+        );
+    }
+
+    /// The move keeps the old name: with `/dst/a.txt` there it would put a
+    /// second `a.txt` in `/dst` until the rename. The rename goes first, in
+    /// the source folder.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        let (mut provider, puts) = provider_on_fourshared(true).await;
+        provider
+            .rename("/src/a.txt", "/dst/c.txt")
+            .await
+            .expect("rename then move");
+        assert_eq!(*puts.lock().unwrap(), ["/files/FA", "/files/FA/move D"]);
+    }
+
+    /// 4shared documents no overwrite on rename or move, so there is no one-step
+    /// replace. The answer is no, so the callers that need one (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write.
+    #[tokio::test]
+    async fn fourshared_does_not_claim_an_atomic_replace() {
+        let mut p = test_provider();
+        assert!(!p.supports_atomic_replace().await.unwrap());
     }
 
     /// The upload streams the file: the bar follows the bytes going out and

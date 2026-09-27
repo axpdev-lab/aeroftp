@@ -2144,7 +2144,7 @@ impl StorageProvider for BoxProvider {
 
             if !resp.status().is_success() {
                 let text = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("Rename failed: {}", text)));
+                return Err(rename_refused(&text, to));
             }
         } else {
             let folder_id = self.resolve_folder_id(from).await?;
@@ -2168,11 +2168,18 @@ impl StorageProvider for BoxProvider {
 
             if !resp.status().is_success() {
                 let text = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("Rename failed: {}", text)));
+                return Err(rename_refused(&text, to));
             }
         }
 
         Ok(())
+    }
+
+    /// No: Box refuses a rename onto a taken name (409) and its move has no
+    /// overwrite, so there is no one-step replace, and the callers that need
+    /// one refuse before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -3060,10 +3067,45 @@ impl StorageProvider for BoxProvider {
     }
 }
 
+/// The error of a refused rename or move. Box answers a taken name with 409
+/// `item_name_in_use`: that is AlreadyExists (the CLI's exit 9), the one sync
+/// and `mkdir -p` handle.
+fn rename_refused(body: &str, to: &str) -> ProviderError {
+    if body.contains("item_name_in_use") {
+        return ProviderError::AlreadyExists(to.to_string());
+    }
+    ProviderError::Other(format!("Rename failed: {}", body))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use secrecy::{ExposeSecret, SecretString};
+
+    /// Box refuses a rename onto a taken name and its move has no overwrite, so
+    /// there is no one-step replace. The answer is no, so the callers that need
+    /// one (CLI `edit`, MCP `remote_edit`, the crypt marker paths) refuse before
+    /// they write.
+    #[tokio::test]
+    async fn box_does_not_claim_an_atomic_replace() {
+        let mut p = BoxProvider::new(demo_cfg());
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
+
+    /// Box refuses a rename or move onto a taken name with 409
+    /// `item_name_in_use`, which reached the caller as a generic error.
+    #[test]
+    fn a_taken_name_is_already_exists() {
+        let taken = r#"{"type":"error","status":409,"code":"item_name_in_use","message":"Item with the same name already exists"}"#;
+        assert!(matches!(
+            rename_refused(taken, "/b.txt"),
+            ProviderError::AlreadyExists(_)
+        ));
+        assert!(matches!(
+            rename_refused("{}", "/b.txt"),
+            ProviderError::Other(_)
+        ));
+    }
 
     #[test]
     fn normalize_path_ensures_leading_slash_and_trims_trailing() {

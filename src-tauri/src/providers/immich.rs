@@ -1225,6 +1225,12 @@ impl StorageProvider for ImmichProvider {
         ))
     }
 
+    /// No: there is no rename here, so there is no replace either, and the
+    /// callers that need one refuse before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let (folder, filename) = Self::parse_path(path);
 
@@ -1628,6 +1634,15 @@ mod tests {
                 }
             })
         }
+    }
+
+    /// There is no rename here, so a replace could only fail after a caller
+    /// staged its temporary. The answer is no, so those callers (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write.
+    #[tokio::test]
+    async fn immich_does_not_claim_an_atomic_replace() {
+        let mut p = ImmichProvider::new(ImmichConfig::new("http://127.0.0.1", "KEY"));
+        assert!(!p.supports_atomic_replace().await.unwrap());
     }
 
     #[tokio::test]

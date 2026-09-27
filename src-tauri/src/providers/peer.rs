@@ -417,6 +417,12 @@ impl StorageProvider for PeerProvider {
         Self::read_only("rename")
     }
 
+    /// No: there is no rename here, so there is no replace either, and the
+    /// callers that need one refuse before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let vpath = self.virtual_path(path)?;
         let fs = self.contained(&self.fs_path(&vpath)?)?;
@@ -484,6 +490,16 @@ mod tests {
         let mut p = PeerProvider::new(test_config(root));
         p.connect().await.expect("connect");
         p
+    }
+
+    /// There is no rename here, so a replace could only fail after a caller
+    /// staged its temporary. The answer is no, so those callers (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write.
+    #[tokio::test]
+    async fn peer_does_not_claim_an_atomic_replace() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut p = PeerProvider::new(test_config(dir.path()));
+        assert!(!p.supports_atomic_replace().await.unwrap());
     }
 
     #[tokio::test]

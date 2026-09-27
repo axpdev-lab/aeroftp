@@ -1463,12 +1463,9 @@ impl ZohoWorkdriveProvider {
         };
 
         // Resolve parent folder
-        let folder_path = folder_path.trim_matches('/');
-        let parent_id = if folder_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(folder_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(folder_path.starts_with('/'), folder_path.trim_matches('/'))
+            .await?;
 
         let body = serde_json::json!({
             "data": {
@@ -1534,6 +1531,7 @@ impl ZohoWorkdriveProvider {
 
     /// Resolve a file path to its Zoho ID (helper that splits parent/file)
     async fn resolve_file_id(&mut self, path: &str) -> Result<String, ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -1541,11 +1539,7 @@ impl ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2256,6 +2250,246 @@ impl ZohoWorkdriveProvider {
         Ok(files.into_iter().find(|f| f.attributes.name == name))
     }
 
+    /// Refuse to undo a first step onto `name` in the folder `parent_id`
+    /// when an item other than `file_id` took that name since: what
+    /// WorkDrive does with a taken name is not documented. `path` names the
+    /// way back in the error.
+    async fn way_back_is_free(
+        &self,
+        name: &str,
+        parent_id: &str,
+        file_id: &str,
+        path: &str,
+    ) -> Result<(), ProviderError> {
+        match self.find_by_name(name, parent_id).await? {
+            Some(found) if found.id != file_id => Err(ProviderError::AlreadyExists(format!(
+                "{path} was taken by another item, so the first step was not undone"
+            ))),
+            _ => Ok(()),
+        }
+    }
+
+    /// Move the item `file_id` into the folder `to_parent_id` under its name.
+    async fn move_file_into(
+        &self,
+        file_id: &str,
+        to_parent_id: &str,
+        to: &str,
+    ) -> Result<(), ProviderError> {
+        let move_body = move_request_body(file_id, to_parent_id);
+        let url = format!("{}/files", self.api_base());
+        let request = self
+            .client
+            .patch(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
+            .body(move_body.to_string())
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+        let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            if status == reqwest::StatusCode::CONFLICT {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            return Err(ProviderError::Other(format!(
+                "Move failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
+            )));
+        }
+        Ok(())
+    }
+
+    /// Rename the item `file_id` to `new_name` in the folder it is in.
+    async fn rename_file_in_place(
+        &self,
+        file_id: &str,
+        new_name: &str,
+        to: &str,
+    ) -> Result<(), ProviderError> {
+        let rename_body = serde_json::json!({
+            "data": {
+                "attributes": {
+                    "name": new_name
+                },
+                "type": "files"
+            }
+        });
+        let url = format!("{}/files/{}", self.api_base(), file_id);
+        let request = self
+            .client
+            .patch(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
+            .body(rename_body.to_string())
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+        let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !resp.status().is_success() {
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            return Err(ProviderError::Other(format!(
+                "Rename failed: {}",
+                resp.status()
+            )));
+        }
+        Ok(())
+    }
+
+    /// Move `from` into the folder of `to` and/or rename it: two calls when
+    /// both change. The folder cache is `rename`'s to clean up.
+    async fn move_then_rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_path_is_absolute = from.starts_with('/');
+        let from_path = from.trim_matches('/');
+        let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
+            (&from_path[..pos], &from_path[pos + 1..])
+        } else {
+            ("", from_path)
+        };
+
+        let from_parent_id = self
+            .parent_folder_id(from_path_is_absolute, from_parent_path)
+            .await?;
+
+        let file = self
+            .find_by_name(file_name, &from_parent_id)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+
+        let to_path_is_absolute = to.starts_with('/');
+        let to_path = to.trim_matches('/');
+        let (to_parent_path, new_name) = if let Some(pos) = to_path.rfind('/') {
+            (&to_path[..pos], &to_path[pos + 1..])
+        } else {
+            ("", to_path)
+        };
+
+        let to_parent_id = self
+            .parent_folder_id(to_path_is_absolute, to_parent_path)
+            .await?;
+
+        let is_cross_folder = from_parent_id != to_parent_id;
+        let is_rename = file_name != new_name;
+
+        // The move keeps the old name. When the destination folder already
+        // holds it, the rename goes first, in the source folder, so neither
+        // step puts two items under one name; when the source folder also
+        // holds the new name, either order would, and nothing is changed.
+        let rename_first = is_cross_folder
+            && is_rename
+            && self.find_by_name(file_name, &to_parent_id).await?.is_some();
+        if rename_first
+            && self
+                .find_by_name(new_name, &from_parent_id)
+                .await?
+                .is_some()
+        {
+            return Err(ProviderError::Other(format!(
+                "Cannot move {from} to {to} in two steps without two items sharing a name: \
+                 the destination folder holds {file_name} and the source folder holds {new_name}"
+            )));
+        }
+        // Two steps when both the folder and the name change. If the second
+        // fails, the first is undone, and if that fails too the error says
+        // where the item is.
+        let at = |absolute: bool, parent: &str, name: &str| {
+            let slash = if absolute { "/" } else { "" };
+            if parent.is_empty() {
+                format!("{slash}{name}")
+            } else {
+                format!("{slash}{parent}/{name}")
+            }
+        };
+        if !is_cross_folder {
+            if is_rename {
+                self.rename_file_in_place(&file.id, new_name, to).await?;
+            }
+        } else if rename_first {
+            self.rename_file_in_place(&file.id, new_name, to).await?;
+            if let Err(e) = self.move_file_into(&file.id, &to_parent_id, to).await {
+                let undone = match self
+                    .way_back_is_free(file_name, &from_parent_id, &file.id, from)
+                    .await
+                {
+                    Ok(()) => self.rename_file_in_place(&file.id, file_name, from).await,
+                    Err(e) => Err(e),
+                };
+                let now_at = at(from_path_is_absolute, from_parent_path, new_name);
+                return Err(super::second_step_failed(from, to, &now_at, e, undone));
+            }
+        } else {
+            self.move_file_into(&file.id, &to_parent_id, to).await?;
+            info!("Moved {} to folder {}", from, to_parent_path);
+            if is_rename {
+                if let Err(e) = self.rename_file_in_place(&file.id, new_name, to).await {
+                    let undone = match self
+                        .way_back_is_free(file_name, &from_parent_id, &file.id, from)
+                        .await
+                    {
+                        Ok(()) => self.move_file_into(&file.id, &from_parent_id, from).await,
+                        Err(e) => Err(e),
+                    };
+                    let now_at = at(to_path_is_absolute, to_parent_path, file_name);
+                    return Err(super::second_step_failed(from, to, &now_at, e, undone));
+                }
+            }
+        }
+
+        info!("Renamed {} to {}", from, to);
+        Ok(())
+    }
+
+    /// Drop the cached ids of the folder at `path` (absolute, or relative to
+    /// the current folder) and of every folder under it. A rename, move or
+    /// delete leaves them pointing at a folder that is no longer there: after
+    /// `/a` moved to `/b`, a new `/a` still resolved to the moved folder, and
+    /// deleting `/a/x` deleted `/b/x`.
+    fn forget_folder(&mut self, path: &str) {
+        let trimmed = path.trim_matches('/');
+        let path = if path.starts_with('/') {
+            format!("/{trimmed}")
+        } else {
+            format!("{}/{trimmed}", self.current_path.trim_end_matches('/'))
+        };
+        let below = format!("{}/", path.trim_end_matches('/'));
+        self.folder_cache
+            .retain(|cached, _| *cached != path && !cached.starts_with(&below));
+    }
+
+    /// The id of `parent`, the folder part of a path already stripped of
+    /// its slashes. An absolute path resolves from the root (the cached
+    /// `/`) and a relative one from the current folder, as on every other
+    /// provider. Until 2026-09-25 a one-segment path went to the current
+    /// folder even with a leading slash, and a longer relative path went to
+    /// the root.
+    async fn parent_folder_id(
+        &mut self,
+        absolute: bool,
+        parent: &str,
+    ) -> Result<String, ProviderError> {
+        if absolute {
+            return self.resolve_path(parent).await;
+        }
+        if parent.is_empty() {
+            return Ok(self.current_folder_id.clone());
+        }
+        let joined = format!("{}/{parent}", self.current_path.trim_end_matches('/'));
+        self.resolve_path(&joined).await
+    }
+
     /// Resolve a path like "/docs/file.txt" to a folder/file ID.
     /// First path component is checked against team folder names, then privatespace.
     async fn resolve_path(&mut self, path: &str) -> Result<String, ProviderError> {
@@ -2393,7 +2627,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let folder_id = if path == "." || path.is_empty() {
             self.current_folder_id.clone()
         } else {
-            self.resolve_path(path).await?
+            self.parent_folder_id(path.starts_with('/'), path.trim_matches('/'))
+                .await?
         };
 
         let files = self.list_folder(&folder_id).await?;
@@ -2447,6 +2682,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2454,11 +2690,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2566,6 +2798,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2573,11 +2806,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2622,6 +2851,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2629,11 +2859,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2682,6 +2908,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2689,11 +2916,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         // Streaming upload: read file as a stream instead of loading into memory
         let file_meta = tokio::fs::metadata(local_path)
@@ -2779,6 +3002,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, folder_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2786,11 +3010,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         // JSON:API format for folder creation
         let body = serde_json::json!({
@@ -2833,6 +3053,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        let original_path = path;
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -2840,11 +3062,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -2890,6 +3108,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         }
 
         info!("Moved to trash: {}", path);
+        self.forget_folder(original_path);
         Ok(())
     }
 
@@ -2930,118 +3149,33 @@ impl StorageProvider for ZohoWorkdriveProvider {
         }
     }
 
+    /// WorkDrive's move and rename name no conflict behaviour, so the
+    /// destination is looked up first and a taken one refused.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let from_path = from.trim_matches('/');
-        let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
-            (&from_path[..pos], &from_path[pos + 1..])
-        } else {
-            ("", from_path)
-        };
-
-        let from_parent_id = if from_parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(from_parent_path).await?
-        };
-
-        let file = self
-            .find_by_name(file_name, &from_parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
-
-        let to_path = to.trim_matches('/');
-        let (to_parent_path, new_name) = if let Some(pos) = to_path.rfind('/') {
-            (&to_path[..pos], &to_path[pos + 1..])
-        } else {
-            ("", to_path)
-        };
-
-        let to_parent_id = if to_parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(to_parent_path).await?
-        };
-
-        let is_cross_folder = from_parent_id != to_parent_id;
-        let is_rename = file_name != new_name;
-
-        // Step 1: Move to new folder if cross-folder operation
-        if is_cross_folder {
-            let move_body = move_request_body(&file.id, &to_parent_id);
-            let url = format!("{}/files", self.api_base());
-            let request = self
-                .client
-                .patch(&url)
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .header(
-                    CONTENT_TYPE,
-                    HeaderValue::from_static("application/vnd.api+json"),
-                )
-                .body(move_body.to_string())
-                .build()
-                .map_err(|e| {
-                    ProviderError::NetworkError(format!("Failed to build request: {}", e))
-                })?;
-
-            let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let text = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Move failed ({}): {}",
-                    status,
-                    sanitize_api_error(&text)
-                )));
-            }
-            info!("Moved {} to folder {}", from, to_parent_path);
+        if from.trim_end_matches('/') == to.trim_end_matches('/') {
+            return Ok(());
         }
+        super::refuse_occupied_destination(self, from, to).await?;
+        let outcome = self.move_then_rename(from, to).await;
+        // After a failure too, whichever step and however it failed (an HTTP
+        // status, or a `?` on the auth header, the request or the transport):
+        // a move that went through has changed paths, and a cache entry that
+        // is merely stale costs one lookup, where a wrong one deletes the
+        // wrong folder's files.
+        self.forget_folder(from);
+        self.forget_folder(to);
+        outcome
+    }
 
-        // Step 2: Rename if the name changed
-        if is_rename {
-            let rename_body = serde_json::json!({
-                "data": {
-                    "attributes": {
-                        "name": new_name
-                    },
-                    "type": "files"
-                }
-            });
-
-            let url = format!("{}/files/{}", self.api_base(), file.id);
-            let request = self
-                .client
-                .patch(&url)
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .header(
-                    CONTENT_TYPE,
-                    HeaderValue::from_static("application/vnd.api+json"),
-                )
-                .body(rename_body.to_string())
-                .build()
-                .map_err(|e| {
-                    ProviderError::NetworkError(format!("Failed to build request: {}", e))
-                })?;
-
-            let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !resp.status().is_success() {
-                return Err(ProviderError::Other(format!(
-                    "Rename failed: {}",
-                    resp.status()
-                )));
-            }
-        }
-
-        info!("Renamed {} to {}", from, to);
-        Ok(())
+    /// No: WorkDrive's rename and move have no documented overwrite, so
+    /// there is no one-step replace, and the callers that need one refuse
+    /// before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        let path_str_is_absolute = path.starts_with('/');
         let path_str = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path_str.rfind('/') {
             (&path_str[..pos], &path_str[pos + 1..])
@@ -3049,11 +3183,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path_str)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(path_str_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -3125,6 +3257,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_path_is_absolute = from.starts_with('/');
         let from_path = from.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
             (&from_path[..pos], &from_path[pos + 1..])
@@ -3132,11 +3265,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", from_path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self
+            .parent_folder_id(from_path_is_absolute, parent_path)
+            .await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -3151,11 +3282,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ""
         };
 
-        let dest_id = if dest_parent.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(dest_parent).await?
-        };
+        let dest_id = self
+            .parent_folder_id(to.starts_with('/'), dest_parent)
+            .await?;
 
         let body = serde_json::json!({
             "data": {
@@ -3228,6 +3357,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         options: ShareLinkOptions,
     ) -> Result<ShareLinkResult, ProviderError> {
         // Resolve path to file/folder ID
+        let path_is_absolute = path.starts_with('/');
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
             (&path[..pos], &path[pos + 1..])
@@ -3235,11 +3365,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
+        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
         let file = self
             .find_by_name(file_name, &parent_id)
@@ -3736,6 +3862,39 @@ mod tests {
         ZohoWorkdriveConfig::new("cid", "csec", region)
     }
 
+    /// WorkDrive's rename and move have no documented overwrite, so there is no
+    /// one-step replace. The answer is no, so the callers that need one (CLI
+    /// `edit`, MCP `remote_edit`, the crypt marker paths) refuse before they
+    /// write.
+    #[tokio::test]
+    async fn zoho_does_not_claim_an_atomic_replace() {
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
+
+    /// After `cd /docs`: `/x` and `x` name different folders, `/x` the
+    /// root's and `x` the current one's, and a longer path follows the same
+    /// rule. Resolved from the cache alone, so no request is made.
+    #[tokio::test]
+    async fn absolute_paths_resolve_from_the_root_and_relative_ones_from_the_current_folder() {
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        for (path, id) in [
+            ("/", "ROOT"),
+            ("/docs", "DOCS"),
+            ("/docs/sub", "DOCS_SUB"),
+            ("/sub", "ROOT_SUB"),
+        ] {
+            p.folder_cache.insert(path.to_string(), id.to_string());
+        }
+        p.current_folder_id = "DOCS".to_string();
+        p.current_path = "/docs".to_string();
+
+        assert_eq!(p.parent_folder_id(true, "").await.unwrap(), "ROOT");
+        assert_eq!(p.parent_folder_id(false, "").await.unwrap(), "DOCS");
+        assert_eq!(p.parent_folder_id(true, "sub").await.unwrap(), "ROOT_SUB");
+        assert_eq!(p.parent_folder_id(false, "sub").await.unwrap(), "DOCS_SUB");
+    }
+
     /// Upload `file` to a local fixture that answers `status` and `body` on
     /// both upload routes; returns the outcome and every progress update.
     async fn upload_against_fixture(
@@ -3806,6 +3965,311 @@ mod tests {
             upload_against_fixture(file.path(), "/big.bin", 200, r#"{"data":[]}"#).await;
         assert!(outcome.is_err());
         assert_real_progress(&updates, size, false);
+    }
+
+    /// A WorkDrive double whose root `ROOT` holds the folder `a` (`A`):
+    /// listings answer that, every PATCH succeeds. Returns a provider on it
+    /// whose cache maps `/` to `ROOT`, `/a` to `A` and `/a/sub` to `SUB`.
+    async fn provider_with_cached_folder_a() -> ZohoWorkdriveProvider {
+        use crate::providers::upload_progress::fixture::{serve, Route};
+        let listing = r#"{"data":[{"id":"A","attributes":{"name":"a","type":"folder"}}]}"#;
+        let (base, _server) = serve(vec![
+            Route::get("/workdrive/api/v1/files/ROOT/files", 200, listing),
+            Route {
+                method: axum::http::Method::PATCH,
+                path: "/workdrive/api/v1/files/A",
+                status: 200,
+                body: "{}".to_string(),
+                busy_first: false,
+            },
+        ])
+        .await;
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.endpoint_override = Some(base);
+        provider.test_access_token = Some("test-token".into());
+        provider.connected = true;
+        for (path, id) in [("/", "ROOT"), ("/a", "A"), ("/a/sub", "SUB"), ("/ab", "AB")] {
+            provider
+                .folder_cache
+                .insert(path.to_string(), id.to_string());
+        }
+        provider.current_folder_id = "ROOT".to_string();
+        provider
+    }
+
+    /// After `/a` moved to `/b`, the cache still mapped `/a` (and `/a/sub`)
+    /// to the moved folder: a new `/a` resolved to `/b`, and deleting `/a/x`
+    /// deleted `/b/x`.
+    #[tokio::test]
+    async fn renaming_a_folder_forgets_its_cached_path_and_everything_under_it() {
+        let mut p = provider_with_cached_folder_a().await;
+        p.rename("/a", "/b").await.expect("rename");
+        assert!(!p.folder_cache.contains_key("/a"));
+        assert!(!p.folder_cache.contains_key("/a/sub"));
+        assert!(
+            p.folder_cache.contains_key("/ab"),
+            "a sibling sharing the prefix stays"
+        );
+    }
+
+    /// A move under a new name is two calls. When the move went through and
+    /// the rename then failed before any answer (the connection dropped), the
+    /// error returned past the cache cleanup, which ran only on an HTTP error
+    /// status: `/a` still resolved to the folder now in `/d`.
+    #[tokio::test]
+    async fn a_move_whose_rename_fails_in_transport_still_forgets_the_cache() {
+        let listing = r#"{"data":[{"id":"A","attributes":{"name":"a","type":"folder"}}]}"#;
+        let app = axum::Router::new()
+            .route(
+                "/workdrive/api/v1/files/ROOT/files",
+                axum::routing::get(move || async move { listing }),
+            )
+            .route(
+                // `/d` is empty: the destination is free.
+                "/workdrive/api/v1/files/D/files",
+                axum::routing::get(|| async { r#"{"data":[]}"# }),
+            )
+            .route(
+                "/workdrive/api/v1/files",
+                axum::routing::patch(|| async { "{}" }),
+            )
+            .route(
+                // A handler that panics drops the connection without an
+                // answer: a transport failure, as when the network goes.
+                "/workdrive/api/v1/files/A",
+                axum::routing::patch(|| async {
+                    if std::hint::black_box(true) {
+                        panic!("connection dropped");
+                    }
+                    ""
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        for (path, id) in [("/", "ROOT"), ("/a", "A"), ("/a/sub", "SUB"), ("/d", "D")] {
+            p.folder_cache.insert(path.to_string(), id.to_string());
+        }
+        p.current_folder_id = "ROOT".to_string();
+        let outcome = p.rename("/a", "/d/b").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(!p.folder_cache.contains_key("/a"), "{:?}", p.folder_cache);
+        assert!(
+            !p.folder_cache.contains_key("/a/sub"),
+            "{:?}",
+            p.folder_cache
+        );
+    }
+
+    /// WorkDrive's rename and move name no conflict behaviour, so the
+    /// destination is looked up first and a taken one refused before any
+    /// call that changes something.
+    #[tokio::test]
+    async fn a_rename_onto_a_taken_name_is_refused_before_any_change() {
+        use crate::providers::upload_progress::fixture::{serve_logged, Route};
+        let listing = r#"{"data":[{"id":"A","attributes":{"name":"a","type":"folder"}},{"id":"B","attributes":{"name":"b.txt","type":"file"}}]}"#;
+        let (base, _server, received) = serve_logged(vec![
+            Route::get("/workdrive/api/v1/files/ROOT/files", 200, listing),
+            Route {
+                method: axum::http::Method::PATCH,
+                path: "/workdrive/api/v1/files/A",
+                status: 200,
+                body: "{}".to_string(),
+                busy_first: false,
+            },
+        ])
+        .await;
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(base);
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.folder_cache.insert("/".to_string(), "ROOT".to_string());
+        p.current_folder_id = "ROOT".to_string();
+        let outcome = p.rename("/a", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            !received
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(path, _)| *path == "/workdrive/api/v1/files/A"),
+            "{:?}",
+            received.lock().unwrap()
+        );
+    }
+
+    /// The move keeps the old name: with `/dst/a.txt` there it put a second
+    /// `a.txt` in `/dst` until the rename. The rename goes first, in the
+    /// source folder.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        use crate::providers::upload_progress::fixture::{serve_logged, Route};
+        let a = |id: &str| {
+            format!(r#"{{"data":[{{"id":"{id}","attributes":{{"name":"a.txt","type":"file"}}}}]}}"#)
+        };
+        let patch = |path: &'static str| Route {
+            method: axum::http::Method::PATCH,
+            path,
+            status: 200,
+            body: "{}".to_string(),
+            busy_first: false,
+        };
+        let (base, _server, received) = serve_logged(vec![
+            Route::get("/workdrive/api/v1/files/S/files", 200, a("FA")),
+            Route::get("/workdrive/api/v1/files/D/files", 200, a("FA2")),
+            patch("/workdrive/api/v1/files/FA"),
+            patch("/workdrive/api/v1/files"),
+        ])
+        .await;
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(base);
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        for (path, id) in [("/", "ROOT"), ("/src", "S"), ("/dst", "D")] {
+            p.folder_cache.insert(path.to_string(), id.to_string());
+        }
+        p.current_folder_id = "ROOT".to_string();
+        p.rename("/src/a.txt", "/dst/c.txt")
+            .await
+            .expect("rename then move");
+        let changes: Vec<&str> = received
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(path, _)| *path)
+            .filter(|path| !path.ends_with("/files") || *path == "/workdrive/api/v1/files")
+            .collect();
+        assert_eq!(
+            changes,
+            ["/workdrive/api/v1/files/FA", "/workdrive/api/v1/files"]
+        );
+    }
+
+    /// A move to another folder under a new name is two calls. When the
+    /// rename after the move was refused, the item stayed in the new folder
+    /// under its old name while the error said nothing of it. The move is
+    /// undone.
+    #[tokio::test]
+    async fn a_move_whose_rename_is_refused_is_moved_back() {
+        use crate::providers::upload_progress::fixture::{serve_logged, Route};
+        let patch = |path: &'static str, status: u16| Route {
+            method: axum::http::Method::PATCH,
+            path,
+            status,
+            body: "{}".to_string(),
+            busy_first: false,
+        };
+        let (base, _server, received) = serve_logged(vec![
+            Route::get(
+                "/workdrive/api/v1/files/S/files",
+                200,
+                r#"{"data":[{"id":"FA","attributes":{"name":"a.txt","type":"file"}}]}"#,
+            ),
+            Route::get("/workdrive/api/v1/files/D/files", 200, r#"{"data":[]}"#),
+            patch("/workdrive/api/v1/files/FA", 403),
+            patch("/workdrive/api/v1/files", 200),
+        ])
+        .await;
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(base);
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        for (path, id) in [("/", "ROOT"), ("/src", "S"), ("/dst", "D")] {
+            p.folder_cache.insert(path.to_string(), id.to_string());
+        }
+        p.current_folder_id = "ROOT".to_string();
+        let outcome = p.rename("/src/a.txt", "/dst/c.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let changes: Vec<&str> = received
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(path, _)| *path)
+            .filter(|path| !path.ends_with("/files") || *path == "/workdrive/api/v1/files")
+            .collect();
+        assert_eq!(
+            changes,
+            [
+                "/workdrive/api/v1/files",
+                "/workdrive/api/v1/files/FA",
+                "/workdrive/api/v1/files"
+            ]
+        );
+    }
+
+    /// When the name the undo would take back was taken meanwhile (here
+    /// the source folder lists another `a.txt` after the move), moving back
+    /// would meet it: what WorkDrive does then is not documented. The move
+    /// stays, and the error says where the item is.
+    #[tokio::test]
+    async fn an_undo_whose_way_back_is_taken_is_not_made() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+        let source_listings = Arc::new(AtomicUsize::new(0));
+        let moves: Arc<Mutex<usize>> = Arc::default();
+        let (listed, moved) = (Arc::clone(&source_listings), Arc::clone(&moves));
+        let app = axum::Router::new()
+            .route(
+                "/workdrive/api/v1/files/S/files",
+                axum::routing::get(move || {
+                    // The source first, then another item under its name.
+                    let id = if listed.fetch_add(1, Ordering::SeqCst) == 0 { "FA" } else { "FX" };
+                    async move {
+                        format!(
+                            r#"{{"data":[{{"id":"{id}","attributes":{{"name":"a.txt","type":"file"}}}}]}}"#
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/workdrive/api/v1/files/D/files",
+                axum::routing::get(|| async { r#"{"data":[]}"# }),
+            )
+            .route(
+                "/workdrive/api/v1/files",
+                axum::routing::patch(move || {
+                    *moved.lock().unwrap() += 1;
+                    async { "{}" }
+                }),
+            )
+            .route(
+                "/workdrive/api/v1/files/FA",
+                axum::routing::patch(|| async { (axum::http::StatusCode::FORBIDDEN, "{}") }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        for (path, id) in [("/", "ROOT"), ("/src", "S"), ("/dst", "D")] {
+            p.folder_cache.insert(path.to_string(), id.to_string());
+        }
+        p.current_folder_id = "ROOT".to_string();
+        let outcome = p.rename("/src/a.txt", "/dst/c.txt").await;
+        match outcome {
+            Err(ProviderError::Other(message)) => {
+                assert!(message.contains("now at /dst/a.txt"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(*moves.lock().unwrap(), 1, "no move back");
+    }
+
+    #[tokio::test]
+    async fn deleting_a_folder_forgets_its_cached_path_and_everything_under_it() {
+        let mut p = provider_with_cached_folder_a().await;
+        p.rmdir("/a").await.expect("rmdir");
+        assert!(!p.folder_cache.contains_key("/a"));
+        assert!(!p.folder_cache.contains_key("/a/sub"));
     }
 
     /// #347: above the documented 250 MB of `POST /upload` (which answered a
