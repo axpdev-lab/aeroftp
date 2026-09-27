@@ -577,6 +577,31 @@ impl WebDavProvider {
         }
     }
 
+    /// Whether `path` names the file a single-file profile serves, in either
+    /// spelling (`/f.txt` or `f.txt`). False outside single-file mode.
+    fn names_the_served_file(&self, path: &str) -> bool {
+        self.single_file_mode
+            .as_ref()
+            .is_some_and(|served| path.trim_matches('/') == served.path.trim_matches('/'))
+    }
+
+    /// In single-file mode every path maps to the one configured URL, so a
+    /// PUT, DELETE or MKCOL for any other path acts on the served file: an
+    /// edit's temporary overwrote it, and the cleanup of that temporary
+    /// deleted it. Refused unless `path` names the served file.
+    fn refuse_another_path_in_single_file_mode(&self, path: &str) -> Result<(), ProviderError> {
+        match &self.single_file_mode {
+            Some(served) if !self.names_the_served_file(path) => {
+                Err(ProviderError::NotSupported(format!(
+                    "this WebDAV profile serves the single file {}, and {path} is not it: \
+                     the request would act on that file",
+                    served.path
+                )))
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// Whether `from` and the destination URL `destination` name one
     /// resource. A MOVE onto itself is a no-op everywhere else, but Nextcloud
     /// answers it with 412, read as AlreadyExists (found live on 2026-09-26),
@@ -3388,6 +3413,8 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
+        self.refuse_another_path_in_single_file_mode(remote_path)?;
+
         let total_size = tokio::fs::metadata(local_path)
             .await
             .map_err(ProviderError::IoError)?
@@ -3458,6 +3485,8 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
+        self.refuse_another_path_in_single_file_mode(path)?;
+
         // MKCOL always targets a collection: use the trailing-slash form so
         // Apache does not 301 to a scheme-downgraded URL that loses auth.
         let col = Self::collection_path(path);
@@ -3488,6 +3517,8 @@ impl StorageProvider for WebDavProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        // `rmdir` and `rmdir_recursive` come through here too.
+        self.refuse_another_path_in_single_file_mode(path)?;
 
         let response = self
             .send_replaying_digest(|| self.request(Method::DELETE, path))
@@ -3525,9 +3556,10 @@ impl StorageProvider for WebDavProvider {
         // In single-file mode every path maps to the one configured URL, so
         // a MOVE cannot name another resource: the URL comparison below read
         // every rename as one onto itself and answered success with nothing
-        // moved.
+        // moved. Both names of the served file (a relative and an absolute
+        // spelling) are a rename onto itself.
         if self.single_file_mode.is_some() {
-            if from.trim_end_matches('/') == to.trim_end_matches('/') {
+            if self.names_the_served_file(from) && self.names_the_served_file(to) {
                 return Ok(());
             }
             return Err(ProviderError::NotSupported(
@@ -3582,9 +3614,10 @@ impl StorageProvider for WebDavProvider {
         // In single-file mode every path maps to the one configured URL, so
         // a MOVE cannot name another resource: the URL comparison below read
         // every rename as one onto itself and answered success with nothing
-        // moved.
+        // moved. Both names of the served file (a relative and an absolute
+        // spelling) are a rename onto itself.
         if self.single_file_mode.is_some() {
-            if from.trim_end_matches('/') == to.trim_end_matches('/') {
+            if self.names_the_served_file(from) && self.names_the_served_file(to) {
                 return Ok(());
             }
             return Err(ProviderError::NotSupported(
@@ -3618,6 +3651,13 @@ impl StorageProvider for WebDavProvider {
                 status
             ))),
         }
+    }
+
+    /// Yes: `replace` is one MOVE with `Overwrite: T`. Not in single-file
+    /// mode, where there is no other path to stage a temporary at: an edit
+    /// uploaded it over the served file, and the cleanup deleted that file.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(self.single_file_mode.is_none())
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -6176,6 +6216,99 @@ mod tests {
             .rename("/sample.png", "/sample.png")
             .await
             .expect("onto its own path");
+        // A relative and an absolute spelling of the served file are one
+        // path: compared raw they read as a move and were refused.
+        provider
+            .rename("sample.png", "/sample.png")
+            .await
+            .expect("two spellings of its own path");
+    }
+
+    /// An in-place edit (CLI `edit`, `remote_edit`) asks for an atomic
+    /// replace, uploads a temporary beside the file, replaces the file with
+    /// it and deletes the temporary when a step fails. On a single-file
+    /// profile every path is the one configured URL: the temporary's PUT
+    /// overwrote the served file and, once the replace was refused, the
+    /// cleanup's DELETE removed it. The edit now stops at the first question,
+    /// and a PUT, DELETE or MKCOL for any other path is refused before a
+    /// request.
+    #[tokio::test]
+    async fn an_edit_on_a_single_file_profile_sends_no_put_and_no_delete() {
+        use axum::response::IntoResponse;
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let log = std::sync::Arc::clone(&seen);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let log = std::sync::Arc::clone(&log);
+                async move {
+                    log.lock().unwrap().push(req.method().to_string());
+                    axum::http::StatusCode::CREATED.into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("http://{addr}/77YnXboS/sample.png")))
+                .expect("provider");
+        provider.connected = true;
+        provider.server_root = Some("/".to_string());
+        provider.single_file_mode = Some(RemoteEntry {
+            name: "sample.png".to_string(),
+            path: "/sample.png".to_string(),
+            is_dir: false,
+            size: 60630,
+            modified: None,
+            is_symlink: false,
+            link_target: None,
+            permissions: None,
+            owner: None,
+            group: None,
+            mime_type: Some("image/png".to_string()),
+            metadata: Default::default(),
+        });
+        let local = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new content").unwrap();
+        let local = local.path().to_str().unwrap();
+
+        // The edit's steps, in its order.
+        let temp = "/.sample.png.aeroftp-edit";
+        if provider.supports_atomic_replace().await.expect("asked") {
+            match provider.upload(local, temp, None).await {
+                Ok(()) => {
+                    if provider.replace(temp, "/sample.png").await.is_err() {
+                        let _ = provider.delete(temp).await;
+                    }
+                }
+                Err(_) => {
+                    let _ = provider.delete(temp).await;
+                }
+            }
+        }
+        assert!(
+            seen.lock().unwrap().is_empty(),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+
+        // Any other path is refused before a request, whoever asks.
+        for outcome in [
+            provider.upload(local, temp, None).await,
+            provider.delete(temp).await,
+            provider.mkdir("/sub").await,
+            provider.rmdir("/sub").await,
+        ] {
+            assert!(
+                matches!(outcome, Err(ProviderError::NotSupported(_))),
+                "{outcome:?}"
+            );
+        }
+        assert!(
+            seen.lock().unwrap().is_empty(),
+            "{:?}",
+            seen.lock().unwrap()
+        );
     }
 
     /// Issue #591 — vanilla WebDAV (SFTPGo, nginx DAV, Apache) must advertise
