@@ -1675,6 +1675,77 @@ pub trait StorageProvider: Send + Sync {
     }
 }
 
+/// A `stat` answer that says the provider cannot describe the path, as
+/// opposed to one that failed. S3, Azure, Swift and B2 see no directory
+/// behind a path without its trailing slash (NotFound); Box and GitHub fail
+/// to parse the answer for a folder (ParseError). A transient failure
+/// (network, server, timeout) says nothing about the path, and acting on it
+/// as if the path were a directory reached the directory of the same name.
+pub fn stat_cannot_describe(error: &ProviderError) -> bool {
+    matches!(
+        error,
+        ProviderError::NotFound(_) | ProviderError::NotSupported(_) | ProviderError::ParseError(_)
+    )
+}
+
+fn directory_not_empty(path: &str, entries: usize) -> ProviderError {
+    ProviderError::DirectoryNotEmpty(format!(
+        "{path} holds {entries} entr{}; delete it recursively to remove it with its content",
+        if entries == 1 { "y" } else { "ies" }
+    ))
+}
+
+/// Remove `path` only if it is an empty directory.
+///
+/// `rmdir` removes a directory with everything in it on several backends
+/// (S3 and Azure delete every key under the prefix, Google Drive, OneDrive,
+/// Dropbox, pCloud, Box, MEGA, Filen, kDrive, Koofr, Jottacloud and WebDAV
+/// remove the folder whole), so every caller that means "an empty directory"
+/// (`rm` without `-r`, the served FTP RMD and SFTP RMDIR, the mount's
+/// rmdir, MCP and AeroAgent deletes without `recursive`) lists it first and
+/// refuses one that still holds anything, dotfiles included.
+pub async fn remove_empty_directory(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<(), ProviderError> {
+    let children = provider.list(path).await?;
+    if !children.is_empty() {
+        return Err(directory_not_empty(path, children.len()));
+    }
+    provider.rmdir(path).await
+}
+
+/// Delete `path` without recursing: a file, a link, or an empty directory.
+///
+/// `delete` of a folder removes it with its content on the backends listed
+/// at [`remove_empty_directory`], so a non-recursive delete asks `stat`
+/// first and sends a directory through that check. A directory `stat` cannot
+/// describe (see [`stat_cannot_describe`]) is found by listing it: a listing
+/// with entries is refused the same way, an empty one is removed with
+/// `rmdir` (an object-store directory marker) and, when that fails, `delete`
+/// (a file `stat` could not see). Any other `stat` failure is returned as it
+/// is, with nothing removed.
+pub async fn delete_non_recursive(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<(), ProviderError> {
+    match provider.stat(path).await {
+        Ok(entry) if entry.is_dir && !entry.is_symlink => {
+            remove_empty_directory(provider, path).await
+        }
+        Ok(_) => provider.delete(path).await,
+        Err(e) if stat_cannot_describe(&e) => match provider.list(path).await {
+            Ok(children) if !children.is_empty() => Err(directory_not_empty(path, children.len())),
+            Ok(_) => match provider.rmdir(path).await {
+                Ok(()) => Ok(()),
+                Err(_) => provider.delete(path).await,
+            },
+            Err(_) => provider.delete(path).await,
+        },
+        Err(e) => Err(e),
+    }
+}
+
 /// Refuse to stage a temporary that could not then be published.
 ///
 /// Every "write a remote file in place" path in this tree has the same shape:
@@ -2598,5 +2669,269 @@ mod documented_file_limits_tests {
         .with_documented_limits(documented_file_limits(ProviderType::Box));
         assert_eq!(hints.max_file_size, Some(7));
         assert_eq!(hints.max_name_chars, Some(255));
+    }
+}
+
+#[cfg(test)]
+mod non_recursive_delete_tests {
+    use super::*;
+
+    type Answer<T> = fn() -> Result<T, ProviderError>;
+
+    /// Scripted `stat`, `list`, `delete` and `rmdir`; every call is recorded.
+    struct Scripted {
+        stat: Answer<RemoteEntry>,
+        list: Answer<Vec<RemoteEntry>>,
+        delete: Answer<()>,
+        rmdir: Answer<()>,
+        calls: Vec<&'static str>,
+    }
+
+    impl Scripted {
+        fn new(stat: Answer<RemoteEntry>, list: Answer<Vec<RemoteEntry>>) -> Self {
+            Self {
+                stat,
+                list,
+                delete: || Ok(()),
+                rmdir: || Ok(()),
+                calls: Vec::new(),
+            }
+        }
+    }
+
+    fn file() -> Result<RemoteEntry, ProviderError> {
+        Ok(RemoteEntry::file("f".to_string(), "/f".to_string(), 1))
+    }
+
+    fn dir() -> Result<RemoteEntry, ProviderError> {
+        Ok(RemoteEntry::directory("d".to_string(), "/d".to_string()))
+    }
+
+    fn one_child() -> Result<Vec<RemoteEntry>, ProviderError> {
+        Ok(vec![RemoteEntry::file(
+            ".keep".to_string(),
+            "/d/.keep".to_string(),
+            0,
+        )])
+    }
+
+    fn no_child() -> Result<Vec<RemoteEntry>, ProviderError> {
+        Ok(Vec::new())
+    }
+
+    fn not_found<T>() -> Result<T, ProviderError> {
+        Err(ProviderError::NotFound("/d".to_string()))
+    }
+
+    #[async_trait]
+    impl StorageProvider for Scripted {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::S3
+        }
+        fn display_name(&self) -> String {
+            "scripted".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.calls.push("list");
+            (self.list)()
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("delete");
+            (self.delete)()
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("rmdir");
+            (self.rmdir)()
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("rmdir_recursive");
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, _path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.calls.push("stat");
+            (self.stat)()
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("scripted".to_string())
+        }
+    }
+
+    /// `rm` without `-r` of a folder that still held files deleted them on
+    /// every backend whose delete or rmdir of a folder takes its content
+    /// along (S3, Azure, Drive, OneDrive, Dropbox, pCloud, Box, MEGA, ...).
+    #[tokio::test]
+    async fn a_directory_with_content_is_refused() {
+        let mut p = Scripted::new(dir, one_child);
+        let result = delete_non_recursive(&mut p, "/d").await;
+        assert!(
+            matches!(result, Err(ProviderError::DirectoryNotEmpty(ref m)) if m.contains("1 entry")),
+            "{result:?}"
+        );
+        assert_eq!(p.calls, ["stat", "list"]);
+    }
+
+    #[tokio::test]
+    async fn an_empty_directory_is_removed_with_rmdir() {
+        let mut p = Scripted::new(dir, no_child);
+        delete_non_recursive(&mut p, "/d").await.expect("rm");
+        assert_eq!(p.calls, ["stat", "list", "rmdir"]);
+    }
+
+    #[tokio::test]
+    async fn a_file_and_a_link_to_a_directory_go_through_delete() {
+        let mut f = Scripted::new(file, one_child);
+        delete_non_recursive(&mut f, "/f").await.expect("rm");
+        assert_eq!(f.calls, ["stat", "delete"]);
+
+        let link = || {
+            let mut entry = RemoteEntry::directory("l".to_string(), "/l".to_string());
+            entry.is_symlink = true;
+            Ok(entry)
+        };
+        let mut l = Scripted::new(link, one_child);
+        delete_non_recursive(&mut l, "/l").await.expect("rm");
+        assert_eq!(l.calls, ["stat", "delete"]);
+    }
+
+    /// An object store sees no directory behind `d` (NotFound), Box and
+    /// GitHub fail to parse a folder (ParseError): the listing decides.
+    #[tokio::test]
+    async fn a_directory_stat_cannot_describe_is_judged_by_its_listing() {
+        let mut full = Scripted::new(not_found, one_child);
+        let result = delete_non_recursive(&mut full, "/d").await;
+        assert!(
+            matches!(result, Err(ProviderError::DirectoryNotEmpty(_))),
+            "{result:?}"
+        );
+        assert_eq!(full.calls, ["stat", "list"]);
+
+        let mut parse = Scripted::new(
+            || Err(ProviderError::ParseError("an array".to_string())),
+            one_child,
+        );
+        let result = delete_non_recursive(&mut parse, "/d").await;
+        assert!(
+            matches!(result, Err(ProviderError::DirectoryNotEmpty(_))),
+            "{result:?}"
+        );
+
+        // The directory marker of an empty S3 folder goes with rmdir; a
+        // delete of `d` would answer 204 and leave `d/` in place.
+        let mut empty = Scripted::new(not_found, no_child);
+        delete_non_recursive(&mut empty, "/d").await.expect("rm");
+        assert_eq!(empty.calls, ["stat", "list", "rmdir"]);
+
+        let mut unseen_file = Scripted::new(not_found, no_child);
+        unseen_file.rmdir = || Err(ProviderError::ServerError("not a folder".to_string()));
+        delete_non_recursive(&mut unseen_file, "/f")
+            .await
+            .expect("rm");
+        assert_eq!(unseen_file.calls, ["stat", "list", "rmdir", "delete"]);
+
+        let mut missing = Scripted::new(not_found, not_found);
+        missing.delete = not_found;
+        let result = delete_non_recursive(&mut missing, "/x").await;
+        assert!(
+            matches!(result, Err(ProviderError::NotFound(_))),
+            "{result:?}"
+        );
+        assert_eq!(missing.calls, ["stat", "list", "delete"]);
+    }
+
+    /// An ambiguous path (Cloudinary) and a failed `stat` remove nothing.
+    #[tokio::test]
+    async fn a_stat_that_failed_removes_nothing() {
+        for stat in [
+            (|| Err(ProviderError::InvalidPath("two items".to_string()))) as Answer<RemoteEntry>,
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Err(ProviderError::NetworkError("reset".to_string())),
+            || Err(ProviderError::Timeout),
+            || Err(ProviderError::Cancelled),
+        ] {
+            let mut p = Scripted::new(stat, no_child);
+            assert!(delete_non_recursive(&mut p, "/d").await.is_err());
+            assert_eq!(p.calls, ["stat"]);
+        }
+    }
+
+    /// RMD, SFTP RMDIR, the mount's rmdir and the GUI's non-recursive
+    /// folder delete: `rmdir` recurses on several backends.
+    #[tokio::test]
+    async fn remove_empty_directory_lists_before_rmdir() {
+        let mut full = Scripted::new(dir, one_child);
+        let result = remove_empty_directory(&mut full, "/d").await;
+        assert!(
+            matches!(result, Err(ProviderError::DirectoryNotEmpty(_))),
+            "{result:?}"
+        );
+        assert_eq!(full.calls, ["list"]);
+
+        let mut empty = Scripted::new(dir, no_child);
+        remove_empty_directory(&mut empty, "/d")
+            .await
+            .expect("rmdir");
+        assert_eq!(empty.calls, ["list", "rmdir"]);
+
+        let mut unreadable = Scripted::new(dir, || Err(ProviderError::Timeout));
+        assert!(remove_empty_directory(&mut unreadable, "/d").await.is_err());
+        assert_eq!(unreadable.calls, ["list"]);
     }
 }

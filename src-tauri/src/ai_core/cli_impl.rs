@@ -408,7 +408,9 @@ impl RemoteBackend for CliRemoteBackend {
     async fn delete(&self, path: &str) -> Result<(), String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;
-        p.delete(path).await.map_err(|e| e.to_string())
+        crate::providers::delete_non_recursive(p.as_mut(), path)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn delete_recursive(&self, path: &str) -> Result<(), String> {

@@ -489,21 +489,26 @@ impl RemoteBackend for TauriRemoteBackend {
     }
 
     async fn delete(&self, path: &str) -> Result<(), String> {
+        // Without `recursive` a directory goes only when it is empty: a
+        // provider's `delete` or `rmdir` of a folder takes its content along
+        // on several backends (see `providers::remove_empty_directory`).
         match self {
             TauriRemoteBackend::Active { app } => {
                 if let Some(ref mut p) = *Self::active_provider(app).lock().await {
-                    return p.delete(path).await.map_err(|e| e.to_string());
+                    return crate::providers::delete_non_recursive(p.as_mut(), path)
+                        .await
+                        .map_err(|e| e.to_string());
                 }
                 let app_state = app.state::<AppState>();
                 let mut mgr = app_state.ftp_manager.lock().await;
                 mgr.remove(path).await.map_err(|e| e.to_string())
             }
-            TauriRemoteBackend::Temp { provider } => provider
-                .lock()
-                .await
-                .delete(path)
-                .await
-                .map_err(|e| e.to_string()),
+            TauriRemoteBackend::Temp { provider } => {
+                let mut guard = provider.lock().await;
+                crate::providers::delete_non_recursive(guard.as_mut(), path)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
         }
     }
 

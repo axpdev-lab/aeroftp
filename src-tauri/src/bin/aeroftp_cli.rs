@@ -16687,7 +16687,7 @@ async fn remove_tui_session_via_cli_handler(
     let result = if recursive {
         provider.rmdir_recursive(&resolved).await
     } else {
-        delete_file_or_empty_dir(provider, &resolved).await
+        ftp_client_gui_lib::providers::delete_non_recursive(provider, &resolved).await
     };
     result
         .map(|_| resolved)
@@ -30107,8 +30107,8 @@ fn webdav_move_may_overwrite(headers: &HeaderMap) -> bool {
 /// `x/`), and an ambiguous path (Cloudinary: an asset and a folder sharing a
 /// name) emptied the folder. The escalation now happens only for a path `stat`
 /// calls a directory (not a link to one), or one it cannot describe (see
-/// [`stat_cannot_describe`]) that the provider can list: on S3 the served
-/// collection `x` is the prefix `x/`, which no key names.
+/// `providers::stat_cannot_describe`) that the provider can list: on S3 the
+/// served collection `x` is the prefix `x/`, which no key names.
 async fn served_webdav_delete(
     provider: &mut dyn StorageProvider,
     path: &str,
@@ -30123,7 +30123,7 @@ async fn served_webdav_delete(
         // An object store sees no key `x` behind the collection `x/`: only a
         // path the provider can list is a collection. A key that is simply
         // gone keeps the delete error.
-        Err(e) if stat_cannot_describe(&e) => {
+        Err(e) if ftp_client_gui_lib::providers::stat_cannot_describe(&e) => {
             if provider.list(path).await.is_err() {
                 return Err(refused);
             }
@@ -30636,7 +30636,9 @@ mod serve_ftp_backend {
 
         fn provider_err_to_ftp(e: ProviderError) -> FtpError {
             let kind = match &e {
-                ProviderError::NotFound(_) => FtpErrorKind::PermanentFileNotAvailable,
+                ProviderError::NotFound(_) | ProviderError::DirectoryNotEmpty(_) => {
+                    FtpErrorKind::PermanentFileNotAvailable
+                }
                 ProviderError::PermissionDenied(_) => FtpErrorKind::PermissionDenied,
                 _ => FtpErrorKind::LocalError,
             };
@@ -30773,7 +30775,9 @@ mod serve_ftp_backend {
         ) -> FtpResult<()> {
             let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
-            p.delete(&remote).await.map_err(Self::provider_err_to_ftp)
+            ftp_client_gui_lib::providers::delete_non_recursive(p.as_mut(), &remote)
+                .await
+                .map_err(Self::provider_err_to_ftp)
         }
 
         async fn mkd<P: AsRef<Path> + Send + Debug>(
@@ -30807,7 +30811,9 @@ mod serve_ftp_backend {
         ) -> FtpResult<()> {
             let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
-            p.rmdir(&remote).await.map_err(Self::provider_err_to_ftp)
+            ftp_client_gui_lib::providers::remove_empty_directory(p.as_mut(), &remote)
+                .await
+                .map_err(Self::provider_err_to_ftp)
         }
 
         async fn cwd<P: AsRef<Path> + Send + Debug>(
@@ -31382,7 +31388,9 @@ mod serve_sftp {
                         }
                     };
                     let r = remote.clone();
-                    match prov!(provider, rt, async |p| p.delete(&r).await) {
+                    match prov!(provider, rt, async |p| {
+                        ftp_client_gui_lib::providers::delete_non_recursive(p, &r).await
+                    }) {
                         Ok(()) => make_status(id, SSH_FX_OK, ""),
                         Err(_) => make_status(id, SSH_FX_FAILURE, "delete failed"),
                     }
@@ -31420,7 +31428,9 @@ mod serve_sftp {
                         }
                     };
                     let r = remote.clone();
-                    match prov!(provider, rt, async |p| p.rmdir(&r).await) {
+                    match prov!(provider, rt, async |p| {
+                        ftp_client_gui_lib::providers::remove_empty_directory(p, &r).await
+                    }) {
                         Ok(()) => make_status(id, SSH_FX_OK, ""),
                         Err(_) => make_status(id, SSH_FX_FAILURE, "rmdir failed"),
                     }
@@ -34924,47 +34934,6 @@ async fn run_rm_dry_run(
     0
 }
 
-/// Delete `path` as a file, or as an empty directory when it is one.
-///
-/// `rm` and the TUI used to fall back to `rmdir` after ANY `delete` failure. A
-/// path the provider cannot resolve to one item (Cloudinary answers
-/// `InvalidPath` for a name an asset and a folder share) then removed the
-/// folder, and a file `delete` refused for another reason was sent to `rmdir`.
-/// The fallback now asks `stat`: a directory (not a link to one) goes to
-/// `rmdir`, and so does a path `stat` cannot describe (see
-/// [`stat_cannot_describe`]), so `rm` of an empty directory still works
-/// where it did. A file, an ambiguous path, a link and a failed `stat` keep
-/// the `delete` error.
-async fn delete_file_or_empty_dir(
-    provider: &mut dyn StorageProvider,
-    path: &str,
-) -> Result<(), ProviderError> {
-    let refused = match provider.delete(path).await {
-        Ok(()) => return Ok(()),
-        Err(ProviderError::Cancelled) => return Err(ProviderError::Cancelled),
-        Err(e) => e,
-    };
-    match provider.stat(path).await {
-        Ok(entry) if entry.is_dir && !entry.is_symlink => provider.rmdir(path).await,
-        Err(e) if stat_cannot_describe(&e) => provider.rmdir(path).await,
-        _ => Err(refused),
-    }
-}
-
-/// A `stat` answer that says the provider cannot describe the path, as
-/// opposed to one that failed. S3, Azure, Swift and B2 see no directory
-/// behind a path without its trailing slash (NotFound); Box and GitHub fail
-/// to parse the answer for a folder (ParseError). A transient failure
-/// (network, server, timeout) says nothing about the path, and escalating on
-/// it reached the directory of the same name: on S3 and Azure `rmdir` is
-/// recursive.
-fn stat_cannot_describe(error: &ProviderError) -> bool {
-    matches!(
-        error,
-        ProviderError::NotFound(_) | ProviderError::NotSupported(_) | ProviderError::ParseError(_)
-    )
-}
-
 /// The real `rm`/`purge` when the global filter flags narrow the delete.
 ///
 /// It runs the same walk `--dry-run` prints and then deletes exactly that plan,
@@ -35177,7 +35146,7 @@ async fn cmd_rm(
     let result = if recursive {
         provider.rmdir_recursive(path).await
     } else {
-        delete_file_or_empty_dir(provider.as_mut(), path).await
+        ftp_client_gui_lib::providers::delete_non_recursive(provider.as_mut(), path).await
     };
 
     match result {
@@ -51570,7 +51539,7 @@ mod fuse_mount {
             let p = child_path.clone();
             let result = self.rt.block_on(async {
                 let mut prov = provider.lock().await;
-                prov.rmdir(&p).await
+                ftp_client_gui_lib::providers::remove_empty_directory(prov.as_mut(), &p).await
             });
 
             match result {
@@ -51582,6 +51551,7 @@ mod fuse_mount {
                     }
                     reply.ok();
                 }
+                Err(ProviderError::DirectoryNotEmpty(_)) => reply.error(Errno::ENOTEMPTY),
                 Err(_) => reply.error(Errno::EIO),
             }
         }
@@ -77221,8 +77191,8 @@ mod tests {
         }
     }
 
-    /// Scripted answers for the delete fallbacks of `rm`, the TUI and the
-    /// served WebDAV DELETE; every call is recorded by name.
+    /// Scripted answers for the delete fallback of the served WebDAV
+    /// DELETE; every call is recorded by name.
     struct DeleteFallbackProvider {
         delete: fn() -> Result<(), ProviderError>,
         stat: fn() -> Result<RemoteEntry, ProviderError>,
@@ -77341,74 +77311,6 @@ mod tests {
         ProviderError::InvalidPath("'/photos' names an asset and a folder".to_string())
     }
 
-    /// Scenario C of the #944 review: Cloudinary refuses `rm /photos` because
-    /// an image and a folder share the name, and `rm` used to answer the
-    /// refusal with `rmdir`, removing the folder.
-    #[tokio::test]
-    async fn rm_does_not_turn_an_ambiguous_path_into_rmdir() {
-        let mut p = DeleteFallbackProvider::new(|| Err(ambiguous()), || Err(ambiguous()));
-        let result = delete_file_or_empty_dir(&mut p, "/photos").await;
-        assert!(
-            matches!(result, Err(ProviderError::InvalidPath(_))),
-            "{result:?}"
-        );
-        assert_eq!(p.calls, ["delete", "stat"]);
-    }
-
-    /// A file `delete` refused keeps its own error instead of the `rmdir` one.
-    #[tokio::test]
-    async fn rm_returns_the_delete_error_for_a_file() {
-        let mut p = DeleteFallbackProvider::new(
-            || Err(ProviderError::ServerError("503".to_string())),
-            || Ok(RemoteEntry::file("a".to_string(), "/a".to_string(), 1)),
-        );
-        let result = delete_file_or_empty_dir(&mut p, "/a").await;
-        assert!(
-            matches!(result, Err(ProviderError::ServerError(_))),
-            "{result:?}"
-        );
-        assert_eq!(p.calls, ["delete", "stat"]);
-    }
-
-    /// A cancelled `delete` stops there.
-    #[tokio::test]
-    async fn rm_stops_on_a_cancelled_delete() {
-        let mut p = DeleteFallbackProvider::new(
-            || Err(ProviderError::Cancelled),
-            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
-        );
-        let result = delete_file_or_empty_dir(&mut p, "/d").await;
-        assert!(
-            matches!(result, Err(ProviderError::Cancelled)),
-            "{result:?}"
-        );
-        assert_eq!(p.calls, ["delete"]);
-    }
-
-    /// The fallback still serves what it exists for: a directory `delete`
-    /// refuses (MTP answers InvalidPath "is a directory"), and a directory
-    /// `stat` cannot see (S3 without the trailing slash).
-    #[tokio::test]
-    async fn rm_still_removes_an_empty_directory() {
-        let mut dir = DeleteFallbackProvider::new(
-            || {
-                Err(ProviderError::InvalidPath(
-                    "/d is a directory; use rmdir".to_string(),
-                ))
-            },
-            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
-        );
-        assert!(delete_file_or_empty_dir(&mut dir, "/d").await.is_ok());
-        assert_eq!(dir.calls, ["delete", "stat", "rmdir"]);
-
-        let mut unseen = DeleteFallbackProvider::new(
-            || Err(ProviderError::NotFound("/d".to_string())),
-            || Err(ProviderError::NotFound("/d".to_string())),
-        );
-        assert!(delete_file_or_empty_dir(&mut unseen, "/d").await.is_ok());
-        assert_eq!(unseen.calls, ["delete", "stat", "rmdir"]);
-    }
-
     /// The served DELETE used to escalate to `rmdir_recursive` after any
     /// failure: an ambiguous path emptied the folder, and a file refused for a
     /// transient reason erased the directory of the same name.
@@ -77483,17 +77385,6 @@ mod tests {
             || Err(ProviderError::Timeout),
             || Err(ProviderError::Cancelled),
         ] {
-            let mut rm = DeleteFallbackProvider::new(
-                || Err(ProviderError::ServerError("503".to_string())),
-                stat,
-            );
-            let result = delete_file_or_empty_dir(&mut rm, "/x").await;
-            assert!(
-                matches!(result, Err(ProviderError::ServerError(_))),
-                "{result:?}"
-            );
-            assert_eq!(rm.calls, ["delete", "stat"]);
-
             let mut served = DeleteFallbackProvider::new(
                 || Err(ProviderError::ServerError("503".to_string())),
                 stat,
@@ -77505,13 +77396,6 @@ mod tests {
             );
             assert_eq!(served.calls, ["delete", "stat"]);
         }
-
-        let mut parse = DeleteFallbackProvider::new(
-            || Err(ProviderError::ServerError("a folder".to_string())),
-            || Err(ProviderError::ParseError("an array".to_string())),
-        );
-        assert!(delete_file_or_empty_dir(&mut parse, "/d").await.is_ok());
-        assert_eq!(parse.calls, ["delete", "stat", "rmdir"]);
     }
 
     /// A link to a directory is not the directory: the served DELETE listed
@@ -77523,17 +77407,6 @@ mod tests {
             entry.is_symlink = true;
             Ok(entry)
         };
-        let mut rm = DeleteFallbackProvider::new(
-            || Err(ProviderError::PermissionDenied("/l".to_string())),
-            link,
-        );
-        let result = delete_file_or_empty_dir(&mut rm, "/l").await;
-        assert!(
-            matches!(result, Err(ProviderError::PermissionDenied(_))),
-            "{result:?}"
-        );
-        assert_eq!(rm.calls, ["delete", "stat"]);
-
         let mut served = DeleteFallbackProvider::new(
             || Err(ProviderError::PermissionDenied("/l".to_string())),
             link,
