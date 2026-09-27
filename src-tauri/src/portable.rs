@@ -431,9 +431,19 @@ pub struct FlatpakImportStatus {
 /// Outcome of an import decision.
 #[derive(Debug, Clone)]
 pub struct FlatpakImportReport {
-    pub imported: bool,
+    /// Files copied into the sandbox: 0 on a decline, and on an accept that found
+    /// every host file already in the sandbox.
+    pub copied: usize,
     pub source: Option<PathBuf>,
     pub target: Option<PathBuf>,
+}
+
+impl FlatpakImportReport {
+    /// True only when the import brought files in, the one case in which a
+    /// restart has something new to load.
+    pub fn imported(&self) -> bool {
+        self.copied > 0
+    }
 }
 
 fn flatpak_import_marker_path() -> Option<PathBuf> {
@@ -446,13 +456,9 @@ fn flatpak_import_decided() -> bool {
         .unwrap_or(false)
 }
 
-fn write_flatpak_import_marker() {
-    if let Some(marker) = flatpak_import_marker_path() {
-        if let Some(parent) = marker.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::write(&marker, b"decided\n");
-    }
+fn write_flatpak_import_marker(data_root: &Path) {
+    let _ = std::fs::create_dir_all(data_root);
+    let _ = std::fs::write(data_root.join(FLATPAK_IMPORT_DECIDED_MARKER), b"decided\n");
 }
 
 /// Should the first-run host-config import prompt be shown, and from/to where.
@@ -475,29 +481,39 @@ pub fn flatpak_host_import_status() -> FlatpakImportStatus {
 /// copied as an encrypted blob: it unlocks only with the master password, and
 /// the import moves the blob, it does not unlock anything.
 pub fn flatpak_host_import_apply(accept: bool) -> Result<FlatpakImportReport, String> {
-    let source = host_config_dir_under_flatpak();
-    let target = aeroftp_data_root();
+    apply_flatpak_host_import(accept, host_config_dir_under_flatpak(), aeroftp_data_root())
+}
+
+/// Testable core of [`flatpak_host_import_apply`]: the paths come in resolved,
+/// and the decision marker goes into `target`, the data root where
+/// [`flatpak_import_decided`] looks for it.
+fn apply_flatpak_host_import(
+    accept: bool,
+    source: Option<PathBuf>,
+    target: Option<PathBuf>,
+) -> Result<FlatpakImportReport, String> {
     let mut report = FlatpakImportReport {
-        imported: false,
+        copied: 0,
         source: source.clone(),
         target: target.clone(),
     };
     if accept {
         match (source.as_ref(), target.as_ref()) {
             (Some(src), Some(dst)) => {
-                copy_missing_tree(src, dst).map_err(|e| {
+                report.copied = copy_missing_tree(src, dst).map_err(|e| {
                     format!(
                         "Import host config from {} to {}: {e}",
                         src.display(),
                         dst.display()
                     )
                 })?;
-                report.imported = true;
             }
             _ => return Err("No host configuration available to import".to_string()),
         }
     }
-    write_flatpak_import_marker();
+    if let Some(dst) = target.as_deref() {
+        write_flatpak_import_marker(dst);
+    }
     Ok(report)
 }
 
@@ -1151,6 +1167,79 @@ mod tests {
         let same = home.join(".config").join("aeroftp");
         let got = host_config_dir_impl(true, Some(home), "aeroftp", Some(same), |_| true);
         assert!(got.is_none());
+    }
+
+    /// A host config and an empty sandbox data root, as the import finds them.
+    fn flatpak_import_fixture() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let host = tmp.path().join("host").join("aeroftp");
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+        std::fs::create_dir_all(&host).unwrap();
+        std::fs::write(host.join("servers.json"), b"host servers").unwrap();
+        (tmp, host, sandbox)
+    }
+
+    #[test]
+    fn flatpak_import_accepted_copies_what_is_missing_and_records_the_decision() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert!(report.imported());
+        assert_eq!(report.copied, 1);
+        assert_eq!(
+            std::fs::read(sandbox.join("servers.json")).unwrap(),
+            b"host servers"
+        );
+        assert!(sandbox.join(FLATPAK_IMPORT_DECIDED_MARKER).is_file());
+    }
+
+    #[test]
+    fn flatpak_import_with_nothing_missing_is_not_reported_as_imported() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        std::fs::create_dir_all(&sandbox).unwrap();
+        std::fs::write(sandbox.join("servers.json"), b"sandbox servers").unwrap();
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        // Nothing was copied, so the GUI must not announce an import and ask for
+        // a restart, and the CLI must not print "Imported".
+        assert!(
+            !report.imported(),
+            "an import that copied nothing was reported as imported"
+        );
+        assert_eq!(report.copied, 0);
+        assert_eq!(
+            std::fs::read(sandbox.join("servers.json")).unwrap(),
+            b"sandbox servers"
+        );
+        assert!(sandbox.join(FLATPAK_IMPORT_DECIDED_MARKER).is_file());
+    }
+
+    #[test]
+    fn flatpak_import_declined_copies_nothing_and_records_the_decision() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+
+        let report =
+            apply_flatpak_host_import(false, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert!(!report.imported());
+        assert_eq!(report.copied, 0);
+        assert!(!sandbox.join("servers.json").exists());
+        assert!(sandbox.join(FLATPAK_IMPORT_DECIDED_MARKER).is_file());
+    }
+
+    #[test]
+    fn flatpak_import_without_a_host_config_fails_and_keeps_the_offer_open() {
+        let (_tmp, _host, sandbox) = flatpak_import_fixture();
+
+        let result = apply_flatpak_host_import(true, None, Some(sandbox.clone()));
+
+        assert!(result.is_err());
+        // No marker: the next start offers the import again.
+        assert!(!sandbox.join(FLATPAK_IMPORT_DECIDED_MARKER).exists());
     }
 
     /// The import copies only what is absent and never overwrites an existing

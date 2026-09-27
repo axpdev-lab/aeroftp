@@ -3307,6 +3307,7 @@
             "keystoreCopyName": "{name} (from backup)",
             "keystorePreviewLocalFromVault": "This device's server profile list could not be read, so the comparison uses the server list stored in the vault.",
             "keystoreDecisionsFailed": "The import finished, but your choices for server profiles could not be applied: {error}",
+            "keystorePreferencesFailed": "The import finished, but your app preferences could not be restored: {error}",
             "importKeystoreDesc": "Import credentials from a backup file",
             "importKeystorePrompt": "Enter the password used to encrypt this keystore backup.",
             "importServers": "Import Servers",
@@ -5872,6 +5873,8 @@
             "importBody": "AeroFTP found an existing configuration in your home folder. This Flatpak install uses its own separate storage, so your saved servers and encrypted vault are not visible here yet. Import them now? Files are only copied and nothing is overwritten, and your vault unlocks here the same way it does now.",
             "importAccept": "Import",
             "importedBody": "Your configuration was imported. Restart AeroFTP to load your servers and vault.",
+            "importNothingBody": "Nothing to import: this Flatpak install already has every file from your existing configuration.",
+            "importFailedBody": "The import stopped with an error: {error}. Files copied before the error stay in place and nothing was overwritten. AeroFTP will offer the import again at the next start.",
             "restartNow": "Restart now"
         },
         "picker": {

@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Genindlæs",
             "uiTokensReset": "Ryd tilsidesættelser",
             "uiTokensApplied": "Anvendte tilsidesættelser: {count}",
-            "uiTokensRejected": "Afviste poster: {count}"
+            "uiTokensRejected": "Afviste poster: {count}",
+            "keystorePreferencesFailed": "Importen er færdig, men dine appindstillinger kunne ikke gendannes: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP fandt en eksisterende konfiguration i din hjemmemappe. Denne Flatpak-installation bruger sit eget separate lager, så dine gemte servere og krypterede boks er ikke synlige her endnu. Vil du importere dem nu? Filerne kopieres kun, intet overskrives, og boksen låses op her på samme måde som nu.",
             "importAccept": "Importér",
             "importedBody": "Din konfiguration blev importeret. Genstart AeroFTP for at indlæse dine servere og din boks.",
-            "restartNow": "Genstart nu"
+            "restartNow": "Genstart nu",
+            "importNothingBody": "Intet at importere: denne Flatpak-installation har allerede alle filer fra din eksisterende konfiguration.",
+            "importFailedBody": "Importen stoppede med en fejl: {error}. Filer, der blev kopieret før fejlen, forbliver på plads, og intet blev overskrevet. AeroFTP vil tilbyde importen igen ved næste start."
         },
         "picker": {
             "unavailable": {

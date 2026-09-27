@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Újratöltés",
             "uiTokensReset": "Felülbírálások törlése",
             "uiTokensApplied": "Alkalmazott felülírások: {count}",
-            "uiTokensRejected": "Elutasított bejegyzések: {count}"
+            "uiTokensRejected": "Elutasított bejegyzések: {count}",
+            "keystorePreferencesFailed": "Az importálás befejeződött, de az alkalmazás beállításait nem sikerült visszaállítani: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "Az AeroFTP meglévő konfigurációt talált a saját mappájában. Ez a Flatpak-telepítés saját, külön tárolót használ, ezért a mentett kiszolgálói és a titkosított széf itt még nem láthatók. Importálja őket most? A fájlok csak másolódnak, semmi sem íródik felül, és a széf itt ugyanúgy oldódik fel, ahogy most.",
             "importAccept": "Importálás",
             "importedBody": "A konfigurációja importálva lett. Indítsa újra az AeroFTP-t a kiszolgálói és a széf betöltéséhez.",
-            "restartNow": "Újraindítás most"
+            "restartNow": "Újraindítás most",
+            "importNothingBody": "Nincs mit importálni: ez a Flatpak telepítés már tartalmazza a meglévő konfiguráció összes fájlját.",
+            "importFailedBody": "Az importálás hibával leállt: {error}. A hiba előtt másolt fájlok a helyükön maradnak, és semmi sem lett felülírva. Az AeroFTP a következő indításkor újra felajánlja az importálást."
         },
         "picker": {
             "unavailable": {

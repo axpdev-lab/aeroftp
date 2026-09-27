@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Tải lại",
             "uiTokensReset": "Xóa ghi đè",
             "uiTokensApplied": "Các ghi đè đã áp dụng: {count}",
-            "uiTokensRejected": "Các mục bị từ chối: {count}"
+            "uiTokensRejected": "Các mục bị từ chối: {count}",
+            "keystorePreferencesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được tùy chọn ứng dụng của bạn: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP đã tìm thấy một cấu hình hiện có trong thư mục chính của bạn. Bản cài đặt Flatpak này sử dụng bộ lưu trữ riêng biệt của nó, vì vậy các máy chủ đã lưu và két an toàn được mã hóa của bạn chưa hiển thị ở đây. Nhập chúng ngay bây giờ? Các tệp chỉ được sao chép, không có gì bị ghi đè, và két an toàn của bạn được mở khóa ở đây theo cùng cách như hiện tại.",
             "importAccept": "Nhập",
             "importedBody": "Cấu hình của bạn đã được nhập. Khởi động lại AeroFTP để tải các máy chủ và két an toàn của bạn.",
-            "restartNow": "Khởi động lại ngay"
+            "restartNow": "Khởi động lại ngay",
+            "importNothingBody": "Không có gì để nhập: bản cài đặt Flatpak này đã có tất cả các tệp từ cấu hình hiện tại của bạn.",
+            "importFailedBody": "Quá trình nhập đã dừng do lỗi: {error}. Các tệp đã sao chép trước khi xảy ra lỗi vẫn được giữ nguyên vị trí và không có gì bị ghi đè. AeroFTP sẽ đề xuất nhập lại vào lần khởi động tiếp theo."
         },
         "picker": {
             "unavailable": {

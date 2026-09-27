@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Muat Ulang",
             "uiTokensReset": "Hapus penggantian",
             "uiTokensApplied": "Penggantian diterapkan: {count}",
-            "uiTokensRejected": "Entri ditolak: {count}"
+            "uiTokensRejected": "Entri ditolak: {count}",
+            "keystorePreferencesFailed": "Impor selesai, tetapi preferensi aplikasi Anda tidak dapat dipulihkan: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP menemukan konfigurasi yang ada di folder beranda Anda. Pemasangan Flatpak ini menggunakan penyimpanannya sendiri yang terpisah, jadi server tersimpan dan brankas terenkripsi Anda belum terlihat di sini. Impor sekarang? File hanya disalin, tidak ada yang ditimpa, dan brankas terbuka di sini dengan cara yang sama seperti sekarang.",
             "importAccept": "Impor",
             "importedBody": "Konfigurasi Anda telah diimpor. Mulai ulang AeroFTP untuk memuat server dan brankas Anda.",
-            "restartNow": "Mulai ulang sekarang"
+            "restartNow": "Mulai ulang sekarang",
+            "importNothingBody": "Tidak ada yang perlu diimpor: instalasi Flatpak ini sudah memiliki semua file dari konfigurasi Anda yang sudah ada.",
+            "importFailedBody": "Impor berhenti karena kesalahan: {error}. File yang disalin sebelum kesalahan tetap ada di tempatnya dan tidak ada yang ditimpa. AeroFTP akan menawarkan impor lagi pada saat mulai berikutnya."
         },
         "picker": {
             "unavailable": {

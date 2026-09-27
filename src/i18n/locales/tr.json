@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Yeniden Yükle",
             "uiTokensReset": "Geçersiz kılmaları temizle",
             "uiTokensApplied": "Uygulanan geçersiz kılmalar: {count}",
-            "uiTokensRejected": "Reddedilen girdiler: {count}"
+            "uiTokensRejected": "Reddedilen girdiler: {count}",
+            "keystorePreferencesFailed": "İçe aktarma tamamlandı ancak uygulama tercihleriniz geri yüklenemedi: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP, ev klasörünüzde mevcut bir yapılandırma buldu. Bu Flatpak kurulumu kendi ayrı depolamasını kullandığından, kayıtlı sunucularınız ve şifreli kasanız burada henüz görünmüyor. Şimdi içe aktarılsın mı? Dosyalar yalnızca kopyalanır, hiçbir şeyin üzerine yazılmaz ve kasanız burada şu anki ile aynı şekilde açılır.",
             "importAccept": "İçe aktar",
             "importedBody": "Yapılandırmanız içe aktarıldı. Sunucularınızı ve kasanızı yüklemek için AeroFTP'yi yeniden başlatın.",
-            "restartNow": "Şimdi yeniden başlat"
+            "restartNow": "Şimdi yeniden başlat",
+            "importNothingBody": "İçe aktarılacak bir şey yok: bu Flatpak kurulumunda mevcut yapılandırmanızdaki tüm dosyalar zaten var.",
+            "importFailedBody": "İçe aktarma bir hatayla durdu: {error}. Hatadan önce kopyalanan dosyalar yerinde kalır ve hiçbir şeyin üzerine yazılmadı. AeroFTP, bir sonraki başlatmada içe aktarmayı yeniden önerecektir."
         },
         "picker": {
             "unavailable": {

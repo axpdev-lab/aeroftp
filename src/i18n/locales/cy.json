@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Ail-lwytho",
             "uiTokensReset": "Clirio'r diysgrifiadau",
             "uiTokensApplied": "Diysgrifiadau a gymhwyswyd: {count}",
-            "uiTokensRejected": "Cofnodion a wrthodwyd: {count}"
+            "uiTokensRejected": "Cofnodion a wrthodwyd: {count}",
+            "keystorePreferencesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer eich dewisiadau ar gyfer y rhaglen: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5891,7 +5892,9 @@
             "importBody": "Mae AeroFTP wedi canfod ffurfweddiad presennol yn eich ffolder cartref. Mae'r gosodiad Flatpak hwn yn defnyddio ei storfa ar wahân ei hun, felly nid yw eich gweinyddwyr wedi'u cadw a'ch cell ddiogel wedi'i hamgryptio i'w gweld yma eto. A hoffech eu mewnforio nawr? Dim ond copïo'r ffeiliau a wneir, ni chaiff dim ei drosysgrifo, ac mae eich cell ddiogel yn datgloi yma yn union fel y mae'n ei wneud nawr.",
             "importAccept": "Mewnforio",
             "importedBody": "Mewnforiwyd eich ffurfweddiad. Ailgychwynnwch AeroFTP i lwytho eich gweinyddwyr a'ch cell ddiogel.",
-            "restartNow": "Ailgychwyn nawr"
+            "restartNow": "Ailgychwyn nawr",
+            "importNothingBody": "Dim byd i'w fewnforio: mae gan y gosodiad Flatpak hwn eisoes bob ffeil o'ch cyfluniad presennol.",
+            "importFailedBody": "Daeth y mewnforio i ben gyda gwall: {error}. Mae ffeiliau a gopïwyd cyn y gwall yn aros yn eu lle ac ni chafodd dim ei drosysgrifo. Bydd AeroFTP yn cynnig y mewnforio eto adeg y cychwyn nesaf."
         },
         "picker": {
             "unavailable": {

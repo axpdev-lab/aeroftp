@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Ponovno učitaj",
             "uiTokensReset": "Očisti nadjačavanja",
             "uiTokensApplied": "Primijenjena nadjačavanja: {count}",
-            "uiTokensRejected": "Odbijeni unosi: {count}"
+            "uiTokensRejected": "Odbijeni unosi: {count}",
+            "keystorePreferencesFailed": "Uvoz je završen, ali vaše postavke aplikacije nije bilo moguće vratiti: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP je pronašao postojeću konfiguraciju u vašoj početnoj mapi. Ova Flatpak instalacija koristi vlastitu odvojenu pohranu, pa vaši spremljeni poslužitelji i šifrirani trezor ovdje još nisu vidljivi. Želite li ih sada uvesti? Datoteke se samo kopiraju, ništa se ne prepisuje, a trezor se ovdje otključava na isti način kao i sada.",
             "importAccept": "Uvezi",
             "importedBody": "Vaša je konfiguracija uvezena. Ponovno pokrenite AeroFTP da učitate svoje poslužitelje i trezor.",
-            "restartNow": "Ponovno pokreni sada"
+            "restartNow": "Ponovno pokreni sada",
+            "importNothingBody": "Nema ničega za uvoz: ova Flatpak instalacija već sadrži sve datoteke iz vaše postojeće konfiguracije.",
+            "importFailedBody": "Uvoz je zaustavljen s pogreškom: {error}. Datoteke kopirane prije pogreške ostaju na mjestu i ništa nije prepisano. AeroFTP će ponovno ponuditi uvoz pri sljedećem pokretanju."
         },
         "picker": {
             "unavailable": {

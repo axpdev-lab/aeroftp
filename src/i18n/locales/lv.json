@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Pārlādēt",
             "uiTokensReset": "Notīrīt aizstājumus",
             "uiTokensApplied": "Lietotie aizstājumi: {count}",
-            "uiTokensRejected": "Noraidītie ieraksti: {count}"
+            "uiTokensRejected": "Noraidītie ieraksti: {count}",
+            "keystorePreferencesFailed": "Importēšana ir pabeigta, bet neizdevās atjaunot jūsu lietotnes iestatījumus: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP atrada esošu konfigurāciju jūsu mājas mapē. Šī Flatpak instalācija izmanto savu atsevišķu krātuvi, tāpēc jūsu saglabātie serveri un šifrētais seifs šeit vēl nav redzami. Vai importēt tos tagad? Faili tiek tikai kopēti, nekas netiek pārrakstīts, un seifs šeit tiek atbloķēts tāpat kā tagad.",
             "importAccept": "Importēt",
             "importedBody": "Jūsu konfigurācija tika importēta. Restartējiet AeroFTP, lai ielādētu savus serverus un seifu.",
-            "restartNow": "Restartēt tagad"
+            "restartNow": "Restartēt tagad",
+            "importNothingBody": "Nav ko importēt: šajā Flatpak instalācijā jau ir visi faili no jūsu esošās konfigurācijas.",
+            "importFailedBody": "Importēšana apstājās ar kļūdu: {error}. Faili, kas nokopēti pirms kļūdas, paliek savā vietā, un nekas netika pārrakstīts. AeroFTP nākamajā palaišanas reizē piedāvās importēšanu vēlreiz."
         },
         "picker": {
             "unavailable": {

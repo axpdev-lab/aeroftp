@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Neu laden",
             "uiTokensReset": "Überschreibungen löschen",
             "uiTokensApplied": "Angewendete Überschreibungen: {count}",
-            "uiTokensRejected": "Abgelehnte Einträge: {count}"
+            "uiTokensRejected": "Abgelehnte Einträge: {count}",
+            "keystorePreferencesFailed": "Der Import ist abgeschlossen, aber Ihre App-Einstellungen konnten nicht wiederhergestellt werden: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP hat eine vorhandene Konfiguration in Ihrem Persönlichen Ordner gefunden. Diese Flatpak-Installation verwendet ihren eigenen getrennten Speicher, daher sind Ihre gespeicherten Server und der verschlüsselte Tresor hier noch nicht sichtbar. Jetzt importieren? Die Dateien werden nur kopiert, nichts wird überschrieben, und der Tresor wird hier auf dieselbe Weise entsperrt wie jetzt.",
             "importAccept": "Importieren",
             "importedBody": "Ihre Konfiguration wurde importiert. Starten Sie AeroFTP neu, um Ihre Server und den Tresor zu laden.",
-            "restartNow": "Jetzt neu starten"
+            "restartNow": "Jetzt neu starten",
+            "importNothingBody": "Nichts zu importieren: Diese Flatpak-Installation enthält bereits alle Dateien aus Ihrer bestehenden Konfiguration.",
+            "importFailedBody": "Der Import wurde mit einem Fehler abgebrochen: {error}. Vor dem Fehler kopierte Dateien bleiben erhalten, und nichts wurde überschrieben. AeroFTP bietet den Import beim nächsten Start erneut an."
         },
         "picker": {
             "unavailable": {

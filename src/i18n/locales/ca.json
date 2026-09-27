@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Recarrega",
             "uiTokensReset": "Esborra les substitucions",
             "uiTokensApplied": "Substitucions aplicades: {count}",
-            "uiTokensRejected": "Entrades rebutjades: {count}"
+            "uiTokensRejected": "Entrades rebutjades: {count}",
+            "keystorePreferencesFailed": "La importació ha acabat, però no s'han pogut restaurar les teves preferències de l'aplicació: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5891,7 +5892,9 @@
             "importBody": "AeroFTP ha trobat una configuració existent a la vostra carpeta personal. Aquesta instal·lació de Flatpak utilitza el seu propi emmagatzematge separat, de manera que els servidors desats i la caixa forta xifrada encara no es veuen aquí. Els voleu importar ara? Els fitxers només es copien, no se sobreescriu res, i la caixa forta es desbloqueja aquí de la mateixa manera que ara.",
             "importAccept": "Importa",
             "importedBody": "S'ha importat la configuració. Reinicieu AeroFTP per carregar els servidors i la caixa forta.",
-            "restartNow": "Reinicia ara"
+            "restartNow": "Reinicia ara",
+            "importNothingBody": "Res a importar: aquesta instal·lació de Flatpak ja té tots els fitxers de la vostra configuració existent.",
+            "importFailedBody": "La importació s'ha aturat amb un error: {error}. Els fitxers copiats abans de l'error es mantenen al seu lloc i no s'ha sobreescrit res. AeroFTP tornarà a oferir la importació en el proper inici."
         },
         "picker": {
             "unavailable": {

@@ -38608,23 +38608,31 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
 
     match portable::flatpak_host_import_apply(true) {
         Ok(report) => {
+            let imported = report.imported();
             match format {
                 OutputFormat::Json => println!(
                     "{}",
                     serde_json::json!({
-                        "imported": report.imported,
+                        "imported": imported,
+                        "copied": report.copied,
                         "source": path_str(report.source),
                         "target": path_str(report.target),
-                        "requires_restart": report.imported,
+                        "requires_restart": imported,
                     })
                 ),
                 OutputFormat::Text => {
-                    if report.imported {
+                    let source = path_str(report.source).unwrap_or_default();
+                    if imported {
                         println!(
-                            "Imported host configuration into the sandbox. Restart AeroFTP to load it."
+                            "Imported {} {} from {} into the sandbox. Restart AeroFTP to load them.",
+                            report.copied,
+                            if report.copied == 1 { "file" } else { "files" },
+                            source
                         );
                     } else {
-                        println!("Nothing to import.");
+                        println!(
+                            "Nothing to import: the sandbox already has every file from {source}."
+                        );
                     }
                 }
             }

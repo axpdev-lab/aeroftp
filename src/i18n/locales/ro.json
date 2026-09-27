@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Reîncarcă",
             "uiTokensReset": "Șterge suprascrierile",
             "uiTokensApplied": "Suprascrieri aplicate: {count}",
-            "uiTokensRejected": "Intrări respinse: {count}"
+            "uiTokensRejected": "Intrări respinse: {count}",
+            "keystorePreferencesFailed": "Importul s-a încheiat, dar preferințele aplicației nu au putut fi restaurate: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP a găsit o configurație existentă în folderul dumneavoastră personal. Această instalare Flatpak folosește propriul spațiu de stocare separat, așa că serverele salvate și seiful criptat nu sunt încă vizibile aici. Le importați acum? Fișierele sunt doar copiate, nimic nu este suprascris, iar seiful se deblochează aici la fel ca acum.",
             "importAccept": "Importă",
             "importedBody": "Configurația dumneavoastră a fost importată. Reporniți AeroFTP pentru a încărca serverele și seiful.",
-            "restartNow": "Repornește acum"
+            "restartNow": "Repornește acum",
+            "importNothingBody": "Nimic de importat: această instalare Flatpak are deja toate fișierele din configurația dumneavoastră existentă.",
+            "importFailedBody": "Importul s-a oprit cu o eroare: {error}. Fișierele copiate înainte de eroare rămân la locul lor și nimic nu a fost suprascris. AeroFTP va propune din nou importul la următoarea pornire."
         },
         "picker": {
             "unavailable": {

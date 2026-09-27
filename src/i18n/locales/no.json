@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Last inn på nytt",
             "uiTokensReset": "Fjern overstyringer",
             "uiTokensApplied": "Brukte overstyringer: {count}",
-            "uiTokensRejected": "Avviste oppføringer: {count}"
+            "uiTokensRejected": "Avviste oppføringer: {count}",
+            "keystorePreferencesFailed": "Importen er ferdig, men appinnstillingene dine kunne ikke gjenopprettes: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5891,7 +5892,9 @@
             "importBody": "AeroFTP fant et eksisterende oppsett i hjemmemappen din. Denne Flatpak-installasjonen bruker sitt eget separate lager, så de lagrede serverne dine og det krypterte hvelvet er ikke synlige her ennå. Vil du importere dem nå? Filene bare kopieres, ingenting overskrives, og hvelvet låses opp her på samme måte som nå.",
             "importAccept": "Importer",
             "importedBody": "Oppsettet ditt ble importert. Start AeroFTP på nytt for å laste inn serverne og hvelvet ditt.",
-            "restartNow": "Start på nytt nå"
+            "restartNow": "Start på nytt nå",
+            "importNothingBody": "Ingenting å importere: denne Flatpak-installasjonen har allerede alle filene fra din eksisterende konfigurasjon.",
+            "importFailedBody": "Importen stoppet med en feil: {error}. Filer som ble kopiert før feilen, blir liggende, og ingenting ble overskrevet. AeroFTP vil tilby importen på nytt ved neste oppstart."
         },
         "picker": {
             "unavailable": {

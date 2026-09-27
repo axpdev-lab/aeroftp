@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Recharger",
             "uiTokensReset": "Effacer les remplacements",
             "uiTokensApplied": "Remplacements appliqués : {count}",
-            "uiTokensRejected": "Entrées rejetées : {count}"
+            "uiTokensRejected": "Entrées rejetées : {count}",
+            "keystorePreferencesFailed": "L'importation est terminée, mais vos préférences de l'application n'ont pas pu être restaurées : {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP a trouvé une configuration existante dans votre dossier personnel. Cette installation Flatpak utilise son propre stockage séparé, donc vos serveurs enregistrés et votre coffre-fort chiffré ne sont pas encore visibles ici. Les importer maintenant ? Les fichiers sont seulement copiés, rien n'est écrasé, et le coffre-fort se déverrouille ici de la même manière qu'aujourd'hui.",
             "importAccept": "Importer",
             "importedBody": "Votre configuration a été importée. Redémarrez AeroFTP pour charger vos serveurs et votre coffre-fort.",
-            "restartNow": "Redémarrer maintenant"
+            "restartNow": "Redémarrer maintenant",
+            "importNothingBody": "Rien à importer : cette installation Flatpak possède déjà tous les fichiers de votre configuration existante.",
+            "importFailedBody": "L'importation s'est arrêtée avec une erreur : {error}. Les fichiers copiés avant l'erreur restent en place et rien n'a été écrasé. AeroFTP proposera à nouveau l'importation au prochain démarrage."
         },
         "picker": {
             "unavailable": {

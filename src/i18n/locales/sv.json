@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Ladda om",
             "uiTokensReset": "Rensa åsidosättningar",
             "uiTokensApplied": "Tillämpade åsidosättningar: {count}",
-            "uiTokensRejected": "Avvisade poster: {count}"
+            "uiTokensRejected": "Avvisade poster: {count}",
+            "keystorePreferencesFailed": "Importen är klar, men dina appinställningar kunde inte återställas: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP hittade en befintlig konfiguration i din hemmapp. Den här Flatpak-installationen använder sitt eget separata lagringsutrymme, så dina sparade servrar och det krypterade valvet syns inte här ännu. Vill du importera dem nu? Filerna kopieras bara, inget skrivs över, och valvet låses upp här på samma sätt som nu.",
             "importAccept": "Importera",
             "importedBody": "Din konfiguration importerades. Starta om AeroFTP för att läsa in dina servrar och ditt valv.",
-            "restartNow": "Starta om nu"
+            "restartNow": "Starta om nu",
+            "importNothingBody": "Inget att importera: den här Flatpak-installationen har redan alla filer från din befintliga konfiguration.",
+            "importFailedBody": "Importen stoppades med ett fel: {error}. Filer som kopierades innan felet ligger kvar och inget skrevs över. AeroFTP kommer att föreslå importen igen vid nästa start."
         },
         "picker": {
             "unavailable": {

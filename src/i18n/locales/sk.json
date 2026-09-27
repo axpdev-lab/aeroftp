@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Načítať znova",
             "uiTokensReset": "Vymazať prepísania",
             "uiTokensApplied": "Použité prepísania: {count}",
-            "uiTokensRejected": "Odmietnuté položky: {count}"
+            "uiTokensRejected": "Odmietnuté položky: {count}",
+            "keystorePreferencesFailed": "Import sa skončil, ale vaše predvoľby aplikácie sa nepodarilo obnoviť: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP našiel existujúcu konfiguráciu vo vašom domovskom priečinku. Táto inštalácia cez Flatpak používa vlastné oddelené úložisko, takže vaše uložené servery a šifrovaný trezor tu zatiaľ nie sú viditeľné. Chcete ich teraz importovať? Súbory sa iba skopírujú, nič sa neprepíše a trezor sa tu odomyká rovnako ako teraz.",
             "importAccept": "Importovať",
             "importedBody": "Vaša konfigurácia bola importovaná. Reštartujte AeroFTP, aby sa načítali vaše servery a trezor.",
-            "restartNow": "Reštartovať teraz"
+            "restartNow": "Reštartovať teraz",
+            "importNothingBody": "Nie je čo importovať: táto inštalácia Flatpak už obsahuje všetky súbory z vašej existujúcej konfigurácie.",
+            "importFailedBody": "Import sa zastavil s chybou: {error}. Súbory skopírované pred chybou zostávajú na svojom mieste a nič nebolo prepísané. AeroFTP ponúkne import znova pri ďalšom spustení."
         },
         "picker": {
             "unavailable": {

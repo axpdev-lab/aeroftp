@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Lataa uudelleen",
             "uiTokensReset": "Tyhjennä ohitukset",
             "uiTokensApplied": "Käytetyt ohitukset: {count}",
-            "uiTokensRejected": "Hylätyt kohteet: {count}"
+            "uiTokensRejected": "Hylätyt kohteet: {count}",
+            "keystorePreferencesFailed": "Tuonti valmistui, mutta sovelluksen asetuksiasi ei voitu palauttaa: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP löysi olemassa olevan määrityksen kotikansiostasi. Tämä Flatpak-asennus käyttää omaa erillistä tallennustilaansa, joten tallennetut palvelimesi ja salattu holvi eivät näy täällä vielä. Tuodaanko ne nyt? Tiedostot vain kopioidaan, mitään ei korvata, ja holvi avautuu täällä samalla tavalla kuin nyt.",
             "importAccept": "Tuo",
             "importedBody": "Määrityksesi tuotiin. Käynnistä AeroFTP uudelleen ladataksesi palvelimesi ja holvisi.",
-            "restartNow": "Käynnistä uudelleen nyt"
+            "restartNow": "Käynnistä uudelleen nyt",
+            "importNothingBody": "Ei mitään tuotavaa: tässä Flatpak-asennuksessa on jo kaikki tiedostot nykyisestä asetuksestasi.",
+            "importFailedBody": "Tuonti pysähtyi virheeseen: {error}. Ennen virhettä kopioidut tiedostot pysyvät paikallaan, eikä mitään korvattu. AeroFTP tarjoaa tuontia uudelleen seuraavalla käynnistyskerralla."
         },
         "picker": {
             "unavailable": {

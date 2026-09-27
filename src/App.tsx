@@ -471,6 +471,7 @@ import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { findGvfsMtpMount, isGvfsMtpPath } from './utils/gvfsMtpMount';
+import { acceptFlatpakImport } from './utils/flatpakImport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -1948,16 +1949,26 @@ const App: React.FC = () => {
           confirmLabel: t('flatpak.importAccept'),
           confirmColor: 'blue',
           onConfirm: async () => {
-            try {
-              await invoke('flatpak_config_import_apply', { accept: true });
-            } catch (e) {
-              console.warn('flatpak import failed', e);
+            // A dialog, not a toast: toasts can be switched off, and the user
+            // just made a decision whose result they must see.
+            const outcome = await acceptFlatpakImport();
+            if (outcome.kind === 'imported') {
+              setConfirmDialog({
+                message: t('flatpak.importedBody'),
+                confirmLabel: t('flatpak.restartNow'),
+                confirmColor: 'blue',
+                onConfirm: () => { invoke('restart_app'); },
+                onCancel: () => setConfirmDialog(null),
+              });
+              return;
             }
             setConfirmDialog({
-              message: t('flatpak.importedBody'),
-              confirmLabel: t('flatpak.restartNow'),
+              message: outcome.kind === 'failed'
+                ? t('flatpak.importFailedBody', { error: outcome.error })
+                : t('flatpak.importNothingBody'),
+              confirmLabel: t('common.ok'),
               confirmColor: 'blue',
-              onConfirm: () => { invoke('restart_app'); },
+              onConfirm: () => setConfirmDialog(null),
               onCancel: () => setConfirmDialog(null),
             });
           },

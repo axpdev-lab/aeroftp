@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Įkelti iš naujo",
             "uiTokensReset": "Išvalyti perrašymus",
             "uiTokensApplied": "Pritaikyti pakeitimai: {count}",
-            "uiTokensRejected": "Atmesti įrašai: {count}"
+            "uiTokensRejected": "Atmesti įrašai: {count}",
+            "keystorePreferencesFailed": "Importavimas baigtas, bet nepavyko atkurti jūsų programos nuostatų: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "„AeroFTP“ rado esamą konfigūraciją jūsų namų aplanke. Šis „Flatpak“ diegimas naudoja atskirą savo saugyklą, todėl jūsų įrašyti serveriai ir šifruotas seifas čia dar nematomi. Importuoti juos dabar? Failai tik nukopijuojami, niekas neperrašoma, o seifas čia atrakinamas taip pat, kaip ir dabar.",
             "importAccept": "Importuoti",
             "importedBody": "Jūsų konfigūracija importuota. Iš naujo paleiskite „AeroFTP“, kad įkeltumėte savo serverius ir seifą.",
-            "restartNow": "Paleisti iš naujo dabar"
+            "restartNow": "Paleisti iš naujo dabar",
+            "importNothingBody": "Nėra ko importuoti: šioje Flatpak diegimo versijoje jau yra visi failai iš jūsų dabartinės konfigūracijos.",
+            "importFailedBody": "Importavimas sustojo dėl klaidos: {error}. Prieš klaidą nukopijuoti failai lieka savo vietose ir niekas nebuvo perrašyta. AeroFTP vėl pasiūlys importavimą kito paleidimo metu."
         },
         "picker": {
             "unavailable": {

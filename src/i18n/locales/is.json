@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Endurhlaða",
             "uiTokensReset": "Hreinsa yfirskrifanir",
             "uiTokensApplied": "Beittar yfirskrifanir: {count}",
-            "uiTokensRejected": "Hafnaðar færslur: {count}"
+            "uiTokensRejected": "Hafnaðar færslur: {count}",
+            "keystorePreferencesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta stillingar þínar fyrir forritið: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5891,7 +5892,9 @@
             "importBody": "AeroFTP fann fyrirliggjandi stillingar í heimamöppunni þinni. Þessi Flatpak-uppsetning notar sína eigin aðskildu geymslu, svo vistuðu þjónarnir þínir og dulkóðaða hirslan sjást ekki hér enn. Flytja þau inn núna? Skrárnar eru aðeins afritaðar, engu er skrifað yfir, og hirslan opnast hér á sama hátt og hún gerir núna.",
             "importAccept": "Flytja inn",
             "importedBody": "Stillingarnar þínar voru fluttar inn. Endurræstu AeroFTP til að hlaða inn þjónunum þínum og hirslunni.",
-            "restartNow": "Endurræsa núna"
+            "restartNow": "Endurræsa núna",
+            "importNothingBody": "Ekkert til að flytja inn: þessi Flatpak uppsetning hefur nú þegar allar skrár úr núverandi stillingum þínum.",
+            "importFailedBody": "Innflutningur stöðvaðist með villu: {error}. Skrár sem afritaðar voru fyrir villuna haldast á sínum stað og engu var skrifað yfir. AeroFTP mun bjóða upp á innflutninginn aftur við næstu ræsingu."
         },
         "picker": {
             "unavailable": {

@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Muat Semula",
             "uiTokensReset": "Kosongkan gantian",
             "uiTokensApplied": "Tulis ganti yang digunakan: {count}",
-            "uiTokensRejected": "Entri yang ditolak: {count}"
+            "uiTokensRejected": "Entri yang ditolak: {count}",
+            "keystorePreferencesFailed": "Import selesai, tetapi keutamaan aplikasi anda tidak dapat dipulihkan: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP menemui konfigurasi sedia ada dalam folder rumah anda. Pemasangan Flatpak ini menggunakan storan berasingannya sendiri, jadi pelayan tersimpan dan bilik kebal tersulit anda belum kelihatan di sini. Import sekarang? Fail hanya disalin, tiada apa-apa ditulis ganti, dan bilik kebal dibuka di sini dengan cara yang sama seperti sekarang.",
             "importAccept": "Import",
             "importedBody": "Konfigurasi anda telah diimport. Mulakan semula AeroFTP untuk memuatkan pelayan dan bilik kebal anda.",
-            "restartNow": "Mula semula sekarang"
+            "restartNow": "Mula semula sekarang",
+            "importNothingBody": "Tiada apa untuk diimport: pemasangan Flatpak ini sudah mempunyai semua fail daripada konfigurasi sedia ada anda.",
+            "importFailedBody": "Import berhenti dengan ralat: {error}. Fail yang disalin sebelum ralat kekal di tempatnya dan tiada apa yang ditulis ganti. AeroFTP akan menawarkan import semula pada permulaan seterusnya."
         },
         "picker": {
             "unavailable": {

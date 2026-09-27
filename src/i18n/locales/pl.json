@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Załaduj ponownie",
             "uiTokensReset": "Wyczyść nadpisania",
             "uiTokensApplied": "Zastosowane nadpisania: {count}",
-            "uiTokensRejected": "Odrzucone wpisy: {count}"
+            "uiTokensRejected": "Odrzucone wpisy: {count}",
+            "keystorePreferencesFailed": "Import zakończył się, ale nie udało się przywrócić Twoich preferencji aplikacji: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP znalazł istniejącą konfigurację w Twoim folderze domowym. Ta instalacja Flatpak korzysta z własnej, oddzielnej pamięci, więc zapisane serwery i zaszyfrowany sejf nie są tu jeszcze widoczne. Zaimportować je teraz? Pliki są tylko kopiowane, nic nie jest nadpisywane, a sejf odblokowuje się tutaj w taki sam sposób jak teraz.",
             "importAccept": "Importuj",
             "importedBody": "Twoja konfiguracja została zaimportowana. Uruchom ponownie AeroFTP, aby wczytać serwery i sejf.",
-            "restartNow": "Uruchom ponownie teraz"
+            "restartNow": "Uruchom ponownie teraz",
+            "importNothingBody": "Nie ma nic do zaimportowania: ta instalacja Flatpak zawiera już wszystkie pliki z Twojej istniejącej konfiguracji.",
+            "importFailedBody": "Import zatrzymał się z błędem: {error}. Pliki skopiowane przed błędem pozostają na swoim miejscu i nic nie zostało nadpisane. AeroFTP zaproponuje import ponownie przy następnym uruchomieniu."
         },
         "picker": {
             "unavailable": {

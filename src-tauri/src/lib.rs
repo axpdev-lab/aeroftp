@@ -16532,7 +16532,8 @@ async fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, 
 fn flatpak_config_import_apply_blocking(accept: bool) -> Result<serde_json::Value, String> {
     let report = portable::flatpak_host_import_apply(accept)?;
     Ok(serde_json::json!({
-        "imported": report.imported,
+        "imported": report.imported(),
+        "copied": report.copied,
         "source": report.source.map(|p| p.to_string_lossy().into_owned()),
         "target": report.target.map(|p| p.to_string_lossy().into_owned()),
     }))

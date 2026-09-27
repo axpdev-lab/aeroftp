@@ -1193,7 +1193,8 @@
             "uiTokensReload": "I-reload",
             "uiTokensReset": "I-clear ang mga override",
             "uiTokensApplied": "Mga na-apply na override: {count}",
-            "uiTokensRejected": "Mga tinanggihang entry: {count}"
+            "uiTokensRejected": "Mga tinanggihang entry: {count}",
+            "keystorePreferencesFailed": "Tapos na ang pag-import, pero hindi naibalik ang mga kagustuhan mo sa app: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5891,7 +5892,9 @@
             "importBody": "May natagpuang umiiral na configuration ang AeroFTP sa iyong home folder. Ang Flatpak install na ito ay gumagamit ng sarili nitong hiwalay na storage, kaya hindi pa nakikita rito ang iyong mga na-save na server at naka-encrypt na vault. Iimport ba ang mga ito ngayon? Kinokopya lang ang mga file, walang na-o-overwrite, at na-a-unlock ang iyong vault dito sa parehong paraan tulad ngayon.",
             "importAccept": "Import",
             "importedBody": "Na-import ang iyong configuration. I-restart ang AeroFTP para i-load ang iyong mga server at vault.",
-            "restartNow": "I-restart ngayon"
+            "restartNow": "I-restart ngayon",
+            "importNothingBody": "Walang dapat i-import: mayroon nang lahat ng file mula sa iyong kasalukuyang configuration ang Flatpak install na ito.",
+            "importFailedBody": "Huminto ang pag-import dahil sa error: {error}. Ang mga file na kinopya bago mangyari ang error ay nananatili sa kinaroroonan at walang na-overwrite. Muling ihahandog ng AeroFTP ang pag-import sa susunod na pagsisimula."
         },
         "picker": {
             "unavailable": {

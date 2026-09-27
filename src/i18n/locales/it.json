@@ -1614,7 +1614,8 @@
             "uiTokensReload": "Ricarica",
             "uiTokensReset": "Cancella override",
             "uiTokensApplied": "Sostituzioni applicate: {count}",
-            "uiTokensRejected": "Voci rifiutate: {count}"
+            "uiTokensRejected": "Voci rifiutate: {count}",
+            "keystorePreferencesFailed": "L'importazione è terminata, ma le tue preferenze dell'app non sono state ripristinate: {error}"
         },
         "appearance": {
             "patternCross": "Croce",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP ha trovato una configurazione esistente nella tua cartella home. Questa installazione Flatpak usa un proprio spazio di archiviazione separato, quindi i server salvati e la cassaforte cifrata non sono ancora visibili qui. Importarli ora? I file vengono solo copiati, nulla viene sovrascritto e la cassaforte si sblocca qui nello stesso modo in cui si sblocca ora.",
             "importAccept": "Importa",
             "importedBody": "La tua configurazione è stata importata. Riavvia AeroFTP per caricare i tuoi server e la cassaforte.",
-            "restartNow": "Riavvia ora"
+            "restartNow": "Riavvia ora",
+            "importNothingBody": "Niente da importare: questa installazione Flatpak ha già tutti i file della tua configurazione esistente.",
+            "importFailedBody": "L'importazione si è interrotta con un errore: {error}. I file copiati prima dell'errore restano al loro posto e nulla è stato sovrascritto. AeroFTP proporrà di nuovo l'importazione al prossimo avvio."
         },
         "picker": {
             "unavailable": {

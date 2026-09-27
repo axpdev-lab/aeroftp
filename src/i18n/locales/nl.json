@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Herladen",
             "uiTokensReset": "Overschrijvingen wissen",
             "uiTokensApplied": "Toegepaste overschrijvingen: {count}",
-            "uiTokensRejected": "Afgewezen vermeldingen: {count}"
+            "uiTokensRejected": "Afgewezen vermeldingen: {count}",
+            "keystorePreferencesFailed": "De import is voltooid, maar je app-voorkeuren konden niet worden hersteld: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP heeft een bestaande configuratie in uw persoonlijke map gevonden. Deze Flatpak-installatie gebruikt zijn eigen aparte opslag, dus uw opgeslagen servers en versleutelde kluis zijn hier nog niet zichtbaar. Nu importeren? Bestanden worden alleen gekopieerd, er wordt niets overschreven, en de kluis wordt hier op dezelfde manier ontgrendeld als nu.",
             "importAccept": "Importeren",
             "importedBody": "Uw configuratie is geïmporteerd. Start AeroFTP opnieuw op om uw servers en kluis te laden.",
-            "restartNow": "Nu opnieuw opstarten"
+            "restartNow": "Nu opnieuw opstarten",
+            "importNothingBody": "Niets om te importeren: deze Flatpak-installatie bevat al alle bestanden uit uw bestaande configuratie.",
+            "importFailedBody": "Het importeren is gestopt met een fout: {error}. Bestanden die vóór de fout zijn gekopieerd, blijven op hun plaats en er is niets overschreven. AeroFTP zal het importeren bij de volgende start opnieuw voorstellen."
         },
         "picker": {
             "unavailable": {

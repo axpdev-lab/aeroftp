@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Ponovno naloži",
             "uiTokensReset": "Počisti preglasitve",
             "uiTokensApplied": "Uporabljene preglasitve: {count}",
-            "uiTokensRejected": "Zavrnjeni vnosi: {count}"
+            "uiTokensRejected": "Zavrnjeni vnosi: {count}",
+            "keystorePreferencesFailed": "Uvoz je končan, vendar vaših nastavitev aplikacije ni bilo mogoče obnoviti: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP je našel obstoječo konfiguracijo v vaši domači mapi. Ta namestitev Flatpak uporablja svojo ločeno shrambo, zato vaši shranjeni strežniki in šifrirani trezor tukaj še niso vidni. Jih želite zdaj uvoziti? Datoteke se samo kopirajo, nič se ne prepiše, trezor pa se tukaj odklene na enak način kot zdaj.",
             "importAccept": "Uvozi",
             "importedBody": "Vaša konfiguracija je bila uvožena. Znova zaženite AeroFTP, da naložite svoje strežnike in trezor.",
-            "restartNow": "Znova zaženi zdaj"
+            "restartNow": "Znova zaženi zdaj",
+            "importNothingBody": "Ni česa uvoziti: ta namestitev Flatpak že vsebuje vse datoteke iz vaše obstoječe konfiguracije.",
+            "importFailedBody": "Uvoz se je ustavil z napako: {error}. Datoteke, kopirane pred napako, ostanejo na svojem mestu in nič ni bilo prepisano. AeroFTP bo uvoz znova ponudil ob naslednjem zagonu."
         },
         "picker": {
             "unavailable": {

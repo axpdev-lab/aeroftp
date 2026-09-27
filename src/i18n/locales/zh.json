@@ -1193,7 +1193,8 @@
             "uiTokensReload": "重新加载",
             "uiTokensReset": "清除覆盖",
             "uiTokensApplied": "已应用的覆盖：{count}",
-            "uiTokensRejected": "被拒绝的条目：{count}"
+            "uiTokensRejected": "被拒绝的条目：{count}",
+            "keystorePreferencesFailed": "导入已完成，但未能恢复您的应用偏好设置：{error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP 在您的主目录中发现了现有配置。此 Flatpak 安装使用自己独立的存储空间，因此您保存的服务器和加密保险库目前尚未在此处显示。现在导入它们吗？文件仅会被复制，不会覆盖任何内容，并且您的保险库在这里的解锁方式与现在相同。",
             "importAccept": "导入",
             "importedBody": "您的配置已导入。请重新启动 AeroFTP 以加载您的服务器和保险库。",
-            "restartNow": "立即重新启动"
+            "restartNow": "立即重新启动",
+            "importNothingBody": "没有需要导入的内容：此 Flatpak 安装已包含您现有配置中的所有文件。",
+            "importFailedBody": "导入因错误而停止：{error}。错误发生前已复制的文件保持不变，没有任何内容被覆盖。AeroFTP 将在下次启动时再次提议导入。"
         },
         "picker": {
             "unavailable": {

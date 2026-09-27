@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Recargar",
             "uiTokensReset": "Borrar as substitucións",
             "uiTokensApplied": "Substitucións aplicadas: {count}",
-            "uiTokensRejected": "Entradas rexeitadas: {count}"
+            "uiTokensRejected": "Entradas rexeitadas: {count}",
+            "keystorePreferencesFailed": "A importación rematou, pero non se puideron restaurar as túas preferencias da aplicación: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5891,7 +5892,9 @@
             "importBody": "AeroFTP atopou unha configuración existente no teu cartafol persoal. Esta instalación de Flatpak usa o seu propio almacenamento separado, polo que os teus servidores gardados e a caixa forte cifrada aínda non se ven aquí. Queres importalos agora? Os ficheiros só se copian, non se sobrescribe nada, e a caixa forte desbloquéase aquí do mesmo xeito que agora.",
             "importAccept": "Importar",
             "importedBody": "Importouse a túa configuración. Reinicia AeroFTP para cargar os teus servidores e a caixa forte.",
-            "restartNow": "Reiniciar agora"
+            "restartNow": "Reiniciar agora",
+            "importNothingBody": "Nada que importar: esta instalación de Flatpak xa ten todos os ficheiros da súa configuración existente.",
+            "importFailedBody": "A importación detívose cun erro: {error}. Os ficheiros copiados antes do erro permanecen no seu lugar e non se sobrescribiu nada. AeroFTP volverá ofrecer a importación no seguinte inicio."
         },
         "picker": {
             "unavailable": {

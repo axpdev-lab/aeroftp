@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Pakia upya",
             "uiTokensReset": "Futa mabadiliko",
             "uiTokensApplied": "Mabadiliko yaliyotumika: {count}",
-            "uiTokensRejected": "Maingizo yaliyokataliwa: {count}"
+            "uiTokensRejected": "Maingizo yaliyokataliwa: {count}",
+            "keystorePreferencesFailed": "Uletaji umekamilika, lakini mapendeleo yako ya programu hayakuweza kurejeshwa: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5872,7 +5873,9 @@
             "importBody": "AeroFTP imepata usanidi uliopo katika folda yako ya nyumbani. Usakinishaji huu wa Flatpak hutumia hifadhi yake tofauti, kwa hivyo seva zako zilizohifadhiwa na kasha lililosimbwa hazionekani hapa bado. Uziingize sasa? Faili hunakiliwa tu, hakuna kinachoandikwa juu, na kasha lako hufunguliwa hapa kwa njia ile ile kama sasa.",
             "importAccept": "Ingiza",
             "importedBody": "Usanidi wako umeingizwa. Anzisha upya AeroFTP ili kupakia seva zako na kasha lako.",
-            "restartNow": "Anzisha upya sasa"
+            "restartNow": "Anzisha upya sasa",
+            "importNothingBody": "Hakuna cha kuagiza: usakinishaji huu wa Flatpak tayari una faili zote kutoka kwa usanidi wako uliopo.",
+            "importFailedBody": "Uagizaji ulisimama kwa hitilafu: {error}. Faili zilizonakiliwa kabla ya hitilafu zinabaki mahali pake na hakuna kilichoandikwa upya. AeroFTP itapendekeza uagizaji tena kwenye uanzishaji unaofuata."
         },
         "picker": {
             "unavailable": {
