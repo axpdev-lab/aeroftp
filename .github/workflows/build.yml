@@ -453,6 +453,17 @@ jobs:
           rm -f usr/lib/lib*.so*
           echo "Removed $LIB_COUNT bundled shared libraries"
 
+          # --- Fix 4: permissions every user can run ---
+          # linuxdeploy leaves AppRun.wrapped 0750 (and a 0777 schemas folder,
+          # executable XML under usr/share). A mount that keeps the stored
+          # root ownership, as firejail and the AppImageHub test do, then
+          # refuses AppRun.wrapped to any non-root user ("Permission denied").
+          # Folders and executables 755, data 644.
+          find . -type d -exec chmod 755 {} +
+          find . -type f -perm -u+x -exec chmod 755 {} +
+          find . -type f ! -perm -u+x -exec chmod 644 {} +
+          find usr/share -type f -exec chmod 644 {} +
+
           # --- Re-package using appimagetool ---
           cd /tmp/appimage-fix
           APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
@@ -467,6 +478,16 @@ jobs:
           ARCH=x86_64 ./appimagetool --appimage-extract-and-run squashfs-root "$APPIMAGE"
           NEW_SIZE=$(du -m "$APPIMAGE" | cut -f1)
           echo "AppImage re-packaged: ${ORIG_SIZE}MB -> ${NEW_SIZE}MB (system libs only)"
+
+          # The repackaged image must keep Fix 4: no file executable by its
+          # owner only, no folder other than 755.
+          BAD=$(unsquashfs -ll -o "$("$APPIMAGE" --appimage-offset)" "$APPIMAGE" \
+            | awk '($1 ~ /^-..x/ && substr($1,10,1) != "x") || ($1 ~ /^d/ && $1 != "drwxr-xr-x") {print $1, $NF}')
+          if [ -n "$BAD" ]; then
+            echo "::error::AppImage entries not runnable or readable by every user:"
+            echo "$BAD"
+            exit 1
+          fi
 
       - name: Assert Linux ACL packaging contracts
         if: matrix.target == 'linux'

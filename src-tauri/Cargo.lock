@@ -122,6 +122,7 @@ dependencies = [
  "rand 0.10.3",
  "rand 0.8.8",
  "ratatui",
+ "rcgen",
  "reed-solomon-erasure",
  "regex",
  "reqwest",
@@ -10280,8 +10281,8 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "suppaftp"
-version = "10.0.2"
-source = "git+https://github.com/axpdev-lab/suppaftp?rev=2d39fadca96b4be37998c3097cb97c36b39231e1#2d39fadca96b4be37998c3097cb97c36b39231e1"
+version = "12.1.0"
+source = "git+https://github.com/axpdev-lab/suppaftp?rev=8d7c78f67827a8b980e0eee4d0550615183b862e#8d7c78f67827a8b980e0eee4d0550615183b862e"
 dependencies = [
  "async-trait",
  "chrono",

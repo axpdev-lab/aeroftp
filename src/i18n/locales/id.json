@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Muat Ulang",
             "uiTokensReset": "Hapus penggantian",
             "uiTokensApplied": "Penggantian diterapkan: {count}",
-            "uiTokensRejected": "Entri ditolak: {count}"
+            "uiTokensRejected": "Entri ditolak: {count}",
+            "keystorePreferencesFailed": "Impor selesai, tetapi preferensi aplikasi Anda tidak dapat dipulihkan: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5605,7 +5606,12 @@
             "defaultSaltNeedsStronger": "Masukkan kata sandi kuat yang dibuat untuk mengaktifkan salt bawaan.",
             "defaultSaltOneSaltNote": "Hanya ada satu salt: 32 byte, publik, sama untuk setiap vault dengan salt bawaan.",
             "defaultSaltValueLabel": "Salt bawaan publik (AeroCrypt v3), SHA-256 dari",
-            "defaultSaltTierMeaning": "Salt bawaan berarti kata sandi saja yang membuka brankas: tidak ada lagi yang perlu dibawa, dan tidak ada lagi yang melindunginya."
+            "defaultSaltTierMeaning": "Salt bawaan berarti kata sandi saja yang membuka brankas: tidak ada lagi yang perlu dibawa, dan tidak ada lagi yang melindunginya.",
+            "pastedObscured": "Ditempel dari rclone.conf (disamarkan)",
+            "pastedObscuredHint": "Pilih \"Ditempel dari rclone.conf\" hanya jika Anda menyalin nilai ini dari file rclone.conf, tempat rclone menyimpannya dalam bentuk tersamar.",
+            "formNotRecorded": "Tidak tercatat: nilai ini disimpan sebelum AeroFTP menanyakannya. Pilih cara nilai ini dimasukkan; nilai yang diimpor AeroFTP dari rclone.conf disimpan sebagai diketik.",
+            "secretFormTyped": "Diketik",
+            "secretFormChangeConfirm": "Ini mengubah cara nilai tersimpan dibaca, dan karenanya kunci yang membuka file: hanya pilihan yang benar yang dapat membukanya. Ubah pilihan ini?"
         },
         "modalGuard": {
             "busyTitle": "Operasi berlangsung",
@@ -5870,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP menemukan konfigurasi yang ada di folder beranda Anda. Pemasangan Flatpak ini menggunakan penyimpanannya sendiri yang terpisah, jadi server tersimpan dan brankas terenkripsi Anda belum terlihat di sini. Impor sekarang? File hanya disalin, tidak ada yang ditimpa, dan brankas terbuka di sini dengan cara yang sama seperti sekarang.",
+            "importBody": "AeroFTP menemukan konfigurasi yang ada di folder beranda Anda. Instalasi Flatpak ini menggunakan penyimpanannya sendiri yang terpisah, jadi server tersimpan dan brankas terenkripsi Anda belum terlihat di sini. Impor konfigurasi Anda sekarang? File hanya disalin, dan file yang sudah dimiliki instalasi Flatpak ini tidak pernah ditimpa.",
             "importAccept": "Impor",
             "importedBody": "Konfigurasi Anda telah diimpor. Mulai ulang AeroFTP untuk memuat server dan brankas Anda.",
-            "restartNow": "Mulai ulang sekarang"
+            "restartNow": "Mulai ulang sekarang",
+            "importNothingBody": "Tidak ada file yang disalin: untuk setiap file yang akan disalin oleh impor, instalasi Flatpak ini sudah memiliki file dengan nama yang sama, dan file yang sudah ada tidak pernah ditimpa.",
+            "importFailedBody": "Impor berhenti karena galat: {error}. File yang sudah disalin ke instalasi Flatpak ini tetap berada di sana, dan tidak ada yang ditimpa. AeroFTP akan menawarkan impor lagi saat aplikasi dijalankan berikutnya.",
+            "importedNoVaultBody": "Konfigurasi Anda telah diimpor, tetapi tidak berisi server tersimpan atau brankas yang dapat disalin oleh impor. Mulai ulang AeroFTP untuk memuat apa yang telah diimpor.",
+            "importedVaultSkippedBody": "Sebagian konfigurasi Anda telah diimpor, tetapi tidak termasuk server tersimpan dan brankas Anda: instalasi Flatpak ini sudah memiliki brankasnya sendiri, dan file yang sudah ada tidak pernah ditimpa. Mulai ulang AeroFTP untuk memuat apa yang telah diimpor.",
+            "importNothingVaultSkippedBody": "Tidak ada file yang disalin, jadi server tersimpan dan brankas Anda tidak diimpor: instalasi Flatpak ini sudah memiliki brankasnya sendiri dan file dengan nama yang sama untuk setiap file yang akan disalin oleh impor, dan file yang sudah ada tidak pernah ditimpa.",
+            "importUnreadableResult": "AeroFTP tidak dapat membaca hasil impor",
+            "importNothingToImportBody": "Tidak ada file yang disalin: konfigurasi Anda yang ada tidak berisi file yang disalin oleh impor (tautan simbolis dan file sementara SQLite tidak pernah disalin)."
         },
         "picker": {
             "unavailable": {

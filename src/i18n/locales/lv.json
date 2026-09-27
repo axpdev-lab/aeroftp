@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Pārlādēt",
             "uiTokensReset": "Notīrīt aizstājumus",
             "uiTokensApplied": "Lietotie aizstājumi: {count}",
-            "uiTokensRejected": "Noraidītie ieraksti: {count}"
+            "uiTokensRejected": "Noraidītie ieraksti: {count}",
+            "keystorePreferencesFailed": "Importēšana ir pabeigta, bet neizdevās atjaunot jūsu lietotnes iestatījumus: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5605,7 +5606,12 @@
             "defaultSaltNeedsStronger": "Ievadiet spēcīgu ģenerētu paroli, lai ieslēgtu noklusējuma salt.",
             "defaultSaltOneSaltNote": "Ir tikai viena sāls: 32 baiti, publiska, vienāda visām glabātavām ar noklusējuma sāli.",
             "defaultSaltValueLabel": "Publiskā noklusējuma sāls (AeroCrypt v3), šādas virknes SHA-256",
-            "defaultSaltTierMeaning": "Noklusējuma sāls nozīmē, ka glabātavu atver vienīgi parole: nekas cits nav jānēsā līdzi, un nekas cits to nesargā."
+            "defaultSaltTierMeaning": "Noklusējuma sāls nozīmē, ka glabātavu atver vienīgi parole: nekas cits nav jānēsā līdzi, un nekas cits to nesargā.",
+            "pastedObscured": "Ielīmēts no rclone.conf (maskēts)",
+            "pastedObscuredHint": "Izvēlieties „Ielīmēts no rclone.conf“ tikai tad, ja šo vērtību nokopējāt no rclone.conf faila, kurā rclone to glabā maskētu.",
+            "formNotRecorded": "Nav reģistrēts: šī vērtība tika saglabāta, pirms AeroFTP to jautāja. Izvēlieties, kā tā tika ievadīta; vērtība, ko AeroFTP importēja no rclone.conf, tika saglabāta kā „Ierakstīts”.",
+            "secretFormTyped": "Ierakstīts",
+            "secretFormChangeConfirm": "Tas maina to, kā tiek nolasīta saglabātā vērtība, un līdz ar to atslēgu, ar kuru atveras faili: tos atver tikai pareizā izvēle. Mainīt šo izvēli?"
         },
         "modalGuard": {
             "busyTitle": "Notiek darbība",
@@ -5870,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP atrada esošu konfigurāciju jūsu mājas mapē. Šī Flatpak instalācija izmanto savu atsevišķu krātuvi, tāpēc jūsu saglabātie serveri un šifrētais seifs šeit vēl nav redzami. Vai importēt tos tagad? Faili tiek tikai kopēti, nekas netiek pārrakstīts, un seifs šeit tiek atbloķēts tāpat kā tagad.",
+            "importBody": "AeroFTP atrada esošu konfigurāciju jūsu mājas mapē. Šī Flatpak instalācija izmanto savu atsevišķu krātuvi, tāpēc jūsu saglabātie serveri un šifrētais seifs šeit vēl nav redzami. Vai importēt jūsu konfigurāciju tagad? Faili tiek tikai kopēti, un fails, kas šajā Flatpak instalācijā jau ir, nekad netiek pārrakstīts.",
             "importAccept": "Importēt",
             "importedBody": "Jūsu konfigurācija tika importēta. Restartējiet AeroFTP, lai ielādētu savus serverus un seifu.",
-            "restartNow": "Restartēt tagad"
+            "restartNow": "Restartēt tagad",
+            "importNothingBody": "Netika nokopēts neviens fails: katram failam, ko importēšana nokopētu, šajā Flatpak instalācijā jau ir fails ar tādu pašu nosaukumu, un esošie faili nekad netiek pārrakstīti.",
+            "importFailedBody": "Importēšana apstājās ar kļūdu: {error}. Faili, kas jau nokopēti šajā Flatpak instalācijā, paliek tur, un nekas netika pārrakstīts. AeroFTP nākamajā palaišanas reizē piedāvās importēšanu vēlreiz.",
+            "importedNoVaultBody": "Jūsu konfigurācija tika importēta, bet tajā nebija saglabātu serveru vai seifa, ko importēšana varētu nokopēt. Restartējiet AeroFTP, lai ielādētu importēto.",
+            "importedVaultSkippedBody": "Daļa jūsu konfigurācijas tika importēta, bet ne jūsu saglabātie serveri un seifs: šajā Flatpak instalācijā jau ir savs seifs, un esošie faili nekad netiek pārrakstīti. Restartējiet AeroFTP, lai ielādētu importēto.",
+            "importNothingVaultSkippedBody": "Netika nokopēts neviens fails, tāpēc jūsu saglabātie serveri un seifs netika importēti: šajā Flatpak instalācijā jau ir savs seifs, katram failam, ko importēšana nokopētu, šeit jau ir fails ar tādu pašu nosaukumu, un esošie faili nekad netiek pārrakstīti.",
+            "importUnreadableResult": "AeroFTP neizdevās nolasīt importēšanas rezultātu",
+            "importNothingToImportBody": "Netika nokopēts neviens fails: jūsu esošajā konfigurācijā nav neviena faila, ko importēšana kopē (simboliskās saites un SQLite pagaidu faili nekad netiek kopēti)."
         },
         "picker": {
             "unavailable": {

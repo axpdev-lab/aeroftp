@@ -309,9 +309,166 @@ fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
     }
 }
 
+/// Moves the rclone-crypt secrets an older import left in a profile's
+/// `options` (`rcloneCryptPassword` / `rcloneCryptPassword2`, in clear: written
+/// there by `aeroftp-cli import rclone --apply`, which never created a binding)
+/// into the vault and an `aeroCryptOverlay` binding that records them as clear.
+///
+/// Nothing is lost on the way: the work happens on a copy, every secret is
+/// written and read back, and only when all of them read back does the copy,
+/// without the secrets in its options, replace the profile. On any failure the
+/// profile is left exactly as it was and the error says so. `Ok(false)` when
+/// there is nothing to move, so a second run does nothing; a profile that
+/// already has a binding is left alone. An empty password is refused, not
+/// moved: a binding without a password would stop the CLI from opening a
+/// profile it opened before, and the overlay cannot open without one anyway.
+pub fn migrate_legacy_rclone_crypt_options(
+    profile: &mut Value,
+    mut store_secret: impl FnMut(&str, &str) -> Result<(), String>,
+    read_secret: impl Fn(&str) -> Option<String>,
+) -> Result<bool, String> {
+    let password = profile
+        .pointer("/options/rcloneCryptPassword")
+        .and_then(Value::as_str);
+    let legacy = profile
+        .pointer("/options/rcloneCryptEnabled")
+        .and_then(Value::as_bool)
+        == Some(true)
+        && password.is_some();
+    let bound = profile
+        .get("aeroCryptOverlay")
+        .map(|b| !b.is_null())
+        .unwrap_or(false);
+    if !legacy || bound {
+        return Ok(false);
+    }
+    if password == Some("") {
+        return Err(
+            "its rclone-crypt password is empty, so no overlay was bound and the \
+                    profile keeps its options; enter the password in the profile's crypt \
+                    settings"
+                .to_string(),
+        );
+    }
+    let mut migrated = profile.clone();
+    materialize_imported_crypt_overlay(&mut migrated, |key, secret| {
+        store_secret(key, secret)?;
+        match read_secret(key) {
+            Some(back) if back == secret => Ok(()),
+            _ => Err(format!(
+                "{key} did not read back as written; the profile keeps its rclone-crypt options"
+            )),
+        }
+    })?;
+    *profile = migrated;
+    Ok(true)
+}
+
+/// Runs [`migrate_legacy_rclone_crypt_options`] over a list of profiles and
+/// returns the ones it moved, plus a note for each it could not move. The list
+/// itself is not changed: the caller re-reads it and applies the moves with
+/// [`merge_migrated_crypt_profiles`], so a save made by another writer while
+/// the vault writes ran is not lost.
+pub fn migrate_legacy_rclone_crypt_profiles(
+    profiles: &[Value],
+    mut store_secret: impl FnMut(&str, &str) -> Result<(), String>,
+    read_secret: impl Fn(&str) -> Option<String>,
+) -> (Vec<Value>, Vec<String>) {
+    let mut moved = Vec::new();
+    let mut failed = Vec::new();
+    for profile in profiles {
+        let mut candidate = profile.clone();
+        match migrate_legacy_rclone_crypt_options(&mut candidate, &mut store_secret, &read_secret) {
+            Ok(true) => moved.push(candidate),
+            Ok(false) => {}
+            Err(e) => {
+                let name = profile.get("name").and_then(Value::as_str).unwrap_or("?");
+                failed.push(format!(
+                    "rclone-crypt options of profile '{name}' not moved: {e}"
+                ));
+            }
+        }
+    }
+    (moved, failed)
+}
+
+/// Applies the moves [`migrate_legacy_rclone_crypt_profiles`] made to a fresh
+/// read of the list: for each moved profile still there by id and still
+/// without a binding, it takes the binding and the stored-secret flags and
+/// drops the secrets from the options, leaving every other field as it is
+/// now. Returns how many it applied.
+pub fn merge_migrated_crypt_profiles(current: &mut [Value], moved: &[Value]) -> usize {
+    let mut applied = 0;
+    for migrated in moved {
+        let Some(id) = migrated.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(profile) = current
+            .iter_mut()
+            .find(|p| p.get("id").and_then(Value::as_str) == Some(id))
+        else {
+            continue;
+        };
+        if profile
+            .get("aeroCryptOverlay")
+            .map(|b| !b.is_null())
+            .unwrap_or(false)
+        {
+            continue; // bound meanwhile: leave that choice alone
+        }
+        for field in [
+            "aeroCryptOverlay",
+            "hasStoredAeroCryptPassword",
+            "hasStoredAeroCryptSalt",
+        ] {
+            if let Some(value) = migrated.get(field) {
+                profile[field] = value.clone();
+            }
+        }
+        if let Some(options) = profile.get_mut("options").and_then(Value::as_object_mut) {
+            options.remove("rcloneCryptPassword");
+            options.remove("rcloneCryptPassword2");
+        }
+        applied += 1;
+    }
+    applied
+}
+
+/// The load-time move of the rclone-crypt secrets an older import left in
+/// profile options, for the GUI and the CLI loader alike. The secrets go to the
+/// vault from `profiles`, the snapshot the loader read; then `update_stored`
+/// re-reads the stored list, applies the moves ([`merge_migrated_crypt_profiles`])
+/// and writes it only when one applied, in one step (the loaders pass
+/// `update_server_profiles_for`, one transaction), returning the stored list
+/// and whether it wrote. `profiles` becomes that stored list, written or not:
+/// when nothing applied (bound or removed meanwhile) the snapshot is stale,
+/// and a later save from it would undo the other writer's change. Returns a
+/// note for each profile not moved and for a save that failed.
+pub fn migrate_legacy_rclone_crypt_on_load(
+    profiles: &mut Vec<Value>,
+    store_secret: impl FnMut(&str, &str) -> Result<(), String>,
+    read_secret: impl Fn(&str) -> Option<String>,
+    update_stored: impl FnOnce(&dyn Fn(&mut Vec<Value>) -> bool) -> Result<(Vec<Value>, bool), String>,
+) -> Vec<String> {
+    let (moved, mut notes) =
+        migrate_legacy_rclone_crypt_profiles(profiles, store_secret, read_secret);
+    if moved.is_empty() {
+        return notes;
+    }
+    let apply = |current: &mut Vec<Value>| merge_migrated_crypt_profiles(current, &moved) > 0;
+    match update_stored(&apply) {
+        Ok((stored, _written)) => *profiles = stored,
+        Err(e) => notes.push(format!(
+            "the profiles whose rclone-crypt options moved to the vault were not saved, so \
+             they keep their options and the move runs again on the next load: {e}"
+        )),
+    }
+    notes
+}
+
 /// Turn the legacy import options into the binding used by Quick Connect and
 /// My Servers. Secrets leave the options before the preview crosses IPC.
-fn materialize_imported_crypt_overlay(
+pub fn materialize_imported_crypt_overlay(
     server: &mut Value,
     mut store_secret: impl FnMut(&str, &str) -> Result<(), String>,
 ) -> Result<(), String> {
@@ -347,6 +504,13 @@ fn materialize_imported_crypt_overlay(
             .unwrap_or_default(),
     );
     // No password2 is meaningful: it selects rclone's built-in default salt.
+    //
+    // The importer hands over values it has already revealed, so they are
+    // stored as they are and the binding records them as clear. Without that
+    // record every reader guessed from the value's shape, and a salt rclone
+    // generated (22 URL-safe base64 characters) was revealed a second time at
+    // unlock, came back empty, and the overlay derived its key from rclone's
+    // default salt: every name and file read as noise, with no error.
     if !password.is_empty() {
         store_secret(&format!("aerocrypt_overlay_pw_{id}"), &password)?;
     }
@@ -357,7 +521,9 @@ fn materialize_imported_crypt_overlay(
         "enabled": true, "kind": "rclone-crypt", "remoteScope": scope,
         "filenameEncryption": opts.get("rcloneCryptFilenameEncryption").and_then(Value::as_str).unwrap_or("standard"),
         "directoryNameEncryption": opts.get("rcloneCryptDirectoryNameEncryption").and_then(Value::as_bool).unwrap_or(true),
-        "withHeader": false
+        "withHeader": false,
+        "passwordForm": crate::rclone_crypt::CryptSecretForm::Clear.as_str(),
+        "saltForm": crate::rclone_crypt::CryptSecretForm::Clear.as_str()
     });
     server["aeroCryptOverlay"] = binding;
     server["hasStoredAeroCryptPassword"] = Value::Bool(!password.is_empty());
@@ -1075,43 +1241,79 @@ pub fn inject_rclone_crypt_export_options(
             }
         }
     }
-    if id.is_empty() {
-        return;
-    }
-    let has_pw = opts
-        .get("rcloneCryptPassword")
-        .and_then(|v| v.as_str())
-        .map(|s| !s.is_empty())
-        .unwrap_or(false);
-    if !has_pw {
-        if let Some(pw) = crate::user_partitions::resolve_active_credential(
-            store,
-            &format!("aerocrypt_overlay_pw_{}", id),
-        )
-        .ok()
-        .flatten()
-        .map(|s| s.to_string())
-        .filter(|s| !s.is_empty())
-        {
-            opts.insert("rcloneCryptPassword".into(), Value::String(pw));
+    // A profile with no id has nothing in the vault; it still goes through
+    // `put_stored_crypt_secrets`, which clears a stale problem note.
+    let stored = |key: String| {
+        if id.is_empty() {
+            return None;
+        }
+        crate::user_partitions::resolve_active_credential(store, &key)
+            .ok()
+            .flatten()
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+    };
+    let password = stored(format!("aerocrypt_overlay_pw_{}", id));
+    let salt = stored(format!("aerocrypt_overlay_salt_{}", id));
+    // The forms the vault holds them in: the binding's record, or the rule for
+    // a binding the rclone importer wrote before forms were recorded.
+    let profile = json!({
+        "aeroCryptOverlay": overlay.cloned().unwrap_or(Value::Null),
+        "options": Value::Object(opts.clone()),
+    });
+    let forms = crate::rclone_crypt::crypt_secret_forms(&profile);
+    put_stored_crypt_secrets(opts, password, salt, forms);
+}
+
+/// Puts the overlay password and salt read from the vault on `opts`, where the
+/// rclone export obscures them, unless the options already carry their own.
+/// They are read in the form the vault holds them in (`forms`, the same reading
+/// the key derivation uses): exported as stored, a value held obscured was
+/// obscured a second time and rclone derived a different key from AeroFTP's.
+/// A secret that cannot be read safely is not exported; the reason goes in
+/// `rcloneCryptSecretProblem`, which makes the export refuse the crypt remote.
+fn put_stored_crypt_secrets(
+    opts: &mut serde_json::Map<String, Value>,
+    password: Option<String>,
+    salt: Option<String>,
+    forms: (
+        Option<crate::rclone_crypt::CryptSecretForm>,
+        Option<crate::rclone_crypt::CryptSecretForm>,
+    ),
+) {
+    // Only this call decides whether the stored secrets can be exported: a
+    // note an earlier run left in the options is not this run's answer.
+    opts.remove("rcloneCryptSecretProblem");
+    // The same test the rclone writer applies (`append_crypt_remote_section`):
+    // an option it writes (any non-empty value, spaces included) is the
+    // secret; one it would leave out must not hide the vault's.
+    let has = |opts: &serde_json::Map<String, Value>, key: &str| {
+        opts.get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+    };
+    if !has(opts, "rcloneCryptPassword") {
+        match password.map(|pw| crate::rclone_crypt::resolve_crypt_password(&pw, forms.0)) {
+            Some(Ok(pw)) if !pw.is_empty() => {
+                opts.insert("rcloneCryptPassword".into(), Value::String(pw));
+            }
+            Some(Err(why)) => {
+                opts.insert("rcloneCryptSecretProblem".into(), Value::String(why));
+            }
+            _ => {}
         }
     }
-    let has_salt = opts
-        .get("rcloneCryptPassword2")
-        .and_then(|v| v.as_str())
-        .map(|s| !s.is_empty())
-        .unwrap_or(false);
-    if !has_salt {
-        if let Some(salt) = crate::user_partitions::resolve_active_credential(
-            store,
-            &format!("aerocrypt_overlay_salt_{}", id),
-        )
-        .ok()
-        .flatten()
-        .map(|s| s.to_string())
-        .filter(|s| !s.is_empty())
-        {
-            opts.insert("rcloneCryptPassword2".into(), Value::String(salt));
+    if !has(opts, "rcloneCryptPassword2") {
+        // An empty reveal is rclone's omitted salt: leave `password2` out.
+        match salt.map(|salt| crate::rclone_crypt::resolve_crypt_salt(&salt, forms.1)) {
+            Some(Ok(salt)) if !salt.is_empty() => {
+                opts.insert("rcloneCryptPassword2".into(), Value::String(salt));
+            }
+            Some(Err(why)) => {
+                opts.insert("rcloneCryptSecretProblem".into(), Value::String(why));
+            }
+            _ => {}
         }
     }
 }
@@ -1429,12 +1631,388 @@ mod tests {
             assert_eq!(value["hasStoredAeroCryptSalt"], !salt.is_empty());
             assert!(value.pointer("/options/rcloneCryptPassword").is_none());
             assert!(value.pointer("/options/rcloneCryptPassword2").is_none());
+            // Stored as the importer revealed it, and recorded as clear.
             assert_eq!(
                 secrets[&format!("aerocrypt_overlay_pw_{}", profile.id)],
                 "test password"
             );
+            assert_eq!(value["aeroCryptOverlay"]["passwordForm"], "clear");
+            assert_eq!(value["aeroCryptOverlay"]["saltForm"], "clear");
             assert_eq!(secrets.len(), if salt.is_empty() { 1 } else { 2 });
         }
+    }
+
+    /// The vault used to receive the password and salt the importer had
+    /// already revealed, and unlock revealed them again. A salt of the shape
+    /// rclone generates (128 bits, 22 URL-safe base64 characters) revealed to
+    /// nothing the second time, so the overlay used rclone's default salt.
+    ///
+    /// Reference from rclone v1.75.1: `rclone config create vault crypt
+    /// remote=base:/x password=crypt-pass-954 password2=hD1lB5uyIChoDFqhaHOsUg
+    /// --obscure` wrote the two values below, and `rclone cryptdecode
+    /// --reverse vault: folder` answered `bu0kfp899vj96b47st9mvbn5dc` (with the
+    /// default salt, `j754ec0khao27qjaq7dr6huegc`).
+    #[test]
+    fn an_imported_crypt_remote_derives_the_key_rclone_derives() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("rclone.conf");
+        std::fs::write(
+            &config,
+            "[base]\ntype = sftp\nhost = sftp.example.com\nuser = demo\n\n\
+             [vault]\ntype = crypt\nremote = base:/x\n\
+             password = vptfkxjKpq_BxYvbKzDYAORTe1RvJGAE8kGhWi4a\n\
+             password2 = iQwG532z5OxQIsKkylhPJz9CJqbo_Adnj8GM3CmWmp-rQBcBNnI\n",
+        )
+        .unwrap();
+        let result = crate::rclone_import::import_rclone(&config).unwrap();
+        let profile = result.servers.iter().find(|s| s.name == "vault").unwrap();
+        let mut value = serde_json::to_value(profile).unwrap();
+        let mut secrets = std::collections::HashMap::new();
+        materialize_imported_crypt_overlay(&mut value, |key, secret| {
+            secrets.insert(key.to_string(), secret.to_string());
+            Ok(())
+        })
+        .unwrap();
+
+        // As every reader does: the forms from the binding, then the key.
+        let (password_form, salt_form) = crate::rclone_crypt::crypt_secret_forms(&value);
+        let (name_key, _, name_tweak) = crate::rclone_crypt::derive_keys_with_forms(
+            &secrets[&format!("aerocrypt_overlay_pw_{}", profile.id)],
+            password_form,
+            &secrets[&format!("aerocrypt_overlay_salt_{}", profile.id)],
+            salt_form,
+        )
+        .unwrap();
+        assert_eq!(
+            crate::rclone_crypt::encrypt_name(&name_key, &name_tweak, "folder").unwrap(),
+            "bu0kfp899vj96b47st9mvbn5dc"
+        );
+    }
+
+    /// Profiles `aeroftp-cli import rclone --apply` wrote kept the crypt
+    /// password and salt in clear in their options, with no binding. They move
+    /// to the vault and a binding once, and only when every secret reads back:
+    /// a failed or unverified write leaves the profile exactly as it was.
+    #[test]
+    fn legacy_rclone_crypt_options_move_once_and_only_when_verified() {
+        use std::cell::RefCell;
+        use std::collections::HashMap;
+        let legacy = || {
+            json!({
+                "id": "srv_legacy", "name": "legacy", "initialPath": "/enc",
+                "options": {
+                    "rcloneCryptEnabled": true,
+                    "rcloneCryptPassword": "crypt-pass-954",
+                    "rcloneCryptPassword2": "hD1lB5uyIChoDFqhaHOsUg",
+                    "rcloneCryptRemote": "base:/enc",
+                    "rcloneCryptOverlayName": "vault"
+                }
+            })
+        };
+
+        let vault = RefCell::new(HashMap::<String, String>::new());
+        let writes = RefCell::new(0usize);
+        let store = |k: &str, v: &str| {
+            *writes.borrow_mut() += 1;
+            vault.borrow_mut().insert(k.to_string(), v.to_string());
+            Ok(())
+        };
+        let read = |k: &str| vault.borrow().get(k).cloned();
+
+        let mut profile = legacy();
+        assert_eq!(
+            migrate_legacy_rclone_crypt_options(&mut profile, store, read),
+            Ok(true)
+        );
+        assert!(profile.pointer("/options/rcloneCryptPassword").is_none());
+        assert!(profile.pointer("/options/rcloneCryptPassword2").is_none());
+        assert_eq!(profile["aeroCryptOverlay"]["passwordForm"], "clear");
+        assert_eq!(profile["aeroCryptOverlay"]["saltForm"], "clear");
+        assert_eq!(
+            vault.borrow()["aerocrypt_overlay_pw_srv_legacy"],
+            "crypt-pass-954"
+        );
+        assert_eq!(
+            vault.borrow()["aerocrypt_overlay_salt_srv_legacy"],
+            "hD1lB5uyIChoDFqhaHOsUg"
+        );
+
+        // A second run finds nothing to move and writes nothing.
+        let before = *writes.borrow();
+        assert_eq!(
+            migrate_legacy_rclone_crypt_options(&mut profile, store, read),
+            Ok(false)
+        );
+        assert_eq!(*writes.borrow(), before);
+
+        // The salt write fails after the password went in: nothing changes.
+        let mut profile = legacy();
+        let failing = |k: &str, _: &str| {
+            if k.contains("salt") {
+                Err("disk full".to_string())
+            } else {
+                Ok(())
+            }
+        };
+        assert!(migrate_legacy_rclone_crypt_options(&mut profile, failing, read).is_err());
+        assert_eq!(profile, legacy());
+
+        // A write that does not read back is a failure too.
+        let mut profile = legacy();
+        let wrong = |_: &str| Some("something else".to_string());
+        let err =
+            migrate_legacy_rclone_crypt_options(&mut profile, |_, _| Ok(()), wrong).unwrap_err();
+        assert!(err.contains("did not read back"), "{err}");
+        assert_eq!(profile, legacy());
+
+        // An empty password is refused with the reason, nothing written.
+        let empty = || {
+            let mut p = legacy();
+            p["options"]["rcloneCryptPassword"] = json!("");
+            p
+        };
+        let mut profile = empty();
+        let before = *writes.borrow();
+        let err = migrate_legacy_rclone_crypt_options(&mut profile, store, read).unwrap_err();
+        assert!(err.contains("password is empty"), "{err}");
+        assert_eq!(profile, empty());
+        assert_eq!(*writes.borrow(), before);
+    }
+
+    /// The load hook both loaders share: nothing to move writes nothing; a move
+    /// that applies to the stored list replaces the loader's copy with it; one
+    /// that no longer applies (bound meanwhile) writes nothing, reports nothing
+    /// and still hands the loader the stored list; a failed save is reported
+    /// and the loader keeps what it read.
+    #[test]
+    fn crypt_migration_on_load_writes_only_what_applied() {
+        use std::cell::RefCell;
+        use std::collections::HashMap;
+        let legacy = json!({
+            "id": "a", "name": "alpha",
+            "options": {
+                "rcloneCryptEnabled": true,
+                "rcloneCryptPassword": "crypt-pass-954",
+                "rcloneCryptOverlayName": "vault"
+            }
+        });
+        let plain = json!({"id": "c", "name": "plain"});
+        let vault = RefCell::new(HashMap::<String, String>::new());
+        let store = |k: &str, v: &str| {
+            vault.borrow_mut().insert(k.to_string(), v.to_string());
+            Ok(())
+        };
+        let read = |k: &str| vault.borrow().get(k).cloned();
+
+        let mut profiles = vec![plain.clone()];
+        let notes = migrate_legacy_rclone_crypt_on_load(&mut profiles, store, read, |_| {
+            panic!("nothing to move, nothing to write")
+        });
+        assert!(notes.is_empty());
+
+        let stored = RefCell::new(vec![legacy.clone(), plain.clone()]);
+        let mut profiles = vec![legacy.clone(), plain.clone()];
+        let notes = migrate_legacy_rclone_crypt_on_load(&mut profiles, store, read, |apply| {
+            let mut current = stored.borrow().clone();
+            if !apply(&mut current) {
+                return Ok((stored.borrow().clone(), false));
+            }
+            *stored.borrow_mut() = current.clone();
+            Ok((current, true))
+        });
+        assert!(notes.is_empty(), "{notes:?}");
+        assert_eq!(profiles, *stored.borrow());
+        assert_eq!(profiles[0]["aeroCryptOverlay"]["passwordForm"], "clear");
+        assert!(profiles[0]
+            .pointer("/options/rcloneCryptPassword")
+            .is_none());
+
+        let mut bound = legacy.clone();
+        bound["aeroCryptOverlay"] = json!({"enabled": true, "kind": "aerocrypt"});
+        let mut profiles = vec![legacy.clone()];
+        let notes = migrate_legacy_rclone_crypt_on_load(&mut profiles, store, read, |apply| {
+            let stored = vec![bound.clone()];
+            let mut current = stored.clone();
+            assert!(
+                !apply(&mut current),
+                "a profile bound meanwhile is not merged"
+            );
+            Ok((stored, false))
+        });
+        assert!(notes.is_empty(), "{notes:?}");
+        // The loader takes the stored list, not its stale snapshot: saving the
+        // snapshot later would undo the binding made meanwhile.
+        assert_eq!(profiles, vec![bound.clone()]);
+
+        let mut profiles = vec![legacy.clone()];
+        let notes = migrate_legacy_rclone_crypt_on_load(&mut profiles, store, read, |_| {
+            Err("disk full".to_string())
+        });
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert!(
+            notes[0].contains("not saved") && notes[0].contains("disk full"),
+            "{notes:?}"
+        );
+        assert_eq!(profiles, vec![legacy.clone()]);
+    }
+
+    /// The load-time migration re-reads the list before saving and applies
+    /// only its own change: a rename saved meanwhile survives, and a profile
+    /// bound meanwhile is left alone.
+    #[test]
+    fn migrated_crypt_profiles_merge_into_a_fresh_read_of_the_list() {
+        use std::cell::RefCell;
+        use std::collections::HashMap;
+        let legacy = |id: &str, name: &str| {
+            json!({
+                "id": id, "name": name, "initialPath": "/enc",
+                "options": {
+                    "rcloneCryptEnabled": true,
+                    "rcloneCryptPassword": "crypt-pass-954",
+                    "rcloneCryptOverlayName": "vault"
+                }
+            })
+        };
+        let snapshot = vec![
+            legacy("a", "alpha"),
+            legacy("b", "beta"),
+            json!({"id": "c", "name": "plain"}),
+        ];
+        let vault = RefCell::new(HashMap::<String, String>::new());
+        let (moved, failed) = migrate_legacy_rclone_crypt_profiles(
+            &snapshot,
+            |k, v| {
+                vault.borrow_mut().insert(k.to_string(), v.to_string());
+                Ok(())
+            },
+            |k| vault.borrow().get(k).cloned(),
+        );
+        assert_eq!(moved.len(), 2);
+        assert!(failed.is_empty());
+
+        // Meanwhile: "a" renamed, "b" bound by the user.
+        let mut current = snapshot.clone();
+        current[0]["name"] = json!("alpha renamed");
+        current[1]["aeroCryptOverlay"] = json!({ "enabled": true, "kind": "aerocrypt" });
+        assert_eq!(merge_migrated_crypt_profiles(&mut current, &moved), 1);
+        assert_eq!(current[0]["name"], "alpha renamed");
+        assert_eq!(current[0]["aeroCryptOverlay"]["passwordForm"], "clear");
+        assert!(current[0].pointer("/options/rcloneCryptPassword").is_none());
+        assert_eq!(current[1]["aeroCryptOverlay"]["kind"], "aerocrypt");
+        assert_eq!(current[2], json!({"id": "c", "name": "plain"}));
+    }
+
+    /// A crypt remote imported by 4.2.0: the vault holds the revealed values,
+    /// the binding records no form, and the options keep the importer's
+    /// `rcloneCryptOverlayName`. Read as clear, it gives rclone's key; guessed,
+    /// the generated salt revealed to nothing.
+    #[test]
+    fn a_4_2_0_imported_crypt_binding_reads_as_clear() {
+        let profile = json!({
+            "id": "srv_420",
+            "aeroCryptOverlay": {
+                "enabled": true, "kind": "rclone-crypt", "remoteScope": "/x",
+                "filenameEncryption": "standard", "directoryNameEncryption": true,
+                "withHeader": false
+            },
+            "options": { "rcloneCryptEnabled": true, "rcloneCryptRemote": "base:/x",
+                         "rcloneCryptOverlayName": "vault" }
+        });
+        let (password_form, salt_form) = crate::rclone_crypt::crypt_secret_forms(&profile);
+        let (name_key, _, name_tweak) = crate::rclone_crypt::derive_keys_with_forms(
+            "crypt-pass-954",
+            password_form,
+            "hD1lB5uyIChoDFqhaHOsUg",
+            salt_form,
+        )
+        .unwrap();
+        assert_eq!(
+            crate::rclone_crypt::encrypt_name(&name_key, &name_tweak, "folder").unwrap(),
+            "bu0kfp899vj96b47st9mvbn5dc"
+        );
+    }
+
+    /// The rclone export reads a stored crypt secret in the form the binding
+    /// records, as the key derivation does. Exported as stored, a value held
+    /// obscured was obscured a second time, and a clear salt of the shape rclone
+    /// generates was revealed to nothing; rclone then derived a different key
+    /// from the one AeroFTP used. A secret recorded in no form that reads two
+    /// ways is not exported at all.
+    #[test]
+    fn stored_crypt_secrets_are_exported_in_the_form_the_binding_records() {
+        use crate::rclone_crypt::CryptSecretForm::{Clear, Obscured};
+        let obscure = |s: &str| crate::rclone_import::obscure_password(s).unwrap();
+        let generated_salt = "hD1lB5uyIChoDFqhaHOsUg";
+
+        let mut opts = serde_json::Map::new();
+        put_stored_crypt_secrets(
+            &mut opts,
+            Some(obscure("crypt-pass-954")),
+            Some(obscure(generated_salt)),
+            (Some(Obscured), Some(Obscured)),
+        );
+        assert_eq!(opts["rcloneCryptPassword"], "crypt-pass-954");
+        assert_eq!(opts["rcloneCryptPassword2"], generated_salt);
+
+        let mut opts = serde_json::Map::new();
+        put_stored_crypt_secrets(
+            &mut opts,
+            Some("crypt-pass-954".to_string()),
+            Some(generated_salt.to_string()),
+            (Some(Clear), Some(Clear)),
+        );
+        assert_eq!(opts["rcloneCryptPassword"], "crypt-pass-954");
+        assert_eq!(opts["rcloneCryptPassword2"], generated_salt);
+
+        // No recorded form and a salt that reads two ways: nothing exported,
+        // and the reason travels to the export, which refuses the remote.
+        let mut opts = serde_json::Map::new();
+        put_stored_crypt_secrets(
+            &mut opts,
+            Some("crypt-pass-954".to_string()),
+            Some(generated_salt.to_string()),
+            (None, None),
+        );
+        assert!(opts.get("rcloneCryptPassword2").is_none());
+        assert!(opts["rcloneCryptSecretProblem"]
+            .as_str()
+            .unwrap()
+            .contains("salt reads two ways"));
+
+        // The options and the rclone writer agree on what a secret is: an
+        // empty option leaves the vault's secret in, one of spaces only is
+        // the secret itself, which the writer exports as it is.
+        let mut opts = serde_json::Map::new();
+        opts.insert("rcloneCryptPassword".into(), json!(""));
+        put_stored_crypt_secrets(
+            &mut opts,
+            Some("crypt-pass-954".to_string()),
+            None,
+            (Some(Clear), Some(Clear)),
+        );
+        assert_eq!(opts["rcloneCryptPassword"], "crypt-pass-954");
+        let mut opts = serde_json::Map::new();
+        opts.insert("rcloneCryptPassword".into(), json!("   "));
+        put_stored_crypt_secrets(
+            &mut opts,
+            Some("crypt-pass-954".to_string()),
+            None,
+            (Some(Clear), Some(Clear)),
+        );
+        assert_eq!(opts["rcloneCryptPassword"], "   ");
+
+        // A problem note an earlier export left in the stored options is not
+        // this export's answer: readable secrets clear it.
+        let mut opts = serde_json::Map::new();
+        opts.insert("rcloneCryptSecretProblem".into(), json!("stale"));
+        put_stored_crypt_secrets(
+            &mut opts,
+            Some("crypt-pass-954".to_string()),
+            Some(generated_salt.to_string()),
+            (Some(Clear), Some(Clear)),
+        );
+        assert!(opts.get("rcloneCryptSecretProblem").is_none());
+        assert_eq!(opts["rcloneCryptPassword2"], generated_salt);
     }
 
     #[test]

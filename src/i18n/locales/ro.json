@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Reîncarcă",
             "uiTokensReset": "Șterge suprascrierile",
             "uiTokensApplied": "Suprascrieri aplicate: {count}",
-            "uiTokensRejected": "Intrări respinse: {count}"
+            "uiTokensRejected": "Intrări respinse: {count}",
+            "keystorePreferencesFailed": "Importul s-a încheiat, dar preferințele aplicației nu au putut fi restaurate: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5605,7 +5606,12 @@
             "defaultSaltNeedsStronger": "Introduceți o parolă generată puternică pentru a activa saltul implicit.",
             "defaultSaltOneSaltNote": "Există un singur salt: 32 de octeți, public, identic pentru fiecare seif cu salt implicit.",
             "defaultSaltValueLabel": "Salt implicit public (AeroCrypt v3), SHA-256 al șirului",
-            "defaultSaltTierMeaning": "Sarea implicită înseamnă că doar parola deschide seiful: nu mai e nimic de purtat cu tine și nimic altceva nu îl protejează."
+            "defaultSaltTierMeaning": "Sarea implicită înseamnă că doar parola deschide seiful: nu mai e nimic de purtat cu tine și nimic altceva nu îl protejează.",
+            "pastedObscured": "Lipit din rclone.conf (obscurizat)",
+            "pastedObscuredHint": "Alegeți „Lipit din rclone.conf” doar dacă ați copiat această valoare dintr-un fișier rclone.conf, unde rclone o păstrează obscurizată.",
+            "formNotRecorded": "Neînregistrat: această valoare a fost salvată înainte ca AeroFTP să întrebe. Alegeți cum a fost introdusă; o valoare pe care AeroFTP a importat-o din rclone.conf a fost salvată ca „Tastat”.",
+            "secretFormTyped": "Tastat",
+            "secretFormChangeConfirm": "Aceasta schimbă modul în care este citită valoarea salvată și, prin urmare, cheia cu care se deschid fișierele: doar alegerea corectă le deschide. Schimbați această alegere?"
         },
         "modalGuard": {
             "busyTitle": "Operațiune în curs",
@@ -5870,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP a găsit o configurație existentă în folderul dumneavoastră personal. Această instalare Flatpak folosește propriul spațiu de stocare separat, așa că serverele salvate și seiful criptat nu sunt încă vizibile aici. Le importați acum? Fișierele sunt doar copiate, nimic nu este suprascris, iar seiful se deblochează aici la fel ca acum.",
+            "importBody": "AeroFTP a găsit o configurație existentă în folderul dumneavoastră personal. Această instalare Flatpak folosește propriul spațiu de stocare separat, așa că serverele salvate și seiful criptat nu sunt încă vizibile aici. Importați configurația acum? Fișierele sunt doar copiate, iar un fișier pe care această instalare Flatpak îl are deja nu este niciodată suprascris.",
             "importAccept": "Importă",
             "importedBody": "Configurația dumneavoastră a fost importată. Reporniți AeroFTP pentru a încărca serverele și seiful.",
-            "restartNow": "Repornește acum"
+            "restartNow": "Repornește acum",
+            "importNothingBody": "Niciun fișier nu a fost copiat: această instalare Flatpak are deja un fișier cu același nume pentru fiecare fișier pe care importul l-ar copia, iar fișierele existente nu sunt niciodată suprascrise.",
+            "importFailedBody": "Importul s-a oprit cu o eroare: {error}. Fișierele deja copiate în această instalare Flatpak rămân acolo, și nimic nu a fost suprascris. AeroFTP va propune din nou importul la următoarea pornire.",
+            "importedNoVaultBody": "Configurația dumneavoastră a fost importată, dar nu conținea servere salvate sau seif pe care importul să le poată copia. Reporniți AeroFTP pentru a încărca ce a fost importat.",
+            "importedVaultSkippedBody": "O parte din configurația dumneavoastră a fost importată, dar nu și serverele salvate și seiful: această instalare Flatpak are deja propriul seif, iar fișierele existente nu sunt niciodată suprascrise. Reporniți AeroFTP pentru a încărca ce a fost importat.",
+            "importNothingVaultSkippedBody": "Niciun fișier nu a fost copiat, așa că serverele salvate și seiful nu au fost importate: această instalare Flatpak are deja propriul seif și un fișier cu același nume pentru fiecare fișier pe care importul l-ar copia, iar fișierele existente nu sunt niciodată suprascrise.",
+            "importUnreadableResult": "AeroFTP nu a putut citi rezultatul importului",
+            "importNothingToImportBody": "Niciun fișier nu a fost copiat: configurația dumneavoastră existentă nu conține niciun fișier pe care importul îl copiază (legăturile simbolice și fișierele temporare SQLite nu sunt niciodată copiate)."
         },
         "picker": {
             "unavailable": {

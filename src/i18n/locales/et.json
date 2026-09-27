@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Laadi uuesti",
             "uiTokensReset": "Tühjenda alistused",
             "uiTokensApplied": "Rakendatud asendused: {count}",
-            "uiTokensRejected": "Tagasi lükatud kirjed: {count}"
+            "uiTokensRejected": "Tagasi lükatud kirjed: {count}",
+            "keystorePreferencesFailed": "Import lõppes, kuid sinu rakenduse eelistusi ei õnnestunud taastada: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5605,7 +5606,12 @@
             "defaultSaltNeedsStronger": "Vaikimisi salti sisselülitamiseks sisestage tugev genereeritud parool.",
             "defaultSaltOneSaltNote": "Salt on ainult üks: 32 baiti, avalik, sama kõigi vaikesaltiga hoidlate puhul.",
             "defaultSaltValueLabel": "Avalik vaikesool (AeroCrypt v3), järgneva teksti SHA-256",
-            "defaultSaltTierMeaning": "Vaikimisi sool tähendab, et hoidla avab ainuüksi parool: kaasas ei pea olema midagi muud ja miski muu seda ei kaitse."
+            "defaultSaltTierMeaning": "Vaikimisi sool tähendab, et hoidla avab ainuüksi parool: kaasas ei pea olema midagi muud ja miski muu seda ei kaitse.",
+            "pastedObscured": "Kleebitud failist rclone.conf (hägustatud)",
+            "pastedObscuredHint": "Valige „Kleebitud failist rclone.conf“ ainult siis, kui kopeerisite selle väärtuse failist rclone.conf, kus rclone hoiab seda hägustatuna.",
+            "formNotRecorded": "Pole märgitud: see väärtus salvestati enne, kui AeroFTP seda küsima hakkas. Valige, kuidas see sisestati; väärtus, mille AeroFTP importis failist rclone.conf, salvestati kui „Trükitud“.",
+            "secretFormTyped": "Trükitud",
+            "secretFormChangeConfirm": "See muudab, kuidas salvestatud väärtust loetakse, ja seega võtit, millega failid avanevad: need avab ainult õige valik. Kas muuta seda valikut?"
         },
         "modalGuard": {
             "busyTitle": "Toiming käib",
@@ -5870,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP leidis teie kodukaustast olemasoleva konfiguratsiooni. See Flatpaki paigaldus kasutab oma eraldi salvestusruumi, seega pole teie salvestatud serverid ja krüptitud hoidla siin veel nähtavad. Kas importida need kohe? Failid ainult kopeeritakse, midagi ei kirjutata üle ning hoidla avaneb siin samamoodi nagu praegu.",
+            "importBody": "AeroFTP leidis teie kodukaustast olemasoleva konfiguratsiooni. See Flatpaki paigaldus kasutab oma eraldi salvestusruumi, seega pole teie salvestatud serverid ja krüptitud hoidla siin veel nähtavad. Kas importida teie konfiguratsioon kohe? Failid ainult kopeeritakse ning faili, mis selles Flatpaki paigalduses juba olemas on, ei kirjutata kunagi üle.",
             "importAccept": "Impordi",
             "importedBody": "Teie konfiguratsioon imporditi. Taaskäivitage AeroFTP, et laadida oma serverid ja hoidla.",
-            "restartNow": "Taaskäivita kohe"
+            "restartNow": "Taaskäivita kohe",
+            "importNothingBody": "Ühtegi faili ei kopeeritud: iga faili jaoks, mille import kopeeriks, on selles Flatpaki paigalduses juba sama nimega fail ning olemasolevaid faile ei kirjutata kunagi üle.",
+            "importFailedBody": "Importimine peatus veaga: {error}. Sellesse Flatpaki paigaldusse juba kopeeritud failid jäävad sinna alles ja midagi ei kirjutatud üle. AeroFTP pakub importimist uuesti järgmisel käivitamisel.",
+            "importedNoVaultBody": "Teie konfiguratsioon imporditi, kuid selles polnud salvestatud servereid ega hoidlat, mida import oleks saanud kopeerida. Taaskäivitage AeroFTP, et laadida imporditu.",
+            "importedVaultSkippedBody": "Osa teie konfiguratsioonist imporditi, kuid mitte teie salvestatud serverid ja hoidla: selles Flatpaki paigalduses on juba oma hoidla ning olemasolevaid faile ei kirjutata kunagi üle. Taaskäivitage AeroFTP, et laadida imporditu.",
+            "importNothingVaultSkippedBody": "Ühtegi faili ei kopeeritud, seega teie salvestatud servereid ja hoidlat ei imporditud: selles Flatpaki paigalduses on juba oma hoidla ja iga faili jaoks, mille import kopeeriks, sama nimega fail ning olemasolevaid faile ei kirjutata kunagi üle.",
+            "importUnreadableResult": "AeroFTP ei suutnud importimise tulemust lugeda",
+            "importNothingToImportBody": "Ühtegi faili ei kopeeritud: teie olemasolevas konfiguratsioonis pole ühtegi faili, mille import kopeerib (sümboolseid linke ja SQLite'i ajutisi faile ei kopeerita kunagi)."
         },
         "picker": {
             "unavailable": {

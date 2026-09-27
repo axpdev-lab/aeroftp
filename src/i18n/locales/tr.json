@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Yeniden Yükle",
             "uiTokensReset": "Geçersiz kılmaları temizle",
             "uiTokensApplied": "Uygulanan geçersiz kılmalar: {count}",
-            "uiTokensRejected": "Reddedilen girdiler: {count}"
+            "uiTokensRejected": "Reddedilen girdiler: {count}",
+            "keystorePreferencesFailed": "İçe aktarma tamamlandı ancak uygulama tercihleriniz geri yüklenemedi: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5605,7 +5606,12 @@
             "defaultSaltNeedsStronger": "Varsayılan salt'ı açmak için güçlü, oluşturulmuş bir parola girin.",
             "defaultSaltOneSaltNote": "Tek bir salt vardır: 32 bayt, herkese açık ve varsayılan salt kullanan tüm kasalarda aynıdır.",
             "defaultSaltValueLabel": "Herkese açık varsayılan tuz (AeroCrypt v3), şunun SHA-256'sı",
-            "defaultSaltTierMeaning": "Varsayılan tuz, kasayı yalnızca parolanın açtığı anlamına gelir: yanınızda taşımanız gereken başka bir şey yoktur ve onu koruyan başka bir şey de yoktur."
+            "defaultSaltTierMeaning": "Varsayılan tuz, kasayı yalnızca parolanın açtığı anlamına gelir: yanınızda taşımanız gereken başka bir şey yoktur ve onu koruyan başka bir şey de yoktur.",
+            "pastedObscured": "rclone.conf'tan yapıştırıldı (gizlenmiş)",
+            "pastedObscuredHint": "\"rclone.conf'tan yapıştırıldı\" seçeneğini yalnızca bu değeri, rclone'un onu gizlenmiş olarak sakladığı bir rclone.conf dosyasından kopyaladıysanız seçin.",
+            "formNotRecorded": "Bilgi yok: bu değer, AeroFTP bunu sormaya başlamadan önce kaydedildi. Nasıl girildiğini seçin; AeroFTP'nin rclone.conf'tan içe aktardığı bir değer \"Yazıldı\" olarak kaydedildi.",
+            "secretFormTyped": "Yazıldı",
+            "secretFormChangeConfirm": "Bu, kayıtlı değerin nasıl okunduğunu ve dolayısıyla dosyaları açan anahtarı değiştirir: yalnızca doğru seçim onları açar. Bu seçim değiştirilsin mi?"
         },
         "modalGuard": {
             "busyTitle": "İşlem sürüyor",
@@ -5870,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP, ev klasörünüzde mevcut bir yapılandırma buldu. Bu Flatpak kurulumu kendi ayrı depolamasını kullandığından, kayıtlı sunucularınız ve şifreli kasanız burada henüz görünmüyor. Şimdi içe aktarılsın mı? Dosyalar yalnızca kopyalanır, hiçbir şeyin üzerine yazılmaz ve kasanız burada şu anki ile aynı şekilde açılır.",
+            "importBody": "AeroFTP, ev klasörünüzde mevcut bir yapılandırma buldu. Bu Flatpak kurulumu kendi ayrı depolamasını kullandığından, kayıtlı sunucularınız ve şifreli kasanız burada henüz görünmüyor. Yapılandırmanız şimdi içe aktarılsın mı? Dosyalar yalnızca kopyalanır ve bu Flatpak kurulumunda zaten bulunan bir dosyanın üzerine asla yazılmaz.",
             "importAccept": "İçe aktar",
             "importedBody": "Yapılandırmanız içe aktarıldı. Sunucularınızı ve kasanızı yüklemek için AeroFTP'yi yeniden başlatın.",
-            "restartNow": "Şimdi yeniden başlat"
+            "restartNow": "Şimdi yeniden başlat",
+            "importNothingBody": "Hiçbir dosya kopyalanmadı: içe aktarmanın kopyalayacağı her dosya için bu Flatpak kurulumunda zaten aynı ada sahip bir dosya var ve mevcut dosyaların üzerine asla yazılmaz.",
+            "importFailedBody": "İçe aktarma bir hatayla durdu: {error}. Bu Flatpak kurulumuna zaten kopyalanmış olan dosyalar orada kalır ve hiçbir şeyin üzerine yazılmadı. AeroFTP, içe aktarmayı bir sonraki başlatmada yeniden önerecek.",
+            "importedNoVaultBody": "Yapılandırmanız içe aktarıldı, ancak içinde içe aktarmanın kopyalayabileceği kayıtlı sunucu veya kasa yoktu. İçe aktarılanları yüklemek için AeroFTP'yi yeniden başlatın.",
+            "importedVaultSkippedBody": "Yapılandırmanızın bir kısmı içe aktarıldı, ancak kayıtlı sunucularınız ve kasanız aktarılmadı: bu Flatpak kurulumunun zaten kendi kasası var ve mevcut dosyaların üzerine asla yazılmaz. İçe aktarılanları yüklemek için AeroFTP'yi yeniden başlatın.",
+            "importNothingVaultSkippedBody": "Hiçbir dosya kopyalanmadı, bu nedenle kayıtlı sunucularınız ve kasanız içe aktarılmadı: bu Flatpak kurulumunun zaten kendi kasası ve içe aktarmanın kopyalayacağı her dosya için aynı ada sahip bir dosyası var ve mevcut dosyaların üzerine asla yazılmaz.",
+            "importUnreadableResult": "AeroFTP içe aktarmanın sonucunu okuyamadı",
+            "importNothingToImportBody": "Hiçbir dosya kopyalanmadı: mevcut yapılandırmanızda içe aktarmanın kopyaladığı hiçbir dosya yok (sembolik bağlantılar ve SQLite geçici dosyaları asla kopyalanmaz)."
         },
         "picker": {
             "unavailable": {

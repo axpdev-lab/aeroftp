@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Įkelti iš naujo",
             "uiTokensReset": "Išvalyti perrašymus",
             "uiTokensApplied": "Pritaikyti pakeitimai: {count}",
-            "uiTokensRejected": "Atmesti įrašai: {count}"
+            "uiTokensRejected": "Atmesti įrašai: {count}",
+            "keystorePreferencesFailed": "Importavimas baigtas, bet nepavyko atkurti jūsų programos nuostatų: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5605,7 +5606,12 @@
             "defaultSaltNeedsStronger": "Įveskite stiprų sugeneruotą slaptažodį, kad įjungtumėte numatytąjį salt.",
             "defaultSaltOneSaltNote": "Yra tik vienas salt: 32 baitai, viešas, vienodas visoms saugykloms su numatytuoju salt.",
             "defaultSaltValueLabel": "Vieša numatytoji druska (AeroCrypt v3), SHA-256 nuo",
-            "defaultSaltTierMeaning": "Numatytoji druska reiškia, kad saugyklą atrakina vien slaptažodis: nieko daugiau nereikia nešiotis ir niekas kitas jos nesaugo."
+            "defaultSaltTierMeaning": "Numatytoji druska reiškia, kad saugyklą atrakina vien slaptažodis: nieko daugiau nereikia nešiotis ir niekas kitas jos nesaugo.",
+            "pastedObscured": "Įklijuota iš rclone.conf (užmaskuota)",
+            "pastedObscuredHint": "Pasirinkite „Įklijuota iš rclone.conf“ tik jei šią reikšmę nukopijavote iš rclone.conf failo, kuriame rclone ją laiko užmaskuotą.",
+            "formNotRecorded": "Neužfiksuota: ši reikšmė buvo įrašyta dar prieš AeroFTP pradedant to klausti. Pasirinkite, kaip ji buvo įvesta; reikšmė, kurią AeroFTP importavo iš rclone.conf, buvo įrašyta kaip „Įvesta ranka“.",
+            "secretFormTyped": "Įvesta ranka",
+            "secretFormChangeConfirm": "Tai pakeičia, kaip nuskaitoma įrašyta reikšmė, taigi ir raktą, kuriuo atidaromi failai: juos atidaro tik teisingas pasirinkimas. Pakeisti šį pasirinkimą?"
         },
         "modalGuard": {
             "busyTitle": "Vykdoma operacija",
@@ -5870,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "„AeroFTP“ rado esamą konfigūraciją jūsų namų aplanke. Šis „Flatpak“ diegimas naudoja atskirą savo saugyklą, todėl jūsų įrašyti serveriai ir šifruotas seifas čia dar nematomi. Importuoti juos dabar? Failai tik nukopijuojami, niekas neperrašoma, o seifas čia atrakinamas taip pat, kaip ir dabar.",
+            "importBody": "AeroFTP rado esamą konfigūraciją jūsų namų aplanke. Šis Flatpak diegimas naudoja atskirą savo saugyklą, todėl jūsų įrašyti serveriai ir šifruotas seifas čia dar nematomi. Importuoti jūsų konfigūraciją dabar? Failai tik nukopijuojami, o failas, kurį šis Flatpak diegimas jau turi, niekada neperrašomas.",
             "importAccept": "Importuoti",
             "importedBody": "Jūsų konfigūracija importuota. Iš naujo paleiskite „AeroFTP“, kad įkeltumėte savo serverius ir seifą.",
-            "restartNow": "Paleisti iš naujo dabar"
+            "restartNow": "Paleisti iš naujo dabar",
+            "importNothingBody": "Nenukopijuotas nė vienas failas: kiekvienam failui, kurį nukopijuotų importavimas, šiame Flatpak diegime jau yra failas tuo pačiu pavadinimu, o esami failai niekada neperrašomi.",
+            "importFailedBody": "Importavimas sustojo dėl klaidos: {error}. Failai, jau nukopijuoti į šį Flatpak diegimą, ten ir lieka, ir niekas nebuvo perrašyta. Kitą kartą paleidus, AeroFTP vėl pasiūlys importavimą.",
+            "importedNoVaultBody": "Jūsų konfigūracija importuota, bet joje nebuvo įrašytų serverių ar seifo, kuriuos importavimas galėtų nukopijuoti. Iš naujo paleiskite AeroFTP, kad įkeltumėte tai, kas importuota.",
+            "importedVaultSkippedBody": "Dalis jūsų konfigūracijos importuota, bet ne jūsų įrašyti serveriai ir seifas: šis Flatpak diegimas jau turi savo seifą, o esami failai niekada neperrašomi. Iš naujo paleiskite AeroFTP, kad įkeltumėte tai, kas importuota.",
+            "importNothingVaultSkippedBody": "Nenukopijuotas nė vienas failas, todėl jūsų įrašyti serveriai ir seifas nebuvo importuoti: šis Flatpak diegimas jau turi savo seifą, kiekvienam failui, kurį nukopijuotų importavimas, čia jau yra failas tuo pačiu pavadinimu, o esami failai niekada neperrašomi.",
+            "importUnreadableResult": "AeroFTP nepavyko nuskaityti importavimo rezultato",
+            "importNothingToImportBody": "Nenukopijuotas nė vienas failas: jūsų esamoje konfigūracijoje nėra nė vieno failo, kurį importavimas kopijuoja (simbolinės nuorodos ir SQLite laikinieji failai niekada nekopijuojami)."
         },
         "picker": {
             "unavailable": {

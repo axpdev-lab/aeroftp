@@ -1716,9 +1716,9 @@ mod tests {
 
 | Crate | Version | Purpose | Pin Note |
 |-------|---------|---------|----------|
-| `suppaftp` | **=8.0.3** | FTP/FTPS | **PINNED** (exact): tracks the audited upstream release; the earlier =8.0.1 Windows `AsFd` concern was resolved by 8.0.3's upstream fixes |
-| `russh` / `russh-sftp` | 0.61 / 2.1 | SSH/SFTP | |
-| `quick-xml` | 0.40 | XML parsing (WebDAV, S3, Azure) | |
+| `suppaftp` | **=12.1.0** | FTP/FTPS | **PINNED** (exact), and patched to a fork commit (v12.1.0 plus `buffered_reply_bytes()`); the exit condition and upstream status are in the `[patch.crates-io]` comment of `src-tauri/Cargo.toml` |
+| `russh` / `russh-sftp` | 0.63 / 2.1 | SSH/SFTP | |
+| `quick-xml` | 0.42 | XML parsing (WebDAV, S3, Azure) | |
 | `oauth2` | 5 | OAuth2 PKCE flow | |
 | `hmac` / `sha1` / `sha2` | >=0.1 | HMAC signing (OAuth1, Azure, S3) | |
 | `base64` | >=0.20 | Encoding (Azure, S3, MEGA) | |
@@ -1772,7 +1772,7 @@ AeroFTP implements S3 signing manually (SigV4) instead of using `aws-sdk-s3` bec
 
 ### Platform
 
-13. **suppaftp cross-platform pin**: An earlier 8.0.2 build used Unix-only `std::os::fd::AsFd`, so the dependency was exact-pinned. It is now pinned to `=8.0.3`, which carries the upstream cross-platform fixes; keep the exact pin to gate unreviewed upgrades.
+13. **suppaftp exact pin**: An earlier 8.0.2 build used Unix-only `std::os::fd::AsFd`, so the dependency was exact-pinned, and the exact pin stays to gate unreviewed upgrades. It is now `=12.1.0`, resolved through a `[patch.crates-io]` fork commit that adds one method; delete the patch when an upstream release exposes the same readiness.
 
 14. **SFTP symlink detection**: NAS devices (Synology, WD MyCloud) create symlinks for shared folders. `list()` must follow symlinks via `sftp.metadata()` to detect if target is a directory.
 

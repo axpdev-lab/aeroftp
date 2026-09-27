@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Tải lại",
             "uiTokensReset": "Xóa ghi đè",
             "uiTokensApplied": "Các ghi đè đã áp dụng: {count}",
-            "uiTokensRejected": "Các mục bị từ chối: {count}"
+            "uiTokensRejected": "Các mục bị từ chối: {count}",
+            "keystorePreferencesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được tùy chọn ứng dụng của bạn: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -5605,7 +5606,12 @@
             "defaultSaltNeedsStronger": "Nhập mật khẩu mạnh đã tạo để bật salt mặc định.",
             "defaultSaltOneSaltNote": "Chỉ có một salt duy nhất: 32 byte, công khai, giống nhau cho mọi kho sử dụng salt mặc định.",
             "defaultSaltValueLabel": "Salt mặc định công khai (AeroCrypt v3), SHA-256 của",
-            "defaultSaltTierMeaning": "Muối mặc định nghĩa là chỉ riêng mật khẩu mở được kho: không phải mang theo gì khác, và cũng không có gì khác bảo vệ nó."
+            "defaultSaltTierMeaning": "Muối mặc định nghĩa là chỉ riêng mật khẩu mở được kho: không phải mang theo gì khác, và cũng không có gì khác bảo vệ nó.",
+            "pastedObscured": "Dán từ rclone.conf (đã làm rối)",
+            "pastedObscuredHint": "Chỉ chọn \"Dán từ rclone.conf\" nếu bạn đã sao chép giá trị này từ một tệp rclone.conf, nơi rclone lưu giá trị ở dạng đã làm rối.",
+            "formNotRecorded": "Chưa ghi nhận: giá trị này được lưu trước khi AeroFTP hỏi. Hãy chọn cách giá trị đã được nhập; giá trị mà AeroFTP đã nhập từ rclone.conf được lưu dưới dạng \"Gõ trực tiếp\".",
+            "secretFormTyped": "Gõ trực tiếp",
+            "secretFormChangeConfirm": "Thao tác này thay đổi cách đọc giá trị đã lưu, và do đó thay đổi khóa dùng để mở tệp: chỉ lựa chọn đúng mới mở được tệp. Thay đổi lựa chọn này?"
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",
@@ -5870,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP đã tìm thấy một cấu hình hiện có trong thư mục chính của bạn. Bản cài đặt Flatpak này sử dụng bộ lưu trữ riêng biệt của nó, vì vậy các máy chủ đã lưu và két an toàn được mã hóa của bạn chưa hiển thị ở đây. Nhập chúng ngay bây giờ? Các tệp chỉ được sao chép, không có gì bị ghi đè, và két an toàn của bạn được mở khóa ở đây theo cùng cách như hiện tại.",
+            "importBody": "AeroFTP đã tìm thấy một cấu hình hiện có trong thư mục chính của bạn. Bản cài đặt Flatpak này sử dụng bộ lưu trữ riêng biệt của nó, vì vậy các máy chủ đã lưu và két an toàn được mã hóa của bạn chưa hiển thị ở đây. Nhập cấu hình của bạn ngay bây giờ? Các tệp chỉ được sao chép, và một tệp mà bản cài đặt Flatpak này đã có sẽ không bao giờ bị ghi đè.",
             "importAccept": "Nhập",
             "importedBody": "Cấu hình của bạn đã được nhập. Khởi động lại AeroFTP để tải các máy chủ và két an toàn của bạn.",
-            "restartNow": "Khởi động lại ngay"
+            "restartNow": "Khởi động lại ngay",
+            "importNothingBody": "Không có tệp nào được sao chép: bản cài đặt Flatpak này đã có một tệp cùng tên cho mỗi tệp mà quá trình nhập sẽ sao chép, và các tệp hiện có không bao giờ bị ghi đè.",
+            "importFailedBody": "Quá trình nhập đã dừng do lỗi: {error}. Các tệp đã được sao chép vào bản cài đặt Flatpak này vẫn giữ nguyên ở đó, và không có gì bị ghi đè. AeroFTP sẽ đề xuất nhập lại vào lần khởi động tiếp theo.",
+            "importedNoVaultBody": "Cấu hình của bạn đã được nhập, nhưng cấu hình đó không chứa máy chủ đã lưu hay két an toàn nào mà quá trình nhập có thể sao chép. Khởi động lại AeroFTP để tải những gì đã được nhập.",
+            "importedVaultSkippedBody": "Một phần cấu hình của bạn đã được nhập, nhưng không bao gồm các máy chủ đã lưu và két an toàn của bạn: bản cài đặt Flatpak này đã có két an toàn riêng, và các tệp hiện có không bao giờ bị ghi đè. Khởi động lại AeroFTP để tải những gì đã được nhập.",
+            "importNothingVaultSkippedBody": "Không có tệp nào được sao chép, vì vậy các máy chủ đã lưu và két an toàn của bạn không được nhập: bản cài đặt Flatpak này đã có két an toàn riêng và một tệp cùng tên cho mỗi tệp mà quá trình nhập sẽ sao chép, và các tệp hiện có không bao giờ bị ghi đè.",
+            "importUnreadableResult": "AeroFTP không thể đọc kết quả của quá trình nhập",
+            "importNothingToImportBody": "Không có tệp nào được sao chép: cấu hình hiện có của bạn không chứa tệp nào mà quá trình nhập sao chép (liên kết tượng trưng và tệp tạm thời của SQLite không bao giờ được sao chép)."
         },
         "picker": {
             "unavailable": {
