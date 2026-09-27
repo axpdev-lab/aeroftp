@@ -118,7 +118,8 @@ fn legacy_app_config_dir() -> Option<PathBuf> {
 
 /// The entries the import never carries, whatever the destination holds: a
 /// SQLite sidecar and a symbolic link. Shared by [`copy_missing_tree`] and by
-/// [`has_importable_file`], so the offer and the copy cannot disagree.
+/// [`has_importable_file`], so the offer and the copy apply the same skip
+/// rules.
 fn never_copied(src: &Path) -> bool {
     // SQLite sidecars belong to one database generation, not to a directory.
     // In particular, after a keystore restore removed -wal/-shm, copying the
@@ -149,15 +150,22 @@ fn never_copied(src: &Path) -> bool {
 
 /// True when `src` holds at least one file [`copy_missing_tree`] would carry,
 /// at any depth. An empty host config, or one made only of sidecars, symbolic
-/// links and empty folders, has nothing to import.
+/// links and empty folders, has nothing to import. A folder or entry this walk
+/// cannot read counts as importable: the copy fails on it and reports the
+/// error, where answering "nothing here" would silently hide a configuration
+/// the offer could not look into.
 fn has_importable_file(src: &Path) -> bool {
     if never_copied(src) {
         return false;
     }
     if src.is_dir() {
-        std::fs::read_dir(src)
-            .map(|entries| entries.flatten().any(|e| has_importable_file(&e.path())))
-            .unwrap_or(false)
+        match std::fs::read_dir(src) {
+            Ok(entries) => entries.into_iter().any(|entry| match entry {
+                Ok(entry) => has_importable_file(&entry.path()),
+                Err(_) => true,
+            }),
+            Err(_) => true,
+        }
     } else {
         src.is_file()
     }
@@ -1359,6 +1367,41 @@ mod tests {
         let status = import_offer(Some(config), Some(tmp.path().join("sandbox")), true);
 
         assert!(!status.available);
+    }
+
+    /// A folder the offer cannot read is offered, so the copy reports the error
+    /// instead of the offer silently hiding a configuration it could not look
+    /// into.
+    #[cfg(unix)]
+    #[test]
+    fn host_config_with_an_unreadable_folder_is_offered_and_the_copy_reports_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        let locked = config.join("plugins");
+        std::fs::create_dir_all(&locked).unwrap();
+        std::fs::write(locked.join("plugin.json"), b"{}").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Root reads a 0o000 folder anyway, so the premise does not hold there.
+        let premise_holds = std::fs::read_dir(&locked).is_err();
+
+        let status = offer_for(home, &tmp);
+        let result = apply_flatpak_host_import(true, status.source.clone(), status.target.clone());
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        if !premise_holds {
+            eprintln!("skipped: a 0o000 folder is readable here (running as root)");
+            return;
+        }
+        assert!(
+            status.available,
+            "a host config the offer could not read was not offered"
+        );
+        assert!(
+            result.is_err(),
+            "the copy did not report the unreadable folder: {:?}",
+            result.map(|r| r.copied)
+        );
     }
 
     /// A host config and an empty sandbox data root, as the import finds them.
