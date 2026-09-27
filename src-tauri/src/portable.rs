@@ -404,24 +404,24 @@ pub fn is_flatpak() -> bool {
     std::env::var_os("FLATPAK_ID").is_some()
 }
 
-/// Testable core of [`host_config_dir_under_flatpak`]. Kept pure (no env, no
-/// implicit filesystem beyond the `is_dir` probe passed in) so the branch logic
-/// is unit-tested without a real sandbox.
+/// Testable core of [`host_config_dir_under_flatpak`]: no env, the home and the
+/// data root come in resolved, so the branch logic is unit-tested on a temporary
+/// home without a real sandbox.
 fn host_config_dir_impl(
     is_flatpak: bool,
     home: Option<PathBuf>,
     leaf: &str,
     current: Option<PathBuf>,
-    offerable: impl Fn(&Path) -> bool,
 ) -> Option<PathBuf> {
     if !is_flatpak {
         return None;
     }
     let candidate = home?.join(".config").join(leaf);
-    // A no-op (candidate == data root) or a host config with nothing to copy is
-    // nothing to import; bail so the caller never offers an empty or
-    // self-referential migration.
-    if current.as_deref() == Some(candidate.as_path()) || !offerable(&candidate) {
+    // A no-op (candidate == data root) or a missing host config is nothing to
+    // import; bail so the caller never runs a self-referential migration.
+    // Whether the offer is shown also depends on what the folder holds, which
+    // [`import_offer`] decides.
+    if current.as_deref() == Some(candidate.as_path()) || !candidate.is_dir() {
         return None;
     }
     Some(candidate)
@@ -429,8 +429,9 @@ fn host_config_dir_impl(
 
 /// The real host `~/.config/<leaf>` as seen from inside a Flatpak sandbox
 /// (visible thanks to `--filesystem=home`). `None` when not under Flatpak, when
-/// that directory does not exist or holds no file the import would copy, or when
-/// it resolves to the current data root.
+/// that directory does not exist, or when it resolves to the current data root.
+/// A directory with nothing the import would copy is returned: an explicit
+/// import of it reports that nothing was copied, and only the offer skips it.
 ///
 /// `$HOME` inside the sandbox is the real host home, while `dirs::config_dir()`
 /// is redirected into the sandbox, so the host path is built from `$HOME`
@@ -441,15 +442,7 @@ pub fn host_config_dir_under_flatpak() -> Option<PathBuf> {
         dirs::home_dir(),
         aeroftp_data_leaf(),
         aeroftp_data_root(),
-        host_config_offerable,
     )
-}
-
-/// Offer the import only when the host config has something to copy: the offer
-/// says an existing configuration was found, and accepting an empty one would
-/// end in "nothing to import".
-fn host_config_offerable(dir: &Path) -> bool {
-    dir.is_dir() && has_importable_file(dir)
 }
 
 /// Whether a first-run host-config import should be offered, and the paths.
@@ -558,10 +551,25 @@ fn write_flatpak_import_marker(data_root: &Path) {
 
 /// Should the first-run host-config import prompt be shown, and from/to where.
 pub fn flatpak_host_import_status() -> FlatpakImportStatus {
-    let source = host_config_dir_under_flatpak();
-    let target = aeroftp_data_root();
+    import_offer(
+        host_config_dir_under_flatpak(),
+        aeroftp_data_root(),
+        flatpak_import_decided(),
+    )
+}
+
+/// Testable core of [`flatpak_host_import_status`]. The offer says an existing
+/// configuration was found, so it is shown only when the host config holds a
+/// file the copy would carry: accepting one made only of empty folders, SQLite
+/// sidecars and symbolic links would end in "nothing to import".
+fn import_offer(
+    source: Option<PathBuf>,
+    target: Option<PathBuf>,
+    decided: bool,
+) -> FlatpakImportStatus {
+    let offerable = source.as_deref().is_some_and(has_importable_file);
     FlatpakImportStatus {
-        available: source.is_some() && !flatpak_import_decided(),
+        available: offerable && !decided,
         source,
         target,
     }
@@ -1220,12 +1228,14 @@ mod tests {
     /// AppImage installs untouched.
     #[test]
     fn host_config_absent_when_not_flatpak() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("servers.json"), b"{}").unwrap();
         let got = host_config_dir_impl(
             false,
-            Some(PathBuf::from("/home/user")),
+            Some(home),
             "aeroftp",
             Some(PathBuf::from("/whatever")),
-            |_| true,
         );
         assert!(got.is_none());
     }
@@ -1233,28 +1243,27 @@ mod tests {
     /// Under Flatpak with a real host config present, resolve `$HOME/.config/<leaf>`.
     #[test]
     fn host_config_resolved_under_flatpak() {
-        let home = PathBuf::from("/home/user");
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("servers.json"), b"{}").unwrap();
         let got = host_config_dir_impl(
             true,
-            Some(home.clone()),
+            Some(home),
             "aeroftp",
-            Some(PathBuf::from(
-                "/home/user/.var/app/com.aeroftp.AeroFTP/config/aeroftp",
-            )),
-            |p| p == home.join(".config").join("aeroftp"),
+            Some(tmp.path().join("sandbox").join("aeroftp")),
         );
-        assert_eq!(got, Some(home.join(".config").join("aeroftp")));
+        assert_eq!(got, Some(config));
     }
 
     /// A host config that does not exist on disk is not offered.
     #[test]
     fn host_config_skipped_when_dir_missing() {
+        let tmp = tempfile::tempdir().unwrap();
         let got = host_config_dir_impl(
             true,
-            Some(PathBuf::from("/home/user")),
+            Some(tmp.path().join("home")),
             "aeroftp",
-            Some(PathBuf::from("/sandbox/aeroftp")),
-            |_| false,
+            Some(tmp.path().join("sandbox").join("aeroftp")),
         );
         assert!(got.is_none());
     }
@@ -1264,9 +1273,10 @@ mod tests {
     /// non-redirected environment from copying a tree onto itself).
     #[test]
     fn host_config_skipped_when_equal_to_data_root() {
-        let home = PathBuf::from("/home/user");
-        let same = home.join(".config").join("aeroftp");
-        let got = host_config_dir_impl(true, Some(home), "aeroftp", Some(same), |_| true);
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("servers.json"), b"{}").unwrap();
+        let got = host_config_dir_impl(true, Some(home), "aeroftp", Some(config));
         assert!(got.is_none());
     }
 
@@ -1276,6 +1286,35 @@ mod tests {
         let config = home.join(".config").join("aeroftp");
         std::fs::create_dir_all(&config).unwrap();
         (home, config)
+    }
+
+    /// A host config that exists but holds nothing the import copies is still
+    /// the source of an explicit import (the CLI `flatpak-import`): it ends in
+    /// "nothing to import", not in "no host configuration available".
+    #[test]
+    fn an_explicit_import_of_a_host_config_with_nothing_to_copy_copies_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("history.db-wal"), b"stale").unwrap();
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+
+        let source = host_config_dir_impl(true, Some(home), "aeroftp", Some(sandbox.clone()));
+        let report = apply_flatpak_host_import(true, source, Some(sandbox))
+            .expect("an explicit import of a host config with nothing to copy failed");
+
+        assert_eq!(report.copied, 0);
+        assert!(!report.imported());
+    }
+
+    /// What the GUI offer sees for the host config under `home`, through the
+    /// same two steps [`flatpak_host_import_status`] runs.
+    fn offer_for(home: PathBuf, tmp: &tempfile::TempDir) -> FlatpakImportStatus {
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+        import_offer(
+            host_config_dir_impl(true, Some(home), "aeroftp", Some(sandbox.clone())),
+            Some(sandbox),
+            false,
+        )
     }
 
     #[test]
@@ -1289,11 +1328,12 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(tmp.path(), config.join("elsewhere")).unwrap();
 
-        let got = host_config_dir_impl(true, Some(home), "aeroftp", None, host_config_offerable);
+        let status = offer_for(home, &tmp);
 
         assert!(
-            got.is_none(),
-            "an import with nothing to copy was offered: {got:?}"
+            !status.available,
+            "an import with nothing to copy was offered from {:?}",
+            status.source
         );
     }
 
@@ -1304,9 +1344,21 @@ mod tests {
         std::fs::create_dir_all(config.join("plugins").join("p")).unwrap();
         std::fs::write(config.join("plugins").join("p").join("plugin.json"), b"{}").unwrap();
 
-        let got = host_config_dir_impl(true, Some(home), "aeroftp", None, host_config_offerable);
+        let status = offer_for(home, &tmp);
 
-        assert_eq!(got.as_deref(), Some(config.as_path()));
+        assert!(status.available);
+        assert_eq!(status.source, Some(config));
+    }
+
+    #[test]
+    fn a_decided_import_is_not_offered_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("servers.json"), b"{}").unwrap();
+
+        let status = import_offer(Some(config), Some(tmp.path().join("sandbox")), true);
+
+        assert!(!status.available);
     }
 
     /// A host config and an empty sandbox data root, as the import finds them.

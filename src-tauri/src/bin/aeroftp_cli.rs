@@ -1691,6 +1691,14 @@ enum Commands {
     /// Run inside a Flatpak with a native `~/.config/aeroftp` present, this
     /// copies it into the sandbox (copy-only, never overwriting). Outside a
     /// Flatpak it is a no-op. Restart AeroFTP afterwards to load the import.
+    /// The host vault and saved servers come in only when the sandbox has no
+    /// vault of its own, and the output says whether they did.
+    ///
+    /// Exit codes: 0 when files were imported, when no file was copied (every
+    /// file already has a file with the same name in the sandbox, or the host
+    /// config holds nothing to import), with --status, and outside a Flatpak;
+    /// 1 when there is no host config, or when the copy failed (files copied
+    /// before the error stay in the sandbox).
     FlatpakImport {
         /// Only report whether an import is available; do not apply it.
         #[arg(long)]
@@ -38598,9 +38606,9 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
             ),
             OutputFormat::Text => match (st.available, st.source) {
                 (true, Some(src)) => println!("Import available from {}", src.display()),
-                _ => {
-                    println!("No host configuration to import (none present, or already decided).")
-                }
+                _ => println!(
+                    "No host configuration to import (none present, nothing in it to import, or already decided)."
+                ),
             },
         }
         return 0;
