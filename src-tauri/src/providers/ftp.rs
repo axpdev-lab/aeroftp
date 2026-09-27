@@ -6096,8 +6096,11 @@ mod transfer_verdict_tests {
         /// close (it cannot complain before the client has closed).
         retr_reply_after_early_close: &'static str,
         /// STOR: the reply once the data connection ends, unless the client
-        /// sent ABOR first.
+        /// sent ABOR first. Empty: the server never answers.
         stor_reply: &'static str,
+        /// STOR: the server takes the data connection and never reads it, so
+        /// the client's writes stall once the socket buffers are full.
+        stor_stalls: bool,
     }
 
     /// A server that answers every control connection it is given with
@@ -6161,9 +6164,15 @@ mod transfer_verdict_tests {
                         script.retr_reply_after_early_close.to_string()
                     }
                 }
-                "STOR" => {
+                "STOR" | "APPE" => {
                     let (mut data, _) = data_listener.accept().await.unwrap();
                     if write.write_all(b"150 send it\r\n").await.is_err() {
+                        return;
+                    }
+                    if script.stor_stalls {
+                        // Held, never read, until the client goes away.
+                        let _ = lines.next_line().await;
+                        drop(data);
                         return;
                     }
                     let _ = data.read_to_end(&mut Vec::new()).await;
@@ -6218,6 +6227,7 @@ mod transfer_verdict_tests {
                 retr_reply: reply,
                 retr_reply_after_early_close: reply,
                 stor_reply: "226 done\r\n",
+                stor_stalls: false,
             })
             .await;
             let mut provider = connected(port).await;
@@ -6247,6 +6257,7 @@ mod transfer_verdict_tests {
                 retr_reply: "226 done\r\n",
                 retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
                 stor_reply: reply,
+                stor_stalls: false,
             })
             .await;
             let mut provider = connected(port).await;
@@ -6273,6 +6284,7 @@ mod transfer_verdict_tests {
             retr_reply: "451 Requested action aborted: local error.\r\n",
             retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
             stor_reply: "226 done\r\n",
+            stor_stalls: false,
         })
         .await;
         let mut provider = connected(port).await;
@@ -6284,6 +6296,7 @@ mod transfer_verdict_tests {
             retr_reply: "226 done\r\n",
             retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
             stor_reply: "226 done\r\n",
+            stor_stalls: false,
         })
         .await;
         let mut provider = connected(port).await;
@@ -6309,6 +6322,7 @@ mod transfer_verdict_tests {
             retr_reply_after_early_close:
                 "426 Connection closed; transfer aborted.\r\n226 closing\r\n",
             stor_reply: "226 done\r\n",
+            stor_stalls: false,
         })
         .await;
         let mut provider = connected(port).await;
@@ -6333,6 +6347,7 @@ mod transfer_verdict_tests {
             retr_reply: "226 done\r\n",
             retr_reply_after_early_close: "550 Permission denied.\r\n",
             stor_reply: "226 done\r\n",
+            stor_stalls: false,
         })
         .await;
         let mut provider = connected(port).await;
@@ -6358,6 +6373,7 @@ mod transfer_verdict_tests {
             retr_reply: "226 done\r\n",
             retr_reply_after_early_close: "451 Requested action aborted: local error.\r\n",
             stor_reply: "226 done\r\n",
+            stor_stalls: false,
         })
         .await;
         let mut provider = connected(port).await;
@@ -6383,6 +6399,7 @@ mod transfer_verdict_tests {
             retr_reply: "226 done\r\n",
             retr_reply_after_early_close: early_close_reply,
             stor_reply: "226 done\r\n",
+            stor_stalls: false,
         })
         .await;
         let dir = tempfile::tempdir().unwrap();
@@ -6447,6 +6464,7 @@ mod transfer_verdict_tests {
             retr_reply: "226 done\r\n",
             retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
             stor_reply: "226 done\r\n",
+            stor_stalls: false,
         })
         .await;
         let mut provider = connected(port).await;
@@ -6587,5 +6605,102 @@ mod transfer_verdict_tests {
             server.await.unwrap(),
             Some(rustls::ProtocolVersion::TLSv1_2)
         );
+    }
+
+    /// CodeRabbit on #950: an upload dropped mid-write (a cancelled transfer)
+    /// left the session in place, its data channel open and its reply owed,
+    /// and the next command would have waited for that reply with no
+    /// deadline. The session is taken: the next operation dials again.
+    #[tokio::test]
+    async fn an_upload_dropped_mid_write_takes_the_session() {
+        let (port, _) = scripted_server(Script {
+            retr_payload: Vec::new(),
+            retr_reply: "226 done\r\n",
+            retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
+            stor_reply: "226 done\r\n",
+            stor_stalls: true,
+        })
+        .await;
+        let mut provider = connected(port).await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        // More than the socket buffers hold, so the writes stall.
+        std::fs::write(&local, vec![0u8; 64 * 1024 * 1024]).unwrap();
+        let dropped = tokio::time::timeout(
+            Duration::from_millis(500),
+            provider.upload(local.to_str().unwrap(), "/f.bin", None),
+        )
+        .await
+        .is_err();
+        assert!(
+            dropped,
+            "the upload was meant to stall until it was dropped"
+        );
+        assert!(
+            provider.stream.is_none(),
+            "the session outlived an upload dropped mid-write"
+        );
+    }
+
+    /// The same once the data is sent and the server's verdict is awaited,
+    /// on every transfer that reads one through the channel: dropped there,
+    /// each left a reply owed on a session it handed on.
+    #[tokio::test]
+    async fn a_transfer_dropped_while_its_verdict_is_owed_takes_the_session() {
+        let (port, _) = scripted_server(Script {
+            retr_payload: b"0123456789".to_vec(),
+            // The verdict never comes.
+            retr_reply: "",
+            retr_reply_after_early_close: "",
+            stor_reply: "",
+            stor_stalls: false,
+        })
+        .await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_str().unwrap().to_string();
+        let wait = Duration::from_millis(500);
+        for op in [
+            "download",
+            "download_to_bytes",
+            "read_range",
+            "resume_download",
+            "upload",
+            "resume_upload",
+        ] {
+            std::fs::write(&local, b"012").unwrap();
+            let mut provider = connected(port).await;
+            let dropped = match op {
+                "download" => tokio::time::timeout(wait, provider.download("/f.bin", &local, None))
+                    .await
+                    .is_err(),
+                "download_to_bytes" => {
+                    tokio::time::timeout(wait, provider.download_to_bytes("/f.bin"))
+                        .await
+                        .is_err()
+                }
+                "read_range" => tokio::time::timeout(wait, provider.read_range("/f.bin", 0, 100))
+                    .await
+                    .is_err(),
+                "resume_download" => {
+                    tokio::time::timeout(wait, provider.resume_download("/f.bin", &local, 3, None))
+                        .await
+                        .is_err()
+                }
+                "upload" => tokio::time::timeout(wait, provider.upload(&local, "/f.bin", None))
+                    .await
+                    .is_err(),
+                "resume_upload" => {
+                    tokio::time::timeout(wait, provider.resume_upload(&local, "/f.bin", 1, None))
+                        .await
+                        .is_err()
+                }
+                _ => unreachable!(),
+            };
+            assert!(dropped, "{op}: meant to be waiting for the verdict");
+            assert!(
+                provider.stream.is_none(),
+                "{op}: the session outlived a transfer dropped with its verdict owed"
+            );
+        }
     }
 }
