@@ -2434,7 +2434,7 @@
                 "rejectExecution": "Одбиј извршавање алата",
                 "toggleDetails": "Прикажи/сакриј детаље",
                 "allowSession": "Дозволи за ову сесију",
-                "nonAtomicReplace": "Neatomska zamena: datoteka privremeno nedostaje"
+                "nonAtomicReplace": "Неатомска замена: датотека привремено недостаје"
             },
             "settings": {
                 "title": "AI подешавања",
