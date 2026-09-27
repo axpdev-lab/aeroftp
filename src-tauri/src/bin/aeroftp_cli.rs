@@ -30277,6 +30277,15 @@ async fn webdav_dispatch(
                 }
             };
             let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
+            // RFC 4918 section 9.9.4: a MOVE whose source and destination are
+            // the same resource is 403. The backends answer a rename onto
+            // itself with a no-op, which read as 204, a move that happened.
+            if remote_path.trim_end_matches('/') == dest_remote.trim_end_matches('/') {
+                return serve_error_response(
+                    StatusCode::FORBIDDEN,
+                    "The source and the destination are the same resource",
+                );
+            }
             let overwrite = webdav_move_may_overwrite(&headers);
             let mut provider = state.provider.lock().await;
             // `rename` first: it refuses an occupied destination, which is
@@ -80484,6 +80493,45 @@ mod tests {
             line,
             serde_json::json!({ "status": "warning", "warning": "left /.b.txt.aeroftp-replaced-1" })
         );
+    }
+
+    /// A MOVE onto its own path reached the backend's rename, a no-op, and
+    /// answered 204 as if something had moved. RFC 4918 section 9.9.4 makes
+    /// it 403, and the provider is not asked.
+    #[tokio::test]
+    async fn served_webdav_move_onto_itself_is_403() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"new".to_vec());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let state = ServeHttpState {
+            provider: Arc::new(AsyncMutex::new(provider)),
+            provider_label: "fake".to_string(),
+            base_path: "/".to_string(),
+            auth_token: None,
+            warnings: ServedWarnings::stderr(OutputFormat::Text),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Destination",
+            HeaderValue::from_static("http://127.0.0.1:8080/a.txt"),
+        );
+        let response = webdav_dispatch(
+            state.clone(),
+            Method::from_bytes(b"MOVE").unwrap(),
+            "a.txt".to_string(),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake");
+        assert!(fake.renames.is_empty(), "{:?}", fake.renames);
+        assert!(fake.replaces.is_empty(), "{:?}", fake.replaces);
     }
 
     /// `Overwrite: F` onto an existing destination is 412 (RFC 4918 section
