@@ -952,7 +952,7 @@ Output per cycle (text mode on stderr):
 
 With `--json`, each cycle emits one NDJSON object on stdout with `cycle`, `trigger`, `uploaded`, `downloaded`, `deleted`, `skipped`, `errors`, `elapsed_secs`, and `timestamp` fields.
 
-Anti-loop protection: events are suppressed during active syncs and within the cooldown window. Editor temp files (`.swp`, `.tmp`, `~`, `.aerotmp`) are automatically filtered.
+Anti-loop protection: an event during a sync or within the cooldown window does not start a cycle; it is kept, and one cycle syncs what came in when the cooldown ends. Reads are ignored, and so is the bisync snapshot (`.aeroftp-bisync.json`) that every `both` cycle rewrites, so a cycle never starts the next one. Editor temp files (`.swp`, `.tmp`, `~`, `.aerotmp`) are automatically filtered. When the system drops events (an inotify queue overflow), the next cycle rescans the whole tree instead of trusting its snapshot.
 
 ### reconcile - Categorized Local/Remote Diff
 

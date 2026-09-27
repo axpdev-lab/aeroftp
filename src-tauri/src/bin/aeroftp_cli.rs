@@ -33462,7 +33462,6 @@ async fn cmd_get_glob(
                             resolve_max_transfer(cli),
                         )
                         .await
-                        .map(|_| ())
                         .map(|_| remote_path)
                     }
                 },
@@ -57739,6 +57738,11 @@ fn should_exclude_watch_path(path: &std::path::Path) -> bool {
     ) {
         return true;
     }
+    // The bisync snapshot: every `both` cycle rewrites it inside the watched
+    // root, and a cycle must not start the next one.
+    if name == BISYNC_SNAPSHOT_FILE {
+        return true;
+    }
     // VCS / heavy dirs (will never be a leaf event worth syncing)
     if matches!(
         name,
@@ -57873,7 +57877,9 @@ fn watch_cycle_payload(
 /// own writes), and a user edit among them has to be synced.
 #[derive(Default)]
 struct WatchDeferred {
-    paths: Vec<std::path::PathBuf>,
+    /// A set: an event storm repeats the same paths, and a list of them grew
+    /// without bound.
+    paths: std::collections::BTreeSet<std::path::PathBuf>,
     /// When the cycle for them is due; `None` when nothing waits.
     due: Option<tokio::time::Instant>,
 }
@@ -57887,7 +57893,7 @@ impl WatchDeferred {
     /// The paths waiting, handed to the cycle that runs now.
     fn take(&mut self) -> Vec<std::path::PathBuf> {
         self.due = None;
-        std::mem::take(&mut self.paths)
+        std::mem::take(&mut self.paths).into_iter().collect()
     }
 }
 
@@ -57965,6 +57971,27 @@ fn incremental_local_scan(
     }
 }
 
+/// What the watcher forwards for one event: its paths worth a cycle, or the
+/// watched root alone when the event asks for a rescan (the kernel's event
+/// queue overflowed and what was in it is lost; the loop then runs a full
+/// cycle). A read (an open, an access, a close) changes nothing and is not
+/// forwarded: every `both` cycle reads the bisync snapshot inside the watched
+/// root, and forwarding that read started the next cycle, and so on forever.
+fn watch_event_paths(event: &notify::Event, root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    if event.need_rescan() {
+        return vec![root.to_path_buf()];
+    }
+    if matches!(event.kind, notify::EventKind::Access(_)) {
+        return Vec::new();
+    }
+    event
+        .paths
+        .iter()
+        .filter(|p| !should_exclude_watch_path(p))
+        .cloned()
+        .collect()
+}
+
 /// Start a filesystem watcher and return a boxed handle (dropped to stop).
 /// Filtered, debounced paths are sent on `tx`.
 fn start_watch_watcher(
@@ -57979,14 +58006,11 @@ fn start_watch_watcher(
             use notify::PollWatcher;
             let config =
                 notify::Config::default().with_poll_interval(std::time::Duration::from_secs(5));
+            let root = watch_path.to_path_buf();
             let watcher = PollWatcher::new(
                 move |res: Result<notify::Event, notify::Error>| {
                     if let Ok(event) = res {
-                        let paths: Vec<_> = event
-                            .paths
-                            .into_iter()
-                            .filter(|p| !should_exclude_watch_path(p))
-                            .collect();
+                        let paths = watch_event_paths(&event, &root);
                         if !paths.is_empty() {
                             let _ = tx.send(paths);
                         }
@@ -58014,18 +58038,17 @@ fn start_watch_watcher(
                 .map_err(|e| format!("Failed to watch path: {}", e))?;
 
             // Spawn thread to drain debouncer events and forward filtered paths
+            let root = watch_path.to_path_buf();
             std::thread::spawn(move || {
                 while let Ok(result) = drx.recv() {
                     if let Ok(events) = result {
-                        let mut all_paths = Vec::new();
-                        for event in &events {
-                            for p in &event.paths {
-                                if !should_exclude_watch_path(p) && !all_paths.contains(p) {
-                                    all_paths.push(p.clone());
-                                }
-                            }
-                        }
-                        if !all_paths.is_empty() && tx.send(all_paths).is_err() {
+                        let all_paths: std::collections::BTreeSet<std::path::PathBuf> = events
+                            .iter()
+                            .flat_map(|event| watch_event_paths(event, &root))
+                            .collect();
+                        if !all_paths.is_empty()
+                            && tx.send(all_paths.into_iter().collect()).is_err()
+                        {
                             break; // receiver dropped
                         }
                     }
@@ -58352,8 +58375,12 @@ async fn cmd_sync_watch(
             continue;
         };
         let trigger = format!("watcher: {} paths", changed_paths.len());
+        // The watcher lost events (its queue overflowed) and sent its root:
+        // the snapshot no longer knows what changed, and a full cycle rebuilds
+        // it below.
+        let rescan = changed_paths.iter().any(|p| p.as_path() == local_path);
 
-        if use_incremental && local_snapshot.completeness.is_complete() {
+        if use_incremental && !rescan && local_snapshot.completeness.is_complete() {
             let scan =
                 incremental_local_scan(local_path, &changed_paths, &local_snapshot, &local_filter);
             local_snapshot = WatchLocalSnapshot::from_scan(&scan);
@@ -80676,6 +80703,87 @@ mod tests {
             ]
         );
         assert!(deferred.due.is_none() && deferred.take().is_empty());
+        // An event storm repeats paths: each is kept once (m5, verification
+        // of the fourth round of #949).
+        for _ in 0..3 {
+            deferred.defer(vec!["/l/a.txt".into()], cooldown_end);
+        }
+        assert_eq!(deferred.take(), vec![std::path::PathBuf::from("/l/a.txt")]);
+    }
+
+    /// M1 (verification of round 4 of #949): every `both` cycle reads and
+    /// rewrites the bisync snapshot inside the watched root, and the watcher
+    /// forwarded both, the read as an open and the write as the rename of its
+    /// temporary. The event came in the cooldown, a cycle ran for it when the
+    /// cooldown ended, and that cycle read and rewrote the snapshot again: a
+    /// full listing every cooldown, forever. The real watcher on a real
+    /// directory: what a cycle does to the snapshot forwards nothing, and a
+    /// user's file still does.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_snapshot_a_cycle_rewrites_does_not_start_the_next_cycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let local = root.to_string_lossy().into_owned();
+        let scanned = vec![("a.txt".to_string(), 1, Some(FIXTURE_MTIME.to_string()))];
+        let cycle = || {
+            let _ = load_bisync_snapshot(&local);
+            save_bisync_snapshot(
+                &local,
+                &scanned,
+                &scanned,
+                &BisyncOutcome::default(),
+                None,
+                &ftp_client_gui_lib::sync_core::ScanBound::default(),
+                &[],
+            );
+        };
+        // As the initial cycle leaves it, before the watch starts.
+        cycle();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _watcher = start_watch_watcher(&root, "native", 100, tx).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        cycle();
+        let forwarded: Vec<_> = rx
+            .recv_timeout(std::time::Duration::from_millis(1500))
+            .into_iter()
+            .flatten()
+            .collect();
+        assert!(
+            forwarded.is_empty(),
+            "a cycle's snapshot was forwarded: {forwarded:?}"
+        );
+        // The control: the same watcher forwards a user's file.
+        std::fs::write(root.join("b.txt"), b"b").unwrap();
+        let seen = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("a user's file must be forwarded");
+        assert!(seen.iter().any(|p| p.ends_with("b.txt")), "{seen:?}");
+    }
+
+    /// m5 (same verification): an event that asks for a rescan (an inotify
+    /// queue overflow) has no paths, and was dropped; it now forwards the
+    /// watched root, which the loop reads as a full cycle. A read is not
+    /// forwarded at all.
+    #[test]
+    fn a_lost_event_queue_asks_for_a_full_cycle() {
+        let root = std::path::Path::new("/l");
+        let overflow =
+            notify::Event::new(notify::EventKind::Other).set_flag(notify::event::Flag::Rescan);
+        assert_eq!(watch_event_paths(&overflow, root), vec![root.to_path_buf()]);
+        let read = notify::Event::new(notify::EventKind::Access(notify::event::AccessKind::Open(
+            notify::event::AccessMode::Any,
+        )))
+        .add_path("/l/a.txt".into());
+        assert!(watch_event_paths(&read, root).is_empty());
+        let write = notify::Event::new(notify::EventKind::Modify(notify::event::ModifyKind::Data(
+            notify::event::DataChange::Any,
+        )))
+        .add_path("/l/a.txt".into());
+        assert_eq!(
+            watch_event_paths(&write, root),
+            vec![std::path::PathBuf::from("/l/a.txt")]
+        );
     }
 
     /// A watch cycle's JSON line names the pairs it left open and the

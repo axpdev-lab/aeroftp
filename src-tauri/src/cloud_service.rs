@@ -161,9 +161,18 @@ pub struct CloudService {
     conflicts: Arc<RwLock<Vec<FileConflict>>>,
     task_tx: Option<mpsc::Sender<SyncTask>>,
     app_handle: Option<AppHandle>,
-    /// The local file's time as each transfer of the running cycle left it
-    /// (relative path), read when the transfer ended, after any time stamp.
-    landed: Arc<std::sync::Mutex<HashMap<String, DateTime<Utc>>>>,
+    /// What each transfer of the running cycle left (relative path), for the
+    /// baseline.
+    landed: Arc<std::sync::Mutex<HashMap<String, Landed>>>,
+}
+
+/// What a transfer left, for the baseline: the time it left on the local file
+/// and, for an upload of a file saved again while it went up, the size the
+/// remote now holds.
+#[derive(Debug, Clone, Copy)]
+struct Landed {
+    size: Option<u64>,
+    modified: DateTime<Utc>,
 }
 
 impl CloudService {
@@ -187,8 +196,22 @@ impl CloudService {
             .and_then(|meta| meta.modified())
             .ok()
             .map(DateTime::<Utc>::from);
-        if let (Some(time), Ok(mut landed)) = (on_disk, self.landed.lock()) {
-            landed.insert(relative_path.to_string(), time);
+        if let Some(modified) = on_disk {
+            self.note_landed_as(
+                relative_path,
+                Landed {
+                    size: None,
+                    modified,
+                },
+            );
+        }
+    }
+
+    /// Note what a transfer left as the caller established it, without
+    /// reading the disk again.
+    fn note_landed_as(&self, relative_path: &str, what: Landed) {
+        if let Ok(mut landed) = self.landed.lock() {
+            landed.insert(relative_path.to_string(), what);
         }
     }
 
@@ -458,13 +481,16 @@ impl CloudService {
                 // not now: a same-size edit made later in the cycle must stay a
                 // change the next cycle sees.
                 if matches!(action, SyncAction::Upload | SyncAction::Download) && !c.is_dir {
-                    if let Some(time) = self
+                    if let Some(landed) = self
                         .landed
                         .lock()
                         .ok()
                         .and_then(|landed| landed.get(&c.relative_path).copied())
                     {
-                        entry.modified = Some(time);
+                        entry.modified = Some(landed.modified);
+                        if let Some(size) = landed.size {
+                            entry.size = size;
+                        }
                     }
                 }
                 index_files.insert(c.relative_path.clone(), entry);
@@ -1871,33 +1897,71 @@ impl CloudService {
                     // After upload, stat the remote file to get the server-assigned mtime,
                     // then apply it to the local file so both sides match.
                     // This prevents ping-pong re-sync on all providers (SFTP, FTP, WebDAV, S3, cloud APIs).
-                    // Not when the file was saved again while it uploaded: the
-                    // server's time would hide that edit, which the remote does
-                    // not have, and the next cycle must see it.
-                    if !Self::unchanged_since_scan(local_info) {
-                        landed = false;
+                    // The remote is read first, so the local file is checked
+                    // for an edit made meanwhile right before it is stamped,
+                    // with no round trip in between, and what the baseline
+                    // records is noted here rather than read back from the disk
+                    // later: an edit made after the stamp stays a change the
+                    // next cycle sees.
+                    let uploaded = provider.stat(&remote_path).await;
+                    if let Err(e) = &uploaded {
+                        tracing::debug!(
+                            "Could not stat remote file after upload (non-fatal): {}",
+                            e
+                        );
+                    }
+                    let server_time = uploaded
+                        .as_ref()
+                        .ok()
+                        .and_then(|entry| entry.modified.as_deref())
+                        .and_then(crate::parse_remote_datetime)
+                        .and_then(|dt| DateTime::<Utc>::from_timestamp(dt.timestamp(), 0));
+                    landed = false;
+                    if Self::unchanged_since_scan(local_info) {
+                        let local_path = std::path::Path::new(&local_info.path);
+                        let stamped = server_time.filter(|dt| {
+                            filetime::set_file_mtime(
+                                local_path,
+                                filetime::FileTime::from_unix_time(dt.timestamp(), 0),
+                            )
+                            .is_ok()
+                        });
+                        // A remote that gives no time, or a stamp that could
+                        // not be applied, leaves the scan's time: the remote's
+                        // own time then differs from it, and the next cycle
+                        // downloads the same content once more (a local edit
+                        // made before that cycle reads as a conflict).
+                        if let Some(modified) = stamped.or(local_info.modified) {
+                            self.note_landed_as(
+                                &comparison.relative_path,
+                                Landed {
+                                    size: None,
+                                    modified,
+                                },
+                            );
+                        }
+                    } else {
+                        // Saved again while it went up: the server's time would
+                        // hide that edit, which the remote does not have, so the
+                        // local file is not stamped. The remote now holds the
+                        // uploaded copy at the server's time, and that is what
+                        // the baseline records: the next cycle reads the remote
+                        // unchanged and the edit as a local change, an upload.
+                        // The scan's time read both sides as changed, a
+                        // conflict, which PreferRemote and PreferNewer settle by
+                        // downloading the pre-edit copy over the edit.
                         tracing::info!(
                             "AeroCloud: '{}' changed while it uploaded; left for the next cycle",
                             comparison.relative_path
                         );
-                    } else {
-                        match provider.stat(&remote_path).await {
-                            Ok(remote_entry) => {
-                                if let Some(mtime_str) = &remote_entry.modified {
-                                    // Parse and apply remote mtime to local file
-                                    let remote_dt = crate::parse_remote_datetime(mtime_str);
-                                    if let Some(dt) = remote_dt {
-                                        let local_path = std::path::Path::new(&local_info.path);
-                                        crate::preserve_remote_mtime_dt(local_path, Some(dt));
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                tracing::debug!(
-                                    "Could not stat remote file after upload (non-fatal): {}",
-                                    e
-                                );
-                            }
+                        if let (Ok(entry), Some(modified)) = (&uploaded, server_time) {
+                            self.note_landed_as(
+                                &comparison.relative_path,
+                                Landed {
+                                    size: Some(entry.size),
+                                    modified,
+                                },
+                            );
                         }
                     }
                 }
@@ -2479,6 +2543,9 @@ mod baseline_tests {
     #[derive(Default)]
     struct StampingProvider {
         edit_during_upload: bool,
+        /// Saves this local file again, same size, while the remote is
+        /// read after the upload.
+        edit_during_stat: Option<std::path::PathBuf>,
     }
 
     #[async_trait::async_trait]
@@ -2555,6 +2622,10 @@ mod baseline_tests {
             Err(ProviderError::NotSupported("rename".to_string()))
         }
         async fn stat(&mut self, path: &str) -> Result<ProviderRemoteEntry, ProviderError> {
+            if let Some(local) = &self.edit_during_stat {
+                std::fs::write(local, b"EDITED!").unwrap();
+                stamp(local, 1_750_000_000);
+            }
             let mut entry = ProviderRemoteEntry::file("f.txt".to_string(), path.to_string(), 7);
             entry.modified = Some("2027-01-15 08:00:00".to_string());
             Ok(entry)
@@ -2573,19 +2644,23 @@ mod baseline_tests {
         }
     }
 
-    /// Major 1 (fourth review of #949): a same-size edit saved while the file
-    /// uploaded was stamped over with the server's time and noted as the
-    /// synced state: the edit never reached the remote, and a later remote
-    /// change downloaded over it. A file that changed during its upload is
-    /// neither stamped nor noted: the baseline keeps the scan's time, and the
-    /// next cycle sees the local edit.
-    #[tokio::test]
-    async fn an_edit_during_an_upload_is_not_stamped_over() {
-        let root = tempfile::tempdir().expect("local root");
-        let file = root.path().join("f.txt");
-        std::fs::write(&file, b"payload").unwrap();
-        stamp(&file, 1_700_000_000);
-        let mut local = fi(7, 1_700_000_000);
+    /// The time `StampingProvider` reports for every file.
+    fn server_time() -> DateTime<Utc> {
+        chrono::NaiveDateTime::parse_from_str("2027-01-15 08:00:00", "%Y-%m-%d %H:%M:%S")
+            .unwrap()
+            .and_utc()
+    }
+
+    /// Upload `f.txt` (as the scan saw it: its size on disk, 1_700_000_000)
+    /// through `provider`, then classify the next cycle: the local file as it
+    /// is on disk, the remote as the upload left it (7 bytes, the server's
+    /// time), against the baseline this cycle wrote.
+    async fn upload_then_next_cycle(
+        provider: &mut StampingProvider,
+        root: &std::path::Path,
+    ) -> (HashMap<String, SyncIndexEntry>, SyncStatus) {
+        let file = root.join("f.txt");
+        let mut local = fi(std::fs::metadata(&file).unwrap().len(), 1_700_000_000);
         local.path = file.to_string_lossy().into_owned();
         let uploaded = cmp(
             SyncStatus::LocalNewer,
@@ -2599,28 +2674,108 @@ mod baseline_tests {
             false,
             ConflictStrategy::AskUser,
         );
-        config.local_folder = root.path().to_path_buf();
+        config.local_folder = root.to_path_buf();
         config.remote_folder = "/remote".to_string();
         let svc = CloudService::new();
-        svc.process_comparison_with_provider(
+        svc.process_comparison_with_provider(provider, &config, &uploaded)
+            .await
+            .expect("the upload succeeds");
+        let baseline = svc.post_sync_baseline(&[uploaded], &config, None);
+        let meta = std::fs::metadata(&file).unwrap();
+        let mut now_local = fi(meta.len(), 0);
+        now_local.modified = Some(DateTime::<Utc>::from(meta.modified().unwrap()));
+        let mut remote = fi(7, 0);
+        remote.modified = Some(server_time());
+        let index = SyncIndex {
+            version: SYNC_INDEX_VERSION,
+            last_sync: Utc::now(),
+            local_path: root.to_string_lossy().into_owned(),
+            remote_path: "/remote".to_string(),
+            files: baseline.clone(),
+            unverified_keys: Default::default(),
+        };
+        let next = build_comparison_results_with_index(
+            HashMap::from([("f.txt".to_string(), now_local)]),
+            HashMap::from([("f.txt".to_string(), remote)]),
+            &CompareOptions::default(),
+            Some(&index),
+        );
+        let status = next
+            .iter()
+            .find(|c| c.relative_path == "f.txt")
+            .map(|c| c.status.clone())
+            .unwrap_or(SyncStatus::Identical);
+        (baseline, status)
+    }
+
+    /// Major 1 (fourth review of #949): a same-size edit saved while the file
+    /// uploaded was stamped over with the server's time and noted as the
+    /// synced state: the edit never reached the remote, and a later remote
+    /// change downloaded over it. m2 (verification of the fourth round): not
+    /// stamping it and keeping the scan's time read both sides as changed
+    /// next cycle, a conflict that PreferRemote and PreferNewer settle by
+    /// downloading the pre-edit copy over the edit. The baseline records the
+    /// remote as the upload left it, and the next cycle uploads the edit.
+    ///
+    /// The edit may change the size too (the scan read 5 bytes, the server
+    /// holds the 7 it was sent): the baseline takes the remote's size.
+    #[tokio::test]
+    async fn an_edit_during_an_upload_is_uploaded_next_cycle() {
+        for scanned in [&b"payload"[..], &b"12345"[..]] {
+            let root = tempfile::tempdir().expect("local root");
+            let file = root.path().join("f.txt");
+            std::fs::write(&file, scanned).unwrap();
+            stamp(&file, 1_700_000_000);
+            let (baseline, next) = upload_then_next_cycle(
+                &mut StampingProvider {
+                    edit_during_upload: true,
+                    ..Default::default()
+                },
+                root.path(),
+            )
+            .await;
+            assert_eq!(
+                std::fs::metadata(&file).unwrap().modified().unwrap(),
+                std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_750_000_000),
+                "the edit keeps its own time"
+            );
+            let entry = baseline.get("f.txt").expect("a baseline entry");
+            assert_eq!((entry.size, entry.modified), (7, Some(server_time())));
+            assert_eq!(
+                next,
+                SyncStatus::LocalNewer,
+                "the edit is uploaded next cycle ({} bytes scanned)",
+                scanned.len()
+            );
+        }
+    }
+
+    /// m1 (same verification): the local file was checked for an edit before
+    /// the remote was read, and a save made during that round trip was
+    /// stamped over. The remote is read first now.
+    #[tokio::test]
+    async fn an_edit_while_the_remote_is_read_is_not_stamped_over() {
+        let root = tempfile::tempdir().expect("local root");
+        let file = root.path().join("f.txt");
+        std::fs::write(&file, b"payload").unwrap();
+        stamp(&file, 1_700_000_000);
+        let (_, next) = upload_then_next_cycle(
             &mut StampingProvider {
-                edit_during_upload: true,
+                edit_during_stat: Some(file.clone()),
+                ..Default::default()
             },
-            &config,
-            &uploaded,
+            root.path(),
         )
-        .await
-        .expect("the upload succeeds");
+        .await;
         assert_eq!(
             std::fs::metadata(&file).unwrap().modified().unwrap(),
             std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_750_000_000),
             "the edit keeps its own time"
         );
-        let files = svc.post_sync_baseline(&[uploaded], &config, None);
         assert_eq!(
-            files.get("f.txt").and_then(|entry| entry.modified),
-            DateTime::<Utc>::from_timestamp(1_700_000_000, 0),
-            "the baseline keeps the scan's time, so the edit reads as a change"
+            next,
+            SyncStatus::LocalNewer,
+            "the edit is uploaded next cycle"
         );
     }
 

@@ -613,9 +613,21 @@ export const runRemoteSync = async (
         completed: false,
     };
     const journalEntryMap = new Map<string, number>();
-    // The local time each completed download left, read when it completed,
-    // for the index entries of files whose remote gives no time.
-    const landedTimes = new Map<string, string | null>();
+    // The local file of each transfer as the index records it, for the files
+    // this run knows no time of (a remote that lists none, a run resumed from
+    // its journal): read when a download completed, and before an upload.
+    const landedStates = new Map<string, { size: number | null; modified: string | null }>();
+    const readLocalState = async (path: string) => {
+        const props = await invoke<{ size?: number; modified: string | null } | undefined>(
+            'get_file_properties',
+            { path },
+        ).catch(() => undefined);
+        // get_file_properties formats UTC without the zone.
+        return {
+            size: typeof props?.size === 'number' ? props.size : null,
+            modified: props?.modified ? `${props.modified}Z` : null,
+        };
+    };
     journal.entries.forEach((entry, idx) => journalEntryMap.set(entry.relative_path, idx));
 
     // GAP-9a — Maniac mode disables journal persistence. The in-memory
@@ -772,6 +784,11 @@ export const runRemoteSync = async (
                 cmd = 'upload_file';
                 args = { params: { local_path: localFilePath, remote_path: remoteFilePath, use_delta: config.deltaSyncEnabled } };
             }
+            // A run resumed from its journal knows no time of the file it
+            // uploads: read it before the upload, the copy that goes up.
+            if (deps.writeIndex && item.mtime == null) {
+                landedStates.set(item.relativePath, await readLocalState(localFilePath));
+            }
             const result = await executeTransferWithRetry(cmd, args, item.relativePath);
             if (journalEntry) {
                 journalEntry.attempts = result.attempts;
@@ -887,12 +904,7 @@ export const runRemoteSync = async (
                     // same-size edit made in between is a change the next run
                     // must see, not the synced state.
                     if (deps.writeIndex && item.mtime == null) {
-                        const props = await invoke<{ modified: string | null } | undefined>(
-                            'get_file_properties',
-                            { path: localFilePath },
-                        ).catch(() => undefined);
-                        // get_file_properties formats UTC without the zone.
-                        landedTimes.set(item.relativePath, props?.modified ? `${props.modified}Z` : null);
+                        landedStates.set(item.relativePath, await readLocalState(localFilePath));
                     }
                     downloaded++;
                     totalBytes += item.size;
@@ -1060,6 +1072,13 @@ export const runRemoteSync = async (
             const mergedFiles: Record<string, SyncIndexEntry> = {
                 ...(existing?.files ?? {}),
             };
+            // An index saved after the resumed journal started was saved by the
+            // run it resumes, and its entries are of the files that run moved.
+            // One saved before it is older: a run that crashed saved none.
+            const savedByTheResumedRun =
+                !!deps.resumeJournal &&
+                !!existing &&
+                Date.parse(existing.last_sync) >= Date.parse(deps.resumeJournal.created_at);
             for (const f of files) {
                 const idx = journalEntryMap.get(f.relativePath);
                 const entry = idx !== undefined ? journal.entries[idx] : undefined;
@@ -1067,25 +1086,35 @@ export const runRemoteSync = async (
                 if (f.action === 'upload' || f.action === 'download') {
                     // The next compare reads the local side against this time
                     // with the local clock. A download keeps the remote time,
-                    // which it stamped on the local copy; a backend that lists
-                    // none (FTP LIST dates) leaves the downloaded file's own,
-                    // read when the download completed, or the local side would
-                    // be compared by size alone and a same-size edit would go
-                    // unseen. A download the resumed journal had finished was
-                    // not read in this run: the entry the interrupted run
-                    // wrote for it keeps its time, if it is of that file (the
-                    // same size); an older entry says nothing about it.
-                    const earlier = existing?.files?.[f.relativePath];
-                    const modified =
-                        f.action === 'download' && f.mtime == null
-                            ? landedTimes.has(f.relativePath)
-                                ? landedTimes.get(f.relativePath) ?? null
-                                : earlier && !earlier.is_dir && earlier.size === f.size
-                                  ? earlier.modified
-                                  : null
-                            : f.mtime;
+                    // which it stamped on the local copy, and an upload the
+                    // time the scan read. With neither (a backend that lists no
+                    // time, such as FTP LIST dates, or a run resumed from its
+                    // journal) the file's own is recorded, read when the
+                    // download completed or before the upload, or the local side
+                    // would be compared by size alone and a same-size edit would
+                    // go unseen. A transfer the resumed journal had finished
+                    // was not read in this run: the entry the interrupted run
+                    // saved for it keeps its time, if that run saved one and it
+                    // is of that file (the same size).
+                    let size = f.size;
+                    let modified = f.mtime;
+                    if (f.mtime == null) {
+                        const landed = landedStates.get(f.relativePath);
+                        const earlier = existing?.files?.[f.relativePath];
+                        if (landed) {
+                            modified = landed.modified;
+                            size = landed.size ?? f.size;
+                        } else if (
+                            savedByTheResumedRun &&
+                            earlier &&
+                            !earlier.is_dir &&
+                            earlier.size === f.size
+                        ) {
+                            modified = earlier.modified;
+                        }
+                    }
                     mergedFiles[f.relativePath] = {
-                        size: f.size,
+                        size,
                         modified,
                         is_dir: false,
                     };
