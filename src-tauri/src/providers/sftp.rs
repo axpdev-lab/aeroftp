@@ -2037,6 +2037,16 @@ impl StorageProvider for SftpProvider {
             .collect()
             .await;
 
+        // The follow-ups drop their errors on purpose (a server that refuses
+        // one STAT still lists), so one cut by the end of the transport left
+        // its entry half read, as a file with no mode. That is a lost
+        // connection, which the caller reconnects for, not a listing.
+        if sftp.ended.is_cancelled() {
+            return Err(ProviderError::ConnectionLost(
+                SFTP_TRANSPORT_ENDED.to_string(),
+            ));
+        }
+
         // Sort: directories first, then by name. buffer_unordered yields in
         // completion order, so the tiebreak on the exact name (not only the
         // lowercased one) keeps the output fully deterministic no matter which
@@ -3372,7 +3382,13 @@ impl StorageProvider for SftpProvider {
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match until_sftp_ends(&sftp.ended, sftp.read_dir(&dir)).await {
                 Ok(e) => e,
-                Err(_) => continue, // Skip inaccessible directories
+                // A folder that cannot be read is skipped; a connection that
+                // ended is not a folder, and the rest of the walk could not
+                // be read either.
+                Err(e) => match classify_russh_err(e, ProviderError::ServerError) {
+                    lost @ ProviderError::ConnectionLost(_) => return Err(lost),
+                    _ => continue,
+                },
             };
 
             for entry in entries {
@@ -5524,6 +5540,12 @@ mod tests {
         OpenUnanswered,
         /// Stays, and never answers a CLOSE.
         CloseUnanswered,
+        /// Lists entries without attributes, so that a listing asks for each
+        /// one, and goes away at the first of those STATs.
+        ListFollowUp,
+        /// Goes away at the n-th OPENDIR, after listing a folder `sub` and
+        /// a file `b.txt` in every folder it opened before.
+        OpenDirAt(usize),
     }
 
     /// An SFTP server on an in-memory transport that goes away in the middle
@@ -5534,6 +5556,10 @@ mod tests {
         writes: usize,
         reads: usize,
         stats: usize,
+        opendirs: usize,
+        /// Directory handles whose entries were sent: the next READDIR of
+        /// each ends the listing.
+        listed: std::collections::HashSet<String>,
         source: Arc<Vec<u8>>,
         cut: Arc<tokio::sync::Notify>,
     }
@@ -5565,7 +5591,9 @@ mod tests {
             id: u32,
         ) -> Result<russh_sftp::protocol::Attrs, russh_sftp::protocol::StatusCode> {
             self.stats += 1;
-            if matches!(self.at, GoAwayAt::Stat(n) if n == self.stats) {
+            if matches!(self.at, GoAwayAt::Stat(n) if n == self.stats)
+                || matches!(self.at, GoAwayAt::ListFollowUp)
+            {
                 self.go_away().await;
             }
             if matches!(self.at, GoAwayAt::StatRefused) {
@@ -5720,10 +5748,38 @@ mod tests {
             id: u32,
             path: String,
         ) -> Result<russh_sftp::protocol::Handle, Self::Error> {
-            if matches!(self.at, GoAwayAt::OpenDir) {
+            self.opendirs += 1;
+            if matches!(self.at, GoAwayAt::OpenDir)
+                || matches!(self.at, GoAwayAt::OpenDirAt(n) if n == self.opendirs)
+            {
                 self.go_away().await;
             }
             Ok(russh_sftp::protocol::Handle { id, handle: path })
+        }
+
+        async fn readdir(
+            &mut self,
+            id: u32,
+            handle: String,
+        ) -> Result<russh_sftp::protocol::Name, Self::Error> {
+            if !self.listed.insert(handle) {
+                return Err(russh_sftp::protocol::StatusCode::Eof);
+            }
+            let with_mode = |mode: Option<u32>| russh_sftp::protocol::FileAttributes {
+                permissions: mode,
+                ..Default::default()
+            };
+            let files = if matches!(self.at, GoAwayAt::ListFollowUp) {
+                ["a.txt", "b.txt", "c.txt"]
+                    .map(|name| russh_sftp::protocol::File::new(name, with_mode(None)))
+                    .into()
+            } else {
+                vec![
+                    russh_sftp::protocol::File::new("sub", with_mode(Some(0o40755))),
+                    russh_sftp::protocol::File::new("b.txt", with_mode(Some(0o100644))),
+                ]
+            };
+            Ok(russh_sftp::protocol::Name { id, files })
         }
     }
 
@@ -5740,6 +5796,8 @@ mod tests {
                 writes: 0,
                 reads: 0,
                 stats: 0,
+                opendirs: 0,
+                listed: Default::default(),
                 source: Arc::new(source),
                 cut: cut.clone(),
             },
@@ -6183,6 +6241,40 @@ mod tests {
         assert!(
             matches!(&picked, Err(ProviderError::TransferFailed(m)) if m.contains("/data/cancelled/")),
             "{picked:?}"
+        );
+    }
+
+    /// A listing whose follow-ups (the STAT of entries sent without
+    /// attributes, the symlink checks) are cut by the end of the transport is
+    /// a lost connection, not a listing: the follow-ups' errors are dropped
+    /// on purpose, and the entries they would have completed came back as
+    /// plain files with no mode, as if the listing had worked.
+    #[tokio::test(start_paused = true)]
+    async fn a_listing_whose_follow_ups_are_cut_is_a_lost_connection() {
+        let mut provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::ListFollowUp, Vec::new()).await;
+        let outcome = tokio::time::timeout(GONE_SERVER_BOUND * 4, provider.list("/"))
+            .await
+            .expect("the listing hung");
+        assert!(
+            matches!(&outcome, Err(err) if err.is_connection_lost()),
+            "{outcome:?}"
+        );
+    }
+
+    /// `find` skips a folder it cannot read, but not a transport that ended
+    /// in the middle of the walk: that is a lost connection, where it
+    /// returned what it had found so far as the whole result.
+    #[tokio::test(start_paused = true)]
+    async fn a_find_cut_by_the_transport_is_a_lost_connection() {
+        let mut provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::OpenDirAt(2), Vec::new()).await;
+        let outcome = tokio::time::timeout(GONE_SERVER_BOUND * 4, provider.find("/", "*"))
+            .await
+            .expect("the find hung");
+        assert!(
+            matches!(&outcome, Err(err) if err.is_connection_lost()),
+            "{outcome:?}"
         );
     }
 }
