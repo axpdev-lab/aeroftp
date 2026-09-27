@@ -756,13 +756,18 @@ impl DrimeCloudProvider {
 
     /// Parse a Drime date string into "YYYY-MM-DD HH:MM:SS" format
     fn parse_date(date_str: &str) -> Option<String> {
-        // Try ISO 8601 format "2025-01-15T10:30:00.000000Z"
-        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(date_str) {
-            return Some(dt.format("%Y-%m-%d %H:%M:%SZ").to_string());
-        }
-        // Try without fractional seconds
-        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&date_str.replace(' ', "T")) {
-            return Some(dt.format("%Y-%m-%d %H:%M:%SZ").to_string());
+        // ISO 8601, "2025-01-15T10:30:00.000000Z", or with a space for the T.
+        // Converted to UTC before formatting: the format ends in a literal
+        // `Z`, and formatting the parsed offset time printed its local hour
+        // under that `Z`, off by the offset.
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(date_str)
+            .or_else(|_| chrono::DateTime::parse_from_rfc3339(&date_str.replace(' ', "T")))
+        {
+            return Some(
+                dt.with_timezone(&chrono::Utc)
+                    .format("%Y-%m-%d %H:%M:%SZ")
+                    .to_string(),
+            );
         }
         // Return as-is if it looks like a date (safe truncation at char boundary)
         if date_str.len() >= 10 {
@@ -3280,6 +3285,32 @@ mod tests {
         let fallback = DrimeCloudProvider::parse_date("2025-01-15 10:30:00 server time").unwrap();
         assert_eq!(fallback.len(), 19);
         assert_eq!(DrimeCloudProvider::parse_date("short"), None);
+    }
+
+    /// Addendum to the 4.2.1 closeout: an offset was dropped instead of
+    /// applied (local time of the offset with a literal `Z`), so a file time
+    /// sent with one was off by that offset. It is converted to UTC first.
+    #[test]
+    fn parse_date_converts_an_offset_to_utc() {
+        assert_eq!(
+            DrimeCloudProvider::parse_date("2025-01-15T10:30:00+02:00").as_deref(),
+            Some("2025-01-15 08:30:00Z")
+        );
+        assert_eq!(
+            DrimeCloudProvider::parse_date("2025-01-15T22:30:00.000000-05:00").as_deref(),
+            Some("2025-01-16 03:30:00Z"),
+            "the date moves with the hour"
+        );
+        assert_eq!(
+            DrimeCloudProvider::parse_date("2025-01-15 10:30:00+01:00").as_deref(),
+            Some("2025-01-15 09:30:00Z"),
+            "the branch with a space instead of T too"
+        );
+        assert_eq!(
+            DrimeCloudProvider::parse_date("2025-01-15T10:30:00.000000Z").as_deref(),
+            Some("2025-01-15 10:30:00Z"),
+            "a UTC time is unchanged"
+        );
     }
 
     // ---- S3-T12 multipart trait wiring ----
