@@ -1071,10 +1071,18 @@ export const runRemoteSync = async (
                     // none (FTP LIST dates) leaves the downloaded file's own,
                     // read when the download completed, or the local side would
                     // be compared by size alone and a same-size edit would go
-                    // unseen.
+                    // unseen. A download the resumed journal had finished was
+                    // not read in this run: the entry the interrupted run
+                    // wrote for it keeps its time, if it is of that file (the
+                    // same size); an older entry says nothing about it.
+                    const earlier = existing?.files?.[f.relativePath];
                     const modified =
                         f.action === 'download' && f.mtime == null
-                            ? landedTimes.get(f.relativePath) ?? null
+                            ? landedTimes.has(f.relativePath)
+                                ? landedTimes.get(f.relativePath) ?? null
+                                : earlier && !earlier.is_dir && earlier.size === f.size
+                                  ? earlier.modified
+                                  : null
                             : f.mtime;
                     mergedFiles[f.relativePath] = {
                         size: f.size,
