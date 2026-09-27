@@ -6344,9 +6344,12 @@ mod transfer_verdict_tests {
     /// not a range the server stood behind. Raised by CodeRabbit on #950.
     #[tokio::test]
     async fn a_range_stopped_early_and_then_refused_is_an_error() {
+        // The same reply whether or not the server saw the early close: on
+        // Windows the whole payload fits the send buffer, the write succeeds
+        // and the server never sees it. The verdict under test is the client's.
         let (port, _) = scripted_server(Script {
             retr_payload: vec![b'x'; 64 * 1024 * 1024],
-            retr_reply: "226 done\r\n",
+            retr_reply: "550 Permission denied.\r\n",
             retr_reply_after_early_close: "550 Permission denied.\r\n",
             stor_reply: "226 done\r\n",
             stor_stalls: false,
@@ -6370,9 +6373,12 @@ mod transfer_verdict_tests {
     /// it does not stand behind the bytes. Raised by CodeRabbit on #950.
     #[tokio::test]
     async fn a_full_range_followed_by_a_451_is_an_error() {
+        // The same reply whether or not the server saw the early close: on
+        // Windows the whole payload fits the send buffer, the write succeeds
+        // and the server never sees it. The verdict under test is the client's.
         let (port, _) = scripted_server(Script {
             retr_payload: vec![b'x'; 64 * 1024 * 1024],
-            retr_reply: "226 done\r\n",
+            retr_reply: "451 Requested action aborted: local error.\r\n",
             retr_reply_after_early_close: "451 Requested action aborted: local error.\r\n",
             stor_reply: "226 done\r\n",
             stor_stalls: false,
@@ -6396,9 +6402,12 @@ mod transfer_verdict_tests {
     async fn one_window_answered_with(
         early_close_reply: &'static str,
     ) -> Result<(), ProviderError> {
+        // The same reply whether or not the server saw the early close: on
+        // Windows the whole payload fits the send buffer, the write succeeds
+        // and the server never sees it. The verdict under test is the client's.
         let (port, _) = scripted_server(Script {
             retr_payload: vec![b'x'; 64 * 1024 * 1024],
-            retr_reply: "226 done\r\n",
+            retr_reply: early_close_reply,
             retr_reply_after_early_close: early_close_reply,
             stor_reply: "226 done\r\n",
             stor_stalls: false,
