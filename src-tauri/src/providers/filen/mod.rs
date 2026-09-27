@@ -2460,25 +2460,17 @@ impl StorageProvider for FilenProvider {
             .collect();
         for key in &master_keys_exposed {
             let encrypted_for_key = Self::encrypt_metadata_with_key(&name_json, key)?;
-            let meta_request = self
-                .client
-                .post(format!("{}/v3/dir/metadata", self.gateway_base()))
-                .header(
-                    "Authorization",
-                    HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
-                        .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-                )
-                .json(&serde_json::json!({
-                    "uuid": folder_uuid,
-                    "encrypted": encrypted_for_key,
-                }))
-                .build()
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
             // Best effort, as on rename: the web app wants this metadata, and
-            // a failure does not undo the folder that was just created. The
+            // a failure does not undo the folder that was just created.
+            // `post_v3` and not the bare request: Filen refuses with HTTP 200
+            // and `status: false`, which only `post_v3` reads as an error. The
             // warning names the folder, never the master key or the encrypted
             // payload (those stay in the request that was sent).
-            if let Err(error) = self.send_retry(meta_request).await {
+            let body = serde_json::json!({
+                "uuid": folder_uuid,
+                "encrypted": encrypted_for_key,
+            });
+            if let Err(error) = self.post_v3("v3/dir/metadata", &body).await {
                 tracing::warn!(
                     "Filen mkdir: best-effort v3/dir/metadata failed for {path}: {error}"
                 );
@@ -3778,6 +3770,85 @@ mod tests {
             .iter()
             .map(|(e, _)| e.clone())
             .collect()
+    }
+
+    struct CaptureWriter(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// L7 of the 4.2.1 closeout: Filen reports a refused call as HTTP 200
+    /// with `status: false`, and `send_retry` is Ok for any status, so the
+    /// warning added for a failed best-effort `v3/dir/metadata` fired only on
+    /// a transport error. The folder stays, and the refusal is now a warning
+    /// that names the folder and not the key or the payload.
+    #[tokio::test]
+    async fn mkdir_warns_when_the_gateway_refuses_the_folder_metadata() {
+        use axum::{routing::post, Json, Router};
+
+        let metadata_calls: GatewayCalls = Arc::default();
+        let seen = Arc::clone(&metadata_calls);
+        let app = Router::new()
+            .route(
+                "/v3/dir/create",
+                post(|| async {
+                    Json(serde_json::json!({ "status": true, "data": { "uuid": "N" } }))
+                }),
+            )
+            .route(
+                "/v3/dir/metadata",
+                post(move |Json(body): Json<serde_json::Value>| {
+                    seen.lock()
+                        .unwrap()
+                        .push(("/v3/dir/metadata".to_string(), body));
+                    async {
+                        Json(serde_json::json!({
+                            "status": false,
+                            "message": "metadata refused",
+                        }))
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = FilenProvider::connected_for_test(demo_cfg());
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+
+        let buf = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Arc::clone(&buf);
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .with_ansi(false)
+            .with_writer(move || CaptureWriter(Arc::clone(&sink)))
+            .finish();
+        let outcome = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            provider.mkdir("/Reports").await
+        };
+        server.abort();
+        outcome.expect("the folder was created; the metadata is best effort");
+        assert_eq!(metadata_calls.lock().unwrap().len(), 1, "one master key");
+        let encrypted = metadata_calls.lock().unwrap()[0].1["encrypted"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let log = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+        assert!(
+            log.contains("/Reports") && log.contains("metadata refused"),
+            "a refused v3/dir/metadata must be a warning naming the folder: {log:?}"
+        );
+        assert!(!encrypted.is_empty());
+        assert!(!log.contains(&encrypted), "the payload leaked: {log:?}");
+        assert!(!log.contains(TEST_MASTER_KEY), "the key leaked: {log:?}");
     }
 
     #[tokio::test]
