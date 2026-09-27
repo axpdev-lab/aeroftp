@@ -6334,6 +6334,92 @@ mod transfer_verdict_tests {
         );
     }
 
+    /// Only the complaint about the early close (`426`) is accepted after a
+    /// range read in full: a `451` is the server's own processing error, and
+    /// it does not stand behind the bytes. Raised by CodeRabbit on #950.
+    #[tokio::test]
+    async fn a_full_range_followed_by_a_451_is_an_error() {
+        let (port, _) = scripted_server(Script {
+            retr_payload: vec![b'x'; 64 * 1024 * 1024],
+            retr_reply: "226 done\r\n",
+            retr_reply_after_early_close: "451 Requested action aborted: local error.\r\n",
+            stor_reply: "226 done\r\n",
+        })
+        .await;
+        let mut provider = connected(port).await;
+        let refused = tokio::time::timeout(
+            Duration::from_secs(10),
+            provider.read_range("/f.bin", 0, 10),
+        )
+        .await
+        .expect("the read must end");
+        assert!(
+            refused.is_err(),
+            "a 451 after the range was read as success"
+        );
+    }
+
+    /// One window of the parallel download, against a server that ends it
+    /// with `early_close_reply` after the window stopped reading.
+    async fn one_window_answered_with(
+        early_close_reply: &'static str,
+    ) -> Result<(), ProviderError> {
+        let (port, _) = scripted_server(Script {
+            retr_payload: vec![b'x'; 64 * 1024 * 1024],
+            retr_reply: "226 done\r\n",
+            retr_reply_after_early_close: early_close_reply,
+            stor_reply: "226 done\r\n",
+        })
+        .await;
+        let dir = tempfile::tempdir().unwrap();
+        let temp = dir.path().join("f.bin.aerotmp");
+        std::fs::write(&temp, b"").unwrap();
+        let spec = FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        };
+        tokio::time::timeout(
+            Duration::from_secs(20),
+            ftp_download_one_range(
+                spec,
+                "/f.bin".to_string(),
+                64 * 1024,
+                0,
+                10 * 1024 * 1024 - 1,
+                temp,
+                Arc::new(AtomicU64::new(0)),
+                CancellationToken::new(),
+            ),
+        )
+        .await
+        .expect("the window must end")
+        .map(|_| ())
+    }
+
+    /// A window of the parallel download read its bytes and dropped the
+    /// server's final reply: a refusal after the data still published the
+    /// file. Only the early-close complaint (`426`) is accepted there too.
+    /// Raised by CodeRabbit on #950 (outside the diff).
+    #[tokio::test]
+    async fn a_parallel_window_the_server_refuses_is_an_error() {
+        assert!(
+            one_window_answered_with("426 Connection closed; transfer aborted.\r\n")
+                .await
+                .is_ok()
+        );
+        assert!(
+            one_window_answered_with("550 Permission denied.\r\n")
+                .await
+                .is_err(),
+            "a 550 after the window was read as a completed window"
+        );
+    }
+
     /// A local read error in the middle of an upload used to drop the data
     /// connection: the server saw a clean end of file, stored what it had
     /// received as the whole file and confirmed it with `226`, which the next
