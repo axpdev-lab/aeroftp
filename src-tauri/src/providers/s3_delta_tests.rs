@@ -248,6 +248,9 @@ async fn s3_adapter_middle_append_and_successive_delta_have_independent_wire_rat
         .await
         .unwrap();
     file.write_all(b"edit").await.unwrap();
+    // Before the stamp, as on the append leg below: a write still in flight
+    // when the file is dropped could land after `pin_source_mtime`.
+    file.sync_all().await.unwrap();
     drop(file);
     pin_source_mtime(&local);
     let seeded_len = std::fs::metadata(&local).unwrap().len();
