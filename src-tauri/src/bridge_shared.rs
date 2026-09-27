@@ -541,10 +541,10 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
 }
 
 /// Profiles `src` cannot carry although the target tool has a backend for
-/// their provider, each with the reason: that backend signs in with a secret
-/// the AeroFTP vault does not hold. The generic "not exportable" would read as
-/// "the tool cannot reach this provider". Read by the CLI's skipped list and by
-/// the GUI Export, which shows the reason next to the profile it greys out.
+/// their provider, each with the reason (a secret the AeroFTP vault does not
+/// hold, or a step only the CLI does). The generic "not exportable" would read
+/// as "the tool cannot reach this provider". Read by the CLI's skipped list and
+/// by the GUI Export, which shows the reason next to the profile it greys out.
 pub fn bridge_export_refusals(src: &str) -> &'static [(&'static str, &'static str)] {
     match src {
         // Measured on a live account: rclone v1.75.1 answers "Invalid FileLu
@@ -563,6 +563,13 @@ pub fn bridge_export_refusals(src: &str) -> &'static [(&'static str, &'static st
                 "AeroFTP reaches Proton Drive through Proton's own CLI, which keeps the \
                  session, so the vault holds no password for rclone's protondrive backend. \
                  Create the remote with `rclone config`.",
+            ),
+            // The CLI adds Jottacloud to its own list (`cmd_export_rclone`), so
+            // this reason is only ever shown by the GUI.
+            (
+                "jottacloud",
+                "the GUI export cannot rebuild Jottacloud's login token for rclone; \
+                 `aeroftp-cli export rclone` can.",
             ),
         ],
         _ => &[],
@@ -908,7 +915,11 @@ mod tests {
     #[test]
     fn rclone_refusals_name_the_missing_secret_and_stay_out_of_the_gate() {
         let gated = bridge_supported_protocols("rclone");
-        for (proto, needle) in [("filelu", "Rclone key"), ("proton", "Proton's own CLI")] {
+        for (proto, needle) in [
+            ("filelu", "Rclone key"),
+            ("proton", "Proton's own CLI"),
+            ("jottacloud", "aeroftp-cli export rclone"),
+        ] {
             let reason = bridge_export_refusal("rclone", proto)
                 .unwrap_or_else(|| panic!("no refusal reason for {proto}"));
             assert!(reason.contains(needle), "{proto}: {reason}");
