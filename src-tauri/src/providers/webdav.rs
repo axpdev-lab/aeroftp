@@ -6222,6 +6222,10 @@ mod tests {
             .rename("sample.png", "/sample.png")
             .await
             .expect("two spellings of its own path");
+        provider
+            .replace("/sample.png", "sample.png")
+            .await
+            .expect("two spellings of its own path");
     }
 
     /// An in-place edit (CLI `edit`, `remote_edit`) asks for an atomic
@@ -6271,6 +6275,9 @@ mod tests {
         let local = tempfile::NamedTempFile::new().expect("temp file");
         std::fs::write(local.path(), b"new content").unwrap();
         let local = local.path().to_str().unwrap();
+
+        // The first step asks, and the answer is no.
+        assert!(!provider.supports_atomic_replace().await.expect("asked"));
 
         // The edit's steps, in its order.
         let temp = "/.sample.png.aeroftp-edit";
