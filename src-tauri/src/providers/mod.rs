@@ -852,8 +852,8 @@ pub trait StorageProvider: Send + Sync {
     /// send their move without the look their rename makes, OneDrive
     /// replaces in the request that moves, Google Drive uploads the new
     /// content as a revision of the file there, and MEGA, Filen, FileLu,
-    /// Dropbox, Koofr and Drime, which have neither, set the old item aside
-    /// first (see [`set_aside_name`]). A backend with none of these keeps the default,
+    /// Dropbox, Koofr, Drime and kDrive, which have neither, set the old item
+    /// aside first (see [`set_aside_name`]). A backend with none of these keeps the default,
     /// whose refusal is the answer, and says so through
     /// [`StorageProvider::supports_atomic_replace`].
     ///
@@ -2082,7 +2082,7 @@ pub async fn keep_edit_original(
 /// The name an item displaced by a replace takes until it is deleted, on a
 /// backend that can neither overwrite on a move nor swap two items in one
 /// call (MEGA, Filen, FileLu, Google Drive for folders, and through
-/// [`replace_by_setting_aside`] Dropbox, Koofr and Drime). Their `replace` renames the item
+/// [`replace_by_setting_aside`] Dropbox, Koofr, Drime and kDrive). Their `replace` renames the item
 /// at the destination to this, moves the new one in, and only then deletes
 /// it: no step can lose either item, and the name is hidden and unique so it
 /// never meets another. The destination is empty between the first two
