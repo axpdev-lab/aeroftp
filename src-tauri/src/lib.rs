@@ -8179,7 +8179,9 @@ where
 /// entry that ends before its declared size (see `copy_entry_bounded`) reads as
 /// a wrong password, which is what an early end under a password almost always
 /// is. Without a password the same error stays `Io` and is shown as its own
-/// message (truncated or corrupt), not as the Debug wrapper around it.
+/// message (truncated or corrupt), not as the Debug wrapper around it. A CRC
+/// mismatch travels as an `Io` error around sevenz-rust2's own
+/// `ChecksumVerificationFailed`, which is worded too.
 pub(crate) fn describe_7z_error(err: &sevenz_rust2::Error) -> String {
     match err {
         sevenz_rust2::Error::PasswordRequired => {
@@ -8188,8 +8190,23 @@ pub(crate) fn describe_7z_error(err: &sevenz_rust2::Error) -> String {
         sevenz_rust2::Error::MaybeBadPassword(_) => {
             "Wrong password for this 7z archive (or the archive is damaged)".to_string()
         }
-        sevenz_rust2::Error::Io(e, context) if context.is_empty() => e.to_string(),
-        sevenz_rust2::Error::Io(e, context) => format!("{context}: {e}"),
+        sevenz_rust2::Error::ChecksumVerificationFailed => {
+            "archive entry failed its CRC check: the archive is corrupt".to_string()
+        }
+        sevenz_rust2::Error::Io(e, context) => {
+            let message = match e
+                .get_ref()
+                .and_then(|inner| inner.downcast_ref::<sevenz_rust2::Error>())
+            {
+                Some(inner) => describe_7z_error(inner),
+                None => e.to_string(),
+            };
+            if context.is_empty() {
+                message
+            } else {
+                format!("{context}: {message}")
+            }
+        }
         other => other.to_string(),
     }
 }
@@ -22710,6 +22727,48 @@ mod sevenz_advanced_tests {
         assert!(
             !dir.path().join("evil.txt").exists(),
             "the unsafe entry was written"
+        );
+    }
+
+    // A CRC mismatch, without a password, read "Failed to extract 7z archive:
+    // ChecksumVerificationFailed": the library's variant name, not a sentence.
+    // A stored (COPY) entry with one data byte flipped decodes to its full size
+    // and fails only the CRC check.
+    #[tokio::test]
+    async fn a_7z_entry_that_fails_its_crc_says_so_in_words() {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter, EncoderMethod};
+        let payload = b"stored bytes, checked by CRC-32\n".repeat(4);
+        let mut writer = ArchiveWriter::new(std::io::Cursor::new(Vec::new())).unwrap();
+        writer.set_content_methods(vec![EncoderMethod::COPY.into()]);
+        writer
+            .push_archive_entry(ArchiveEntry::new_file("stored.txt"), Some(&payload[..]))
+            .unwrap();
+        let mut bytes = writer.finish().unwrap().into_inner();
+        // COPY: the packed stream is the payload itself, right after the
+        // 32-byte signature header.
+        assert_eq!(&bytes[32..32 + payload.len()], &payload[..]);
+        bytes[40] ^= 0x01;
+
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("flipped.7z");
+        std::fs::write(&archive, bytes).unwrap();
+        let dest = dir.path().join("out");
+        let err = extract_7z_core(
+            archive.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+            None,
+            false,
+        )
+        .await
+        .expect_err("a CRC mismatch must fail");
+        assert_eq!(
+            err,
+            "Failed to extract 7z archive: archive entry failed its CRC check: \
+             the archive is corrupt"
+        );
+        assert!(
+            !dest.join("stored.txt").exists(),
+            "a corrupt file was written"
         );
     }
 
