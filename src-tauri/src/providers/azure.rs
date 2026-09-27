@@ -18,7 +18,9 @@ use futures_util::StreamExt;
 use hmac::{Hmac, Mac};
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE, IF_NONE_MATCH, RANGE};
+use reqwest::header::{
+    HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE, IF_MATCH, IF_NONE_MATCH, RANGE,
+};
 use secrecy::ExposeSecret;
 use sha2::Sha256;
 use tokio::io::AsyncReadExt;
@@ -312,6 +314,7 @@ impl AzureProvider {
         &mut self,
         blob_path: &str,
         what: &str,
+        if_match: Option<&str>,
     ) -> Result<(), ProviderError> {
         let url = self.blob_url(blob_path);
         let mut headers = HeaderMap::new();
@@ -324,10 +327,29 @@ impl AzureProvider {
                 .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
         );
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        if let Some(etag) = if_match {
+            headers.insert(
+                IF_MATCH,
+                HeaderValue::from_str(etag)
+                    .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+            );
+        }
         let resp = self
             .send_with_auth_and_retry(reqwest::Method::DELETE, &url, headers, 0, None)
             .await?;
         let status = resp.status();
+        // 412 under `If-Match` is ConditionNotMet: the blob is no longer the
+        // one the check looked at. A lease answers 412 too, with its own code.
+        let lease = resp
+            .headers()
+            .get("x-ms-error-code")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|code| code.starts_with("Lease"));
+        if if_match.is_some() && status == reqwest::StatusCode::PRECONDITION_FAILED && !lease {
+            return Err(ProviderError::Other(format!(
+                "the {what} {blob_path} changed after it was checked, so it was not deleted"
+            )));
+        }
         if !status.is_success()
             && status.as_u16() != 202
             && status != reqwest::StatusCode::NOT_FOUND
@@ -406,10 +428,11 @@ impl AzureProvider {
             .map(|(k, v)| format!("\n{}:{}", k, v))
             .collect::<String>();
 
-        // Shared Key signs If-None-Match and Range in slots of their own: a
-        // request that carries one (the destination condition of a rename's
-        // Copy Blob, the Range of a resumed download) and signs its slot
-        // empty is refused with 403.
+        // Shared Key signs If-Match, If-None-Match and Range in slots of their
+        // own: a request that carries one (the ETag condition of a directory
+        // stub's delete, the destination condition of a rename's Copy Blob,
+        // the Range of a resumed download) and signs its slot empty is
+        // refused with 403.
         let header = |name: reqwest::header::HeaderName| {
             headers
                 .get(name)
@@ -417,7 +440,7 @@ impl AzureProvider {
                 .unwrap_or("")
         };
         Ok(format!(
-            "{}\n\n\n{}\n\n{}\n\n\n\n{}\n\n{}\n{}{}{}",
+            "{}\n\n\n{}\n\n{}\n\n\n{}\n{}\n\n{}\n{}{}{}",
             method,
             if content_length > 0 {
                 content_length.to_string()
@@ -425,6 +448,7 @@ impl AzureProvider {
                 String::new()
             },
             content_type,
+            header(IF_MATCH),
             header(IF_NONE_MATCH),
             header(RANGE),
             canonical_headers,
@@ -1872,7 +1896,7 @@ impl StorageProvider for AzureProvider {
             .resolve_blob_path(path)
             .trim_end_matches('/')
             .to_string();
-        self.delete_directory_blob(&format!("{blob_path}/"), "directory marker")
+        self.delete_directory_blob(&format!("{blob_path}/"), "directory marker", None)
             .await?;
 
         // The directory can also be a blob named `<path>` that carries
@@ -1884,9 +1908,15 @@ impl StorageProvider for AzureProvider {
         // file that only shares the folder's name, and it stays. The blob is
         // asked by its name without the slash: `path` as the caller wrote it
         // (`d/`) sent the HEAD to the marker just deleted.
+        //
+        // The DELETE carries the ETag of the HEAD that saw the flag, so a
+        // stub another client replaced with an ordinary blob in between is
+        // refused (412) instead of deleted. A HEAD without an ETag leaves the
+        // DELETE unconditional, as it was.
         match self.stat(&format!("/{blob_path}")).await {
             Ok(entry) if entry.is_dir => {
-                self.delete_directory_blob(&blob_path, "directory blob")
+                let etag = entry.metadata.get("etag").map(String::as_str);
+                self.delete_directory_blob(&blob_path, "directory blob", etag)
                     .await?
             }
             Ok(_) | Err(ProviderError::NotFound(_)) => {}
@@ -1987,6 +2017,12 @@ impl StorageProvider for AzureProvider {
                 header("x-ms-meta-hdi_isfolder").is_some_and(|v| v.eq_ignore_ascii_case("true"))
             }
         };
+        // Kept for a later request that must act on this very blob and no
+        // other: the directory-stub delete sends it back in `If-Match`.
+        let mut metadata = std::collections::HashMap::new();
+        if let Some(etag) = header("etag") {
+            metadata.insert("etag".to_string(), etag.to_string());
+        }
 
         Ok(RemoteEntry {
             name,
@@ -2000,7 +2036,7 @@ impl StorageProvider for AzureProvider {
             is_symlink: false,
             link_target: None,
             mime_type,
-            metadata: Default::default(),
+            metadata,
         })
     }
 
@@ -2995,6 +3031,97 @@ mod tests {
         );
     }
 
+    /// The stub is deleted only as it was when its HEAD identified it: the
+    /// DELETE carries that answer's ETag in `If-Match`. A stub another client
+    /// replaced with an ordinary blob between the HEAD and the DELETE was
+    /// deleted; the service now answers 412 and nothing is deleted.
+    #[tokio::test]
+    async fn a_directory_stub_changed_since_it_was_checked_is_not_deleted() {
+        use std::sync::{Arc, Mutex};
+        for (checked, deleted_expected) in [("\"v1\"", false), ("\"v2\"", true)] {
+            let deletes: Arc<Mutex<Vec<Option<String>>>> = Arc::default();
+            let seen = Arc::clone(&deletes);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let seen = Arc::clone(&seen);
+                    async move {
+                        // The blob now there is `"v2"`; its HEAD answers the
+                        // ETag the flag check saw, `checked`.
+                        let current = "\"v2\"";
+                        let method = req.method().to_string();
+                        let path = req.uri().path().to_string();
+                        let if_match = req
+                            .headers()
+                            .get("if-match")
+                            .map(|v| v.to_str().unwrap().to_string());
+                        let reply = axum::response::Response::builder()
+                            .header("content-length", "0")
+                            .header("content-type", "application/octet-stream");
+                        match (method.as_str(), path.as_str()) {
+                            ("GET", "/mycontainer") => axum::response::Response::builder()
+                                .status(200)
+                                .body(axum::body::Body::from(
+                                    "<EnumerationResults><Blobs /></EnumerationResults>",
+                                ))
+                                .unwrap(),
+                            ("HEAD", "/mycontainer/stub") => reply
+                                .status(200)
+                                .header("etag", checked)
+                                .header("x-ms-meta-hdi_isfolder", "true")
+                                .body(axum::body::Body::empty())
+                                .unwrap(),
+                            ("DELETE", "/mycontainer/stub") => {
+                                let refused = if_match.as_deref().is_some_and(|tag| tag != current);
+                                if !refused {
+                                    seen.lock().unwrap().push(if_match);
+                                }
+                                let status = if refused { 412 } else { 202 };
+                                let reply = if refused {
+                                    reply.header("x-ms-error-code", "ConditionNotMet")
+                                } else {
+                                    reply
+                                };
+                                reply
+                                    .status(status)
+                                    .body(axum::body::Body::empty())
+                                    .unwrap()
+                            }
+                            ("DELETE", _) => {
+                                reply.status(404).body(axum::body::Body::empty()).unwrap()
+                            }
+                            _ => reply.status(404).body(axum::body::Body::empty()).unwrap(),
+                        }
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut config = test_config();
+            config.endpoint = Some(format!("http://{addr}"));
+            let mut provider = AzureProvider::new(config);
+            provider.connected = true;
+
+            let outcome = provider.rmdir_recursive("/stub").await;
+            let deleted = deletes.lock().unwrap().clone();
+            if deleted_expected {
+                outcome.expect("an unchanged stub is deleted");
+                assert_eq!(
+                    deleted,
+                    [Some(checked.to_string())],
+                    "the DELETE carries the ETag its check saw"
+                );
+            } else {
+                assert!(
+                    deleted.is_empty(),
+                    "a stub changed since its check must not be deleted: {outcome:?}"
+                );
+                let error = outcome.expect_err("a changed stub is refused");
+                assert!(error.to_string().contains("changed"), "{error}");
+            }
+        }
+    }
+
     /// Copy Blob overwrote the destination: a rename onto an existing blob
     /// replaced it and reported success. The copy now carries
     /// `If-None-Match: *`, so the refusal comes from the same request that
@@ -3139,6 +3266,31 @@ mod tests {
                 "PUT\n\n\n\n\n\n\n\n\n*\n\n\n\
                  x-ms-date:Sat, 26 Sep 2026 12:00:00 GMT\nx-ms-version:{API_VERSION}\n\
                  /myacc/mycontainer/b.txt"
+            )
+        );
+    }
+
+    /// The delete of a directory stub carries the ETag its check saw in
+    /// `If-Match`, which Shared Key signs in the ninth line. Signed empty,
+    /// the delete would be refused with 403 on a shared key.
+    #[test]
+    fn shared_key_signs_if_match_in_its_own_line() {
+        let provider = AzureProvider::new(test_config());
+        let url = "https://myacc.blob.core.windows.net/mycontainer/stub";
+        let signed = provider
+            .string_to_sign(
+                "DELETE",
+                url,
+                &signed_headers(&[("if-match", "\"0x8DC\"")]),
+                0,
+            )
+            .unwrap();
+        assert_eq!(
+            signed,
+            format!(
+                "DELETE\n\n\n\n\n\n\n\n\"0x8DC\"\n\n\n\n\
+                 x-ms-date:Sat, 26 Sep 2026 12:00:00 GMT\nx-ms-version:{API_VERSION}\n\
+                 /myacc/mycontainer/stub"
             )
         );
     }
