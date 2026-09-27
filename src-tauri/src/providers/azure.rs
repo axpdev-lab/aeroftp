@@ -1937,10 +1937,19 @@ impl StorageProvider for AzureProvider {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| path.to_string());
 
+        // Hierarchical-namespace accounts answer HEAD 200 for a directory and
+        // mark it with this metadata. A flat account never sends the header,
+        // so a blob stays a file.
+        let is_dir = resp
+            .headers()
+            .get("x-ms-meta-hdi_isfolder")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+
         Ok(RemoteEntry {
             name,
             path: format!("/{}", blob_path),
-            is_dir: false,
+            is_dir,
             size,
             modified,
             permissions: None,
@@ -2781,6 +2790,43 @@ mod tests {
         let mut provider = AzureProvider::new(config);
         provider.connected = true;
         (provider, log)
+    }
+
+    /// On a hierarchical-namespace account a directory's HEAD is 200 and
+    /// carries `x-ms-meta-hdi_isfolder: true`. `stat` used to report every
+    /// blob as a file, so a non-recursive delete of that directory never saw
+    /// a directory.
+    #[tokio::test]
+    async fn stat_reads_the_hierarchical_namespace_directory_flag() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |req: axum::extract::Request| async move {
+                let path = req.uri().path().to_string();
+                let mut response = axum::response::Response::builder()
+                    .status(200)
+                    .header("content-length", "0")
+                    .header("content-type", "application/octet-stream");
+                if path.ends_with("/folder") {
+                    response = response.header("x-ms-meta-hdi_isfolder", "true");
+                } else if path.ends_with("/marked-false") {
+                    response = response.header("x-ms-meta-hdi_isfolder", "false");
+                }
+                response.body(axum::body::Body::empty()).unwrap()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut config = test_config();
+        config.endpoint = Some(format!("http://{addr}"));
+        let mut provider = AzureProvider::new(config);
+        provider.connected = true;
+
+        let dir = provider.stat("/folder").await.expect("stat directory");
+        assert!(dir.is_dir, "hdi_isfolder true is a directory");
+        let file = provider.stat("/notes.txt").await.expect("stat file");
+        assert!(!file.is_dir, "a blob with no flag stays a file");
+        let marked = provider.stat("/marked-false").await.expect("stat");
+        assert!(!marked.is_dir, "hdi_isfolder false stays a file");
     }
 
     /// Copy Blob overwrote the destination: a rename onto an existing blob
