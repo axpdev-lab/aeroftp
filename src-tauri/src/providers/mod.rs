@@ -56,6 +56,8 @@ pub mod oauth1;
 pub mod oauth2;
 pub mod onedrive;
 pub mod opendrive;
+#[cfg(test)]
+mod path_resolution_guard;
 pub mod pcloud;
 pub mod peer;
 pub mod proton;
@@ -843,7 +845,21 @@ pub trait StorageProvider: Send + Sync {
     ///
     /// The default forwards to `rename`, which is what every caller did
     /// before this method existed. A backend whose rename refuses an occupied
-    /// destination overrides this; `SftpProvider` and `WebDavProvider` do.
+    /// destination must override this, or every replace onto an existing
+    /// file fails: SFTP, WebDAV, the copy-based backends (S3, B2, Swift,
+    /// Azure, Cloudinary, OpenDrive), FTP, ImageKit, pCloud, Yandex Disk and
+    /// the MTP folder overwrite in one server step, MEGAcmd and Jottacloud
+    /// send their move without the look their rename makes, OneDrive
+    /// replaces in the request that moves, Google Drive uploads the new
+    /// content as a revision of the file there, and MEGA, Filen, FileLu,
+    /// Dropbox, Koofr and Drime, which have neither, set the old item aside
+    /// first (see [`set_aside_name`]). A backend with none of these keeps the default,
+    /// whose refusal is the answer, and says so through
+    /// [`StorageProvider::supports_atomic_replace`].
+    ///
+    /// A replace puts a file in place of a file or a folder in place of a
+    /// folder. Across the two (see [`refuse_replace_across_types`]) it is
+    /// refused with AlreadyExists before anything changes.
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.rename(from, to).await
     }
@@ -858,9 +874,15 @@ pub trait StorageProvider: Send + Sync {
     ///
     /// The default answers `true`, which is the assumption every caller
     /// already made. It means "no known obstacle", not "verified": only a
-    /// backend that has actually measured its own ground says otherwise, and
-    /// today that is `SftpProvider`, which asks the server whether it offers
-    /// `posix-rename@openssh.com`.
+    /// backend that has actually measured its own ground says otherwise:
+    /// `SftpProvider`, which asks the server whether it offers
+    /// `posix-rename@openssh.com`; the backends whose replace sets the old
+    /// item aside (MEGA, Filen, FileLu, Dropbox, Koofr, Drime, kDrive); those whose move over a file is not
+    /// documented as one step (MEGAcmd, Jottacloud); those with no replace
+    /// at all, whose rename refuses a taken name or who have no rename (each
+    /// says why on its own answer); and ImageKit and OpenDrive, which
+    /// overwrite only across folders while every caller stages its temporary
+    /// in the target's own folder.
     ///
     /// [`replace`]: StorageProvider::replace
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
@@ -1683,6 +1705,321 @@ pub async fn ensure_atomic_replace(
     )))
 }
 
+/// The name an item displaced by a replace takes until it is deleted, on a
+/// backend that can neither overwrite on a move nor swap two items in one
+/// call (MEGA, Filen, FileLu, Google Drive for folders, and through
+/// [`replace_by_setting_aside`] Dropbox, Koofr and Drime). Their `replace` renames the item
+/// at the destination to this, moves the new one in, and only then deletes
+/// it: no step can lose either item, and the name is hidden and unique so it
+/// never meets another. The destination is empty between the first two
+/// steps, which is why those backends answer `false` to
+/// [`StorageProvider::supports_atomic_replace`].
+pub(crate) fn set_aside_name(name: &str) -> String {
+    let unique = uuid::Uuid::new_v4().simple().to_string();
+    format!(".{name}.aeroftp-replaced-{}", &unique[..8])
+}
+
+/// The error of a set-aside replace whose move of the new item into `to`
+/// failed: `error` alone when the item set aside as `aside` got its name
+/// back, and both failures with where that item is when it did not.
+pub(crate) fn set_aside_move_failed(
+    to: &str,
+    aside: &str,
+    error: ProviderError,
+    restored: Result<(), ProviderError>,
+) -> ProviderError {
+    match restored {
+        Ok(()) => error,
+        Err(restore) => ProviderError::Other(format!(
+            "replace could not move the new item to {to} ({error}), and giving the previous one \
+             its name back failed too ({restore}): it is kept as {aside}"
+        )),
+    }
+}
+
+/// Report the leftover of a set-aside replace that put the new item in
+/// place but could not delete the one set aside as `aside`. The replace is
+/// done, so it is a success: an error made callers undo or retry a replace
+/// that had happened (a WebDAV client retrying the MOVE, an edit deleting
+/// its temporary). What is left over goes to the log, and to the pending
+/// warnings a front end renders its own way ([`take_warnings`]): the log
+/// reaches no one where no subscriber is installed (the CLI without `-v` or
+/// `RUST_LOG`, `serve webdav`), and the leftover is a hidden name holding
+/// the old content, which no one would otherwise find.
+pub(crate) fn report_set_aside_leftover(to: &str, aside: &str, error: &ProviderError) {
+    let message = format!(
+        "replaced {to}, but deleting the previous version, set aside as {aside}, failed: \
+         {error}; delete it by hand"
+    );
+    tracing::warn!("{message}");
+    report_warning(message);
+}
+
+/// Keep `message` for the front end to show ([`take_warnings`]): a warning
+/// the user should see that a successful call cannot return. Inside
+/// [`CallWarnings::scope`] it is kept for that call; elsewhere it goes to
+/// the process queue. When the front end never asks (the GUI, which has the
+/// log), the oldest go first and are counted, so the queue stays bounded and
+/// the newest survive.
+pub fn report_warning(message: String) {
+    let mut message = Some(message);
+    let _ = CALL_WARNINGS.try_with(|call| {
+        if let Some(message) = message.take() {
+            call.lock().push(message);
+        }
+    });
+    if let Some(message) = message {
+        with_pending_warnings(|pending| pending.push(message));
+    }
+}
+
+/// Take the warnings reported since the last call, oldest first, for the
+/// front end to show in its own format (the CLI: a line on stderr, or a JSON
+/// object there with `--json`; MCP: a text block of the tool result): inside
+/// [`CallWarnings::scope`] the call's own, then the process queue's. When
+/// some were dropped to keep a queue bounded, the first says how many.
+pub fn take_warnings() -> Vec<String> {
+    let mut taken = CALL_WARNINGS
+        .try_with(CallWarnings::take)
+        .unwrap_or_default();
+    taken.extend(with_pending_warnings(PendingWarnings::take));
+    taken
+}
+
+/// The warnings one call reports, kept apart from the process queue so they
+/// reach that call's answer and no other: a server answering several calls
+/// at once (MCP, `serve webdav`) gave one call's warning to whichever call
+/// took the queue next. They stay readable after the call is dropped (a
+/// timeout, a cancellation).
+#[derive(Clone, Default)]
+pub struct CallWarnings(std::sync::Arc<std::sync::Mutex<PendingWarnings>>);
+
+tokio::task_local! {
+    static CALL_WARNINGS: CallWarnings;
+}
+
+impl CallWarnings {
+    /// Run `call`, keeping here what it reports through [`report_warning`].
+    pub async fn scope<F: std::future::Future>(&self, call: F) -> F::Output {
+        CALL_WARNINGS.scope(self.clone(), call).await
+    }
+
+    /// Take what the call reported so far, oldest first.
+    pub fn take(&self) -> Vec<String> {
+        self.lock().take()
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, PendingWarnings> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+#[derive(Default)]
+struct PendingWarnings {
+    messages: std::collections::VecDeque<String>,
+    dropped: usize,
+}
+
+impl PendingWarnings {
+    fn push(&mut self, message: String) {
+        if self.messages.len() == MAX_PENDING_WARNINGS {
+            self.messages.pop_front();
+            self.dropped += 1;
+        }
+        self.messages.push_back(message);
+    }
+
+    fn take(&mut self) -> Vec<String> {
+        let mut taken = Vec::with_capacity(self.messages.len() + 1);
+        if self.dropped > 0 {
+            taken.push(format!(
+                "{} earlier warnings were dropped before anyone read them",
+                self.dropped
+            ));
+            self.dropped = 0;
+        }
+        taken.extend(self.messages.drain(..));
+        taken
+    }
+}
+
+const MAX_PENDING_WARNINGS: usize = 64;
+
+/// The queue of [`report_warning`]: one for the process, and one per thread
+/// in this crate's tests, so a test reads only the warnings it caused.
+#[cfg(not(test))]
+fn with_pending_warnings<R>(f: impl FnOnce(&mut PendingWarnings) -> R) -> R {
+    static PENDING: std::sync::Mutex<PendingWarnings> = std::sync::Mutex::new(PendingWarnings {
+        messages: std::collections::VecDeque::new(),
+        dropped: 0,
+    });
+    let mut pending = PENDING
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    f(&mut pending)
+}
+
+#[cfg(test)]
+fn with_pending_warnings<R>(f: impl FnOnce(&mut PendingWarnings) -> R) -> R {
+    thread_local! {
+        static PENDING: std::cell::RefCell<PendingWarnings> =
+            std::cell::RefCell::new(PendingWarnings::default());
+    }
+    PENDING.with(|pending| f(&mut pending.borrow_mut()))
+}
+
+/// Refuse `rename(from, to)` when `to` is taken, on a backend whose own move
+/// would overwrite the item there, move the source inside it, or put a
+/// second item beside it under the same name. The trait promises none of
+/// that happens, and these backends have no call that refuses on their own.
+///
+/// `stat` of `to` decides: found is AlreadyExists, not found is free, and any
+/// other answer is passed on (the rename does not go out on a guess). The one
+/// exception is a rename that only changes the letter case: a
+/// case-insensitive backend finds the source itself under the new spelling
+/// and reports the name it has stored, so an entry named exactly like the
+/// source is the source. A backend that echoes the spelling it was asked for
+/// makes such a rename refused, which is the safe way to be wrong.
+///
+/// The look and the move are separate requests, so an item created at `to`
+/// between them is still overwritten or doubled: the window is declared, not
+/// closed, on every backend that uses this.
+pub(crate) async fn refuse_occupied_destination(
+    provider: &mut dyn StorageProvider,
+    from: &str,
+    to: &str,
+) -> Result<(), ProviderError> {
+    match provider.stat(to).await {
+        Ok(found) if is_the_source_under_another_case(from, to, &found.name) => Ok(()),
+        Ok(_) => Err(ProviderError::AlreadyExists(to.to_string())),
+        Err(ProviderError::NotFound(_)) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Put `from` in place of `to` on a backend whose rename refuses a taken
+/// name and which has no call that overwrites: the item at `to` is renamed
+/// aside under [`set_aside_name`], `from` is renamed in, and only then is
+/// the one set aside deleted. If the rename in fails, the item set aside
+/// gets its name back (see [`set_aside_move_failed`]); if the final delete
+/// fails, the replace is done and the leftover is reported (see
+/// [`report_set_aside_leftover`]). Onto a free name, or onto the source
+/// itself under another letter case, it is the rename; across file and
+/// folder it is refused before anything changes. `to` is empty between the
+/// first two steps, so a backend that uses this answers `false` to
+/// [`StorageProvider::supports_atomic_replace`].
+///
+/// `from` and `to` are the backend's resolved absolute paths.
+pub(crate) async fn replace_by_setting_aside(
+    provider: &mut dyn StorageProvider,
+    from: &str,
+    to: &str,
+) -> Result<(), ProviderError> {
+    let (from, to) = (from.trim_end_matches('/'), to.trim_end_matches('/'));
+    if from == to {
+        return Ok(());
+    }
+    let occupant = match provider.stat(to).await {
+        Ok(found) if !is_the_source_under_another_case(from, to, &found.name) => found,
+        Ok(_) | Err(ProviderError::NotFound(_)) => return provider.rename(from, to).await,
+        Err(e) => return Err(e),
+    };
+    let source = provider.stat(from).await?;
+    refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?;
+    let (parent, name) = to.rsplit_once('/').unwrap_or(("", to));
+    let aside = format!("{parent}/{}", set_aside_name(name));
+
+    provider.rename(to, &aside).await?;
+    if let Err(e) = provider.rename(from, to).await {
+        let restored = provider.rename(&aside, to).await;
+        return Err(set_aside_move_failed(to, &aside, e, restored));
+    }
+    let removed = if occupant.is_dir {
+        provider.rmdir_recursive(&aside).await
+    } else {
+        provider.delete(&aside).await
+    };
+    if let Err(e) = removed {
+        report_set_aside_leftover(to, &aside, &e);
+    }
+    Ok(())
+}
+
+/// The error of a rename done in two steps (a move that keeps the name and
+/// a rename in place, in either order) whose second step failed with
+/// `error` after the first had succeeded. When the first step was undone
+/// nothing changed, and `error` is the answer as it came. When the undo
+/// failed too, the item is at `now_at`: the error names both failures and
+/// that path, and is never AlreadyExists, which would say nothing changed.
+///
+/// Declared, not closed: a second step whose answer was lost after the
+/// server applied it (a timeout) reads as failed, so the undo moves back an
+/// item that had arrived, or the error names a place it has left. No
+/// backend that renames in two steps offers a way to ask which it was.
+pub(crate) fn second_step_failed(
+    from: &str,
+    to: &str,
+    now_at: &str,
+    error: ProviderError,
+    undone: Result<(), ProviderError>,
+) -> ProviderError {
+    match undone {
+        Ok(()) => error,
+        Err(undo) => ProviderError::Other(format!(
+            "renaming {from} to {to} stopped halfway: the second step failed ({error}) and \
+             undoing the first failed too ({undo}): the item is now at {now_at}"
+        )),
+    }
+}
+
+/// Drop from a path-keyed id cache the entry for `path` and every entry
+/// under it. After a rename or a replace the ids cached for the old path,
+/// the new one and everything below them point at items that moved or went
+/// to the trash: a later lookup would act on the wrong item.
+pub(crate) fn forget_cached_subtree<V>(cache: &mut HashMap<String, V>, path: &str) {
+    let path = path.trim_end_matches('/');
+    let below = format!("{path}/");
+    cache.retain(|cached, _| cached != path && !cached.starts_with(&below));
+}
+
+/// Whether the item `stat(to)` found, named `found_name`, is the source of a
+/// rename that only changes the letter case, found again by a
+/// case-insensitive backend under the name it has stored.
+pub(crate) fn is_the_source_under_another_case(from: &str, to: &str, found_name: &str) -> bool {
+    let (from, to) = (from.trim_end_matches('/'), to.trim_end_matches('/'));
+    from != to
+        && from.to_lowercase() == to.to_lowercase()
+        && found_name == from.rsplit('/').next().unwrap_or(from)
+}
+
+/// Refuse a replace that would put a file in place of a folder or a folder
+/// in place of a file. On a backend that sets the old item aside and then
+/// deletes it, a file replacing a folder deleted the whole folder, contents
+/// and all (for good on FileLu, which has no trash), to leave a file under
+/// its name. Nothing a caller means by "replace" asks for that, so it is
+/// refused before anything changes. AlreadyExists, because the destination
+/// is taken by an item this call will not displace.
+pub(crate) fn refuse_replace_across_types(
+    to: &str,
+    source_is_dir: bool,
+    occupant_is_dir: bool,
+) -> Result<(), ProviderError> {
+    if source_is_dir == occupant_is_dir {
+        return Ok(());
+    }
+    let (occupant, source) = if occupant_is_dir {
+        ("folder", "file")
+    } else {
+        ("file", "folder")
+    };
+    Err(ProviderError::AlreadyExists(format!(
+        "{to} is a {occupant}, and a replace puts a {source} only in place of a {source}: \
+         nothing was changed"
+    )))
+}
+
 /// Provider factory for creating provider instances
 pub struct ProviderFactory;
 
@@ -2097,6 +2434,104 @@ mod tests {
         );
         assert!(out.contains("[REDACTED]"));
         assert!(!out.contains("stack trace"), "only the first line is kept");
+    }
+
+    /// A queue no front end reads keeps the newest warnings and counts the
+    /// ones it dropped: it kept the oldest and dropped the newest silently.
+    #[test]
+    fn the_warning_queue_keeps_the_newest_and_counts_the_dropped() {
+        for i in 0..MAX_PENDING_WARNINGS + 3 {
+            report_warning(format!("w{i}"));
+        }
+        let taken = take_warnings();
+        assert_eq!(taken.len(), MAX_PENDING_WARNINGS + 1, "{taken:?}");
+        assert!(
+            taken[0].starts_with("3 earlier warnings were dropped"),
+            "{taken:?}"
+        );
+        assert_eq!(taken[1], "w3");
+        assert_eq!(
+            taken.last().unwrap(),
+            &format!("w{}", MAX_PENDING_WARNINGS + 2)
+        );
+        assert!(take_warnings().is_empty());
+    }
+
+    /// The shared look before a rename, on a local folder: a file or a folder
+    /// at the destination is AlreadyExists, a free name passes, and the
+    /// source found under another letter case (as a case-insensitive backend
+    /// reports it) is not another item.
+    #[tokio::test]
+    async fn the_shared_look_refuses_a_taken_destination_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"A").unwrap();
+        std::fs::write(dir.path().join("b.txt"), b"B").unwrap();
+        std::fs::create_dir(dir.path().join("d")).unwrap();
+        let mut provider = mtp::MtpFsProvider::new(
+            dir.path().to_path_buf(),
+            "dev".to_string(),
+            "Device".to_string(),
+        );
+        provider.connect().await.expect("connect");
+        for to in ["/b.txt", "/d", "/d/"] {
+            let outcome = refuse_occupied_destination(&mut provider, "/a.txt", to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{to}: {outcome:?}"
+            );
+        }
+        refuse_occupied_destination(&mut provider, "/a.txt", "/c.txt")
+            .await
+            .expect("a free name");
+    }
+
+    /// A case-insensitive backend answers `stat("/Readme.TXT")` with the
+    /// source it stored as `readme.txt`: that is no other item. The other
+    /// spelling stored as such, or a different name, is.
+    #[test]
+    fn only_the_source_found_under_another_case_is_not_another_item() {
+        assert!(is_the_source_under_another_case(
+            "/d/readme.txt",
+            "/d/Readme.TXT",
+            "readme.txt"
+        ));
+        assert!(!is_the_source_under_another_case(
+            "/d/readme.txt",
+            "/d/Readme.TXT",
+            "Readme.TXT"
+        ));
+        assert!(!is_the_source_under_another_case(
+            "/d/a.txt", "/d/b.txt", "a.txt"
+        ));
+        assert!(!is_the_source_under_another_case(
+            "/d/a.txt",
+            "/d/a.txt/",
+            "a.txt"
+        ));
+    }
+
+    #[test]
+    fn a_replace_across_types_is_refused_as_already_exists() {
+        assert!(refuse_replace_across_types("/x", false, false).is_ok());
+        assert!(refuse_replace_across_types("/x", true, true).is_ok());
+        for (source_is_dir, occupant_is_dir) in [(false, true), (true, false)] {
+            let refused = refuse_replace_across_types("/x", source_is_dir, occupant_is_dir);
+            assert!(
+                matches!(refused, Err(ProviderError::AlreadyExists(_))),
+                "{refused:?}"
+            );
+        }
+    }
+
+    /// Hidden, unique, and naming what it stands in for.
+    #[test]
+    fn a_set_aside_name_is_hidden_unique_and_readable() {
+        let first = set_aside_name("report.pdf");
+        assert!(
+            first.starts_with(".report.pdf.aeroftp-replaced-"),
+            "{first}"
+        );
+        assert_ne!(first, set_aside_name("report.pdf"));
     }
 
     /// Row 4: an empty body degrades to a stable placeholder, never panics.

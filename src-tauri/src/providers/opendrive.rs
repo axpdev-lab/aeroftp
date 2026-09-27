@@ -654,6 +654,9 @@ impl OpenDriveProvider {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         let message = sanitize_api_error(&body);
+        if Self::body_refuses_a_taken_name(status.as_u16(), &body) {
+            return ProviderError::AlreadyExists(message);
+        }
         match status.as_u16() {
             400 => ProviderError::InvalidPath(message),
             401 => ProviderError::AuthenticationFailed(message),
@@ -669,6 +672,26 @@ impl OpenDriveProvider {
             500..=599 => ProviderError::ServerError(message),
             _ => ProviderError::Other(message),
         }
+    }
+
+    /// Whether an error answer is OpenDrive refusing a name that is taken:
+    /// a 409, a JSON error whose `code` is 409, or a client error that says
+    /// the item already exists. Without this a move refused in the window
+    /// after the destination check reached the caller as InvalidPath, and
+    /// sync and `mkdir -p` could not tell it from a bad path.
+    fn body_refuses_a_taken_name(status: u16, body: &str) -> bool {
+        if status == 409 {
+            return true;
+        }
+        let code = serde_json::from_str::<serde_json::Value>(body)
+            .ok()
+            .and_then(|value| {
+                value
+                    .pointer("/error/code")
+                    .and_then(serde_json::Value::as_u64)
+            });
+        (400..500).contains(&status)
+            && (code == Some(409) || body.to_ascii_lowercase().contains("already exist"))
     }
 
     /// True when an OpenDrive 403 body indicates the hard per-file size limit,
@@ -852,6 +875,16 @@ impl OpenDriveProvider {
             .ok_or(ProviderError::NotFound(normalized))
     }
 
+    /// Whether the folder `parent` holds a file or a folder whose stored
+    /// (encoded) name is `encoded_leaf`.
+    async fn child_exists(&self, parent: &str, encoded_leaf: &str) -> Result<bool, ProviderError> {
+        let folder_id = self.folder_id_by_path(parent).await?;
+        let listing = self.list_folder_response(&folder_id).await?;
+        let named = |name: &Option<String>| name.as_deref() == Some(encoded_leaf);
+        Ok(listing.files.iter().any(|file| named(&file.name))
+            || listing.folders.iter().any(|folder| named(&folder.name)))
+    }
+
     async fn resolve_file_id(&self, path: &str) -> Result<String, ProviderError> {
         let normalized = normalize_path(path)?;
 
@@ -876,10 +909,201 @@ impl OpenDriveProvider {
         self.get_json(url.as_str()).await
     }
 
+    /// Upload `local_path` to `remote_path`. `open_if_exists` is the flag of
+    /// `upload/create_file.json`: true writes over a file of that name, false
+    /// makes the server refuse it.
+    async fn upload_file(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        open_if_exists: bool,
+    ) -> Result<(), ProviderError> {
+        // Proactive/reactive session handling is done by each `with_reauth` call below.
+        let resolved = self.resolve_path(remote_path)?;
+        let (parent_path, file_name) = split_parent_child(&resolved);
+        if file_name.is_empty() {
+            return Err(ProviderError::InvalidPath("Missing file name".into()));
+        }
+        // Store the new leaf under its reversible encoded form.
+        let file_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &file_name);
+
+        let folder_id = self
+            .with_reauth(|this| {
+                let parent_path = parent_path.clone();
+                Box::pin(async move { this.folder_id_by_path(&parent_path).await })
+            })
+            .await?;
+        let metadata = tokio::fs::metadata(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let file_size = metadata.len();
+        let file_hash = self.compute_md5(local_path).await?;
+
+        if let Some(ref cb) = on_progress {
+            cb(0, file_size);
+        }
+
+        let created: CreateFileResponse = self
+            .with_reauth(|this| {
+                let folder_id = folder_id.clone();
+                let file_name = file_name.clone();
+                let file_hash = file_hash.clone();
+                Box::pin(async move {
+                    this.post_form(
+                        "upload/create_file.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("folder_id", folder_id),
+                            ("file_name", file_name),
+                            ("file_size", file_size.to_string()),
+                            ("file_hash", file_hash),
+                            ("open_if_exists", u8::from(open_if_exists).to_string()),
+                        ],
+                    )
+                    .await
+                })
+            })
+            .await?;
+
+        let file_id = created
+            .file_id
+            .ok_or_else(|| ProviderError::ParseError("Missing FileId from create_file".into()))?;
+
+        let opened: OpenUploadResponse = self
+            .with_reauth(|this| {
+                let file_id = file_id.clone();
+                let file_hash = file_hash.clone();
+                Box::pin(async move {
+                    this.post_form(
+                        "upload/open_file_upload.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("file_id", file_id),
+                            ("file_size", file_size.to_string()),
+                            ("file_hash", file_hash),
+                        ],
+                    )
+                    .await
+                })
+            })
+            .await?;
+
+        let require_compression = parse_boolish(
+            opened
+                .require_compression
+                .as_ref()
+                .or(created.require_compression.as_ref()),
+        );
+        let temp_location = opened
+            .temp_location
+            .or(created.temp_location)
+            .ok_or_else(|| {
+                ProviderError::ParseError("Missing TempLocation from upload flow".into())
+            })?;
+        let mut file_compressed = false;
+
+        if file_size > 0 {
+            file_compressed = self
+                .upload_chunk(
+                    &file_id,
+                    &temp_location,
+                    &file_name,
+                    file_size,
+                    local_path,
+                    require_compression,
+                )
+                .await?;
+        }
+
+        let file_time = metadata
+            .modified()
+            .ok()
+            .and_then(|mtime| mtime.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs().to_string())
+            .unwrap_or_else(|| {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|duration| duration.as_secs().to_string())
+                    .unwrap_or_else(|_| "0".to_string())
+            });
+
+        self.with_reauth(|this| {
+            let file_id = file_id.clone();
+            let temp_location = temp_location.clone();
+            let file_time = file_time.clone();
+            let file_hash = file_hash.clone();
+            Box::pin(async move {
+                this.post_form_unit(
+                    "upload/close_file_upload.json",
+                    &[
+                        ("session_id", this.session_id.clone()),
+                        ("file_id", file_id),
+                        ("file_size", file_size.to_string()),
+                        ("temp_location", temp_location),
+                        ("file_time", file_time),
+                        ("file_hash", file_hash),
+                        (
+                            "file_compressed",
+                            if file_compressed { "1" } else { "0" }.to_string(),
+                        ),
+                    ],
+                )
+                .await
+            })
+        })
+        .await?;
+
+        // #252: apply the account's default privacy to the freshly uploaded
+        // file, reusing the file_id we already hold (no extra resolve). This is
+        // non-fatal: a failure warns but never changes the upload result.
+        if let Some(level) = self.config.default_privacy {
+            let level_value = level.to_api_value().to_string();
+            let file_id_for_access = file_id.clone();
+            if let Err(e) = self
+                .with_reauth(|this| {
+                    let file_id = file_id_for_access.clone();
+                    let level_value = level_value.clone();
+                    Box::pin(async move {
+                        this.post_form_unit(
+                            "file/access.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("file_id", file_id),
+                                ("file_ispublic", level_value),
+                            ],
+                        )
+                        .await
+                    })
+                })
+                .await
+            {
+                tracing::warn!(
+                    "[OpenDrive] could not apply default privacy to '{}': {}",
+                    remote_path,
+                    e
+                );
+            }
+        }
+
+        if let Some(ref cb) = on_progress {
+            cb(file_size, file_size);
+        }
+
+        self.last_activity = std::time::Instant::now();
+        Ok(())
+    }
+
+    /// Move a file by downloading and uploading it, for accounts whose
+    /// `file/move_copy.json` refuses `move`. With `overwrite` false the upload
+    /// asks the server to refuse a name that is taken (`open_if_exists=0`):
+    /// the destination was found free before, and a file that appeared there
+    /// since must not be overwritten.
     async fn move_file_via_temp_copy(
         &mut self,
         from_path: &str,
         to_path: &str,
+        overwrite: bool,
     ) -> Result<(), ProviderError> {
         let unique_suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -895,10 +1119,152 @@ impl OpenDriveProvider {
             .into_owned();
 
         self.download(from_path, &temp_path, None).await?;
-        let upload_result = self.upload(&temp_path, to_path, None).await;
+        let upload_result = self.upload_file(&temp_path, to_path, None, overwrite).await;
         let _ = tokio::fs::remove_file(&temp_path).await;
         upload_result?;
         self.delete(from_path).await
+    }
+
+    /// Rename or replace. With `overwrite` false an occupied destination is
+    /// refused before anything changes (the `rename` contract). With it true
+    /// (the `replace` contract) a file move asks the server to overwrite;
+    /// a rename in place and a folder move have no such flag and are sent as
+    /// they were before the check existed, so the server decides.
+    async fn move_item(
+        &mut self,
+        from: &str,
+        to: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        let from_resolved = self.resolve_path(from)?;
+        let to_resolved = self.resolve_path(to)?;
+        if from_resolved == "/" {
+            return Err(ProviderError::InvalidPath(
+                "Cannot rename root folder".into(),
+            ));
+        }
+
+        let (from_parent_path, _) = split_parent_child(&from_resolved);
+        let (to_parent_path, to_name) = split_parent_child(&to_resolved);
+        if to_name.is_empty() {
+            return Err(ProviderError::InvalidPath("Missing target name".into()));
+        }
+        // The new leaf is stored encoded (used for folder/file rename + move).
+        let to_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &to_name);
+        if from_resolved == to_resolved {
+            return Ok(());
+        }
+
+        // The trait promises no overwrite. `file/move_copy.json` and the
+        // download+upload fallback below would both replace an existing file
+        // at the destination, so an occupied destination is refused first.
+        let occupied = !overwrite
+            && self
+                .with_reauth(|this| {
+                    let to_parent_path = to_parent_path.clone();
+                    let to_name = to_name.clone();
+                    Box::pin(async move { this.child_exists(&to_parent_path, &to_name).await })
+                })
+                .await?;
+        if occupied {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+
+        // Folder rename/move path
+        let folder_result = self
+            .with_reauth(|this| {
+                let from_resolved = from_resolved.clone();
+                let to_parent_path = to_parent_path.clone();
+                let to_name = to_name.clone();
+                let from_parent_path = from_parent_path.clone();
+                Box::pin(async move {
+                    let folder_id = match this.folder_id_by_path(&from_resolved).await {
+                        Ok(id) => id,
+                        Err(_) => return Ok::<Option<()>, ProviderError>(None),
+                    };
+                    if from_parent_path == to_parent_path {
+                        this.post_form_unit(
+                            "folder/rename.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("folder_id", folder_id),
+                                ("folder_name", to_name),
+                            ],
+                        )
+                        .await?;
+                    } else {
+                        let to_parent_id = this.folder_id_by_path(&to_parent_path).await?;
+                        this.post_form_unit(
+                            "folder/move_copy.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("folder_id", folder_id),
+                                ("dst_folder_id", to_parent_id),
+                                ("move", "true".to_string()),
+                                ("new_folder_name", to_name),
+                            ],
+                        )
+                        .await?;
+                    }
+                    Ok(Some(()))
+                })
+            })
+            .await?;
+
+        if folder_result.is_some() {
+            return Ok(());
+        }
+
+        // File rename/move path
+        let move_result: Result<(), ProviderError> = self
+            .with_reauth(|this| {
+                let from_resolved = from_resolved.clone();
+                let from_parent_path = from_parent_path.clone();
+                let to_parent_path = to_parent_path.clone();
+                let to_name = to_name.clone();
+                Box::pin(async move {
+                    let file_id = this.resolve_file_id(&from_resolved).await?;
+
+                    if from_parent_path == to_parent_path {
+                        this.post_form_unit(
+                            "file/rename.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("file_id", file_id),
+                                ("new_file_name", to_name),
+                            ],
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+
+                    let to_parent_id = this.folder_id_by_path(&to_parent_path).await?;
+                    this.post_form_unit(
+                        "file/move_copy.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("src_file_id", file_id),
+                            ("dst_folder_id", to_parent_id),
+                            ("move", "true".to_string()),
+                            ("overwrite_if_exists", overwrite.to_string()),
+                            ("new_file_name", to_name),
+                        ],
+                    )
+                    .await
+                })
+            })
+            .await;
+
+        match move_result {
+            Ok(()) => Ok(()),
+            Err(ProviderError::InvalidPath(message))
+                if message.contains("Invalid value specified for `move`") =>
+            {
+                self.move_file_via_temp_copy(&from_resolved, &to_resolved, overwrite)
+                    .await
+            }
+            Err(error) => Err(error),
+        }
     }
 
     fn folder_to_entry(&self, folder: OpenDriveFolder, parent: &str) -> RemoteEntry {
@@ -1627,179 +1993,8 @@ impl StorageProvider for OpenDriveProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        // Proactive/reactive session handling is done by each `with_reauth` call below.
-        let resolved = self.resolve_path(remote_path)?;
-        let (parent_path, file_name) = split_parent_child(&resolved);
-        if file_name.is_empty() {
-            return Err(ProviderError::InvalidPath("Missing file name".into()));
-        }
-        // Store the new leaf under its reversible encoded form.
-        let file_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &file_name);
-
-        let folder_id = self
-            .with_reauth(|this| {
-                let parent_path = parent_path.clone();
-                Box::pin(async move { this.folder_id_by_path(&parent_path).await })
-            })
-            .await?;
-        let metadata = tokio::fs::metadata(local_path)
+        self.upload_file(local_path, remote_path, on_progress, true)
             .await
-            .map_err(ProviderError::IoError)?;
-        let file_size = metadata.len();
-        let file_hash = self.compute_md5(local_path).await?;
-
-        if let Some(ref cb) = on_progress {
-            cb(0, file_size);
-        }
-
-        let created: CreateFileResponse = self
-            .with_reauth(|this| {
-                let folder_id = folder_id.clone();
-                let file_name = file_name.clone();
-                let file_hash = file_hash.clone();
-                Box::pin(async move {
-                    this.post_form(
-                        "upload/create_file.json",
-                        &[
-                            ("session_id", this.session_id.clone()),
-                            ("folder_id", folder_id),
-                            ("file_name", file_name),
-                            ("file_size", file_size.to_string()),
-                            ("file_hash", file_hash),
-                            ("open_if_exists", "1".to_string()),
-                        ],
-                    )
-                    .await
-                })
-            })
-            .await?;
-
-        let file_id = created
-            .file_id
-            .ok_or_else(|| ProviderError::ParseError("Missing FileId from create_file".into()))?;
-
-        let opened: OpenUploadResponse = self
-            .with_reauth(|this| {
-                let file_id = file_id.clone();
-                let file_hash = file_hash.clone();
-                Box::pin(async move {
-                    this.post_form(
-                        "upload/open_file_upload.json",
-                        &[
-                            ("session_id", this.session_id.clone()),
-                            ("file_id", file_id),
-                            ("file_size", file_size.to_string()),
-                            ("file_hash", file_hash),
-                        ],
-                    )
-                    .await
-                })
-            })
-            .await?;
-
-        let require_compression = parse_boolish(
-            opened
-                .require_compression
-                .as_ref()
-                .or(created.require_compression.as_ref()),
-        );
-        let temp_location = opened
-            .temp_location
-            .or(created.temp_location)
-            .ok_or_else(|| {
-                ProviderError::ParseError("Missing TempLocation from upload flow".into())
-            })?;
-        let mut file_compressed = false;
-
-        if file_size > 0 {
-            file_compressed = self
-                .upload_chunk(
-                    &file_id,
-                    &temp_location,
-                    &file_name,
-                    file_size,
-                    local_path,
-                    require_compression,
-                )
-                .await?;
-        }
-
-        let file_time = metadata
-            .modified()
-            .ok()
-            .and_then(|mtime| mtime.duration_since(UNIX_EPOCH).ok())
-            .map(|duration| duration.as_secs().to_string())
-            .unwrap_or_else(|| {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|duration| duration.as_secs().to_string())
-                    .unwrap_or_else(|_| "0".to_string())
-            });
-
-        self.with_reauth(|this| {
-            let file_id = file_id.clone();
-            let temp_location = temp_location.clone();
-            let file_time = file_time.clone();
-            let file_hash = file_hash.clone();
-            Box::pin(async move {
-                this.post_form_unit(
-                    "upload/close_file_upload.json",
-                    &[
-                        ("session_id", this.session_id.clone()),
-                        ("file_id", file_id),
-                        ("file_size", file_size.to_string()),
-                        ("temp_location", temp_location),
-                        ("file_time", file_time),
-                        ("file_hash", file_hash),
-                        (
-                            "file_compressed",
-                            if file_compressed { "1" } else { "0" }.to_string(),
-                        ),
-                    ],
-                )
-                .await
-            })
-        })
-        .await?;
-
-        // #252: apply the account's default privacy to the freshly uploaded
-        // file, reusing the file_id we already hold (no extra resolve). This is
-        // non-fatal: a failure warns but never changes the upload result.
-        if let Some(level) = self.config.default_privacy {
-            let level_value = level.to_api_value().to_string();
-            let file_id_for_access = file_id.clone();
-            if let Err(e) = self
-                .with_reauth(|this| {
-                    let file_id = file_id_for_access.clone();
-                    let level_value = level_value.clone();
-                    Box::pin(async move {
-                        this.post_form_unit(
-                            "file/access.json",
-                            &[
-                                ("session_id", this.session_id.clone()),
-                                ("file_id", file_id),
-                                ("file_ispublic", level_value),
-                            ],
-                        )
-                        .await
-                    })
-                })
-                .await
-            {
-                tracing::warn!(
-                    "[OpenDrive] could not apply default privacy to '{}': {}",
-                    remote_path,
-                    e
-                );
-            }
-        }
-
-        if let Some(ref cb) = on_progress {
-            cb(file_size, file_size);
-        }
-
-        self.last_activity = std::time::Instant::now();
-        Ok(())
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1920,117 +2115,24 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let from_resolved = self.resolve_path(from)?;
-        let to_resolved = self.resolve_path(to)?;
-        if from_resolved == "/" {
-            return Err(ProviderError::InvalidPath(
-                "Cannot rename root folder".into(),
-            ));
-        }
+        self.move_item(from, to, false).await
+    }
 
-        let (from_parent_path, _) = split_parent_child(&from_resolved);
-        let (to_parent_path, to_name) = split_parent_child(&to_resolved);
-        if to_name.is_empty() {
-            return Err(ProviderError::InvalidPath("Missing target name".into()));
-        }
-        // The new leaf is stored encoded (used for folder/file rename + move).
-        let to_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &to_name);
+    /// A file move into another folder with `overwrite_if_exists=true`: see
+    /// `move_item`. In one folder OpenDrive only renames (`file/rename.json`),
+    /// which has no overwrite and refuses a taken name with 409.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.move_item(from, to, true).await
+    }
 
-        // Folder rename/move path
-        let folder_result = self
-            .with_reauth(|this| {
-                let from_resolved = from_resolved.clone();
-                let to_parent_path = to_parent_path.clone();
-                let to_name = to_name.clone();
-                let from_parent_path = from_parent_path.clone();
-                Box::pin(async move {
-                    let folder_id = match this.folder_id_by_path(&from_resolved).await {
-                        Ok(id) => id,
-                        Err(_) => return Ok::<Option<()>, ProviderError>(None),
-                    };
-                    if from_parent_path == to_parent_path {
-                        this.post_form_unit(
-                            "folder/rename.json",
-                            &[
-                                ("session_id", this.session_id.clone()),
-                                ("folder_id", folder_id),
-                                ("folder_name", to_name),
-                            ],
-                        )
-                        .await?;
-                    } else {
-                        let to_parent_id = this.folder_id_by_path(&to_parent_path).await?;
-                        this.post_form_unit(
-                            "folder/move_copy.json",
-                            &[
-                                ("session_id", this.session_id.clone()),
-                                ("folder_id", folder_id),
-                                ("dst_folder_id", to_parent_id),
-                                ("move", "true".to_string()),
-                                ("new_folder_name", to_name),
-                            ],
-                        )
-                        .await?;
-                    }
-                    Ok(Some(()))
-                })
-            })
-            .await?;
-
-        if folder_result.is_some() {
-            return Ok(());
-        }
-
-        // File rename/move path
-        let move_result: Result<(), ProviderError> = self
-            .with_reauth(|this| {
-                let from_resolved = from_resolved.clone();
-                let from_parent_path = from_parent_path.clone();
-                let to_parent_path = to_parent_path.clone();
-                let to_name = to_name.clone();
-                Box::pin(async move {
-                    let file_id = this.resolve_file_id(&from_resolved).await?;
-
-                    if from_parent_path == to_parent_path {
-                        this.post_form_unit(
-                            "file/rename.json",
-                            &[
-                                ("session_id", this.session_id.clone()),
-                                ("file_id", file_id),
-                                ("new_file_name", to_name),
-                            ],
-                        )
-                        .await?;
-                        return Ok(());
-                    }
-
-                    let to_parent_id = this.folder_id_by_path(&to_parent_path).await?;
-                    this.post_form_unit(
-                        "file/move_copy.json",
-                        &[
-                            ("session_id", this.session_id.clone()),
-                            ("src_file_id", file_id),
-                            ("dst_folder_id", to_parent_id),
-                            ("move", "true".to_string()),
-                            ("overwrite_if_exists", "true".to_string()),
-                            ("new_file_name", to_name),
-                        ],
-                    )
-                    .await
-                })
-            })
-            .await;
-
-        match move_result {
-            Ok(()) => Ok(()),
-            Err(ProviderError::InvalidPath(message))
-                if message.contains("Invalid value specified for `move`") =>
-            {
-                self.move_file_via_temp_copy(&from_resolved, &to_resolved)
-                    .await
-            }
-            Err(error) => Err(error),
-        }
+    /// No. The callers that need atomicity (CLI `edit`, MCP `remote_edit`,
+    /// the crypt marker paths) stage their temporary next to the target, and
+    /// a replace in one folder is a `file/rename.json`, which refuses the
+    /// taken name: the edit uploaded its temporary and then failed with 409
+    /// (found live on 2026-09-26). Answering no makes them refuse before they
+    /// write anything. A replace across folders still lands in one step.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2538,6 +2640,224 @@ impl StorageProvider for OpenDriveProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An OpenDrive API double for `rename("/src/f.txt", "/dst/f.txt")`:
+    /// `/dst` is folder `D`, holding `f.txt` only when `occupied`; the
+    /// source file is `F`. Returns the provider and the form bodies of the
+    /// `file/move_copy.json` calls.
+    async fn provider_for_file_move(
+        occupied: bool,
+    ) -> (
+        OpenDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        provider_for_file_move_answering(occupied, 200, "{}").await
+    }
+
+    /// [`provider_for_file_move`] whose `file/move_copy.json` answers
+    /// `move_status` and `move_body`. The download and upload endpoints of
+    /// the temporary-copy fallback succeed, and the log also holds each
+    /// `upload/create_file.json` form, prefixed `create_file `.
+    async fn provider_for_file_move_answering(
+        occupied: bool,
+        move_status: u16,
+        move_body: &'static str,
+    ) -> (
+        OpenDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let moves: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&moves);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                        .await
+                        .unwrap();
+                    let form: std::collections::HashMap<String, String> =
+                        form_urlencoded::parse(&body).into_owned().collect();
+                    let json = |status: u16, value: serde_json::Value| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(value.to_string()))
+                            .unwrap()
+                    };
+                    let not_found = || {
+                        json(
+                            404,
+                            serde_json::json!({ "error": { "code": 404, "message": "not found" } }),
+                        )
+                    };
+                    match path.as_str() {
+                        "/api/v1/folder/idbypath.json" => {
+                            match form.get("path").map(String::as_str) {
+                                Some("/dst") | Some("dst") => {
+                                    json(200, serde_json::json!({ "FolderId": "D" }))
+                                }
+                                _ => not_found(),
+                            }
+                        }
+                        "/api/v1/folder/list.json/sid/D" => {
+                            let files = if occupied {
+                                serde_json::json!([{ "FileId": "X", "Name": "f.txt" }])
+                            } else {
+                                serde_json::json!([])
+                            };
+                            json(200, serde_json::json!({ "Folders": [], "Files": files }))
+                        }
+                        "/api/v1/file/idbypath.json" => {
+                            json(200, serde_json::json!({ "FileId": "F" }))
+                        }
+                        "/api/v1/file/move_copy.json" => {
+                            seen.lock()
+                                .unwrap()
+                                .push(String::from_utf8_lossy(&body).to_string());
+                            axum::response::Response::builder()
+                                .status(move_status)
+                                .header("content-type", "application/json")
+                                .body(axum::body::Body::from(move_body))
+                                .unwrap()
+                        }
+                        "/api/v1/download/file.json/F" => axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::from("abc"))
+                            .unwrap(),
+                        "/api/v1/upload/create_file.json" => {
+                            seen.lock()
+                                .unwrap()
+                                .push(format!("create_file {}", String::from_utf8_lossy(&body)));
+                            json(
+                                200,
+                                serde_json::json!({ "FileId": "N", "TempLocation": "t" }),
+                            )
+                        }
+                        "/api/v1/upload/open_file_upload.json" => {
+                            json(200, serde_json::json!({ "TempLocation": "t" }))
+                        }
+                        "/api/v1/upload/upload_file_chunk2.json/sid/N"
+                        | "/api/v1/upload/close_file_upload.json"
+                        | "/api/v1/file/trash.json" => json(200, serde_json::json!({})),
+                        _ => not_found(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = OpenDriveProvider::new(OpenDriveConfig {
+            host: format!("http://{addr}"),
+            username: "u".to_string(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+            default_privacy: None,
+        });
+        provider.connected = true;
+        provider.session_id = "sid".to_string();
+        (provider, moves)
+    }
+
+    #[tokio::test]
+    async fn file_move_never_asks_the_server_to_overwrite() {
+        let (mut provider, moves) = provider_for_file_move(false).await;
+        provider
+            .rename("/src/f.txt", "/dst/f.txt")
+            .await
+            .expect("move");
+        let moves = moves.lock().unwrap().clone();
+        assert_eq!(moves.len(), 1, "{moves:?}");
+        assert!(moves[0].contains("overwrite_if_exists=false"), "{moves:?}");
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination.
+    #[tokio::test]
+    async fn replace_moves_over_an_existing_destination_with_overwrite() {
+        let (mut provider, moves) = provider_for_file_move(true).await;
+        provider
+            .replace("/src/f.txt", "/dst/f.txt")
+            .await
+            .expect("replace");
+        let moves = moves.lock().unwrap().clone();
+        assert_eq!(moves.len(), 1, "{moves:?}");
+        assert!(moves[0].contains("src_file_id=F"), "{moves:?}");
+        assert!(moves[0].contains("overwrite_if_exists=true"), "{moves:?}");
+    }
+
+    /// A name taken between the destination check and the move: OpenDrive
+    /// refuses it with a client error, which reached the caller as
+    /// InvalidPath instead of AlreadyExists.
+    #[tokio::test]
+    async fn a_move_refused_for_a_taken_name_is_already_exists() {
+        let (mut provider, _) = provider_for_file_move_answering(
+            false,
+            400,
+            r#"{"error":{"code":409,"message":"File with the same name already exists"}}"#,
+        )
+        .await;
+        let outcome = provider.rename("/src/f.txt", "/dst/f.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// On an account whose move_copy refuses `move`, a rename downloads and
+    /// uploads the file. The destination was checked free first; the upload
+    /// asked the server to write over any file there anyway
+    /// (`open_if_exists=1`), so one that appeared since was overwritten. A
+    /// rename now asks for a refusal; a replace still overwrites.
+    #[tokio::test]
+    async fn the_temporary_copy_fallback_overwrites_only_for_a_replace() {
+        for (overwrite, expected) in [(false, "open_if_exists=0"), (true, "open_if_exists=1")] {
+            let (mut provider, log) = provider_for_file_move_answering(
+                false,
+                400,
+                r#"{"error":{"code":400,"message":"Invalid value specified for `move`"}}"#,
+            )
+            .await;
+            let outcome = if overwrite {
+                provider.replace("/src/f.txt", "/dst/f.txt").await
+            } else {
+                provider.rename("/src/f.txt", "/dst/f.txt").await
+            };
+            outcome.expect("the fallback moves the file");
+            let log = log.lock().unwrap().clone();
+            let created: Vec<&String> = log
+                .iter()
+                .filter(|e| e.starts_with("create_file "))
+                .collect();
+            assert_eq!(created.len(), 1, "{log:?}");
+            assert!(created[0].contains(expected), "{overwrite}: {created:?}");
+        }
+    }
+
+    /// Every caller that needs atomicity stages its temporary next to the
+    /// target, and in one folder OpenDrive only renames (`file/rename.json`),
+    /// which refuses a taken name with 409: the edit uploaded its temporary
+    /// and then failed (found live on 2026-09-26). The answer is no, so those
+    /// callers refuse before writing anything.
+    #[tokio::test]
+    async fn opendrive_does_not_claim_an_atomic_replace() {
+        let (mut provider, _) = provider_for_file_move(false).await;
+        assert!(!provider.supports_atomic_replace().await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn file_move_refuses_an_existing_destination_before_moving() {
+        let (mut provider, moves) = provider_for_file_move(true).await;
+        let outcome = provider.rename("/src/f.txt", "/dst/f.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(moves.lock().unwrap().is_empty());
+    }
+
     use serde_json::json;
 
     #[test]

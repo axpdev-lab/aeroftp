@@ -1605,9 +1605,15 @@ impl StorageProvider for GitHubProvider {
             ));
         }
 
-        // GitHub Contents API has no rename: download + upload + delete.
-        let data = self.download_to_bytes(from).await?;
         let resolved_to = self.resolve_path(to);
+        if self.resolve_path(from) == resolved_to {
+            return Ok(());
+        }
+        // The Contents API has no rename: download + upload + delete. The
+        // upload refuses an existing path (422, AlreadyExists), but after the
+        // download: look first, so a taken destination costs no transfer.
+        super::refuse_occupied_destination(self, from, to).await?;
+        let data = self.download_to_bytes(from).await?;
 
         // Upload to new location.
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
@@ -1636,6 +1642,13 @@ impl StorageProvider for GitHubProvider {
         self.delete(from).await?;
 
         Ok(())
+    }
+
+    /// No: the Contents API creates a file only where there is none, so a
+    /// rename has no one-step replace, and the callers that need one refuse
+    /// before they write anything (a staged temporary would be a commit).
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1946,6 +1959,40 @@ mod tests {
             initial_path: initial_path.map(|path| path.to_string()),
             extra,
         }
+    }
+
+    /// The Contents API creates a file only where there is none, so there is no
+    /// one-step replace. The answer is no, so the callers that need one (CLI
+    /// `edit`, MCP `remote_edit`, the crypt marker paths) refuse before they
+    /// write.
+    #[tokio::test]
+    async fn github_does_not_claim_an_atomic_replace() {
+        let mut p = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config("o/r", None, Some("/"))).unwrap(),
+        )
+        .unwrap();
+        assert!(!p.supports_atomic_replace().await.unwrap());
+    }
+
+    /// The Contents API has no rename: download, upload, delete. Onto its
+    /// own path that read the file and then failed to create it again. It is
+    /// a no-op everywhere else, and here no request is made at all (the
+    /// provider is not even connected).
+    #[tokio::test]
+    async fn a_rename_onto_its_own_path_makes_no_request() {
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config(
+                "axpnet/aeroftp-test-playground",
+                None,
+                Some("/"),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        provider
+            .rename("/docs/a.md", "/docs/a.md")
+            .await
+            .expect("a no-op");
     }
 
     #[test]

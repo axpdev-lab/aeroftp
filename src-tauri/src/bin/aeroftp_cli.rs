@@ -3805,6 +3805,22 @@ enum Commands {
 mod cli_dispatch;
 
 #[cfg(test)]
+mod warning_line_tests {
+    use super::{warning_line, OutputFormat};
+
+    /// With `--json` stderr carries JSON objects: a warning is one of them,
+    /// not a free-text line a consumer cannot parse.
+    #[test]
+    fn a_warning_is_json_on_json_stderr_and_a_line_otherwise() {
+        let json: serde_json::Value =
+            serde_json::from_str(&warning_line(OutputFormat::Json, "left \"x\"")).unwrap();
+        assert_eq!(json["status"], "warning");
+        assert_eq!(json["warning"], "left \"x\"");
+        assert_eq!(warning_line(OutputFormat::Text, "left"), "warning: left");
+    }
+}
+
+#[cfg(test)]
 mod cli_dispatch_tests {
     use super::{cli_dispatch, Cli};
     use clap::CommandFactory;
@@ -4442,12 +4458,15 @@ enum CorrectCommands {
 enum ExportCommands {
     /// Export profiles to rclone.conf format: FTP/FTPS, SFTP, WebDAV, S3,
     /// MEGA, Filen, Internxt, Azure, Swift, Koofr, OpenDrive, Backblaze B2,
-    /// Jottacloud, and the OAuth providers (Google Drive, Dropbox, OneDrive,
-    /// Box, pCloud, Yandex Disk, Zoho WorkDrive) with their token and the
-    /// client ID that minted it. An Internxt remote needs one
-    /// `rclone config reconnect "<remote>:"` before use, as the file says. Any
-    /// other profile is skipped and listed with the reason in the command
-    /// output; nothing is written for it.
+    /// Drime, Cloudinary, ImageKit, Jottacloud, and the OAuth providers
+    /// (Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex Disk, Zoho
+    /// WorkDrive) with their token and the client ID that minted it. An
+    /// Internxt remote needs one `rclone config reconnect "<remote>:"` before
+    /// use, as the file says. ImageKit needs the account public key, which only
+    /// a profile imported from rclone holds. FileLu is skipped: rclone signs in
+    /// with the FileLu Rclone key, not the API key AeroFTP holds. Any profile
+    /// that cannot be written is skipped and listed with the reason in the
+    /// command output; nothing is written for it.
     Rclone {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]
@@ -7236,6 +7255,28 @@ fn print_json<T: Serialize>(value: &T) {
     match serde_json::to_string_pretty(value) {
         Ok(json) => println!("{}", json),
         Err(e) => eprintln!("Error: failed to serialize JSON: {}", e),
+    }
+}
+
+/// A warning the library reported during a command (a set-aside leftover
+/// of a replace), as the line `format` shows on stderr: plain text, or with
+/// `--json` a JSON object, since stderr carries JSON there.
+fn warning_line(format: OutputFormat, warning: &str) -> String {
+    match format {
+        OutputFormat::Text => format!("warning: {warning}"),
+        OutputFormat::Json => {
+            serde_json::json!({ "status": "warning", "warning": warning }).to_string()
+        }
+    }
+}
+
+/// Show on stderr the warnings the library reported since the last call.
+/// A closed stderr is no reason to panic: the line is dropped.
+fn render_pending_warnings(format: OutputFormat) {
+    use std::io::Write;
+    let mut stderr = std::io::stderr();
+    for warning in ftp_client_gui_lib::providers::take_warnings() {
+        let _ = writeln!(stderr, "{}", warning_line(format, &warning));
     }
 }
 
@@ -16855,11 +16896,7 @@ async fn remove_tui_session_via_cli_handler(
     let result = if recursive {
         provider.rmdir_recursive(&resolved).await
     } else {
-        // Try file delete first, fall back to empty-directory removal.
-        match provider.delete(&resolved).await {
-            Ok(()) => Ok(()),
-            Err(_) => provider.rmdir(&resolved).await,
-        }
+        delete_file_or_empty_dir(provider, &resolved).await
     };
     result
         .map(|_| resolved)
@@ -29146,6 +29183,38 @@ struct ServeHttpState {
     provider_label: String,
     base_path: String,
     auth_token: Option<String>,
+    warnings: ServedWarnings,
+}
+
+/// Where a served request shows the warnings its provider call left (a
+/// replace that could not delete the copy it set aside): stderr, in the
+/// format the server was started with. The server runs until stopped, and
+/// the log is off by default.
+#[derive(Clone)]
+struct ServedWarnings {
+    format: OutputFormat,
+    out: Arc<std::sync::Mutex<dyn std::io::Write + Send>>,
+}
+
+impl ServedWarnings {
+    fn stderr(format: OutputFormat) -> Self {
+        Self {
+            format,
+            out: Arc::new(std::sync::Mutex::new(std::io::stderr())),
+        }
+    }
+
+    /// Show `warnings`, one line each. A closed stderr is no reason to
+    /// panic: the line is dropped.
+    fn show(&self, warnings: Vec<String>) {
+        let mut out = self
+            .out
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for warning in warnings {
+            let _ = writeln!(out, "{}", warning_line(self.format, &warning));
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -29243,7 +29312,15 @@ fn sanitize_served_relative_path(path: &str) -> Result<String, StatusCode> {
     let decoded = urlencoding::decode(path)
         .map_err(|_| StatusCode::BAD_REQUEST)?
         .into_owned();
+    sanitize_decoded_served_path(&decoded)
+}
 
+/// [`sanitize_served_relative_path`] for a path already percent-decoded, as
+/// axum's `Path` extractor hands a request path over. Decoding it a second
+/// time turned a name holding a literal `%41` into another name (`aA.txt`)
+/// while the `Destination` header was decoded once: a MOVE onto itself
+/// missed its 403 and moved another file over it.
+fn sanitize_decoded_served_path(decoded: &str) -> Result<String, StatusCode> {
     if decoded.contains('\0') {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -29415,8 +29492,11 @@ fn resolve_served_backend_path(
     base_path: &str,
     requested_path: &str,
 ) -> Result<String, &'static str> {
+    // An FTP or SFTP path is not percent-encoded: decoding it made the name
+    // `a%41.txt` the file `aA.txt`, so DELE, RNFR and STOR acted on another
+    // file. `..` is still refused as a segment.
     let relative =
-        sanitize_served_relative_path(requested_path).map_err(|_| "path traversal denied")?;
+        sanitize_decoded_served_path(requested_path).map_err(|_| "path traversal denied")?;
     Ok(build_served_remote_path(base_path, &relative))
 }
 
@@ -29877,7 +29957,7 @@ async fn serve_http_response(
     head_only: bool,
     range: Option<&HeaderValue>,
 ) -> Response {
-    let relative_path = match sanitize_served_relative_path(&relative_path) {
+    let relative_path = match sanitize_decoded_served_path(&relative_path) {
         Ok(path) => path,
         Err(status) => return serve_error_response(status, "Invalid request path"),
     };
@@ -30068,6 +30148,7 @@ async fn cmd_serve_http(
         provider_label,
         base_path: base_path.clone(),
         auth_token: auth_token.clone(),
+        warnings: ServedWarnings::stderr(format),
     };
 
     let app = Router::new()
@@ -30233,6 +30314,54 @@ fn extract_destination_relative(headers: &HeaderMap) -> Result<String, StatusCod
     sanitize_served_relative_path(path_part).map_err(|_| StatusCode::BAD_REQUEST)
 }
 
+/// Whether a MOVE may replace an existing destination. RFC 4918 section
+/// 10.6: `Overwrite: F` forbids it, and a request without the header is
+/// treated as `Overwrite: T`.
+fn webdav_move_may_overwrite(headers: &HeaderMap) -> bool {
+    !headers
+        .get("Overwrite")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("F"))
+}
+
+/// A served WebDAV DELETE: a file, or a collection with everything under it
+/// (RFC 4918 section 9.6.1).
+///
+/// It used to escalate after ANY `delete` failure: `rmdir`, then
+/// `rmdir_recursive`. A file `delete` refused for a transient reason then
+/// erased the directory of the same name (an S3 key `x` beside the prefix
+/// `x/`), and an ambiguous path (Cloudinary: an asset and a folder sharing a
+/// name) emptied the folder. The escalation now happens only for a path `stat`
+/// calls a directory (not a link to one), or one it cannot describe (see
+/// [`stat_cannot_describe`]) that the provider can list: on S3 the served
+/// collection `x` is the prefix `x/`, which no key names.
+async fn served_webdav_delete(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<(), ProviderError> {
+    let refused = match provider.delete(path).await {
+        Ok(()) => return Ok(()),
+        Err(ProviderError::Cancelled) => return Err(ProviderError::Cancelled),
+        Err(e) => e,
+    };
+    match provider.stat(path).await {
+        Ok(entry) if entry.is_dir && !entry.is_symlink => {}
+        // An object store sees no key `x` behind the collection `x/`: only a
+        // path the provider can list is a collection. A key that is simply
+        // gone keeps the delete error.
+        Err(e) if stat_cannot_describe(&e) => {
+            if provider.list(path).await.is_err() {
+                return Err(refused);
+            }
+        }
+        _ => return Err(refused),
+    }
+    match provider.rmdir(path).await {
+        Ok(()) => Ok(()),
+        Err(_) => provider.rmdir_recursive(path).await,
+    }
+}
+
 async fn webdav_dispatch(
     state: ServeHttpState,
     method: Method,
@@ -30249,7 +30378,7 @@ async fn webdav_dispatch(
         return response;
     }
 
-    let relative_path = match sanitize_served_relative_path(&path) {
+    let relative_path = match sanitize_decoded_served_path(&path) {
         Ok(p) => p,
         Err(status) => return serve_error_response(status, "Invalid path"),
     };
@@ -30390,30 +30519,13 @@ async fn webdav_dispatch(
 
         "DELETE" => {
             let mut provider = state.provider.lock().await;
-            // Try file delete first; on any failure try rmdir (target may be a directory)
-            match provider.delete(&remote_path).await {
+            match served_webdav_delete(provider.as_mut(), &remote_path).await {
                 Ok(()) => {
                     let mut response = Response::new(Body::empty());
                     *response.status_mut() = StatusCode::NO_CONTENT;
                     response
                 }
-                Err(_file_err) => match provider.rmdir(&remote_path).await {
-                    Ok(()) => {
-                        let mut response = Response::new(Body::empty());
-                        *response.status_mut() = StatusCode::NO_CONTENT;
-                        response
-                    }
-                    Err(_) => match provider.rmdir_recursive(&remote_path).await {
-                        Ok(()) => {
-                            let mut response = Response::new(Body::empty());
-                            *response.status_mut() = StatusCode::NO_CONTENT;
-                            response
-                        }
-                        Err(e) => {
-                            serve_error_response(provider_error_to_status_code(&e), &e.to_string())
-                        }
-                    },
-                },
+                Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
             }
         }
 
@@ -30425,12 +30537,55 @@ async fn webdav_dispatch(
                 }
             };
             let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
+            // RFC 4918 section 9.9.4: a MOVE whose source and destination are
+            // the same resource is 403. The backends answer a rename onto
+            // itself with a no-op, which read as 204, a move that happened.
+            if remote_path.trim_end_matches('/') == dest_remote.trim_end_matches('/') {
+                return serve_error_response(
+                    StatusCode::FORBIDDEN,
+                    "The source and the destination are the same resource",
+                );
+            }
+            let overwrite = webdav_move_may_overwrite(&headers);
             let mut provider = state.provider.lock().await;
-            match provider.rename(&remote_path, &dest_remote).await {
+            // `rename` first: it refuses an occupied destination, which is
+            // what `Overwrite: F` asks for, and a plain move onto a free name
+            // stays one call on every backend. Only a refusal with
+            // `Overwrite: T` goes on to `replace`, the verb that is allowed to
+            // put one item over another.
+            // What this MOVE reports is kept for it: a request served at the
+            // same time does not show it, nor it theirs.
+            let call_warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+            let outcome = call_warnings
+                .scope(async {
+                    match provider.rename(&remote_path, &dest_remote).await {
+                        Err(ProviderError::AlreadyExists(_)) if overwrite => {
+                            provider.replace(&remote_path, &dest_remote).await
+                        }
+                        other => other,
+                    }
+                })
+                .await;
+            // A replace that left its set-aside copy behind says so here.
+            state.warnings.show(call_warnings.take());
+            match outcome {
                 Ok(()) => {
                     let mut response = Response::new(Body::empty());
                     *response.status_mut() = StatusCode::NO_CONTENT;
                     response
+                }
+                // RFC 4918 section 9.9.4: a destination that exists under
+                // `Overwrite: F` is 412, not a server failure. Under
+                // `Overwrite: T` the client allowed the overwrite, so a
+                // refusal there (a file onto a folder, a backend that cannot
+                // replace in one folder) is a conflict, 409.
+                Err(ProviderError::AlreadyExists(message)) => {
+                    let status = if overwrite {
+                        StatusCode::CONFLICT
+                    } else {
+                        StatusCode::PRECONDITION_FAILED
+                    };
+                    serve_error_response(status, &message)
                 }
                 Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
             }
@@ -30444,6 +30599,14 @@ async fn webdav_dispatch(
                 }
             };
             let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
+            // RFC 4918 section 9.8.5: a COPY whose source and destination are
+            // the same resource is 403.
+            if remote_path.trim_end_matches('/') == dest_remote.trim_end_matches('/') {
+                return serve_error_response(
+                    StatusCode::FORBIDDEN,
+                    "The source and the destination are the same resource",
+                );
+            }
             // The bridge shares the production copy DAG and its one
             // authoritative fallback classifier with GUI and `cp`.
             match ftp_client_gui_lib::transfer_dag_single_file::execute_copy_dag(
@@ -30531,6 +30694,7 @@ async fn cmd_serve_webdav(
         provider_label,
         base_path: base_path.clone(),
         auth_token: auth_token.clone(),
+        warnings: ServedWarnings::stderr(format),
     };
 
     let app = Router::new()
@@ -35157,6 +35321,47 @@ async fn run_rm_dry_run(
     0
 }
 
+/// Delete `path` as a file, or as an empty directory when it is one.
+///
+/// `rm` and the TUI used to fall back to `rmdir` after ANY `delete` failure. A
+/// path the provider cannot resolve to one item (Cloudinary answers
+/// `InvalidPath` for a name an asset and a folder share) then removed the
+/// folder, and a file `delete` refused for another reason was sent to `rmdir`.
+/// The fallback now asks `stat`: a directory (not a link to one) goes to
+/// `rmdir`, and so does a path `stat` cannot describe (see
+/// [`stat_cannot_describe`]), so `rm` of an empty directory still works
+/// where it did. A file, an ambiguous path, a link and a failed `stat` keep
+/// the `delete` error.
+async fn delete_file_or_empty_dir(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<(), ProviderError> {
+    let refused = match provider.delete(path).await {
+        Ok(()) => return Ok(()),
+        Err(ProviderError::Cancelled) => return Err(ProviderError::Cancelled),
+        Err(e) => e,
+    };
+    match provider.stat(path).await {
+        Ok(entry) if entry.is_dir && !entry.is_symlink => provider.rmdir(path).await,
+        Err(e) if stat_cannot_describe(&e) => provider.rmdir(path).await,
+        _ => Err(refused),
+    }
+}
+
+/// A `stat` answer that says the provider cannot describe the path, as
+/// opposed to one that failed. S3, Azure, Swift and B2 see no directory
+/// behind a path without its trailing slash (NotFound); Box and GitHub fail
+/// to parse the answer for a folder (ParseError). A transient failure
+/// (network, server, timeout) says nothing about the path, and escalating on
+/// it reached the directory of the same name: on S3 and Azure `rmdir` is
+/// recursive.
+fn stat_cannot_describe(error: &ProviderError) -> bool {
+    matches!(
+        error,
+        ProviderError::NotFound(_) | ProviderError::NotSupported(_) | ProviderError::ParseError(_)
+    )
+}
+
 /// The real `rm`/`purge` when the global filter flags narrow the delete.
 ///
 /// It runs the same walk `--dry-run` prints and then deletes exactly that plan,
@@ -35369,11 +35574,7 @@ async fn cmd_rm(
     let result = if recursive {
         provider.rmdir_recursive(path).await
     } else {
-        // Try file delete first, then directory
-        match provider.delete(path).await {
-            Ok(()) => Ok(()),
-            Err(_) => provider.rmdir(path).await,
-        }
+        delete_file_or_empty_dir(provider.as_mut(), path).await
     };
 
     match result {
@@ -37280,6 +37481,7 @@ fn collect_export_scaffold(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     servers_json: &serde_json::Value,
     name_filter: Option<&[String]>,
+    source: &str,
     supported_protocols: &[&str],
     oauth_protocols: &[&str],
 ) -> Result<ExportCollected, String> {
@@ -37377,10 +37579,11 @@ fn collect_export_scaffold(
             continue;
         }
         if !proto_supported {
-            out.skipped.push((
-                name.to_string(),
-                format!("protocol {} not exportable", protocol),
-            ));
+            let reason =
+                ftp_client_gui_lib::bridge_shared::bridge_export_refusal(source, &protocol)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("protocol {} not exportable", protocol));
+            out.skipped.push((name.to_string(), reason));
             continue;
         }
         // SFTP profiles authenticate by SSH key (path in
@@ -37484,15 +37687,20 @@ async fn cmd_export_rclone(
     supported.push("jottacloud");
     let oauth: [&str; 0] = [];
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
-        {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        "rclone",
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
 
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
@@ -37628,15 +37836,20 @@ async fn cmd_export_winscp(
     let supported = ["ftp", "ftps", "sftp"];
     let oauth: [&str; 0] = [];
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
-        {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        "winscp",
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
         return 4;
@@ -37703,15 +37916,20 @@ async fn cmd_export_filezilla(
     let supported = ["ftp", "ftps", "sftp"];
     let oauth: [&str; 0] = [];
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
-        {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        "filezilla",
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
         return 4;
@@ -37812,6 +38030,7 @@ async fn cmd_export_bridge(
         &store,
         &servers_json,
         filter.as_deref(),
+        src,
         supported,
         &oauth,
     ) {
@@ -52350,6 +52569,7 @@ async fn cmd_mount_windows(
         provider_label,
         base_path,
         auth_token: None, // local-only WebDAV bridge for Windows mount - no auth needed
+        warnings: ServedWarnings::stderr(format),
     };
 
     let app = Router::new()
@@ -66609,6 +66829,7 @@ async fn main() {
 
     if matches!(&cli.command, Commands::Tui) {
         let exit_code = cmd_tui(&mut cli, format).await;
+        render_pending_warnings(format);
         std::process::exit(exit_code);
     }
 
@@ -70349,6 +70570,7 @@ async fn main() {
         exit_code
     };
 
+    render_pending_warnings(format);
     std::process::exit(exit_code);
 }
 
@@ -74494,6 +74716,22 @@ mod tests {
         assert!(resolve_served_backend_path("/base", "docs/../../secret.txt").is_err());
     }
 
+    /// `serve ftp` and `serve sftp` hand over raw paths, which the resolver
+    /// percent-decoded: DELE, RNFR or STOR of `a%41.txt` acted on `aA.txt`.
+    /// A literal `%` stays in the name, and `..` is still refused.
+    #[test]
+    fn a_served_ftp_or_sftp_path_is_not_percent_decoded() {
+        assert_eq!(
+            resolve_served_backend_path("/base", "a%41.txt").unwrap(),
+            "/base/a%41.txt"
+        );
+        assert_eq!(
+            resolve_served_backend_path("/base", "%2e%2e/x").unwrap(),
+            "/base/%2e%2e/x"
+        );
+        assert!(resolve_served_backend_path("/base", "d/../../x").is_err());
+    }
+
     #[test]
     fn test_serve_effective_base_path() {
         assert_eq!(
@@ -78462,6 +78700,331 @@ mod tests {
         assert!(!is_retryable_exit(130));
     }
 
+    /// Scripted answers for the delete fallbacks of `rm`, the TUI and the
+    /// served WebDAV DELETE; every call is recorded by name.
+    struct DeleteFallbackProvider {
+        delete: fn() -> Result<(), ProviderError>,
+        stat: fn() -> Result<RemoteEntry, ProviderError>,
+        rmdir: fn() -> Result<(), ProviderError>,
+        list: fn() -> Result<Vec<RemoteEntry>, ProviderError>,
+        calls: Vec<&'static str>,
+    }
+
+    impl DeleteFallbackProvider {
+        fn new(
+            delete: fn() -> Result<(), ProviderError>,
+            stat: fn() -> Result<RemoteEntry, ProviderError>,
+        ) -> Self {
+            Self {
+                delete,
+                stat,
+                rmdir: || Ok(()),
+                list: || Ok(Vec::new()),
+                calls: Vec::new(),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for DeleteFallbackProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "delete-fallback".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.calls.push("list");
+            (self.list)()
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("delete");
+            (self.delete)()
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("rmdir");
+            (self.rmdir)()
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.calls.push("rmdir_recursive");
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, _path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.calls.push("stat");
+            (self.stat)()
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("delete-fallback".to_string())
+        }
+    }
+
+    fn ambiguous() -> ProviderError {
+        ProviderError::InvalidPath("'/photos' names an asset and a folder".to_string())
+    }
+
+    /// Scenario C of the #944 review: Cloudinary refuses `rm /photos` because
+    /// an image and a folder share the name, and `rm` used to answer the
+    /// refusal with `rmdir`, removing the folder.
+    #[tokio::test]
+    async fn rm_does_not_turn_an_ambiguous_path_into_rmdir() {
+        let mut p = DeleteFallbackProvider::new(|| Err(ambiguous()), || Err(ambiguous()));
+        let result = delete_file_or_empty_dir(&mut p, "/photos").await;
+        assert!(
+            matches!(result, Err(ProviderError::InvalidPath(_))),
+            "{result:?}"
+        );
+        assert_eq!(p.calls, ["delete", "stat"]);
+    }
+
+    /// A file `delete` refused keeps its own error instead of the `rmdir` one.
+    #[tokio::test]
+    async fn rm_returns_the_delete_error_for_a_file() {
+        let mut p = DeleteFallbackProvider::new(
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Ok(RemoteEntry::file("a".to_string(), "/a".to_string(), 1)),
+        );
+        let result = delete_file_or_empty_dir(&mut p, "/a").await;
+        assert!(
+            matches!(result, Err(ProviderError::ServerError(_))),
+            "{result:?}"
+        );
+        assert_eq!(p.calls, ["delete", "stat"]);
+    }
+
+    /// A cancelled `delete` stops there.
+    #[tokio::test]
+    async fn rm_stops_on_a_cancelled_delete() {
+        let mut p = DeleteFallbackProvider::new(
+            || Err(ProviderError::Cancelled),
+            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
+        );
+        let result = delete_file_or_empty_dir(&mut p, "/d").await;
+        assert!(
+            matches!(result, Err(ProviderError::Cancelled)),
+            "{result:?}"
+        );
+        assert_eq!(p.calls, ["delete"]);
+    }
+
+    /// The fallback still serves what it exists for: a directory `delete`
+    /// refuses (MTP answers InvalidPath "is a directory"), and a directory
+    /// `stat` cannot see (S3 without the trailing slash).
+    #[tokio::test]
+    async fn rm_still_removes_an_empty_directory() {
+        let mut dir = DeleteFallbackProvider::new(
+            || {
+                Err(ProviderError::InvalidPath(
+                    "/d is a directory; use rmdir".to_string(),
+                ))
+            },
+            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
+        );
+        assert!(delete_file_or_empty_dir(&mut dir, "/d").await.is_ok());
+        assert_eq!(dir.calls, ["delete", "stat", "rmdir"]);
+
+        let mut unseen = DeleteFallbackProvider::new(
+            || Err(ProviderError::NotFound("/d".to_string())),
+            || Err(ProviderError::NotFound("/d".to_string())),
+        );
+        assert!(delete_file_or_empty_dir(&mut unseen, "/d").await.is_ok());
+        assert_eq!(unseen.calls, ["delete", "stat", "rmdir"]);
+    }
+
+    /// The served DELETE used to escalate to `rmdir_recursive` after any
+    /// failure: an ambiguous path emptied the folder, and a file refused for a
+    /// transient reason erased the directory of the same name.
+    #[tokio::test]
+    async fn served_delete_escalates_only_for_a_directory() {
+        let mut amb = DeleteFallbackProvider::new(|| Err(ambiguous()), || Err(ambiguous()));
+        amb.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        let result = served_webdav_delete(&mut amb, "/photos").await;
+        assert!(
+            matches!(result, Err(ProviderError::InvalidPath(_))),
+            "{result:?}"
+        );
+        assert_eq!(amb.calls, ["delete", "stat"]);
+
+        let mut file = DeleteFallbackProvider::new(
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Ok(RemoteEntry::file("x".to_string(), "/x".to_string(), 1)),
+        );
+        file.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        let result = served_webdav_delete(&mut file, "/x").await;
+        assert!(
+            matches!(result, Err(ProviderError::ServerError(_))),
+            "{result:?}"
+        );
+        assert_eq!(file.calls, ["delete", "stat"]);
+
+        let mut dir = DeleteFallbackProvider::new(
+            || Err(ProviderError::InvalidPath("/d is a directory".to_string())),
+            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
+        );
+        dir.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        assert!(served_webdav_delete(&mut dir, "/d").await.is_ok());
+        assert_eq!(dir.calls, ["delete", "stat", "rmdir", "rmdir_recursive"]);
+
+        let mut unseen = DeleteFallbackProvider::new(
+            || Err(ProviderError::NotFound("/d".to_string())),
+            || Err(ProviderError::NotFound("/d".to_string())),
+        );
+        unseen.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
+        assert!(served_webdav_delete(&mut unseen, "/d").await.is_ok());
+        assert_eq!(
+            unseen.calls,
+            ["delete", "stat", "list", "rmdir", "rmdir_recursive"]
+        );
+
+        // A key that is gone and a path nobody can list: the delete error
+        // stays, and nothing recursive runs (CodeRabbit on a630c990).
+        let mut gone = DeleteFallbackProvider::new(
+            || Err(ProviderError::NotFound("/x".to_string())),
+            || Err(ProviderError::NotFound("/x".to_string())),
+        );
+        gone.list = || Err(ProviderError::NotFound("/x".to_string()));
+        let result = served_webdav_delete(&mut gone, "/x").await;
+        assert!(
+            matches!(result, Err(ProviderError::NotFound(_))),
+            "{result:?}"
+        );
+        assert_eq!(gone.calls, ["delete", "stat", "list"]);
+    }
+
+    /// A `stat` that failed says nothing about the path: escalating on it
+    /// reached the directory of the same name (recursive `rmdir` on S3 and
+    /// Azure). Only an answer that the provider cannot describe the path
+    /// (NotFound, NotSupported, ParseError as Box and GitHub give for a
+    /// folder) keeps the old fallback.
+    #[tokio::test]
+    async fn a_failed_stat_keeps_the_delete_error() {
+        for stat in [
+            (|| Err(ProviderError::NetworkError("reset".to_string())))
+                as fn() -> Result<RemoteEntry, ProviderError>,
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Err(ProviderError::Timeout),
+            || Err(ProviderError::Cancelled),
+        ] {
+            let mut rm = DeleteFallbackProvider::new(
+                || Err(ProviderError::ServerError("503".to_string())),
+                stat,
+            );
+            let result = delete_file_or_empty_dir(&mut rm, "/x").await;
+            assert!(
+                matches!(result, Err(ProviderError::ServerError(_))),
+                "{result:?}"
+            );
+            assert_eq!(rm.calls, ["delete", "stat"]);
+
+            let mut served = DeleteFallbackProvider::new(
+                || Err(ProviderError::ServerError("503".to_string())),
+                stat,
+            );
+            let result = served_webdav_delete(&mut served, "/x").await;
+            assert!(
+                matches!(result, Err(ProviderError::ServerError(_))),
+                "{result:?}"
+            );
+            assert_eq!(served.calls, ["delete", "stat"]);
+        }
+
+        let mut parse = DeleteFallbackProvider::new(
+            || Err(ProviderError::ServerError("a folder".to_string())),
+            || Err(ProviderError::ParseError("an array".to_string())),
+        );
+        assert!(delete_file_or_empty_dir(&mut parse, "/d").await.is_ok());
+        assert_eq!(parse.calls, ["delete", "stat", "rmdir"]);
+    }
+
+    /// A link to a directory is not the directory: the served DELETE listed
+    /// through it and emptied the target.
+    #[tokio::test]
+    async fn a_link_to_a_directory_is_not_removed_as_one() {
+        let link = || {
+            let mut entry = RemoteEntry::directory("l".to_string(), "/l".to_string());
+            entry.is_symlink = true;
+            Ok(entry)
+        };
+        let mut rm = DeleteFallbackProvider::new(
+            || Err(ProviderError::PermissionDenied("/l".to_string())),
+            link,
+        );
+        let result = delete_file_or_empty_dir(&mut rm, "/l").await;
+        assert!(
+            matches!(result, Err(ProviderError::PermissionDenied(_))),
+            "{result:?}"
+        );
+        assert_eq!(rm.calls, ["delete", "stat"]);
+
+        let mut served = DeleteFallbackProvider::new(
+            || Err(ProviderError::PermissionDenied("/l".to_string())),
+            link,
+        );
+        let result = served_webdav_delete(&mut served, "/l").await;
+        assert!(
+            matches!(result, Err(ProviderError::PermissionDenied(_))),
+            "{result:?}"
+        );
+        assert_eq!(served.calls, ["delete", "stat"]);
+    }
+
     /// `import rclone` printed section names, types and reasons from the file
     /// as they were, so a section named with escape sequences could clear or
     /// rewrite the terminal the report went to (CWE-150).
@@ -81741,10 +82304,16 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         deleted: Vec<String>,
         rename_fails_with: Option<String>,
         replace_fails_with: Option<String>,
+        /// When set, `replace` refuses as AlreadyExists, as a backend does
+        /// for a file onto a folder.
+        replace_refuses_as_existing: bool,
         /// What this fake answers to `supports_atomic_replace`.
         atomic_replace: bool,
         /// When set, `stat` fails with this instead of answering.
         stat_fails_with: Option<String>,
+        /// When set, a replace that succeeds leaves this warning, as a
+        /// set-aside replace does when it cannot delete the old copy.
+        replace_leaves_warning: Option<String>,
     }
 
     impl CliEditFakeProvider {
@@ -81757,8 +82326,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 deleted: Vec::new(),
                 rename_fails_with: None,
                 replace_fails_with: None,
+                replace_refuses_as_existing: false,
                 atomic_replace: true,
                 stat_fails_with: None,
+                replace_leaves_warning: None,
             }
         }
     }
@@ -81878,12 +82449,20 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             if let Some(msg) = &self.replace_fails_with {
                 return Err(ProviderError::TransferFailed(msg.clone()));
             }
+            if self.replace_refuses_as_existing {
+                return Err(ProviderError::AlreadyExists(format!(
+                    "cannot replace {to} with {from}"
+                )));
+            }
             let data = self
                 .remote_files
                 .remove(from)
                 .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
             self.remote_files.insert(to.to_string(), data);
             self.replaces.push((from.to_string(), to.to_string()));
+            if let Some(warning) = &self.replace_leaves_warning {
+                ftp_client_gui_lib::providers::report_warning(warning.clone());
+            }
             Ok(())
         }
 
@@ -81987,6 +82566,249 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "temp path must be gone after successful rename"
         );
         assert!(provider.deleted.is_empty());
+    }
+
+    /// A served WebDAV MOVE of `/a.txt` onto the existing `/b.txt`, with
+    /// `overwrite` as the Overwrite header when given. Returns the status and
+    /// the fake the handler worked on.
+    async fn served_move_onto_an_existing_file(
+        overwrite: Option<&'static str>,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        served_move_onto_an_existing_file_with(overwrite, CliEditFakeProvider::new()).await
+    }
+
+    /// [`served_move_onto_an_existing_file`] on a given fake.
+    async fn served_move_onto_an_existing_file_with(
+        overwrite: Option<&'static str>,
+        fake: CliEditFakeProvider,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        served_move_showing_warnings_to(overwrite, fake, ServedWarnings::stderr(OutputFormat::Text))
+            .await
+    }
+
+    /// [`served_move_onto_an_existing_file_with`], showing its warnings
+    /// through `warnings`.
+    async fn served_move_showing_warnings_to(
+        overwrite: Option<&'static str>,
+        mut fake: CliEditFakeProvider,
+        warnings: ServedWarnings,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"new".to_vec());
+        fake.remote_files
+            .insert("/b.txt".to_string(), b"old".to_vec());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let state = ServeHttpState {
+            provider: Arc::new(AsyncMutex::new(provider)),
+            provider_label: "fake".to_string(),
+            base_path: "/".to_string(),
+            auth_token: None,
+            warnings,
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Destination",
+            HeaderValue::from_static("http://127.0.0.1:8080/b.txt"),
+        );
+        if let Some(value) = overwrite {
+            headers.insert("Overwrite", HeaderValue::from_static(value));
+        }
+        let response = webdav_dispatch(
+            state.clone(),
+            Method::from_bytes(b"MOVE").unwrap(),
+            "a.txt".to_string(),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake");
+        let fake = std::mem::replace(fake, CliEditFakeProvider::new());
+        (response.status(), fake)
+    }
+
+    /// Office and most WebDAV editors save by writing a temporary and
+    /// MOVEing it over the document with `Overwrite: T` (or no header, which
+    /// RFC 4918 reads as T). The handler always called `rename`, which
+    /// refuses an occupied destination, so every such save failed with 500.
+    #[tokio::test]
+    async fn served_webdav_move_with_overwrite_t_replaces_the_destination() {
+        for overwrite in [Some("T"), None] {
+            let (status, fake) = served_move_onto_an_existing_file(overwrite).await;
+            assert_eq!(status, StatusCode::NO_CONTENT, "{overwrite:?}");
+            assert_eq!(
+                fake.replaces,
+                vec![("/a.txt".to_string(), "/b.txt".to_string())],
+                "{overwrite:?}"
+            );
+            assert_eq!(
+                fake.remote_files.get("/b.txt").map(Vec::as_slice),
+                Some(&b"new"[..]),
+                "{overwrite:?}"
+            );
+        }
+    }
+
+    /// 412 is the answer to `Overwrite: F` only. Under `Overwrite: T` the
+    /// client allowed the overwrite, so a replace the backend refuses (a
+    /// file onto a folder) is a conflict, 409, not a failed precondition.
+    #[tokio::test]
+    async fn served_webdav_move_whose_replace_is_refused_is_409() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.replace_refuses_as_existing = true;
+        let (status, fake) = served_move_onto_an_existing_file_with(Some("T"), fake).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            fake.remote_files.get("/b.txt").map(Vec::as_slice),
+            Some(&b"old"[..])
+        );
+    }
+
+    /// `serve webdav` runs until stopped: a warning a MOVE's replace left
+    /// (its set-aside copy not deleted) is shown when the MOVE ends, in the
+    /// format the server was started with (with `--json`, one JSON object a
+    /// line), and it is this MOVE's own, not the process queue's.
+    #[tokio::test]
+    async fn served_webdav_move_shows_the_warning_its_replace_left() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.replace_leaves_warning = Some("left /.b.txt.aeroftp-replaced-1".to_string());
+        let shown: Arc<std::sync::Mutex<Vec<u8>>> = Arc::default();
+        let warnings = ServedWarnings {
+            format: OutputFormat::Json,
+            out: shown.clone(),
+        };
+        let (status, _) = served_move_showing_warnings_to(Some("T"), fake, warnings).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let shown = String::from_utf8(shown.lock().unwrap().clone()).unwrap();
+        let line: serde_json::Value =
+            serde_json::from_str(shown.trim_end()).expect("one JSON object");
+        assert_eq!(
+            line,
+            serde_json::json!({ "status": "warning", "warning": "left /.b.txt.aeroftp-replaced-1" })
+        );
+    }
+
+    /// One served WebDAV request `method` for `path` (as axum's `Path`
+    /// extractor hands it over, decoded once) with the `Destination`
+    /// `destination`, on `fake`; returns the status and the fake after.
+    async fn served_request(
+        method: &str,
+        path: &str,
+        destination: &'static str,
+        fake: CliEditFakeProvider,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let state = ServeHttpState {
+            provider: Arc::new(AsyncMutex::new(provider)),
+            provider_label: "fake".to_string(),
+            base_path: "/".to_string(),
+            auth_token: None,
+            warnings: ServedWarnings::stderr(OutputFormat::Text),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert("Destination", HeaderValue::from_static(destination));
+        let response = webdav_dispatch(
+            state.clone(),
+            Method::from_bytes(method.as_bytes()).unwrap(),
+            path.to_string(),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake");
+        let fake = std::mem::replace(fake, CliEditFakeProvider::new());
+        (response.status(), fake)
+    }
+
+    /// The name `a%41.txt` arrives as the request path `a%2541.txt`, which
+    /// axum decodes to `a%41.txt`; the handler decoded it again to `aA.txt`
+    /// while the Destination was decoded once. A MOVE of `a%41.txt` onto
+    /// itself missed its 403 and put `aA.txt` over it.
+    #[tokio::test]
+    async fn served_webdav_move_of_a_percent_name_onto_itself_is_403() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a%41.txt".to_string(), b"mine".to_vec());
+        fake.remote_files
+            .insert("/aA.txt".to_string(), b"other".to_vec());
+        let (status, fake) =
+            served_request("MOVE", "a%41.txt", "http://127.0.0.1:8080/a%2541.txt", fake).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(fake.renames.is_empty(), "{:?}", fake.renames);
+        assert!(fake.replaces.is_empty(), "{:?}", fake.replaces);
+        assert_eq!(fake.remote_files["/a%41.txt"], b"mine");
+    }
+
+    /// A COPY onto its own path went through the copy DAG; RFC 4918 section
+    /// 9.8.5 makes it 403, answered before the provider is asked.
+    #[tokio::test]
+    async fn served_webdav_copy_onto_itself_is_403() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"mine".to_vec());
+        let (status, fake) =
+            served_request("COPY", "a.txt", "http://127.0.0.1:8080/a.txt", fake).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(fake.remote_files["/a.txt"], b"mine");
+    }
+
+    /// A MOVE onto its own path reached the backend's rename, a no-op, and
+    /// answered 204 as if something had moved. RFC 4918 section 9.9.4 makes
+    /// it 403, and the provider is not asked.
+    #[tokio::test]
+    async fn served_webdav_move_onto_itself_is_403() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"new".to_vec());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let state = ServeHttpState {
+            provider: Arc::new(AsyncMutex::new(provider)),
+            provider_label: "fake".to_string(),
+            base_path: "/".to_string(),
+            auth_token: None,
+            warnings: ServedWarnings::stderr(OutputFormat::Text),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Destination",
+            HeaderValue::from_static("http://127.0.0.1:8080/a.txt"),
+        );
+        let response = webdav_dispatch(
+            state.clone(),
+            Method::from_bytes(b"MOVE").unwrap(),
+            "a.txt".to_string(),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake");
+        assert!(fake.renames.is_empty(), "{:?}", fake.renames);
+        assert!(fake.replaces.is_empty(), "{:?}", fake.replaces);
+    }
+
+    /// `Overwrite: F` onto an existing destination is 412 (RFC 4918 section
+    /// 9.9.4), and nothing moves.
+    #[tokio::test]
+    async fn served_webdav_move_with_overwrite_f_is_412_and_moves_nothing() {
+        let (status, fake) = served_move_onto_an_existing_file(Some("F")).await;
+        assert_eq!(status, StatusCode::PRECONDITION_FAILED);
+        assert!(fake.replaces.is_empty() && fake.renames.is_empty());
+        assert_eq!(
+            fake.remote_files.get("/b.txt").map(Vec::as_slice),
+            Some(&b"old"[..])
+        );
     }
 
     #[tokio::test]

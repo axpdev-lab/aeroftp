@@ -152,6 +152,10 @@ impl GitLabHttpClient {
                 ProviderError::PermissionDenied(format!("GitLab: Access denied - {}", sanitized))
             }
             404 => ProviderError::NotFound(format!("GitLab: Resource not found - {}", sanitized)),
+            // A commit that creates or moves a file onto an existing path.
+            400 if sanitized.to_ascii_lowercase().contains("already exists") => {
+                ProviderError::AlreadyExists(format!("GitLab: {sanitized}"))
+            }
             _ => ProviderError::Other(format!("GitLab API error ({}): {}", status, sanitized)),
         }
     }
@@ -333,6 +337,24 @@ mod tests {
         let response = client.request(Method::GET, &fx.same).send().await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert!(fx.same_origin_got_secret());
+    }
+
+    /// A commit that moves a file onto an existing path is refused with 400
+    /// "A file with this name already exists": AlreadyExists (the CLI's exit
+    /// 9), not a generic API error.
+    #[test]
+    fn a_taken_path_is_already_exists() {
+        assert!(matches!(
+            GitLabHttpClient::classify_gitlab_error(
+                400,
+                r#"{"message":"A file with this name already exists"}"#
+            ),
+            ProviderError::AlreadyExists(_)
+        ));
+        assert!(matches!(
+            GitLabHttpClient::classify_gitlab_error(400, r#"{"message":"branch is missing"}"#),
+            ProviderError::Other(_)
+        ));
     }
 
     // Row 4 (#347): the GitLab `execute` status match, now a pure classifier.

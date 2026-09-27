@@ -270,7 +270,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       healthCheckUrl: 'https://api.dropboxapi.com',
       protocols: [{ label: 'OAuth', protocol: 'dropbox', category: 'cloud-storage' }] },
     { company: 'Internxt', logoId: 'internxt', countryCode: 'ES', freeStorageGb: 1,
-      freeNote: 'E2E', healthCheckUrl: 'https://api.internxt.com',
+      freeNote: 'E2E', healthCheckUrl: 'https://gateway.internxt.com',
       protocols: [{ label: 'API', protocol: 'internxt', category: 'cloud-storage' }] },
     { company: 'Proton Drive', logoId: 'proton', countryCode: 'CH', freeStorageGb: 5,
       freeNote: 'CLI', healthCheckUrl: 'https://drive-api.proton.me',

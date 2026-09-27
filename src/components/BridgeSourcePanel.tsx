@@ -112,6 +112,15 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     // `loading` disables the button, but a second click can still fire from the
     // render that has not seen the state update yet. The ref closes that window.
     const committingRef = useRef(false);
+    // The delayed close after a success. A later export clears it: an earlier
+    // export's timer would otherwise close the panel over the skipped-profile
+    // reasons the later one stays open to show.
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const cancelDelayedClose = () => {
+        if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+    };
+    useEffect(() => cancelDelayedClose, []);
 
     // Pre-select exportable profiles (protocol supported by the target).
     const supported = meta?.supportedProtocols ?? [];
@@ -227,7 +236,8 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));
             if (outcome.updated > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(outcome.updated)));
             setSuccess(parts.join(', '));
-            setTimeout(() => onClose(), 2500);
+            cancelDelayedClose();
+            closeTimerRef.current = setTimeout(() => onClose(), 2500);
         } finally {
             committingRef.current = false;
             setLoading(false);
@@ -244,6 +254,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     // ---- Export ----
 
     const runExport = async () => {
+        cancelDelayedClose();
         const chosen = exportable.filter(s => exportSelectedIds.has(s.id));
         if (chosen.length === 0) return;
         const ext = meta?.exportExt || 'txt';
@@ -264,7 +275,8 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             });
             setExportResult(r);
             setSuccess(t('settings.bridgeExportSuccess').replace('{count}', String(r.exported)));
-            setTimeout(() => onClose(), 2500);
+            // Stay open when something was left out, so its reason can be read.
+            if (r.skipped.length === 0) closeTimerRef.current = setTimeout(() => onClose(), 2500);
         } catch (e) {
             setError(String(e));
         } finally {
@@ -464,6 +476,9 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[220px] overflow-y-auto">
                     {servers.map(s => {
                         const ok = supported.includes(s.protocol || 'ftp');
+                        const refusal = meta?.exportRefusals?.[s.protocol || 'ftp'];
+                        const unsupportedText = refusal
+                            ?? t('settings.bridgeUnsupportedProto').replace('{protocol}', (s.protocol || 'ftp').toUpperCase()).replace('{app}', app);
                         return (
                             <div key={s.id}
                                 className={`flex items-center gap-3 px-3 py-2 border-b border-gray-100 dark:border-gray-700 last:border-b-0 ${ok ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50'}`}
@@ -472,8 +487,8 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.color || '#6B7280' }} />
                                 <div className="min-w-0 flex-1">
                                     <div className="text-sm font-medium truncate">{s.name}</div>
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                        {ok ? `${s.host}:${s.port} - ${s.username}` : t('settings.bridgeUnsupportedProto').replace('{protocol}', (s.protocol || 'ftp').toUpperCase()).replace('{app}', app)}
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate" title={ok ? undefined : unsupportedText}>
+                                        {ok ? `${s.host}:${s.port} - ${s.username}` : unsupportedText}
                                     </div>
                                 </div>
                                 <span className="text-[10px] text-gray-400 uppercase flex-shrink-0">{s.protocol || 'ftp'}</span>
@@ -501,8 +516,17 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 </div>
             )}
             {exportResult && exportResult.skipped.length > 0 && (
-                <div className="text-xs text-gray-400 dark:text-gray-500">
-                    {t('settings.bridgeSkipped')}: {exportResult.skipped.map(s => s.name).join(', ')}
+                <div>
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        {t('settings.bridgeSkipped')} ({exportResult.skipped.length})
+                    </div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 space-y-0.5 max-h-[110px] overflow-y-auto">
+                        {exportResult.skipped.map((s, i) => (
+                            <div key={i} className="truncate" title={s.reason}>
+                                <span className="font-medium">{s.name}</span><span className="mx-1">-</span><span>{s.reason}</span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
             {exportable.length === 0 && (

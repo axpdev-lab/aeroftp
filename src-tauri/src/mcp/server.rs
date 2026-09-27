@@ -34,6 +34,99 @@ const SHUTDOWN_DRAIN_SECS: u64 = 10;
 /// pool slot indefinitely. Override with `AEROFTP_MCP_TOOL_TIMEOUT_SECS`.
 const MCP_TOOL_TIMEOUT_DEFAULT_SECS: u64 = 600;
 
+/// The content of a tool result: its JSON as text, then, when the call
+/// left warnings the user should see (a replace that could not delete the
+/// copy it set aside), one more text block listing them. A warning reported
+/// by a call running at the same time lands in whichever result drains the
+/// queue first.
+fn tool_content(text: String, warnings: Vec<String>) -> serde_json::Value {
+    let mut content = vec![json!({ "type": "text", "text": text })];
+    if !warnings.is_empty() {
+        let listed: Vec<String> = warnings.iter().map(|w| format!("warning: {w}")).collect();
+        content.push(json!({ "type": "text", "text": listed.join("\n") }));
+    }
+    serde_json::Value::Array(content)
+}
+
+/// Run a tool call under `timeout` and answer it: with its result, or with
+/// the timeout error, and either way with the warnings the call left. The
+/// timeout returned before taking them, and they reached the next call's
+/// result.
+async fn answer_tool_call(
+    id: Value,
+    tool_name: &str,
+    call: impl std::future::Future<Output = (Value, bool)>,
+    timeout: Duration,
+) -> Value {
+    let outcome = tokio::time::timeout(timeout, call).await;
+    let warnings = crate::providers::take_warnings();
+    let (result, is_error) = match outcome {
+        Ok(pair) => pair,
+        Err(_) => {
+            // Timeout: the call's future was dropped at the await it had
+            // reached, which may leave the provider mid-operation (a
+            // half-written upload), and the caller's response slot is
+            // released so stdin keeps flowing. The pool connection is left
+            // in whatever state the provider was in; the pool eviction task
+            // will reap it on the next idle sweep.
+            let mut error = json!({
+                "code": -32000,
+                "message": format!(
+                    "Tool call '{}' exceeded wall-clock timeout of {:?}",
+                    tool_name, timeout
+                )
+            });
+            if !warnings.is_empty() {
+                error["data"] = json!({ "warnings": warnings });
+            }
+            return json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": error
+            });
+        }
+    };
+
+    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+    let content = tool_content(text, warnings);
+    if is_error {
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "content": content,
+                "isError": true
+            }
+        })
+    } else {
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "content": content
+            }
+        })
+    }
+}
+
+/// Run a request's `answer` unless `token` is cancelled first. What the
+/// call reports is kept per call ([`crate::providers::CallWarnings`]): a
+/// tool call puts it in its answer. Returns the answer (none when
+/// cancelled) and what no answer took: a cancelled call's warnings, or
+/// those of a method whose answer does not carry them. They stayed in the
+/// queue, for the next call's result, or were dropped with the scope.
+async fn answer_unless_cancelled(
+    token: &CancellationToken,
+    answer: impl std::future::Future<Output = Option<Value>>,
+) -> (Option<Value>, Vec<String>) {
+    let warnings = crate::providers::CallWarnings::default();
+    let answered = tokio::select! {
+        _ = token.cancelled() => None,
+        answered = warnings.scope(answer) => answered,
+    };
+    (answered, warnings.take())
+}
+
 fn mcp_tool_timeout() -> Duration {
     let secs = std::env::var("AEROFTP_MCP_TOOL_TIMEOUT_SECS")
         .ok()
@@ -285,15 +378,15 @@ impl McpServerCore {
 
             let response_future =
                 process_request(req, profiles, vault_error, pool, rate_limiter, notifier);
-            tokio::pin!(response_future);
 
-            tokio::select! {
-                _ = token.cancelled() => {}
-                resp = &mut response_future => {
-                    if let Some(resp) = resp {
-                        let _ = writer.write_message(&resp).await;
-                    }
-                }
+            let (answer, untaken) = answer_unless_cancelled(&token, response_future).await;
+            if let Some(resp) = answer {
+                let _ = writer.write_message(&resp).await;
+            }
+            // What the request left for the user and no answer carried (a
+            // cancelled request gets none) goes to stderr, the server's log.
+            for warning in untaken {
+                eprintln!("[mcp] warning from request {request_id}: {warning}");
             }
 
             in_flight.lock().await.remove(&request_id);
@@ -449,55 +542,7 @@ async fn process_request(
 
             let exec_future =
                 tools::execute_tool(tool_name, &args, &pool, &rate_limiter, notifier.as_ref());
-            let (result, is_error) =
-                match tokio::time::timeout(mcp_tool_timeout(), exec_future).await {
-                    Ok(pair) => pair,
-                    Err(_) => {
-                        // Timeout: the dispatch task may still be running inside the
-                        // provider (we cannot cancel it mid-IO without risking half-
-                        // written state), but we release the caller's response slot
-                        // so stdin keeps flowing. The pool connection is left in
-                        // whatever state the provider produces; the pool eviction
-                        // task will reap it on the next idle sweep.
-                        return Some(json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "error": {
-                                "code": -32000,
-                                "message": format!(
-                                    "Tool call '{}' exceeded wall-clock timeout of {:?}",
-                                    tool_name,
-                                    mcp_tool_timeout()
-                                )
-                            }
-                        }));
-                    }
-                };
-
-            let text = serde_json::to_string_pretty(&result).unwrap_or_default();
-            let content = json!([{
-                "type": "text",
-                "text": text
-            }]);
-
-            Some(if is_error {
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": content,
-                        "isError": true
-                    }
-                })
-            } else {
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "content": content
-                    }
-                })
-            })
+            Some(answer_tool_call(id, tool_name, exec_future, mcp_tool_timeout()).await)
         }
 
         "resources/list" => {
@@ -604,7 +649,10 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use super::{cancelled_request_key, process_request, request_id_key};
+    use super::{
+        answer_tool_call, answer_unless_cancelled, cancelled_request_key, process_request,
+        request_id_key,
+    };
     use crate::mcp::pool::ConnectionPool;
     use crate::mcp::security::RateLimiter;
     use serde_json::json;
@@ -795,6 +843,96 @@ mod tests {
         assert!(deploy_text.contains("aeroftp_list_servers"));
         assert!(deploy_text.contains("aeroftp_upload_file"));
         assert!(deploy_text.contains("/var/www"));
+    }
+
+    /// A warning a call left for the user (a replace that could not delete
+    /// the copy it set aside) reached only the process's stderr at exit, and
+    /// an MCP client never saw it: it now comes back with the tool result.
+    #[tokio::test]
+    async fn a_warning_left_by_a_tool_call_comes_back_in_its_result() {
+        crate::providers::report_warning("left /d/.a.txt.aeroftp-replaced-1".to_string());
+        let reply = dispatch(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "tools/call",
+                "params": { "name": "aeroftp_list_servers", "arguments": {} }
+            }),
+            vec![],
+        )
+        .await;
+        let content = reply["result"]["content"].as_array().expect("content");
+        assert_eq!(content.len(), 2, "{reply}");
+        assert_eq!(
+            content[1]["text"],
+            json!("warning: left /d/.a.txt.aeroftp-replaced-1")
+        );
+        assert!(crate::providers::take_warnings().is_empty(), "drained");
+    }
+
+    /// A tool call that timed out returned before taking what it left for
+    /// the user, and the warning came back with the next call's result. It
+    /// comes back with the timeout error.
+    #[tokio::test]
+    async fn a_timed_out_tool_call_answers_with_the_warnings_it_left() {
+        let slow = async {
+            crate::providers::report_warning("left /d/.a.txt.aeroftp-replaced-2".to_string());
+            std::future::pending::<(serde_json::Value, bool)>().await
+        };
+        // Inside the per-call scope, as the server runs every request.
+        let scope = crate::providers::CallWarnings::default();
+        let answer = scope
+            .scope(answer_tool_call(
+                json!(12),
+                "slow",
+                slow,
+                Duration::from_millis(20),
+            ))
+            .await;
+        assert_eq!(answer["error"]["code"], json!(-32000), "{answer}");
+        assert_eq!(
+            answer["error"]["data"]["warnings"],
+            json!(["left /d/.a.txt.aeroftp-replaced-2"]),
+            "{answer}"
+        );
+        assert!(scope.take().is_empty(), "taken with the answer");
+        assert!(crate::providers::take_warnings().is_empty(), "drained");
+    }
+
+    /// A cancelled request gets no answer, and what it left for the user
+    /// stayed in the queue for the next call's result. The cancelled call
+    /// hands it back, for the server's log.
+    #[tokio::test]
+    async fn a_cancelled_call_hands_back_the_warnings_it_left() {
+        let token = tokio_util::sync::CancellationToken::new();
+        let cancel = token.clone();
+        let answer = async move {
+            crate::providers::report_warning("left /d/.a.txt.aeroftp-replaced-3".to_string());
+            cancel.cancel();
+            std::future::pending::<Option<serde_json::Value>>().await
+        };
+        let (answer, untaken) = answer_unless_cancelled(&token, answer).await;
+        assert_eq!(answer, None);
+        assert_eq!(untaken, ["left /d/.a.txt.aeroftp-replaced-3"]);
+        assert!(
+            crate::providers::take_warnings().is_empty(),
+            "nothing stays for the next call"
+        );
+    }
+
+    /// A request answered without taking its warnings (a method whose answer
+    /// does not carry them) dropped them with its scope, silently. They are
+    /// handed back with the answer, for the server's log.
+    #[tokio::test]
+    async fn an_answer_that_does_not_take_its_warnings_hands_them_back() {
+        let token = tokio_util::sync::CancellationToken::new();
+        let answer = async {
+            crate::providers::report_warning("left /d/.a.txt.aeroftp-replaced-4".to_string());
+            Some(json!({ "jsonrpc": "2.0", "id": 13, "result": {} }))
+        };
+        let (answer, untaken) = answer_unless_cancelled(&token, answer).await;
+        assert_eq!(answer.map(|a| a["id"].clone()), Some(json!(13)));
+        assert_eq!(untaken, ["left /d/.a.txt.aeroftp-replaced-4"]);
     }
 
     #[tokio::test]

@@ -1001,6 +1001,193 @@ impl FileLuProvider {
         }
     }
 
+    /// Move and/or rename `entry` from `norm_from` to `norm_to`, whose
+    /// destination the caller has found free.
+    async fn relocate(
+        &mut self,
+        entry: &CacheEntry,
+        norm_from: &str,
+        norm_to: &str,
+        from_parent: &str,
+        to_parent: &str,
+    ) -> Result<(), ProviderError> {
+        let old_name = norm_from.rsplit('/').next().unwrap_or("").to_string();
+        let new_name = norm_to.rsplit('/').next().unwrap_or("").to_string();
+        let moves = from_parent != to_parent;
+        let renames = new_name != old_name;
+        if moves && renames {
+            // FileLu keeps two items with one name side by side, so neither
+            // step may land on a taken name. The move keeps the old name, so
+            // when the destination folder already holds it the rename goes
+            // first, in the source folder.
+            let old_name_at_destination =
+                format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
+            if self.path_is_taken(&old_name_at_destination).await? {
+                let new_name_at_source =
+                    format!("{}/{}", from_parent.trim_end_matches('/'), new_name);
+                if self.path_is_taken(&new_name_at_source).await? {
+                    return Err(ProviderError::Other(format!(
+                        "Cannot move {norm_from} to {norm_to} in two steps without two items sharing a \
+                         name: {old_name_at_destination} and {new_name_at_source} both exist"
+                    )));
+                }
+                self.rename_entry(entry, norm_from, &new_name).await?;
+                self.move_entry(entry, &new_name_at_source, to_parent)
+                    .await
+                    .map_err(|e| {
+                        ProviderError::Other(format!(
+                            "renamed {norm_from} to {new_name_at_source}, but moving it to {to_parent} \
+                             failed, so it is still there: {e}"
+                        ))
+                    })?;
+            } else {
+                self.move_entry(entry, norm_from, to_parent).await?;
+                self.rename_entry(entry, &old_name_at_destination, &new_name)
+                    .await
+                    .map_err(|e| {
+                        ProviderError::Other(format!(
+                            "moved {norm_from} to {old_name_at_destination}, but renaming it to \
+                             {new_name} failed, so it is still there: {e}"
+                        ))
+                    })?;
+            }
+        } else if moves {
+            self.move_entry(entry, norm_from, to_parent).await?;
+        } else if renames {
+            self.rename_entry(entry, norm_from, &new_name).await?;
+        }
+        Ok(())
+    }
+
+    /// Delete `entry` for good: FileLu's API has no trash (see `delete`).
+    async fn remove_entry(&mut self, entry: &CacheEntry) -> Result<(), ProviderError> {
+        // FileLu's `file/remove` and `folder/delete` endpoints occasionally
+        // surface intermittent 5xx responses (HTTP 500 with body `{"status":500}`
+        // or HTTP 5xx with a generic body). They are provider-side hiccups and
+        // succeed on a fresh attempt. `send_with_retry` already retries on
+        // HTTP 5xx, but a body-level `{"status":500,"msg":"..."}` returned with
+        // HTTP 200 slips through. Wrap the API-OK check in a small retry loop
+        // that also matches body-level 5xx and the matching error text.
+        let url = if entry.is_dir {
+            self.api_url_with("folder/delete", &[("fld_id", &entry.fld_id.to_string())])
+        } else {
+            // v1 file/remove with remove=1. FileLu API has no soft-delete endpoint -
+            // file/remove without remove=1 returns "Invalid option". Permanent delete is
+            // the only API-supported delete. Trash is web-UI only on FileLu.
+            self.api_url_with(
+                "file/remove",
+                &[("file_code", &entry.file_code), ("remove", "1")],
+            )
+        };
+
+        const FILELU_DELETE_ATTEMPTS: u32 = 3;
+        let mut last_err: Option<ProviderError> = None;
+        for attempt in 0..FILELU_DELETE_ATTEMPTS {
+            let resp = self.get_with_retry(&url).await?;
+            match Self::ensure_api_ok(resp).await {
+                Ok(()) => {
+                    last_err = None;
+                    break;
+                }
+                Err(e)
+                    if Self::is_filelu_transient_5xx(&e)
+                        && attempt + 1 < FILELU_DELETE_ATTEMPTS =>
+                {
+                    let backoff_ms = 500u64 * (1u64 << attempt);
+                    tracing::debug!(
+                        "FileLu delete returned transient 5xx ({}), retrying after {}ms (attempt {}/{})",
+                        e,
+                        backoff_ms,
+                        attempt + 1,
+                        FILELU_DELETE_ATTEMPTS
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    last_err = Some(e);
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                    break;
+                }
+            }
+        }
+        match last_err {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+
+    /// Whether `path` names an item, file or folder.
+    async fn path_is_taken(&mut self, path: &str) -> Result<bool, ProviderError> {
+        match self.resolve_path_entry(path).await {
+            Ok(_) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Move `entry`, now at `current_path`, into the folder `to_parent`
+    /// under the name it has. A folder moves by id (v1 `folder/move`, v2 has
+    /// no folder move), a file by path (v2 `file/set_folder`).
+    async fn move_entry(
+        &mut self,
+        entry: &CacheEntry,
+        current_path: &str,
+        to_parent: &str,
+    ) -> Result<(), ProviderError> {
+        let url = if entry.is_dir {
+            let dest_fld_id = self.resolve_fld_id(to_parent).await?;
+            self.api_url_with(
+                "folder/move",
+                &[
+                    ("fld_id", &entry.fld_id.to_string()),
+                    ("dest_fld_id", &dest_fld_id.to_string()),
+                ],
+            )
+        } else {
+            let dest_folder = format!("{}/", to_parent.trim_end_matches('/'));
+            self.api_v2_url(
+                "file/set_folder",
+                &[
+                    ("file_path", current_path),
+                    ("destination_folder_path", &dest_folder),
+                ],
+            )
+        };
+        let resp = self.get_with_retry(&url).await?;
+        Self::ensure_api_ok(resp).await
+    }
+
+    /// Rename `entry`, now at `current_path`, to `new_name` in the folder it
+    /// is in. A file is renamed by its file code (v1 `file/rename`), which
+    /// cannot pick another item; a folder by path (v2 `folder/rename`), which
+    /// the caller has made unambiguous by checking that no other item has
+    /// that path.
+    async fn rename_entry(
+        &mut self,
+        entry: &CacheEntry,
+        current_path: &str,
+        new_name: &str,
+    ) -> Result<(), ProviderError> {
+        let url = if entry.is_dir {
+            self.api_v2_url(
+                "folder/rename",
+                &[("folder_path", current_path), ("name", new_name)],
+            )
+        } else if !entry.file_code.is_empty() {
+            self.api_url_with(
+                "file/rename",
+                &[("file_code", &entry.file_code), ("name", new_name)],
+            )
+        } else {
+            self.api_v2_url(
+                "file/rename",
+                &[("file_path", current_path), ("name", new_name)],
+            )
+        };
+        let resp = self.get_with_retry(&url).await?;
+        Self::ensure_api_ok(resp).await
+    }
+
     fn invalidate_cache_under(&mut self, parent: &str) {
         let prefix = Self::normalize_path(parent);
         let prefix_slash = if prefix == "/" {
@@ -1749,59 +1936,7 @@ impl StorageProvider for FileLuProvider {
         }
         let norm = self.resolve_path(path);
         let entry = self.resolve_path_entry(&norm).await?;
-
-        // FileLu's `file/remove` and `folder/delete` endpoints occasionally
-        // surface intermittent 5xx responses (HTTP 500 with body `{"status":500}`
-        // or HTTP 5xx with a generic body). They are provider-side hiccups and
-        // succeed on a fresh attempt. `send_with_retry` already retries on
-        // HTTP 5xx, but a body-level `{"status":500,"msg":"..."}` returned with
-        // HTTP 200 slips through. Wrap the API-OK check in a small retry loop
-        // that also matches body-level 5xx and the matching error text.
-        let url = if entry.is_dir {
-            self.api_url_with("folder/delete", &[("fld_id", &entry.fld_id.to_string())])
-        } else {
-            // v1 file/remove with remove=1. FileLu API has no soft-delete endpoint -
-            // file/remove without remove=1 returns "Invalid option". Permanent delete is
-            // the only API-supported delete. Trash is web-UI only on FileLu.
-            self.api_url_with(
-                "file/remove",
-                &[("file_code", &entry.file_code), ("remove", "1")],
-            )
-        };
-
-        const FILELU_DELETE_ATTEMPTS: u32 = 3;
-        let mut last_err: Option<ProviderError> = None;
-        for attempt in 0..FILELU_DELETE_ATTEMPTS {
-            let resp = self.get_with_retry(&url).await?;
-            match Self::ensure_api_ok(resp).await {
-                Ok(()) => {
-                    last_err = None;
-                    break;
-                }
-                Err(e)
-                    if Self::is_filelu_transient_5xx(&e)
-                        && attempt + 1 < FILELU_DELETE_ATTEMPTS =>
-                {
-                    let backoff_ms = 500u64 * (1u64 << attempt);
-                    tracing::debug!(
-                        "FileLu delete returned transient 5xx ({}), retrying after {}ms (attempt {}/{})",
-                        e,
-                        backoff_ms,
-                        attempt + 1,
-                        FILELU_DELETE_ATTEMPTS
-                    );
-                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
-                    last_err = Some(e);
-                }
-                Err(e) => {
-                    last_err = Some(e);
-                    break;
-                }
-            }
-        }
-        if let Some(e) = last_err {
-            return Err(e);
-        }
+        self.remove_entry(&entry).await?;
 
         let parent = norm
             .rfind('/')
@@ -1892,79 +2027,80 @@ impl StorageProvider for FileLuProvider {
             .unwrap_or_else(|| "/".to_string());
 
         let entry = self.resolve_path_entry(&norm_from).await?;
-        let old_name = norm_from.rsplit('/').next().unwrap_or("").to_string();
 
-        // v2: path-based rename and move
-        if from_parent == to_parent {
-            // Pure rename: same directory
-            if entry.is_dir {
-                let url = self.api_v2_url(
-                    "folder/rename",
-                    &[("folder_path", &norm_from), ("name", &new_name)],
-                );
-                let resp = self.get_with_retry(&url).await?;
-                Self::ensure_api_ok(resp).await?;
-            } else {
-                let url = self.api_v2_url(
-                    "file/rename",
-                    &[("file_path", &norm_from), ("name", &new_name)],
-                );
-                let resp = self.get_with_retry(&url).await?;
-                Self::ensure_api_ok(resp).await?;
-            }
-        } else {
-            // Cross-directory move: v2 path-based
-            if entry.is_dir {
-                // Folder move: not yet available in v2: fallback to v1
-                let dest_fld_id = self.resolve_fld_id(&to_parent).await?;
-                let url = self.api_url_with(
-                    "folder/move",
-                    &[
-                        ("fld_id", &entry.fld_id.to_string()),
-                        ("dest_fld_id", &dest_fld_id.to_string()),
-                    ],
-                );
-                self.get_with_retry(&url).await?;
-                if new_name != old_name {
-                    // After move, rename at new location via v2
-                    let moved_path = format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
-                    let url = self.api_v2_url(
-                        "folder/rename",
-                        &[("folder_path", &moved_path), ("name", &new_name)],
-                    );
-                    let resp = self.get_with_retry(&url).await?;
-                    Self::ensure_api_ok(resp).await?;
-                }
-            } else {
-                // File move: v2 set_folder by path
-                let dest_folder = format!("{}/", to_parent.trim_end_matches('/'));
-                let url = self.api_v2_url(
-                    "file/set_folder",
-                    &[
-                        ("file_path", &norm_from),
-                        ("destination_folder_path", &dest_folder),
-                    ],
-                );
-                let resp = self.get_with_retry(&url).await?;
-                Self::ensure_api_ok(resp).await?;
-                if new_name != old_name {
-                    // After move, rename at new location via v2
-                    let moved_path = format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
-                    let url = self.api_v2_url(
-                        "file/rename",
-                        &[("file_path", &moved_path), ("name", &new_name)],
-                    );
-                    let resp = self.get_with_retry(&url).await?;
-                    Self::ensure_api_ok(resp).await?;
-                }
-            }
+        // The trait promises no overwrite, and FileLu puts a second item with
+        // the same name next to the first (found live on 2026-09-25: a file
+        // moved onto an existing name left two `a.txt` in the folder).
+        if norm_to == norm_from {
+            return Ok(());
+        }
+        if self.path_is_taken(&norm_to).await? {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
         }
 
+        let outcome = self
+            .relocate(&entry, &norm_from, &norm_to, &from_parent, &to_parent)
+            .await;
+
+        // Also after a failure: a step that went through has changed paths.
         self.path_cache.remove(&norm_from);
         self.invalidate_cache_under(&norm_from);
         self.invalidate_cache_under(&from_parent);
         self.invalidate_cache_under(&to_parent);
+        outcome
+    }
+
+    /// FileLu has no move that overwrites, and keeps two items with one name
+    /// side by side, so a replace renames the item at `to` aside, puts `from`
+    /// in its place, and only then deletes the one set aside; if the move
+    /// fails the item set aside gets its name back.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            self.connect().await?;
+        }
+        let norm_from = self.resolve_path(from);
+        let norm_to = self.resolve_path(to);
+        if norm_from == norm_to {
+            return Ok(());
+        }
+        let occupant = match self.resolve_path_entry(&norm_to).await {
+            Ok(occupant) => occupant,
+            Err(ProviderError::NotFound(_)) => return self.rename(from, to).await,
+            Err(e) => return Err(e),
+        };
+        // The source must be there before anything changes.
+        let source = self.resolve_path_entry(&norm_from).await?;
+        super::refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?;
+        let (to_parent, to_name) = match norm_to.rsplit_once('/') {
+            Some(("", name)) => ("/".to_string(), name.to_string()),
+            Some((parent, name)) => (parent.to_string(), name.to_string()),
+            None => ("/".to_string(), norm_to.clone()),
+        };
+        let aside = super::set_aside_name(&to_name);
+        let aside_path = format!("{}/{aside}", to_parent.trim_end_matches('/'));
+
+        self.rename_entry(&occupant, &norm_to, &aside).await?;
+        // The cache still maps `to` to the item just set aside.
+        self.path_cache.remove(&norm_to);
+        self.invalidate_cache_under(&norm_to);
+        if let Err(e) = self.rename(from, to).await {
+            let restored = self.rename_entry(&occupant, &aside_path, &to_name).await;
+            self.invalidate_cache_under(&to_parent);
+            return Err(super::set_aside_move_failed(to, &aside_path, e, restored));
+        }
+        if let Err(e) = self.remove_entry(&occupant).await {
+            super::report_set_aside_leftover(to, &aside_path, &e);
+        }
         Ok(())
+    }
+
+    /// No: FileLu can neither overwrite on a move nor give a file new
+    /// content in place, so a replace sets the old item aside and the name is
+    /// empty for a moment. Callers that need atomicity (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write
+    /// anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -2241,6 +2377,372 @@ fn mime_from_ext(ext: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A connected provider whose cache knows the folders `/src` (fld 11)
+    /// and `/dst` (fld 22), pointed at a v1 API double that answers
+    /// `folder/move` with `move_body`. Returns it and the query strings of
+    /// the `folder/move` calls.
+    async fn provider_for_folder_move(
+        move_body: &'static str,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let moves: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&moves);
+        let app = axum::Router::new()
+            .route(
+                "/api/folder/move",
+                axum::routing::get(move |uri: axum::http::Uri| {
+                    seen.lock()
+                        .unwrap()
+                        .push(uri.query().unwrap_or("").to_string());
+                    async move { move_body }
+                }),
+            )
+            .route(
+                // Every folder the test lists is empty.
+                "/apiv2/folder/list",
+                axum::routing::get(|| async {
+                    r#"{"status":200,"msg":"OK","result":{"files":[],"folders":[]}}"#
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        for (path, fld_id) in [("/src", 11), ("/dst", 22)] {
+            provider.path_cache.insert(
+                path.to_string(),
+                CacheEntry {
+                    is_dir: true,
+                    fld_id,
+                    fld_token: None,
+                    file_code: String::new(),
+                    size: 0,
+                    modified: None,
+                    hash: None,
+                },
+            );
+        }
+        (provider, moves)
+    }
+
+    #[tokio::test]
+    async fn folder_move_sends_both_folder_ids() {
+        let (mut provider, moves) = provider_for_folder_move(r#"{"status":200,"msg":"OK"}"#).await;
+        provider.rename("/src", "/dst/src").await.expect("move");
+        let moves = moves.lock().unwrap().clone();
+        assert_eq!(moves.len(), 1);
+        assert!(moves[0].contains("fld_id=11"), "{moves:?}");
+        assert!(moves[0].contains("dest_fld_id=22"), "{moves:?}");
+    }
+
+    #[tokio::test]
+    async fn rename_refuses_an_existing_destination_before_moving() {
+        let (mut provider, moves) = provider_for_folder_move(r#"{"status":200,"msg":"OK"}"#).await;
+        provider.path_cache.insert(
+            "/dst/src".to_string(),
+            CacheEntry {
+                is_dir: true,
+                fld_id: 33,
+                fld_token: None,
+                file_code: String::new(),
+                size: 0,
+                modified: None,
+                hash: None,
+            },
+        );
+        let outcome = provider.rename("/src", "/dst/src").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(moves.lock().unwrap().is_empty());
+    }
+
+    /// A connected provider whose cache knows `tree` (`path`, and the fld_id
+    /// of a folder or the file code of a file), pointed at a double that
+    /// lists every folder as empty and answers every other call Ok. Returns
+    /// it and the `path?query` of every call that is not a listing.
+    async fn provider_with_cached_tree(
+        tree: &[(&str, &str)],
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        provider_with_cached_tree_refusing(tree, "").await
+    }
+
+    /// [`provider_with_cached_tree`] whose API refuses every call to the
+    /// endpoint path `refused` (in the body of an HTTP 200, as FileLu does).
+    async fn provider_with_cached_tree_refusing(
+        tree: &[(&str, &str)],
+        refused: &'static str,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let listing = uri.path().ends_with("/list");
+            if !listing {
+                let query = uri.query().unwrap_or("").replace("key=k&", "");
+                seen.lock().unwrap().push(format!("{}?{query}", uri.path()));
+            }
+            let refuse = !refused.is_empty() && uri.path() == refused;
+            async move {
+                if listing {
+                    r#"{"status":200,"msg":"OK","result":{"files":[],"folders":[]}}"#
+                } else if refuse {
+                    r#"{"status":403,"msg":"denied"}"#
+                } else {
+                    r#"{"status":200,"msg":"OK"}"#
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        for (path, id) in tree {
+            let is_dir = id.parse::<u64>().is_ok();
+            provider.path_cache.insert(
+                path.to_string(),
+                CacheEntry {
+                    is_dir,
+                    fld_id: id.parse().unwrap_or(0),
+                    fld_token: None,
+                    file_code: if is_dir {
+                        String::new()
+                    } else {
+                        id.to_string()
+                    },
+                    size: 0,
+                    modified: None,
+                    hash: None,
+                },
+            );
+        }
+        (provider, calls)
+    }
+
+    /// The move keeps the old name, and the rename that followed named the
+    /// file by that path in the destination: with a second `a.txt` there it
+    /// could rename the wrong one. The rename now names it by its file code.
+    #[tokio::test]
+    async fn a_move_under_a_new_name_renames_the_file_by_its_code() {
+        let (mut provider, calls) =
+            provider_with_cached_tree(&[("/src", "11"), ("/dst", "22"), ("/src/a.txt", "AAA")])
+                .await;
+        provider
+            .rename("/src/a.txt", "/dst/b.txt")
+            .await
+            .expect("move");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "/apiv2/file/set_folder?file_path=/src/a.txt&destination_folder_path=/dst/",
+                "/api/file/rename?file_code=AAA&name=b.txt",
+            ]
+        );
+    }
+
+    /// FileLu keeps two items with one name side by side, so a move onto a
+    /// folder that already holds the old name renames first, in the source
+    /// folder, and never leaves two `a.txt` in `/dst`, even for a moment.
+    #[tokio::test]
+    async fn a_move_whose_destination_holds_the_old_name_renames_first() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/src", "11"),
+            ("/dst", "22"),
+            ("/src/a.txt", "AAA"),
+            ("/dst/a.txt", "OTHER"),
+        ])
+        .await;
+        provider
+            .rename("/src/a.txt", "/dst/b.txt")
+            .await
+            .expect("move");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "/api/file/rename?file_code=AAA&name=b.txt",
+                "/apiv2/file/set_folder?file_path=/src/b.txt&destination_folder_path=/dst/",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_folder_move_whose_destination_holds_the_old_name_renames_first() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/src", "11"),
+            ("/dst", "22"),
+            ("/src/sub", "33"),
+            ("/dst/sub", "44"),
+        ])
+        .await;
+        provider.rename("/src/sub", "/dst/new").await.expect("move");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "/apiv2/folder/rename?folder_path=/src/sub&name=new",
+                "/api/folder/move?fld_id=33&dest_fld_id=22",
+            ]
+        );
+    }
+
+    /// When the old name is taken at the destination and the new one at the
+    /// source, either order would put two items under one name.
+    #[tokio::test]
+    async fn a_move_that_cannot_avoid_a_shared_name_changes_nothing() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/src", "11"),
+            ("/dst", "22"),
+            ("/src/a.txt", "AAA"),
+            ("/src/b.txt", "BBB"),
+            ("/dst/a.txt", "OTHER"),
+        ])
+        .await;
+        let outcome = provider.rename("/src/a.txt", "/dst/b.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
+    /// `remote_edit`, the AeroCrypt marker publish), and the trait default
+    /// forwards it to `rename`, which refuses an occupied destination. The
+    /// file there is renamed aside, the new one takes its name, and only then
+    /// is the old one removed.
+    #[tokio::test]
+    async fn replace_sets_the_old_file_aside_renames_the_new_one_in_then_removes_it() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/dst", "22"),
+            ("/dst/a.txt", "OLD"),
+            ("/dst/a.txt.tmp", "NEW"),
+        ])
+        .await;
+        provider
+            .replace("/dst/a.txt.tmp", "/dst/a.txt")
+            .await
+            .expect("replace");
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 3, "{calls:?}");
+        assert!(
+            calls[0].starts_with("/api/file/rename?file_code=OLD&name=.a.txt.aeroftp-replaced-"),
+            "{calls:?}"
+        );
+        assert_eq!(calls[1], "/api/file/rename?file_code=NEW&name=a.txt");
+        assert_eq!(calls[2], "/api/file/remove?file_code=OLD&remove=1");
+    }
+
+    /// Once the new file has the name, the replace is done: a failed delete
+    /// of the file set aside leaves a leftover to report, not a failure. An
+    /// error there made callers undo or retry a replace that had happened.
+    #[tokio::test]
+    async fn a_replace_whose_final_delete_fails_is_done_and_says_what_is_left() {
+        let (mut provider, calls) = provider_with_cached_tree_refusing(
+            &[
+                ("/dst", "22"),
+                ("/dst/a.txt", "OLD"),
+                ("/dst/a.txt.tmp", "NEW"),
+            ],
+            "/api/file/remove",
+        )
+        .await;
+        provider
+            .replace("/dst/a.txt.tmp", "/dst/a.txt")
+            .await
+            .expect("the new file has the name: the replace is done");
+        assert_eq!(
+            calls.lock().unwrap()[1],
+            "/api/file/rename?file_code=NEW&name=a.txt"
+        );
+        // The warning a front end shows the user names the leftover.
+        let warnings = crate::providers::take_warnings();
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("set aside as /dst/.a.txt.aeroftp-replaced-")),
+            "the leftover is named where it is: {warnings:?}"
+        );
+    }
+
+    /// A file moved onto a folder the listing shows is refused before any
+    /// call, like a move onto a file: FileLu keeps two items with one name.
+    #[tokio::test]
+    async fn a_file_onto_an_existing_folder_is_refused_before_any_call() {
+        let (mut provider, calls) =
+            provider_with_cached_tree(&[("/dst", "22"), ("/dst/c.txt", "CCC"), ("/dst/d", "33")])
+                .await;
+        let outcome = provider.rename("/dst/c.txt", "/dst/d").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// A replace puts one file in place of another. Onto a folder it set the
+    /// whole folder aside and deleted it, contents and all and with no trash,
+    /// to leave a file under its name; a folder onto a file did the reverse.
+    /// Both are refused before any call.
+    #[tokio::test]
+    async fn a_replace_across_file_and_folder_is_refused_before_any_call() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/src", "11"),
+            ("/dst", "22"),
+            ("/src/a.txt", "AAA"),
+            ("/src/f.txt", "FFF"),
+        ])
+        .await;
+        for (from, to) in [("/src/a.txt", "/dst"), ("/dst", "/src/f.txt")] {
+            let outcome = provider.replace(from, to).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+                "{from} -> {to}: {outcome:?}"
+            );
+        }
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// FileLu answers HTTP 200 and puts the refusal in the body: reading
+    /// only the transport status reported a move that never happened.
+    #[tokio::test]
+    async fn folder_move_refused_in_the_body_is_an_error() {
+        let (mut provider, _) =
+            provider_for_folder_move(r#"{"status":403,"msg":"Folder not accessible"}"#).await;
+        let outcome = provider.rename("/src", "/dst/src").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m == "Folder not accessible"),
+            "{outcome:?}"
+        );
+    }
 
     /// Upload a 300 KB file to the root through a local API double: an empty
     /// root listing (no file to replace), `upload/server` pointing at the

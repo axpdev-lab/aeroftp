@@ -381,6 +381,12 @@ impl StorageProvider for VaultStorageProvider {
         Err(read_only())
     }
 
+    /// No: there is no rename here, so there is no replace either, and the
+    /// callers that need one refuse before they write anything.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let rel = to_rel(path);
         if rel.is_empty() {
@@ -539,6 +545,15 @@ mod tests {
             seekable,
         };
         VaultStorageProvider::new("test".into(), Box::new(v)).unwrap()
+    }
+
+    /// There is no rename here, so a replace could only fail after a caller
+    /// staged its temporary. The answer is no, so those callers (CLI `edit`, MCP
+    /// `remote_edit`, the crypt marker paths) refuse before they write.
+    #[tokio::test]
+    async fn a_vault_does_not_claim_an_atomic_replace() {
+        let mut p = provider(false);
+        assert!(!p.supports_atomic_replace().await.unwrap());
     }
 
     #[tokio::test]
