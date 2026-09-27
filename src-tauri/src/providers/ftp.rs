@@ -2287,7 +2287,7 @@ impl StorageProvider for FtpProvider {
             // say different things (`426` on vsftpd and ProFTPD, a `150 ...
             // seconds (measured here)` rate line on Pure-FTPd, which reuses the
             // code of its last reply). Any reply is accepted, and a session
-            // that did not end on `226` is closed rather than trusted. A server
+            // that did not end on `226` or `250` is closed rather than trusted. A server
             // that never answers is not waited for past the budget: the
             // dropped close takes the session.
             match tokio::time::timeout(EARLY_STOP_BUDGET, channel.close()).await {
@@ -3476,9 +3476,16 @@ impl FtpProvider {
                 // meant to protect.
                 let mut probe = [0u8; 1];
                 let mut got = tokio::io::ReadBuf::new(&mut probe);
-                let peeked = std::future::poll_fn(|cx| control.poll_peek(cx, &mut got))
-                    .await
-                    .unwrap_or(0);
+                // Polled once: on Windows tokio does not clear read readiness
+                // after a short read, and an awaited peek could wait on a
+                // control channel that has nothing to say.
+                let peeked = std::future::poll_fn(|cx| {
+                    std::task::Poll::Ready(match control.poll_peek(cx, &mut got) {
+                        std::task::Poll::Ready(Ok(bytes)) => bytes,
+                        _ => 0,
+                    })
+                })
+                .await;
                 let first = got.filled().first().copied();
                 match first {
                     Some(b'4') | Some(b'5') if peeked > 0 => Ok(DataStep::ControlRefused),
@@ -6403,11 +6410,14 @@ mod transfer_verdict_tests {
     #[tokio::test]
     async fn a_range_read_whole_accepts_any_word_on_the_early_close() {
         for word in WORDS_ON_AN_EARLY_CLOSE {
-            // The same reply whether or not the server saw the early close: on
-            // Windows the whole payload fits the send buffer.
+            // The word goes where the server sees the early close. Where it
+            // does not (Windows, whose send buffer takes the whole payload),
+            // a refusal written right after the data can reach the control
+            // watch before the data is read, and a `226` is the only reply
+            // valid there: the test then passes without the word.
             let (port, _) = scripted_server(Script {
                 retr_payload: vec![b'x'; 64 * 1024 * 1024],
-                retr_reply: word,
+                retr_reply: "226 done\r\n",
                 retr_reply_after_early_close: word,
                 stor_reply: "226 done\r\n",
                 stor_stalls: false,
@@ -6453,12 +6463,12 @@ mod transfer_verdict_tests {
     async fn one_window_answered_with(
         early_close_reply: &'static str,
     ) -> Result<(), ProviderError> {
-        // The same reply whether or not the server saw the early close: on
-        // Windows the whole payload fits the send buffer, the write succeeds
-        // and the server never sees it. The verdict under test is the client's.
+        // The reply goes where the server sees the early close. Where it does
+        // not (Windows, whose send buffer takes the whole payload), the
+        // complete branch answers `226`, the only reply valid there.
         let (port, _) = scripted_server(Script {
             retr_payload: vec![b'x'; 64 * 1024 * 1024],
-            retr_reply: early_close_reply,
+            retr_reply: "226 done\r\n",
             retr_reply_after_early_close: early_close_reply,
             stor_reply: "226 done\r\n",
             stor_stalls: false,
