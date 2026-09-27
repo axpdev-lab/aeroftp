@@ -1706,7 +1706,7 @@ After a successful import that touched SQLite or files, the CLI prints `requires
 
 ### flatpak-import - Import a Native Configuration into the Flatpak Sandbox
 
-A Flatpak install keeps its own data root inside the sandbox, so it does not see the saved servers and encrypted vault of a native (`.deb`, `.rpm`, AppImage) install in `~/.config/aeroftp`. Run inside the Flatpak sandbox, `flatpak-import` copies that configuration into the sandbox. It copies only the files the sandbox does not have yet: an existing file is never overwritten, and SQLite sidecars and symbolic links inside the folder are never copied. The GUI offers the same import once, at its first start.
+A Flatpak install keeps its own data root inside the sandbox, so it does not see the saved servers and encrypted vault of a native (`.deb`, `.rpm`, AppImage) install in `~/.config/aeroftp`. Run inside the Flatpak sandbox, `flatpak-import` copies that configuration into the sandbox. It copies only the files the sandbox does not have yet: an existing file is never overwritten, and SQLite sidecars and symbolic links inside the folder are never copied (a `~/.config/aeroftp` that is itself a link, as a dotfiles manager creates, is followed). The GUI offers the same import once, at its first start.
 
 ```bash
 # Is an import available? Copies nothing.

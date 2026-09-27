@@ -425,11 +425,31 @@ fn host_config_dir_impl(
         return None;
     }
     let candidate = home?.join(".config").join(leaf);
-    // A no-op (candidate == data root) or a missing host config is nothing to
-    // import; bail so the caller never runs a self-referential migration.
-    // Whether the offer is shown also depends on what the folder holds, which
-    // [`import_offer`] decides.
-    if current.as_deref() == Some(candidate.as_path()) || !candidate.is_dir() {
+    // A dotfiles manager (GNU Stow and the like) links the whole folder into
+    // place. That link is the user's own config, so the root is resolved once
+    // here, and the never-follow rule of [`never_copied`] applies to what is
+    // inside it.
+    let root_is_link = candidate
+        .symlink_metadata()
+        .is_ok_and(|meta| meta.file_type().is_symlink());
+    let candidate = if root_is_link {
+        std::fs::canonicalize(&candidate).unwrap_or(candidate)
+    } else {
+        candidate
+    };
+    // A no-op (candidate == data root, compared resolved so that a link to the
+    // data root counts too) or a missing host config is nothing to import; bail
+    // so the caller never runs a self-referential migration. Whether the offer
+    // is shown also depends on what the folder holds, which [`import_offer`]
+    // decides.
+    let is_data_root = current.as_deref().is_some_and(|current| {
+        current == candidate
+            || matches!(
+                (std::fs::canonicalize(current), std::fs::canonicalize(&candidate)),
+                (Ok(current), Ok(candidate)) if current == candidate
+            )
+    });
+    if is_data_root || !candidate.is_dir() {
         return None;
     }
     Some(candidate)
@@ -1401,6 +1421,57 @@ mod tests {
             result.is_err(),
             "the copy did not report the unreadable folder: {:?}",
             result.map(|r| r.copied)
+        );
+    }
+
+    /// A dotfiles manager (GNU Stow and the like) links the whole
+    /// `~/.config/aeroftp` into place. That link is the user's own config, so the
+    /// root is resolved once, and the never-follow rule applies to what is
+    /// inside it.
+    #[cfg(unix)]
+    #[test]
+    fn a_host_config_linked_in_by_a_dotfiles_manager_is_imported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let dotfiles = home.join("dotfiles").join("aeroftp");
+        std::fs::create_dir_all(&dotfiles).unwrap();
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        std::fs::write(dotfiles.join("servers.json"), b"host servers").unwrap();
+        // A link inside the tree is still never followed.
+        std::os::unix::fs::symlink(tmp.path(), dotfiles.join("elsewhere")).unwrap();
+        std::os::unix::fs::symlink(&dotfiles, home.join(".config").join("aeroftp")).unwrap();
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+
+        let status = offer_for(home, &tmp);
+        assert!(status.available, "a linked host config was not offered");
+        let report = apply_flatpak_host_import(true, status.source, Some(sandbox.clone())).unwrap();
+
+        assert_eq!(report.copied, 1);
+        assert_eq!(
+            std::fs::read(sandbox.join("servers.json")).unwrap(),
+            b"host servers"
+        );
+        assert!(sandbox.join("elsewhere").symlink_metadata().is_err());
+    }
+
+    /// Resolving a linked root must not defeat the self-reference guard: a host
+    /// config that is a link to the data root is not an import source.
+    #[cfg(unix)]
+    #[test]
+    fn a_host_config_linked_to_the_data_root_is_not_imported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+        std::fs::create_dir_all(&sandbox).unwrap();
+        std::fs::write(sandbox.join("servers.json"), b"sandbox servers").unwrap();
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        std::os::unix::fs::symlink(&sandbox, home.join(".config").join("aeroftp")).unwrap();
+
+        let got = host_config_dir_impl(true, Some(home), "aeroftp", Some(sandbox));
+
+        assert!(
+            got.is_none(),
+            "the data root was offered as its own source: {got:?}"
         );
     }
 
