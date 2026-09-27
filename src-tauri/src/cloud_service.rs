@@ -2437,8 +2437,13 @@ mod baseline_tests {
     }
 
     /// Accepts every upload and reports every file with one server time: the
-    /// provider path stamps that time on the local file after an upload.
-    struct StampingProvider;
+    /// provider path stamps that time on the local file after an upload. With
+    /// `edit_during_upload`, the local file is saved again, same size, while
+    /// the upload runs.
+    #[derive(Default)]
+    struct StampingProvider {
+        edit_during_upload: bool,
+    }
 
     #[async_trait::async_trait]
     impl StorageProvider for StampingProvider {
@@ -2488,10 +2493,14 @@ mod baseline_tests {
         }
         async fn upload(
             &mut self,
-            _local_path: &str,
+            local_path: &str,
             _remote_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            if self.edit_during_upload {
+                std::fs::write(local_path, b"EDITED!").unwrap();
+                stamp(std::path::Path::new(local_path), 1_750_000_000);
+            }
             Ok(())
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
@@ -2528,6 +2537,57 @@ mod baseline_tests {
         }
     }
 
+    /// Major 1 (fourth review of #949): a same-size edit saved while the file
+    /// uploaded was stamped over with the server's time and noted as the
+    /// synced state: the edit never reached the remote, and a later remote
+    /// change downloaded over it. A file that changed during its upload is
+    /// neither stamped nor noted: the baseline keeps the scan's time, and the
+    /// next cycle sees the local edit.
+    #[tokio::test]
+    async fn an_edit_during_an_upload_is_not_stamped_over() {
+        let root = tempfile::tempdir().expect("local root");
+        let file = root.path().join("f.txt");
+        std::fs::write(&file, b"payload").unwrap();
+        stamp(&file, 1_700_000_000);
+        let mut local = fi(7, 1_700_000_000);
+        local.path = file.to_string_lossy().into_owned();
+        let uploaded = cmp(
+            SyncStatus::LocalNewer,
+            Some(local),
+            Some(fi(3, 1)),
+            true,
+            false,
+        );
+        let mut config = cfg(
+            CompareDirection::Bidirectional,
+            false,
+            ConflictStrategy::AskUser,
+        );
+        config.local_folder = root.path().to_path_buf();
+        config.remote_folder = "/remote".to_string();
+        let svc = CloudService::new();
+        svc.process_comparison_with_provider(
+            &mut StampingProvider {
+                edit_during_upload: true,
+            },
+            &config,
+            &uploaded,
+        )
+        .await
+        .expect("the upload succeeds");
+        assert_eq!(
+            std::fs::metadata(&file).unwrap().modified().unwrap(),
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_750_000_000),
+            "the edit keeps its own time"
+        );
+        let files = svc.post_sync_baseline(&[uploaded], &config, None);
+        assert_eq!(
+            files.get("f.txt").and_then(|entry| entry.modified),
+            DateTime::<Utc>::from_timestamp(1_700_000_000, 0),
+            "the baseline keeps the scan's time, so the edit reads as a change"
+        );
+    }
+
     /// Through the provider executor: an upload is stamped with the server's
     /// time, the time is noted as the transfer ends, and the baseline records
     /// it even when the file is edited before the cycle is over.
@@ -2555,7 +2615,7 @@ mod baseline_tests {
         config.remote_folder = "/remote".to_string();
         let svc = CloudService::new();
         let action = svc
-            .process_comparison_with_provider(&mut StampingProvider, &config, &uploaded)
+            .process_comparison_with_provider(&mut StampingProvider::default(), &config, &uploaded)
             .await
             .expect("the upload succeeds");
         assert!(matches!(action, SyncAction::Upload));

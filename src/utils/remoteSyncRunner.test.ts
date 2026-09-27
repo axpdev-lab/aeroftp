@@ -983,6 +983,36 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
     // none, so the local side of that file was compared by size alone on the
     // next run and a same-size local edit went unseen. With no remote time the
     // index takes the downloaded file's own, read back from disk.
+    // Minor 1 (fourth review of #949): the time was read back when the index
+    // was saved, after the whole run, so a same-size edit made in between was
+    // recorded as the synced state. It is read when the download completes.
+    it('records the time a download left, not the one at index save', async () => {
+        let savedIndex: Record<string, unknown> | undefined;
+        let indexPhase = false;
+        const { invoke } = makeInvoke({
+            get_file_properties: () => ({
+                size: 7,
+                modified: indexPhase ? '2026-09-26T11:00:00' : '2026-09-26T10:00:00',
+            }),
+            load_sync_index_cmd: () => {
+                indexPhase = true;
+                return null;
+            },
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as Record<string, unknown>;
+            },
+        });
+        await runRemoteSync(
+            [file('from-list.txt', 'download', { size: 7, mtime: null })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { writeIndex: true }),
+        );
+        const files = (savedIndex?.files ?? {}) as Record<string, { modified: string | null }>;
+        expect(files['from-list.txt']?.modified).toBe('2026-09-26T10:00:00Z');
+    });
+
     it('records the downloaded file time when the remote gives none', async () => {
         let savedIndex: Record<string, unknown> | undefined;
         const { invoke } = makeInvoke({

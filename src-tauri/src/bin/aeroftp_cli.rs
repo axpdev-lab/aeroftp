@@ -80654,7 +80654,10 @@ mod tests {
     #[test]
     fn the_pairs_left_open_are_listed_in_order() {
         let fixture = FilesFromFixture::new();
-        let names = ["e.txt", "b.txt", "d.txt", "a.txt", "c.txt"];
+        // Eight names: a hash map gives them in order once in 40 320 runs.
+        let names = [
+            "e.txt", "h.txt", "b.txt", "g.txt", "d.txt", "a.txt", "f.txt", "c.txt",
+        ];
         for name in names {
             fixture.local_file(name, 5000);
         }
@@ -80669,7 +80672,7 @@ mod tests {
         let stats = run_sync_rule(remote, &local, "both", true, false, &[], NEWER_WINS, &cli);
         assert_eq!(
             stats.conflicts_open,
-            vec!["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]
+            vec!["a.txt", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt", "g.txt", "h.txt"]
         );
     }
 
