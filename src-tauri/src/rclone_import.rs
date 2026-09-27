@@ -1386,6 +1386,46 @@ fn parse_crypt_remote_target(remote_target: &str) -> (String, Option<String>) {
     }
 }
 
+/// The target a crypt's `remote = <name>:<path>` means once every `alias`
+/// remote in front of it is replaced by what it points at: `alias:sub` is
+/// `<the alias's remote>/sub`. This exporter writes a crypt over an alias for
+/// a profile that starts in a subfolder or pins a bucket, so its own export
+/// imports only with this. A target that is not an alias comes back as it
+/// is; a chain that does not end is refused with the crypt.
+fn resolve_alias_target(
+    remote_target: &str,
+    sections: &HashMap<String, RcloneRemote>,
+) -> Result<String, String> {
+    let mut target = remote_target.to_string();
+    for _ in 0..8 {
+        let Some((name, sub)) = target.split_once(':') else {
+            return Ok(target);
+        };
+        let Some(alias) = sections
+            .get(name.trim())
+            .filter(|section| section.get("type").map(|t| t.trim()) == Some("alias"))
+        else {
+            return Ok(target);
+        };
+        let inner = alias.get("remote").map(|r| r.trim()).unwrap_or("");
+        if inner.is_empty() {
+            return Err(format!(
+                "crypt remote wraps the alias '{}', which points at no remote",
+                name.trim()
+            ));
+        }
+        let sub = sub.trim().trim_start_matches('/');
+        target = if sub.is_empty() {
+            inner.to_string()
+        } else if inner.ends_with(':') || inner.ends_with('/') {
+            format!("{inner}{sub}")
+        } else {
+            format!("{inner}/{sub}")
+        };
+    }
+    Err("crypt remote wraps a chain of alias remotes that does not end".to_string())
+}
+
 fn map_crypt_remote(
     name: &str,
     remote: &RcloneRemote,
@@ -1399,6 +1439,7 @@ fn map_crypt_remote(
     if remote_target.is_empty() {
         return Err("crypt remote has no remote to wrap".to_string());
     }
+    let remote_target = resolve_alias_target(&remote_target, sections)?;
 
     if remote_target.starts_with(':') {
         return Err(
@@ -1914,31 +1955,58 @@ fn sanitize_export_server(server: &RcloneExportServer) -> RcloneExportServer {
 /// section that no longer exists. Falls back to the pinned overlay scope
 /// (`rcloneCryptOverlayScope` / a leading-slash path). Empty scope means
 /// the whole remote: `base:`.
-fn crypt_export_remote_target(base_name: &str, options: &serde_json::Value) -> String {
+///
+/// The imported path is from the root of the clear remote (`clear_name`),
+/// while an alias base (the start folder, a pinned bucket) already points at
+/// `base_root` inside it: the path is taken relative to that folder, or, when
+/// it lies outside it, the crypt wraps the clear remote. Written as it was,
+/// `vault:/enc` exported over the alias `vault-path = vault:/enc` became
+/// `vault-path:/enc`, which is `vault:/enc/enc`. The overlay scope is already
+/// relative to the start folder.
+fn crypt_export_remote_target(
+    base_name: &str,
+    clear_name: &str,
+    base_root: Option<&str>,
+    options: &serde_json::Value,
+) -> String {
+    let trim = |p: &str| {
+        p.trim()
+            .trim_start_matches('/')
+            .trim_end_matches('/')
+            .to_string()
+    };
+    let target = |name: &str, path: &str| {
+        if path.is_empty() {
+            format!("{name}:")
+        } else {
+            format!("{name}:/{path}")
+        }
+    };
     let from_imported = options
         .get("rcloneCryptRemote")
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty());
-    let path = if let Some(existing) = from_imported {
-        if existing.contains(':') {
+    if let Some(existing) = from_imported {
+        let path = trim(&if existing.contains(':') {
             parse_crypt_remote_target(existing).1.unwrap_or_default()
         } else {
             existing.to_string()
-        }
-    } else {
-        options
-            .get("rcloneCryptOverlayScope")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
-    };
-    let trimmed = path.trim().trim_start_matches('/').trim_end_matches('/');
-    if trimmed.is_empty() {
-        format!("{base_name}:")
-    } else {
-        format!("{base_name}:/{trimmed}")
+        });
+        return match base_root.map(trim).filter(|root| !root.is_empty()) {
+            None => target(base_name, &path),
+            Some(root) if path == root => target(base_name, ""),
+            Some(root) => match path.strip_prefix(&format!("{root}/")) {
+                Some(rest) => target(base_name, rest),
+                None => target(clear_name, &path),
+            },
+        };
     }
+    let scope = options
+        .get("rcloneCryptOverlayScope")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    target(base_name, &trim(scope))
 }
 
 /// Cloudinary's account name. The app's form keeps it in `options.bucket`;
@@ -2099,6 +2167,7 @@ fn append_crypt_remote_section(
     output: &mut String,
     base_name: &str,
     profile_section: &str,
+    base_root: Option<&str>,
     options: Option<&serde_json::Value>,
     names: &mut RcloneNamespace,
 ) -> CryptSection {
@@ -2123,8 +2192,9 @@ fn append_crypt_remote_section(
     };
     if !requested.is_empty() && requested != section {
         output.push_str(&format!(
-            "# crypt section is '{section}', not '{requested}': '{requested}' stays the clear \
-             remote, so `rclone sync {requested}:` keeps pointing at it\n"
+            "# WARNING: `{requested}:` in this file is NOT encrypted; use `{section}:` for the \
+             encrypted remote. `{requested}` is the clear remote here, and a crypt cannot share \
+             its name.\n"
         ));
     }
     let password = opts
@@ -2145,7 +2215,12 @@ fn append_crypt_remote_section(
     output.push_str("type = crypt\n");
     output.push_str(&format!(
         "remote = {}\n",
-        ini_value(&crypt_export_remote_target(base_name, opts))
+        ini_value(&crypt_export_remote_target(
+            base_name,
+            profile_section,
+            base_root,
+            opts
+        ))
     ));
     if let Some(pw) = password {
         output.push_str(&format!(
@@ -2455,6 +2530,9 @@ pub fn export_rclone(
         // at the bucket alias, since wrapping the raw s3 remote makes rclone
         // look for a bucket named after the overlay path.
         let mut crypt_base = remote_name.clone();
+        // The folder of the clear remote that `crypt_base` points at when it
+        // is an alias (a pinned bucket, the start folder).
+        let mut crypt_base_root: Option<String> = None;
 
         match proto {
             "ftp" => {
@@ -2694,6 +2772,7 @@ pub fn export_rclone(
                                 // raw s3 remote, and it must wrap the name that
                                 // was actually written.
                                 crypt_base = alias_name;
+                                crypt_base_root = Some(bucket.to_string());
                             }
                             None => {
                                 notes.push_str(&format!(
@@ -3212,9 +3291,10 @@ pub fn export_rclone(
                         // A crypt overlay scoped by path must wrap the alias,
                         // so `rcloneCryptOverlayScope = /vault` resolves under
                         // the start folder, not under the account root. An
-                        // explicit imported `rcloneCryptRemote` keeps its own
-                        // base (`crypt_export_remote_target` reads it first).
+                        // imported `rcloneCryptRemote` is taken relative to
+                        // this folder (`crypt_export_remote_target`).
                         crypt_base = alias_name;
+                        crypt_base_root = Some(alias_path.to_string());
                     }
                     _ => {
                         notes.push_str(&format!(
@@ -3238,6 +3318,7 @@ pub fn export_rclone(
             &mut crypt_section,
             &crypt_base,
             &remote_name,
+            crypt_base_root.as_deref(),
             options,
             &mut names,
         );
@@ -6727,12 +6808,9 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             "start-folder alias:\n{exported}"
         );
         assert!(
-            exported.contains("remote = vault-path:"),
-            "crypt must wrap the alias:\n{exported}"
-        );
-        assert!(
-            exported.contains("rclone sync vault:"),
-            "the note must say why the section is not named vault:\n{exported}"
+            exported.contains("remote = vault-path:\n"),
+            "crypt must wrap the alias at its root, not at vault-path:/enc, which is \
+             vault:/enc/enc:\n{exported}"
         );
         let crypt_header = exported
             .lines()
@@ -6742,6 +6820,141 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             crypt_header, "[vault]",
             "crypt must not take the clear name"
         );
+        // L8 of the 4.2.1 closeout: the note is a warning, with the real
+        // names, that the name the operator knew as the crypt is the clear
+        // remote in this file.
+        let crypt_name = crypt_header.trim_matches(['[', ']']);
+        assert!(
+            exported.contains("`vault:` in this file is NOT encrypted"),
+            "the note must warn that the clear name is not encrypted:\n{exported}"
+        );
+        assert!(
+            exported.contains(&format!("use `{crypt_name}:`")),
+            "the note must name the crypt section to use instead:\n{exported}"
+        );
+
+        // The round trip: importing this export gives back the crypt profile
+        // on the same server, starting in the same folder, with the same key.
+        let reimport = std::env::temp_dir().join(format!(
+            "aeroftp-test-reimport-crypt-subfolder-{}.conf",
+            std::process::id()
+        ));
+        std::fs::write(&reimport, &exported).expect("write");
+        let again = import_rclone(&reimport).expect("re-import");
+        std::fs::remove_file(&reimport).ok();
+        let crypt = again
+            .servers
+            .iter()
+            .find(|s| {
+                s.options
+                    .as_ref()
+                    .and_then(|o| o.get("rcloneCryptEnabled"))
+                    .and_then(|v| v.as_bool())
+                    == Some(true)
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "the crypt remote must come back as a crypt profile, skipped: {:?}\n{exported}",
+                    again
+                        .skipped
+                        .iter()
+                        .map(|s| format!("{}: {}", s.name, s.reason))
+                        .collect::<Vec<_>>()
+                )
+            });
+        assert_eq!(crypt.name, crypt_name);
+        assert_eq!(crypt.host, "sftp.example.com");
+        assert_eq!(crypt.username, "demo");
+        assert_eq!(
+            crypt.initial_path.as_deref(),
+            Some("/enc"),
+            "the crypt must open in the folder it was exported from:\n{exported}"
+        );
+        assert_eq!(
+            crypt
+                .options
+                .as_ref()
+                .and_then(|o| o.get("rcloneCryptPassword"))
+                .and_then(|v| v.as_str()),
+            Some("topsecret")
+        );
+    }
+
+    /// The imported crypt path is from the clear remote's root, the alias
+    /// base already points into it: the path is taken relative to the
+    /// alias's folder, and one outside it wraps the clear remote.
+    #[test]
+    fn crypt_export_remote_target_is_relative_to_the_alias_folder() {
+        let imported = |target: &str| serde_json::json!({ "rcloneCryptRemote": target });
+        let at = |target: &str| {
+            crypt_export_remote_target("nas-path", "nas", Some("/team"), &imported(target))
+        };
+        assert_eq!(at("x:/team"), "nas-path:");
+        assert_eq!(at("x:team/vault"), "nas-path:/vault");
+        assert_eq!(at("x:/other"), "nas:/other");
+        assert_eq!(
+            at("x:/teamwork"),
+            "nas:/teamwork",
+            "a prefix is not a folder"
+        );
+        assert_eq!(
+            crypt_export_remote_target("nas", "nas", None, &imported("x:/enc")),
+            "nas:/enc"
+        );
+        assert_eq!(
+            crypt_export_remote_target(
+                "nas-path",
+                "nas",
+                Some("/team"),
+                &serde_json::json!({ "rcloneCryptOverlayScope": "/vault" })
+            ),
+            "nas-path:/vault",
+            "the overlay scope is already relative to the start folder"
+        );
+    }
+
+    /// A crypt over an alias imports onto what the alias points at; a chain
+    /// is followed, and one that loops is refused instead of spinning.
+    #[test]
+    fn a_crypt_over_an_alias_resolves_to_the_aliased_remote() {
+        let section = |pairs: &[(&str, &str)]| -> RcloneRemote {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        };
+        let sections: HashMap<String, RcloneRemote> = HashMap::from([
+            ("nas".to_string(), section(&[("type", "sftp")])),
+            (
+                "nas-path".to_string(),
+                section(&[("type", "alias"), ("remote", "nas:/team")]),
+            ),
+            (
+                "deeper".to_string(),
+                section(&[("type", "alias"), ("remote", "nas-path:docs")]),
+            ),
+            (
+                "loop".to_string(),
+                section(&[("type", "alias"), ("remote", "loop:x")]),
+            ),
+        ]);
+        assert_eq!(
+            resolve_alias_target("nas-path:", &sections).unwrap(),
+            "nas:/team"
+        );
+        assert_eq!(
+            resolve_alias_target("nas-path:/vault", &sections).unwrap(),
+            "nas:/team/vault"
+        );
+        assert_eq!(
+            resolve_alias_target("deeper:v", &sections).unwrap(),
+            "nas:/team/docs/v"
+        );
+        assert_eq!(
+            resolve_alias_target("nas:/enc", &sections).unwrap(),
+            "nas:/enc"
+        );
+        assert!(resolve_alias_target("loop:", &sections).is_err());
     }
 
     #[test]
