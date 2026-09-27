@@ -1881,8 +1881,10 @@ impl StorageProvider for AzureProvider {
         // migrations leave on a flat account. `stat` reports it as a
         // directory, so `rm` comes here, and deleting only the marker
         // answered Ok while the stub stayed. A blob without the flag is a
-        // file that only shares the folder's name, and it stays.
-        match self.stat(path).await {
+        // file that only shares the folder's name, and it stays. The blob is
+        // asked by its name without the slash: `path` as the caller wrote it
+        // (`d/`) sent the HEAD to the marker just deleted.
+        match self.stat(&format!("/{blob_path}")).await {
             Ok(entry) if entry.is_dir => {
                 self.delete_directory_blob(&blob_path, "directory blob")
                     .await?
@@ -2951,6 +2953,22 @@ mod tests {
             .rmdir_recursive("/gone")
             .await
             .expect("a HEAD 404 is the normal case of a prefix-only folder");
+
+        // With a trailing slash the flag check sent its HEAD to `stub/`, the
+        // marker deleted just before, got a 404, and the stub stayed while
+        // the call answered Ok. The check asks the blob without the slash.
+        log.lock().unwrap().clear();
+        provider
+            .rmdir_recursive("/stub/")
+            .await
+            .expect("rm -r of the stub named with a trailing slash");
+        let requests = log.lock().unwrap().clone();
+        assert!(
+            requests
+                .iter()
+                .any(|line| line == "DELETE /mycontainer/stub"),
+            "the stub blob must be deleted whatever the caller's slash: {requests:?}"
+        );
     }
 
     /// Copy Blob overwrote the destination: a rename onto an existing blob
