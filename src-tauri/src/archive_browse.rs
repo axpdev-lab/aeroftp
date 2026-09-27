@@ -399,15 +399,18 @@ fn open_tar_reader(archive_path: &str) -> Result<Box<dyn std::io::Read>, String>
     let file = File::open(archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
     let ext = archive_path.to_lowercase();
 
-    if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
-        Ok(Box::new(flate2::read::GzDecoder::new(file)))
+    // Every member of a multi-member file (bgzip, pbzip2): see `whole_file_decoder`.
+    let codec = if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
+        "gz"
     } else if ext.ends_with(".tar.xz") || ext.ends_with(".txz") {
-        Ok(Box::new(xz2::read::XzDecoder::new(file)))
+        "xz"
     } else if ext.ends_with(".tar.bz2") || ext.ends_with(".tbz2") {
-        Ok(Box::new(bzip2::read::BzDecoder::new(file)))
+        "bz2"
     } else {
-        Ok(Box::new(file))
-    }
+        return Ok(Box::new(file));
+    };
+    crate::whole_file_decoder(codec, file)
+        .ok_or_else(|| format!("Unrecognized archive format: {}", archive_path))
 }
 
 #[tauri::command]

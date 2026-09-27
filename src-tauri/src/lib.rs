@@ -9156,7 +9156,8 @@ fn single_stream_member_name(archive_name: &str, codec: &str) -> String {
 }
 
 /// Decode a standalone single-stream codec file (gz/xz/bz2 with no tar wrapper)
-/// back to its lone member. `kind` forces the codec ("gz" | "xz" | "bz2"); when
+/// back to the one file it compresses, all of its members included (see
+/// `whole_file_decoder`). `kind` forces the codec ("gz" | "xz" | "bz2"); when
 /// None it is sniffed from the extension, so the CLI's `--archive-format` stays
 /// authoritative on extract exactly like the tar lane. `create_subfolder` nests
 /// the output under a per-archive stem folder (matching the other extractors).
@@ -9217,12 +9218,8 @@ async fn extract_single_impl(
         .saturating_mul(SINGLE_STREAM_MAX_RATIO)
         .max(SINGLE_STREAM_ABS_FLOOR);
     let infile = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
-    let mut reader: Box<dyn std::io::Read> = match codec.as_str() {
-        "gz" => Box::new(flate2::read::GzDecoder::new(infile)),
-        "xz" => Box::new(xz2::read::XzDecoder::new(infile)),
-        "bz2" => Box::new(bzip2::read::BzDecoder::new(infile)),
-        other => return Err(format!("Unrecognized single-stream format: {}", other)),
-    };
+    let mut reader = whole_file_decoder(&codec, infile)
+        .ok_or_else(|| format!("Unrecognized single-stream format: {}", codec))?;
     let over_cap =
         std::io::Error::other("Decompressed stream exceeds the size limit (compression bomb?)");
     write_entry_atomically(&out_path, |outfile| {
@@ -9239,7 +9236,7 @@ async fn extract_single_impl(
 }
 
 /// Extract a standalone single-stream codec file (gz/xz/bz2, no tar wrapper) back
-/// to its lone member. Codec sniffed from the extension; never encrypted.
+/// to the file it compresses. Codec sniffed from the extension; never encrypted.
 #[tauri::command]
 async fn extract_single(
     archive_path: String,
@@ -9276,13 +9273,146 @@ fn tar_reader_for(
             }
         }
     };
-    Ok(match pick.as_str() {
-        "tar.gz" => Box::new(flate2::read::GzDecoder::new(file)),
-        "tar.xz" => Box::new(xz2::read::XzDecoder::new(file)),
-        "tar.bz2" => Box::new(bzip2::read::BzDecoder::new(file)),
-        "tar" => Box::new(file),
+    let codec = match pick.as_str() {
+        "tar" => return Ok(Box::new(file)),
+        "tar.gz" => "gz",
+        "tar.xz" => "xz",
+        "tar.bz2" => "bz2",
         other => return Err(format!("Unrecognized archive format: {}", other)),
+    };
+    whole_file_decoder(codec, file).ok_or_else(|| format!("Unrecognized archive format: {}", pick))
+}
+
+/// A decoder for a whole gz, xz or bz2 file (`codec` "gz" | "xz" | "bz2"), or
+/// None for any other codec.
+///
+/// Each of these formats defines a file as one or more members (streams) back
+/// to back, and gzip, xz and bzip2 decompress all of them: `cat a.gz b.gz`,
+/// bgzip and pbzip2 write such files. `GzDecoder` and `BzDecoder` stop after
+/// the first member and `XzDecoder::new` decodes a single stream, so a
+/// multi-member file extracted cut to its first member with no error (gz, bz2)
+/// or failed on the second (xz). Every caller here reads a whole file, so none
+/// needs single-member semantics.
+///
+/// gz and bz2 go through `ConcatenatedMembers` rather than flate2's
+/// `MultiGzDecoder` and bzip2's `MultiBzDecoder`, which fail on bytes after
+/// the last member that gzip and bzip2 ignore. xz uses liblzma's concatenated
+/// mode, which, like xz, accepts stream padding and refuses other bytes.
+pub(crate) fn whole_file_decoder<R: std::io::Read + 'static>(
+    codec: &str,
+    input: R,
+) -> Option<Box<dyn std::io::Read>> {
+    Some(match codec {
+        "gz" => Box::new(ConcatenatedMembers::new(
+            Box::new(input),
+            2,
+            |head| head == [0x1f, 0x8b],
+            |source| MemberDecoder::Gz(Box::new(flate2::bufread::GzDecoder::new(source))),
+        )),
+        "xz" => Box::new(xz2::read::XzDecoder::new_multi_decoder(input)),
+        "bz2" => Box::new(ConcatenatedMembers::new(
+            Box::new(input),
+            4,
+            |head| head[..3] == *b"BZh" && (b'1'..=b'9').contains(&head[3]),
+            |source| MemberDecoder::Bz2(bzip2::bufread::BzDecoder::new(source)),
+        )),
+        _ => return None,
     })
+}
+
+/// What one member of a gzip or bzip2 file is decoded from: the bytes read
+/// ahead to recognise its start, then the rest of the file.
+type MemberSource =
+    std::io::Chain<std::io::Cursor<Vec<u8>>, std::io::BufReader<Box<dyn std::io::Read>>>;
+
+/// A decoder for one gzip member or one bzip2 stream. The gzip decoder is
+/// boxed: it is three times the size of the bzip2 one.
+enum MemberDecoder {
+    Gz(Box<flate2::bufread::GzDecoder<MemberSource>>),
+    Bz2(bzip2::bufread::BzDecoder<MemberSource>),
+}
+
+impl MemberDecoder {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        use std::io::Read;
+        match self {
+            Self::Gz(decoder) => decoder.read(buf),
+            Self::Bz2(decoder) => decoder.read(buf),
+        }
+    }
+
+    fn into_source(self) -> MemberSource {
+        match self {
+            Self::Gz(decoder) => (*decoder).into_inner(),
+            Self::Bz2(decoder) => decoder.into_inner(),
+        }
+    }
+}
+
+/// Every member of a gzip or bzip2 file, read the way gzip and bzip2 read
+/// them: another member follows a complete one only when the next bytes start
+/// one, and any other bytes there (tape padding, junk appended to a download)
+/// are trailing data the tools ignore, gzip silently for zeros and with a
+/// warning otherwise, bzip2 with a warning.
+struct ConcatenatedMembers {
+    /// How many bytes `starts_member` looks at.
+    head_len: usize,
+    starts_member: fn(&[u8]) -> bool,
+    open: fn(MemberSource) -> MemberDecoder,
+    /// None once the last member has ended.
+    current: Option<MemberDecoder>,
+}
+
+impl ConcatenatedMembers {
+    fn new(
+        input: Box<dyn std::io::Read>,
+        head_len: usize,
+        starts_member: fn(&[u8]) -> bool,
+        open: fn(MemberSource) -> MemberDecoder,
+    ) -> Self {
+        use std::io::Read;
+        // The first member is not checked here: its decoder refuses a file
+        // that does not start with one.
+        let source = std::io::Cursor::new(Vec::new()).chain(std::io::BufReader::new(input));
+        Self {
+            head_len,
+            starts_member,
+            open,
+            current: Some(open(source)),
+        }
+    }
+}
+
+impl std::io::Read for ConcatenatedMembers {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        while let Some(decoder) = self.current.as_mut() {
+            let n = decoder.read(buf)?;
+            if n > 0 || buf.is_empty() {
+                return Ok(n);
+            }
+            // The member ended (its decoder checked its trailer). Its source
+            // still holds the rest of the file; the read-ahead cursor was
+            // consumed with the member's own first bytes.
+            let Some(ended) = self.current.take() else {
+                break;
+            };
+            let (_, mut rest) = ended.into_source().into_inner();
+            let mut head = vec![0u8; self.head_len];
+            let mut got = 0;
+            while got < head.len() {
+                match rest.read(&mut head[got..]) {
+                    Ok(0) => break,
+                    Ok(k) => got += k,
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(e) => return Err(e),
+                }
+            }
+            if got == head.len() && (self.starts_member)(&head) {
+                self.current = Some((self.open)(std::io::Cursor::new(head).chain(rest)));
+            }
+        }
+        Ok(0)
+    }
 }
 
 /// Resolve the destination directory for a tar extraction, creating a per-archive
@@ -21486,6 +21616,201 @@ mod standalone_stream_tests {
         // No codec extension on the name -> safe fallback member "blob.bin.out".
         let restored = std::fs::read(outdir.join("blob.bin.out")).unwrap();
         assert_eq!(restored, original);
+    }
+
+    /// `data` as one complete gzip member, bzip2 stream or xz stream.
+    fn one_member(codec: &str, data: &[u8]) -> Vec<u8> {
+        use std::io::Write;
+        match codec {
+            "gz" => {
+                let mut e =
+                    flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                e.write_all(data).unwrap();
+                e.finish().unwrap()
+            }
+            "bz2" => {
+                let mut e = bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::default());
+                e.write_all(data).unwrap();
+                e.finish().unwrap()
+            }
+            "xz" => {
+                let mut e = xz2::write::XzEncoder::new(Vec::new(), 6);
+                e.write_all(data).unwrap();
+                e.finish().unwrap()
+            }
+            other => panic!("no such codec: {other}"),
+        }
+    }
+
+    /// Two complete members back to back, the file `cat a.gz b.gz` makes and
+    /// the shape bgzip and pbzip2 write (one member per block).
+    fn two_members(codec: &str, first: &[u8], second: &[u8]) -> Vec<u8> {
+        let mut joined = one_member(codec, first);
+        joined.extend(one_member(codec, second));
+        joined
+    }
+
+    // A gzip, bzip2 or xz file is one or more members (streams) back to back,
+    // and gzip, bzip2 and xz decompress all of them. The decoders used here
+    // stopped after the first member and reported success, so the extracted
+    // file was silently cut to it.
+    #[tokio::test]
+    async fn a_multi_member_gz_bz2_xz_file_extracts_every_member() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = "first member line\n".repeat(64).into_bytes();
+        let second = "second member line\n".repeat(64).into_bytes();
+        let mut whole = first.clone();
+        whole.extend_from_slice(&second);
+
+        let mut failures = Vec::new();
+        for codec in ["gz", "bz2", "xz"] {
+            let archive = dir.path().join(format!("joined.txt.{codec}"));
+            std::fs::write(&archive, two_members(codec, &first, &second)).unwrap();
+            let outdir = dir.path().join(format!("out_{codec}"));
+            std::fs::create_dir_all(&outdir).unwrap();
+            let result = extract_single_core(
+                archive.to_string_lossy().to_string(),
+                outdir.to_string_lossy().to_string(),
+                false,
+            )
+            .await;
+            let got = std::fs::read(outdir.join("joined.txt")).ok();
+            if got.as_deref() != Some(&whole[..]) {
+                failures.push(format!(
+                    "{codec}: extracted {:?} of {} bytes (result: {result:?})",
+                    got.as_ref().map(Vec::len),
+                    whole.len()
+                ));
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    // Bytes after the last member that do not start another one (tape padding,
+    // junk appended to a download): gzip and bzip2 ignore them, and so did the
+    // single-member decoders used before, so reading every member must not
+    // start refusing such files, as flate2's MultiGzDecoder and bzip2's
+    // MultiBzDecoder do. xz, like the xz tool, accepts stream padding (zeros
+    // in multiples of four) and refuses anything else; the single-stream xz
+    // decoder used before refused the padding as well.
+    #[tokio::test]
+    async fn bytes_after_the_last_member_are_handled_like_the_tools() {
+        let dir = tempfile::tempdir().unwrap();
+        let payload = "the only member\n".repeat(32).into_bytes();
+        let cases: [(&str, &[u8], bool); 7] = [
+            ("gz", &[0u8; 512], true),
+            ("gz", b"JUNKJUNK", true),
+            ("gz", &[0x1f], true),
+            ("bz2", &[0u8; 512], true),
+            ("bz2", b"JUNKJUNK", true),
+            ("xz", &[0u8; 512], true),
+            ("xz", b"JUNKJUNK", false),
+        ];
+        let mut failures = Vec::new();
+        for (i, (codec, tail, extracts)) in cases.into_iter().enumerate() {
+            let mut bytes = one_member(codec, &payload);
+            bytes.extend_from_slice(tail);
+            let archive = dir.path().join(format!("tail{i}.txt.{codec}"));
+            std::fs::write(&archive, bytes).unwrap();
+            let outdir = dir.path().join(format!("tail_out{i}"));
+            std::fs::create_dir_all(&outdir).unwrap();
+            let result = extract_single_core(
+                archive.to_string_lossy().to_string(),
+                outdir.to_string_lossy().to_string(),
+                false,
+            )
+            .await;
+            let got = std::fs::read(outdir.join(format!("tail{i}.txt"))).ok();
+            let as_expected = if extracts {
+                got.as_deref() == Some(&payload[..])
+            } else {
+                result.is_err() && got.is_none()
+            };
+            if !as_expected {
+                failures.push(format!(
+                    "{codec} + {} trailing bytes: result {result:?}, extracted {:?} bytes",
+                    tail.len(),
+                    got.as_ref().map(Vec::len)
+                ));
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    // bgzip and pbzip2 compress a tar in independent blocks, each a complete
+    // member, so a member can end exactly between two tar entries. The tar
+    // reader then meets end of input where a header is due, which it takes as
+    // the end of the archive: extraction, the browse listing and the browse
+    // extractor stopped after the first entry and reported success.
+    #[tokio::test]
+    async fn a_tar_split_across_codec_members_extracts_every_entry() {
+        let a = "entry a\n".repeat(100).into_bytes();
+        let b = "entry b\n".repeat(50).into_bytes();
+        let mut builder = tar::Builder::new(Vec::new());
+        for (name, data) in [("a.txt", &a), ("b.txt", &b)] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_entry_type(tar::EntryType::Regular);
+            header.set_cksum();
+            builder.append_data(&mut header, name, &data[..]).unwrap();
+        }
+        let tar_bytes = builder.into_inner().unwrap();
+        // The first member ends where b.txt's header starts: a.txt's 512-byte
+        // header and its 800 bytes of data padded to 1024.
+        let split = 512 + 1024;
+        assert_eq!(&tar_bytes[split + 257..split + 262], b"ustar");
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut failures = Vec::new();
+        for codec in ["gz", "bz2", "xz"] {
+            let archive = dir.path().join(format!("split.tar.{codec}"));
+            std::fs::write(
+                &archive,
+                two_members(codec, &tar_bytes[..split], &tar_bytes[split..]),
+            )
+            .unwrap();
+            let archive = archive.to_string_lossy().to_string();
+
+            let out = dir.path().join(format!("x_{codec}"));
+            std::fs::create_dir_all(&out).unwrap();
+            let result =
+                super::extract_tar_core(archive.clone(), out.to_string_lossy().to_string(), false)
+                    .await;
+            let got_a = std::fs::read(out.join("a.txt")).ok();
+            let got_b = std::fs::read(out.join("b.txt")).ok();
+            if got_a.as_deref() != Some(&a[..]) || got_b.as_deref() != Some(&b[..]) {
+                failures.push(format!(
+                    "{codec} extract: a.txt {:?}, b.txt {:?} bytes (result: {result:?})",
+                    got_a.as_ref().map(Vec::len),
+                    got_b.as_ref().map(Vec::len)
+                ));
+            }
+
+            let listed = crate::archive_browse::list_tar(archive.clone())
+                .await
+                .map(|entries| entries.into_iter().map(|e| e.name).collect::<Vec<_>>());
+            if listed.as_deref() != Ok(&["a.txt".to_string(), "b.txt".to_string()][..]) {
+                failures.push(format!("{codec} listing: {listed:?}"));
+            }
+
+            let browse = dir.path().join(format!("browse_{codec}.txt"));
+            let result = crate::archive_browse::extract_tar_entry_impl(
+                archive,
+                "b.txt".to_string(),
+                browse.to_string_lossy().to_string(),
+                None,
+            )
+            .await;
+            let got = std::fs::read(&browse).ok();
+            if got.as_deref() != Some(&b[..]) {
+                failures.push(format!(
+                    "{codec} browse b.txt: {:?} bytes (result: {result:?})",
+                    got.as_ref().map(Vec::len)
+                ));
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
     }
 
     // The reconstructed member name strips ONLY the trailing codec extension, so
