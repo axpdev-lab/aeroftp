@@ -75,11 +75,29 @@ impl AtomicFile {
                 .open(&temp_path)
                 .await?
         } else {
-            fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&temp_path)
-                .await?
+            let create = || async {
+                fs::OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .open(&temp_path)
+                    .await
+            };
+            match create().await {
+                Ok(file) => file,
+                // A temporary left by a download that was killed, or by one
+                // dropped while its create was still on its way (the guard
+                // below did not exist yet to remove it). Nothing resumes an
+                // atomic download's temporary, and keeping it fails every later
+                // download of the file: removed, then created anew, as
+                // `ResumableFile::open_fresh` does (RESUME-01), so a writer that
+                // really is concurrent still loses the race on `create_new`. A
+                // symlink there is removed as a link, never followed.
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let _ = fs::remove_file(&temp_path).await;
+                    create().await?
+                }
+                Err(e) => return Err(e),
+            }
         };
 
         Ok(Self {
@@ -325,5 +343,24 @@ mod tests {
         assert!(is_download_temp_path("file.bin.aeroardtmp"));
         assert!(!is_download_temp_path("file.bin"));
         assert!(!is_download_temp_path("file.bin.aerardtmp"));
+    }
+
+    /// Review of round 2 of #951: a `.aerotmp` left by a download that was
+    /// killed, or dropped while its create was on its way, made every later
+    /// atomic download of the file fail on `create_new` until it was removed
+    /// by hand.
+    #[tokio::test]
+    async fn an_atomic_download_replaces_a_stale_temporary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let temp = dir.path().join("f.bin.aerotmp");
+        std::fs::write(&temp, b"stale").unwrap();
+        let mut file = AtomicFile::new(path.to_str().unwrap())
+            .await
+            .expect("a stale temporary must not block the download");
+        file.write_all(b"new").await.unwrap();
+        file.commit().await.unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        assert!(!temp.exists());
     }
 }

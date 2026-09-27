@@ -10225,8 +10225,7 @@ async fn upload_with_resume(
 }
 
 /// What a local file is before a download that may write it in place: its
-/// size and modification time and, on Unix, its inode and change time (a
-/// same-length rewrite that puts the old time back still moves those), or
+/// size and modification time and, on Unix, its inode and change time, or
 /// nothing when it does not exist.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct LocalFileState {
@@ -10251,15 +10250,53 @@ fn local_file_state(path: &str) -> Option<LocalFileState> {
     })
 }
 
-/// Remove what a failed or interrupted `--inplace` download left at
-/// `local_path`, and nothing else. A download that failed or was stopped
-/// before it opened the destination (the server had not answered yet) never
-/// touched the file: it is the user's, as it was `before`, and stays. Once the
-/// download truncated it, the old content is gone and the partial one goes.
-fn remove_inplace_leftover(local_path: &str, before: Option<LocalFileState>) {
-    if local_file_state(local_path) != before {
-        let _ = std::fs::remove_file(local_path);
+/// How a local file compares with what it was before an `--inplace`
+/// download that failed or was stopped.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum InplaceChange {
+    /// As it was: the download never opened it.
+    Untouched,
+    /// Its size or its time moved: the download wrote it.
+    Written,
+    /// Only its inode or change time moved. A rewrite that put the old time
+    /// back looks like this, and so does a change another program made to the
+    /// file's metadata alone (chmod, an extended attribute, a hard link) or a
+    /// filesystem that renumbers its inodes (vfat, CIFS without server inode
+    /// numbers, some FUSE mounts): the file may be partial, or the user's and
+    /// untouched.
+    MetadataOnly,
+}
+
+fn inplace_change(before: Option<LocalFileState>, now: Option<LocalFileState>) -> InplaceChange {
+    match (before, now) {
+        (before, now) if before == now => InplaceChange::Untouched,
+        (Some(before), Some(now)) if before.len == now.len && before.modified == now.modified => {
+            InplaceChange::MetadataOnly
+        }
+        _ => InplaceChange::Written,
     }
+}
+
+/// Remove what a failed or interrupted `--inplace` download left at
+/// `local_path`, and nothing else; what it found is returned. A download that
+/// failed or was stopped before it opened the destination (the server had not
+/// answered yet) never touched the file: it is the user's, as it was
+/// `before`, and stays. Once the download truncated it, the old content is
+/// gone and the partial one goes. A change of its metadata alone keeps it,
+/// with a warning: removing on it would delete a user's file the download
+/// never touched whenever another program changed that metadata meanwhile.
+fn remove_inplace_leftover(local_path: &str, before: Option<LocalFileState>) -> InplaceChange {
+    let change = inplace_change(before, local_file_state(local_path));
+    match change {
+        InplaceChange::Written => {
+            let _ = std::fs::remove_file(local_path);
+        }
+        InplaceChange::MetadataOnly => eprintln!(
+            "Warning: '{local_path}' kept, but it may hold a partial download: its size and time are as before, its metadata changed while the download ran"
+        ),
+        InplaceChange::Untouched => {}
+    }
+    change
 }
 
 /// Run a single transfer until it ends, or until Ctrl-C raises `cancelled`:
@@ -10304,8 +10341,36 @@ async fn interrupted_exit(
     what: &str,
 ) -> i32 {
     if let Some(provider) = provider {
-        let _ = tokio::time::timeout(INTERRUPTED_DISCONNECT_GRACE, provider.disconnect()).await;
+        close_after_interrupt(provider).await;
     }
+    report_interrupted(format, what)
+}
+
+/// [`interrupted_exit`] for an `--inplace` download. The destination is
+/// checked before the close, in case a second Ctrl-C ends the process during
+/// it, and once more after the close when it read as untouched: a file
+/// operation the dropped transfer had already queued (an open that truncates
+/// it) can land after the first look, and the close gives it the time to.
+async fn interrupted_inplace_exit(
+    provider: &mut dyn StorageProvider,
+    format: OutputFormat,
+    what: &str,
+    local_path: &str,
+    before: Option<LocalFileState>,
+) -> i32 {
+    let first = remove_inplace_leftover(local_path, before);
+    close_after_interrupt(provider).await;
+    if first == InplaceChange::Untouched {
+        remove_inplace_leftover(local_path, before);
+    }
+    report_interrupted(format, what)
+}
+
+async fn close_after_interrupt(provider: &mut dyn StorageProvider) {
+    let _ = tokio::time::timeout(INTERRUPTED_DISCONNECT_GRACE, provider.disconnect()).await;
+}
+
+fn report_interrupted(format: OutputFormat, what: &str) -> i32 {
     print_error(format, &format!("Interrupted (Ctrl+C): {what}"), 130);
     130
 }
@@ -32413,7 +32478,14 @@ async fn cmd_get(
         // next download resumes from it. Only `--inplace` wrote the
         // destination itself, if it got that far.
         if cli.inplace && !cli.partial {
-            remove_inplace_leftover(local_path, before);
+            return interrupted_inplace_exit(
+                &mut *provider,
+                format,
+                NOT_FINISHED,
+                local_path,
+                before,
+            )
+            .await;
         }
         return interrupted_exit(Some(&mut *provider), format, NOT_FINISHED).await;
     }
@@ -33009,7 +33081,14 @@ async fn pget_fallback_single(
             pb.finish_and_clear();
         }
         if cli.inplace && !cli.partial {
-            remove_inplace_leftover(local_path, before);
+            return interrupted_inplace_exit(
+                &mut *provider,
+                format,
+                NOT_FINISHED,
+                local_path,
+                before,
+            )
+            .await;
         }
         return interrupted_exit(Some(&mut *provider), format, NOT_FINISHED).await;
     }
@@ -70173,8 +70252,6 @@ async fn main() {
     std::process::exit(exit_code);
 }
 
-/// Check if a failed exit code is retryable.
-/// NOT retryable: success (0), usage error (5), auth failure (6), not supported (7).
 /// Run a single-file transfer command, and again while it fails with a
 /// retryable exit, up to `max_attempts`, waiting `sleep_dur` in between.
 /// Ctrl-C ends it: an interrupted attempt is not retried (130 is not a
@@ -70203,6 +70280,9 @@ where
             break;
         }
         if cancelled.load(Ordering::Relaxed) {
+            eprintln!(
+                "Interrupted (Ctrl+C) after attempt {attempt}/{max_attempts} (exit {last_code}): not retrying"
+            );
             return 130;
         }
         if !cli.quiet {
@@ -70216,12 +70296,18 @@ where
                 .await
                 .is_none()
         {
+            eprintln!(
+                "Interrupted (Ctrl+C) before attempt {}/{max_attempts}: not retrying",
+                attempt + 1
+            );
             return 130;
         }
     }
     last_code
 }
 
+/// Check if a failed exit code is retryable.
+/// NOT retryable: success (0), usage error (5), auth failure (6), not supported (7).
 fn is_retryable_exit(code: i32) -> bool {
     // Non-retryable categories (stable across retries, burning attempts is pure noise):
     //   0  success
@@ -77246,6 +77332,19 @@ mod tests {
         stat_stalls: bool,
         /// Counts the whole-file downloads started, across the clones.
         downloads: Arc<AtomicU64>,
+        /// Counts the closes asked for, across the clones.
+        disconnects: Arc<AtomicU64>,
+        /// Never finishes a close: the server the user pressed Ctrl-C on.
+        disconnect_hangs: bool,
+        /// Empties the local file of the download in progress when the
+        /// connection closes: a truncating open the dropped transfer had
+        /// queued, landing late.
+        truncate_on_disconnect: bool,
+        /// Changes only the local file's permissions, then fails: another
+        /// program touching its metadata while the download waits.
+        chmod_then_refuse: bool,
+        /// The local path of the last download asked for.
+        downloading: Arc<std::sync::Mutex<Option<String>>>,
         /// Serves range reads (so `get --segments` takes the segmented engine)
         /// and reports this size; `0` means 1 000 000 bytes.
         ranged_size: u64,
@@ -77276,6 +77375,15 @@ mod tests {
             Ok(())
         }
         async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.disconnects.fetch_add(1, Ordering::Relaxed);
+            if self.truncate_on_disconnect {
+                if let Some(path) = self.downloading.lock().unwrap().clone() {
+                    std::fs::write(path, b"").unwrap();
+                }
+            }
+            if self.disconnect_hangs {
+                std::future::pending::<()>().await;
+            }
             Ok(())
         }
         fn is_connected(&self) -> bool {
@@ -77300,6 +77408,16 @@ mod tests {
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
             self.downloads.fetch_add(1, Ordering::Relaxed);
+            *self.downloading.lock().unwrap() = Some(local_path.to_string());
+            #[cfg(unix)]
+            if self.chmod_then_refuse {
+                use std::os::unix::fs::PermissionsExt;
+                // Past the clock tick of the file's own write.
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                std::fs::set_permissions(local_path, std::fs::Permissions::from_mode(0o600))
+                    .unwrap();
+                return Err(ProviderError::TransferFailed("cut short".to_string()));
+            }
             if self.write_then_refuse {
                 std::fs::write(local_path, b"par").unwrap();
                 return Err(ProviderError::TransferFailed("cut short".to_string()));
@@ -77484,10 +77602,6 @@ mod tests {
             .await
         });
         assert_eq!(code, 130, "-1 means the get was still running");
-        assert!(
-            std::fs::read_dir(dir.path()).unwrap().next().is_none(),
-            "no partial file is left behind"
-        );
     }
 
     /// The same for a single-file `put`.
@@ -77750,19 +77864,122 @@ mod tests {
         );
     }
 
-    /// m5 (review of #951): a failed in-place download that rewrote the file
-    /// with as many bytes and put its time back read as untouched to a (size,
-    /// mtime) check, and its garbage stayed. The file's change time tells it
-    /// apart (Unix only: Windows has no stable change time to read).
+    /// m5 then Minor 2 (reviews of #951): a failed in-place download that
+    /// rewrote the file with as many bytes and put its time back moves only
+    /// its change time, and so does another program that touches the file's
+    /// metadata alone. The two cannot be told apart, and removing on it
+    /// deleted an untouched user file in the second case: the file is kept,
+    /// with a warning (Unix only: Windows has no stable change time to read).
     #[cfg(unix)]
     #[test]
-    fn a_same_length_rewrite_is_not_taken_for_the_untouched_file() {
+    fn a_same_length_rewrite_with_its_time_put_back_is_kept() {
         let (code, kept) = inplace_get_over_an_existing_file(StallingProvider {
             rewrite_same_length_then_refuse: true,
             ..Default::default()
         });
         assert_ne!(code, 0);
-        assert_eq!(kept, None, "the rewritten file stayed");
+        assert_eq!(kept.as_deref(), Some(&b"zzzzzzz"[..]));
+    }
+
+    /// Minor 2 (review of round 2 of #951): the untouched user file was
+    /// deleted when another program changed only its metadata (here its
+    /// permissions) while the download waited on the server.
+    #[cfg(unix)]
+    #[test]
+    fn a_metadata_only_change_keeps_the_local_file() {
+        let (code, kept) = inplace_get_over_an_existing_file(StallingProvider {
+            chmod_then_refuse: true,
+            ..Default::default()
+        });
+        assert_ne!(code, 0);
+        assert_eq!(kept.as_deref(), Some(&b"keep me"[..]));
+    }
+
+    /// Only a change of size or time is a write; a change of the metadata
+    /// alone is its own answer, and no change is untouched.
+    #[test]
+    fn an_inplace_change_is_read_from_size_and_time() {
+        let at = |len, secs, identity| {
+            Some(LocalFileState {
+                len,
+                modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs)),
+                identity,
+            })
+        };
+        let before = at(7, 100, (1, 100, 0));
+        assert_eq!(inplace_change(before, before), InplaceChange::Untouched);
+        assert_eq!(
+            inplace_change(before, at(7, 100, (1, 150, 0))),
+            InplaceChange::MetadataOnly
+        );
+        assert_eq!(
+            inplace_change(before, at(7, 100, (2, 100, 0))),
+            InplaceChange::MetadataOnly
+        );
+        assert_eq!(
+            inplace_change(before, at(3, 100, (1, 150, 0))),
+            InplaceChange::Written
+        );
+        assert_eq!(
+            inplace_change(before, at(7, 160, (1, 160, 0))),
+            InplaceChange::Written
+        );
+        assert_eq!(
+            inplace_change(None, at(3, 160, (1, 160, 0))),
+            InplaceChange::Written
+        );
+        assert_eq!(inplace_change(before, None), InplaceChange::Written);
+    }
+
+    /// Minor 1 (review of round 2 of #951): a truncating open the dropped
+    /// transfer had queued can land after the first look at the destination.
+    /// When that look reads it untouched, it is looked at again once the
+    /// connection has closed.
+    #[test]
+    fn an_inplace_file_truncated_during_the_close_is_removed() {
+        let (code, kept) = inplace_get_over_an_existing_file(StallingProvider {
+            truncate_on_disconnect: true,
+            ..Default::default()
+        });
+        assert_eq!(code, 130);
+        assert_eq!(kept, None, "the emptied file stayed");
+    }
+
+    /// Minor 3 (review of round 2 of #951): an interrupted command closes its
+    /// connection, and does not wait on a server that never answers the close.
+    #[test]
+    fn ctrl_c_closes_the_connection_without_waiting_on_a_hung_server() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        let cli = quiet_cli();
+        let disconnects = Arc::new(AtomicU64::new(0));
+        let code = against_stalling(
+            StallingProvider {
+                disconnect_hangs: true,
+                disconnects: Arc::clone(&disconnects),
+                ..Default::default()
+            },
+            |cancelled| async move {
+                cmd_get(
+                    "memory://",
+                    "/f.bin",
+                    Some(local.as_str()),
+                    false,
+                    1,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                    cancelled,
+                )
+                .await
+            },
+        );
+        assert_eq!(code, 130, "-1 means it was still waiting on the close");
+        assert_eq!(
+            disconnects.load(Ordering::Relaxed),
+            1,
+            "the connection was not closed"
+        );
     }
 
     /// m2 (review of #951): the phases before the transfer did not look at
