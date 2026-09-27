@@ -5874,7 +5874,7 @@
             "importAccept": "Impor",
             "importedBody": "Konfigurasi Anda telah diimpor. Mulai ulang AeroFTP untuk memuat server dan brankas Anda.",
             "restartNow": "Mulai ulang sekarang",
-            "importNothingBody": "Tidak ada yang perlu diimpor: tidak ada file dari konfigurasi Anda saat ini yang perlu disalin ke instalasi Flatpak ini.",
+            "importNothingBody": "Tidak ada yang perlu diimpor: tidak ada file yang perlu disalin ke instalasi Flatpak ini.",
             "importFailedBody": "Impor berhenti karena galat: {error}. File yang sudah disalin ke instalasi Flatpak ini tetap berada di sana, dan tidak ada yang ditimpa. AeroFTP akan menawarkan impor lagi saat aplikasi dijalankan berikutnya."
         },
         "picker": {

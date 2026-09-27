@@ -5874,7 +5874,7 @@
             "importAccept": "Impordi",
             "importedBody": "Teie konfiguratsioon imporditi. Taaskäivitage AeroFTP, et laadida oma serverid ja hoidla.",
             "restartNow": "Taaskäivita kohe",
-            "importNothingBody": "Pole midagi importida: ühtegi faili teie olemasolevast seadistusest ei olnud vaja kopeerida sellesse Flatpaki paigaldusse.",
+            "importNothingBody": "Pole midagi importida: sellesse Flatpaki paigaldusse ei olnud vaja ühtegi faili kopeerida.",
             "importFailedBody": "Importimine peatus veaga: {error}. Sellesse Flatpaki paigaldusse juba kopeeritud failid jäävad sinna alles ja midagi ei kirjutatud üle. AeroFTP pakub importimist uuesti järgmisel käivitamisel."
         },
         "picker": {

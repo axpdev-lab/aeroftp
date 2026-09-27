@@ -5874,7 +5874,7 @@
             "importAccept": "Importálás",
             "importedBody": "A konfigurációja importálva lett. Indítsa újra az AeroFTP-t a kiszolgálói és a széf betöltéséhez.",
             "restartNow": "Újraindítás most",
-            "importNothingBody": "Nincs mit importálni: a meglévő konfigurációjából egyetlen fájlt sem kellett átmásolni ebbe a Flatpak telepítésbe.",
+            "importNothingBody": "Nincs mit importálni: egyetlen fájlt sem kellett átmásolni ebbe a Flatpak telepítésbe.",
             "importFailedBody": "Az importálás hibával leállt: {error}. Az ebbe a Flatpak telepítésbe már átmásolt fájlok ott maradnak, és semmi sem lett felülírva. Az AeroFTP a következő indításkor újra felajánlja az importálást."
         },
         "picker": {

@@ -5893,7 +5893,7 @@
             "importAccept": "Mewnforio",
             "importedBody": "Mewnforiwyd eich ffurfweddiad. Ailgychwynnwch AeroFTP i lwytho eich gweinyddwyr a'ch cell ddiogel.",
             "restartNow": "Ailgychwyn nawr",
-            "importNothingBody": "Dim byd i'w fewnforio: doedd dim angen copïo unrhyw ffeiliau o'ch ffurfweddiad presennol i mewn i'r gosodiad Flatpak hwn.",
+            "importNothingBody": "Dim byd i'w fewnforio: nid oedd angen copïo unrhyw ffeiliau i'r gosodiad Flatpak hwn.",
             "importFailedBody": "Daeth y mewnforio i ben gyda gwall: {error}. Mae'r ffeiliau sydd eisoes wedi'u copïo i mewn i'r gosodiad Flatpak hwn yn aros yno, ac ni chafodd dim ei drosysgrifo. Bydd AeroFTP yn cynnig y mewnforio eto adeg y cychwyn nesaf."
         },
         "picker": {

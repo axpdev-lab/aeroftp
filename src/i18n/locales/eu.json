@@ -5893,7 +5893,7 @@
             "importAccept": "Inportatu",
             "importedBody": "Zure konfigurazioa inportatu da. Berrabiarazi AeroFTP zure zerbitzariak eta kutxa gotorra kargatzeko.",
             "restartNow": "Berrabiarazi orain",
-            "importNothingBody": "Ez dago ezer inportatzeko: zure uneko konfigurazioko fitxategirik ez zen kopiatu behar Flatpak instalazio honetara.",
+            "importNothingBody": "Ez dago ezer inportatzeko: ez zen beharrezkoa izan fitxategirik kopiatzea Flatpak instalazio honetan.",
             "importFailedBody": "Inportazioa errore batekin gelditu da: {error}. Flatpak instalazio honetara jadanik kopiatutako fitxategiak bertan geratzen dira, eta ez da ezer gainidatzi. AeroFTPk inportazioa berriro eskainiko du hurrengo abioan."
         },
         "picker": {

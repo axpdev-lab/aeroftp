@@ -5874,7 +5874,7 @@
             "importAccept": "İçe aktar",
             "importedBody": "Yapılandırmanız içe aktarıldı. Sunucularınızı ve kasanızı yüklemek için AeroFTP'yi yeniden başlatın.",
             "restartNow": "Şimdi yeniden başlat",
-            "importNothingBody": "İçe aktarılacak bir şey yok: mevcut yapılandırmanızdaki hiçbir dosyanın bu Flatpak kurulumuna kopyalanması gerekmedi.",
+            "importNothingBody": "İçe aktarılacak bir şey yok: bu Flatpak kurulumuna kopyalanması gereken herhangi bir dosya yoktu.",
             "importFailedBody": "İçe aktarma bir hatayla durdu: {error}. Bu Flatpak kurulumuna zaten kopyalanmış olan dosyalar orada kalır ve hiçbir şeyin üzerine yazılmadı. AeroFTP, içe aktarmayı bir sonraki başlatmada yeniden önerecek."
         },
         "picker": {

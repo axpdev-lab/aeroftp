@@ -5874,7 +5874,7 @@
             "importAccept": "Ingiza",
             "importedBody": "Usanidi wako umeingizwa. Anzisha upya AeroFTP ili kupakia seva zako na kasha lako.",
             "restartNow": "Anzisha upya sasa",
-            "importNothingBody": "Hakuna cha kuagiza: hakuna faili kutoka kwa mipangilio yako iliyopo iliyohitaji kunakiliwa kwenye usakinishaji huu wa Flatpak.",
+            "importNothingBody": "Hakuna kitu cha kuingiza: hakuna faili zilizohitaji kunakiliwa katika usakinishaji huu wa Flatpak.",
             "importFailedBody": "Uagizaji umesimama na hitilafu: {error}. Faili tayari zilizonakiliwa kwenye usakinishaji huu wa Flatpak zinabaki hapo, na hakuna kilichoandikwa upya. AeroFTP itapendekeza tena uagizaji katika kuanza kwa mara nyingine."
         },
         "picker": {

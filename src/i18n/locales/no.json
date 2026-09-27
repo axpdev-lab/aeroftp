@@ -5893,7 +5893,7 @@
             "importAccept": "Importer",
             "importedBody": "Oppsettet ditt ble importert. Start AeroFTP på nytt for å laste inn serverne og hvelvet ditt.",
             "restartNow": "Start på nytt nå",
-            "importNothingBody": "Ingenting å importere: ingen filer fra din eksisterende konfigurasjon trengte å kopieres inn i denne Flatpak-installasjonen.",
+            "importNothingBody": "Ingenting å importere: ingen filer trengte å kopieres til denne Flatpak-installasjonen.",
             "importFailedBody": "Importen stoppet med en feil: {error}. Filer som allerede er kopiert inn i denne Flatpak-installasjonen, blir værende der, og ingenting ble overskrevet. AeroFTP vil tilby importen på nytt ved neste oppstart."
         },
         "picker": {

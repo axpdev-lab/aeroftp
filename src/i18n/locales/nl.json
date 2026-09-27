@@ -5874,7 +5874,7 @@
             "importAccept": "Importeren",
             "importedBody": "Uw configuratie is geïmporteerd. Start AeroFTP opnieuw op om uw servers en kluis te laden.",
             "restartNow": "Nu opnieuw opstarten",
-            "importNothingBody": "Niets om te importeren: er hoefden geen bestanden uit uw bestaande configuratie naar deze Flatpak-installatie te worden gekopieerd.",
+            "importNothingBody": "Niets te importeren: er hoefden geen bestanden naar deze Flatpak-installatie te worden gekopieerd.",
             "importFailedBody": "Het importeren is gestopt met een fout: {error}. Bestanden die al naar deze Flatpak-installatie zijn gekopieerd, blijven daar staan, en er is niets overschreven. AeroFTP zal het importeren bij de volgende start opnieuw aanbieden."
         },
         "picker": {

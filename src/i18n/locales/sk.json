@@ -5874,7 +5874,7 @@
             "importAccept": "Importovať",
             "importedBody": "Vaša konfigurácia bola importovaná. Reštartujte AeroFTP, aby sa načítali vaše servery a trezor.",
             "restartNow": "Reštartovať teraz",
-            "importNothingBody": "Nič na import: žiadne súbory z vašej existujúcej konfigurácie sa nemuseli kopírovať do tejto inštalácie Flatpak.",
+            "importNothingBody": "Nie je čo importovať: do tejto inštalácie Flatpak nebolo potrebné skopírovať žiadne súbory.",
             "importFailedBody": "Import sa zastavil s chybou: {error}. Súbory už skopírované do tejto inštalácie Flatpak tam zostávajú a nič nebolo prepísané. AeroFTP ponúkne import znova pri ďalšom spustení."
         },
         "picker": {

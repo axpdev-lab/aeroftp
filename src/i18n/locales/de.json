@@ -5874,7 +5874,7 @@
             "importAccept": "Importieren",
             "importedBody": "Ihre Konfiguration wurde importiert. Starten Sie AeroFTP neu, um Ihre Server und den Tresor zu laden.",
             "restartNow": "Jetzt neu starten",
-            "importNothingBody": "Nichts zu importieren: Es mussten keine Dateien aus Ihrer bestehenden Konfiguration in diese Flatpak-Installation kopiert werden.",
+            "importNothingBody": "Nichts zu importieren: Es mussten keine Dateien in diese Flatpak-Installation kopiert werden.",
             "importFailedBody": "Der Import wurde mit einem Fehler abgebrochen: {error}. Dateien, die bereits in diese Flatpak-Installation kopiert wurden, bleiben dort, und nichts wurde überschrieben. AeroFTP bietet den Import beim nächsten Start erneut an."
         },
         "picker": {

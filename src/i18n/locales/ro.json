@@ -5874,7 +5874,7 @@
             "importAccept": "Importă",
             "importedBody": "Configurația dumneavoastră a fost importată. Reporniți AeroFTP pentru a încărca serverele și seiful.",
             "restartNow": "Repornește acum",
-            "importNothingBody": "Nimic de importat: niciun fișier din configurația existentă nu trebuia copiat în această instalare Flatpak.",
+            "importNothingBody": "Nimic de importat: niciun fișier nu a trebuit copiat în această instalare Flatpak.",
             "importFailedBody": "Importul s-a oprit cu o eroare: {error}. Fișierele deja copiate în această instalare Flatpak rămân acolo, și nimic nu a fost suprascris. AeroFTP va propune din nou importul la următoarea pornire."
         },
         "picker": {

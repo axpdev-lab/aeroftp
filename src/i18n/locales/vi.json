@@ -5874,7 +5874,7 @@
             "importAccept": "Nhập",
             "importedBody": "Cấu hình của bạn đã được nhập. Khởi động lại AeroFTP để tải các máy chủ và két an toàn của bạn.",
             "restartNow": "Khởi động lại ngay",
-            "importNothingBody": "Không có gì để nhập: không có tệp nào từ cấu hình hiện có của bạn cần sao chép vào bản cài đặt Flatpak này.",
+            "importNothingBody": "Không có gì để nhập: không có tệp nào cần sao chép vào bản cài đặt Flatpak này.",
             "importFailedBody": "Quá trình nhập đã dừng do lỗi: {error}. Các tệp đã được sao chép vào bản cài đặt Flatpak này vẫn giữ nguyên ở đó, và không có gì bị ghi đè. AeroFTP sẽ đề xuất nhập lại vào lần khởi động tiếp theo."
         },
         "picker": {

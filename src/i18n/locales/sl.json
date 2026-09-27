@@ -5874,7 +5874,7 @@
             "importAccept": "Uvozi",
             "importedBody": "Vaša konfiguracija je bila uvožena. Znova zaženite AeroFTP, da naložite svoje strežnike in trezor.",
             "restartNow": "Znova zaženi zdaj",
-            "importNothingBody": "Nič za uvoz: nobene datoteke iz vaše obstoječe konfiguracije ni bilo treba kopirati v to namestitev Flatpak.",
+            "importNothingBody": "Ni česa uvoziti: v to namestitev Flatpak ni bilo treba kopirati nobenih datotek.",
             "importFailedBody": "Uvoz se je ustavil z napako: {error}. Datoteke, ki so že kopirane v to namestitev Flatpak, ostanejo tam, in nič ni bilo prepisano. AeroFTP bo uvoz znova ponudil ob naslednjem zagonu."
         },
         "picker": {

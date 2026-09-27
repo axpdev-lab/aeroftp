@@ -5874,7 +5874,7 @@
             "importAccept": "Importuj",
             "importedBody": "Twoja konfiguracja została zaimportowana. Uruchom ponownie AeroFTP, aby wczytać serwery i sejf.",
             "restartNow": "Uruchom ponownie teraz",
-            "importNothingBody": "Nic do zaimportowania: żaden plik z Twojej istniejącej konfiguracji nie wymagał skopiowania do tej instalacji Flatpak.",
+            "importNothingBody": "Nie ma nic do zaimportowania: żadne pliki nie musiały zostać skopiowane do tej instalacji Flatpak.",
             "importFailedBody": "Import zatrzymał się z błędem: {error}. Pliki już skopiowane do tej instalacji Flatpak pozostają na miejscu, a nic nie zostało nadpisane. AeroFTP zaproponuje import ponownie przy następnym uruchomieniu."
         },
         "picker": {

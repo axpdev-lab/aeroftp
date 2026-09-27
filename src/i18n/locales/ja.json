@@ -5874,7 +5874,7 @@
             "importAccept": "インポート",
             "importedBody": "構成をインポートしました。サーバーと保管庫を読み込むには AeroFTP を再起動してください。",
             "restartNow": "今すぐ再起動",
-            "importNothingBody": "インポートする項目はありません。既存の設定からこのFlatpakインストールにコピーする必要のあるファイルはありませんでした。",
+            "importNothingBody": "インポートするものはありません:この Flatpak インストールにコピーする必要のあるファイルはありませんでした。",
             "importFailedBody": "インポートはエラーで停止しました: {error}。このFlatpakインストールに既にコピーされたファイルはそのまま残り、上書きされたものはありません。AeroFTPは次回起動時に再度インポートを提案します。"
         },
         "picker": {

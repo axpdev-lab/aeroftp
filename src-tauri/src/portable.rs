@@ -116,10 +116,10 @@ fn legacy_app_config_dir() -> Option<PathBuf> {
     dirs::config_dir().map(|base| base.join(LEGACY_APP_IDENTIFIER))
 }
 
-/// Copy into `dst` every file of `src` that `dst` does not have yet, never
-/// replacing one, and return how many files were copied: zero when `dst`
-/// already had all of them, so a caller can report only what happened.
-fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
+/// The entries the import never carries, whatever the destination holds: a
+/// SQLite sidecar and a symbolic link. Shared by [`copy_missing_tree`] and by
+/// [`has_importable_file`], so the offer and the copy cannot disagree.
+fn never_copied(src: &Path) -> bool {
     // SQLite sidecars belong to one database generation, not to a directory.
     // In particular, after a keystore restore removed -wal/-shm, copying the
     // legacy sidecars on the next boot can replay OLD pages over the restored
@@ -130,7 +130,7 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
         .iter()
         .any(|suffix| name.ends_with(suffix))
     {
-        return Ok(0);
+        return true;
     }
     // The tree we import here is a config tree the user consented to copy, but a
     // symlink inside it can point anywhere: outside the consented tree (dragging
@@ -138,11 +138,37 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
     // would recurse until path-length exhaustion. So we never follow links, we
     // skip them; skipping also kills the cycle recursion. `symlink_metadata`
     // never follows the link; a metadata error means the path is gone, and the
-    // `is_dir`/`is_file` checks below already no-op on a missing path.
+    // callers' `is_dir`/`is_file` checks already no-op on a missing path.
     if let Ok(meta) = src.symlink_metadata() {
         if meta.file_type().is_symlink() {
-            return Ok(0);
+            return true;
         }
+    }
+    false
+}
+
+/// True when `src` holds at least one file [`copy_missing_tree`] would carry,
+/// at any depth. An empty host config, or one made only of sidecars, symbolic
+/// links and empty folders, has nothing to import.
+fn has_importable_file(src: &Path) -> bool {
+    if never_copied(src) {
+        return false;
+    }
+    if src.is_dir() {
+        std::fs::read_dir(src)
+            .map(|entries| entries.flatten().any(|e| has_importable_file(&e.path())))
+            .unwrap_or(false)
+    } else {
+        src.is_file()
+    }
+}
+
+/// Copy into `dst` every file of `src` that `dst` does not have yet, never
+/// replacing one, and return how many files were copied: zero when `dst`
+/// already had all of them, so a caller can report only what happened.
+fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
+    if never_copied(src) {
+        return Ok(0);
     }
     if src.is_dir() {
         std::fs::create_dir_all(dst)?;
@@ -386,16 +412,16 @@ fn host_config_dir_impl(
     home: Option<PathBuf>,
     leaf: &str,
     current: Option<PathBuf>,
-    is_dir: impl Fn(&Path) -> bool,
+    offerable: impl Fn(&Path) -> bool,
 ) -> Option<PathBuf> {
     if !is_flatpak {
         return None;
     }
     let candidate = home?.join(".config").join(leaf);
-    // A no-op (candidate == data root) or a non-existent host config is nothing
-    // to import; bail so the caller never offers an empty or self-referential
-    // migration.
-    if current.as_deref() == Some(candidate.as_path()) || !is_dir(&candidate) {
+    // A no-op (candidate == data root) or a host config with nothing to copy is
+    // nothing to import; bail so the caller never offers an empty or
+    // self-referential migration.
+    if current.as_deref() == Some(candidate.as_path()) || !offerable(&candidate) {
         return None;
     }
     Some(candidate)
@@ -403,7 +429,8 @@ fn host_config_dir_impl(
 
 /// The real host `~/.config/<leaf>` as seen from inside a Flatpak sandbox
 /// (visible thanks to `--filesystem=home`). `None` when not under Flatpak, when
-/// that directory does not exist, or when it resolves to the current data root.
+/// that directory does not exist or holds no file the import would copy, or when
+/// it resolves to the current data root.
 ///
 /// `$HOME` inside the sandbox is the real host home, while `dirs::config_dir()`
 /// is redirected into the sandbox, so the host path is built from `$HOME`
@@ -414,8 +441,15 @@ pub fn host_config_dir_under_flatpak() -> Option<PathBuf> {
         dirs::home_dir(),
         aeroftp_data_leaf(),
         aeroftp_data_root(),
-        |p| p.is_dir(),
+        host_config_offerable,
     )
+}
+
+/// Offer the import only when the host config has something to copy: the offer
+/// says an existing configuration was found, and accepting an empty one would
+/// end in "nothing to import".
+fn host_config_offerable(dir: &Path) -> bool {
+    dir.is_dir() && has_importable_file(dir)
 }
 
 /// Whether a first-run host-config import should be offered, and the paths.
@@ -1167,6 +1201,45 @@ mod tests {
         let same = home.join(".config").join("aeroftp");
         let got = host_config_dir_impl(true, Some(home), "aeroftp", Some(same), |_| true);
         assert!(got.is_none());
+    }
+
+    /// The home layout the offer looks at: `<home>/.config/aeroftp`.
+    fn host_config_home(tmp: &tempfile::TempDir) -> (PathBuf, PathBuf) {
+        let home = tmp.path().join("home");
+        let config = home.join(".config").join("aeroftp");
+        std::fs::create_dir_all(&config).unwrap();
+        (home, config)
+    }
+
+    #[test]
+    fn host_config_with_nothing_to_copy_is_not_offered() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        // Only what the import never copies: an empty folder, a SQLite sidecar
+        // and a symbolic link.
+        std::fs::create_dir_all(config.join("plugins")).unwrap();
+        std::fs::write(config.join("history.db-wal"), b"stale").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(tmp.path(), config.join("elsewhere")).unwrap();
+
+        let got = host_config_dir_impl(true, Some(home), "aeroftp", None, host_config_offerable);
+
+        assert!(
+            got.is_none(),
+            "an import with nothing to copy was offered: {got:?}"
+        );
+    }
+
+    #[test]
+    fn host_config_with_a_file_to_copy_is_offered() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::create_dir_all(config.join("plugins").join("p")).unwrap();
+        std::fs::write(config.join("plugins").join("p").join("plugin.json"), b"{}").unwrap();
+
+        let got = host_config_dir_impl(true, Some(home), "aeroftp", None, host_config_offerable);
+
+        assert_eq!(got.as_deref(), Some(config.as_path()));
     }
 
     /// A host config and an empty sandbox data root, as the import finds them.

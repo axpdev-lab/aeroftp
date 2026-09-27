@@ -5874,7 +5874,7 @@
             "importAccept": "Import",
             "importedBody": "Konfigurasi anda telah diimport. Mulakan semula AeroFTP untuk memuatkan pelayan dan bilik kebal anda.",
             "restartNow": "Mula semula sekarang",
-            "importNothingBody": "Tiada apa untuk diimport: tiada fail daripada konfigurasi sedia ada anda perlu disalin ke dalam pemasangan Flatpak ini.",
+            "importNothingBody": "Tiada apa-apa untuk diimport: tiada fail yang perlu disalin ke dalam pemasangan Flatpak ini.",
             "importFailedBody": "Import berhenti dengan ralat: {error}. Fail yang telah disalin ke dalam pemasangan Flatpak ini kekal di situ, dan tiada apa yang ditulis ganti. AeroFTP akan menawarkan import semula pada permulaan seterusnya."
         },
         "picker": {

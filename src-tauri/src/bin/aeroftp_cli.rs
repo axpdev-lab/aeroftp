@@ -38630,7 +38630,7 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
                             source
                         );
                     } else {
-                        println!("Nothing to import: no file from {source} needed copying into the sandbox.");
+                        println!("Nothing to import: no file needed copying from {source} into the sandbox.");
                     }
                 }
             }
