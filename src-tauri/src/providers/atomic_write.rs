@@ -300,6 +300,53 @@ pub(crate) mod temp_claim {
             assert!(!same_file(&opened, &temp));
         }
 
+        /// Mutation of the final round of #951: `claim` took a file whose name
+        /// had been taken over between its open and its lock (a probe removed
+        /// it as stale and another download made a new one) for its own. The
+        /// replacement is made inside the lock call.
+        #[test]
+        fn a_claim_on_a_replaced_temporary_is_refused() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            let other = dir.path().join("other");
+            let file = std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&temp)
+                .unwrap();
+            let replaced_then_locked = |_: &std::fs::File| {
+                std::fs::write(&other, b"second").unwrap();
+                std::fs::rename(&other, &temp).unwrap();
+                Ok(())
+            };
+            assert_eq!(
+                claim(&file, &temp, replaced_then_locked)
+                    .err()
+                    .map(|e| e.kind()),
+                Some(ErrorKind::AlreadyExists)
+            );
+        }
+
+        /// The same between a probe's open and its lock: the file now at the
+        /// name is another writer's, and the probe leaves it.
+        #[test]
+        fn a_probe_leaves_a_temporary_replaced_before_its_lock() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            let other = dir.path().join("other");
+            std::fs::write(&temp, b"stale").unwrap();
+            let replaced_then_locked = |_: &std::fs::File| {
+                std::fs::write(&other, b"second").unwrap();
+                std::fs::rename(&other, &temp).unwrap();
+                Ok(())
+            };
+            assert_eq!(
+                take_if_stale(&temp, replaced_then_locked).unwrap(),
+                Found::Live
+            );
+            assert_eq!(std::fs::read(&temp).unwrap(), b"second");
+        }
+
         /// A live writer's temporary is refused by a resume, which would
         /// otherwise append into it.
         #[test]
@@ -683,6 +730,30 @@ mod tests {
         file.commit().await.unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"new");
         assert!(!temp.exists());
+    }
+
+    /// Review of 04b35bac (#951): a resume opened the `.aerotmp` a live
+    /// download was still writing and appended to it, and its commit then
+    /// published the first writer's half, followed by its own bytes, as the
+    /// complete file. The resume is refused while the first writer lives, and
+    /// the first publishes what it wrote, whole.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_resume_does_not_publish_a_live_writers_temporary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let path = path.to_str().unwrap();
+        let mut first = AtomicFile::new(path).await.expect("the first writer");
+        first.write_all(b"first half").await.unwrap();
+        let resumed = ResumableFile::open_in(path, false).await;
+        assert_eq!(
+            resumed.err().map(|e| e.kind()),
+            Some(std::io::ErrorKind::AlreadyExists),
+            "a resume took a live writer's temporary"
+        );
+        first.write_all(b", second half").await.unwrap();
+        first.commit().await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"first half, second half");
     }
 
     /// Verification of round 4 of #951 (F2): the writers of `.aerotmp` that

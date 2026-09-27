@@ -94,14 +94,26 @@ static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::At
 /// lock, or on NFS, where `flock` can block even when asked not to, the file
 /// is opened as before these locks.
 fn claim_temp(temp: &Path) -> io::Result<std::fs::File> {
+    claim_temp_with(temp, |file| file.try_lock())
+}
+
+/// [`claim_temp`] with the lock given, so a test can act between the open and
+/// the lock.
+fn claim_temp_with(
+    temp: &Path,
+    lock: impl Fn(&std::fs::File) -> Result<(), std::fs::TryLockError>,
+) -> io::Result<std::fs::File> {
     let file = std::fs::OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(false)
         .open(temp)?;
+    // Windows takes no lock (see above).
+    #[cfg(not(unix))]
+    let _ = &lock;
     #[cfg(unix)]
     if locks_usable(temp) {
-        match file.try_lock() {
+        match lock(&file) {
             Ok(()) => {
                 use std::os::unix::fs::MetadataExt;
                 let (open, named) = (file.metadata()?, std::fs::symlink_metadata(temp)?);
@@ -757,6 +769,29 @@ impl AsyncWrite for StreamingAtomicWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Mutation of the final round of #951: the delta writer's claim took a
+    /// temporary whose name had been taken over between its open and its lock
+    /// for its own, and emptied another writer's file.
+    #[cfg(unix)]
+    #[test]
+    fn a_claim_on_a_replaced_temporary_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = dir.path().join("f.bin.aerotmp");
+        let other = dir.path().join("other");
+        let replaced_then_locked = |_: &std::fs::File| {
+            std::fs::write(&other, b"second").unwrap();
+            std::fs::rename(&other, &temp).unwrap();
+            Ok(())
+        };
+        assert_eq!(
+            claim_temp_with(&temp, replaced_then_locked)
+                .err()
+                .map(|e| e.kind()),
+            Some(io::ErrorKind::AlreadyExists)
+        );
+        assert_eq!(std::fs::read(&temp).unwrap(), b"second");
+    }
     use crate::aerorsync::engine_adapter::{apply_delta_streaming, EngineDeltaOp, MemoryBaseline};
     use std::time::Duration;
     use tempfile::TempDir;
