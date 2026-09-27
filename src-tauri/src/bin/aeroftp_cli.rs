@@ -7790,12 +7790,16 @@ fn sync_doctor_planned_upload_sizes(
                             OneWayPair::Skip | OneWayPair::LeftOpen => None,
                         };
                     }
-                    if local_size == remote_size
-                        && compare_mtime(lm, rm, window) == std::cmp::Ordering::Equal
-                    {
+                    // The decisions `sync` takes, snapshot included.
+                    if bisync_pair_is_current(
+                        snapshot,
+                        path,
+                        (*local_size, lm),
+                        (*remote_size, rm),
+                        window,
+                    ) {
                         return None;
                     }
-                    // The decision `sync` takes, snapshot included.
                     match bisync_conflict_action(
                         conflict_mode,
                         snapshot,
@@ -7803,7 +7807,6 @@ fn sync_doctor_planned_upload_sizes(
                         (*local_size, lm),
                         (*remote_size, rm),
                         window,
-                        ModifyWindow::LOCAL,
                     ) {
                         "upload" | "rename" => Some(*local_size),
                         _ => None,
@@ -10570,6 +10573,8 @@ fn absorb_engine_stats(
 /// Outcome of the converged shared-executor download batch.
 struct SharedDownloadOutcome {
     downloaded: u32,
+    /// Local path to the state each download left when it completed.
+    landed: HashMap<String, (u64, String)>,
     errors: Vec<String>,
     download_segments: ftp_client_gui_lib::transfer_settings::ResolvedDownloadSegments,
     /// G102: files this batch did NOT transfer because `--max-transfer` was
@@ -10598,13 +10603,39 @@ struct SharedDownloadOutcome {
 /// batch-lifecycle events inherit the trait's no-op defaults.
 struct CliBatchSink {
     errors: Mutex<Vec<String>>,
+    /// Download targets, remote path to local path: each completed download
+    /// is read back from disk the moment its `file_complete` arrives.
+    targets: HashMap<String, String>,
+    /// Local path to the state each download left, read when it completed.
+    landed: Mutex<HashMap<String, (u64, String)>>,
 }
 
 impl CliBatchSink {
     fn new() -> Self {
         Self {
             errors: Mutex::new(Vec::new()),
+            targets: HashMap::new(),
+            landed: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// A sink that also notes what each of these downloads, `(remote, local,
+    /// size)`, left on disk when it completed.
+    fn for_downloads(files: &[(String, String, u64)]) -> Self {
+        Self {
+            targets: files
+                .iter()
+                .map(|(remote, local, _)| (remote.clone(), local.clone()))
+                .collect(),
+            ..Self::new()
+        }
+    }
+
+    fn take_landed(&self) -> HashMap<String, (u64, String)> {
+        self.landed
+            .lock()
+            .map(|mut g| std::mem::take(&mut *g))
+            .unwrap_or_default()
     }
 
     fn take_errors(&self) -> Vec<String> {
@@ -10617,6 +10648,21 @@ impl CliBatchSink {
 
 impl ftp_client_gui_lib::transfer_event_sink::TransferEventSink for CliBatchSink {
     fn emit_transfer_event(&self, event: ftp_client_gui_lib::TransferEvent) {
+        if event.event_type == "file_complete" {
+            // Emitted after the file is committed and its time stamped, so
+            // this is the state the download left.
+            let local = event
+                .path
+                .as_ref()
+                .and_then(|remote| self.targets.get(remote));
+            if let Some(local) = local {
+                if let Some(state) = sync_local_state(local) {
+                    if let Ok(mut g) = self.landed.lock() {
+                        g.insert(local.clone(), state);
+                    }
+                }
+            }
+        }
         if event.event_type == "file_error" {
             let msg = event
                 .message
@@ -10826,7 +10872,7 @@ async fn run_shared_provider_download_batch(
         })
     };
 
-    let sink = Arc::new(CliBatchSink::new());
+    let sink = Arc::new(CliBatchSink::for_downloads(files));
     let dyn_sink: Arc<dyn TransferEventSink> = sink.clone();
 
     let resolved_download_segments = runtime_settings.download_segments.clone();
@@ -10879,6 +10925,7 @@ async fn run_shared_provider_download_batch(
 
     Ok(SharedDownloadOutcome {
         downloaded: batch_result.completed,
+        landed: sink.take_landed(),
         errors: sink.take_errors(),
         download_segments: resolved_download_segments,
         over_budget: max_transfer_skipped as u32,
@@ -46904,9 +46951,11 @@ struct BisyncOutcome {
 struct BisyncRunPaths<'a> {
     /// Pairs found in sync.
     in_sync: &'a [&'a str],
-    /// Planned uploads and downloads.
+    /// Planned uploads.
     uploaded: &'a [&'a str],
-    downloaded: &'a [&'a str],
+    /// Completed downloads, with the state each left on disk when it
+    /// completed.
+    downloaded: &'a HashMap<String, (u64, String)>,
     /// `--track-renames` renames that went through, `(old, new)`.
     renamed: &'a [(&'a str, &'a str)],
     /// Deletes that went through, on either side.
@@ -46914,13 +46963,13 @@ struct BisyncRunPaths<'a> {
 }
 
 /// What the run settled, from what it did: the pairs in sync and the uploads
-/// as the local scan saw them, the downloads as they landed on disk (read
-/// back from `local`), the new names of renames; the deletes and the old names
-/// are removed. The planned transfers count only when `transfers_complete`:
-/// they are known by count, not by path, so a run that left one behind
-/// records none of them.
+/// as the local scan saw them, the downloads as they were when each completed
+/// (not as the file is when the run ends: an edit made since is a change the
+/// next run must see), the new names of renames; the deletes and the old
+/// names are removed. The uploads count only when `transfers_complete`: they
+/// are known by count, not by path, so a run that left one behind records
+/// none of them.
 fn bisync_outcome(
-    local: &str,
     local_map: &HashMap<&str, (u64, Option<&str>)>,
     paths: BisyncRunPaths<'_>,
     transfers_complete: bool,
@@ -46942,14 +46991,10 @@ fn bisync_outcome(
                 outcome.settled.insert(path.to_string(), state);
             }
         }
-        for path in paths.downloaded {
-            if let Ok(meta) = std::fs::metadata(Path::new(local).join(path)) {
-                outcome.settled.insert(
-                    path.to_string(),
-                    (meta.len(), sync_local_mtime(&meta).unwrap_or_default()),
-                );
-            }
-        }
+    }
+    // Each of these is known to have completed, whatever else the run left.
+    for (path, state) in paths.downloaded {
+        outcome.settled.insert(path.clone(), state.clone());
     }
     for (old, new) in paths.renamed {
         outcome.removed.insert(old.to_string());
@@ -47103,16 +47148,6 @@ fn destination_is_current(
         window.order_text(src_mtime, dst_mtime),
         Some(std::cmp::Ordering::Greater)
     )
-}
-
-/// Order two mtimes under `window` for `--direction both`. A date that is
-/// missing or cannot be read is unknown, and an unknown date orders as equal,
-/// as does every pair under a size-only window: it used to fall back to
-/// comparing the raw strings, so an FTP `LIST` date (`Sep 24 19:41`) ranked
-/// against an ISO one by its first letter and a conflict was settled at
-/// random.
-fn compare_mtime(a: Option<&str>, b: Option<&str>, window: ModifyWindow) -> std::cmp::Ordering {
-    window.order_text(a, b).unwrap_or(std::cmp::Ordering::Equal)
 }
 
 /// The conflict policy `sync` runs with: `newer` by default in `--direction
@@ -47325,6 +47360,20 @@ async fn sync_checksum_verdicts(
     verdicts
 }
 
+/// How to settle the pairs a run left open, for the direction it ran in.
+fn sync_open_pairs_hint(direction: &str) -> &'static str {
+    if direction == "both" {
+        "To settle them: make the two copies the same, choose a rule for them \
+         (--conflict-mode rename, larger or smaller), or sync them one way \
+         (--direction upload or download, with --files-from naming them). \
+         --resync does not settle them. Deleting one copy by hand is not a way \
+         out: with --delete the next run deletes the other copy too."
+    } else {
+        "To transfer them, run again with --conflict-mode source and without \
+         --update, or with --files-from naming the ones to copy."
+    }
+}
+
 /// Up to `limit` paths joined for a message, then how many more there are.
 fn sync_path_list(paths: &[String], limit: usize) -> String {
     let shown = paths[..paths.len().min(limit)].join(", ");
@@ -47463,21 +47512,23 @@ enum ChangedSide {
 
 /// Which side changed since the last bisync snapshot, when exactly one did.
 /// The snapshot records the size both sides had and the LOCAL mtime, so the
-/// local side is read by size and time under `local_window` (two local
-/// clocks) and the remote side by size alone: the question is asked only when
-/// the remote dates do not order the pair.
+/// local side is read by size and time with the local clock
+/// ([`ModifyWindow::LOCAL`], whatever `--modify-window` says: two local
+/// clocks have no skew, and a window sized for a server in another zone
+/// would hide an edit) and the remote side by size alone: the question is
+/// asked only when the remote dates do not order the pair.
 fn bisync_changed_side(
     snapshot: Option<&BisyncSnapshot>,
     path: &str,
     local_size: u64,
     local_mtime: Option<&str>,
     remote_size: u64,
-    local_window: ModifyWindow,
 ) -> Option<ChangedSide> {
     let (size, mtime) = snapshot?.files.get(path)?;
     let local_changed = local_size != *size
         || matches!(
-            local_window.order_text(local_mtime, Some(mtime.as_str()).filter(|m| !m.is_empty())),
+            ModifyWindow::LOCAL
+                .order_text(local_mtime, Some(mtime.as_str()).filter(|m| !m.is_empty())),
             Some(std::cmp::Ordering::Less | std::cmp::Ordering::Greater)
         );
     let remote_changed = remote_size != *size;
@@ -47500,13 +47551,35 @@ fn local_pair_window(requested: Option<std::time::Duration>) -> ModifyWindow {
     )
 }
 
+/// Whether `sync --direction both` leaves a pair as it is: the same size and
+/// the same date within the window. When no date orders the pair (a size-only
+/// window, a date missing), the same size is current unless the snapshot says
+/// the local copy changed since the last run: a same-size local edit is a
+/// change, and read as current it would never be uploaded.
+fn bisync_pair_is_current(
+    snapshot: Option<&BisyncSnapshot>,
+    path: &str,
+    (local_size, local_mtime): (u64, Option<&str>),
+    (remote_size, remote_mtime): (u64, Option<&str>),
+    window: ModifyWindow,
+) -> bool {
+    local_size == remote_size
+        && match window.order_text(local_mtime, remote_mtime) {
+            Some(std::cmp::Ordering::Equal) => true,
+            Some(_) => false,
+            None => {
+                bisync_changed_side(snapshot, path, local_size, local_mtime, remote_size)
+                    != Some(ChangedSide::Local)
+            }
+        }
+}
+
 /// What `sync --direction both` does with a pair whose copies differ:
 /// "upload", "download", "rename", or "skip" (the pair is left open).
 /// `newer` and `older` follow the dates when they order the pair; when they do
 /// not (a size-only window, a date missing, the same date within the window),
 /// the side the bisync snapshot says changed since the last run is the newer
 /// one, and a pair the snapshot cannot decide either is left open.
-#[allow(clippy::too_many_arguments)]
 fn bisync_conflict_action(
     conflict_mode: &str,
     snapshot: Option<&BisyncSnapshot>,
@@ -47514,7 +47587,6 @@ fn bisync_conflict_action(
     (local_size, local_mtime): (u64, Option<&str>),
     (remote_size, remote_mtime): (u64, Option<&str>),
     window: ModifyWindow,
-    local_window: ModifyWindow,
 ) -> &'static str {
     let dates_order = matches!(
         window.order_text(local_mtime, remote_mtime),
@@ -47523,14 +47595,7 @@ fn bisync_conflict_action(
     let by_snapshot = if dates_order {
         None
     } else {
-        bisync_changed_side(
-            snapshot,
-            path,
-            local_size,
-            local_mtime,
-            remote_size,
-            local_window,
-        )
+        bisync_changed_side(snapshot, path, local_size, local_mtime, remote_size)
     };
     match (conflict_mode, by_snapshot) {
         ("newer" | "newest", Some(ChangedSide::Local))
@@ -48124,6 +48189,12 @@ fn sync_relative_path(path: &Path, root: &str) -> String {
 }
 
 /// A local file's modification time in the form `sync` compares.
+/// A local file's size and mtime as the scans record them, read now.
+fn sync_local_state(path: &str) -> Option<(u64, String)> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.len(), sync_local_mtime(&meta).unwrap_or_default()))
+}
+
 fn sync_local_mtime(meta: &std::fs::Metadata) -> Option<String> {
     meta.modified().ok().map(|t| {
         let dt: chrono::DateTime<chrono::Utc> = t.into();
@@ -48765,8 +48836,8 @@ async fn cmd_sync(
     if !modify_window.compares_times() && !quiet {
         eprintln!("Note: {}", modify_window.describe());
     }
-    // Two local copies (a file against its bisync snapshot, or against
-    // `--compare-dest`): the local window on both sides.
+    // Two local copies (a file against `--compare-dest`): the local window
+    // on both sides.
     let local_window = local_pair_window(pair_rule.requested_window());
     // `--checksum`: the verdict of every same-size pair, read before the plan
     // so each direction decides on it.
@@ -48927,10 +48998,14 @@ async fn cmd_sync(
                 let current = match checksum_verdicts.get(path) {
                     Some(same) => same,
                     None => {
-                        size == rsize
-                            && (skip_matching
-                                || compare_mtime(lm, rm, modify_window)
-                                    == std::cmp::Ordering::Equal)
+                        (skip_matching && size == rsize)
+                            || bisync_pair_is_current(
+                                prev_snapshot.as_ref(),
+                                path,
+                                (*size, lm),
+                                (*rsize, rm),
+                                modify_window,
+                            )
                     }
                 };
                 if current {
@@ -48945,7 +49020,6 @@ async fn cmd_sync(
                         (*size, lm),
                         (*rsize, rm),
                         modify_window,
-                        local_window,
                     );
                     match action {
                         "upload" => {
@@ -49251,6 +49325,7 @@ async fn cmd_sync(
         }
     }
 
+    conflicts_open.sort_unstable();
     if !quiet {
         let mut conflict_info = if conflicts_resolved > 0 {
             format!(
@@ -49278,6 +49353,7 @@ async fn cmd_sync(
                 "Left open, both copies stay as they are (changed, and nothing says which copy is newer): {}",
                 sync_path_list(&conflicts_open, 20)
             );
+            eprintln!("{}", sync_open_pairs_hint(direction));
         }
     }
 
@@ -49591,6 +49667,10 @@ async fn cmd_sync(
     let mut downloaded: u32 = 0;
     let mut deleted: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
+    // What each download left on disk, read when it completed (relative
+    // path): the bisync snapshot records that, not the file as it is when
+    // the run ends, which a later edit may already have changed.
+    let mut landed: HashMap<String, (u64, String)> = HashMap::new();
     // DAG-P2-07 (block E): a sync cycle runs an upload batch and a download
     // batch on the converged DAG engine; fold their engine stats into one
     // snapshot for the `--json` result via `absorb_engine_stats`. `None` while
@@ -50032,6 +50112,9 @@ async fn cmd_sync(
                         .await;
                         if res.used_delta {
                             downloaded += 1;
+                            if let Some(state) = sync_local_state(&local_path_s) {
+                                landed.insert(rel.clone(), state);
+                            }
                             // The house convention is the logical size of the
                             // RECONSTRUCTED file, read from local metadata, as
                             // `cmd_get --delta` (:31148) and the classic task
@@ -50090,6 +50173,10 @@ async fn cmd_sync(
         }
     }
     let download_jobs = leftover_download_jobs;
+    let relative_of_local: HashMap<String, String> = download_jobs
+        .iter()
+        .map(|(relative, local_path, _, _)| (local_path.clone(), relative.clone()))
+        .collect();
 
     // PD-CLI-CONV-D: converge the sync download transfer phase on the SAME
     // shared provider executor + orchestrator `aeroftp get -r` uses
@@ -50134,6 +50221,11 @@ async fn cmd_sync(
             {
                 Ok(outcome) => {
                     downloaded += outcome.downloaded;
+                    for (local_path, state) in outcome.landed {
+                        if let Some(relative) = relative_of_local.get(&local_path) {
+                            landed.insert(relative.clone(), state);
+                        }
+                    }
                     over_budget += outcome.over_budget;
                     errors.extend(outcome.errors);
                     absorb_engine_stats(&mut engine_stats, outcome.engine_stats);
@@ -50165,6 +50257,7 @@ async fn cmd_sync(
                     if let Some(parent) = Path::new(&local_path).parent() {
                         let _ = std::fs::create_dir_all(parent);
                     }
+                    let written = local_path.clone();
                     match download_transfer_task(
                         url,
                         remote_path,
@@ -50178,7 +50271,7 @@ async fn cmd_sync(
                     )
                     .await
                     {
-                        Ok(()) => Ok(path),
+                        Ok(()) => Ok((path, sync_local_state(&written))),
                         Err(err) => Err(format!("download {}: {}", path, err)),
                     }
                 }
@@ -50190,7 +50283,12 @@ async fn cmd_sync(
 
         for result in download_results {
             match result {
-                Ok(_) => downloaded += 1,
+                Ok((path, state)) => {
+                    downloaded += 1;
+                    if let Some(state) = state {
+                        landed.insert(path, state);
+                    }
+                }
                 Err(err) => errors.push(err),
             }
         }
@@ -50362,12 +50460,11 @@ async fn cmd_sync(
         let outcome = BisyncOutcome {
             rebuilt: resync,
             ..bisync_outcome(
-                local,
                 &local_map,
                 BisyncRunPaths {
                     in_sync: &in_sync,
                     uploaded: &to_upload,
-                    downloaded: &to_download,
+                    downloaded: &landed,
                     renamed: &renames_done,
                     deleted: &deleted_paths,
                 },
@@ -57719,6 +57816,52 @@ fn note_incomplete_watch_snapshot(snapshot: &WatchLocalSnapshot, quiet: bool) {
     );
 }
 
+/// The JSON line a watch cycle prints.
+fn watch_cycle_payload(
+    cycle: u64,
+    trigger: &str,
+    stats: &SyncCycleStats,
+    elapsed_secs: f64,
+    timestamp: &str,
+    error_correction: bool,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "cycle": cycle,
+        "trigger": trigger,
+        "exit_code": stats.exit_code,
+        "uploaded": stats.uploaded,
+        "downloaded": stats.downloaded,
+        "deleted": stats.deleted,
+        "skipped": stats.skipped,
+        "errors": stats.error_count,
+        "elapsed_secs": elapsed_secs,
+        "timestamp": timestamp,
+    });
+    // G102: a watch cycle that stopped on the budget says so, in the same
+    // place a consumer already reads the counters. Emitted only when it
+    // happened, so the cycle payload of an ordinary run keeps its shape.
+    if stats.over_budget > 0 {
+        payload["over_budget"] = serde_json::json!(stats.over_budget);
+    }
+    // The same for the pairs a cycle left open and the emptied directories it
+    // could not remove, in the shape the `sync` result gives them.
+    if !stats.conflicts_open.is_empty() {
+        payload["conflicts_open"] = serde_json::json!(stats.conflicts_open);
+    }
+    if !stats.dirs_kept.is_empty() {
+        payload["dirs_kept"] = serde_json::json!(stats.dirs_kept);
+    }
+    if error_correction {
+        payload["ec_generated"] = serde_json::json!(stats.ec_generated);
+        payload["ec_skipped_too_large"] = serde_json::json!(stats.ec_skipped_too_large);
+        payload["ec_skipped_low_benefit"] = serde_json::json!(stats.ec_skipped_low_benefit);
+        payload["ec_generate_failed"] = serde_json::json!(stats.ec_generate_failed);
+        payload["ec_sidecar_deleted"] = serde_json::json!(stats.ec_sidecar_deleted);
+        payload["ec_sidecar_delete_failed"] = serde_json::json!(stats.ec_sidecar_delete_failed);
+    }
+    payload
+}
+
 /// Build the local side of a watch cycle incrementally: refresh metadata only
 /// for watcher-reported paths, and take everything else from the snapshot.
 /// This avoids a full walkdir when only a few files changed.
@@ -57975,6 +58118,12 @@ async fn cmd_sync_watch(
     // Helper macro to run one sync cycle.
     // Usage: run_sync_cycle!("trigger")           : full walkdir scan (None)
     //        run_sync_cycle!("trigger", entries)   : incremental (Some(entries))
+    // The paths the watcher reported while a cycle ran: mostly the cycle's
+    // own writes. They must not start another cycle, but the incremental
+    // snapshot has to learn them, or the next cycle reads a file the last one
+    // downloaded as it was before, and transfers it back.
+    let mut changed_during_cycle: Vec<std::path::PathBuf> = Vec::new();
+
     macro_rules! run_sync_cycle {
         ($trigger:expr) => {
             run_sync_cycle!($trigger, None)
@@ -58022,46 +58171,14 @@ async fn cmd_sync_watch(
             // Emit cycle status with detailed stats
             if matches!(format, OutputFormat::Json) {
                 let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-                let mut payload = serde_json::json!({
-                    "cycle": cycle,
-                    "trigger": trigger_label,
-                    "exit_code": stats.exit_code,
-                    "uploaded": stats.uploaded,
-                    "downloaded": stats.downloaded,
-                    "deleted": stats.deleted,
-                    "skipped": stats.skipped,
-                    "errors": stats.error_count,
-                    "elapsed_secs": (elapsed.as_millis() as f64) / 1000.0,
-                    "timestamp": ts,
-                });
-                // G102: a watch cycle that stopped on the budget says so, in the
-                // same place a consumer already reads the counters. Emitted
-                // only when it happened, so the cycle payload of an ordinary
-                // run keeps its shape.
-                if stats.over_budget > 0 {
-                    payload["over_budget"] = serde_json::json!(stats.over_budget);
-                }
-                // The same for the pairs a cycle left open and the emptied
-                // directories it could not remove: named only when there are.
-                if !stats.conflicts_open.is_empty() {
-                    payload["conflicts_open"] = serde_json::json!(stats.conflicts_open);
-                }
-                if !stats.dirs_kept.is_empty() {
-                    payload["dirs_kept"] = serde_json::json!(stats.dirs_kept);
-                }
-                if error_correction_pct.is_some() {
-                    payload["ec_generated"] = serde_json::json!(stats.ec_generated);
-                    payload["ec_skipped_too_large"] =
-                        serde_json::json!(stats.ec_skipped_too_large);
-                    payload["ec_skipped_low_benefit"] =
-                        serde_json::json!(stats.ec_skipped_low_benefit);
-                    payload["ec_generate_failed"] = serde_json::json!(stats.ec_generate_failed);
-                    payload["ec_sidecar_deleted"] =
-                        serde_json::json!(stats.ec_sidecar_deleted);
-                    payload["ec_sidecar_delete_failed"] =
-                        serde_json::json!(stats.ec_sidecar_delete_failed);
-                }
-                print_json(&payload);
+                print_json(&watch_cycle_payload(
+                    cycle,
+                    trigger_label,
+                    &stats,
+                    (elapsed.as_millis() as f64) / 1000.0,
+                    &ts,
+                    error_correction_pct.is_some(),
+                ));
             } else if !quiet {
                 let ts = chrono::Local::now().format("%H:%M:%S");
                 let left_open = if stats.conflicts_open.is_empty() {
@@ -58091,8 +58208,11 @@ async fn cmd_sync_watch(
                 }
             }
 
-            // Drain any watcher events accumulated during the sync
-            while async_rx.try_recv().is_ok() {}
+            // Drain the watcher events accumulated during the sync: they do
+            // not start a cycle, and the incremental snapshot takes them in.
+            while let Ok(paths) = async_rx.try_recv() {
+                changed_during_cycle.extend(paths);
+            }
 
             stats.exit_code
         }};
@@ -58133,6 +58253,7 @@ async fn cmd_sync_watch(
     }
 
     // Build initial snapshot after first sync (or immediately if --watch-no-initial)
+    changed_during_cycle.clear();
     if use_incremental {
         local_snapshot = build_watch_local_snapshot(local, &local_filter);
         note_incomplete_watch_snapshot(&local_snapshot, quiet);
@@ -58178,6 +58299,15 @@ async fn cmd_sync_watch(
                     );
                     local_snapshot = WatchLocalSnapshot::from_scan(&scan);
                     run_sync_cycle!(trigger.as_str(), Some(scan));
+                    let written = std::mem::take(&mut changed_during_cycle);
+                    if !written.is_empty() {
+                        local_snapshot = WatchLocalSnapshot::from_scan(&incremental_local_scan(
+                            local_path,
+                            &written,
+                            &local_snapshot,
+                            &local_filter,
+                        ));
+                    }
                     if cancelled.load(Ordering::SeqCst) {
                         if !quiet {
                             eprintln!("\nWatch mode stopped. {} sync cycles completed.", cycle_count);
@@ -58191,6 +58321,7 @@ async fn cmd_sync_watch(
                     // fresh snapshot for the next event, so a transient error
                     // heals instead of lasting until the periodic rescan.
                     run_sync_cycle!(trigger.as_str());
+                    changed_during_cycle.clear();
                     if use_incremental {
                         local_snapshot = build_watch_local_snapshot(local, &local_filter);
                         note_incomplete_watch_snapshot(&local_snapshot, quiet);
@@ -58209,6 +58340,7 @@ async fn cmd_sync_watch(
                     continue;
                 }
                 run_sync_cycle!("rescan");
+                changed_during_cycle.clear();
                 // Rebuild snapshot after full rescan
                 if use_incremental {
                     local_snapshot = build_watch_local_snapshot(local, &local_filter);
@@ -58491,7 +58623,7 @@ async fn sync_doctor_report(
             &local_entries,
             &remote_entries,
             default_time_ref,
-            (direction == "both")
+            (direction == "both" && !resync)
                 .then(|| load_bisync_snapshot(local))
                 .flatten()
                 .as_ref(),
@@ -73752,31 +73884,32 @@ mod tests {
         );
     }
 
-    /// `--modify-window` is the same-instant window of `--direction both` too:
-    /// it used to demand the exact second there.
+    /// `--modify-window` is the same-instant window of `--direction both` too
+    /// (it used to demand the exact second there). A date that is not an
+    /// instant (an FTP `LIST` date) orders nothing: the same size is then
+    /// current unless the snapshot says the local copy changed.
     #[test]
     fn both_compares_times_within_the_window() {
         let w = ModifyWindow::default();
-        assert_eq!(
-            compare_mtime(Some(T0), Some(T0_PLUS_1), w),
-            std::cmp::Ordering::Equal
-        );
-        assert_eq!(
-            compare_mtime(Some(T0_PLUS_60), Some(T0), w),
-            std::cmp::Ordering::Greater
-        );
-        assert_eq!(
-            compare_mtime(
-                Some(T0_PLUS_60),
-                Some(T0),
-                ModifyWindow::Seconds { secs: 120 }
-            ),
-            std::cmp::Ordering::Equal
-        );
-        // An FTP LIST date is not an instant: unknown, so equal.
-        assert_eq!(
-            compare_mtime(Some("Sep 24 19:41"), Some(T0), w),
-            std::cmp::Ordering::Equal
+        let current = |local: Option<&str>, remote: Option<&str>, window, snapshot| {
+            bisync_pair_is_current(snapshot, "a.txt", (12, local), (12, remote), window)
+        };
+        assert!(current(Some(T0), Some(T0_PLUS_1), w, None));
+        assert!(!current(Some(T0_PLUS_60), Some(T0), w, None));
+        assert!(current(
+            Some(T0_PLUS_60),
+            Some(T0),
+            ModifyWindow::Seconds { secs: 120 },
+            None
+        ));
+        assert!(current(Some(T0), Some("Sep 24 19:41"), w, None));
+        let snapshot = BisyncSnapshot {
+            synced_at: "2020-01-01T00:00:00Z".to_string(),
+            files: HashMap::from([("a.txt".to_string(), (12, T0_PLUS_60.to_string()))]),
+        };
+        assert!(
+            !current(Some(T0), Some("Sep 24 19:41"), w, Some(&snapshot)),
+            "the local copy moved since the snapshot"
         );
     }
 
@@ -78491,6 +78624,9 @@ mod tests {
         }
     }
 
+    /// What [`SharedTreeProvider`] runs after each download it writes.
+    type AfterDownload = Arc<dyn Fn(&str) + Send + Sync>;
+
     /// The time [`SharedTreeProvider`] lists for every file it holds.
     const SHARED_TREE_MTIME: &str = "2026-09-26T12:00:00";
 
@@ -78506,7 +78642,10 @@ mod tests {
         precision: Option<std::time::Duration>,
         /// Runs with the local path after each download has written it: a
         /// test's way to act while the run is still going.
-        after_download: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+        after_download: Option<AfterDownload>,
+        /// Clone-backed, like the FTP connection pool: batches go through the
+        /// shared executor, which enforces `--max-transfer` by count.
+        pooled: bool,
     }
 
     impl SharedTreeProvider {
@@ -78535,6 +78674,25 @@ mod tests {
         }
         fn mtime_precision(&self) -> Option<std::time::Duration> {
             self.precision
+        }
+        fn transfer_executor_kind(
+            &self,
+        ) -> ftp_client_gui_lib::providers::ProviderTransferExecutorKind {
+            use ftp_client_gui_lib::providers::ProviderTransferExecutorKind;
+            if self.pooled {
+                ProviderTransferExecutorKind::FtpConnectionPool
+            } else {
+                ProviderTransferExecutorKind::LockedSingle
+            }
+        }
+        fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            if self.pooled {
+                Ok(Box::new(self.clone()))
+            } else {
+                Err(ProviderError::NotSupported(
+                    "clone_for_transfer".to_string(),
+                ))
+            }
         }
         fn display_name(&self) -> String {
             "shared-tree".to_string()
@@ -80109,32 +80267,40 @@ mod tests {
                         .enable_all()
                         .build()
                         .expect("test runtime")
-                        .block_on(cmd_sync(
-                            "memory://",
-                            local,
-                            "/root",
-                            "both",
-                            dry_run,
-                            false,
-                            &[],
-                            None,
-                            0,
-                            false,
-                            None,
-                            None,
-                            "",
-                            false,
-                            None,
-                            None,
-                            None,
-                            rule,
-                            false,
-                            cli,
-                            OutputFormat::Json,
-                            Arc::new(AtomicBool::new(false)),
-                            None,
-                            false,
-                        ))
+                        .block_on(async move {
+                            // `--max-transfer` counts the whole process.
+                            let _session = SESSION_TRANSFER_TEST_LOCK.lock().await;
+                            SESSION_TRANSFERRED_BYTES.store(0, Ordering::Relaxed);
+                            let stats = cmd_sync(
+                                "memory://",
+                                local,
+                                "/root",
+                                "both",
+                                dry_run,
+                                false,
+                                &[],
+                                None,
+                                0,
+                                false,
+                                None,
+                                None,
+                                "",
+                                false,
+                                None,
+                                None,
+                                None,
+                                rule,
+                                false,
+                                cli,
+                                OutputFormat::Json,
+                                Arc::new(AtomicBool::new(false)),
+                                None,
+                                false,
+                            )
+                            .await;
+                            SESSION_TRANSFERRED_BYTES.store(0, Ordering::Relaxed);
+                            stats
+                        })
                 })
                 .expect("spawn the command thread")
                 .join()
@@ -80227,6 +80393,17 @@ mod tests {
     /// recorded as it was when it completed.
     #[test]
     fn a_local_edit_after_a_download_completes_is_not_recorded_as_synced() {
+        local_edit_after_a_download_completes(false);
+    }
+
+    /// The same through the shared batch executor, where the state is taken
+    /// from the executor's `file_complete` event.
+    #[test]
+    fn a_local_edit_after_a_pooled_download_completes_is_not_recorded_as_synced() {
+        local_edit_after_a_download_completes(true);
+    }
+
+    fn local_edit_after_a_download_completes(pooled: bool) {
         let fixture = FilesFromFixture::new();
         fixture.local_file("a.txt", 5120);
         fixture.local_file("b.txt", 5120);
@@ -80240,6 +80417,7 @@ mod tests {
         .unwrap();
         let mut remote =
             SharedTreeProvider::with_files(&[("a.txt", &[b'r'; 5200]), ("b.txt", &[b'r'; 5200])]);
+        remote.pooled = pooled;
         // When the second download lands, the file downloaded first is edited,
         // as a user saving it while the run goes on.
         let edited = Arc::new(AtomicBool::new(false));
@@ -80352,6 +80530,123 @@ mod tests {
         let stats = run_sync_rule(remote, &local, "both", true, false, &[], rule, &cli);
         assert_eq!((stats.uploaded, stats.downloaded), (0, 0));
         assert_eq!(stats.conflicts_open, vec!["a.txt".to_string()]);
+    }
+
+    /// The snapshot's rule for transfers left behind, through `cmd_sync`: a
+    /// run that `--max-transfer` stopped part-way records none of its
+    /// uploads, which are known by count only. Recorded, the file it did not
+    /// upload would read next time as deleted on the remote side.
+    #[test]
+    fn a_run_stopped_by_the_transfer_budget_records_no_upload() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 3);
+        fixture.local_file("b.txt", 3);
+        let local = fixture.local();
+        let remote = SharedTreeProvider {
+            pooled: true,
+            ..Default::default()
+        };
+        let cli = Cli {
+            quiet: true,
+            // The budget admits files while less than it has moved: the
+            // first 3-byte file, not the second.
+            max_transfer: Some("2".to_string()),
+            ..test_cli()
+        };
+        let stats = run_sync_shared(&remote, &local, false, NEWER_WINS, &cli);
+        assert_eq!(
+            (stats.uploaded, stats.over_budget, stats.error_count),
+            (1, 1, 0),
+            "one upload fits the budget"
+        );
+        let snapshot = load_bisync_snapshot(&local).expect("the snapshot is saved");
+        let stored = remote.files.lock().unwrap().clone();
+        for path in snapshot.files.keys() {
+            assert!(
+                stored.contains_key(&format!("/root/{path}")),
+                "{path} is recorded as synced and is not on the remote"
+            );
+        }
+    }
+
+    /// The doctor's EC estimate for `both` reads the snapshot on disk, as the
+    /// run does: a pair the dates cannot order is an upload when the snapshot
+    /// says the local side changed, and nothing without one or under
+    /// `--resync`.
+    #[test]
+    fn sync_doctor_estimates_both_with_the_snapshot_on_disk() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 5000);
+        let local = fixture.local();
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let estimate = |with_snapshot: bool, resync: bool| {
+            let snapshot = Path::new(&local).join(BISYNC_SNAPSHOT_FILE);
+            if with_snapshot {
+                std::fs::write(
+                    &snapshot,
+                    format!(
+                        r#"{{"synced_at":"2020-01-01T00:00:00Z","files":{{"a.txt":[5120,"{FIXTURE_MTIME}"]}}}}"#
+                    ),
+                )
+                .unwrap();
+            } else {
+                let _ = std::fs::remove_file(&snapshot);
+            }
+            let mut remote = MemTreeProvider::root_files(&[("a.txt", 5120)]);
+            remote.precision = Some(None);
+            run_against_remote(remote, || {
+                sync_doctor_report(
+                    "memory://",
+                    &local,
+                    "/root",
+                    "both",
+                    false,
+                    &[],
+                    Some(10),
+                    0,
+                    false,
+                    "newer",
+                    resync,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                )
+            })
+            .unwrap_or_else(|code| panic!("sync-doctor failed with exit code {code}"))
+            .ec_estimated_sidecars
+        };
+        assert_eq!(estimate(true, false), Some(1));
+        assert_eq!(estimate(false, false), Some(0));
+        assert_eq!(estimate(true, true), Some(0));
+    }
+
+    /// A watch cycle's JSON line names the pairs it left open and the
+    /// directories it kept, in the shape of the `sync` result, and only when
+    /// there are any.
+    #[test]
+    fn a_watch_cycle_line_names_open_pairs_and_kept_directories() {
+        let quiet_cycle = SyncCycleStats::default();
+        let line = watch_cycle_payload(1, "rescan", &quiet_cycle, 0.5, "now", false);
+        assert!(line.get("conflicts_open").is_none());
+        assert!(line.get("dirs_kept").is_none());
+
+        let busy = SyncCycleStats {
+            conflicts_open: vec!["a.txt".to_string()],
+            dirs_kept: vec![CliSyncKeptDir {
+                path: "old".to_string(),
+                reason: "not empty".to_string(),
+            }],
+            ..Default::default()
+        };
+        let line = watch_cycle_payload(2, "watcher: 1 paths", &busy, 0.5, "now", false);
+        assert_eq!(line["conflicts_open"], serde_json::json!(["a.txt"]));
+        assert_eq!(
+            line["dirs_kept"],
+            serde_json::json!([{"path": "old", "reason": "not empty"}])
+        );
     }
 
     /// The pairs left open are listed in a stable order, not the order a hash
@@ -80932,27 +81227,27 @@ mod tests {
     }
 
     /// A run that left a planned transfer behind (`--max-transfer`, a cancel)
-    /// knows its transfers by count only, so it records none of them; the
-    /// pairs it found in sync are recorded either way, and a download is
-    /// recorded as the file on disk, not as the scan saw it.
+    /// knows its uploads by count only, so it records none of them; the pairs
+    /// it found in sync and the downloads known to have completed are
+    /// recorded either way, each download as it was when it completed.
     #[test]
     fn a_bisync_outcome_records_transfers_only_when_all_went_through() {
-        let dir = tempfile::tempdir().expect("scratch directory");
-        let local = dir.path().to_string_lossy().into_owned();
-        std::fs::write(dir.path().join("down.txt"), b"landed!").unwrap();
         let local_map: HashMap<&str, (u64, Option<&str>)> = HashMap::from([
             ("same.txt", (1, Some(FIXTURE_MTIME))),
             ("up.txt", (3, Some(FIXTURE_MTIME))),
             ("down.txt", (2, Some(FIXTURE_MTIME))),
         ]);
+        let landed = HashMap::from([(
+            "down.txt".to_string(),
+            (7, "2026-09-26T12:00:00".to_string()),
+        )]);
         let run = |complete| {
             bisync_outcome(
-                &local,
                 &local_map,
                 BisyncRunPaths {
                     in_sync: &["same.txt"],
                     uploaded: &["up.txt"],
-                    downloaded: &["down.txt"],
+                    downloaded: &landed,
                     renamed: &[],
                     deleted: &[],
                 },
@@ -80960,10 +81255,12 @@ mod tests {
             )
         };
         let partial = run(false);
+        let mut settled: Vec<&String> = partial.settled.keys().collect();
+        settled.sort();
         assert_eq!(
-            partial.settled.keys().collect::<Vec<_>>(),
-            vec!["same.txt"],
-            "only the pair found in sync"
+            settled,
+            vec!["down.txt", "same.txt"],
+            "the pair found in sync and the completed download, not the upload"
         );
         let full = run(true);
         assert_eq!(
@@ -80971,9 +81268,9 @@ mod tests {
             Some(&(3, FIXTURE_MTIME.to_string()))
         );
         assert_eq!(
-            full.settled.get("down.txt").map(|(size, _)| *size),
-            Some(7),
-            "the file the download left on disk"
+            full.settled.get("down.txt"),
+            Some(&(7, "2026-09-26T12:00:00".to_string())),
+            "the state the download left when it completed"
         );
     }
 
@@ -81003,12 +81300,11 @@ mod tests {
         ];
         let local_map = sync_entry_map(&scanned);
         let outcome = bisync_outcome(
-            &local,
             &local_map,
             BisyncRunPaths {
                 in_sync: &[],
                 uploaded: &[],
-                downloaded: &[],
+                downloaded: &HashMap::new(),
                 renamed: &[("old.txt", "new.txt")],
                 deleted: &["gone.txt"],
             },

@@ -415,16 +415,29 @@ impl CloudService {
                 c.is_dir,
             ) {
                 // The next cycle reads the local side against this time with
-                // the local clock. A download keeps the remote time, which it
-                // stamped on the local copy; a backend that lists none (FTP
-                // `LIST` dates) leaves the downloaded file's own, read back
-                // from disk, or the local side would be compared by size alone
-                // and a same-size local edit would go unseen.
-                if matches!(action, SyncAction::Download) && !c.is_dir && entry.modified.is_none() {
-                    entry.modified = std::fs::metadata(config.local_folder.join(&c.relative_path))
+                // the local clock, so it must be the time the local file has
+                // now. A download keeps the remote time, which it stamped on
+                // the local copy; a backend that lists none (FTP `LIST` dates)
+                // leaves the downloaded file's own, read back from disk, or the
+                // local side would be compared by size alone and a same-size
+                // local edit would go unseen. An upload is stamped with the
+                // server's time on the provider path, so the time the scan saw
+                // before it is stale: kept, both sides would read as changed
+                // and the pair would be a conflict every cycle.
+                let read_back = !c.is_dir
+                    && match action {
+                        SyncAction::Upload => true,
+                        SyncAction::Download => entry.modified.is_none(),
+                        _ => false,
+                    };
+                if read_back {
+                    let on_disk = std::fs::metadata(config.local_folder.join(&c.relative_path))
                         .and_then(|meta| meta.modified())
                         .ok()
                         .map(DateTime::<Utc>::from);
+                    if on_disk.is_some() || matches!(action, SyncAction::Download) {
+                        entry.modified = on_disk;
+                    }
                 }
                 index_files.insert(c.relative_path.clone(), entry);
             }
