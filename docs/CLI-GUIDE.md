@@ -526,6 +526,8 @@ aeroftp-cli rm sftp://user@host /var/www/old-file.txt
 aeroftp-cli rm sftp://user@host /var/www/old-folder/ -rf
 ```
 
+Without `-r`, `rm` removes a file, a link, or an empty directory. A directory that still holds anything (dotfiles included) is refused with exit code 9 and nothing is removed: on S3, Azure, Google Drive, OneDrive, Dropbox, pCloud, Box, MEGA, Filen, kDrive, Koofr, Jottacloud and WebDAV the provider's own delete of a folder takes its content along, so `-r` is the only way to ask for that. The served FTP `RMD`, SFTP `RMDIR`, the mount's `rmdir`, and the MCP and AeroAgent deletes without `recursive` follow the same rule.
+
 ### rmdir - Remove an Empty Directory
 
 ```bash
