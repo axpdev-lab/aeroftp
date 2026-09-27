@@ -1445,6 +1445,51 @@ enum RcloneFilenameEncryption {
     Off,
 }
 
+/// How an rclone crypt password and salt given on the command line are
+/// written. `auto` reads an rclone-obscured value as such and refuses one that
+/// reads two ways (a 22+ character value that would reveal to 2 characters or
+/// fewer); `clear` takes them as typed; `obscured` as rclone.conf keeps them.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq, Default)]
+enum SecretFormArg {
+    #[default]
+    Auto,
+    Clear,
+    Obscured,
+}
+
+/// The form `crypt set-form` records: never a guess.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
+enum RecordedFormArg {
+    Clear,
+    Obscured,
+}
+
+impl RecordedFormArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Clear => "clear",
+            Self::Obscured => "obscured",
+        }
+    }
+}
+
+/// The forms of a password and a salt given on the command line.
+type CryptSecretForms = (
+    Option<ftp_client_gui_lib::rclone_crypt::CryptSecretForm>,
+    Option<ftp_client_gui_lib::rclone_crypt::CryptSecretForm>,
+);
+
+impl SecretFormArg {
+    fn form(self) -> Option<ftp_client_gui_lib::rclone_crypt::CryptSecretForm> {
+        use ftp_client_gui_lib::rclone_crypt::CryptSecretForm;
+        match self {
+            Self::Auto => None,
+            Self::Clear => Some(CryptSecretForm::Clear),
+            Self::Obscured => Some(CryptSecretForm::Obscured),
+        }
+    }
+}
+
 /// Issue #252: per-create privacy level for providers that expose a
 /// three-level access model (OpenDrive today). Mirrors rclone's
 /// `--opendrive-access`. Defaults to `private` (max-privacy, opt-out)
@@ -2057,10 +2102,10 @@ enum Commands {
         #[arg(default_value = "/")]
         remote: String,
         /// Password for rclone crypt (can also be passed via AEROFTP_RCLONE_CRYPT_PASSWORD)
-        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD")]
+        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
         /// Salt for rclone crypt (can also be passed via AEROFTP_RCLONE_CRYPT_PASSWORD2)
-        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD2")]
+        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD2", hide_env_values = true)]
         password2: Option<String>,
         /// Filename encryption mode
         #[arg(long, default_value = "standard")]
@@ -2078,6 +2123,13 @@ enum Commands {
         /// Hash algorithm to use (sha256 or md5)
         #[arg(long, short = 'a', default_value = "sha256")]
         algorithm: String,
+        /// How --password is written: auto, clear (as typed) or obscured (as
+        /// in rclone.conf)
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        password_form: SecretFormArg,
+        /// How --password2 is written: auto, clear or obscured
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        salt_form: SecretFormArg,
     },
     /// Reconcile local and remote trees with categorized diff output
     Reconcile {
@@ -5395,6 +5447,17 @@ enum CryptCommands {
         #[arg(long)]
         keyfile: Option<String>,
     },
+    /// Record how an rclone-crypt profile's stored password and salt are
+    /// written, as typed (clear) or as rclone.conf keeps them (obscured), so
+    /// they are read that way instead of guessed. Needs --profile.
+    SetForm {
+        /// How the stored password is written
+        #[arg(long, value_enum)]
+        password_form: Option<RecordedFormArg>,
+        /// How the stored salt (password2) is written
+        #[arg(long, value_enum)]
+        salt_form: Option<RecordedFormArg>,
+    },
     /// Convert a headerless vault to a portable remote marker
     ToHeaded {
         /// Server URL (omit when using --profile)
@@ -5633,6 +5696,13 @@ enum RcloneCryptCommands {
         /// Optional rclone password2/salt (empty by default)
         #[arg(long, env = "AEROFTP_RCLONE_CRYPT_SALT", hide_env_values = true)]
         salt: Option<String>,
+        /// How --password is written: auto, clear (as typed) or obscured (as
+        /// in rclone.conf)
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        password_form: SecretFormArg,
+        /// How --salt is written: auto, clear or obscured
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        salt_form: SecretFormArg,
         /// Filename encryption mode
         #[arg(long, value_enum, default_value_t = RcloneFilenameEncryption::Standard)]
         filename_encryption: RcloneFilenameEncryption,
@@ -11811,7 +11881,41 @@ fn load_active_user_profiles(
         None => return Err("NO_ACTIVE_USER".to_string()),
     };
     match user_partitions::cli_list_server_profiles_for_user(store, target.id) {
-        Ok(profiles) => Ok(profiles),
+        Ok(mut profiles) => {
+            // rclone-crypt secrets that `import rclone --apply` used to leave in
+            // a profile's options move to the vault and a binding, once; the list
+            // is re-read, merged and written in one transaction, and only when a
+            // move applied.
+            let uid = scoped_credential_user_id(cli, store);
+            let notes = ftp_client_gui_lib::bridge_commands::migrate_legacy_rclone_crypt_on_load(
+                &mut profiles,
+                |key, secret| dual_store_server_cred_checked(store, uid, key, secret),
+                |key| read_server_cred(store, uid, key),
+                |apply| {
+                    let (stored, written) = user_partitions::cli_update_server_profiles_for_user(
+                        store, target.id, apply,
+                    )?;
+                    if written {
+                        mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
+                    }
+                    Ok((stored, written))
+                },
+            );
+            // A profile left unmoved keeps its secrets in its options and opens
+            // without its overlay: say so on every run until it is fixed, once
+            // per run (a command can load the list more than once).
+            static NOTES_SHOWN: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            if !cli.quiet
+                && !notes.is_empty()
+                && !NOTES_SHOWN.swap(true, std::sync::atomic::Ordering::Relaxed)
+            {
+                for note in &notes {
+                    eprintln!("Warning: {note}");
+                }
+            }
+            Ok(profiles)
+        }
         Err(e) if e == "USER_LOCKED" => Err(e),
         Err(e) if e == "NO_ACTIVE_USER" => Err(e),
         Err(_) => {
@@ -11837,6 +11941,34 @@ fn load_active_user_profiles(
 /// the persistent active user). The legacy `config_server_profiles` blob is
 /// mirrored ONLY when writing to the persistent active user, so downgrade
 /// to a single-user CLI does not silently surface someone else's profiles.
+/// Whether `user_id` is the persistent active user (not a `--user` override).
+fn is_active_user(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
+) -> bool {
+    ftp_client_gui_lib::user_partitions::cli_get_active_user(store)
+        .ok()
+        .flatten()
+        .map(|u| u.id)
+        == Some(user_id)
+}
+
+/// Mirror a written profile list to the legacy blob, only when the write
+/// targets the persistent active user. Mirroring a `--user other` write would
+/// leak `other`'s profile names into the legacy blob, which is exactly the
+/// cross-partition leak R3 forbids.
+fn mirror_profiles_to_legacy_blob_if_active(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
+    profiles: &[serde_json::Value],
+) {
+    if is_active_user(store, user_id) {
+        if let Ok(serialized) = serde_json::to_string(profiles) {
+            let _ = store.store("config_server_profiles", &serialized);
+        }
+    }
+}
+
 fn save_active_user_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
@@ -11847,23 +11979,11 @@ fn save_active_user_profiles(
         Some(t) => t,
         None => return Err("NO_ACTIVE_USER".to_string()),
     };
-    let active_id = user_partitions::cli_get_active_user(store)
-        .ok()
-        .flatten()
-        .map(|u| u.id);
-    let writing_to_active = active_id == Some(target.id);
+    let writing_to_active = is_active_user(store, target.id);
 
     match user_partitions::cli_replace_server_profiles_for_user(store, target.id, profiles) {
         Ok(()) => {
-            // Only mirror to the legacy blob when the write targets the
-            // persistent active user. Mirroring a `--user other` write would
-            // leak `other`'s profile names into the legacy blob, which is
-            // exactly the cross-partition leak R3 forbids.
-            if writing_to_active {
-                if let Ok(serialized) = serde_json::to_string(profiles) {
-                    let _ = store.store("config_server_profiles", &serialized);
-                }
-            }
+            mirror_profiles_to_legacy_blob_if_active(store, target.id, profiles);
             Ok(())
         }
         Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => Err(e),
@@ -28470,7 +28590,10 @@ async fn cli_apply_crypt_overlay(
             }
         },
     };
-    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
+    let stored_password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id));
+    // A secret from the environment carries no recorded form.
+    let password_from_env = stored_password.is_none();
+    let password = stored_password
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
         .unwrap_or_default();
     // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
@@ -28482,9 +28605,12 @@ async fn cli_apply_crypt_overlay(
         );
         return Err(5);
     }
-    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
+    let stored_salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id));
+    let salt_from_env = stored_salt.is_none();
+    let salt = stored_salt
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
+    let (password_form, salt_form) = ftp_client_gui_lib::rclone_crypt::crypt_secret_forms(profile);
     let local_config_json =
         read_server_cred(&store, uid, &format!("aerocrypt_overlay_config_{}", id))
             .filter(|s| !s.is_empty());
@@ -28507,6 +28633,16 @@ async fn cli_apply_crypt_overlay(
             Some(salt.clone())
         },
         with_header,
+        password_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            password_form,
+            password_from_env,
+            "AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM",
+        ),
+        salt_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            salt_form,
+            salt_from_env,
+            "AEROFTP_CRYPT_OVERLAY_SALT_FORM",
+        ),
     };
     match ftp_client_gui_lib::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
         provider,
@@ -36701,6 +36837,34 @@ fn cli_oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static str> {
 /// blobs into the AeroFTP vault, then append the new profiles to
 /// `config_server_profiles` so the GUI lists them on next launch. Mirrors
 /// the `import_rclone_config` Tauri command in `lib.rs`. Issue #214.
+/// The profile `import rclone --apply` saves for one imported server. An
+/// rclone crypt remote becomes the same overlay binding the GUI import makes,
+/// its password and salt written with `store_secret` and recorded clear. Saved
+/// in the options instead, they sat there in clear and no overlay was bound.
+fn imported_server_profile(
+    server: &ftp_client_gui_lib::rclone_import::ServerProfileExport,
+    store_secret: impl FnMut(&str, &str) -> Result<(), String>,
+) -> Result<serde_json::Value, String> {
+    let mut profile = serde_json::json!({
+        "id": server.id,
+        "name": server.name,
+        "host": server.host,
+        "port": server.port,
+        "username": server.username,
+        "protocol": server.protocol,
+        "initialPath": server.initial_path,
+        "color": server.color,
+        "lastConnected": server.last_connected,
+        "options": server.options,
+        "providerId": server.provider_id,
+    });
+    ftp_client_gui_lib::bridge_commands::materialize_imported_crypt_overlay(
+        &mut profile,
+        store_secret,
+    )?;
+    Ok(profile)
+}
+
 async fn apply_rclone_import_to_vault(
     cli: &Cli,
     result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
@@ -36786,19 +36950,11 @@ async fn apply_rclone_import_to_vault(
         if existing_ids.contains(&server.id) {
             continue;
         }
-        profiles.push(serde_json::json!({
-            "id": server.id,
-            "name": server.name,
-            "host": server.host,
-            "port": server.port,
-            "username": server.username,
-            "protocol": server.protocol,
-            "initialPath": server.initial_path,
-            "color": server.color,
-            "lastConnected": server.last_connected,
-            "options": server.options,
-            "providerId": server.provider_id,
-        }));
+        let profile = imported_server_profile(server, |key, secret| {
+            dual_store_server_cred_checked(&store, scoped_uid, key, secret)
+        })
+        .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+        profiles.push(profile);
         profiles_appended += 1;
     }
     save_active_user_profiles(cli, &store, &profiles)
@@ -54587,6 +54743,126 @@ fn bind_after_init(
     }
 }
 
+/// What `crypt set-form` writes: `overlay` with the given forms recorded and
+/// every other field as it was. Refused when it is not an enabled rclone-crypt
+/// binding, and when it would leave one form recorded and the other not: the
+/// unrecorded secret would stay on the reading a refusal was about, which is
+/// why the GUI asks for both before Save.
+fn binding_with_recorded_forms(
+    overlay: &serde_json::Value,
+    password_form: Option<RecordedFormArg>,
+    salt_form: Option<RecordedFormArg>,
+) -> Result<serde_json::Value, String> {
+    let rclone_crypt = overlay.get("enabled").and_then(|v| v.as_bool()) == Some(true)
+        && overlay.get("kind").and_then(|v| v.as_str()) == Some("rclone-crypt");
+    let mut overlay = overlay.clone();
+    let obj = overlay
+        .as_object_mut()
+        .filter(|_| rclone_crypt)
+        .ok_or("This profile has no rclone-crypt overlay.")?;
+    if let Some(form) = password_form {
+        obj.insert("passwordForm".into(), serde_json::json!(form.as_str()));
+    }
+    if let Some(form) = salt_form {
+        obj.insert("saltForm".into(), serde_json::json!(form.as_str()));
+    }
+    match (
+        obj.contains_key("passwordForm"),
+        obj.contains_key("saltForm"),
+    ) {
+        (true, false) => Err("Record the salt's form too: pass --salt-form clear|obscured.".into()),
+        (false, true) => {
+            Err("Record the password's form too: pass --password-form clear|obscured.".into())
+        }
+        _ => Ok(overlay),
+    }
+}
+
+/// `crypt set-form`: record on the `--profile`'s rclone-crypt binding how its
+/// stored password and salt are written, the answer to a "reads two ways"
+/// refusal. Only the binding changes; the secrets stay as they are.
+fn cmd_crypt_set_form(
+    password_form: Option<RecordedFormArg>,
+    salt_form: Option<RecordedFormArg>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    if password_form.is_none() && salt_form.is_none() {
+        print_error(
+            format,
+            "Pass --password-form and/or --salt-form (clear or obscured).",
+            5,
+        );
+        return 5;
+    }
+    let Some(profile_query) = cli.profile.as_deref() else {
+        print_error(format, "crypt set-form needs --profile <name-or-index>.", 5);
+        return 5;
+    };
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let profile_id = match resolve_profile_id_for_query(cli, &store, profile_query, format) {
+        Ok(id) => id,
+        Err(code) => return code,
+    };
+    let profiles = match load_active_user_profiles(cli, &store) {
+        Ok(profiles) => profiles,
+        Err(e) => {
+            print_error(format, &format!("Could not load the profiles: {e}"), 5);
+            return 5;
+        }
+    };
+    let current = profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id.as_str()))
+        .and_then(|p| p.get("aeroCryptOverlay"))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let overlay = match binding_with_recorded_forms(&current, password_form, salt_form) {
+        Ok(overlay) => overlay,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let recorded = (
+        overlay
+            .get("passwordForm")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+        overlay
+            .get("saltForm")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    if let Err(e) =
+        update_profile_field_in_vault(cli, &store, &profile_id, "aeroCryptOverlay", overlay)
+    {
+        print_error(format, &format!("Could not save the profile: {e}"), 4);
+        return 4;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "profile": profile_query,
+            "passwordForm": recorded.0,
+            "saltForm": recorded.1,
+        }));
+    } else {
+        println!(
+            "Recorded for {profile_query}: password {}, salt {}",
+            recorded.0.as_str().unwrap_or("not recorded"),
+            recorded.1.as_str().unwrap_or("not recorded"),
+        );
+    }
+    0
+}
+
 /// Set or clear `aeroCryptOverlay.withHeader` on a saved profile without
 /// touching secrets. Used by `crypt to-headed` / `to-headerless` so connect-time
 /// heal knows the vault's headed intent (tracker #421 item #7).
@@ -56567,6 +56843,7 @@ async fn cmd_rclone_crypt_put(
     remote_path: &str,
     password: &str,
     salt: &str,
+    secret_forms: CryptSecretForms,
     filename_encryption: RcloneFilenameEncryption,
     dir_iv_base64: Option<&str>,
     remote_name: Option<&str>,
@@ -56582,7 +56859,12 @@ async fn cmd_rclone_crypt_put(
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, remote_path));
 
     let (name_key, data_key, name_tweak) =
-        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak(password, salt) {
+        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_forms(
+            password,
+            secret_forms.0,
+            salt,
+            secret_forms.1,
+        ) {
             Ok(keys) => keys,
             Err(e) => {
                 print_error(format, &format!("rclone key derivation failed: {}", e), 5);
@@ -58708,6 +58990,174 @@ mod hashsum_digest_tests {
         assert_ne!(CONTENT_MD5, SERVER_MD5);
     }
 
+    /// `import rclone --apply` turns an rclone crypt remote into the overlay
+    /// binding the GUI import makes: secrets in the vault, recorded clear,
+    /// none left in the profile's options. The values are obscured by rclone
+    /// v1.75.1; the salt is one rclone generates, which a second reveal empties.
+    #[test]
+    fn rclone_apply_binds_a_crypt_remote_with_its_secrets_in_the_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "[base]\ntype = sftp\nhost = sftp.example.invalid\nuser = smoke\n\n\
+             [vault]\ntype = crypt\nremote = base:\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\
+             password2 = V98yILELzRn3G-7rg4ymQ3B0X0zgFAbWo74vIapw-YnWja9Jn3k\n",
+        )
+        .unwrap();
+        let result = ftp_client_gui_lib::rclone_import::import_rclone(&conf).unwrap();
+        let server = result
+            .servers
+            .iter()
+            .find(|s| s.name == "vault")
+            .expect("the crypt remote is imported");
+        let mut vault = std::collections::HashMap::new();
+        let profile = imported_server_profile(server, |k, v| {
+            vault.insert(k.to_string(), v.to_string());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(profile["aeroCryptOverlay"]["kind"], "rclone-crypt");
+        assert_eq!(profile["aeroCryptOverlay"]["passwordForm"], "clear");
+        assert_eq!(profile["aeroCryptOverlay"]["saltForm"], "clear");
+        assert!(profile.pointer("/options/rcloneCryptPassword").is_none());
+        assert!(profile.pointer("/options/rcloneCryptPassword2").is_none());
+        assert_eq!(
+            vault[&format!("aerocrypt_overlay_pw_{}", server.id)],
+            "crypt-pass-954"
+        );
+        assert_eq!(
+            vault[&format!("aerocrypt_overlay_salt_{}", server.id)],
+            "hD1lB5uyIChoDFqhaHOsUg"
+        );
+    }
+
+    /// What `crypt set-form` writes: the forms given, recorded on an enabled
+    /// rclone-crypt binding, every other field (and a form not given) kept;
+    /// nothing for an AeroCrypt or disabled binding.
+    #[test]
+    fn crypt_set_form_writes_only_the_forms_given() {
+        let bound = serde_json::json!({
+            "enabled": true, "kind": "rclone-crypt", "remoteScope": "/enc",
+            "filenameEncryption": "standard", "passwordForm": "obscured"
+        });
+        let written =
+            binding_with_recorded_forms(&bound, None, Some(RecordedFormArg::Clear)).unwrap();
+        assert_eq!(written["passwordForm"], "obscured");
+        assert_eq!(written["saltForm"], "clear");
+        assert_eq!(written["remoteScope"], "/enc");
+        assert_eq!(written["filenameEncryption"], "standard");
+        let written = binding_with_recorded_forms(
+            &bound,
+            Some(RecordedFormArg::Clear),
+            Some(RecordedFormArg::Clear),
+        )
+        .unwrap();
+        assert_eq!(written["passwordForm"], "clear");
+        assert_eq!(written["saltForm"], "clear");
+
+        // One form recorded and not the other is what the GUI will not save.
+        let unrecorded = serde_json::json!({"enabled": true, "kind": "rclone-crypt"});
+        let e = binding_with_recorded_forms(&unrecorded, Some(RecordedFormArg::Clear), None)
+            .unwrap_err();
+        assert!(e.contains("--salt-form"), "{e}");
+        let e = binding_with_recorded_forms(&bound, Some(RecordedFormArg::Clear), None);
+        assert!(e.unwrap_err().contains("--salt-form"));
+
+        let aerocrypt = serde_json::json!({"enabled": true, "kind": "aerocrypt"});
+        assert!(
+            binding_with_recorded_forms(&aerocrypt, Some(RecordedFormArg::Clear), None)
+                .unwrap_err()
+                .contains("no rclone-crypt overlay")
+        );
+        let disabled = serde_json::json!({"enabled": false, "kind": "rclone-crypt"});
+        assert!(
+            binding_with_recorded_forms(&disabled, Some(RecordedFormArg::Clear), None).is_err()
+        );
+    }
+
+    /// A password and a salt can be given in different forms, and `crypt
+    /// set-form` records one form per secret; a form is never a guess (`auto`
+    /// is not accepted there).
+    #[test]
+    fn crypt_secret_form_flags_parse() {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let put = Cli::try_parse_from([
+                    "aeroftp",
+                    "rclone-crypt",
+                    "put",
+                    "./f.txt",
+                    "sftp://example",
+                    "/r",
+                    "--password",
+                    "p",
+                    "--password-form",
+                    "clear",
+                    "--salt-form",
+                    "obscured",
+                ])
+                .expect("put with forms parses");
+                match put.command {
+                    Commands::RcloneCrypt {
+                        command:
+                            RcloneCryptCommands::Put {
+                                password_form,
+                                salt_form,
+                                ..
+                            },
+                    } => {
+                        assert_eq!(password_form, SecretFormArg::Clear);
+                        assert_eq!(salt_form, SecretFormArg::Obscured);
+                        assert_eq!(
+                            salt_form.form(),
+                            Some(ftp_client_gui_lib::rclone_crypt::CryptSecretForm::Obscured)
+                        );
+                        assert_eq!(SecretFormArg::Auto.form(), None);
+                    }
+                    _ => panic!("expected rclone-crypt put"),
+                }
+                let set = Cli::try_parse_from([
+                    "aeroftp",
+                    "--profile",
+                    "vault",
+                    "crypt",
+                    "set-form",
+                    "--password-form",
+                    "clear",
+                    "--salt-form",
+                    "obscured",
+                ])
+                .expect("crypt set-form parses");
+                match set.command {
+                    Commands::Crypt {
+                        command:
+                            CryptCommands::SetForm {
+                                password_form,
+                                salt_form,
+                            },
+                    } => {
+                        assert_eq!(password_form.map(RecordedFormArg::as_str), Some("clear"));
+                        assert_eq!(salt_form.map(RecordedFormArg::as_str), Some("obscured"));
+                    }
+                    _ => panic!("expected crypt set-form"),
+                }
+                assert!(Cli::try_parse_from([
+                    "aeroftp",
+                    "crypt",
+                    "set-form",
+                    "--password-form",
+                    "auto",
+                ])
+                .is_err());
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     #[test]
     fn hashsum_download_flag_parses() {
         std::thread::Builder::new()
@@ -58919,7 +59369,10 @@ async fn cli_unlock_crypt_compare_keys(
             }
         },
     };
-    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
+    let stored_password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id));
+    // A secret from the environment carries no recorded form.
+    let password_from_env = stored_password.is_none();
+    let password = stored_password
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
         .unwrap_or_default();
     // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
@@ -58931,9 +59384,12 @@ async fn cli_unlock_crypt_compare_keys(
         );
         return Err(5);
     }
-    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
+    let stored_salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id));
+    let salt_from_env = stored_salt.is_none();
+    let salt = stored_salt
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
+    let (password_form, salt_form) = ftp_client_gui_lib::rclone_crypt::crypt_secret_forms(profile);
     let local_config_json =
         read_server_cred(&store, uid, &format!("aerocrypt_overlay_config_{}", id))
             .filter(|s| !s.is_empty());
@@ -58952,6 +59408,16 @@ async fn cli_unlock_crypt_compare_keys(
             Some(salt.clone())
         },
         with_header: false,
+        password_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            password_form,
+            password_from_env,
+            "AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM",
+        ),
+        salt_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            salt_form,
+            salt_from_env,
+            "AEROFTP_CRYPT_OVERLAY_SALT_FORM",
+        ),
     };
     match ftp_client_gui_lib::crypt_compare::unlock_overlay_keys(
         provider,
@@ -59269,6 +59735,7 @@ async fn cmd_cryptcheck(
     remote_path: &str,
     password: Option<String>,
     password2: Option<String>,
+    secret_forms: CryptSecretForms,
     filename_encryption: &str,
     suffix: Option<&str>,
     one_way: bool,
@@ -59283,6 +59750,7 @@ async fn cmd_cryptcheck(
         remote_path,
         password,
         password2,
+        secret_forms,
         filename_encryption,
         suffix,
         one_way,
@@ -59341,6 +59809,7 @@ async fn cryptcheck_report(
     remote_path: &str,
     password: Option<String>,
     password2: Option<String>,
+    secret_forms: CryptSecretForms,
     filename_encryption: &str,
     suffix: Option<&str>,
     one_way: bool,
@@ -59377,7 +59846,12 @@ async fn cryptcheck_report(
         .unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD2").unwrap_or_default());
 
     let (name_key, data_key, name_tweak) =
-        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak(&pwd, &salt) {
+        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_forms(
+            &pwd,
+            secret_forms.0,
+            &salt,
+            secret_forms.1,
+        ) {
             Ok(keys) => keys,
             Err(e) => {
                 print_error(format, &format!("Key derivation failed: {}", e), 5);
@@ -66700,6 +67174,8 @@ async fn main() {
             one_way,
             checkfile,
             algorithm,
+            password_form,
+            salt_form,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), local.as_str())
@@ -66712,6 +67188,7 @@ async fn main() {
                 r,
                 password.clone(),
                 password2.clone(),
+                (password_form.form(), salt_form.form()),
                 filename_encryption,
                 suffix.as_deref(),
                 *one_way,
@@ -69352,6 +69829,10 @@ async fn main() {
                         }
                     }
                 },
+                CryptCommands::SetForm {
+                    password_form,
+                    salt_form,
+                } => cmd_crypt_set_form(*password_form, *salt_form, &cli, format),
                 CryptCommands::ToHeaded {
                     url,
                     path,
@@ -69716,6 +70197,8 @@ async fn main() {
                     remote,
                     password,
                     salt,
+                    password_form,
+                    salt_form,
                     filename_encryption,
                     dir_iv_base64,
                     remote_name,
@@ -69737,6 +70220,7 @@ async fn main() {
                             remote,
                             &pw,
                             salt.as_deref().unwrap_or(""),
+                            (password_form.form(), salt_form.form()),
                             *filename_encryption,
                             dir_iv_base64.as_deref(),
                             remote_name.as_deref(),
@@ -79871,6 +80355,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 "/root",
                 Some("crypt password".to_string()),
                 Some(String::new()),
+                (None, None),
                 "off",
                 None,
                 one_way,

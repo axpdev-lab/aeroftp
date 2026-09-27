@@ -1375,9 +1375,15 @@ async fn rclone_crypt_provider_create_remote(
     suffix: Option<String>,
     directory_name_encryption: Option<bool>,
     target_subpath: Option<String>,
+    password_form: Option<String>,
+    salt_form: Option<String>,
 ) -> Result<rclone_crypt::RcloneCryptVaultInfo, String> {
-    let (name_key, data_key, name_tweak) =
-        rclone_crypt::derive_keys_with_tweak(&password, salt.as_deref().unwrap_or(""))?;
+    let (name_key, data_key, name_tweak) = rclone_crypt::derive_keys_with_forms(
+        &password,
+        rclone_crypt::CryptSecretForm::parse(password_form.as_deref()),
+        salt.as_deref().unwrap_or(""),
+        rclone_crypt::CryptSecretForm::parse(salt_form.as_deref()),
+    )?;
     let mode = match filename_encryption.as_deref() {
         Some("off") => rclone_crypt::FilenameEncryption::Off,
         Some("obfuscate") => rclone_crypt::FilenameEncryption::Obfuscate,
@@ -19758,6 +19764,7 @@ pub fn run() {
             cryptomator::cryptomator_save_all,
             // Rclone crypt compatibility support
             rclone_crypt::rclone_crypt_unlock,
+            rclone_crypt::rclone_crypt_secret_for_display,
             rclone_crypt::rclone_crypt_lock,
             rclone_crypt::rclone_crypt_decrypt_name,
             rclone_crypt::rclone_crypt_encrypt_name,
