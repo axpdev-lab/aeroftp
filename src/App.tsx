@@ -471,7 +471,7 @@ import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { findGvfsMtpMount, isGvfsMtpPath } from './utils/gvfsMtpMount';
-import { acceptFlatpakImport } from './utils/flatpakImport';
+import { acceptFlatpakImport, flatpakImportResultDialog } from './utils/flatpakImport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -1930,9 +1930,11 @@ const App: React.FC = () => {
   // one-time decision marker, so `available` is true only inside a Flatpak, when a
   // native config exists, and when the user has not decided yet. We wait for
   // `vaultBootComplete` and skip while a lock/setup dialog is up so the import
-  // offer never fights the first-run master-password flow; on a genuinely fresh
-  // sandbox (default AutoKeyring, no master password) neither is up, so the offer
-  // wins and brings the real vault in. `hasOfferedRef` guards StrictMode.
+  // offer never fights the first-run master-password flow. By then
+  // `init_credential_store` has created this install's own vault, which the
+  // import never overwrites, so on a fresh sandbox the host vault and the saved
+  // servers encrypted under it stay behind, and the result dialog says so.
+  // `flatpakImportOfferedRef` guards StrictMode.
   const flatpakImportOfferedRef = useRef(false);
   useEffect(() => {
     if (!vaultBootComplete || isAppLocked || showMasterPasswordSetup) return;
@@ -1951,24 +1953,12 @@ const App: React.FC = () => {
           onConfirm: async () => {
             // A dialog, not a toast: toasts can be switched off, and the user
             // just made a decision whose result they must see.
-            const outcome = await acceptFlatpakImport();
-            if (outcome.kind === 'imported') {
-              setConfirmDialog({
-                message: t('flatpak.importedBody'),
-                confirmLabel: t('flatpak.restartNow'),
-                confirmColor: 'blue',
-                onConfirm: () => { invoke('restart_app'); },
-                onCancel: () => setConfirmDialog(null),
-              });
-              return;
-            }
+            const result = flatpakImportResultDialog(await acceptFlatpakImport(), t);
             setConfirmDialog({
-              message: outcome.kind === 'failed'
-                ? t('flatpak.importFailedBody', { error: outcome.error })
-                : t('flatpak.importNothingBody'),
-              confirmLabel: t('common.ok'),
+              message: result.message,
+              confirmLabel: result.confirmLabel,
               confirmColor: 'blue',
-              onConfirm: () => setConfirmDialog(null),
+              onConfirm: result.restart ? () => { invoke('restart_app'); } : () => setConfirmDialog(null),
               onCancel: () => setConfirmDialog(null),
             });
           },

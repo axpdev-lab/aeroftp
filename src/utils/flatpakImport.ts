@@ -4,19 +4,34 @@
 // The accepted Flatpak host-config import and the outcome the GUI shows for it.
 
 import { invoke } from '@tauri-apps/api/core';
+import type { TranslationFunction } from '../i18n';
 
 /** What `flatpak_config_import_apply` returns. */
 export interface FlatpakImportReport {
     imported: boolean;
     copied: number;
+    /** The host vault and saved servers were copied into this install. */
+    vault_imported: boolean;
+    /**
+     * The host has a vault, and this install already had its own: the import
+     * never overwrites, so the host vault and saved servers stayed behind.
+     */
+    vault_skipped: boolean;
     source: string | null;
     target: string | null;
 }
 
+/**
+ * What the import did with the host vault and the saved servers encrypted
+ * under it: copied, left behind because this install already has its own, or
+ * nothing to say because the host config holds none.
+ */
+export type HostVault = 'imported' | 'skipped' | 'absent';
+
 /** The three results the user must be able to tell apart after accepting. */
 export type FlatpakImportOutcome =
-    | { kind: 'imported'; copied: number }
-    | { kind: 'nothing' }
+    | { kind: 'imported'; copied: number; vault: HostVault }
+    | { kind: 'nothing'; vault: HostVault }
     | { kind: 'failed'; error: string };
 
 /**
@@ -34,5 +49,48 @@ export async function acceptFlatpakImport(): Promise<FlatpakImportOutcome> {
     if (typeof report?.copied !== 'number') {
         return { kind: 'failed', error: 'unexpected response from the import' };
     }
-    return report.copied > 0 ? { kind: 'imported', copied: report.copied } : { kind: 'nothing' };
+    const vault: HostVault = report.vault_skipped ? 'skipped' : report.vault_imported ? 'imported' : 'absent';
+    return report.copied > 0 ? { kind: 'imported', copied: report.copied, vault } : { kind: 'nothing', vault };
+}
+
+/** The dialog the GUI shows for an outcome. */
+export interface FlatpakImportResultDialog {
+    message: string;
+    confirmLabel: string;
+    /** The confirm button restarts AeroFTP: only after files were copied. */
+    restart: boolean;
+}
+
+/**
+ * What the dialog after an accepted import says, and what its button does. It
+ * says exactly what was imported: "your servers and vault" only when the host
+ * vault was copied, and plainly that they were not when this install already
+ * had its own vault, which the import never overwrites.
+ */
+export function flatpakImportResultDialog(
+    outcome: FlatpakImportOutcome,
+    t: TranslationFunction,
+): FlatpakImportResultDialog {
+    switch (outcome.kind) {
+        case 'imported': {
+            const body = {
+                imported: 'flatpak.importedBody',
+                skipped: 'flatpak.importedVaultSkippedBody',
+                absent: 'flatpak.importedNoVaultBody',
+            }[outcome.vault];
+            return { message: t(body), confirmLabel: t('flatpak.restartNow'), restart: true };
+        }
+        case 'nothing':
+            return {
+                message: t(outcome.vault === 'skipped' ? 'flatpak.importNothingVaultSkippedBody' : 'flatpak.importNothingBody'),
+                confirmLabel: t('common.ok'),
+                restart: false,
+            };
+        case 'failed':
+            return {
+                message: t('flatpak.importFailedBody', { error: outcome.error }),
+                confirmLabel: t('common.ok'),
+                restart: false,
+            };
+    }
 }

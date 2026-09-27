@@ -462,12 +462,62 @@ pub struct FlatpakImportStatus {
     pub target: Option<PathBuf>,
 }
 
+/// The files that hold the vault and the saved servers encrypted under it: the
+/// server list lives in `user_partitions.db`, and the key of each account there
+/// is wrapped by the vault. The import never overwrites, so when this install
+/// already has one of them the host's stay behind, and the report says so.
+const VAULT_FILES: [&str; 3] = [
+    crate::credential_store::VAULTKEY_FILENAME,
+    crate::credential_store::VAULT_FILENAME,
+    crate::user_partitions::DB_FILENAME,
+];
+
+/// What an accepted import did with the host vault and saved servers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostVault {
+    /// Nothing to report: the host config holds no vault, or the import was
+    /// declined.
+    Absent,
+    /// Copied: this install had no vault of its own.
+    Imported,
+    /// Left on the host: this install already has its own vault (the GUI creates
+    /// one at the first start, before the offer), and the import never replaces
+    /// a file.
+    Skipped,
+}
+
+/// Whether the host vault and saved servers will come in with the copy. The
+/// copy never replaces a file, so a vault file this install already has (the
+/// GUI creates one at the first start, before the offer) keeps the host's out.
+/// A name counts as present even when it is a dangling link, as it does for the
+/// copy's no-clobber rename.
+fn host_vault_outcome(src: &Path, dst: &Path) -> HostVault {
+    let on_host: Vec<&str> = VAULT_FILES
+        .into_iter()
+        .filter(|name| {
+            let file = src.join(name);
+            !never_copied(&file) && file.is_file()
+        })
+        .collect();
+    if on_host.is_empty() {
+        HostVault::Absent
+    } else if on_host
+        .iter()
+        .any(|name| dst.join(name).symlink_metadata().is_ok())
+    {
+        HostVault::Skipped
+    } else {
+        HostVault::Imported
+    }
+}
+
 /// Outcome of an import decision.
 #[derive(Debug, Clone)]
 pub struct FlatpakImportReport {
     /// Files copied into the sandbox: 0 on a decline, and on an accept that found
     /// every host file already in the sandbox.
     pub copied: usize,
+    pub vault: HostVault,
     pub source: Option<PathBuf>,
     pub target: Option<PathBuf>,
 }
@@ -477,6 +527,17 @@ impl FlatpakImportReport {
     /// restart has something new to load.
     pub fn imported(&self) -> bool {
         self.copied > 0
+    }
+
+    /// The host vault and saved servers were copied into this install.
+    pub fn vault_imported(&self) -> bool {
+        self.vault == HostVault::Imported
+    }
+
+    /// The host has a vault, and this install already had its own, so the host
+    /// vault and saved servers were not imported.
+    pub fn vault_skipped(&self) -> bool {
+        self.vault == HostVault::Skipped
     }
 }
 
@@ -511,9 +572,11 @@ pub fn flatpak_host_import_status() -> FlatpakImportStatus {
 /// On accept, copy the host config into the sandbox data root with
 /// `copy_missing_tree`, which copies only absent files and never overwrites, so
 /// re-running it is safe and a partially set-up sandbox is preserved. Either way
-/// the decision is recorded so the prompt is not shown again. The vault is
-/// copied as an encrypted blob: it unlocks only with the master password, and
-/// the import moves the blob, it does not unlock anything.
+/// the decision is recorded so the prompt is not shown again. The host vault
+/// comes in only when this install has none of its own; the report says which
+/// ([`HostVault`]), because the GUI creates this install's vault at the first
+/// start, before the offer, and a vault the copy left behind must not be
+/// announced as imported.
 pub fn flatpak_host_import_apply(accept: bool) -> Result<FlatpakImportReport, String> {
     apply_flatpak_host_import(accept, host_config_dir_under_flatpak(), aeroftp_data_root())
 }
@@ -528,12 +591,16 @@ fn apply_flatpak_host_import(
 ) -> Result<FlatpakImportReport, String> {
     let mut report = FlatpakImportReport {
         copied: 0,
+        vault: HostVault::Absent,
         source: source.clone(),
         target: target.clone(),
     };
     if accept {
         match (source.as_ref(), target.as_ref()) {
             (Some(src), Some(dst)) => {
+                // Looked at before the copy: what this install already has is
+                // exactly what the copy leaves in place.
+                report.vault = host_vault_outcome(src, dst);
                 report.copied = copy_missing_tree(src, dst).map_err(|e| {
                     format!(
                         "Import host config from {} to {}: {e}",
@@ -1289,6 +1356,98 @@ mod tests {
             b"sandbox servers"
         );
         assert!(sandbox.join(FLATPAK_IMPORT_DECIDED_MARKER).is_file());
+    }
+
+    /// A host vault, marked by `vault.key` and a real SQLite
+    /// `user_partitions.db`. The real `vault.db` is JSON, which the `.db`
+    /// snapshot in `copy_missing_tree` cannot copy into an install that lacks
+    /// one, so the fixture leaves it out.
+    fn write_host_vault(host: &Path) {
+        std::fs::write(
+            host.join(crate::credential_store::VAULTKEY_FILENAME),
+            b"host key",
+        )
+        .unwrap();
+        let db =
+            rusqlite::Connection::open(host.join(crate::user_partitions::DB_FILENAME)).unwrap();
+        db.execute_batch("CREATE TABLE users(name TEXT); INSERT INTO users VALUES('host');")
+            .unwrap();
+    }
+
+    /// What the first start of a Flatpak install writes before the import is
+    /// offered: `init_credential_store` creates `vault.key` and `vault.db`, and
+    /// the account setup creates `user_partitions.db`.
+    fn write_sandbox_vault(sandbox: &Path) {
+        std::fs::create_dir_all(sandbox).unwrap();
+        for name in VAULT_FILES {
+            std::fs::write(sandbox.join(name), b"sandbox").unwrap();
+        }
+    }
+
+    #[test]
+    fn flatpak_import_says_the_host_vault_stayed_behind_when_this_install_has_one() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        write_host_vault(&host);
+        write_sandbox_vault(&sandbox);
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        // servers.json was copied, the vault was not: the report must not let
+        // the GUI say "restart to load your servers and vault".
+        assert_eq!(report.copied, 1);
+        assert_eq!(
+            report.vault,
+            HostVault::Skipped,
+            "a host vault this install already has was reported as {:?}",
+            report.vault
+        );
+        assert!(report.vault_skipped() && !report.vault_imported());
+        for name in VAULT_FILES {
+            assert_eq!(std::fs::read(sandbox.join(name)).unwrap(), b"sandbox");
+        }
+    }
+
+    #[test]
+    fn flatpak_import_says_the_host_vault_stayed_behind_when_nothing_was_copied() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        std::fs::remove_file(host.join("servers.json")).unwrap();
+        write_host_vault(&host);
+        write_sandbox_vault(&sandbox);
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert_eq!(report.copied, 0);
+        assert_eq!(report.vault, HostVault::Skipped);
+    }
+
+    #[test]
+    fn flatpak_import_reports_the_host_vault_it_copied() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        write_host_vault(&host);
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert_eq!(report.copied, 3);
+        assert_eq!(report.vault, HostVault::Imported);
+        assert_eq!(
+            std::fs::read(sandbox.join(crate::credential_store::VAULTKEY_FILENAME)).unwrap(),
+            b"host key"
+        );
+    }
+
+    #[test]
+    fn flatpak_import_without_a_host_vault_reports_none() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        write_sandbox_vault(&sandbox);
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert_eq!(report.copied, 1);
+        assert_eq!(report.vault, HostVault::Absent);
     }
 
     #[test]

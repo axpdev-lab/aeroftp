@@ -11,9 +11,22 @@ vi.mock('@tauri-apps/api/core', () => ({
     invoke: (cmd: string, args?: unknown) => mockInvoke(cmd, args),
 }));
 
-import { acceptFlatpakImport } from './flatpakImport';
+import { acceptFlatpakImport, flatpakImportResultDialog } from './flatpakImport';
 
-const report = (copied: number) => ({ imported: copied > 0, copied, source: '/home/u/.config/aeroftp', target: '/sandbox/aeroftp' });
+const report = (copied: number, vault: { vault_imported?: boolean; vault_skipped?: boolean } = {}) => ({
+    imported: copied > 0,
+    copied,
+    vault_imported: vault.vault_imported ?? false,
+    vault_skipped: vault.vault_skipped ?? false,
+    source: '/home/u/.config/aeroftp',
+    target: '/sandbox/aeroftp',
+});
+
+// Echo the key and its parameters, so the assertions read what was asked for.
+const t = (key: string, params?: Record<string, string | number>) => {
+    const shown = Object.entries(params ?? {}).map(([k, v]) => `${k}=${v}`).join(',');
+    return shown ? `${key}(${shown})` : key;
+};
 
 describe('acceptFlatpakImport', () => {
     beforeEach(() => {
@@ -28,12 +41,24 @@ describe('acceptFlatpakImport', () => {
 
     it('reports an import when files were copied', async () => {
         mockInvoke.mockResolvedValueOnce(report(3));
-        expect(await acceptFlatpakImport()).toEqual({ kind: 'imported', copied: 3 });
+        expect(await acceptFlatpakImport()).toEqual({ kind: 'imported', copied: 3, vault: 'absent' });
     });
 
     it('reports nothing to import when the sandbox already had every file', async () => {
         mockInvoke.mockResolvedValueOnce(report(0));
-        expect(await acceptFlatpakImport()).toEqual({ kind: 'nothing' });
+        expect(await acceptFlatpakImport()).toEqual({ kind: 'nothing', vault: 'absent' });
+    });
+
+    it('reports the host vault it copied', async () => {
+        mockInvoke.mockResolvedValueOnce(report(4, { vault_imported: true }));
+        expect(await acceptFlatpakImport()).toEqual({ kind: 'imported', copied: 4, vault: 'imported' });
+    });
+
+    it('reports a host vault left behind because this install has its own', async () => {
+        mockInvoke.mockResolvedValueOnce(report(2, { vault_skipped: true }));
+        expect(await acceptFlatpakImport()).toEqual({ kind: 'imported', copied: 2, vault: 'skipped' });
+        mockInvoke.mockResolvedValueOnce(report(0, { vault_skipped: true }));
+        expect(await acceptFlatpakImport()).toEqual({ kind: 'nothing', vault: 'skipped' });
     });
 
     it('reports the failure, with its message, when the import fails', async () => {
@@ -49,3 +74,42 @@ describe('acceptFlatpakImport', () => {
         expect((await acceptFlatpakImport()).kind).toBe('failed');
     });
 });
+
+describe('flatpakImportResultDialog', () => {
+    it('promises servers and vault only when the host vault was copied', () => {
+        expect(flatpakImportResultDialog({ kind: 'imported', copied: 5, vault: 'imported' }, t)).toEqual({
+            message: 'flatpak.importedBody',
+            confirmLabel: 'flatpak.restartNow',
+            restart: true,
+        });
+    });
+
+    it('says the servers and vault were not imported when this install has its own vault', () => {
+        expect(flatpakImportResultDialog({ kind: 'imported', copied: 2, vault: 'skipped' }, t)).toEqual({
+            message: 'flatpak.importedVaultSkippedBody',
+            confirmLabel: 'flatpak.restartNow',
+            restart: true,
+        });
+        expect(flatpakImportResultDialog({ kind: 'nothing', vault: 'skipped' }, t)).toEqual({
+            message: 'flatpak.importNothingVaultSkippedBody',
+            confirmLabel: 'common.ok',
+            restart: false,
+        });
+    });
+
+    it('does not mention a vault the host config does not have', () => {
+        expect(flatpakImportResultDialog({ kind: 'imported', copied: 1, vault: 'absent' }, t).message)
+            .toBe('flatpak.importedNoVaultBody');
+        expect(flatpakImportResultDialog({ kind: 'nothing', vault: 'absent' }, t).message)
+            .toBe('flatpak.importNothingBody');
+    });
+
+    it('shows the error of a failed import, without a restart', () => {
+        expect(flatpakImportResultDialog({ kind: 'failed', error: 'Permission denied' }, t)).toEqual({
+            message: 'flatpak.importFailedBody(error=Permission denied)',
+            confirmLabel: 'common.ok',
+            restart: false,
+        });
+    });
+});
+

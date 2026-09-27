@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::AppHandle;
 
-const DB_FILENAME: &str = "user_partitions.db";
+pub(crate) const DB_FILENAME: &str = "user_partitions.db";
 const SCHEMA_VERSION: &str = "5";
 const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
 /// Vault account of the single-user profile list that predates partitions.

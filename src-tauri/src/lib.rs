@@ -16519,8 +16519,8 @@ fn flatpak_config_import_status_blocking() -> serde_json::Value {
 /// B3: apply (`accept = true`) or decline (`accept = false`) the host-config
 /// import. Accept copies the native config into the sandbox with copy-only,
 /// never-overwrite semantics; either way the decision is recorded so the prompt
-/// is shown once. The vault is copied encrypted and still needs the master
-/// password to unlock.
+/// is shown once. `vault_imported` and `vault_skipped` say whether the host
+/// vault came in or stayed behind because this install already has its own.
 #[tauri::command]
 async fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, String> {
     tokio::task::spawn_blocking(move || flatpak_config_import_apply_blocking(accept))
@@ -16534,6 +16534,8 @@ fn flatpak_config_import_apply_blocking(accept: bool) -> Result<serde_json::Valu
     Ok(serde_json::json!({
         "imported": report.imported(),
         "copied": report.copied,
+        "vault_imported": report.vault_imported(),
+        "vault_skipped": report.vault_skipped(),
         "source": report.source.map(|p| p.to_string_lossy().into_owned()),
         "target": report.target.map(|p| p.to_string_lossy().into_owned()),
     }))
