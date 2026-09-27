@@ -7430,6 +7430,71 @@ async fn reject_restricted_target(
     None
 }
 
+/// How a refused upload reports itself: a refusal another attempt would meet
+/// again, which the retries tell from other failures by this prefix.
+const UPLOAD_REFUSED_PREFIX: &str = "refused: ";
+
+/// The refusal of a remote file that an earlier attempt of this command
+/// reached and then failed on: it may be that attempt's partial, and a skip
+/// would report it as uploaded.
+fn left_incomplete_refusal(target: &str) -> String {
+    format!(
+        "{UPLOAD_REFUSED_PREFIX}{} is what a failed upload of this command left behind: not skipped as already there",
+        target
+    )
+}
+
+/// How an upload that `--immutable` or `--no-clobber` leaves alone reports
+/// itself. The batches count a result as skipped by this prefix, which only
+/// the skip writes, and not by a flag name a path can also contain.
+const UPLOAD_SKIP_PREFIX: &str = "skipped (already exists, ";
+
+/// Under `--immutable`, a remote file whose size differs from the source is
+/// not the file being uploaded: most often the partial a lost connection left
+/// (SFTP opens the file at its final path, then writes). Skipping it would
+/// report a truncated file as uploaded, on this run and on every later one, so
+/// it is an error. `--no-clobber` keeps skipping whatever is there.
+///
+/// It leans toward skipping when the size cannot be trusted
+/// ([`remote_size_is_exact`]), so that a sound file is never refused, and a
+/// source of unknown size (a remote one, for `mv` and `cp`) is not compared.
+/// A partial there goes undetected, as before, unless this very command left
+/// it (`put_run_left_incomplete`).
+fn immutable_size_mismatch(
+    cli: &Cli,
+    target: &str,
+    existing: &RemoteEntry,
+    source_size: Option<u64>,
+    exact: bool,
+) -> Option<String> {
+    let source_size = source_size?;
+    (cli.immutable && exact && !existing.is_dir && existing.size != source_size).then(|| {
+        format!(
+            "{UPLOAD_REFUSED_PREFIX}{} exists with {} bytes and the source has {}: --immutable neither overwrites it nor counts it as done",
+            target, existing.size, source_size
+        )
+    })
+}
+
+/// Whether the size `provider` reports for `entry` is the file's exact size.
+/// Not when the provider says its sizes are not (`reports_exact_size`: the
+/// AeroCrypt v1/v2 and compress overlays), not on Proton Drive (a file
+/// without a `claimedSize` reports its encrypted size), and not a 0 on WebDAV
+/// or Google Drive, which is what they report when the server sends no
+/// length or the object has none (a native Google Doc). Elsewhere a 0 is
+/// exact, and it is what an upload cut between its create and its first
+/// write leaves.
+fn remote_size_is_exact(provider: &dyn StorageProvider, entry: &RemoteEntry) -> bool {
+    if !provider.reports_exact_size() {
+        return false;
+    }
+    match provider.provider_type() {
+        ProviderType::Proton => false,
+        ProviderType::WebDav | ProviderType::GoogleDrive => entry.size != 0,
+        _ => true,
+    }
+}
+
 /// `--immutable` / `--no-clobber`: refuse to write over an existing
 /// destination. Prints the skip and returns `Some(9)`, the exit code `put`
 /// has always used for "already exists"; returns `None` when the write may
@@ -7459,11 +7524,24 @@ async fn skip_if_destination_exists(
     provider: &mut dyn StorageProvider,
     target: &str,
     flag_name: &str,
+    source_size: Option<u64>,
     cli: &Cli,
     format: OutputFormat,
 ) -> Option<i32> {
     match provider.stat(target).await {
-        Ok(_) => {}
+        Ok(entry) => {
+            let refusal = if put_run_left_incomplete(target) {
+                Some(left_incomplete_refusal(target))
+            } else {
+                let exact = remote_size_is_exact(&*provider, &entry);
+                immutable_size_mismatch(cli, target, &entry, source_size, exact)
+            };
+            if let Some(message) = refusal {
+                put_run_note_refused();
+                print_error(format, &message, 4);
+                return Some(4);
+            }
+        }
         Err(ProviderError::NotFound(_)) => return None,
         Err(e) if cli.immutable => {
             let code = provider_error_to_exit_code(&e);
@@ -10144,19 +10222,52 @@ fn create_overall_progress_bar(total_files: usize, total_bytes: u64) -> Progress
 fn make_aggregate_progress_cb(
     aggregate: Arc<AtomicU64>,
     overall_pb: Option<ProgressBar>,
-) -> Box<dyn Fn(u64, u64) + Send> {
+) -> (Box<dyn Fn(u64, u64) + Send>, AttemptProgress) {
     let last_seen = Arc::new(AtomicU64::new(0));
-    Box::new(move |transferred, _total| {
+    let attempt = AttemptProgress {
+        added: Arc::new(AtomicU64::new(0)),
+        aggregate: aggregate.clone(),
+        overall_pb: overall_pb.clone(),
+    };
+    let added = attempt.added.clone();
+    let callback = Box::new(move |transferred, _total| {
         let previous = last_seen.swap(transferred, Ordering::Relaxed);
         let delta = transferred.saturating_sub(previous);
         if delta == 0 {
             return;
         }
+        added.fetch_add(delta, Ordering::Relaxed);
         let current = aggregate.fetch_add(delta, Ordering::Relaxed) + delta;
         if let Some(ref pb) = overall_pb {
             pb.set_position(current);
         }
-    })
+    });
+    (callback, attempt)
+}
+
+/// What one transfer attempt added to the batch's progress, so that a failed
+/// attempt takes it back: a job that goes back to the queue starts again from
+/// zero, and its first attempt's bytes were counted twice.
+struct AttemptProgress {
+    added: Arc<AtomicU64>,
+    aggregate: Arc<AtomicU64>,
+    overall_pb: Option<ProgressBar>,
+}
+
+impl AttemptProgress {
+    fn take_back(&self) {
+        let added = self.added.swap(0, Ordering::Relaxed);
+        if added == 0 {
+            return;
+        }
+        let current = self
+            .aggregate
+            .fetch_sub(added, Ordering::Relaxed)
+            .saturating_sub(added);
+        if let Some(ref pb) = self.overall_pb {
+            pb.set_position(current);
+        }
+    }
 }
 
 /// What `--partial` should do with `local_bytes` already on disk.
@@ -10406,38 +10517,93 @@ async fn cli_run_single_file_dag(
     (provider, result)
 }
 
+/// Why a single-file transfer on a held connection did not complete.
+struct TransferOnError {
+    message: String,
+    /// The session is gone or cannot be trusted: the provider says the peer
+    /// tore it down or the network failed ([`ProviderError::is_recoverable`]),
+    /// the message is one of `SESSION_CLOSED_NEEDLES`, or the provider no
+    /// longer reports itself connected. Anything else (a missing file, a
+    /// permission, a quota, a local I/O error, an API refusal) is about the
+    /// file, and the connection stays usable. A skip decided before the
+    /// transfer (`--max-transfer` spent, an existing file under `--immutable`)
+    /// says nothing about the session either.
+    session_lost: bool,
+    /// See [`WorkerJobDone::retry_safe`].
+    retry_safe: bool,
+}
+
+impl TransferOnError {
+    fn skipped(message: String) -> Self {
+        Self {
+            message,
+            session_lost: false,
+            retry_safe: true,
+        }
+    }
+
+    /// Classify a transfer failure. No probe goes on the wire: FTP already
+    /// redials a session with a reply pending at the next command
+    /// (`redial_if_a_reply_is_pending`), and a probe would cost a token refresh
+    /// per failed file on Internxt.
+    ///
+    /// The message is read without the job's own `paths`, so that a missing
+    /// file called `connection reset.txt` stays a file error. A timeout counts
+    /// as a lost session: the session stopped answering, and neither
+    /// russh-sftp's request timeout ("Timeout") nor a TCP one ("Connection
+    /// timed out") is in `SESSION_CLOSED_NEEDLES`, whose other callers this
+    /// leaves alone.
+    fn from_provider(provider: &dyn StorageProvider, err: ProviderError, paths: &[&str]) -> Self {
+        let message = err.to_string();
+        let mut words = message.to_lowercase();
+        for path in paths.iter().filter(|path| !path.is_empty()) {
+            words = words.replace(&path.to_lowercase(), "");
+        }
+        let session_lost = err.is_recoverable()
+            || ftp_client_gui_lib::providers::types::is_session_closed_error_message(&words)
+            || words.contains("timeout")
+            || words.contains("timed out")
+            || !provider.is_connected();
+        Self {
+            message,
+            session_lost,
+            retry_safe: true,
+        }
+    }
+}
+
+/// One download on a connection the caller holds: it neither opens nor
+/// closes it (see [`run_on_worker_connections`]).
 #[allow(clippy::too_many_arguments)]
-async fn download_transfer_task(
-    url: &str,
+async fn download_transfer_on(
+    provider: &mut dyn StorageProvider,
     remote_path: String,
     local_path: String,
     remote_modified: Option<String>,
     cli: &Cli,
-    format: OutputFormat,
     aggregate: Option<Arc<AtomicU64>>,
     overall_pb: Option<ProgressBar>,
     max_transfer_limit: Option<u64>,
-) -> Result<(), String> {
+) -> Result<(), TransferOnError> {
     // --max-transfer: skip if session limit already exceeded
     if session_transfer_exceeded(max_transfer_limit) {
-        return Err("max-transfer limit reached".to_string());
+        return Err(TransferOnError::skipped(
+            "max-transfer limit reached".to_string(),
+        ));
     }
 
-    let (mut provider, _) = create_and_connect(url, cli, format)
-        .await
-        .map_err(|code| format!("connection failed with exit code {}", code))?;
-
-    let progress_cb = aggregate.map(|aggregate| make_aggregate_progress_cb(aggregate, overall_pb));
-    let result = download_with_resume(
-        &mut *provider,
-        &remote_path,
-        &local_path,
-        None,
-        cli,
-        progress_cb,
-    )
-    .await
-    .map_err(|e| e.to_string());
+    let (progress_cb, attempt) = match aggregate {
+        Some(aggregate) => {
+            let (callback, attempt) = make_aggregate_progress_cb(aggregate, overall_pb);
+            (Some(callback), Some(attempt))
+        }
+        None => (None, None),
+    };
+    let result =
+        download_with_resume(provider, &remote_path, &local_path, None, cli, progress_cb).await;
+    if let (Err(_), Some(attempt)) = (&result, &attempt) {
+        attempt.take_back();
+    }
 
     // In --inplace mode the download writes directly to the final path, so a failed
     // transfer can leave a truncated file behind. When --partial is disabled, match
@@ -10454,37 +10620,72 @@ async fn download_transfer_task(
         session_transfer_add(bytes);
     }
 
-    let _ = provider.disconnect().await;
     result
+        .map_err(|err| TransferOnError::from_provider(provider, err, &[&remote_path, &local_path]))
 }
 
+/// One upload on a connection the caller holds: it neither opens nor closes
+/// it (see [`run_on_worker_connections`]).
 #[allow(clippy::too_many_arguments)]
-async fn upload_transfer_task(
-    url: &str,
+async fn upload_transfer_on(
+    provider: &mut dyn StorageProvider,
     local_path: String,
     remote_path: String,
     cli: &Cli,
-    format: OutputFormat,
+    no_clobber: bool,
     aggregate: Option<Arc<AtomicU64>>,
     overall_pb: Option<ProgressBar>,
     max_transfer_limit: Option<u64>,
-) -> Result<(), String> {
+) -> Result<(), TransferOnError> {
     // --max-transfer: skip if session limit already exceeded
     if session_transfer_exceeded(max_transfer_limit) {
-        return Err("max-transfer limit reached".to_string());
+        return Err(TransferOnError::skipped(
+            "max-transfer limit reached".to_string(),
+        ));
     }
 
-    let (mut provider, _) = create_and_connect(url, cli, format)
-        .await
-        .map_err(|code| format!("connection failed with exit code {}", code))?;
-
-    // --immutable: skip if remote file already exists (never overwrite)
-    if cli.immutable && provider.stat(&remote_path).await.is_ok() {
-        let _ = provider.disconnect().await;
-        return Err(format!(
-            "skipped (already exists, --immutable): {}",
-            remote_path
-        ));
+    // --immutable / --no-clobber: never overwrite a remote file.
+    if cli.immutable || no_clobber {
+        match provider.stat(&remote_path).await {
+            Ok(entry) => {
+                let local_size = std::fs::metadata(&local_path).map(|m| m.len()).ok();
+                let refusal = if put_run_left_incomplete(&remote_path) {
+                    Some(left_incomplete_refusal(&remote_path))
+                } else {
+                    let exact = remote_size_is_exact(&*provider, &entry);
+                    immutable_size_mismatch(cli, &remote_path, &entry, local_size, exact)
+                };
+                if let Some(message) = refusal {
+                    put_run_note_refused();
+                    return Err(TransferOnError {
+                        message,
+                        session_lost: false,
+                        retry_safe: true,
+                    });
+                }
+                let flag = if cli.immutable {
+                    "--immutable"
+                } else {
+                    "--no-clobber"
+                };
+                return Err(TransferOnError::skipped(format!(
+                    "{UPLOAD_SKIP_PREFIX}{flag}): {remote_path}"
+                )));
+            }
+            Err(ProviderError::NotFound(_)) => {}
+            // As a single `put` does: under `--immutable` a `stat` that fails
+            // for another reason fails closed, and `--no-clobber` proceeds.
+            Err(e) if cli.immutable => {
+                let mut err =
+                    TransferOnError::from_provider(provider, e, &[&local_path, &remote_path]);
+                err.message = format!(
+                    "--immutable: cannot verify that {} does not exist ({}); refusing to write rather than risk an overwrite",
+                    remote_path, err.message
+                );
+                return Err(err);
+            }
+            Err(_) => {}
+        }
     }
 
     if let Some(parent) = Path::new(&remote_path).parent() {
@@ -10492,18 +10693,435 @@ async fn upload_transfer_task(
     }
 
     let file_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
-    let progress_cb = aggregate.map(|aggregate| make_aggregate_progress_cb(aggregate, overall_pb));
-    let result = upload_with_resume(&mut *provider, &local_path, &remote_path, cli, progress_cb)
-        .await
-        .map_err(|e| e.to_string());
+    let (progress_cb, attempt) = match aggregate {
+        Some(aggregate) => {
+            let (callback, attempt) = make_aggregate_progress_cb(aggregate, overall_pb);
+            (Some(callback), Some(attempt))
+        }
+        None => (None, None),
+    };
+    let result = upload_with_resume(provider, &local_path, &remote_path, cli, progress_cb).await;
+    if let (Err(_), Some(attempt)) = (&result, &attempt) {
+        attempt.take_back();
+    }
 
     // Account transferred bytes
     if result.is_ok() {
         session_transfer_add(file_size);
     }
 
-    let _ = provider.disconnect().await;
-    result
+    result.map_err(|err| {
+        put_run_note_incomplete(&remote_path);
+        let mut err = TransferOnError::from_provider(provider, err, &[&local_path, &remote_path]);
+        // Past the existence check the upload may have created the remote
+        // file (SFTP opens it at its final path, then writes). Under
+        // `--immutable` or `--no-clobber` a second attempt would find that
+        // partial and skip it as already there, reporting a truncated file as
+        // success.
+        err.retry_safe = !(cli.immutable || no_clobber);
+        err
+    })
+}
+
+/// The byte figure of a batch summary: what arrived, with the total only
+/// when not all of it did. It printed the planned total alone, so a run that
+/// moved 4 files of 40 read "Downloaded 4/40 files (320.0 MB)".
+fn batch_bytes_summary(done: u64, total: u64) -> String {
+    if done >= total {
+        format_size(total)
+    } else {
+        format!("{} of {}", format_size(done), format_size(total))
+    }
+}
+
+/// What a batch on the shared executor moved: the planned total when every
+/// file arrived, else the engine's count of the bytes it transferred.
+fn shared_batch_bytes(
+    all_arrived: bool,
+    total: u64,
+    stats: Option<&ftp_client_gui_lib::transfer_dag::EngineTransferStats>,
+) -> u64 {
+    if all_arrived {
+        total
+    } else {
+        stats.map_or(0, |stats| stats.metrics.bytes_transferred)
+    }
+}
+
+/// What a job hands back to the worker that ran it.
+struct WorkerJobDone<R> {
+    /// The connection the job was given, or `None` if it had none.
+    conn: Option<Box<dyn StorageProvider>>,
+    result: Result<R, String>,
+    /// See [`TransferOnError::session_lost`].
+    session_lost: bool,
+    /// The job may run again after losing a fresh connection without hiding
+    /// that loss (see [`run_on_worker_connections`]).
+    retry_safe: bool,
+}
+
+impl<R> WorkerJobDone<R> {
+    /// The outcome of a `*_transfer_on` call, mapped to the caller's result
+    /// and error message.
+    fn from_transfer(
+        conn: Box<dyn StorageProvider>,
+        outcome: Result<(), TransferOnError>,
+        ok: impl FnOnce() -> R,
+        describe: impl FnOnce(String) -> String,
+    ) -> Self {
+        match outcome {
+            Ok(()) => Self {
+                conn: Some(conn),
+                result: Ok(ok()),
+                session_lost: false,
+                retry_safe: true,
+            },
+            Err(err) => Self {
+                conn: Some(conn),
+                result: Err(describe(err.message)),
+                session_lost: err.session_lost,
+                retry_safe: err.retry_safe,
+            },
+        }
+    }
+
+    /// A job that ends without using a connection (no connection, or
+    /// cancelled): it gives back what it was given.
+    fn without_transfer(conn: Option<Box<dyn StorageProvider>>, message: String) -> Self {
+        Self {
+            conn,
+            result: Err(message),
+            session_lost: false,
+            retry_safe: true,
+        }
+    }
+}
+
+/// Opens one connection for a worker of [`run_on_worker_connections`], with
+/// the error text the per-file paths have always reported.
+async fn connect_transfer_worker(
+    url: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<Box<dyn StorageProvider>, String> {
+    create_and_connect(url, cli, format)
+        .await
+        .map(|(provider, _)| provider)
+        .map_err(|code| format!("connection failed with exit code {}", code))
+}
+
+/// Jobs one worker connection carries before it is closed and the next job
+/// dials afresh: the pooled executor's `WARM_WORKER_MAX_FILES`, for the reason
+/// given there (an SFTP session reused across 5000 files ran out of handles on
+/// 4 of them).
+const WORKER_CONNECTION_MAX_JOBS: u32 = 128;
+
+/// Failed dials, or jobs lost on connections that had not completed one, that
+/// a worker accepts since it last completed a job; at this count it stops.
+const WORKER_MAX_STRIKES: u32 = 2;
+
+/// Pause before a worker dials again after a failed dial, so that a short
+/// outage (a server restart, a network blip) is ridden out rather than burning
+/// both of a worker's attempts in the same instant. It also spaces the login
+/// attempts a rate limiter sees.
+const WORKER_REDIAL_PAUSE: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Bound on closing a worker connection: a peer that stopped answering must
+/// not hold the batch at its end.
+const WORKER_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+async fn close_worker_connection(mut conn: Box<dyn StorageProvider>) {
+    let _ = tokio::time::timeout(WORKER_CLOSE_TIMEOUT, conn.disconnect()).await;
+}
+
+/// A connection a worker holds.
+struct HeldConnection {
+    conn: Box<dyn StorageProvider>,
+    /// It has completed a job.
+    proven: bool,
+    /// Jobs it has carried, toward [`WORKER_CONNECTION_MAX_JOBS`].
+    jobs: u32,
+}
+
+/// The jobs of [`run_on_worker_connections`] that have not finished.
+struct WorkerQueue<J> {
+    /// Waiting for a worker; each carries whether it has already lost a
+    /// fresh connection.
+    waiting: std::collections::VecDeque<(J, bool)>,
+    /// Taken by a worker and not finished: each may still come back.
+    in_hand: usize,
+}
+
+/// Single-file transfer jobs on one connection per worker, not one per file.
+///
+/// The paths that cannot use the pooled executor (providers without a
+/// transfer pool, `--immutable` uploads, sync with error correction) used to
+/// dial, and on the cloud APIs sign in, once per file: a 60-file `put -r` to
+/// Internxt made 60 logins, and the gateway answered 429 from about the
+/// twelfth on (live, 2026-09-27). Here `workers` workers take jobs from one
+/// queue, each with a connection of its own that it opens when it takes its
+/// first job and keeps for the next ones. The number of workers is the
+/// caller's, unchanged.
+///
+/// The rules, each pinned by a test:
+/// - A job that fails because of its file (see [`TransferOnError::session_lost`])
+///   keeps the connection; so does a skip decided before the transfer.
+/// - A job that loses a session which had already completed a job fails, as it
+///   would have on a connection of its own, and the next job dials afresh.
+/// - A job that loses a fresh connection, one that has completed nothing yet,
+///   goes back to the queue once, unless running it again could hide the loss
+///   ([`WorkerJobDone::retry_safe`]). If it loses a second fresh connection, or
+///   may not run again, it fails on its own: one bad file does not stop the
+///   batch.
+/// - A failed dial puts its job back in the queue, and the worker waits
+///   [`WORKER_REDIAL_PAUSE`] before its next dial. Its exit code is not read:
+///   every command has connected once before its batch (its scan, its
+///   probe), so a refusal now is more often a passing one than wrong
+///   credentials (Internxt reports a 429 or a 5xx at login as a failed
+///   authentication, Jottacloud a network error in its OIDC discovery, FTP
+///   any login reply, 421 and 530 "too many connections" included).
+/// - A worker stops at its second failed dial, or its second job failed by
+///   losing fresh connections, since it last completed a job: past that the
+///   endpoint, not a file, is the problem, and dialling on would be the login
+///   storm this replaces. So a failure streak costs a worker at most five
+///   dials: four accepted and one refused, or three and two.
+/// - A worker that finds the queue empty while other workers still hold jobs
+///   waits for them: a job that comes back runs on its connection instead of
+///   failing for want of one. A connection that waited no longer counts as
+///   proven, since the server may have dropped it in the meantime.
+/// - A connection is closed after [`WORKER_CONNECTION_MAX_JOBS`] jobs.
+/// - `seed` is a connection the caller already holds (the scan connection it
+///   used to close before the batch); it serves the first worker that needs
+///   one, counts as proven, and is closed here if no job takes it.
+/// - Nothing is dialled once `cancelled` is set or the `max_transfer` budget is
+///   spent; those jobs get the reason instead.
+/// - When every worker has stopped, each job still queued reports that it was
+///   not transferred for want of a connection, with the last dial error if
+///   there was one: no job is dropped, and none carries another file's error.
+///
+/// `run` receives the connection, or why there is none, and hands it back in
+/// its [`WorkerJobDone`]. Results come back grouped by worker, in no set order,
+/// like the `buffer_unordered` batches this replaces.
+#[allow(clippy::too_many_arguments)]
+async fn run_on_worker_connections<J, R, C, CFut, F, Fut>(
+    seed: Option<Box<dyn StorageProvider>>,
+    workers: usize,
+    jobs: Vec<J>,
+    cancelled: &AtomicBool,
+    max_transfer: Option<u64>,
+    connect: C,
+    run: F,
+) -> Vec<Result<R, String>>
+where
+    J: Clone,
+    C: Fn() -> CFut,
+    CFut: std::future::Future<Output = Result<Box<dyn StorageProvider>, String>>,
+    F: Fn(Result<Box<dyn StorageProvider>, String>, J) -> Fut,
+    Fut: std::future::Future<Output = WorkerJobDone<R>>,
+{
+    use std::sync::Mutex as StdMutex;
+
+    fn lock<T>(mutex: &StdMutex<T>) -> std::sync::MutexGuard<'_, T> {
+        mutex
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    // Every worker runs on the caller's task, so no guard of these mutexes may
+    // live across an `.await`: take what is needed in a statement of its own.
+    let queue = StdMutex::new(WorkerQueue {
+        waiting: jobs.into_iter().map(|job| (job, false)).collect(),
+        in_hand: 0,
+    });
+    // Woken whenever a job finishes or comes back.
+    let changed = tokio::sync::Notify::new();
+    let seed = StdMutex::new(seed);
+    let last_dial_error: StdMutex<Option<String>> = StdMutex::new(None);
+
+    // The next job and whether the worker had to wait for it, or `None` once
+    // the queue is empty and no job is in hand.
+    let take_job = || async {
+        let mut waited = false;
+        loop {
+            // Registered before the queue is read, so a change made between
+            // the read and the wait still wakes this worker.
+            let notified = changed.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            {
+                let mut queue = lock(&queue);
+                if let Some((job, lost_once)) = queue.waiting.pop_front() {
+                    queue.in_hand += 1;
+                    return Some((job, lost_once, waited));
+                }
+                if queue.in_hand == 0 {
+                    return None;
+                }
+            }
+            notified.await;
+            waited = true;
+        }
+    };
+    let finish = || {
+        lock(&queue).in_hand -= 1;
+        changed.notify_waiters();
+    };
+    let put_back = |job: J, lost_once: bool| {
+        {
+            let mut queue = lock(&queue);
+            queue.waiting.push_front((job, lost_once));
+            queue.in_hand -= 1;
+        }
+        changed.notify_waiters();
+    };
+
+    let worker = || async {
+        let mut results = Vec::new();
+        let mut held: Option<HeldConnection> = None;
+        let mut failed_dials = 0u32;
+        let mut lost_jobs = 0u32;
+        while let Some((job, lost_once, waited)) = take_job().await {
+            if waited {
+                if let Some(current) = held.as_mut() {
+                    current.proven = false;
+                }
+            }
+            // Decided before any dial.
+            let skip = if cancelled.load(Ordering::Relaxed) {
+                Some("cancelled")
+            } else if held.is_none() && session_transfer_exceeded(max_transfer) {
+                Some("max-transfer limit reached")
+            } else {
+                None
+            };
+            if let Some(reason) = skip {
+                let done = run(Err(reason.to_string()), job).await;
+                if let Some(conn) = done.conn {
+                    close_worker_connection(conn).await;
+                }
+                results.push(done.result);
+                finish();
+                continue;
+            }
+
+            let current = match held.take() {
+                Some(current) => current,
+                None => {
+                    // Its own statement: the guard of a `match lock(..)`
+                    // scrutinee lives to the end of the match, across the dial
+                    // below, and a second worker locking the same mutex then
+                    // blocks the one thread every worker runs on (a live
+                    // `put -r --immutable` over SFTP hung this way).
+                    let seeded = lock(&seed).take();
+                    match seeded {
+                        Some(conn) => HeldConnection {
+                            conn,
+                            proven: true,
+                            jobs: 0,
+                        },
+                        None => match connect().await {
+                            Ok(conn) => HeldConnection {
+                                conn,
+                                proven: false,
+                                jobs: 0,
+                            },
+                            Err(message) => {
+                                *lock(&last_dial_error) = Some(message);
+                                put_back(job, lost_once);
+                                failed_dials += 1;
+                                if failed_dials >= WORKER_MAX_STRIKES {
+                                    break;
+                                }
+                                tokio::time::sleep(WORKER_REDIAL_PAUSE).await;
+                                continue;
+                            }
+                        },
+                    }
+                }
+            };
+
+            let HeldConnection { conn, proven, jobs } = current;
+            let retry = job.clone();
+            let done = run(Ok(conn), job).await;
+            let Some(conn) = done.conn else {
+                results.push(done.result);
+                finish();
+                continue;
+            };
+            let jobs = jobs + 1;
+            if done.result.is_ok() {
+                failed_dials = 0;
+                lost_jobs = 0;
+                held = Some(HeldConnection {
+                    conn,
+                    proven: true,
+                    jobs,
+                });
+                results.push(done.result);
+                finish();
+            } else if !done.session_lost {
+                held = Some(HeldConnection { conn, proven, jobs });
+                results.push(done.result);
+                finish();
+            } else {
+                close_worker_connection(conn).await;
+                if proven {
+                    results.push(done.result);
+                    finish();
+                } else if !lost_once && done.retry_safe {
+                    put_back(retry, true);
+                } else {
+                    results.push(done.result);
+                    finish();
+                    lost_jobs += 1;
+                    if lost_jobs >= WORKER_MAX_STRIKES {
+                        break;
+                    }
+                }
+            }
+
+            if let Some(current) = held.take() {
+                if current.jobs >= WORKER_CONNECTION_MAX_JOBS {
+                    close_worker_connection(current.conn).await;
+                } else {
+                    held = Some(current);
+                }
+            }
+        }
+        if let Some(current) = held {
+            close_worker_connection(current.conn).await;
+        }
+        results
+    };
+
+    let mut results: Vec<Result<R, String>> =
+        futures_util::future::join_all((0..workers.max(1)).map(|_| worker()))
+            .await
+            .into_iter()
+            .flatten()
+            .collect();
+
+    // Every worker has stopped: the jobs nobody could run still report.
+    let error = match lock(&last_dial_error).clone() {
+        Some(dial) => format!("not transferred: no connection left ({dial})"),
+        None => "not transferred: no connection left".to_string(),
+    };
+    let left: Vec<J> = std::mem::take(&mut lock(&queue).waiting)
+        .into_iter()
+        .map(|(job, _)| job)
+        .collect();
+    for job in left {
+        let done = run(Err(error.clone()), job).await;
+        if let Some(conn) = done.conn {
+            close_worker_connection(conn).await;
+        }
+        results.push(done.result);
+    }
+    let unused_seed = lock(&seed).take();
+    if let Some(conn) = unused_seed {
+        close_worker_connection(conn).await;
+    }
+    results
 }
 
 // ── PD-CLI-CONV-B: shared provider executor convergence ────────────
@@ -10594,8 +11212,9 @@ impl ftp_client_gui_lib::transfer_event_sink::TransferEventSink for CliBatchSink
 /// back un-consumed via `Err(base)` so the caller keeps the legacy
 /// independent-connection path: honest fallback, no overclaim.
 ///
-/// Non-regression: the legacy CLI path opens N independent connections via
-/// `buffer_unordered(workers)`. The shared SFTP/FTP path opens N independent
+/// Non-regression: the legacy CLI path runs `workers` independent connections,
+/// one per worker, each reused for the files its worker takes
+/// (`run_on_worker_connections`). The shared SFTP/FTP path opens N independent
 /// SSH/FTP connections too (`clone_for_transfer` re-dial, PD-SFTP-1 /
 /// PD-FTP-1), bounded by `min(workers, provider session cap)`. Parallelism
 /// is preserved up to the provider's advertised safe cap; beyond it the
@@ -10662,7 +11281,6 @@ async fn run_shared_provider_download_batch(
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
             | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
-    note_parallel_ceiling(cli, &runtime_settings);
     if !is_pool_backed {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.
@@ -10673,6 +11291,9 @@ async fn run_shared_provider_download_batch(
             .expect("base provider must still be present");
         return Err(base);
     }
+    // The ceiling is the shared executor's: the legacy fallback above opens
+    // its own connections, `--parallel` of them, and does not reach it.
+    note_parallel_ceiling(cli, &runtime_settings);
 
     if !cli.quiet && !cli.json && !cli.machine {
         use ftp_client_gui_lib::transfer_dag::Capability;
@@ -10867,7 +11488,7 @@ struct SharedUploadOutcome {
 /// `commit_message` is `None`: the only provider that consumes it is
 /// GitHub, which is single-connection (never pool-backed) and therefore
 /// never reaches this shared path; it always takes the `Err(base)`
-/// legacy fallback where `upload_transfer_task` handles it.
+/// legacy fallback where `upload_transfer_on` handles it.
 ///
 /// `--immutable` is NOT honoured here (the shared upload executor has no
 /// remote-stat skip, and unlike `get -r` the put scan does not
@@ -10880,8 +11501,9 @@ struct SharedUploadOutcome {
 /// Remote parent directories must be pre-created by the caller while the
 /// scan provider is connected (the shared executor does not mkdir).
 ///
-/// Non-regression: the legacy CLI path opens N independent connections
-/// via `buffer_unordered(workers)`. The shared SFTP/FTP path opens N
+/// Non-regression: the legacy CLI path runs `workers` independent
+/// connections, one per worker, each reused for the files its worker takes
+/// (`run_on_worker_connections`). The shared SFTP/FTP path opens N
 /// independent SSH/FTP connections too (`clone_for_transfer` re-dial,
 /// PD-SFTP-1 / PD-FTP-1), bounded by `min(workers, provider session cap)`.
 /// Parallelism is preserved up to the provider's advertised safe cap;
@@ -10931,7 +11553,6 @@ async fn run_shared_provider_upload_batch(
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
             | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
-    note_parallel_ceiling(cli, &runtime_settings);
     if !is_pool_backed {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.
@@ -10942,6 +11563,9 @@ async fn run_shared_provider_upload_batch(
             .expect("base provider must still be present");
         return Err(base);
     }
+    // The ceiling is the shared executor's: the legacy fallback above opens
+    // its own connections, `--parallel` of them, and does not reach it.
+    note_parallel_ceiling(cli, &runtime_settings);
 
     // --max-transfer: pre-flight truncate to the remaining session budget
     // (file-granular, the legacy `session_transfer_exceeded` semantics) so
@@ -28593,6 +29217,13 @@ thread_local! {
     /// only: a release binary has no way to reach it.
     static TEST_CONNECTED_PROVIDER: std::cell::RefCell<Option<Box<dyn StorageProvider>>> =
         const { std::cell::RefCell::new(None) };
+    /// Makes a connected provider for every `create_and_connect` on this
+    /// thread once the one-shot slot above is empty, so a command that opens
+    /// more connections than one (a sync's transfers) reaches the same tree.
+    #[allow(clippy::type_complexity)]
+    static TEST_PROVIDER_FACTORY: std::cell::RefCell<
+        Option<std::rc::Rc<dyn Fn() -> Box<dyn StorageProvider>>>,
+    > = const { std::cell::RefCell::new(None) };
 }
 
 async fn create_and_connect(
@@ -28603,6 +29234,10 @@ async fn create_and_connect(
     #[cfg(test)]
     if let Some(provider) = TEST_CONNECTED_PROVIDER.with(|slot| slot.borrow_mut().take()) {
         return Ok((provider, "/".to_string()));
+    }
+    #[cfg(test)]
+    if let Some(make) = TEST_PROVIDER_FACTORY.with(|slot| slot.borrow().clone()) {
+        return Ok((make(), "/".to_string()));
     }
     create_and_connect_detailed(url, cli, format)
         .await
@@ -33157,6 +33792,8 @@ async fn cmd_get_recursive(
     };
 
     let mut downloaded: u32 = 0;
+    // What arrived, for the summary (see `batch_bytes_summary`).
+    let mut done_bytes: u64 = 0;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
     let mut errors: Vec<String> = listing_errors;
@@ -33184,6 +33821,11 @@ async fn cmd_get_recursive(
     {
         Ok(outcome) => {
             downloaded = outcome.downloaded;
+            done_bytes = shared_batch_bytes(
+                downloaded as usize == total_files,
+                total_bytes,
+                outcome.engine_stats.as_ref(),
+            );
             over_budget = outcome.over_budget;
             // G108, and the reason this is `extend` and not `=`: `errors`
             // starts as `listing_errors`, the directories the scan could not
@@ -33195,44 +33837,58 @@ async fn cmd_get_recursive(
             engine_stats = outcome.engine_stats;
             download_segments = Some(outcome.download_segments);
         }
-        Err(mut base) => {
-            let _ = base.disconnect().await;
-            let results = futures_util::stream::iter(files.into_iter().map(
-                |(remote_path, local_path, _size)| {
+        Err(base) => {
+            // One connection per worker, starting with the scan connection,
+            // instead of one per file (see `run_on_worker_connections`).
+            let results = run_on_worker_connections(
+                Some(base),
+                effective_parallel_workers(cli),
+                files,
+                &cancelled,
+                resolve_max_transfer(cli),
+                || connect_transfer_worker(url, cli, format),
+                |conn, (remote_path, local_path, size)| {
                     let cancelled = cancelled.clone();
                     let aggregate = aggregate.clone();
                     let overall_pb = overall_pb.clone();
                     let remote_modified = remote_mtimes.get(&remote_path).cloned();
                     async move {
                         if cancelled.load(Ordering::Relaxed) {
-                            return Err("Cancelled by user".to_string());
+                            return WorkerJobDone::without_transfer(
+                                conn.ok(),
+                                "Cancelled by user".to_string(),
+                            );
                         }
+                        let mut conn = match conn {
+                            Ok(conn) => conn,
+                            Err(err) => return WorkerJobDone::without_transfer(None, err),
+                        };
                         if let Some(parent) = Path::new(&local_path).parent() {
                             let _ = std::fs::create_dir_all(parent);
                         }
-                        let result = download_transfer_task(
-                            url,
+                        let outcome = download_transfer_on(
+                            &mut *conn,
                             remote_path.clone(),
                             local_path,
                             remote_modified,
                             cli,
-                            format,
                             Some(aggregate),
                             overall_pb,
                             resolve_max_transfer(cli),
                         )
                         .await;
-                        result.map(|_| remote_path)
+                        WorkerJobDone::from_transfer(conn, outcome, || size, |err| err)
                     }
                 },
-            ))
-            .buffer_unordered(effective_parallel_workers(cli))
-            .collect::<Vec<_>>()
+            )
             .await;
 
             for result in results {
                 match result {
-                    Ok(_) => downloaded += 1,
+                    Ok(bytes) => {
+                        downloaded += 1;
+                        done_bytes += bytes;
+                    }
                     Err(err) => errors.push(err),
                 }
             }
@@ -33251,7 +33907,7 @@ async fn cmd_get_recursive(
                     "Downloaded {}/{} files ({}) in {:.1}s",
                     downloaded,
                     total_files,
-                    format_size(total_bytes),
+                    batch_bytes_summary(done_bytes, total_bytes),
                     elapsed.as_secs_f64()
                 );
                 for err in &errors {
@@ -33407,7 +34063,7 @@ async fn cmd_get_glob(
     // by construction. Coherent with `get -r` (scan pre-filter) and `sync`
     // (plan strip); without this `get --glob` would silently ignore
     // --immutable on both paths (neither the shared executor nor
-    // `download_transfer_task` has a skip-if-exists check). The skipped
+    // `download_transfer_on` has a skip-if-exists check). The skipped
     // count is intentional (not a failure): it is added back to the exit
     // accounting below so an immutable run is exit 0, like `get -r`.
     let mut immutable_skipped: u32 = 0;
@@ -33453,39 +34109,50 @@ async fn cmd_get_glob(
             engine_stats = outcome.engine_stats;
             download_segments = Some(outcome.download_segments);
         }
-        Err(mut base) => {
-            let _ = base.disconnect().await;
-            let results = futures_util::stream::iter(files.into_iter().map(
-                |(remote_path, local_path, _size)| {
+        Err(base) => {
+            // One connection per worker, starting with the scan connection,
+            // instead of one per file (see `run_on_worker_connections`).
+            let results = run_on_worker_connections(
+                Some(base),
+                effective_parallel_workers(cli),
+                files,
+                &cancelled,
+                resolve_max_transfer(cli),
+                || connect_transfer_worker(url, cli, format),
+                |conn, (remote_path, local_path, _size)| {
                     let cancelled = cancelled.clone();
                     let aggregate = aggregate.clone();
                     let overall_pb = overall_pb.clone();
                     let remote_modified = remote_mtimes.get(&remote_path).cloned();
                     async move {
                         if cancelled.load(Ordering::Relaxed) {
-                            return Err("Cancelled by user".to_string());
+                            return WorkerJobDone::without_transfer(
+                                conn.ok(),
+                                "Cancelled by user".to_string(),
+                            );
                         }
+                        let mut conn = match conn {
+                            Ok(conn) => conn,
+                            Err(err) => return WorkerJobDone::without_transfer(None, err),
+                        };
                         if let Some(parent) = Path::new(&local_path).parent() {
                             let _ = std::fs::create_dir_all(parent);
                         }
-                        download_transfer_task(
-                            url,
+                        let outcome = download_transfer_on(
+                            &mut *conn,
                             remote_path.clone(),
                             local_path,
                             remote_modified,
                             cli,
-                            format,
                             Some(aggregate),
                             overall_pb,
                             resolve_max_transfer(cli),
                         )
-                        .await
-                        .map(|_| remote_path)
+                        .await;
+                        WorkerJobDone::from_transfer(conn, outcome, || remote_path, |err| err)
                     }
                 },
-            ))
-            .buffer_unordered(effective_parallel_workers(cli))
-            .collect::<Vec<_>>()
+            )
             .await;
 
             for result in results {
@@ -33553,6 +34220,130 @@ async fn cmd_get_glob(
     }
 }
 
+/// What one `put` command learns across its attempts (the text mode's
+/// `--retries` reruns it): the remote paths an upload reached and then failed
+/// on, which may hold its partial, and whether an upload was refused for a
+/// reason another attempt cannot change. `put_with_retries` scopes it to the
+/// command; outside that scope (`sync`, the tests of the pieces) nothing is
+/// kept.
+#[derive(Default)]
+struct PutRun {
+    left_incomplete: std::sync::Mutex<std::collections::HashSet<String>>,
+    /// This attempt refused an upload for a reason the next would meet again.
+    refused: AtomicBool,
+    /// This attempt failed some other way, which the next may not meet.
+    other_failure: AtomicBool,
+}
+
+tokio::task_local! {
+    static PUT_RUN: Arc<PutRun>;
+}
+
+/// An upload to `remote` failed after its existence check: it may have left
+/// a partial there.
+fn put_run_note_incomplete(remote: &str) {
+    let _ = PUT_RUN.try_with(|run| {
+        run.left_incomplete
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(remote.to_string());
+    });
+}
+
+/// An earlier attempt of this command left `remote` incomplete.
+fn put_run_left_incomplete(remote: &str) -> bool {
+    PUT_RUN
+        .try_with(|run| {
+            run.left_incomplete
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .contains(remote)
+        })
+        .unwrap_or(false)
+}
+
+/// An upload was refused for a reason another attempt cannot change.
+fn put_run_note_refused() {
+    let _ = PUT_RUN.try_with(|run| run.refused.store(true, Ordering::Relaxed));
+}
+
+/// A batch ends: any failure among `errors` that is not a refusal (see
+/// `UPLOAD_REFUSED_PREFIX`) may pass on another attempt.
+fn put_run_note_failures(errors: &[String]) {
+    if errors
+        .iter()
+        .any(|error| !error.starts_with(UPLOAD_REFUSED_PREFIX))
+    {
+        let _ = PUT_RUN.try_with(|run| run.other_failure.store(true, Ordering::Relaxed));
+    }
+}
+
+/// `put` with the text mode's retries. An attempt that exits with a
+/// retryable code runs again, unless every failure in it was a refusal the
+/// next attempt would meet again (a remote file of another size under
+/// `--immutable`, a partial an earlier attempt left): repeating those would
+/// only print them again. An attempt that also failed some other way (a
+/// 503, a lost connection) runs again, and its refusals are reported again.
+#[allow(clippy::too_many_arguments)]
+async fn put_with_retries(
+    url: &str,
+    local: &str,
+    remote: Option<&str>,
+    recursive: bool,
+    no_clobber: bool,
+    delta: bool,
+    access: Option<CliAccessLevel>,
+    cli: &Cli,
+    format: OutputFormat,
+    cancelled: Arc<AtomicBool>,
+) -> i32 {
+    let run = Arc::new(PutRun::default());
+    PUT_RUN
+        .scope(run.clone(), async {
+            let max_attempts = effective_max_attempts(cli, format);
+            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+            let max_transfer_limit = resolve_max_transfer(cli);
+            let mut last_code = 0i32;
+            for attempt in 1..=max_attempts {
+                run.refused.store(false, Ordering::Relaxed);
+                run.other_failure.store(false, Ordering::Relaxed);
+                last_code = cmd_put(
+                    url,
+                    local,
+                    remote,
+                    recursive,
+                    no_clobber,
+                    delta,
+                    access,
+                    cli,
+                    format,
+                    cancelled.clone(),
+                )
+                .await;
+                let only_refusals = run.refused.load(Ordering::Relaxed)
+                    && !run.other_failure.load(Ordering::Relaxed);
+                if !is_retryable_exit(last_code)
+                    || only_refusals
+                    || session_transfer_exceeded(max_transfer_limit)
+                    || attempt == max_attempts
+                {
+                    break;
+                }
+                if !cli.quiet {
+                    eprintln!(
+                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                        attempt, max_attempts, last_code, sleep_dur
+                    );
+                }
+                if !sleep_dur.is_zero() {
+                    tokio::time::sleep(sleep_dur).await;
+                }
+            }
+            last_code
+        })
+        .await
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_put(
     url: &str,
@@ -33582,7 +34373,7 @@ async fn cmd_put(
                 "Note: --access is not applied per-file on recursive uploads in this release; set the destination folder privacy with `aeroftp mkdir --access` (it cascades to children)"
             );
         }
-        return cmd_put_recursive(url, local, remote, cli, format, cancelled).await;
+        return cmd_put_recursive(url, local, remote, no_clobber, cli, format, cancelled).await;
     }
 
     // Check for glob patterns in local path
@@ -33597,7 +34388,7 @@ async fn cmd_put(
                 "Note: --access is not applied per-file on glob uploads in this release; set the destination folder privacy with `aeroftp mkdir --access` (it cascades to children)"
             );
         }
-        return cmd_put_glob(url, local, remote, cli, format, cancelled).await;
+        return cmd_put_glob(url, local, remote, no_clobber, cli, format, cancelled).await;
     }
 
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
@@ -33672,8 +34463,15 @@ async fn cmd_put(
         } else {
             "--no-clobber"
         };
-        if let Some(code) =
-            skip_if_destination_exists(provider.as_mut(), remote_path, flag_name, cli, format).await
+        if let Some(code) = skip_if_destination_exists(
+            provider.as_mut(),
+            remote_path,
+            flag_name,
+            std::fs::metadata(local).map(|m| m.len()).ok(),
+            cli,
+            format,
+        )
+        .await
         {
             let _ = provider.disconnect().await;
             return code;
@@ -33871,6 +34669,9 @@ async fn cmd_put(
             0
         }
         Err(e) => {
+            // It may have left a partial at the target: a later attempt of
+            // this command must not skip it as already there.
+            put_run_note_incomplete(remote_path);
             if let Some(pb) = pb {
                 pb.finish_and_clear();
             }
@@ -33889,6 +34690,7 @@ async fn cmd_put_recursive(
     url: &str,
     local_dir: &str,
     remote_base: Option<&str>,
+    no_clobber: bool,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
@@ -34071,6 +34873,8 @@ async fn cmd_put_recursive(
     };
 
     let mut uploaded: u32 = 0;
+    // What arrived, for the summary (see `batch_bytes_summary`).
+    let mut done_bytes: u64 = 0;
     let mut skipped: u32 = 0;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
@@ -34093,14 +34897,21 @@ async fn cmd_put_recursive(
     // pre-filter existing remote files. Non-pool-backed providers
     // (single-conn APIs) fall back to the legacy independent-connection
     // batch below: honest fallback, no overclaim.
-    let use_legacy = if cli.immutable {
+    // The connection the legacy batch starts from, instead of closing it.
+    let mut legacy_seed: Option<Box<dyn StorageProvider>> = None;
+    let use_legacy = if cli.immutable || no_clobber {
         if !cli.quiet {
             eprintln!(
-                "Note: --immutable uses the single-stream upload path \
-                 (the pooled uploader has no remote-existence check)"
+                "Note: {} uses the single-stream upload path \
+                 (the pooled uploader has no remote-existence check)",
+                if cli.immutable {
+                    "--immutable"
+                } else {
+                    "--no-clobber"
+                }
             );
         }
-        let _ = provider.disconnect().await;
+        legacy_seed = Some(provider);
         true
     } else {
         match run_shared_provider_upload_batch(
@@ -34114,6 +34925,11 @@ async fn cmd_put_recursive(
         {
             Ok(outcome) => {
                 uploaded = outcome.uploaded;
+                done_bytes = shared_batch_bytes(
+                    uploaded as usize == total_files,
+                    total_bytes,
+                    outcome.engine_stats.as_ref(),
+                );
                 over_budget = outcome.over_budget;
                 // Same shape as the one CodeRabbit raised on the download
                 // twin, and found by asking whether that one was alone: here
@@ -34125,46 +34941,62 @@ async fn cmd_put_recursive(
                 engine_stats = outcome.engine_stats;
                 false
             }
-            Err(mut base) => {
-                let _ = base.disconnect().await;
+            Err(base) => {
+                legacy_seed = Some(base);
                 true
             }
         }
     };
 
     if use_legacy {
-        let results = futures_util::stream::iter(files.into_iter().map(
-            |(local_path, remote_path, _size)| {
+        // One connection per worker, starting with the scan connection,
+        // instead of one per file (see `run_on_worker_connections`).
+        let results = run_on_worker_connections(
+            legacy_seed.take(),
+            effective_parallel_workers(cli),
+            files,
+            &cancelled,
+            resolve_max_transfer(cli),
+            || connect_transfer_worker(url, cli, format),
+            |conn, (local_path, remote_path, size)| {
                 let cancelled = cancelled.clone();
                 let aggregate = aggregate.clone();
                 let overall_pb = overall_pb.clone();
                 async move {
                     if cancelled.load(Ordering::Relaxed) {
-                        return Err("Cancelled by user".to_string());
+                        return WorkerJobDone::without_transfer(
+                            conn.ok(),
+                            "Cancelled by user".to_string(),
+                        );
                     }
-                    upload_transfer_task(
-                        url,
+                    let mut conn = match conn {
+                        Ok(conn) => conn,
+                        Err(err) => return WorkerJobDone::without_transfer(None, err),
+                    };
+                    let outcome = upload_transfer_on(
+                        &mut *conn,
                         local_path.clone(),
-                        remote_path.clone(),
+                        remote_path,
                         cli,
-                        format,
+                        no_clobber,
                         Some(aggregate),
                         overall_pb,
                         resolve_max_transfer(cli),
                     )
-                    .await
-                    .map(|_| local_path)
+                    .await;
+                    WorkerJobDone::from_transfer(conn, outcome, || size, |err| err)
                 }
             },
-        ))
-        .buffer_unordered(effective_parallel_workers(cli))
-        .collect::<Vec<_>>()
+        )
         .await;
 
         for result in results {
             match result {
-                Ok(_) => uploaded += 1,
-                Err(ref err) if err.contains("--immutable") => {
+                Ok(bytes) => {
+                    uploaded += 1;
+                    done_bytes += bytes;
+                }
+                Err(ref err) if err.starts_with(UPLOAD_SKIP_PREFIX) => {
                     skipped += 1;
                 }
                 Err(err) => errors.push(err),
@@ -34176,6 +35008,8 @@ async fn cmd_put_recursive(
         pb.finish_and_clear();
     }
 
+    put_run_note_failures(&errors);
+
     let elapsed = start.elapsed();
 
     match format {
@@ -34185,10 +35019,18 @@ async fn cmd_put_recursive(
                     "\nUploaded {}/{} files ({}) in {:.1}s{}",
                     uploaded,
                     total_files,
-                    format_size(total_bytes),
+                    batch_bytes_summary(done_bytes, total_bytes),
                     elapsed.as_secs_f64(),
                     if skipped > 0 {
-                        format!(" ({} skipped, --immutable)", skipped)
+                        format!(
+                            " ({} skipped, {})",
+                            skipped,
+                            if cli.immutable {
+                                "--immutable"
+                            } else {
+                                "--no-clobber"
+                            }
+                        )
                     } else {
                         String::new()
                     }
@@ -35240,7 +36082,8 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
     // provider that allows it, which is exactly the overwrite the flag forbids.
     if cli.immutable {
         if let Some(code) =
-            skip_if_destination_exists(provider.as_mut(), to, "--immutable", cli, format).await
+            skip_if_destination_exists(provider.as_mut(), to, "--immutable", None, cli, format)
+                .await
         {
             let _ = provider.disconnect().await;
             return code;
@@ -35294,7 +36137,7 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
     if cli.immutable {
         let mut guard = provider.lock().await;
         if let Some(code) =
-            skip_if_destination_exists(guard.as_mut(), to, "--immutable", cli, format).await
+            skip_if_destination_exists(guard.as_mut(), to, "--immutable", None, cli, format).await
         {
             let _ = guard.disconnect().await;
             return code;
@@ -49276,6 +50119,8 @@ async fn cmd_sync(
         // non-pool-backed providers (FTP, single-conn APIs) fall back to
         // the legacy independent-connection batch: honest fallback, no
         // overclaim.
+        // The connection the legacy batch starts from, instead of closing it.
+        let mut legacy_upload_seed: Option<Box<dyn StorageProvider>> = None;
         let use_legacy_upload = if error_correction_enabled {
             // EC sidecars must be generated only for uploads that are known
             // to have succeeded. The shared batch reports aggregate counters,
@@ -49306,48 +50151,68 @@ async fn cmd_sync(
                         absorb_engine_stats(&mut engine_stats, outcome.engine_stats);
                         false
                     }
-                    Err(mut base) => {
-                        let _ = base.disconnect().await;
+                    Err(base) => {
+                        legacy_upload_seed = Some(base);
                         true
                     }
                 },
                 // Could not open the shared base (transient): degrade to the
-                // legacy per-file path rather than dropping the uploads.
+                // legacy batch rather than dropping the uploads.
                 Err(_) => true,
             }
         };
 
         if use_legacy_upload {
-            let upload_results = futures_util::stream::iter(leftover_upload_jobs.into_iter().map(
-                |(path, local_path, remote_path, _size)| {
+            // One connection per worker instead of one per file (see
+            // `run_on_worker_connections`).
+            let upload_results = run_on_worker_connections(
+                legacy_upload_seed.take(),
+                effective_parallel_workers(cli),
+                leftover_upload_jobs,
+                &cancelled,
+                resolve_max_transfer(cli),
+                || connect_transfer_worker(url, cli, format),
+                |conn, (path, local_path, remote_path, _size)| {
                     let cancelled = cancelled.clone();
                     let aggregate = aggregate.clone();
                     let overall_pb = overall_pb.clone();
                     async move {
                         if cancelled.load(Ordering::Relaxed) {
-                            return Err(format!("upload {}: cancelled", path));
+                            return WorkerJobDone::without_transfer(
+                                conn.ok(),
+                                format!("upload {}: cancelled", path),
+                            );
                         }
-                        let display_path = path.clone();
-                        match upload_transfer_task(
-                            url,
+                        let mut conn = match conn {
+                            Ok(conn) => conn,
+                            Err(err) => {
+                                return WorkerJobDone::without_transfer(
+                                    None,
+                                    format!("upload {}: {}", path, err),
+                                )
+                            }
+                        };
+                        let outcome = upload_transfer_on(
+                            &mut *conn,
                             local_path.clone(),
                             remote_path.clone(),
                             cli,
-                            format,
+                            false,
                             Some(aggregate),
                             overall_pb,
                             resolve_max_transfer(cli),
                         )
-                        .await
-                        {
-                            Ok(()) => Ok((path, local_path, remote_path)),
-                            Err(err) => Err(format!("upload {}: {}", display_path, err)),
-                        }
+                        .await;
+                        let display_path = path.clone();
+                        WorkerJobDone::from_transfer(
+                            conn,
+                            outcome,
+                            || (path, local_path, remote_path),
+                            |err| format!("upload {}: {}", display_path, err),
+                        )
                     }
                 },
-            ))
-            .buffer_unordered(effective_parallel_workers(cli))
-            .collect::<Vec<_>>()
+            )
             .await;
 
             for result in upload_results {
@@ -49381,37 +50246,78 @@ async fn cmd_sync(
     let mut conflict_uploaded = 0u32;
     let mut preserved_conflict_downloads: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-    for (orig_path, conflict_path) in &to_conflict_upload {
-        if cancelled.load(Ordering::Relaxed) {
-            break;
-        }
-        let local_path = Path::new(local)
-            .join(orig_path)
-            .to_string_lossy()
-            .to_string();
-        let remote_conflict = format!("{}/{}", remote.trim_end_matches('/'), conflict_path);
-        let local_path_for_ec = local_path.clone();
-        let remote_conflict_for_ec = remote_conflict.clone();
-        match upload_transfer_task(
-            url,
-            local_path,
-            remote_conflict,
-            cli,
-            format,
-            None,
-            None,
-            resolve_max_transfer(cli),
-        )
-        .await
-        {
-            Ok(()) => {
+    // One connection for the conflict uploads instead of one each (see
+    // `run_on_worker_connections`). A single worker keeps them in order, and a
+    // cancelled run leaves the remaining ones alone without an error, as the
+    // loop this replaces did.
+    let conflict_jobs: Vec<(String, String)> = to_conflict_upload
+        .iter()
+        .map(|(orig_path, conflict_path)| (orig_path.clone(), conflict_path.clone()))
+        .collect();
+    let conflict_results = run_on_worker_connections(
+        None,
+        1,
+        conflict_jobs,
+        &cancelled,
+        resolve_max_transfer(cli),
+        || connect_transfer_worker(url, cli, format),
+        |conn, (orig_path, conflict_path)| {
+            let cancelled = cancelled.clone();
+            async move {
+                if cancelled.load(Ordering::Relaxed) {
+                    return WorkerJobDone {
+                        conn: conn.ok(),
+                        result: Ok(None),
+                        session_lost: false,
+                        retry_safe: true,
+                    };
+                }
+                let local_path = Path::new(local)
+                    .join(&orig_path)
+                    .to_string_lossy()
+                    .to_string();
+                let remote_conflict = format!("{}/{}", remote.trim_end_matches('/'), conflict_path);
+                let mut conn = match conn {
+                    Ok(conn) => conn,
+                    Err(err) => {
+                        return WorkerJobDone::without_transfer(
+                            None,
+                            format!("conflict-rename {}: {}", orig_path, err),
+                        )
+                    }
+                };
+                let outcome = upload_transfer_on(
+                    &mut *conn,
+                    local_path.clone(),
+                    remote_conflict.clone(),
+                    cli,
+                    false,
+                    None,
+                    None,
+                    resolve_max_transfer(cli),
+                )
+                .await;
+                let display_path = orig_path.clone();
+                WorkerJobDone::from_transfer(
+                    conn,
+                    outcome,
+                    || Some((orig_path, conflict_path, local_path, remote_conflict)),
+                    |err| format!("conflict-rename {}: {}", display_path, err),
+                )
+            }
+        },
+    )
+    .await;
+    for result in conflict_results {
+        match result {
+            Ok(Some((orig_path, conflict_path, local_path, remote_conflict))) => {
                 conflict_uploaded += 1;
                 preserved_conflict_downloads.insert(orig_path.clone());
                 record_sync_ec_after_successful_upload(
                     provider.as_mut(),
-                    conflict_path,
-                    &local_path_for_ec,
-                    &remote_conflict_for_ec,
+                    &conflict_path,
+                    &local_path,
+                    &remote_conflict,
                     error_correction_pct,
                     error_correction_max_overhead_pct,
                     &mut ec_counters,
@@ -49422,7 +50328,9 @@ async fn cmd_sync(
                     eprintln!("  CONFLICT-RENAME  {} -> {}", orig_path, conflict_path);
                 }
             }
-            Err(e) => errors.push(format!("conflict-rename {}: {}", orig_path, e)),
+            // Cancelled before it started: not attempted, not an error.
+            Ok(None) => {}
+            Err(e) => errors.push(e),
         }
     }
 
@@ -49621,6 +50529,8 @@ async fn cmd_sync(
         })
         .collect();
 
+    // The connection the legacy batch starts from, instead of closing it.
+    let mut legacy_download_seed: Option<Box<dyn StorageProvider>> = None;
     let use_legacy_download = if download_files.is_empty() {
         false
     } else {
@@ -49643,52 +50553,72 @@ async fn cmd_sync(
                     download_segments = Some(outcome.download_segments);
                     false
                 }
-                Err(mut base) => {
-                    let _ = base.disconnect().await;
+                Err(base) => {
+                    legacy_download_seed = Some(base);
                     true
                 }
             },
             // Could not open the shared base (transient): degrade to the
-            // legacy per-file path rather than dropping the downloads.
+            // legacy batch rather than dropping the downloads.
             Err(_) => true,
         }
     };
 
     if use_legacy_download {
-        let download_results = futures_util::stream::iter(download_jobs.into_iter().map(
-            |(path, local_path, remote_path, _size)| {
+        // One connection per worker instead of one per file (see
+        // `run_on_worker_connections`).
+        let download_results = run_on_worker_connections(
+            legacy_download_seed.take(),
+            effective_parallel_workers(cli),
+            download_jobs,
+            &cancelled,
+            resolve_max_transfer(cli),
+            || connect_transfer_worker(url, cli, format),
+            |conn, (path, local_path, remote_path, _size)| {
                 let cancelled = cancelled.clone();
                 let aggregate = aggregate.clone();
                 let overall_pb = overall_pb.clone();
                 let remote_modified = remote_mtimes.get(&remote_path).cloned();
                 async move {
                     if cancelled.load(Ordering::Relaxed) {
-                        return Err(format!("download {}: cancelled", path));
+                        return WorkerJobDone::without_transfer(
+                            conn.ok(),
+                            format!("download {}: cancelled", path),
+                        );
                     }
+                    let mut conn = match conn {
+                        Ok(conn) => conn,
+                        Err(err) => {
+                            return WorkerJobDone::without_transfer(
+                                None,
+                                format!("download {}: {}", path, err),
+                            )
+                        }
+                    };
                     if let Some(parent) = Path::new(&local_path).parent() {
                         let _ = std::fs::create_dir_all(parent);
                     }
-                    match download_transfer_task(
-                        url,
+                    let outcome = download_transfer_on(
+                        &mut *conn,
                         remote_path,
                         local_path,
                         remote_modified,
                         cli,
-                        format,
                         Some(aggregate),
                         overall_pb,
                         resolve_max_transfer(cli),
                     )
-                    .await
-                    {
-                        Ok(()) => Ok(path),
-                        Err(err) => Err(format!("download {}: {}", path, err)),
-                    }
+                    .await;
+                    let display_path = path.clone();
+                    WorkerJobDone::from_transfer(
+                        conn,
+                        outcome,
+                        || path,
+                        |err| format!("download {}: {}", display_path, err),
+                    )
                 }
             },
-        ))
-        .buffer_unordered(effective_parallel_workers(cli))
-        .collect::<Vec<_>>()
+        )
         .await;
 
         for result in download_results {
@@ -56759,6 +57689,7 @@ async fn cmd_put_glob(
     url: &str,
     local_pattern: &str,
     remote_base: Option<&str>,
+    no_clobber: bool,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
@@ -56876,6 +57807,9 @@ async fn cmd_put_glob(
     }
 
     let mut uploaded: u32 = 0;
+    // Left alone by `--immutable` or `--no-clobber`: done, not failed, as
+    // `put -r` counts them.
+    let mut skipped: u32 = 0;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
@@ -56893,11 +57827,18 @@ async fn cmd_put_glob(
     // because the shared executor does not mkdir. `--immutable` and
     // non-pool-backed providers (FTP, single-conn APIs) stay on the
     // legacy independent-connection batch: honest fallback, no overclaim.
-    let use_legacy = if cli.immutable {
+    // The connection the legacy batch starts from, instead of closing it.
+    let mut legacy_seed: Option<Box<dyn StorageProvider>> = None;
+    let use_legacy = if cli.immutable || no_clobber {
         if !cli.quiet {
             eprintln!(
-                "Note: --immutable uses the single-stream upload path \
-                 (the pooled uploader has no remote-existence check)"
+                "Note: {} uses the single-stream upload path \
+                 (the pooled uploader has no remote-existence check)",
+                if cli.immutable {
+                    "--immutable"
+                } else {
+                    "--no-clobber"
+                }
             );
         }
         true
@@ -56921,8 +57862,8 @@ async fn cmd_put_glob(
                         engine_stats = outcome.engine_stats;
                         false
                     }
-                    Err(mut base) => {
-                        let _ = base.disconnect().await;
+                    Err(base) => {
+                        legacy_seed = Some(base);
                         true
                     }
                 }
@@ -56932,37 +57873,51 @@ async fn cmd_put_glob(
     };
 
     if use_legacy {
-        let results = futures_util::stream::iter(files.into_iter().map(
-            |(local_path, remote_path, _size)| {
+        // One connection per worker, starting with the scan connection,
+        // instead of one per file (see `run_on_worker_connections`).
+        let results = run_on_worker_connections(
+            legacy_seed.take(),
+            effective_parallel_workers(cli),
+            files,
+            &cancelled,
+            resolve_max_transfer(cli),
+            || connect_transfer_worker(url, cli, format),
+            |conn, (local_path, remote_path, _size)| {
                 let cancelled = cancelled.clone();
                 let aggregate = aggregate.clone();
                 let overall_pb = overall_pb.clone();
                 async move {
                     if cancelled.load(Ordering::Relaxed) {
-                        return Err("Cancelled by user".to_string());
+                        return WorkerJobDone::without_transfer(
+                            conn.ok(),
+                            "Cancelled by user".to_string(),
+                        );
                     }
-                    upload_transfer_task(
-                        url,
+                    let mut conn = match conn {
+                        Ok(conn) => conn,
+                        Err(err) => return WorkerJobDone::without_transfer(None, err),
+                    };
+                    let outcome = upload_transfer_on(
+                        &mut *conn,
                         local_path.clone(),
                         remote_path,
                         cli,
-                        format,
+                        no_clobber,
                         Some(aggregate),
                         overall_pb,
                         resolve_max_transfer(cli),
                     )
-                    .await
-                    .map(|_| local_path)
+                    .await;
+                    WorkerJobDone::from_transfer(conn, outcome, || local_path, |err| err)
                 }
             },
-        ))
-        .buffer_unordered(effective_parallel_workers(cli))
-        .collect::<Vec<_>>()
+        )
         .await;
 
         for result in results {
             match result {
                 Ok(_) => uploaded += 1,
+                Err(ref err) if err.starts_with(UPLOAD_SKIP_PREFIX) => skipped += 1,
                 Err(err) => errors.push(err),
             }
         }
@@ -56972,16 +57927,31 @@ async fn cmd_put_glob(
         pb.finish_and_clear();
     }
 
+    put_run_note_failures(&errors);
+
     let elapsed = start.elapsed();
 
     match format {
         OutputFormat::Text => {
             if !cli.quiet {
                 println!(
-                    "\n{}/{} files uploaded in {:.1}s",
+                    "\n{}/{} files uploaded in {:.1}s{}",
                     uploaded,
                     total,
-                    elapsed.as_secs_f64()
+                    elapsed.as_secs_f64(),
+                    if skipped > 0 {
+                        format!(
+                            " ({} skipped, {})",
+                            skipped,
+                            if cli.immutable {
+                                "--immutable"
+                            } else {
+                                "--no-clobber"
+                            }
+                        )
+                    } else {
+                        String::new()
+                    }
                 );
             }
         }
@@ -56991,7 +57961,7 @@ async fn cmd_put_glob(
                 uploaded,
                 downloaded: 0,
                 deleted: 0,
-                skipped: 0,
+                skipped,
                 over_budget,
                 ec_generated: None,
                 ec_skipped_too_large: None,
@@ -57009,8 +57979,12 @@ async fn cmd_put_glob(
             });
         }
     }
-    if uploaded == total as u32 {
-        0
+    if uploaded + skipped == total as u32 {
+        if skipped > 0 && uploaded == 0 {
+            9
+        } else {
+            0
+        }
     } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
         // Intentional --max-transfer cap (honest note already emitted),
         // not a transfer failure: the dedicated exit code, consistent
@@ -66577,41 +67551,19 @@ async fn main() {
             } else {
                 (url.as_str(), local.as_str(), remote.as_deref())
             };
-            let max_attempts = effective_max_attempts(&cli, format);
-            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
-            let max_transfer_limit = resolve_max_transfer(&cli);
-            let mut last_code = 0i32;
-            for attempt in 1..=max_attempts {
-                last_code = cmd_put(
-                    u,
-                    l,
-                    r,
-                    *recursive,
-                    *no_clobber,
-                    *delta,
-                    *access,
-                    &cli,
-                    format,
-                    cancelled.clone(),
-                )
-                .await;
-                if !is_retryable_exit(last_code)
-                    || session_transfer_exceeded(max_transfer_limit)
-                    || attempt == max_attempts
-                {
-                    break;
-                }
-                if !cli.quiet {
-                    eprintln!(
-                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
-                        attempt, max_attempts, last_code, sleep_dur
-                    );
-                }
-                if !sleep_dur.is_zero() {
-                    tokio::time::sleep(sleep_dur).await;
-                }
-            }
-            last_code
+            put_with_retries(
+                u,
+                l,
+                r,
+                *recursive,
+                *no_clobber,
+                *delta,
+                *access,
+                &cli,
+                format,
+                cancelled.clone(),
+            )
+            .await
         }
         Commands::Mkdir {
             url,
@@ -77630,6 +78582,1741 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert!(printed.contains("\"hasCredential\":true"), "{printed}");
     }
 
+    /// What every `WorkerFake` a test hands out did, and how the fake should
+    /// misbehave.
+    #[derive(Default)]
+    struct WorkerFakeState {
+        files: HashMap<String, Vec<u8>>,
+        next_id: usize,
+        /// Connections handed out by `WorkerFake::dial`, and dials attempted.
+        dials: usize,
+        dial_attempts: usize,
+        disconnects: usize,
+        /// `(connection id, remote path)` for every transfer attempted.
+        served: Vec<(usize, String)>,
+        /// Paths whose transfer fails because of the file (`NotFound`).
+        file_errors: std::collections::HashSet<String>,
+        /// Paths whose transfer takes the session down, and how many times.
+        session_kills: HashMap<String, u32>,
+        /// Dials still to refuse.
+        refuse_dials: u32,
+        /// Refuse every other dial, starting with the first.
+        refuse_alternate: bool,
+        /// A connection's `disconnect` never returns.
+        hang_disconnect: bool,
+        /// The first transfer on this connection takes the session down.
+        kill_first_on: Option<usize>,
+        /// An upload that takes the session down leaves half the file at the
+        /// remote path, as SFTP does (it opens the file there, then writes).
+        partial_on_kill: bool,
+        /// Offer a transfer pool, so that batches take the pooled executor.
+        pooled: bool,
+        /// Paths whose `stat` fails with something other than "not found".
+        stat_errors: std::collections::HashSet<String>,
+        /// The provider type the fake reports (SFTP when unset).
+        kind: Option<ProviderType>,
+        /// `reports_exact_size` says no, as the size-changing overlays do.
+        inexact_sizes: bool,
+    }
+
+    /// A provider without a transfer pool (SFTP type, no `clone_for_transfer`),
+    /// so every batch command takes the legacy per-worker path. Its transfers
+    /// yield first, as real ones do on their I/O, so workers interleave.
+    struct WorkerFake {
+        id: usize,
+        alive: bool,
+        state: Arc<Mutex<WorkerFakeState>>,
+    }
+
+    type FakeDial = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Box<dyn StorageProvider>, String>>>,
+    >;
+
+    impl WorkerFake {
+        fn state() -> Arc<Mutex<WorkerFakeState>> {
+            Arc::default()
+        }
+
+        /// A connection the caller already holds, like a command's scan
+        /// connection: not counted as a dial.
+        fn held(state: &Arc<Mutex<WorkerFakeState>>) -> Box<dyn StorageProvider> {
+            let mut st = state.lock().unwrap();
+            st.next_id += 1;
+            Box::new(Self {
+                id: st.next_id,
+                alive: true,
+                state: state.clone(),
+            })
+        }
+
+        /// A connector for `run_on_worker_connections`: it suspends, as a real
+        /// dial does, and refuses while `refuse_dials` lasts.
+        fn dial(state: &Arc<Mutex<WorkerFakeState>>) -> impl Fn() -> FakeDial {
+            let state = state.clone();
+            move || {
+                let state = state.clone();
+                Box::pin(async move {
+                    tokio::task::yield_now().await;
+                    {
+                        let mut st = state.lock().unwrap();
+                        st.dial_attempts += 1;
+                        if st.refuse_alternate && st.dial_attempts % 2 == 1 {
+                            return Err("dial refused".to_string());
+                        }
+                        if st.refuse_dials > 0 {
+                            st.refuse_dials -= 1;
+                            return Err("dial refused".to_string());
+                        }
+                        st.dials += 1;
+                    }
+                    Ok(Self::held(&state))
+                })
+            }
+        }
+
+        fn record(&mut self, remote_path: &str) -> Result<(), ProviderError> {
+            if !self.alive {
+                return Err(ProviderError::NotConnected);
+            }
+            let mut st = self.state.lock().unwrap();
+            let first_here = !st.served.iter().any(|(id, _)| *id == self.id);
+            st.served.push((self.id, remote_path.to_string()));
+            if first_here && st.kill_first_on == Some(self.id) {
+                st.kill_first_on = None;
+                self.alive = false;
+                return Err(ProviderError::ConnectionLost(format!(
+                    "session lost during {remote_path}"
+                )));
+            }
+            if let Some(left) = st.session_kills.get_mut(remote_path) {
+                if *left > 0 {
+                    *left -= 1;
+                    self.alive = false;
+                    return Err(ProviderError::ConnectionLost(format!(
+                        "session lost during {remote_path}"
+                    )));
+                }
+            }
+            if st.file_errors.contains(remote_path) {
+                return Err(ProviderError::NotFound(remote_path.to_string()));
+            }
+            Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for WorkerFake {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            self.state
+                .lock()
+                .unwrap()
+                .kind
+                .unwrap_or(ProviderType::Sftp)
+        }
+        fn display_name(&self) -> String {
+            "worker-fake".to_string()
+        }
+        fn reports_exact_size(&self) -> bool {
+            !self.state.lock().unwrap().inexact_sizes
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.alive = false;
+            let hang = {
+                let mut st = self.state.lock().unwrap();
+                st.disconnects += 1;
+                st.hang_disconnect
+            };
+            if hang {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            self.alive
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            let st = self.state.lock().unwrap();
+            let prefix = format!("{}/", path.trim_end_matches('/'));
+            let mut entries: Vec<RemoteEntry> = st
+                .files
+                .iter()
+                .filter_map(|(full, bytes)| {
+                    let name = full.strip_prefix(&prefix)?;
+                    (!name.contains('/')).then(|| {
+                        let mut entry =
+                            RemoteEntry::file(name.to_string(), full.clone(), bytes.len() as u64);
+                        entry.modified = Some(FIXTURE_MTIME.to_string());
+                        entry
+                    })
+                })
+                .collect();
+            entries.sort_by(|a, b| a.path.cmp(&b.path));
+            Ok(entries)
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            remote_path: &str,
+            local_path: &str,
+            progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            tokio::task::yield_now().await;
+            // A first chunk arrived before anything could fail.
+            if let Some(progress) = &progress {
+                progress(1, 2);
+            }
+            self.record(remote_path)?;
+            let bytes = self
+                .state
+                .lock()
+                .unwrap()
+                .files
+                .get(remote_path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+            std::fs::write(local_path, bytes).map_err(|e| ProviderError::Other(e.to_string()))
+        }
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotFound(remote_path.to_string()))
+        }
+        async fn upload(
+            &mut self,
+            local_path: &str,
+            remote_path: &str,
+            progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            tokio::task::yield_now().await;
+            let bytes =
+                std::fs::read(local_path).map_err(|e| ProviderError::Other(e.to_string()))?;
+            // Half of it went out before anything could fail.
+            if let Some(progress) = &progress {
+                progress(bytes.len() as u64 / 2, bytes.len() as u64);
+            }
+            if let Err(err) = self.record(remote_path) {
+                let mut st = self.state.lock().unwrap();
+                if st.partial_on_kill && err.is_connection_lost() {
+                    let half = bytes[..bytes.len() / 2].to_vec();
+                    st.files.insert(remote_path.to_string(), half);
+                }
+                return Err(err);
+            }
+            self.state
+                .lock()
+                .unwrap()
+                .files
+                .insert(remote_path.to_string(), bytes);
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            let st = self.state.lock().unwrap();
+            if st.stat_errors.contains(path) {
+                return Err(ProviderError::PermissionDenied(path.to_string()));
+            }
+            let bytes = st
+                .files
+                .get(path)
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            let name = path.rsplit('/').next().unwrap_or(path).to_string();
+            let mut entry = RemoteEntry::file(name, path.to_string(), bytes.len() as u64);
+            entry.modified = Some(FIXTURE_MTIME.to_string());
+            Ok(entry)
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Ok(self.stat(path).await?.size)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(self.state.lock().unwrap().files.contains_key(path))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("worker-fake".to_string())
+        }
+        fn transfer_executor_kind(
+            &self,
+        ) -> ftp_client_gui_lib::providers::ProviderTransferExecutorKind {
+            use ftp_client_gui_lib::providers::ProviderTransferExecutorKind;
+            if self.state.lock().unwrap().pooled {
+                ProviderTransferExecutorKind::SftpConnectionPool
+            } else {
+                ProviderTransferExecutorKind::LockedSingle
+            }
+        }
+        fn transfer_executor_max_sessions(&self) -> u16 {
+            if self.state.lock().unwrap().pooled {
+                4
+            } else {
+                1
+            }
+        }
+        fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            if self.state.lock().unwrap().pooled {
+                Ok(Self::held(&self.state))
+            } else {
+                Err(ProviderError::NotSupported(
+                    "clone_for_transfer".to_string(),
+                ))
+            }
+        }
+    }
+
+    /// A job that uploads nothing: it records `path` on the connection it was
+    /// given, and classifies a failure with the production classifier.
+    async fn record_on(
+        conn: Result<Box<dyn StorageProvider>, String>,
+        path: String,
+    ) -> WorkerJobDone<String> {
+        let mut conn = match conn {
+            Ok(conn) => conn,
+            Err(err) => return WorkerJobDone::without_transfer(None, err),
+        };
+        tokio::task::yield_now().await;
+        let outcome = conn
+            .as_any_mut()
+            .downcast_mut::<WorkerFake>()
+            .expect("a WorkerFake")
+            .record(&path);
+        let outcome =
+            outcome.map_err(|err| TransferOnError::from_provider(conn.as_ref(), err, &[&path]));
+        WorkerJobDone::from_transfer(conn, outcome, || path, |err| err)
+    }
+
+    fn job_paths(n: usize) -> Vec<String> {
+        (1..=n).map(|i| format!("/root/f{i:02}")).collect()
+    }
+
+    /// Runs the helper as the commands do, with nothing cancelled and no
+    /// `--max-transfer` budget.
+    async fn run_jobs(
+        state: &Arc<Mutex<WorkerFakeState>>,
+        seed: Option<Box<dyn StorageProvider>>,
+        workers: usize,
+        jobs: Vec<String>,
+    ) -> Vec<Result<String, String>> {
+        run_on_worker_connections(
+            seed,
+            workers,
+            jobs,
+            &AtomicBool::new(false),
+            None,
+            WorkerFake::dial(state),
+            record_on,
+        )
+        .await
+    }
+
+    fn errors(results: &[Result<String, String>]) -> usize {
+        results.iter().filter(|r| r.is_err()).count()
+    }
+
+    /// The defect: the legacy batch dialled once per file. N files on W
+    /// workers now cost W connections, each closed once at the end.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_dial_once_per_worker_not_per_file() {
+        let state = WorkerFake::state();
+        let results = run_jobs(&state, None, 3, job_paths(10)).await;
+        assert_eq!((results.len(), errors(&results)), (10, 0), "{results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!(st.dials, 3, "one dial per worker");
+        assert_eq!(st.disconnects, 3, "each connection closed once");
+    }
+
+    /// Workers dial when they take their first job: fewer jobs than workers
+    /// open no idle connections.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_dial_no_more_than_the_jobs_need() {
+        let state = WorkerFake::state();
+        let results = run_jobs(&state, None, 8, job_paths(2)).await;
+        assert_eq!(results.len(), 2);
+        assert_eq!(state.lock().unwrap().dials, 2);
+    }
+
+    /// A connection the caller already holds serves the first worker, and
+    /// with one worker nothing else is dialled; a seed no job needed is
+    /// closed rather than leaked.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_start_from_the_held_connection() {
+        let state = WorkerFake::state();
+        let seed = WorkerFake::held(&state);
+        let results = run_jobs(&state, Some(seed), 1, job_paths(5)).await;
+        assert_eq!(errors(&results), 0, "{results:?}");
+        {
+            let st = state.lock().unwrap();
+            assert_eq!(st.dial_attempts, 0, "the held connection was enough");
+            assert!(st.served.iter().all(|(id, _)| *id == 1), "all on the seed");
+            assert_eq!(st.disconnects, 1);
+        }
+
+        let state = WorkerFake::state();
+        let seed = WorkerFake::held(&state);
+        let results = run_jobs(&state, Some(seed), 4, Vec::new()).await;
+        assert!(results.is_empty());
+        let st = state.lock().unwrap();
+        assert_eq!(
+            (st.dial_attempts, st.disconnects),
+            (0, 1),
+            "unused seed closed"
+        );
+    }
+
+    /// A failure of the file (here `NotFound`) keeps the connection, on a
+    /// fresh connection and on a proven one alike: a batch with scattered bad
+    /// files must not sign in again for each of them (Internxt answers 429).
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_keep_the_session_on_a_file_error() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().file_errors = ["/root/f01", "/root/f03", "/root/f05"]
+            .map(String::from)
+            .into();
+        let results = run_jobs(&state, None, 1, job_paths(6)).await;
+        assert_eq!(errors(&results), 3, "{results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!(st.dials, 1, "one connection for the whole batch");
+        assert_eq!(st.disconnects, 1);
+    }
+
+    /// A session that had completed a job and then breaks fails that job, as
+    /// its own connection would have on main, and the next job gets a fresh
+    /// connection: one broken session costs one file and one dial.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_redial_after_a_proven_session_breaks() {
+        let state = WorkerFake::state();
+        state
+            .lock()
+            .unwrap()
+            .session_kills
+            .insert("/root/f02".to_string(), 1);
+        let results = run_jobs(&state, None, 1, job_paths(3)).await;
+        assert_eq!(errors(&results), 1, "only f02 fails: {results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!(st.dials, 2, "the broken session is replaced once");
+        assert_eq!(st.disconnects, 2, "the broken one and the last one");
+        let ids: Vec<usize> = st.served.iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, vec![1, 1, 2], "f03 runs on the fresh connection");
+    }
+
+    /// A blip on the first file with one worker (the Internxt case): the
+    /// connection is lost before it completed anything, so the job goes back
+    /// to the queue once, and a new connection carries the whole batch.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_retry_the_first_file_after_a_blip() {
+        let state = WorkerFake::state();
+        state
+            .lock()
+            .unwrap()
+            .session_kills
+            .insert("/root/f01".to_string(), 1);
+        let results = run_jobs(&state, None, 1, job_paths(4)).await;
+        assert_eq!((results.len(), errors(&results)), (4, 0), "{results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!(st.dials, 2, "one extra dial for the blip");
+        let f01: Vec<usize> = st
+            .served
+            .iter()
+            .filter(|(_, p)| p == "/root/f01")
+            .map(|(id, _)| *id)
+            .collect();
+        assert_eq!(f01, vec![1, 2], "f01 tried on two connections");
+    }
+
+    /// A file that takes down every connection it touches fails on its own and
+    /// every other file goes through: one bad file does not stop the batch.
+    /// With one worker it meets two fresh connections (the rule for a job lost
+    /// twice); with several it may meet a proven one (the rule for a broken
+    /// proven session). Either way, one failure.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_fail_a_poisoned_file_alone() {
+        for (workers, max_dials) in [(1, 3), (3, 3 + 2)] {
+            let state = WorkerFake::state();
+            state
+                .lock()
+                .unwrap()
+                .session_kills
+                .insert("/root/f01".to_string(), u32::MAX);
+            let results = run_jobs(&state, None, workers, job_paths(9)).await;
+            assert_eq!(results.len(), 9, "{workers} workers: no job dropped");
+            assert_eq!(errors(&results), 1, "{workers} workers: {results:?}");
+            assert!(results
+                .iter()
+                .filter_map(|r| r.as_ref().err())
+                .all(|e| e.contains("/root/f01")));
+            let st = state.lock().unwrap();
+            assert!(
+                st.dials <= max_dials,
+                "{workers} workers: bounded dials, {}",
+                st.dials
+            );
+            if workers == 1 {
+                let f01: Vec<usize> = st
+                    .served
+                    .iter()
+                    .filter(|(_, p)| p == "/root/f01")
+                    .map(|(id, _)| *id)
+                    .collect();
+                assert_eq!(f01, vec![1, 2], "tried on two fresh connections, then left");
+            }
+        }
+    }
+
+    /// Each of the three signs of a lost session counts on its own, and a
+    /// failure of the file alone keeps the session.
+    #[test]
+    fn transfer_error_classification_reads_each_sign_of_a_lost_session() {
+        let state = WorkerFake::state();
+        let connected = WorkerFake::held(&state);
+        let mut gone = WorkerFake::held(&state);
+        gone.as_any_mut()
+            .downcast_mut::<WorkerFake>()
+            .unwrap()
+            .alive = false;
+        let lost = |provider: &dyn StorageProvider, err: ProviderError| {
+            TransferOnError::from_provider(provider, err, &[]).session_lost
+        };
+        // The error kind alone.
+        assert!(lost(
+            connected.as_ref(),
+            ProviderError::ConnectionLost("peer went away".into())
+        ));
+        assert!(lost(connected.as_ref(), ProviderError::Timeout));
+        // The message alone.
+        assert!(lost(
+            connected.as_ref(),
+            ProviderError::Other("write failed: broken pipe".into())
+        ));
+        // The provider alone.
+        assert!(lost(gone.as_ref(), ProviderError::NotFound("/x".into())));
+        // None of them: the file's failure, the session stays.
+        assert!(!lost(
+            connected.as_ref(),
+            ProviderError::NotFound("/x".into())
+        ));
+        assert!(!lost(
+            connected.as_ref(),
+            ProviderError::PermissionDenied("/x".into())
+        ));
+        // A timeout: the session stopped answering. russh-sftp's request
+        // timeout and a TCP one, neither of them in SESSION_CLOSED_NEEDLES.
+        assert!(lost(
+            connected.as_ref(),
+            ProviderError::TransferFailed("Read error: Timeout".into())
+        ));
+        assert!(lost(
+            connected.as_ref(),
+            ProviderError::TransferFailed("Remote write error: Connection timed out".into())
+        ));
+        // The job's own path is not read as a sign: a missing file called
+        // "connection reset.txt" is the file's failure.
+        let path = "/root/connection reset.txt";
+        let missing = || ProviderError::NotFound(format!("Failed to open {path}"));
+        assert!(
+            !TransferOnError::from_provider(connected.as_ref(), missing(), &[path]).session_lost
+        );
+        assert!(
+            lost(connected.as_ref(), missing()),
+            "the path is what matched"
+        );
+    }
+
+    /// An endpoint that drops every session it accepts: a worker gives each of
+    /// two jobs two connections, then stops, and the jobs left report the
+    /// error. Four dials, not one per file.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_stop_when_every_fresh_session_is_lost() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().session_kills =
+            job_paths(5).into_iter().map(|p| (p, u32::MAX)).collect();
+        let results = run_jobs(&state, None, 1, job_paths(5)).await;
+        assert_eq!((results.len(), errors(&results)), (5, 5), "{results:?}");
+        let with = |needle: &str| {
+            results
+                .iter()
+                .filter(|r| r.as_ref().err().is_some_and(|e| e.contains(needle)))
+                .count()
+        };
+        // The two jobs tried report their loss; the three left say what
+        // happened to them, not another file's error.
+        assert_eq!(with("session lost"), 2, "{results:?}");
+        assert_eq!(
+            with("not transferred: no connection left"),
+            3,
+            "{results:?}"
+        );
+        assert_eq!(state.lock().unwrap().dials, 4);
+    }
+
+    /// A dial that fails puts its job back: the next dial carries it.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_requeue_the_job_of_a_failed_dial() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().refuse_dials = 1;
+        let results = run_jobs(&state, None, 1, job_paths(3)).await;
+        assert_eq!((results.len(), errors(&results)), (3, 0), "{results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!((st.dial_attempts, st.dials), (2, 1));
+    }
+
+    /// No connection opens at all: each worker tries twice and stops, and no
+    /// job is dropped. A gateway answering 429 sees 4 attempts here, not 5.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_report_every_job_when_no_connection_opens() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().refuse_dials = u32::MAX;
+        let results = run_jobs(&state, None, 2, job_paths(5)).await;
+        assert_eq!((results.len(), errors(&results)), (5, 5));
+        assert!(results
+            .iter()
+            .all(|r| r.as_ref().err().is_some_and(|e| e.contains("dial refused"))));
+        assert_eq!(state.lock().unwrap().dial_attempts, 4);
+    }
+
+    /// A connection is closed after `WORKER_CONNECTION_MAX_JOBS` jobs, as the
+    /// pooled executor retires its warm workers.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_retire_a_connection_after_its_quota() {
+        let state = WorkerFake::state();
+        let total = WORKER_CONNECTION_MAX_JOBS as usize + 2;
+        let results = run_jobs(&state, None, 1, job_paths(total)).await;
+        assert_eq!(errors(&results), 0);
+        let st = state.lock().unwrap();
+        assert_eq!((st.dials, st.disconnects), (2, 2));
+        let first = st.served.iter().filter(|(id, _)| *id == 1).count();
+        assert_eq!(first, WORKER_CONNECTION_MAX_JOBS as usize);
+    }
+
+    /// Nothing is dialled for a job the `--max-transfer` budget already rules
+    /// out, nor once the run is cancelled.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_do_not_dial_for_a_job_that_cannot_run() {
+        let state = WorkerFake::state();
+        let results = run_on_worker_connections(
+            None,
+            3,
+            job_paths(4),
+            &AtomicBool::new(false),
+            Some(0),
+            WorkerFake::dial(&state),
+            record_on,
+        )
+        .await;
+        assert_eq!((results.len(), errors(&results)), (4, 4));
+        assert!(results
+            .iter()
+            .all(|r| r.as_ref().err().is_some_and(|e| e.contains("max-transfer"))));
+        assert_eq!(state.lock().unwrap().dial_attempts, 0);
+
+        let state = WorkerFake::state();
+        let results = run_on_worker_connections(
+            None,
+            3,
+            job_paths(4),
+            &AtomicBool::new(true),
+            None,
+            WorkerFake::dial(&state),
+            record_on,
+        )
+        .await;
+        assert_eq!((results.len(), errors(&results)), (4, 4));
+        assert_eq!(state.lock().unwrap().dial_attempts, 0);
+    }
+
+    /// A dial that suspends, as a real one does. The seed's lock guard used to
+    /// stay alive across the dial, a second worker locking it blocked the one
+    /// thread the workers share, and the batch hung (live, `put -r
+    /// --immutable` over SFTP). Run on its own thread so a hang fails the test
+    /// instead of stalling the suite.
+    #[test]
+    fn worker_connections_do_not_hold_a_lock_across_a_dial() {
+        let state = WorkerFake::state();
+        let batch_state = state.clone();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let state = batch_state;
+            let results = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("test runtime")
+                .block_on(async {
+                    let seed = WorkerFake::held(&state);
+                    run_jobs(&state, Some(seed), 4, job_paths(12)).await
+                });
+            let _ = done_tx.send(results);
+        });
+        let results = done_rx
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("the batch hung");
+        assert_eq!((results.len(), errors(&results)), (12, 0));
+        assert_eq!(state.lock().unwrap().dials, 3, "the seed plus three dials");
+    }
+
+    /// A failed transfer on a held connection takes back the bytes it put on
+    /// the batch's progress: both call sites wire the take-back, not only the
+    /// type that makes it.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_failed_transfer_on_a_held_connection_takes_back_its_progress() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let local = dir.path().join("up.bin");
+        std::fs::write(&local, vec![7u8; 1000]).unwrap();
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.session_kills = HashMap::from([
+                ("/root/up.bin".to_string(), 1),
+                ("/root/down.bin".to_string(), 1),
+            ]);
+            st.files.insert("/root/down.bin".to_string(), vec![1u8; 10]);
+        }
+        let cli = test_cli();
+        let aggregate = Arc::new(AtomicU64::new(0));
+        let mut conn = WorkerFake::held(&state);
+        let up = upload_transfer_on(
+            conn.as_mut(),
+            local.to_string_lossy().into_owned(),
+            "/root/up.bin".to_string(),
+            &cli,
+            false,
+            Some(aggregate.clone()),
+            None,
+            None,
+        )
+        .await;
+        assert!(up.is_err());
+        assert_eq!(aggregate.load(Ordering::Relaxed), 0, "upload");
+        let mut conn = WorkerFake::held(&state);
+        let down = download_transfer_on(
+            conn.as_mut(),
+            "/root/down.bin".to_string(),
+            dir.path().join("down.bin").to_string_lossy().into_owned(),
+            None,
+            &cli,
+            Some(aggregate.clone()),
+            None,
+            None,
+        )
+        .await;
+        assert!(down.is_err());
+        assert_eq!(aggregate.load(Ordering::Relaxed), 0, "download");
+    }
+
+    /// A file error whose path reads like a lost session keeps the session:
+    /// both call sites hand their paths to the classifier.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_file_named_like_a_lost_session_keeps_the_connection() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let local = dir.path().join("connection reset.txt");
+        std::fs::write(&local, b"x").unwrap();
+        let remote = "/root/connection reset.txt".to_string();
+        let state = WorkerFake::state();
+        state.lock().unwrap().file_errors.insert(remote.clone());
+        let cli = test_cli();
+        let mut conn = WorkerFake::held(&state);
+        let up = upload_transfer_on(
+            conn.as_mut(),
+            local.to_string_lossy().into_owned(),
+            remote.clone(),
+            &cli,
+            false,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(!up.expect_err("the file error").session_lost, "upload");
+        let down = download_transfer_on(
+            conn.as_mut(),
+            remote.clone(),
+            dir.path().join("out.txt").to_string_lossy().into_owned(),
+            None,
+            &cli,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(!down.expect_err("the file error").session_lost, "download");
+    }
+
+    /// The `--immutable` size check compares only a size it can trust: not
+    /// on a provider that says its sizes are not exact (the size-changing
+    /// overlays), not on Proton Drive, and not a 0 on WebDAV or Google Drive
+    /// (no length sent, a native Doc). Elsewhere a 0 is exact, and it is what
+    /// an upload cut between its create and its first write leaves.
+    #[test]
+    fn the_immutable_size_check_compares_only_sizes_it_can_trust() {
+        let cli = Cli {
+            immutable: true,
+            ..test_cli()
+        };
+        let there = |size| RemoteEntry::file("f".into(), "/f".into(), size);
+        assert!(immutable_size_mismatch(&cli, "/f", &there(3), Some(6), true).is_some());
+        assert!(immutable_size_mismatch(&cli, "/f", &there(6), Some(6), true).is_none());
+        assert!(immutable_size_mismatch(&cli, "/f", &there(3), Some(6), false).is_none());
+        assert!(immutable_size_mismatch(&cli, "/f", &there(3), None, true).is_none());
+        let no_clobber = test_cli();
+        assert!(immutable_size_mismatch(&no_clobber, "/f", &there(3), Some(6), true).is_none());
+
+        let exact = |kind: ProviderType, inexact: bool, size: u64| {
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                st.kind = Some(kind);
+                st.inexact_sizes = inexact;
+            }
+            remote_size_is_exact(WorkerFake::held(&state).as_ref(), &there(size))
+        };
+        assert!(exact(ProviderType::Sftp, false, 0), "a 0 on SFTP is exact");
+        assert!(exact(ProviderType::Sftp, false, 5));
+        assert!(!exact(ProviderType::Sftp, true, 5), "the provider says no");
+        assert!(!exact(ProviderType::WebDav, false, 0), "no length sent");
+        assert!(exact(ProviderType::WebDav, false, 5));
+        assert!(!exact(ProviderType::GoogleDrive, false, 0), "a native Doc");
+        assert!(
+            !exact(ProviderType::Proton, false, 5),
+            "maybe the encrypted size"
+        );
+    }
+
+    /// A batch summary names what arrived, and the total only when not all
+    /// of it did.
+    #[test]
+    fn batch_summaries_say_what_arrived() {
+        assert_eq!(batch_bytes_summary(1024, 1024), format_size(1024));
+        assert_eq!(
+            batch_bytes_summary(512, 4096),
+            format!("{} of {}", format_size(512), format_size(4096))
+        );
+        assert_eq!(shared_batch_bytes(true, 4096, None), 4096);
+        assert_eq!(shared_batch_bytes(false, 4096, None), 0);
+    }
+
+    /// A failed attempt takes back the bytes it added to the batch's
+    /// progress: a job that goes back to the queue starts again from zero,
+    /// and its first attempt used to be counted twice.
+    #[test]
+    fn a_failed_attempt_takes_back_its_progress() {
+        let aggregate = Arc::new(AtomicU64::new(500));
+        let (first, attempt) = make_aggregate_progress_cb(aggregate.clone(), None);
+        first(100, 300);
+        first(250, 300);
+        assert_eq!(aggregate.load(Ordering::Relaxed), 750);
+        attempt.take_back();
+        assert_eq!(aggregate.load(Ordering::Relaxed), 500);
+        let (second, _) = make_aggregate_progress_cb(aggregate.clone(), None);
+        second(300, 300);
+        assert_eq!(aggregate.load(Ordering::Relaxed), 800, "counted once");
+    }
+
+    /// A job that may not run again (an `--immutable` upload that reached the
+    /// remote file) fails when it loses a fresh connection instead of going
+    /// back to the queue.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_do_not_requeue_a_job_that_may_not_run_again() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().session_kills = HashMap::from([("/root/f01".to_string(), 1)]);
+        let results = run_on_worker_connections(
+            None,
+            1,
+            job_paths(2),
+            &AtomicBool::new(false),
+            None,
+            WorkerFake::dial(&state),
+            |conn, path| async move {
+                let mut done = record_on(conn, path).await;
+                done.retry_safe = false;
+                done
+            },
+        )
+        .await;
+        assert_eq!((results.len(), errors(&results)), (2, 1), "{results:?}");
+        let st = state.lock().unwrap();
+        let tries = st.served.iter().filter(|(_, p)| p == "/root/f01").count();
+        assert_eq!(tries, 1, "tried once, not requeued");
+    }
+
+    /// A connection that waited for a job no longer counts as proven: the
+    /// server may have dropped it while it sat idle. Its loss then puts the
+    /// job back for a fresh connection, where it used to fail the job.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_a_connection_that_waited_is_not_proven() {
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.refuse_dials = 1;
+            st.session_kills = HashMap::from([("/root/f02".to_string(), 1)]);
+        }
+        let seed = WorkerFake::held(&state);
+        let results = run_jobs(&state, Some(seed), 2, job_paths(2)).await;
+        assert_eq!((results.len(), errors(&results)), (2, 0), "{results:?}");
+    }
+
+    /// Only a completed job resets a worker's counts. An endpoint that
+    /// refuses every other dial and drops every session it accepts stops the
+    /// worker at its second failed dial: three attempts, where resetting the
+    /// count on each accepted dial let it go on to eight.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_count_a_failure_streak_until_a_job_completes() {
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.refuse_alternate = true;
+            st.session_kills = job_paths(3).into_iter().map(|p| (p, u32::MAX)).collect();
+        }
+        let results = run_jobs(&state, None, 1, job_paths(3)).await;
+        assert_eq!((results.len(), errors(&results)), (3, 3), "{results:?}");
+        assert_eq!(state.lock().unwrap().dial_attempts, 3);
+    }
+
+    /// A worker with nothing left to take waits while another still holds a
+    /// job: the job a failed dial puts back runs on the waiting worker's live
+    /// connection, where it used to fail for want of one after the second
+    /// failed dial.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_idle_worker_takes_a_job_that_comes_back() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().refuse_dials = u32::MAX;
+        let seed = WorkerFake::held(&state);
+        let results = run_jobs(&state, Some(seed), 2, job_paths(2)).await;
+        assert_eq!((results.len(), errors(&results)), (2, 0), "{results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!(st.dial_attempts, 1);
+        assert!(
+            st.served.iter().all(|(id, _)| *id == 1),
+            "both on the seed: {:?}",
+            st.served
+        );
+    }
+
+    /// A failed dial is followed by a pause before the next one, so a short
+    /// outage is ridden out instead of spending both attempts at once.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_pause_before_dialling_again() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().refuse_dials = 1;
+        let started = tokio::time::Instant::now();
+        let results = run_jobs(&state, None, 1, job_paths(1)).await;
+        assert_eq!(errors(&results), 0);
+        assert_eq!(state.lock().unwrap().dial_attempts, 2);
+        assert_eq!(started.elapsed(), WORKER_REDIAL_PAUSE);
+    }
+
+    /// Closing a connection whose peer stopped answering is bounded: the
+    /// batch ends instead of waiting on the close.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_bound_the_close_of_a_silent_peer() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().hang_disconnect = true;
+        let started = tokio::time::Instant::now();
+        let results = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            run_jobs(&state, None, 1, job_paths(2)),
+        )
+        .await
+        .expect("the batch waited on a close that never returns");
+        assert_eq!(errors(&results), 0);
+        assert_eq!(state.lock().unwrap().disconnects, 1);
+        assert_eq!(started.elapsed(), WORKER_CLOSE_TIMEOUT);
+    }
+
+    /// Runs `command` against the fake: the first `create_and_connect` gets
+    /// `seed`, every later one a new connection from the factory, counted as
+    /// a dial. So a command that dials per file shows it in `dials`.
+    fn run_on_fake<T: Send, F: std::future::Future<Output = T>>(
+        state: &Arc<Mutex<WorkerFakeState>>,
+        command: impl FnOnce() -> F + Send,
+    ) -> T {
+        let state = state.clone();
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .name("worker-connection-command".to_string())
+                .stack_size(64 * 1024 * 1024)
+                .spawn_scoped(scope, move || {
+                    let seed = WorkerFake::held(&state);
+                    TEST_CONNECTED_PROVIDER.with(|slot| *slot.borrow_mut() = Some(seed));
+                    let factory_state = state.clone();
+                    TEST_PROVIDER_FACTORY.with(|slot| {
+                        *slot.borrow_mut() = Some(std::rc::Rc::new(move || {
+                            let mut st = factory_state.lock().unwrap();
+                            st.dials += 1;
+                            st.dial_attempts += 1;
+                            drop(st);
+                            WorkerFake::held(&factory_state)
+                        }))
+                    });
+                    let out = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("test runtime")
+                        .block_on(command());
+                    TEST_PROVIDER_FACTORY.with(|slot| *slot.borrow_mut() = None);
+                    out
+                })
+                .expect("spawn the command thread")
+                .join()
+                .expect("the command thread panicked")
+        })
+    }
+
+    /// Five local files under `dir/up`, and a CLI with `workers` workers.
+    fn local_batch(dir: &tempfile::TempDir, workers: usize) -> (String, Cli) {
+        let local = dir.path().join("up");
+        std::fs::create_dir(&local).expect("local dir");
+        for i in 1..=5 {
+            std::fs::write(local.join(format!("f{i}.txt")), format!("file {i}")).unwrap();
+        }
+        let cli = Cli {
+            quiet: true,
+            parallel: workers,
+            ..test_cli()
+        };
+        (local.to_string_lossy().into_owned(), cli)
+    }
+
+    fn remote_batch(state: &Arc<Mutex<WorkerFakeState>>) {
+        let mut st = state.lock().unwrap();
+        for i in 1..=5 {
+            st.files
+                .insert(format!("/root/f{i}.txt"), format!("file {i}").into_bytes());
+        }
+    }
+
+    fn local_files(dir: &std::path::Path) -> usize {
+        walkdir::WalkDir::new(dir)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
+            .count()
+    }
+
+    /// `put -r` to a provider without a transfer pool (Internxt, MEGA, Filen
+    /// and the other single-session APIs) closed its scan connection and
+    /// dialled once per file: 60 files to Internxt were 60 logins. With one
+    /// worker it now uploads every file on the scan connection, dialling
+    /// nothing, and with four it dials three more, not five.
+    #[test]
+    fn put_recursive_on_a_poolless_provider_dials_once_per_worker() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for (workers, dials) in [(1, 0), (4, 3)] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, cli) = local_batch(&dir, workers);
+            let state = WorkerFake::state();
+            let code = run_on_fake(&state, || async {
+                cmd_put_recursive(
+                    "memory://",
+                    &local_dir,
+                    Some("/root"),
+                    false,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            assert_eq!(code, 0, "{workers} workers: {:?}", st.served);
+            assert_eq!(st.files.len(), 5, "{workers} workers: every file uploaded");
+            assert_eq!(st.dials, dials, "{workers} workers");
+            assert_eq!(
+                st.disconnects,
+                dials + 1,
+                "{workers} workers: each closed once"
+            );
+        }
+    }
+
+    /// The download twin: `get -r` from a provider without a transfer pool.
+    #[test]
+    fn get_recursive_on_a_poolless_provider_dials_once_per_worker() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for (workers, dials) in [(1, 0), (4, 3)] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let state = WorkerFake::state();
+            remote_batch(&state);
+            let cli = Cli {
+                quiet: true,
+                parallel: workers,
+                ..test_cli()
+            };
+            let local_base = dir.path().join("down").to_string_lossy().into_owned();
+            let code = run_on_fake(&state, || async {
+                cmd_get_recursive(
+                    "memory://",
+                    "/root",
+                    Some(&local_base),
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            assert_eq!(code, 0, "{workers} workers: {:?}", st.served);
+            assert_eq!(st.served.len(), 5, "{workers} workers");
+            assert_eq!(st.dials, dials, "{workers} workers");
+            assert_eq!(local_files(&dir.path().join("down")), 5);
+        }
+    }
+
+    /// `--immutable` skips the files already there without dropping the
+    /// connection: the skip says nothing about the session.
+    #[test]
+    fn put_recursive_immutable_skips_keep_the_connection() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        cli.immutable = true;
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            // The size of the local files ("file N"), so each is a skip.
+            for name in ["f1.txt", "f3.txt"] {
+                st.files.insert(format!("/root/{name}"), b"there!".to_vec());
+            }
+        }
+        run_on_fake(&state, || async {
+            cmd_put_recursive(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(
+            st.served.len(),
+            3,
+            "three uploads, two skips: {:?}",
+            st.served
+        );
+        assert_eq!(st.files["/root/f1.txt"], b"there!", "not overwritten");
+        assert_eq!(st.dials, 0, "one connection throughout");
+        assert_eq!(st.disconnects, 1);
+    }
+
+    /// `--immutable` and a fresh connection lost in the middle of an upload:
+    /// the upload had already created the remote file, and a second attempt
+    /// found that partial, skipped it as already there and exited 0 on a
+    /// truncated file. The loss is reported instead.
+    #[test]
+    fn put_recursive_immutable_reports_an_upload_cut_by_a_lost_connection() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        // `--no-clobber` skips an existing file the same way, so the same
+        // requeue would hide the same partial.
+        for no_clobber in [false, true] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 2);
+            cli.immutable = !no_clobber;
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                // Connection 1 is the scan connection, 2 the first one dialled.
+                st.kill_first_on = Some(2);
+                st.partial_on_kill = true;
+            }
+            let code = run_on_fake(&state, || async {
+                cmd_put_recursive(
+                    "memory://",
+                    &local_dir,
+                    Some("/root"),
+                    no_clobber,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            let (_, cut) = st
+                .served
+                .iter()
+                .find(|(id, _)| *id == 2)
+                .expect("connection 2 took a job");
+            assert!(st.files[cut].len() < 6, "the fake left a partial at {cut}");
+            assert_eq!(
+                code, 4,
+                "no_clobber {no_clobber}: the cut upload is a failure: {:?}",
+                st.served
+            );
+        }
+    }
+
+    /// `--immutable` and a remote file of another size, most often the
+    /// partial a lost connection left: an error, not a skip. It was counted
+    /// as skipped, and the run reported the truncated file as done, then and
+    /// on every later run.
+    #[test]
+    fn put_recursive_immutable_refuses_a_remote_file_of_another_size() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        cli.immutable = true;
+        let state = WorkerFake::state();
+        state
+            .lock()
+            .unwrap()
+            .files
+            .insert("/root/f2.txt".to_string(), b"fil".to_vec());
+        let code = run_on_fake(&state, || async {
+            cmd_put_recursive(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 4, "{:?}", st.served);
+        assert_eq!(st.files["/root/f2.txt"], b"fil", "not overwritten");
+        assert_eq!(st.files.len(), 5, "the other four uploaded");
+    }
+
+    /// The same for a single `put`: a remote file of another size is refused
+    /// with exit 4, one of the same size is still the skip it was (exit 9).
+    #[test]
+    fn put_immutable_refuses_a_remote_file_of_another_size() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let local = dir.path().join("one.txt");
+        std::fs::write(&local, b"123456").unwrap();
+        let local = local.to_string_lossy().into_owned();
+        let cli = Cli {
+            quiet: true,
+            immutable: true,
+            ..test_cli()
+        };
+        for (there, expected) in [(&b"123"[..], 4), (&b"abcdef"[..], 9)] {
+            let state = WorkerFake::state();
+            state
+                .lock()
+                .unwrap()
+                .files
+                .insert("/root/one.txt".to_string(), there.to_vec());
+            let code = run_on_fake(&state, || {
+                cmd_put(
+                    "memory://",
+                    &local,
+                    Some("/root/one.txt"),
+                    false,
+                    false,
+                    false,
+                    None,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+            });
+            assert_eq!(code, expected, "remote of {} bytes", there.len());
+            let st = state.lock().unwrap();
+            assert_eq!(st.files["/root/one.txt"], there, "never overwritten");
+        }
+    }
+
+    /// `put -r -n` and `put -n` with a glob honoured `--no-clobber` only on
+    /// the single-file path: the batches overwrote an existing remote file
+    /// without a word. Both skip it now, on a provider with a transfer pool
+    /// too (the pooled uploader has no existence check, so `-n` stays off it).
+    #[test]
+    fn put_batches_honour_no_clobber() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for pooled in [false, true] {
+            for glob in [false, true] {
+                let dir = tempfile::tempdir().expect("temp dir");
+                let (local_dir, cli) = local_batch(&dir, 2);
+                let state = WorkerFake::state();
+                {
+                    let mut st = state.lock().unwrap();
+                    st.pooled = pooled;
+                    st.files.insert("/root/f1.txt".to_string(), b"old".to_vec());
+                }
+                let pattern = format!("{local_dir}/*.txt");
+                let code = run_on_fake(&state, || async {
+                    if glob {
+                        cmd_put_glob(
+                            "memory://",
+                            &pattern,
+                            Some("/root"),
+                            true,
+                            &cli,
+                            OutputFormat::Text,
+                            Arc::new(AtomicBool::new(false)),
+                        )
+                        .await
+                    } else {
+                        cmd_put_recursive(
+                            "memory://",
+                            &local_dir,
+                            Some("/root"),
+                            true,
+                            &cli,
+                            OutputFormat::Text,
+                            Arc::new(AtomicBool::new(false)),
+                        )
+                        .await
+                    }
+                });
+                let st = state.lock().unwrap();
+                let case = format!("glob {glob}, pooled {pooled}");
+                assert_eq!(st.files["/root/f1.txt"], b"old", "{case}: not overwritten");
+                assert_eq!(st.files.len(), 5, "{case}: the rest uploaded");
+                assert_eq!(code, 0, "{case}");
+            }
+        }
+    }
+
+    /// The text mode's `--retries` reruns a failed `put`. A rerun of `put -r
+    /// -n` or `put -n` used to find the partial the failed attempt left and
+    /// skip it as already there, ending with exit 9 or 0 on a truncated file
+    /// (a cron `put -r -n dir/ /backup` over a flaky link kept it truncated
+    /// for good). The rerun now reports it as an error, and since no later
+    /// attempt can change that, it is the last attempt.
+    #[test]
+    fn put_retries_report_the_partial_an_earlier_attempt_left() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for recursive in [true, false] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 2);
+            cli.retries = 3;
+            cli.retries_sleep = "0".to_string();
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                // `put -r`: connection 2 is its first dialled worker. A
+                // single `put` uploads on the first connection it opens.
+                st.kill_first_on = Some(if recursive { 2 } else { 1 });
+                st.partial_on_kill = true;
+            }
+            let local = if recursive {
+                local_dir.clone()
+            } else {
+                format!("{local_dir}/f1.txt")
+            };
+            let remote = if recursive { "/root" } else { "/root/f1.txt" };
+            let code = run_on_fake(&state, || {
+                put_with_retries(
+                    "memory://",
+                    &local,
+                    Some(remote),
+                    recursive,
+                    true,
+                    false,
+                    None,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+            });
+            let st = state.lock().unwrap();
+            let case = format!("recursive {recursive}");
+            let (_, cut) = st
+                .served
+                .iter()
+                .find(|(id, _)| *id == if recursive { 2 } else { 1 })
+                .expect("the cut connection took a job");
+            assert!(
+                st.files[cut].len() < 6,
+                "{case}: the fake left a partial at {cut}"
+            );
+            assert_eq!(code, 4, "{case}: the partial is a failure: {:?}", st.served);
+            let attempts_on_cut = st.served.iter().filter(|(_, p)| p == cut).count();
+            assert_eq!(
+                attempts_on_cut, 1,
+                "{case}: never uploaded again, only refused"
+            );
+            if !recursive {
+                // Attempt 1 ran on the first connection, attempt 2 dialled
+                // one and refused; a refusal ends the retries, so no third.
+                assert_eq!(st.dials, 1, "{case}: two attempts, not three");
+            }
+        }
+    }
+
+    /// A refusal ends the retries only when it is all that failed. Here one
+    /// file is refused (another size under `--immutable`) and another loses
+    /// its session: the second attempt runs, uploads that file, meets the
+    /// refusal again and stops there. A refusal used to switch the retries
+    /// off for the whole batch, and the other file never went up.
+    #[test]
+    fn put_retries_go_on_past_a_refusal_when_something_else_failed() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        cli.immutable = true;
+        cli.retries = 3;
+        cli.retries_sleep = "0".to_string();
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.files.insert("/root/f1.txt".to_string(), b"fil".to_vec());
+            st.session_kills = HashMap::from([("/root/f2.txt".to_string(), 1)]);
+        }
+        let code = run_on_fake(&state, || {
+            put_with_retries(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                true,
+                false,
+                false,
+                None,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 4, "the refusal stays a failure: {:?}", st.served);
+        assert_eq!(
+            st.files["/root/f2.txt"], b"file 2",
+            "uploaded on the second attempt"
+        );
+        assert_eq!(st.files["/root/f1.txt"], b"fil", "never overwritten");
+        // Attempt 1 dialled a successor after the lost session, attempt 2
+        // its scan connection; a third attempt would dial once more.
+        assert_eq!(st.dials, 2, "two attempts: {:?}", st.served);
+    }
+
+    /// Under `--immutable` a remote file of 0 bytes on a provider whose sizes
+    /// are exact (here SFTP) is refused like any other size: it is what an
+    /// upload cut between its create and its first write leaves. On a
+    /// provider whose sizes are not exact the file is skipped, as before.
+    #[test]
+    fn put_recursive_immutable_trusts_only_exact_sizes() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for inexact in [false, true] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 1);
+            cli.immutable = true;
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                st.inexact_sizes = inexact;
+                st.files.insert("/root/f2.txt".to_string(), Vec::new());
+            }
+            let code = run_on_fake(&state, || async {
+                cmd_put_recursive(
+                    "memory://",
+                    &local_dir,
+                    Some("/root"),
+                    false,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            assert_eq!(code, if inexact { 0 } else { 4 }, "inexact {inexact}");
+            assert!(st.files["/root/f2.txt"].is_empty(), "never overwritten");
+        }
+    }
+
+    /// Under `--immutable` the batches refuse to write a file whose absence
+    /// they cannot verify, as a single `put` does; they used to go ahead.
+    #[test]
+    fn put_recursive_immutable_refuses_what_it_cannot_stat() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        cli.immutable = true;
+        let state = WorkerFake::state();
+        state
+            .lock()
+            .unwrap()
+            .stat_errors
+            .insert("/root/f2.txt".to_string());
+        let code = run_on_fake(&state, || async {
+            cmd_put_recursive(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 4, "{:?}", st.served);
+        assert!(!st.files.contains_key("/root/f2.txt"), "not written");
+        assert_eq!(st.files.len(), 4, "the others uploaded");
+    }
+
+    /// `put` with a glob that skips every file ends with exit 9, as `put -r`
+    /// does, and leaves them all alone.
+    #[test]
+    fn put_glob_that_skips_everything_exits_9() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 2);
+        cli.immutable = true;
+        let state = WorkerFake::state();
+        remote_batch(&state);
+        let pattern = format!("{local_dir}/*.txt");
+        let code = run_on_fake(&state, || async {
+            cmd_put_glob(
+                "memory://",
+                &pattern,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 9, "{:?}", st.served);
+        assert!(st.served.is_empty(), "nothing uploaded: {:?}", st.served);
+    }
+
+    /// `put` and `get` with a glob take the same helper.
+    #[test]
+    fn globs_on_a_poolless_provider_dial_once_per_worker() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, cli) = local_batch(&dir, 2);
+        let state = WorkerFake::state();
+        let pattern = format!("{local_dir}/*.txt");
+        let code = run_on_fake(&state, || async {
+            cmd_put_glob(
+                "memory://",
+                &pattern,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        {
+            let st = state.lock().unwrap();
+            assert_eq!(code, 0, "put glob: {:?}", st.served);
+            assert_eq!(st.files.len(), 5);
+            assert!(st.dials <= 2, "put glob dials: {}", st.dials);
+        }
+
+        let state = WorkerFake::state();
+        remote_batch(&state);
+        let local_base = dir.path().join("globbed").to_string_lossy().into_owned();
+        let code = run_on_fake(&state, || async {
+            cmd_get_glob(
+                "memory://",
+                "/root/*.txt",
+                Some(&local_base),
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 0, "get glob: {:?}", st.served);
+        assert_eq!(st.served.len(), 5);
+        assert!(st.dials <= 2, "get glob dials: {}", st.dials);
+        assert_eq!(local_files(&dir.path().join("globbed")), 5);
+    }
+
+    /// `sync` opens a base connection for its transfer batch, which a
+    /// provider without a pool hands back: the uploads and the downloads then
+    /// run on it, one worker, no dial per file.
+    #[test]
+    fn sync_on_a_poolless_provider_dials_once_per_batch() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for direction in ["upload", "download"] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, cli) = local_batch(&dir, 1);
+            let state = WorkerFake::state();
+            if direction == "download" {
+                std::fs::remove_dir_all(&local_dir).unwrap();
+                std::fs::create_dir(&local_dir).unwrap();
+                remote_batch(&state);
+            }
+            let stats = run_on_fake(&state, || {
+                cmd_sync(
+                    "memory://",
+                    &local_dir,
+                    "/root",
+                    direction,
+                    false,
+                    false,
+                    &[],
+                    None,
+                    0,
+                    false,
+                    None,
+                    None,
+                    "",
+                    false,
+                    None,
+                    None,
+                    None,
+                    "newer",
+                    false,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                    Arc::new(AtomicBool::new(false)),
+                    None,
+                    false,
+                )
+            });
+            let st = state.lock().unwrap();
+            let moved = stats.uploaded + stats.downloaded;
+            assert_eq!(moved, 5, "{direction}: {:?}", st.served);
+            assert_eq!(st.served.len(), 5, "{direction}");
+            assert_eq!(st.dials, 1, "{direction}: the batch's base connection only");
+            let ids: std::collections::HashSet<usize> =
+                st.served.iter().map(|(id, _)| *id).collect();
+            assert_eq!(ids.len(), 1, "{direction}: every file on one connection");
+        }
+    }
+
+    /// `sync` up with error correction keeps the per-file result path (its
+    /// sidecars follow only the uploads that succeeded) and opens no base
+    /// connection: its uploads run on one connection per worker, where they
+    /// dialled once per file.
+    #[test]
+    fn sync_with_error_correction_dials_once_per_worker() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, cli) = local_batch(&dir, 2);
+        let state = WorkerFake::state();
+        let stats = run_on_fake(&state, || {
+            cmd_sync(
+                "memory://",
+                &local_dir,
+                "/root",
+                "upload",
+                false,
+                false,
+                &[],
+                Some(10),
+                0,
+                false,
+                None,
+                None,
+                "",
+                false,
+                None,
+                None,
+                None,
+                "newer",
+                false,
+                false,
+                &cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+                None,
+                false,
+            )
+        });
+        let st = state.lock().unwrap();
+        let data: Vec<&(usize, String)> = st
+            .served
+            .iter()
+            .filter(|(_, p)| p.ends_with(".txt"))
+            .collect();
+        assert_eq!(stats.uploaded, 5, "{:?}", st.served);
+        assert_eq!(data.len(), 5, "{:?}", st.served);
+        assert!(st.dials <= 2, "one per worker at most: {} dials", st.dials);
+    }
+
+    /// `sync` both ways keeping both sides of a conflict: the local copies go
+    /// up under their conflict names on one connection, not one each.
+    #[test]
+    fn sync_conflict_uploads_share_one_connection() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, cli) = local_batch(&dir, 4);
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            for i in 1..=5 {
+                st.files.insert(
+                    format!("/root/f{i}.txt"),
+                    format!("remote copy {i}").into_bytes(),
+                );
+            }
+        }
+        run_on_fake(&state, || {
+            cmd_sync(
+                "memory://",
+                &local_dir,
+                "/root",
+                "both",
+                false,
+                false,
+                &[],
+                None,
+                0,
+                false,
+                None,
+                None,
+                "",
+                false,
+                None,
+                None,
+                None,
+                "rename",
+                false,
+                false,
+                &cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+                None,
+                false,
+            )
+        });
+        let st = state.lock().unwrap();
+        let conflicts: Vec<usize> = st
+            .served
+            .iter()
+            .filter(|(_, p)| p.contains(".conflict-"))
+            .map(|(id, _)| *id)
+            .collect();
+        assert_eq!(conflicts.len(), 5, "{:?}", st.served);
+        let ids: std::collections::HashSet<usize> = conflicts.into_iter().collect();
+        assert_eq!(ids.len(), 1, "one connection for them all: {:?}", st.served);
+    }
+
     static SESSION_TRANSFER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
 
     /// Records the actual provider path selected by the shared CLI batch, with
@@ -81360,6 +84047,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             &mut p,
             "/dest.txt",
             "--immutable",
+            None,
             &cli,
             OutputFormat::Text,
         )
@@ -81374,6 +84062,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             &mut p,
             "/fresh.txt",
             "--immutable",
+            None,
             &cli,
             OutputFormat::Json,
         )
@@ -81397,6 +84086,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             &mut p,
             "/dest.txt",
             "--immutable",
+            None,
             &cli,
             OutputFormat::Text,
         )
@@ -81411,6 +84101,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             &mut p,
             "/dest.txt",
             "--no-clobber",
+            None,
             &cli,
             OutputFormat::Text,
         )
