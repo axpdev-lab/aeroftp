@@ -1586,8 +1586,11 @@ impl StorageProvider for SwiftProvider {
         }
         let prefix = Self::normalize_path(path);
 
-        // Flat listing, every page. One page of `limit=10000` used to answer
-        // Ok after deleting only that page, and the rest of the folder stayed.
+        // Flat listing, every page, until a page comes back empty. One page of
+        // `limit=10000` used to answer Ok after deleting only that page, and a
+        // short page is not the last one either: a server whose listing cap is
+        // lower than the limit asked for (Ceph RGW answers at most 1000 by
+        // default) answers short pages all the way through.
         let base = format!("{}/{}", self.storage_url()?, self.container);
         let mut marker = String::new();
         let mut object_paths: Vec<String> = Vec::new();
@@ -1600,15 +1603,21 @@ impl StorageProvider for SwiftProvider {
                 url.push_str(&format!("&marker={}", urlencoding::encode(&marker)));
             }
             let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
-            if !resp.status().is_success() {
+            let status = resp.status();
+            if !status.is_success() {
                 return Err(ProviderError::ServerError(format!(
-                    "List for delete failed: HTTP {}",
-                    resp.status()
+                    "List for delete failed: HTTP {status}"
                 )));
             }
-            let entries: Vec<ObjectEntry> = resp
-                .json()
+            // An empty listing may be a 204 with no body instead of `[]`.
+            let body = resp
+                .bytes()
                 .await
+                .map_err(|e| ProviderError::ServerError(format!("List for delete failed: {e}")))?;
+            if status == StatusCode::NO_CONTENT || body.iter().all(u8::is_ascii_whitespace) {
+                break;
+            }
+            let entries: Vec<ObjectEntry> = serde_json::from_slice(&body)
                 .map_err(|e| ProviderError::ServerError(format!("List for delete failed: {e}")))?;
             if entries.is_empty() {
                 break;
@@ -1621,9 +1630,6 @@ impl StorageProvider for SwiftProvider {
                 if let Some(name) = &entry.name {
                     object_paths.push(self.object_reference(name));
                 }
-            }
-            if entries.len() < 10000 {
-                break;
             }
             if last_name.is_empty() || last_name == marker {
                 return Err(ProviderError::ServerError(
@@ -1979,6 +1985,15 @@ mod tests {
                 async move {
                     let method = req.method().to_string();
                     let path = req.uri().path().to_string();
+                    // A listing past `marker` holds only the names after it,
+                    // as on Swift: a paging loop sees its last page empty.
+                    let marker = req
+                        .uri()
+                        .query()
+                        .unwrap_or("")
+                        .split('&')
+                        .find_map(|pair| pair.strip_prefix("marker="))
+                        .map(|m| urlencoding::decode(m).unwrap().to_string());
                     let copy_from = req
                         .headers()
                         .get("x-copy-from")
@@ -2001,10 +2016,21 @@ mod tests {
                         "DELETE" => 204,
                         _ => 200,
                     };
-                    let body = if method == "GET" {
-                        listing.to_string()
-                    } else {
-                        String::new()
+                    let body = match (method.as_str(), &marker, listing.as_array()) {
+                        ("GET", Some(marker), Some(entries)) => serde_json::Value::Array(
+                            entries
+                                .iter()
+                                .filter(|entry| {
+                                    entry["name"]
+                                        .as_str()
+                                        .is_some_and(|name| name > marker.as_str())
+                                })
+                                .cloned()
+                                .collect(),
+                        )
+                        .to_string(),
+                        ("GET", _, _) => listing.to_string(),
+                        _ => String::new(),
                     };
                     axum::response::Response::builder()
                         .status(status)
@@ -2215,7 +2241,9 @@ mod tests {
                         body.clone(),
                     ));
                     let listing = if method == "GET" {
-                        if query.contains("marker=") {
+                        if query.contains("marker=d%2Flast") {
+                            "[]".to_string()
+                        } else if query.contains("marker=") {
                             r#"[{"name":"d/last","bytes":1}]"#.to_string()
                         } else {
                             let mut page = String::from("[");
@@ -2250,8 +2278,23 @@ mod tests {
         p.container = "my box".to_string();
         p.rmdir_recursive("/d").await.expect("both pages");
         let log = log.lock().unwrap().clone();
-        let gets = log.iter().filter(|row| row.0 == "GET").count();
-        assert_eq!(gets, 2, "a full page must ask for the next marker");
+        let queries: Vec<&str> = log
+            .iter()
+            .filter(|row| row.0 == "GET")
+            .map(|row| row.2.as_deref().unwrap_or(""))
+            .collect();
+        assert_eq!(
+            queries.len(),
+            3,
+            "a full page asks for the next one, and so does a short one, until a page \
+             comes back empty: {queries:?}"
+        );
+        assert!(
+            queries[1].contains("marker=d%2Ff09999"),
+            "the second page starts after the last name of the first: {}",
+            queries[1]
+        );
+        assert!(queries[2].contains("marker=d%2Flast"), "{}", queries[2]);
         let bulk: String = log
             .iter()
             .filter(|row| row.0 == "POST")
@@ -2262,6 +2305,101 @@ mod tests {
         assert!(bulk.contains("/my%20box/d/f09999"), "{bulk}");
         assert!(bulk.contains("/my%20box/d/last"), "{bulk}");
         assert!(bulk.contains("/my%20box/d/"), "{bulk}");
+    }
+
+    /// L6 of the 4.2.1 closeout: a server whose listing cap is lower than
+    /// the `limit=10000` asked for (Ceph RGW answers at most 1000 by
+    /// default) answers short pages that are not the last one. Stopping on a
+    /// short page deleted the first page and answered Ok. The listing now
+    /// goes on until a page is empty, and an empty page may be a 204 with no
+    /// body, which used to fail the whole delete before anything went.
+    #[tokio::test]
+    async fn recursive_delete_pages_a_server_with_a_smaller_listing_cap() {
+        const CAP: usize = 3;
+        let names: Vec<String> = (0..6).map(|i| format!("d/o{i}")).collect();
+        let log: StorageLog = Default::default();
+        let seen = std::sync::Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = std::sync::Arc::clone(&seen);
+                let names = names.clone();
+                async move {
+                    let method = req.method().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    seen.lock()
+                        .unwrap()
+                        .push((method.clone(), path, Some(query.clone()), body));
+                    if method != "GET" {
+                        return axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let marker = query
+                        .split('&')
+                        .find_map(|pair| pair.strip_prefix("marker="))
+                        .map(|m| urlencoding::decode(m).unwrap().to_string())
+                        .unwrap_or_default();
+                    let page: Vec<String> = names
+                        .iter()
+                        .filter(|name| marker.is_empty() || name.as_str() > marker.as_str())
+                        .take(CAP)
+                        .map(|name| format!(r#"{{"name":"{name}","bytes":1}}"#))
+                        .collect();
+                    if page.is_empty() {
+                        return axum::response::Response::builder()
+                            .status(204)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(format!("[{}]", page.join(","))))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "c".to_string();
+        p.rmdir_recursive("/d").await.expect("every page");
+        let log = log.lock().unwrap().clone();
+        let queries: Vec<&str> = log
+            .iter()
+            .filter(|row| row.0 == "GET")
+            .map(|row| row.2.as_deref().unwrap_or(""))
+            .collect();
+        assert_eq!(
+            queries.len(),
+            3,
+            "two pages of 3, then the empty 204: {queries:?}"
+        );
+        assert!(queries[1].contains("marker=d%2Fo2"), "{}", queries[1]);
+        assert!(queries[2].contains("marker=d%2Fo5"), "{}", queries[2]);
+        let bulk: String = log
+            .iter()
+            .filter(|row| row.0 == "POST")
+            .map(|row| row.3.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        for i in 0..6 {
+            assert!(
+                bulk.contains(&format!("/c/d/o{i}")),
+                "d/o{i} not deleted: {bulk}"
+            );
+        }
     }
 
     /// The GUI's default listing path is `"."`, not `"/"`, and Swift turned that
