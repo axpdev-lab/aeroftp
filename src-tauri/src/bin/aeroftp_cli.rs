@@ -10531,6 +10531,8 @@ struct TransferOnError {
     session_lost: bool,
     /// See [`WorkerJobDone::retry_safe`].
     retry_safe: bool,
+    /// See [`WorkerJobDone::untouched`].
+    untouched: bool,
 }
 
 impl TransferOnError {
@@ -10539,6 +10541,7 @@ impl TransferOnError {
             message,
             session_lost: false,
             retry_safe: true,
+            untouched: false,
         }
     }
 
@@ -10568,6 +10571,7 @@ impl TransferOnError {
             message,
             session_lost,
             retry_safe: true,
+            untouched: false,
         }
     }
 }
@@ -10661,6 +10665,7 @@ async fn upload_transfer_on(
                         message,
                         session_lost: false,
                         retry_safe: true,
+                        untouched: false,
                     });
                 }
                 let flag = if cli.immutable {
@@ -10674,17 +10679,32 @@ async fn upload_transfer_on(
             }
             Err(ProviderError::NotFound(_)) => {}
             // As a single `put` does: under `--immutable` a `stat` that fails
-            // for another reason fails closed, and `--no-clobber` proceeds.
-            Err(e) if cli.immutable => {
+            // for another reason fails closed, and `--no-clobber` proceeds,
+            // unless the check lost the session. A worker's connection can end
+            // between two jobs, and its `stat` then fails at once (SFTP's does
+            // not dial again) while the upload dials again by itself and would
+            // truncate the very file `--no-clobber` protects. Nothing is
+            // written yet, so the job runs again on a new connection instead
+            // (`untouched`), which sees the file.
+            Err(e) => {
                 let mut err =
                     TransferOnError::from_provider(provider, e, &[&local_path, &remote_path]);
-                err.message = format!(
-                    "--immutable: cannot verify that {} does not exist ({}); refusing to write rather than risk an overwrite",
-                    remote_path, err.message
-                );
-                return Err(err);
+                err.untouched = err.session_lost;
+                if cli.immutable {
+                    err.message = format!(
+                        "--immutable: cannot verify that {} does not exist ({}); refusing to write rather than risk an overwrite",
+                        remote_path, err.message
+                    );
+                    return Err(err);
+                }
+                if err.session_lost {
+                    err.message = format!(
+                        "--no-clobber: cannot verify that {} does not exist ({}); not written",
+                        remote_path, err.message
+                    );
+                    return Err(err);
+                }
             }
-            Err(_) => {}
         }
     }
 
@@ -10758,6 +10778,11 @@ struct WorkerJobDone<R> {
     /// The job may run again after losing a fresh connection without hiding
     /// that loss (see [`run_on_worker_connections`]).
     retry_safe: bool,
+    /// The job lost its session before it wrote anything (the existence
+    /// check of `--immutable` or `--no-clobber`): on a connection of its own
+    /// it would have run on a fresh dial, so it goes back to the queue once
+    /// whatever the connection had completed before.
+    untouched: bool,
 }
 
 impl<R> WorkerJobDone<R> {
@@ -10775,12 +10800,14 @@ impl<R> WorkerJobDone<R> {
                 result: Ok(ok()),
                 session_lost: false,
                 retry_safe: true,
+                untouched: false,
             },
             Err(err) => Self {
                 conn: Some(conn),
                 result: Err(describe(err.message)),
                 session_lost: err.session_lost,
                 retry_safe: err.retry_safe,
+                untouched: err.untouched,
             },
         }
     }
@@ -10793,6 +10820,7 @@ impl<R> WorkerJobDone<R> {
             result: Err(message),
             session_lost: false,
             retry_safe: true,
+            untouched: false,
         }
     }
 }
@@ -10873,6 +10901,10 @@ struct WorkerQueue<J> {
 ///   ([`WorkerJobDone::retry_safe`]). If it loses a second fresh connection, or
 ///   may not run again, it fails on its own: one bad file does not stop the
 ///   batch.
+/// - A job that loses its session before it wrote anything
+///   ([`WorkerJobDone::untouched`]) goes back to the queue once whatever the
+///   connection had completed: a connection can end between two jobs, and on
+///   a connection of its own the job would have dialled afresh.
 /// - A failed dial puts its job back in the queue, and the worker waits
 ///   [`WORKER_REDIAL_PAUSE`] before its next dial. Its exit code is not read:
 ///   every command has connected once before its batch (its scan, its
@@ -11065,17 +11097,16 @@ where
                 finish();
             } else {
                 close_worker_connection(conn).await;
-                if proven {
-                    results.push(done.result);
-                    finish();
-                } else if !lost_once && done.retry_safe {
+                if !lost_once && done.retry_safe && (!proven || done.untouched) {
                     put_back(retry, true);
                 } else {
                     results.push(done.result);
                     finish();
-                    lost_jobs += 1;
-                    if lost_jobs >= WORKER_MAX_STRIKES {
-                        break;
+                    if !proven {
+                        lost_jobs += 1;
+                        if lost_jobs >= WORKER_MAX_STRIKES {
+                            break;
+                        }
                     }
                 }
             }
@@ -50270,6 +50301,7 @@ async fn cmd_sync(
                         result: Ok(None),
                         session_lost: false,
                         retry_safe: true,
+                        untouched: false,
                     };
                 }
                 let local_path = Path::new(local)
@@ -78617,6 +78649,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         kind: Option<ProviderType>,
         /// `reports_exact_size` says no, as the size-changing overlays do.
         inexact_sizes: bool,
+        /// Paths whose `stat` loses the session, and how many times. The
+        /// upload that may follow still goes through, as an SFTP upload does:
+        /// it dials again by itself (`ensure_connected`).
+        stat_session_lost: HashMap<String, u32>,
     }
 
     /// A provider without a transfer pool (SFTP type, no `clone_for_transfer`),
@@ -78837,7 +78873,15 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             Ok(())
         }
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
-            let st = self.state.lock().unwrap();
+            let mut st = self.state.lock().unwrap();
+            if let Some(left) = st.stat_session_lost.get_mut(path) {
+                if *left > 0 {
+                    *left -= 1;
+                    return Err(ProviderError::ConnectionLost(
+                        "the connection to the server ended".to_string(),
+                    ));
+                }
+            }
             if st.stat_errors.contains(path) {
                 return Err(ProviderError::PermissionDenied(path.to_string()));
             }
@@ -79133,6 +79177,16 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert!(lost(
             connected.as_ref(),
             ProviderError::TransferFailed("Remote write error: Connection timed out".into())
+        ));
+        // What SFTP reports for a request timeout on a remote file it writes
+        // (#963): a failed transfer, and still a session that stopped
+        // answering.
+        assert!(lost(
+            connected.as_ref(),
+            ProviderError::TransferFailed(
+                "Failed to create remote file: the server did not answer in time (timeout); the remote file may be incomplete"
+                    .into()
+            )
         ));
         // The job's own path is not read as a sign: a missing file called
         // "connection reset.txt" is the file's failure.
@@ -80152,6 +80206,61 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(st.served.len(), 5);
         assert!(st.dials <= 2, "get glob dials: {}", st.dials);
         assert_eq!(local_files(&dir.path().join("globbed")), 5);
+    }
+
+    /// `-n` or `--immutable` on a held connection whose session ended between
+    /// two jobs: the next job's existence check lost the session at once (an
+    /// SFTP stat does not dial again), `-n` went on as if nothing were there,
+    /// and the upload, which does dial again (#963), truncated the very file
+    /// `-n` protects; `--immutable` failed the job (exit 4). Nothing was
+    /// written, so the job goes back to the queue whatever the connection had
+    /// completed, and the new connection sees the file and skips it.
+    #[test]
+    fn a_lost_existence_check_requeues_the_upload_instead_of_writing() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let mut wrong = Vec::new();
+        for no_clobber in [true, false] {
+            let flag = if no_clobber { "-n" } else { "--immutable" };
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 1);
+            cli.immutable = !no_clobber;
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                // The local file's size, so a skip under either flag.
+                st.files
+                    .insert("/root/f2.txt".to_string(), b"old!!!".to_vec());
+                st.stat_session_lost.insert("/root/f2.txt".to_string(), 1);
+            }
+            let code = run_on_fake(&state, || async {
+                cmd_put_recursive(
+                    "memory://",
+                    &local_dir,
+                    Some("/root"),
+                    no_clobber,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            let written = st.served.iter().any(|(_, path)| path == "/root/f2.txt");
+            if written || st.files["/root/f2.txt"] != b"old!!!" {
+                wrong.push(format!("{flag}: f2 written: {:?}", st.served));
+            }
+            if code != 0 {
+                wrong.push(format!("{flag}: exit {code}"));
+            }
+            if st.files.len() != 5 || st.dials != 1 {
+                wrong.push(format!(
+                    "{flag}: {} files, {} dials (the other four uploaded, one new connection)",
+                    st.files.len(),
+                    st.dials
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     /// `sync` opens a base connection for its transfer batch, which a
