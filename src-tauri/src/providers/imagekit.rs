@@ -538,7 +538,9 @@ impl ImageKitProvider {
     /// would put the file on top of a same-named one as its newest version,
     /// and `moveFolder` would merge into an existing folder. With it true
     /// (the `replace` contract) a file lands on top of the one at `to`, which
-    /// keeps its version history.
+    /// keeps its version history; a replace across file and folder, and a
+    /// folder onto a folder (which `moveFolder` would merge), are refused
+    /// before anything changes.
     async fn move_entry(
         &mut self,
         from: &str,
@@ -563,8 +565,28 @@ impl ImageKitProvider {
             return outcome;
         }
         let entry = self.stat(&source).await?;
-        if !overwrite && self.path_exists(&target).await? {
-            return Err(ProviderError::AlreadyExists(to.to_string()));
+        // The look reads the listing (`GET /v1/files`), the one lookup by
+        // path the API has: there is no folder-details endpoint, and a
+        // folder created a moment earlier is not in that index yet, so for
+        // that window its name reads free and a file lands beside it (live,
+        // 2026-09-27: `mkdir` then `mv` onto the new folder). Declared, not
+        // closed: nothing in the API answers sooner.
+        let occupant = match self.find_entry(&target).await {
+            Ok(found) => Some(file_to_entry(&found)),
+            Err(ProviderError::NotFound(_)) => None,
+            Err(e) => return Err(e),
+        };
+        if let Some(occupant) = occupant {
+            if !overwrite {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            super::refuse_replace_across_types(to, entry.is_dir, occupant.is_dir)?;
+            if entry.is_dir {
+                return Err(ProviderError::NotSupported(format!(
+                    "{to} is a folder, and ImageKit's moveFolder would merge {from} into it \
+                     instead of replacing it: nothing was changed"
+                )));
+            }
         }
         if entry.is_dir {
             let src_name = basename(&source);
@@ -1709,6 +1731,38 @@ mod tests {
         assert!(
             calls[0].contains(r#""destinationPath":"/dst/""#),
             "{calls:?}"
+        );
+    }
+
+    /// With `overwrite` the destination was not looked at: a file replaced
+    /// onto a folder was moved in beside it under its name, and a folder
+    /// replaced onto a folder queued a `moveFolder` that merges the two
+    /// trees. Both are refused before any call.
+    #[tokio::test]
+    async fn a_replace_across_types_or_onto_a_folder_is_refused() {
+        let (mut provider, calls) =
+            provider_on_tree(&["/src", "/dst", "/src/a.jpg", "/dst/photos"], &[]).await;
+        let across = provider.replace("/src/a.jpg", "/dst/photos").await;
+        assert!(
+            matches!(across, Err(ProviderError::AlreadyExists(_))),
+            "{across:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+        let (mut provider, calls) =
+            provider_on_tree(&["/src", "/dst", "/src/photos", "/dst/photos"], &[]).await;
+        let merge = provider.replace("/src/photos", "/dst/photos").await;
+        assert!(
+            matches!(merge, Err(ProviderError::NotSupported(_))),
+            "{merge:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
         );
     }
 
