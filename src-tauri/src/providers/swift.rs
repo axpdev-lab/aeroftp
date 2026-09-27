@@ -746,9 +746,24 @@ impl SwiftProvider {
     }
 
     /// Whether a folder is at `name`: Swift has no folders, only objects
-    /// named under `name/` (a directory marker included), so one listing of
-    /// that prefix answers.
+    /// named under `name/`. The directory marker `mkdir` writes (`name/`) is
+    /// looked at first, with a HEAD: an object reads back right after its
+    /// PUT, while the container listing is eventually consistent, and a
+    /// folder made a moment earlier was not in it yet (live on Blomp,
+    /// 2026-09-27: a rename took the name of a folder just created). Then
+    /// one listing of the prefix answers for a folder without a marker.
     async fn is_a_folder(&mut self, name: &str) -> Result<bool, ProviderError> {
+        let marker = self.object_url(&format!("{name}/"))?;
+        let head = self.swift_request(Method::HEAD, &marker, None, &[]).await?;
+        if head.status().is_success() {
+            return Ok(true);
+        }
+        if head.status() != StatusCode::NOT_FOUND {
+            return Err(ProviderError::ServerError(format!(
+                "Looking at {name}/ failed: HTTP {}",
+                head.status()
+            )));
+        }
         let url = format!(
             "{}?format=json&prefix={}/&limit=1",
             self.object_url("")?,
@@ -1938,6 +1953,27 @@ mod tests {
         assert!(
             log.iter().any(|r| r.0 == "GET"),
             "the folder was looked for: {log:?}"
+        );
+    }
+
+    /// A folder made a moment earlier has its marker object, which a HEAD
+    /// reads back at once, but the eventually consistent container listing
+    /// did not list it yet: the look found no folder and the copy put an
+    /// object beside it under its name (live on Blomp). The marker is
+    /// looked at first.
+    #[tokio::test]
+    async fn a_folder_the_listing_does_not_show_yet_is_found_by_its_marker() {
+        let (mut p, log) =
+            provider_on_storage(&["/v1/AUTH_a/my%20box/d/x.txt/"], serde_json::json!([])).await;
+        let outcome = p.rename("/d/a.txt", "/d/x.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        let log = log.lock().unwrap().clone();
+        assert!(
+            !log.iter().any(|r| r.0 == "PUT" || r.0 == "DELETE"),
+            "{log:?}"
         );
     }
 
