@@ -2888,7 +2888,7 @@ mod tests {
                     };
                     if method == axum::http::Method::GET {
                         let body = match path.as_str() {
-                            "/drive/folders/content/R/folders" => serde_json::json!({
+                            "/drive/folders/v2/content/R/folders" => serde_json::json!({
                                 "folders": [
                                     { "uuid": "S", "plainName": "src" },
                                     { "uuid": "D", "plainName": "dst" },
@@ -2897,7 +2897,7 @@ mod tests {
                             p if p.ends_with("/folders") => serde_json::json!({ "folders": [] }),
                             p => {
                                 let folder = p
-                                    .trim_start_matches("/drive/folders/content/")
+                                    .trim_start_matches("/drive/folders/v2/content/")
                                     .trim_end_matches("/files");
                                 let files: Vec<serde_json::Value> = items
                                     .iter()
