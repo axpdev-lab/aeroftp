@@ -7521,8 +7521,13 @@ fn remote_size_is_exact(provider: &dyn StorageProvider, entry: &RemoteEntry) -> 
 /// permission error or an unsupported `stat` would otherwise turn that
 /// promise into an overwrite, silently, exactly on the unattended runs the
 /// flag exists for. The error is reported and the provider's own exit code
-/// returned. `--no-clobber` keeps its historical fail-open reading, since it
-/// was documented as a convenience and scripts rely on it proceeding.
+/// returned. `--no-clobber` keeps its historical fail-open reading for those
+/// (a timeout on a live connection, a permission error, an unsupported
+/// `stat`), since it was documented as a convenience and scripts rely on it
+/// proceeding, but not for a `stat` that lost the connection
+/// ([`connection_lost_reading`]): the write that would follow dials again by
+/// itself (SFTP's `ensure_connected`) and overwrites the file the flag
+/// protects, so it fails closed as `--immutable` does.
 async fn skip_if_destination_exists(
     provider: &mut dyn StorageProvider,
     target: &str,
@@ -7546,7 +7551,7 @@ async fn skip_if_destination_exists(
             }
         }
         Err(ProviderError::NotFound(_)) => return None,
-        Err(e) if cli.immutable => {
+        Err(e) if cli.immutable || connection_lost_reading(&*provider, &e, &[target]) => {
             let code = provider_error_to_exit_code(&e);
             print_error(
                 format,
@@ -10561,15 +10566,11 @@ impl TransferOnError {
     /// leaves alone.
     fn from_provider(provider: &dyn StorageProvider, err: ProviderError, paths: &[&str]) -> Self {
         let message = err.to_string();
-        let mut words = message.to_lowercase();
-        for path in paths.iter().filter(|path| !path.is_empty()) {
-            words = words.replace(&path.to_lowercase(), "");
-        }
-        let session_lost = err.is_recoverable()
-            || ftp_client_gui_lib::providers::types::is_session_closed_error_message(&words)
+        let words = message_without_paths(&message, paths);
+        let session_lost = connection_lost_reading(provider, &err, paths)
+            || matches!(err, ProviderError::Timeout)
             || words.contains("timeout")
-            || words.contains("timed out")
-            || !provider.is_connected();
+            || words.contains("timed out");
         Self {
             message,
             session_lost,
@@ -10577,6 +10578,38 @@ impl TransferOnError {
             untouched: false,
         }
     }
+}
+
+/// `message` in lower case without `paths`, so that a file called
+/// `connection reset.txt` is not read as a sign of anything.
+fn message_without_paths(message: &str, paths: &[&str]) -> String {
+    let mut words = message.to_lowercase();
+    for path in paths.iter().filter(|path| !path.is_empty()) {
+        words = words.replace(&path.to_lowercase(), "");
+    }
+    words
+}
+
+/// Whether `err` ended the connection it came from: the error is a lost or
+/// absent connection or a network failure, its message (without `paths`) is
+/// one of `SESSION_CLOSED_NEEDLES`, or the provider no longer reports itself
+/// connected. A timeout on a connection still up is not one: the server was
+/// slow, and the session is still there. [`TransferOnError::from_provider`]
+/// adds the timeouts, since a batch job that timed out is not retried on the
+/// same session.
+fn connection_lost_reading(
+    provider: &dyn StorageProvider,
+    err: &ProviderError,
+    paths: &[&str],
+) -> bool {
+    matches!(
+        err,
+        ProviderError::ConnectionLost(_)
+            | ProviderError::NotConnected
+            | ProviderError::NetworkError(_)
+    ) || ftp_client_gui_lib::providers::types::is_session_closed_error_message(
+        &message_without_paths(&err.to_string(), paths),
+    ) || !provider.is_connected()
 }
 
 /// One download on a connection the caller holds: it neither opens nor
@@ -79968,6 +80001,49 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             let st = state.lock().unwrap();
             assert_eq!(st.files["/root/one.txt"], there, "never overwritten");
         }
+    }
+
+    /// A single `put -n` whose existence check lost the connection went on as
+    /// if the file were absent, and the upload, which dials again by itself
+    /// (SFTP since #963), overwrote the very file `-n` protects. The write is
+    /// refused with the provider's code instead (1, retried by `--retries`,
+    /// whose next attempt connects afresh, finds the file and skips it).
+    #[test]
+    fn put_no_clobber_refuses_when_its_existence_check_lost_the_connection() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let local = dir.path().join("one.txt");
+        std::fs::write(&local, b"new bytes").unwrap();
+        let local = local.to_string_lossy().into_owned();
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.files
+                .insert("/root/one.txt".to_string(), b"old".to_vec());
+            st.stat_session_lost.insert("/root/one.txt".to_string(), 1);
+        }
+        let code = run_on_fake(&state, || {
+            cmd_put(
+                "memory://",
+                &local,
+                Some("/root/one.txt"),
+                false,
+                true,
+                false,
+                None,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+        });
+        let st = state.lock().unwrap();
+        assert!(st.served.is_empty(), "nothing written: {:?}", st.served);
+        assert_eq!(st.files["/root/one.txt"], b"old", "not overwritten");
+        assert_eq!(code, 1, "the provider's code for a lost connection");
     }
 
     /// `put -r -n` and `put -n` with a glob honoured `--no-clobber` only on
