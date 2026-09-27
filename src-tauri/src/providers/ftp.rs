@@ -1560,13 +1560,12 @@ impl StorageProvider for FtpProvider {
                 break;
             }
         }
-        let data_stream = channel.finish()?;
         let bytes_read = data.len();
 
         // Finalize the stream
-        data_stream
-            .finish()
-            .await
+        channel
+            .close()
+            .await?
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         if bytes_read as u64 > limit {
@@ -1940,10 +1939,9 @@ impl StorageProvider for FtpProvider {
         // next command, so it is no longer read as that command's answer, but
         // the transfer's own verdict would be lost with it.
         file.flush().await.map_err(ProviderError::IoError)?;
-        let data_stream = channel.finish()?;
-        data_stream
-            .finish()
-            .await
+        channel
+            .close()
+            .await?
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         Ok(())
@@ -2032,10 +2030,9 @@ impl StorageProvider for FtpProvider {
         }
 
         channel.flush().await?;
-        // The end of data as `upload_single` signals it: `finish` sends our
+        // The end of data as `upload_single` signals it: `close` sends our
         // close_notify and FIN after the last byte, then reads the 226.
-        let data_stream = channel.finish()?;
-        if let Err(e) = data_stream.finish().await {
+        if let Err(e) = channel.close().await? {
             // The finalise is the last word on the transfer. A failure here
             // leaves the control channel mid-sentence, and the guard is already
             // settled, so nothing else would discard it: do it here.
@@ -2280,7 +2277,7 @@ impl StorageProvider for FtpProvider {
             }
             total_read += n;
         }
-        let data_stream = channel.finish()?;
+        let verdict = channel.close().await?;
         let stopped_before_the_end = total_read == len as usize;
         buf.truncate(total_read);
 
@@ -2292,7 +2289,7 @@ impl StorageProvider for FtpProvider {
         // confirmed with `226`, and an error after a short read is the server cutting
         // the transfer, so those bytes are not the range; nor are they after any other
         // reply, which is not how a server answers an early close.
-        if let Err(err) = data_stream.finish().await {
+        if let Err(err) = verdict {
             let _ = self.disconnect().await;
             if !stopped_before_the_end || !is_early_close_complaint(&err) {
                 return Err(ProviderError::TransferFailed(format!(
@@ -2791,7 +2788,7 @@ impl FtpProvider {
 /// session in an unknown state costs a wrong answer delivered as a right one.
 struct DataChannel<'p> {
     provider: &'p mut FtpProvider,
-    /// `None` once the stream has been handed back or given away.
+    /// `None` once the stream has been closed or given away.
     data: Option<FtpTransfer>,
     watch: ControlWatch,
     /// Named in the error, so a failure says which operation was in flight.
@@ -2879,11 +2876,19 @@ impl<'p> DataChannel<'p> {
         self.settled = true;
     }
 
-    /// The transfer ended on its own terms: hand the stream back so the caller
-    /// finalises it exactly as it did before.
-    fn finish(mut self) -> Result<FtpTransfer, ProviderError> {
+    /// The transfer ended on its own terms: close the data stream and read
+    /// the server's verdict on it, and give that verdict to the caller, who
+    /// decides what it means for this transfer.
+    ///
+    /// The verdict is read under the guard. A caller dropped while it waits
+    /// (a cancelled transfer) leaves a reply owed on the control channel,
+    /// which suppaftp 12 would wait for before the next command, with no
+    /// deadline: until the verdict is in, `Drop` takes the session.
+    async fn close(mut self) -> Result<suppaftp::FtpResult<()>, ProviderError> {
+        let data = self.data.take().ok_or(ProviderError::NotConnected)?;
+        let verdict = data.finish().await;
         self.settled = true;
-        self.data.take().ok_or(ProviderError::NotConnected)
+        Ok(verdict)
     }
 }
 
@@ -3554,10 +3559,9 @@ impl FtpProvider {
         // devices, and until the channel is given up its `Drop` is what takes
         // the session when that failure drops an unfinished transfer.
         atomic.commit().await.map_err(ProviderError::IoError)?;
-        let data_stream = channel.finish()?;
-        data_stream
-            .finish()
-            .await
+        channel
+            .close()
+            .await?
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         Ok(())
@@ -3595,55 +3599,53 @@ impl FtpProvider {
             Ok(opened) => opened,
             Err(err) => return Err(self.refused_store(remote_path, err)),
         };
-        let mut data_stream = match opened {
+        let data_stream = match opened {
             Some(data_stream) => data_stream,
             None => return Err(self.after_timed_out_open("uploading", remote_path).await),
         };
-
-        // Write in 64KB chunks for optimal throughput
-        let mut chunk = [0u8; 65536];
-        let mut total_written: u64 = 0;
 
         // Every way out before the end aborts the transfer. Dropping the data
         // connection instead closes it cleanly, and the server reads that as
         // the end of the file: it stores the part it received as the whole
         // file and confirms it with `226`, which suppaftp then drains unseen
         // before the next command. ABOR makes the server record the transfer
-        // as aborted, and reads its verdict under a budget.
-        let sent: Result<(), ProviderError> = loop {
+        // as aborted, and reads its verdict under a budget. The channel does it
+        // for a failed write; the local read is not a channel operation, so its
+        // failure aborts here. A caller that drops this upload (a cancelled
+        // transfer) cannot abort, since that has to speak on the wire: the
+        // channel's `Drop` takes the session instead, so the next command dials
+        // again rather than wait, with no deadline, for this transfer's reply.
+        let mut channel = DataChannel::new(self, data_stream, "uploading", remote_path);
+
+        // Write in 64KB chunks for optimal throughput
+        let mut chunk = [0u8; 65536];
+        let mut total_written: u64 = 0;
+        loop {
             let n = match file.read(&mut chunk).await {
                 Ok(n) => n,
-                Err(e) => break Err(ProviderError::IoError(e)),
+                Err(e) => {
+                    channel.abandon().await;
+                    return Err(ProviderError::IoError(e));
+                }
             };
             if n == 0 {
-                // Flush all (TLS) buffers to the wire
-                break data_stream
-                    .flush()
-                    .await
-                    .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)));
+                break;
             }
             crate::transfer_dag::throttle::charge(
                 crate::transfer_dag::governor::TransferDirection::Upload,
                 n as u64,
             )
             .await;
-            if let Err(e) = data_stream.write_all(&chunk[..n]).await {
-                break Err(ProviderError::TransferFailed(format!(
-                    "Data write error: {}",
-                    e
-                )));
-            }
+            channel.write_all(&chunk[..n]).await?;
             total_written += n as u64;
             if let Some(ref progress) = on_progress {
                 progress(total_written, total_size);
             }
-        };
-        if let Err(err) = sent {
-            let _ = self.abandon_transfer(data_stream).await;
-            return Err(err);
         }
+        // Flush all (TLS) buffers to the wire
+        channel.flush().await?;
 
-        // End of data. `finish` sends our close_notify and FIN after the last
+        // End of data. `close` sends our close_notify and FIN after the last
         // byte, closes the socket and reads the 226: the server writes the
         // file once it reads that EOF, and it has nothing to send on a STOR
         // data connection before it (the TLS 1.2 cap in `make_tls_connector`
@@ -3654,9 +3656,9 @@ impl FtpProvider {
         // fails with "not connected", and `finish` reports that failure for
         // an upload even after a 226. A shutdown error is still reported, as
         // before.
-        data_stream
-            .finish()
-            .await
+        channel
+            .close()
+            .await?
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         // Preserve local file's mtime on the remote file via MFMT (draft-somers-ftp-mfxx).
