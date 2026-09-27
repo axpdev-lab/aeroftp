@@ -877,7 +877,7 @@ pub trait StorageProvider: Send + Sync {
     /// backend that has actually measured its own ground says otherwise:
     /// `SftpProvider`, which asks the server whether it offers
     /// `posix-rename@openssh.com`; the backends whose replace sets the old
-    /// item aside (MEGA, Filen, FileLu, Dropbox, Koofr, Drime); those whose move over a file is not
+    /// item aside (MEGA, Filen, FileLu, Dropbox, Koofr, Drime, kDrive); those whose move over a file is not
     /// documented as one step (MEGAcmd, Jottacloud); those with no replace
     /// at all, whose rename refuses a taken name or who have no rename (each
     /// says why on its own answer); and ImageKit and OpenDrive, which
