@@ -539,6 +539,11 @@ pub struct FlatpakImportReport {
     /// every host file already in the sandbox.
     pub copied: usize,
     pub vault: HostVault,
+    /// The host config holds no file the import copies (only empty folders,
+    /// SQLite sidecars or symbolic links), so an accept that copied nothing says
+    /// "nothing to import" rather than "every file already has one here". The
+    /// offer is never shown for such a config; the explicit CLI import is.
+    pub nothing_importable: bool,
     pub source: Option<PathBuf>,
     pub target: Option<PathBuf>,
 }
@@ -628,6 +633,7 @@ fn apply_flatpak_host_import(
     let mut report = FlatpakImportReport {
         copied: 0,
         vault: HostVault::Absent,
+        nothing_importable: false,
         source: source.clone(),
         target: target.clone(),
     };
@@ -644,6 +650,7 @@ fn apply_flatpak_host_import(
                         dst.display()
                     )
                 })?;
+                report.nothing_importable = report.copied == 0 && !has_importable_file(src);
             }
             _ => return Err("No host configuration available to import".to_string()),
         }
@@ -1332,6 +1339,10 @@ mod tests {
 
         assert_eq!(report.copied, 0);
         assert!(!report.imported());
+        assert!(
+            report.nothing_importable,
+            "a host config with nothing to copy was reported as if its files were already here"
+        );
     }
 
     /// What the GUI offer sees for the host config under `home`, through the
@@ -1517,6 +1528,7 @@ mod tests {
             "an import that copied nothing was reported as imported"
         );
         assert_eq!(report.copied, 0);
+        assert!(!report.nothing_importable);
         assert_eq!(
             std::fs::read(sandbox.join("servers.json")).unwrap(),
             b"sandbox servers"

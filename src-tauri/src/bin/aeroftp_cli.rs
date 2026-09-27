@@ -38671,8 +38671,16 @@ fn flatpak_import_summary(report: &ftp_client_gui_lib::portable::FlatpakImportRe
         format!(
             "No file was copied from {source}, so your saved servers and vault were not imported: this Flatpak install already has its own vault, every file of your existing configuration already has a file with the same name here, and existing files are never overwritten."
         )
+    } else if report.nothing_importable {
+        format!(
+            "Nothing to import: {source} holds no file the import copies (it never copies empty folders, SQLite sidecar files or symbolic links)."
+        )
     } else {
-        format!("Nothing to import: no file needed copying from {source} into the sandbox.")
+        // The copy skips a file by name, never by content, so this says what it
+        // saw: a file with the same name, not the same file.
+        format!(
+            "No file was copied: every file of your existing configuration at {source} already has a file with the same name in this Flatpak install, and existing files are never overwritten."
+        )
     }
 }
 
@@ -38686,6 +38694,7 @@ mod flatpak_import_summary_tests {
         FlatpakImportReport {
             copied,
             vault,
+            nothing_importable: false,
             source: Some(PathBuf::from("/home/u/.config/aeroftp")),
             target: Some(PathBuf::from(
                 "/home/u/.var/app/app.aeroftp.AeroFTP/config/aeroftp",
@@ -38709,6 +38718,25 @@ mod flatpak_import_summary_tests {
         assert!(
             text.contains("your saved servers and vault were not imported: this Flatpak install already has its own vault"),
             "{text}"
+        );
+    }
+
+    #[test]
+    fn flatpak_import_says_no_file_was_copied_not_that_none_was_needed() {
+        // The copy skips by name, never by content.
+        assert_eq!(
+            flatpak_import_summary(&report(0, HostVault::Absent)),
+            "No file was copied: every file of your existing configuration at /home/u/.config/aeroftp already has a file with the same name in this Flatpak install, and existing files are never overwritten."
+        );
+    }
+
+    #[test]
+    fn flatpak_import_of_a_config_with_nothing_to_copy_says_nothing_to_import() {
+        let mut empty = report(0, HostVault::Absent);
+        empty.nothing_importable = true;
+        assert_eq!(
+            flatpak_import_summary(&empty),
+            "Nothing to import: /home/u/.config/aeroftp holds no file the import copies (it never copies empty folders, SQLite sidecar files or symbolic links)."
         );
     }
 
