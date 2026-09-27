@@ -28594,6 +28594,13 @@ thread_local! {
     /// only: a release binary has no way to reach it.
     static TEST_CONNECTED_PROVIDER: std::cell::RefCell<Option<Box<dyn StorageProvider>>> =
         const { std::cell::RefCell::new(None) };
+    /// Makes a connected provider for every `create_and_connect` on this
+    /// thread once the one-shot slot above is empty, so a command that opens
+    /// more connections than one (a sync's transfers) reaches the same tree.
+    #[allow(clippy::type_complexity)]
+    static TEST_PROVIDER_FACTORY: std::cell::RefCell<
+        Option<std::rc::Rc<dyn Fn() -> Box<dyn StorageProvider>>>,
+    > = const { std::cell::RefCell::new(None) };
 }
 
 async fn create_and_connect(
@@ -28604,6 +28611,10 @@ async fn create_and_connect(
     #[cfg(test)]
     if let Some(provider) = TEST_CONNECTED_PROVIDER.with(|slot| slot.borrow_mut().take()) {
         return Ok((provider, "/".to_string()));
+    }
+    #[cfg(test)]
+    if let Some(make) = TEST_PROVIDER_FACTORY.with(|slot| slot.borrow().clone()) {
+        return Ok((make(), "/".to_string()));
     }
     create_and_connect_detailed(url, cli, format)
         .await
@@ -77019,10 +77030,31 @@ mod tests {
     /// stops with Ctrl-C. With `refuse`, it fails every download at once;
     /// with `write_then_refuse`, it writes a few bytes over the local file
     /// first, as an in-place download cut short does.
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     struct StallingProvider {
         refuse: bool,
         write_then_refuse: bool,
+        /// Opens the destination as an atomic download (its `.aerotmp`)
+        /// before it stalls, as a real download does.
+        temp_then_wait: bool,
+        /// Writes the `.aerotmp` part of a resumable download, then stalls.
+        part_then_wait: bool,
+        /// Rewrites the local file with as many bytes and puts its old mtime
+        /// back, then fails: a change a (size, mtime) check cannot see.
+        rewrite_same_length_then_refuse: bool,
+        /// Serves range reads (so `get --segments` takes the segmented engine)
+        /// and reports this size; `0` means 1 000 000 bytes.
+        ranged_size: u64,
+    }
+
+    impl StallingProvider {
+        fn file_size(&self) -> u64 {
+            if self.ranged_size == 0 {
+                1_000_000
+            } else {
+                self.ranged_size
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -77067,9 +77099,46 @@ mod tests {
                 std::fs::write(local_path, b"par").unwrap();
                 return Err(ProviderError::TransferFailed("cut short".to_string()));
             }
+            if self.rewrite_same_length_then_refuse {
+                let meta = std::fs::metadata(local_path).unwrap();
+                std::fs::write(local_path, vec![b'z'; meta.len() as usize]).unwrap();
+                std::fs::File::options()
+                    .write(true)
+                    .open(local_path)
+                    .unwrap()
+                    .set_modified(meta.modified().unwrap())
+                    .unwrap();
+                return Err(ProviderError::TransferFailed("cut short".to_string()));
+            }
             if self.refuse {
                 return Err(ProviderError::NotFound("/f.bin".to_string()));
             }
+            if self.temp_then_wait {
+                let _temp =
+                    ftp_client_gui_lib::providers::atomic_write::AtomicFile::new(local_path)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                std::future::pending::<()>().await;
+            }
+            if self.part_then_wait {
+                std::fs::write(format!("{local_path}.aerotmp"), b"first part").unwrap();
+            }
+            std::future::pending().await
+        }
+        fn transfer_optimization_hints(
+            &self,
+        ) -> ftp_client_gui_lib::providers::TransferOptimizationHints {
+            ftp_client_gui_lib::providers::TransferOptimizationHints {
+                supports_range_download: self.ranged_size > 0,
+                ..Default::default()
+            }
+        }
+        async fn read_range(
+            &mut self,
+            _path: &str,
+            _offset: u64,
+            _len: u64,
+        ) -> Result<Vec<u8>, ProviderError> {
             std::future::pending().await
         }
         async fn download_to_bytes(
@@ -77106,14 +77175,14 @@ mod tests {
                 Ok(RemoteEntry::file(
                     "f.bin".to_string(),
                     path.to_string(),
-                    1_000_000,
+                    self.file_size(),
                 ))
             } else {
                 Err(ProviderError::NotFound(path.to_string()))
             }
         }
         async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
-            Ok(1_000_000)
+            Ok(self.file_size())
         }
         async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
             Ok(false)
@@ -77144,8 +77213,12 @@ mod tests {
             std::thread::Builder::new()
                 .stack_size(64 * 1024 * 1024)
                 .spawn_scoped(scope, move || {
-                    TEST_CONNECTED_PROVIDER
-                        .with(|slot| *slot.borrow_mut() = Some(Box::new(provider)));
+                    // Every connection the command opens reaches the same server.
+                    TEST_PROVIDER_FACTORY.with(|slot| {
+                        *slot.borrow_mut() = Some(std::rc::Rc::new(move || {
+                            Box::new(provider.clone()) as Box<dyn StorageProvider>
+                        }));
+                    });
                     let cancelled = Arc::new(AtomicBool::new(false));
                     let flag = Arc::clone(&cancelled);
                     std::thread::spawn(move || {
@@ -77295,6 +77368,140 @@ mod tests {
         });
         assert_ne!(code, 0);
         assert_eq!(kept, None, "the partial file stayed");
+    }
+
+    /// A quiet CLI for these tests.
+    fn quiet_cli() -> Cli {
+        Cli {
+            quiet: true,
+            ..test_cli()
+        }
+    }
+
+    /// M1 (review of #951): on the graph engine a Ctrl-C dropped the transfer
+    /// while its task was still running on the runtime, and the command
+    /// returned before the task's guards ran: the atomic download's `.aerotmp`
+    /// could outlive it (and the next `get` of the file fail on it). The
+    /// engine now closes the transfer itself: when `get` returns, still
+    /// inside the runtime, nothing is left.
+    #[test]
+    fn ctrl_c_leaves_no_temporary_file_when_get_returns() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        let temp = format!("{local}.aerotmp");
+        let cli = quiet_cli();
+        let code = against_stalling(
+            StallingProvider {
+                temp_then_wait: true,
+                ..Default::default()
+            },
+            |cancelled| async move {
+                let code = cmd_get(
+                    "memory://",
+                    "/f.bin",
+                    Some(local.as_str()),
+                    false,
+                    1,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                    cancelled,
+                )
+                .await;
+                if Path::new(&temp).exists() {
+                    -2
+                } else {
+                    code
+                }
+            },
+        );
+        assert_eq!(
+            code, 130,
+            "-2: the .aerotmp was still there when get returned"
+        );
+    }
+
+    /// M2 (review of #951): `get --segments` honoured Ctrl-C in the segmented
+    /// engine, then fell back to a single stream that read no flag and
+    /// downloaded the whole file to the end.
+    #[test]
+    fn ctrl_c_stops_a_segmented_get_without_a_fallback_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        let cli = quiet_cli();
+        let code = against_stalling(
+            StallingProvider {
+                ranged_size: 16 * 1024 * 1024,
+                ..Default::default()
+            },
+            |cancelled| async move {
+                cmd_get(
+                    "memory://",
+                    "/f.bin",
+                    Some(local.as_str()),
+                    false,
+                    4,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                    cancelled,
+                )
+                .await
+            },
+        );
+        assert_eq!(code, 130, "-1 means the fallback was still downloading");
+    }
+
+    /// m4 (review of #951): with `--partial` an interrupted download keeps
+    /// the part it has, for the resume.
+    #[test]
+    fn ctrl_c_keeps_the_part_of_a_partial_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        let part = format!("{local}.aerotmp");
+        let cli = Cli {
+            partial: true,
+            ..quiet_cli()
+        };
+        let code = against_stalling(
+            StallingProvider {
+                part_then_wait: true,
+                ..Default::default()
+            },
+            |cancelled| async move {
+                cmd_get(
+                    "memory://",
+                    "/f.bin",
+                    Some(local.as_str()),
+                    false,
+                    1,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                    cancelled,
+                )
+                .await
+            },
+        );
+        assert_eq!(code, 130);
+        assert_eq!(
+            std::fs::read(&part).ok().as_deref(),
+            Some(&b"first part"[..])
+        );
+    }
+
+    /// m5 (review of #951): a failed in-place download that rewrote the file
+    /// with as many bytes and put its time back read as untouched to a (size,
+    /// mtime) check, and its garbage stayed. The file's inode and change time
+    /// tell it apart.
+    #[test]
+    fn a_same_length_rewrite_is_not_taken_for_the_untouched_file() {
+        let (code, kept) = inplace_get_over_an_existing_file(StallingProvider {
+            rewrite_same_length_then_refuse: true,
+            ..Default::default()
+        });
+        assert_ne!(code, 0);
+        assert_eq!(kept, None, "the rewritten file stayed");
     }
 
     /// An interrupted transfer is not retried: `--retries` is for failures,
