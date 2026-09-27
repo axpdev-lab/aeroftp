@@ -595,6 +595,28 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             jotta_refresh: None,
         }),
 
+        // ---- Internxt ----
+        // `email` + obscured `pass`, the pair AeroFTP signs in with. The host is
+        // the one the GUI gives a new Internxt profile.
+        "internxt" => {
+            let email = get_str("email").unwrap_or("").to_string();
+            if email.is_empty() {
+                return None;
+            }
+            Some(MappedProfile {
+                protocol: "internxt".to_string(),
+                provider_id: Some("internxt".to_string()),
+                host: "gateway.internxt.com".to_string(),
+                port: 443,
+                username: email,
+                password: get_password("pass"),
+                options: None,
+                initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
+            })
+        }
+
         // ---- Filen ----
         // rclone's `filen` backend stores `email` + obscured `password` +
         // obscured `api_key` (all three required), plus advanced keys it derives
@@ -2166,6 +2188,30 @@ pub fn export_rclone(
                     ));
                 }
             }
+            "internxt" => {
+                // rclone's `internxt` backend signs in with the account email
+                // and password (`pass` is an `IsPassword` field, so obscured),
+                // and also needs the decrypted `mnemonic`, which its own login
+                // stores in the config. AeroFTP keeps the mnemonic in memory
+                // only, so the remote is written without it and rclone derives
+                // it on `reconnect`, from the email and password written here.
+                // Without that step rclone refuses the remote with "mnemonic is
+                // required" (rclone v1.75.1).
+                body.push_str("type = internxt\n");
+                body.push_str(&format!("email = {}\n", server.username));
+                if let Some(pw) = password {
+                    body.push_str(&format!(
+                        "pass = {}\n",
+                        obscure_password(pw).unwrap_or_default()
+                    ));
+                }
+                body.push_str(&format!(
+                    "# Run `rclone config reconnect {}:` once before use: rclone signs\n\
+                     # in with the email and password above and stores the mnemonic\n\
+                     # it needs, which AeroFTP does not keep on disk.\n",
+                    remote_name
+                ));
+            }
             "filen" => {
                 // rclone's `filen` backend marks `email`, `password` AND
                 // `api_key` all Required, and obtains the api_key only via the
@@ -3686,6 +3732,110 @@ user = t
             Some("secret-cli-key"),
             "api_key must round-trip into options.filen_api_key"
         );
+    }
+
+    #[test]
+    fn test_export_rclone_internxt_roundtrip() {
+        // Internxt used to be refused as "not exportable", with help text that
+        // called it OAuth. rclone's `internxt` backend takes the account email
+        // and password, which is what AeroFTP holds.
+        let servers = vec![RcloneExportServer {
+            name: "internxt-acct".to_string(),
+            host: "gateway.internxt.com".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("internxt".to_string()),
+            options: None,
+            provider_id: Some("internxt".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("internxt-acct".to_string(), "S3cr3tPass!".to_string());
+
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp-test-export-internxt-{}.conf",
+            std::process::id()
+        ));
+        let outcome = export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert_eq!(outcome.exported, 1, "{conf}");
+        assert!(outcome.skipped.is_empty(), "{:?}", outcome.skipped);
+        assert!(
+            conf.contains("[internxt-acct]\ntype = internxt\n"),
+            "missing type:\n{conf}"
+        );
+        assert!(
+            conf.contains("email = me@example.com\n"),
+            "missing email:\n{conf}"
+        );
+        let pass_line = conf
+            .lines()
+            .find_map(|l| l.strip_prefix("pass = "))
+            .unwrap_or_else(|| panic!("missing pass:\n{conf}"));
+        assert_ne!(pass_line, "S3cr3tPass!", "pass must be obscured");
+        assert_eq!(reveal_obscured(pass_line).as_deref(), Ok("S3cr3tPass!"));
+        // rclone refuses the remote until its own login stores the mnemonic,
+        // so the file must say which command does that, for this remote.
+        assert!(
+            conf.contains("# Run `rclone config reconnect internxt-acct:` once before use"),
+            "missing reconnect guidance:\n{conf}"
+        );
+
+        let path = tmp_write(
+            &conf,
+            &format!("aeroftp-test-import-internxt-{}.conf", std::process::id()),
+        );
+        let result = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        let internxt = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("internxt"))
+            .expect("internxt server present");
+        assert_eq!(internxt.username, "me@example.com");
+        assert_eq!(internxt.host, "gateway.internxt.com");
+        assert_eq!(internxt.provider_id.as_deref(), Some("internxt"));
+        assert_eq!(
+            internxt.credential.as_deref(),
+            Some("S3cr3tPass!"),
+            "password must round-trip"
+        );
+    }
+
+    #[test]
+    fn test_import_rclone_internxt_reveals_real_rclone_obscured() {
+        // `pass` below was produced by the real rclone binary (`rclone obscure
+        // TestPass123`, rclone v1.75.1), so this pins the reveal codec to
+        // rclone's actual output for the `internxt` backend's IsPassword field.
+        // The second remote has no email, which AeroFTP cannot sign in without.
+        let conf = "\
+[internxt-real]
+type = internxt
+email = real@example.com
+pass = ANMkm3ZpMPvnz_0z5dZ-68G17MaOiI2s3wiL
+
+[internxt-no-email]
+type = internxt
+pass = ANMkm3ZpMPvnz_0z5dZ-68G17MaOiI2s3wiL
+";
+        let path = tmp_write(
+            conf,
+            &format!(
+                "aeroftp-test-import-internxt-real-{}.conf",
+                std::process::id()
+            ),
+        );
+        let result = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        let internxt: Vec<_> = result
+            .servers
+            .iter()
+            .filter(|s| s.protocol.as_deref() == Some("internxt"))
+            .collect();
+        assert_eq!(internxt.len(), 1, "only the remote with an email imports");
+        assert_eq!(internxt[0].username, "real@example.com");
+        assert_eq!(internxt[0].credential.as_deref(), Some("TestPass123"));
     }
 
     #[test]

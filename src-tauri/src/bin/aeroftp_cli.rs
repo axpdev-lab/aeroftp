@@ -4440,11 +4440,14 @@ enum CorrectCommands {
 
 #[derive(Subcommand, Clone)]
 enum ExportCommands {
-    /// Export profiles to rclone.conf format (S3, SFTP, FTP, WebDAV, Mega).
-    /// OAuth-based providers (pCloud, Dropbox, Google Drive, Box, OneDrive,
-    /// Yandex, Zoho, Koofr, Internxt, kDrive) cannot be exported because
-    /// rclone uses its own OAuth flow with provider-issued client IDs:
-    /// they are listed as `# manual setup required` comments instead.
+    /// Export profiles to rclone.conf format: FTP/FTPS, SFTP, WebDAV, S3,
+    /// MEGA, Filen, Internxt, Azure, Swift, Koofr, OpenDrive, Backblaze B2,
+    /// Jottacloud, and the OAuth providers (Google Drive, Dropbox, OneDrive,
+    /// Box, pCloud, Yandex Disk, Zoho WorkDrive) with their token and the
+    /// client ID that minted it. An Internxt remote needs one
+    /// `rclone config reconnect <remote>:` before use, as the file says. Any
+    /// other profile is skipped and listed with the reason in the command
+    /// output; nothing is written for it.
     Rclone {
         /// Output file path (default writes to a temp file)
         #[arg(long, short = 'o')]

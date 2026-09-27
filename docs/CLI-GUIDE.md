@@ -1627,7 +1627,7 @@ Exit codes: `0` ok, `2` input file not found, `9` output file exists without `--
 The reverse direction of `import`: takes the AeroFTP vault and emits a configuration file in the dialect of an external tool, so you can hand off a connection bundle to operators or migrate away. All 15 bridge tools are valid export targets (`rclone`, `winscp`, `filezilla`, `aws`, `ssh`, `mc`, `cyberduck`, `s3cmd`, `lftp`, `putty`, `mobaxterm`, `dreamweaver`, `kopia`, `duplicacy`, `restic`):
 
 ```bash
-# rclone.conf format (S3, SFTP, FTP, WebDAV, MEGA)
+# rclone.conf format (every profile whose provider has an rclone backend, see below)
 aeroftp-cli export rclone --output ./rclone.conf
 
 # WinSCP.ini format (FTP/FTPS/SFTP)
@@ -1647,7 +1647,7 @@ A profile with an rclone-crypt overlay exports as two remotes: the base server, 
 
 Keep in mind that AeroFTP and rclone use different redirect URIs. Register both under the same app in the provider's developer console so the one `client_id` / `client_secret` pair works in both tools.
 
-The providers with no rclone export today are 4shared, Internxt and kDrive; those entries are emitted as `# manual setup required` comments instead. Passwords for non-OAuth profiles are re-encoded in the target tool's native obfuscation (rclone reversible obscure, WinSCP password mask, FileZilla base64). Use `--json` on any subcommand for a machine-readable summary of what was exported and what was skipped.
+Password-based cloud accounts export with the secret AeroFTP already holds: MEGA and Internxt as email + password (an Internxt remote needs one `rclone config reconnect <remote>:` before use: rclone signs in with that email and password and stores the encryption mnemonic it needs, which AeroFTP does not keep on disk), Filen as email + password + CLI API key, Koofr and OpenDrive as user + password, Azure, Swift and Backblaze B2 as account + key. Any other profile (for example 4shared, kDrive, Drime, FileLu, GitHub or GitLab) is skipped: the command lists it with the reason, and nothing is written for it in the file. Passwords for non-OAuth profiles are re-encoded in the target tool's native obfuscation (rclone reversible obscure, WinSCP password mask, FileZilla base64). Use `--json` on any subcommand for a machine-readable summary of what was exported and what was skipped.
 
 ### profile-export / profile-import - Native `.aeroftp` Profile Backup
 
