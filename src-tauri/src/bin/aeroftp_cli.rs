@@ -35206,7 +35206,8 @@ async fn cmd_put_recursive(
                         remote_path,
                         cli,
                         no_clobber,
-                        true,
+                        // Every folder was created before the workers started.
+                        false,
                         Some(aggregate),
                         overall_pb,
                         resolve_max_transfer(cli),
@@ -50556,7 +50557,8 @@ async fn cmd_sync(
                             remote_path.clone(),
                             cli,
                             false,
-                            true,
+                            // The folders were created before the workers started.
+                            false,
                             Some(aggregate),
                             overall_pb,
                             resolve_max_transfer(cli),
@@ -81081,6 +81083,90 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             // Connection 1 is the command's own.
             if st.mkdirs != [(1, "/root".to_string(), 0)] {
                 wrong.push(format!("{flag}: mkdirs {:?}", st.mkdirs));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// `put -r` and the upload phase of `sync` create every remote folder
+    /// before their workers start, so a worker must not create its file's
+    /// parent again: on Google Drive, which allows two folders of one name, two
+    /// workers doing it at once could make two `/root`. Each folder is created
+    /// only on the command's own connection, before any upload.
+    #[test]
+    fn put_recursive_and_sync_create_each_folder_once() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let mut wrong = Vec::new();
+        for verb in ["put -r -n", "sync"] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, cli) = local_batch(&dir, 2);
+            let state = WorkerFake::state();
+            let moved = if verb == "sync" {
+                let stats = run_on_fake(&state, || {
+                    cmd_sync(
+                        "memory://",
+                        &local_dir,
+                        "/root",
+                        "upload",
+                        false,
+                        false,
+                        &[],
+                        None,
+                        0,
+                        false,
+                        None,
+                        None,
+                        "",
+                        false,
+                        None,
+                        None,
+                        None,
+                        "newer",
+                        false,
+                        false,
+                        &cli,
+                        OutputFormat::Json,
+                        Arc::new(AtomicBool::new(false)),
+                        None,
+                        false,
+                    )
+                });
+                stats.uploaded as usize
+            } else {
+                let code = run_on_fake(&state, || {
+                    put_with_retries(
+                        "memory://",
+                        &local_dir,
+                        Some("/root"),
+                        true,
+                        true,
+                        false,
+                        None,
+                        &cli,
+                        OutputFormat::Text,
+                        Arc::new(AtomicBool::new(false)),
+                    )
+                });
+                if code != 0 {
+                    wrong.push(format!("{verb}: exit {code}"));
+                }
+                state.lock().unwrap().files.len()
+            };
+            let st = state.lock().unwrap();
+            if moved != 5 {
+                wrong.push(format!("{verb}: {moved} files"));
+            }
+            // Connection 1 is the command's own, where the folders are made
+            // before any upload; a worker makes none.
+            if st
+                .mkdirs
+                .iter()
+                .any(|(id, _, served)| *id != 1 || *served != 0)
+            {
+                wrong.push(format!(
+                    "{verb}: a worker created a folder: {:?}",
+                    st.mkdirs
+                ));
             }
         }
         assert!(wrong.is_empty(), "{wrong:#?}");
