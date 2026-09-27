@@ -169,6 +169,8 @@ pub struct CloudService {
     /// How long an upload waits for its file to be left alone (see
     /// `SEND_QUIET_WINDOW`), a field so a test can give it a length.
     send_quiet_window: std::time::Duration,
+    /// See `SEND_QUIET_BOUND`, a field for the same reason.
+    send_quiet_bound: std::time::Duration,
 }
 
 /// What a transfer left, for the baseline: the time it left on the local file
@@ -220,6 +222,7 @@ impl CloudService {
             landed: Arc::default(),
             unsettled: Arc::default(),
             send_quiet_window: SEND_QUIET_WINDOW,
+            send_quiet_bound: SEND_QUIET_BOUND,
         }
     }
 
@@ -309,8 +312,18 @@ impl CloudService {
         };
         #[cfg(not(unix))]
         let changed = None;
-        let now = std::time::SystemTime::now();
-        [meta.modified().ok(), changed]
+        Self::quiet_age(
+            std::time::SystemTime::now(),
+            [meta.modified().ok(), changed],
+        )
+    }
+
+    /// The age at `now` of the youngest of `times`.
+    fn quiet_age(
+        now: std::time::SystemTime,
+        times: [Option<std::time::SystemTime>; 2],
+    ) -> Option<std::time::Duration> {
+        times
             .into_iter()
             .flatten()
             .filter_map(|time| now.duration_since(time).ok())
@@ -1490,7 +1503,7 @@ impl CloudService {
                         Self::wait_until_quiet(
                             local_path,
                             self.send_quiet_window,
-                            SEND_QUIET_BOUND,
+                            self.send_quiet_bound,
                         )
                         .await;
                         let sent = Self::local_file_state(local_path);
@@ -2210,6 +2223,8 @@ mod baseline_tests {
         stat_size: Option<u64>,
         /// Reports sizes that are not the plain size (an overlay).
         inexact_size: bool,
+        /// Refuses the upload of the local file with this name.
+        refused: Option<&'static str>,
         /// What each upload sent, in order.
         sent: Vec<Vec<u8>>,
         /// The local file of the last upload.
@@ -2271,6 +2286,9 @@ mod baseline_tests {
             _remote_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            if self.refused.is_some_and(|name| local_path.ends_with(name)) {
+                return Err(ProviderError::PermissionDenied(local_path.to_string()));
+            }
             self.sent.push(std::fs::read(local_path).unwrap());
             self.local = Some(std::path::PathBuf::from(local_path));
             let n = self.sent.len();
@@ -2648,6 +2666,137 @@ mod baseline_tests {
     /// remote read as changed the next cycle (a download, and a conflict for
     /// an edit made meanwhile). The check is left to exact-size providers,
     /// as the comparison leaves sizes to them.
+    /// F1 (verification of the final round): a time ahead of the clock was
+    /// left out, so a file whose only times were a little ahead was never
+    /// waited for. FAT rounds the last write up to its 2 s field, and a
+    /// share's clock can run ahead (its change time comes from the server
+    /// too): two same-size saves a second apart both read 12 s, and the
+    /// second one was recorded as synced. Up to 2 s ahead is a change now;
+    /// further ahead says nothing about the last write.
+    #[test]
+    fn a_time_just_ahead_of_the_clock_reads_as_a_change_now() {
+        let now = std::time::SystemTime::now();
+        let ahead = |secs| Some(now + std::time::Duration::from_secs(secs));
+        let behind = |secs| Some(now - std::time::Duration::from_secs(secs));
+        assert_eq!(
+            CloudService::quiet_age(now, [ahead(1), ahead(2)]),
+            Some(std::time::Duration::ZERO)
+        );
+        assert_eq!(
+            CloudService::quiet_age(now, [behind(5), ahead(1)]),
+            Some(std::time::Duration::ZERO)
+        );
+        assert_eq!(CloudService::quiet_age(now, [ahead(60), None]), None);
+        assert_eq!(
+            CloudService::quiet_age(now, [behind(5), ahead(60)]),
+            Some(std::time::Duration::from_secs(5))
+        );
+    }
+
+    /// F4 (verification of the final round): a file written without pause
+    /// (a log, a database, a disk image) waited the whole bound before each
+    /// of its three sends, in series, and held up every file after it. The
+    /// bound is the file's, once per cycle.
+    #[tokio::test]
+    async fn a_file_written_without_pause_waits_the_bound_once() {
+        let root = tempfile::tempdir().expect("local root");
+        let file = root.path().join("f.txt");
+        std::fs::write(&file, b"payload").unwrap();
+        let mut local = fi(7, 1_700_000_000);
+        local.path = file.to_string_lossy().into_owned();
+        let uploaded = cmp(
+            SyncStatus::LocalNewer,
+            Some(local),
+            Some(fi(3, 1)),
+            true,
+            false,
+        );
+        let mut config = cfg(
+            CompareDirection::Bidirectional,
+            false,
+            ConflictStrategy::AskUser,
+        );
+        config.local_folder = root.path().to_path_buf();
+        config.remote_folder = "/remote".to_string();
+        let mut svc = CloudService::new();
+        svc.send_quiet_window = std::time::Duration::from_secs(60);
+        svc.send_quiet_bound = std::time::Duration::from_millis(300);
+        let mut provider = StampingProvider {
+            edits_during_upload: usize::MAX,
+            ..Default::default()
+        };
+        let started = std::time::Instant::now();
+        svc.process_comparison_with_provider(&mut provider, &config, &uploaded)
+            .await
+            .expect("the upload succeeds");
+        let took = started.elapsed();
+        assert_eq!(provider.sent.len(), 3);
+        assert!(
+            took >= std::time::Duration::from_millis(250)
+                && took < std::time::Duration::from_millis(700),
+            "three sends of a file written without pause took {took:?}"
+        );
+    }
+
+    /// F3 (verification of the final round): a cycle in which another file
+    /// failed saved no index, so the sentinel of a file that kept changing
+    /// was lost and the next cycle read the partial send as the newer copy.
+    /// A cycle with errors still records the sentinels, and only them.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_cycle_with_errors_keeps_the_sentinel_of_a_file_that_kept_changing() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime")
+                .block_on(async {
+                    let local = tempfile::tempdir().unwrap();
+                    std::fs::write(local.path().join("f.txt"), b"payload").unwrap();
+                    std::fs::write(local.path().join("refused.txt"), b"refused").unwrap();
+                    let config = CloudConfig {
+                        enabled: true,
+                        local_folder: local.path().to_path_buf(),
+                        remote_folder: "/with-errors".into(),
+                        sync_direction: CompareDirection::Bidirectional,
+                        ..Default::default()
+                    };
+                    let mut provider = StampingProvider {
+                        edits_during_upload: usize::MAX,
+                        refused: Some("refused.txt"),
+                        ..Default::default()
+                    };
+                    let svc = CloudService::new();
+                    svc.init(config.clone()).await;
+                    let result = svc
+                        .perform_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap();
+                    assert_eq!(result.errors.len(), 2, "{:?}", result.errors);
+                    let baseline = svc.load_index(&config).expect("the sentinel is recorded");
+                    assert_eq!(
+                        baseline.files.get("f.txt").and_then(|entry| entry.modified),
+                        Some(DateTime::<Utc>::UNIX_EPOCH)
+                    );
+                    assert!(
+                        !baseline.files.contains_key("refused.txt"),
+                        "a cycle with errors advanced another file's baseline"
+                    );
+                })
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
     #[tokio::test]
     async fn an_upload_through_an_overlay_that_reports_the_size_on_the_wire_is_in_sync() {
         let root = tempfile::tempdir().expect("local root");
@@ -3385,6 +3534,101 @@ mod secval_b_tests {
                         assert!(fresh.errors.is_empty(), "{:?}", fresh.errors);
                         assert_eq!(fresh.downloaded, 0);
                         assert_eq!(std::fs::read(&target_file).unwrap(), linked_file.as_bytes());
+                    }
+                })
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    /// F2 (verification of the final round): a file left unsettled (it kept
+    /// changing through every send) reads as a conflict next cycle, and
+    /// PreferNewer settled it by time: on a backend that sets its own time
+    /// the remote, the last send, possibly torn, looked newer and was
+    /// downloaded over the complete local file; PreferRemote did the same.
+    /// Such a conflict is asked; PreferLocal still sends the local file.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_conflict_on_an_unsettled_file_is_asked_not_settled_by_time() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime")
+                .block_on(async {
+                    for (strategy, asked) in [
+                        (ConflictStrategy::PreferNewer, true),
+                        (ConflictStrategy::PreferRemote, true),
+                        (ConflictStrategy::PreferLocal, false),
+                    ] {
+                        let local = tempfile::tempdir().unwrap();
+                        let file = local.path().join("f.txt");
+                        std::fs::write(&file, b"payload").unwrap();
+                        std::fs::File::options()
+                            .write(true)
+                            .open(&file)
+                            .unwrap()
+                            .set_modified(
+                                std::time::UNIX_EPOCH
+                                    + std::time::Duration::from_secs(1_750_000_000),
+                            )
+                            .unwrap();
+                        let config = CloudConfig {
+                            enabled: true,
+                            local_folder: local.path().to_path_buf(),
+                            remote_folder: "/unsettled".into(),
+                            sync_direction: CompareDirection::Bidirectional,
+                            conflict_strategy: strategy.clone(),
+                            ..Default::default()
+                        };
+                        save_sync_index(&SyncIndex {
+                            version: SYNC_INDEX_VERSION,
+                            last_sync: Utc::now(),
+                            local_path: local.path().to_string_lossy().into_owned(),
+                            remote_path: "/unsettled".to_string(),
+                            files: HashMap::from([(
+                                "f.txt".to_string(),
+                                SyncIndexEntry {
+                                    size: 7,
+                                    modified: Some(DateTime::<Utc>::UNIX_EPOCH),
+                                    is_dir: false,
+                                },
+                            )]),
+                            unverified_keys: Default::default(),
+                        })
+                        .unwrap();
+                        let remote_time = DateTime::<Utc>::from_timestamp(1_760_000_000, 0)
+                            .unwrap()
+                            .to_rfc3339();
+                        let mut provider = OmittingProvider {
+                            cwd: "/".into(),
+                            stored: HashMap::from([(
+                                "/unsettled/f.txt".to_string(),
+                                (7, remote_time),
+                            )]),
+                            omit: vec![],
+                            deletes: Arc::new(AtomicUsize::new(0)),
+                        };
+                        let svc = CloudService::new();
+                        svc.init(config).await;
+                        let plan = svc
+                            .preview_full_sync_with_provider(&mut provider)
+                            .await
+                            .unwrap();
+                        if asked {
+                            assert_eq!((plan.conflicts, plan.downloaded), (1, 0), "{strategy:?}");
+                        } else {
+                            assert_eq!(plan.uploaded, 1, "{strategy:?}");
+                        }
                     }
                 })
         });
