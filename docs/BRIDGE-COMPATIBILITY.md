@@ -50,16 +50,21 @@ Every provider in this table now both **imports and exports**. Recoverable-secre
 backends (user + password, account + key) export their secret directly. The OAuth
 backends (Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex, Zoho WorkDrive) export the OAuth
 token AeroFTP persists for the profile together with the `client_id` and
-`client_secret` of your own OAuth app that minted it, so rclone can refresh it
-with no setup of its own; when the vault lacks any of the three, the remote is
-still written, with a comment asking for `rclone config reconnect "<remote>:"`.
+`client_secret` configured in AeroFTP for that provider. rclone can refresh the
+token only with the OAuth app that issued it, so this works while that app is
+still the one configured (after changing it, authorize the profile again before
+exporting); when the vault lacks any of the three, the remote is still written,
+with a comment asking for `rclone config reconnect "<remote>:"`.
 Jottacloud follows the same token model
 via its persisted OIDC refresh token, and Filen exports its email, password and
 Filen CLI api key. (Token and credential export across these providers landed for
 v4.0.9.) Internxt exports its email and password; rclone then needs one
 `rclone config reconnect "<remote>:"` to sign in and store the encryption
-mnemonic, which AeroFTP does not keep on disk, and Internxt lets rclone sign in
-only on plans that include rclone access (the free plan answers 402).
+mnemonic, which AeroFTP does not keep on disk. Exported without its password
+(credentials left out of the export), the remote needs
+`rclone config update "<remote>" --all` instead, which asks for the password
+and then signs in. Internxt lets rclone sign in only on plans that include
+rclone access (the free plan answers 402).
 
 | Provider | rclone | rclone backend | Credentials carried |
 |----------|:--:|----|----|
@@ -69,7 +74,7 @@ only on plans that include rclone access (the free plan answers 402).
 | Koofr           | IE | koofr      | user + password |
 | Jottacloud      | IE | jottacloud | OIDC refresh token (AeroFTP-persisted); the exported remote refreshes on first use (v4.0.9) |
 | Filen           | IE | filen      | email + password + Filen CLI api key |
-| Internxt        | IE | internxt   | email + password; one `rclone config reconnect` before use, on plans with rclone access |
+| Internxt        | IE | internxt   | email + password; one `rclone config reconnect` before use (`rclone config update --all` when exported without the password), on plans with rclone access |
 | OpenDrive       | IE | opendrive  | username + password |
 | Backblaze B2    | IE | b2         | account (key ID) + application key (native B2, not S3) |
 | Google Drive    | IE | drive      | OAuth token (AeroFTP-persisted); refreshes on rclone's first use |
@@ -102,13 +107,15 @@ way: an importer reads whatever connection types it recognizes in the file.)
 
 - **rclone OAuth providers** (Google Drive, Dropbox, OneDrive, Box, pCloud,
   Yandex, Zoho WorkDrive) now export too: AeroFTP emits the OAuth token it persists for the
-  profile with the `client_id` and `client_secret` of the OAuth app that minted
-  it, so rclone can refresh it; without all three in the vault the remote asks
-  for one `rclone config reconnect`. OneDrive also carries the captured
+  profile with the `client_id` and `client_secret` configured in AeroFTP for
+  that provider, which let rclone refresh the token while they belong to the
+  app that issued it; without all three in the vault the remote asks for one
+  `rclone config reconnect`. OneDrive also carries the captured
   drive_id/drive_type, Zoho WorkDrive its region and root folder id. The
   recoverable-secret providers (MEGA, Azure, Swift, Koofr, OpenDrive, Backblaze
   B2), Jottacloud, Filen (email + password + api key) and Internxt (email +
-  password, then one `rclone config reconnect`) export their secrets directly.
+  password, then one `rclone config reconnect`, or `rclone config update --all`
+  when exported without the password) export their secrets directly.
 - **Cyberduck** imports Backblaze B2 by routing it onto S3, and skips Azure and
   the OAuth providers it can read but cannot represent.
 - **Kopia, Duplicacy and restic** import B2 URLs onto S3 (tagged as Backblaze),

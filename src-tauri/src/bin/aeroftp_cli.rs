@@ -36244,6 +36244,75 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
     }
 }
 
+/// The `import rclone` text report, up to the apply line. Everything in it
+/// that comes from the file (section names, types, users, hosts, and the
+/// reasons that quote them) goes through `sanitize_filename`: a section named
+/// with escape sequences must not drive the terminal it is printed on.
+fn rclone_import_listing(result: &ftp_client_gui_lib::rclone_import::RcloneImportResult) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "Scanned {} remotes from {}\n",
+        result.total_remotes,
+        sanitize_filename(&result.source_path)
+    );
+
+    if !result.servers.is_empty() {
+        let _ = writeln!(out, "Importable ({}):", result.servers.len());
+        for s in &result.servers {
+            let proto = s.protocol.as_deref().unwrap_or("?");
+            let cred = if s.credential.is_some() {
+                " [credentials]"
+            } else {
+                ""
+            };
+            let _ = writeln!(
+                out,
+                "  {} - {}://{}@{}:{}{}{}",
+                sanitize_filename(&s.name),
+                sanitize_filename(proto),
+                sanitize_filename(&s.username),
+                sanitize_filename(&s.host),
+                s.port,
+                cred,
+                sanitize_filename(&s.cleartext_endpoint_note())
+            );
+        }
+        out.push('\n');
+    }
+
+    if !result.skipped.is_empty() {
+        let _ = writeln!(out, "Skipped ({}):", result.skipped.len());
+        for s in &result.skipped {
+            let _ = writeln!(
+                out,
+                "  {} - {} ({})",
+                sanitize_filename(&s.name),
+                sanitize_filename(&s.rclone_type),
+                sanitize_filename(&s.reason)
+            );
+        }
+        out.push('\n');
+    }
+
+    // Imported, but not whole: e.g. a password that does not reveal left the
+    // profile without a credential.
+    if !result.warnings.is_empty() {
+        let _ = writeln!(out, "Warnings ({}):", result.warnings.len());
+        for w in &result.warnings {
+            let _ = writeln!(
+                out,
+                "  {} - {}",
+                sanitize_filename(&w.name),
+                sanitize_filename(&w.reason)
+            );
+        }
+        out.push('\n');
+    }
+    out
+}
+
 /// The `import rclone --json` document. It carries no credential: servers say
 /// `hasCredential` instead of the password, and the options the importer fills
 /// with a revealed secret (the crypt password and salt, the Filen API key) are
@@ -36369,52 +36438,7 @@ async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &
                     .unwrap_or_default()
                 );
             } else {
-                println!(
-                    "Scanned {} remotes from {}",
-                    result.total_remotes, result.source_path
-                );
-                println!();
-
-                if !result.servers.is_empty() {
-                    println!("Importable ({}):", result.servers.len());
-                    for s in &result.servers {
-                        let proto = s.protocol.as_deref().unwrap_or("?");
-                        let cred = if s.credential.is_some() {
-                            " [credentials]"
-                        } else {
-                            ""
-                        };
-                        println!(
-                            "  {} - {}://{}@{}:{}{}{}",
-                            s.name,
-                            proto,
-                            s.username,
-                            s.host,
-                            s.port,
-                            cred,
-                            s.cleartext_endpoint_note()
-                        );
-                    }
-                    println!();
-                }
-
-                if !result.skipped.is_empty() {
-                    println!("Skipped ({}):", result.skipped.len());
-                    for s in &result.skipped {
-                        println!("  {} - {} ({})", s.name, s.rclone_type, s.reason);
-                    }
-                    println!();
-                }
-
-                // Imported, but not whole: e.g. a password that does not reveal
-                // left the profile without a credential.
-                if !result.warnings.is_empty() {
-                    println!("Warnings ({}):", result.warnings.len());
-                    for w in &result.warnings {
-                        println!("  {} - {}", w.name, w.reason);
-                    }
-                    println!();
-                }
+                print!("{}", rclone_import_listing(&result));
 
                 if let Some(summary) = &applied_summary {
                     println!(
@@ -76956,6 +76980,42 @@ mod tests {
         }
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("mem-tree".to_string())
+        }
+    }
+
+    /// `import rclone` printed section names, types and reasons from the file
+    /// as they were, so a section named with escape sequences could clear or
+    /// rewrite the terminal the report went to (CWE-150).
+    #[test]
+    fn import_rclone_listing_prints_no_terminal_control_sequence() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "[ok\x1b[2Jcleared]\ntype = ftp\nhost = h\x1b]0;title\x07.example\nuser = u\x1b[31m\n\n\
+             [odd\x1b[1Aup]\ntype = x\x1b[2Kline\n\n\
+             [ix\x1b[5mblink]\ntype = internxt\nemail = me@example.com\npass = S3cr3tPass!\n",
+        )
+        .expect("write the config");
+        let result = ftp_client_gui_lib::rclone_import::import_rclone(&conf).expect("import");
+        assert_eq!(result.servers.len(), 2, "{:?}", result.skipped.len());
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.warnings.len(), 1);
+
+        let listing = rclone_import_listing(&result);
+        assert!(
+            !listing.chars().any(|c| c == '\x1b' || c == '\x07'),
+            "a control sequence reaches the terminal: {listing:?}"
+        );
+        for kept in [
+            "okcleared",
+            "oddup",
+            "ixblink",
+            "Importable (2)",
+            "Skipped (1)",
+            "Warnings (1)",
+        ] {
+            assert!(listing.contains(kept), "'{kept}' missing: {listing:?}");
         }
     }
 
