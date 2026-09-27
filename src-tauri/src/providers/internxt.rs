@@ -66,6 +66,28 @@ const APP_CRYPTO_SECRET: &str = "6KYQBP847D4ATSFA";
 /// OpenSSL "Salted__" prefix
 const SALTED_PREFIX: &[u8] = b"Salted__";
 
+/// What the CLI access endpoint's 402 means. The server answers it only after
+/// accepting the credentials, so whatever fails next is not a credentials problem.
+const PLAN_WITHOUT_CLI_ACCESS: &str =
+    "this Internxt plan does not include CLI/WebDAV/Rclone access";
+
+/// The error of a refused Internxt login step, `context` naming the step. Only
+/// the server's own 401 blames the credentials; a 402 or 403 is the plan or the
+/// account being refused, anything else a server failure.
+fn internxt_login_refused(context: &str, status: reqwest::StatusCode, body: &str) -> ProviderError {
+    let detail = format!(
+        "{} ({}): {}",
+        context,
+        status,
+        super::sanitize_api_error(body)
+    );
+    match status.as_u16() {
+        401 => ProviderError::AuthenticationFailed(detail),
+        402 | 403 => ProviderError::PermissionDenied(detail),
+        _ => ProviderError::ServerError(detail),
+    }
+}
+
 fn internxt_auth_failure(context: &str, detail: &str) -> ProviderError {
     let clean = detail.trim();
     if clean.is_empty() {
@@ -340,7 +362,7 @@ pub struct InternxtProvider {
     current_path: String,
     /// Current folder UUID
     current_folder_id: String,
-    /// Base URL for /drive/* requests: the gateway (a local fixture in tests)
+    /// Base URL for /drive/* requests, the login included: the gateway (a local fixture in tests)
     api_base: String,
     /// Cache: path → DirInfo (uuid, name)
     /// M3: Capped at DIR_CACHE_MAX_ENTRIES to prevent unbounded memory growth
@@ -966,22 +988,28 @@ impl InternxtProvider {
     /// no CLI tier restriction (the CLI access endpoint answers 402 on free plans).
     /// It used to go to api.internxt.com, a legacy host whose /drive/* paths now hang
     /// until nginx answers 504; every official client uses the gateway.
+    /// `cli_refusal` is what the CLI access endpoint answered with its 402.
     async fn connect_web_auth(
         &mut self,
         email: &str,
         password: &str,
         tfa: &str,
         s_key: &str,
+        cli_refusal: &str,
     ) -> Result<(), ProviderError> {
+        let plan_refused = format!(
+            "{} (the CLI login answered 402: {})",
+            PLAN_WITHOUT_CLI_ACCESS, cli_refusal
+        );
         internxt_log(&format!(
             "[WEB AUTH] Trying {} /drive/auth/login/access...",
-            GATEWAY
+            self.api_base
         ));
 
         // Re-use sKey from step 1 to encrypt password
         let encrypted_password = Self::encrypt_password_hash(password, s_key)?;
 
-        let web_access_url = format!("{}/drive/auth/login/access", GATEWAY);
+        let web_access_url = format!("{}/drive/auth/login/access", self.api_base);
         internxt_log(&format!("[WEB AUTH] POST {}", web_access_url));
 
         let mut access_body = serde_json::json!({
@@ -1002,7 +1030,10 @@ impl InternxtProvider {
             .await
             .map_err(|e| {
                 internxt_log(&format!("[WEB AUTH FAIL] Request error: {}", e));
-                ProviderError::ConnectionFailed(format!("Web auth access failed: {}", e))
+                ProviderError::ConnectionFailed(format!(
+                    "{}, and the web login fallback could not be reached: {}",
+                    plan_refused, e
+                ))
             })?;
 
         let status = access_resp.status();
@@ -1014,17 +1045,17 @@ impl InternxtProvider {
                 "[WEB AUTH FAIL] Body: {}",
                 &body[..body.floor_char_boundary(200)]
             ));
-            return Err(ProviderError::AuthenticationFailed(format!(
-                "Authentication failed ({}): {}. Both CLI and web auth endpoints failed.",
+            return Err(internxt_login_refused(
+                &format!("{}, and the web login fallback failed", plan_refused),
                 status,
-                super::sanitize_api_error(&body)
-            )));
+                &body,
+            ));
         }
 
         let access_data: AccessResponse = access_resp.json().await.map_err(|e| {
-            ProviderError::AuthenticationFailed(format!(
-                "Failed to parse web access response: {}",
-                e
+            ProviderError::ServerError(format!(
+                "{}, and the web login fallback answered an unreadable response: {}",
+                plan_refused, e
             ))
         })?;
 
@@ -1126,11 +1157,11 @@ impl StorageProvider for InternxtProvider {
         // TODO: integrate `zeroize` crate for any unavoidable intermediate Strings
         let tfa = self.config.two_factor_code.clone().unwrap_or_default();
 
-        internxt_log(&format!("[CONNECT] email={}, gateway={}", email, GATEWAY));
+        internxt_log(&format!("[CONNECT] email={}, api={}", email, self.api_base));
 
         // Step 1: POST /drive/auth/login with email → get sKey + TFA flag
         // (login endpoint uses gateway /drive/ prefix: see GATEWAY doc)
-        let login_url = format!("{}/drive/auth/login", GATEWAY);
+        let login_url = format!("{}/drive/auth/login", self.api_base);
         tracing::debug!(target: "internxt", "[STEP 1] POST {}", login_url);
         let login_body = serde_json::json!({ "email": email });
         let login_resp = self
@@ -1180,7 +1211,7 @@ impl StorageProvider for InternxtProvider {
 
         // Step 3: POST /drive/auth/cli/login/access
         // (CLI access endpoint uses gateway /drive/ prefix: see GATEWAY doc)
-        let access_url = format!("{}/drive/auth/cli/login/access", GATEWAY);
+        let access_url = format!("{}/drive/auth/cli/login/access", self.api_base);
         tracing::debug!(target: "internxt", "[STEP 3] POST {}", access_url);
         let mut access_body = serde_json::json!({
             "email": email,
@@ -1216,18 +1247,26 @@ impl StorageProvider for InternxtProvider {
 
                 // Try the web login on the gateway: /drive/auth/login/access
                 let password_clone = self.config.password.expose_secret().to_string();
+                let cli_refusal = super::sanitize_api_error(&body);
                 let result = self
-                    .connect_web_auth(&email, &password_clone, &tfa, &login_data.s_key)
+                    .connect_web_auth(
+                        &email,
+                        &password_clone,
+                        &tfa,
+                        &login_data.s_key,
+                        &cli_refusal,
+                    )
                     .await;
                 // password_clone is a plain String on the stack; it will be dropped here.
                 // SecretString's zeroize-on-drop still protects the original.
                 return result;
             }
 
-            return Err(ProviderError::AuthenticationFailed(format!(
-                "Authentication failed ({}): {}. Note: CLI access may require a paid Internxt plan.",
-                access_status, super::sanitize_api_error(&body)
-            )));
+            return Err(internxt_login_refused(
+                "Internxt CLI login failed",
+                access_status,
+                &body,
+            ));
         }
 
         let access_data: AccessResponse = access_resp.json().await.map_err(|e| {
@@ -3008,5 +3047,192 @@ mod tests {
             found.map(|(uuid, file_id, _)| (uuid, file_id)),
             Some(("F".to_string(), "net-F".to_string()))
         );
+    }
+
+    /// A provider pointed at a local login server. Step 1 hands out an sKey,
+    /// the CLI access endpoint answers `cli` and the web login fallback
+    /// answers `web` (status and body). Every request is recorded as
+    /// "METHOD path".
+    async fn provider_on_login_server(
+        cli: (u16, &str),
+        web: (u16, &str),
+    ) -> (
+        InternxtProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let s_key = InternxtProvider::encrypt_text("00112233445566778899aabbccddeeff").unwrap();
+        let answers: Arc<HashMap<&'static str, (u16, String)>> = Arc::new(HashMap::from([
+            (
+                "/drive/auth/login",
+                (
+                    200,
+                    serde_json::json!({ "hasKeys": true, "sKey": s_key, "tfa": false }).to_string(),
+                ),
+            ),
+            ("/drive/auth/cli/login/access", (cli.0, cli.1.to_string())),
+            ("/drive/auth/login/access", (web.0, web.1.to_string())),
+        ]));
+        let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&requests);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (answers, seen) = (Arc::clone(&answers), Arc::clone(&seen));
+                async move {
+                    let path = req.uri().path().to_string();
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{} {}", req.method(), path));
+                    match answers.get(path.as_str()) {
+                        Some((status, body)) => (
+                            axum::http::StatusCode::from_u16(*status).unwrap(),
+                            [(axum::http::header::CONTENT_TYPE, "application/json")],
+                            body.clone(),
+                        )
+                            .into_response(),
+                        None => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.api_base = format!("http://{addr}");
+        (provider, requests)
+    }
+
+    const TIER_402: (u16, &str) = (
+        402,
+        r#"{"message":"rclone access not allowed for this user tier"}"#,
+    );
+
+    /// The CLI access endpoint answers 402 to plans without CLI/Rclone access
+    /// (after checking the credentials); the web login on the same gateway
+    /// then logs in. It used to go to api.internxt.com, which hangs to a 504.
+    #[tokio::test]
+    async fn a_plan_without_cli_access_logs_in_through_the_gateway_web_login() {
+        let mnemonic = ["abandon"; 11].join(" ") + " about";
+        let access = serde_json::json!({
+            "token": "t",
+            "newToken": "nt",
+            "user": {
+                "email": "alice@example.com",
+                "userId": "u1",
+                "mnemonic": InternxtProvider::encrypt_text_with_key(&mnemonic, "pw").unwrap(),
+                "rootFolderId": "R",
+                "bucket": "b1",
+                "bridgeUser": "alice@example.com",
+                "uuid": "user-uuid",
+            },
+        })
+        .to_string();
+        let (mut provider, requests) = provider_on_login_server(TIER_402, (200, &access)).await;
+
+        provider.connect().await.expect("connect");
+        assert!(provider.is_connected());
+        assert_eq!(provider.root_folder_id, "R");
+        assert_eq!(provider.mnemonic.expose_secret(), mnemonic);
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [
+                "POST /drive/auth/login",
+                "POST /drive/auth/cli/login/access",
+                "POST /drive/auth/login/access",
+            ]
+        );
+    }
+
+    /// The 402 comes after the credentials were accepted, so a fallback that
+    /// then fails (the old host timed out to a 504) is not a credentials
+    /// problem: the error says what failed, not "check credentials".
+    #[tokio::test]
+    async fn a_failed_fallback_after_the_plan_refusal_does_not_blame_the_credentials() {
+        let (mut provider, _) =
+            provider_on_login_server(TIER_402, (504, "<html>504 Gateway Time-out</html>")).await;
+
+        match provider.connect().await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(
+                    message.contains("does not include CLI/WebDAV/Rclone access"),
+                    "{message}"
+                );
+                assert!(message.contains("504"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(!provider.is_connected());
+    }
+
+    /// A web login the server refuses for the account or the plan (402, 403)
+    /// is a permission problem, named as such.
+    #[tokio::test]
+    async fn a_fallback_refused_for_the_plan_or_account_is_permission_denied() {
+        for web in [
+            (
+                402,
+                r#"{"message":"access not allowed for this user tier"}"#,
+            ),
+            (
+                403,
+                r#"{"message":"Your account has been blocked for security reasons. Please reach out to us","error":"ACCOUNT_BLOCKED"}"#,
+            ),
+        ] {
+            let (mut provider, _) = provider_on_login_server(TIER_402, web).await;
+            match provider.connect().await {
+                Err(ProviderError::PermissionDenied(message)) => {
+                    assert!(
+                        message.contains("does not include CLI/WebDAV/Rclone access"),
+                        "{message}"
+                    );
+                    assert!(message.contains(&web.0.to_string()), "{message}");
+                }
+                other => panic!("{web:?}: {other:?}"),
+            }
+        }
+    }
+
+    /// Only the server's own 401 blames the credentials.
+    #[tokio::test]
+    async fn only_a_401_blames_the_credentials() {
+        let (mut provider, _) =
+            provider_on_login_server(TIER_402, (401, r#"{"message":"Wrong login credentials"}"#))
+                .await;
+        match provider.connect().await {
+            Err(ProviderError::AuthenticationFailed(message)) => {
+                assert!(message.contains("Wrong login credentials"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+
+        let (mut provider, requests) = provider_on_login_server(
+            (401, r#"{"message":"Wrong login credentials"}"#),
+            (200, "{}"),
+        )
+        .await;
+        match provider.connect().await {
+            Err(ProviderError::AuthenticationFailed(message)) => {
+                assert!(message.contains("Wrong login credentials"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(requests.lock().unwrap().len(), 2, "no fallback after a 401");
+    }
+
+    /// A CLI access endpoint that fails for another reason (a 5xx) is a
+    /// server error, not an authentication failure with a plan note.
+    #[tokio::test]
+    async fn a_cli_endpoint_server_error_is_not_an_authentication_failure() {
+        let (mut provider, requests) =
+            provider_on_login_server((500, r#"{"message":"Internal server error"}"#), (200, "{}"))
+                .await;
+        match provider.connect().await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(message.contains("500"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(requests.lock().unwrap().len(), 2, "no fallback after a 500");
     }
 }
