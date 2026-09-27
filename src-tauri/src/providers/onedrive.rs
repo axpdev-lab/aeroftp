@@ -1649,6 +1649,15 @@ impl StorageProvider for OneDriveProvider {
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let source = self.stat(from).await?;
         match self.stat(to).await {
+            // The source itself, found at `to` by a rename that only changes
+            // the letter case: there is no other item to replace, and the
+            // PATCH must not name the item as its own conflict.
+            Ok(occupant)
+                if occupant.metadata.contains_key("id")
+                    && occupant.metadata.get("id") == source.metadata.get("id") =>
+            {
+                return self.patch_into_place(from, to, None).await;
+            }
             Ok(occupant) => super::refuse_replace_across_types(to, source.is_dir, occupant.is_dir)?,
             Err(ProviderError::NotFound(_)) => {}
             Err(e) => return Err(e),
@@ -2804,6 +2813,8 @@ mod tests {
                     };
                     match path.as_str() {
                         "/v1.0/me/drive/root:/a.txt" => item("A", "a.txt", "file"),
+                        // Graph matches a path ignoring the case.
+                        "/v1.0/me/drive/root:/A.txt" => item("A", "a.txt", "file"),
                         "/v1.0/me/drive/root:/b.txt" => item("B", "b.txt", "file"),
                         "/v1.0/me/drive/root:/d" => item("D", "d", "folder"),
                         "/expired" => {
@@ -2879,6 +2890,24 @@ mod tests {
             urlencoding::decode(&patches[0])
                 .unwrap()
                 .contains("@microsoft.graph.conflictBehavior=replace"),
+            "{patches:?}"
+        );
+    }
+
+    /// A replace that only changes the letter case finds the source itself
+    /// at `to` (Graph matches paths ignoring the case) and sent the PATCH
+    /// with `conflictBehavior=replace`, naming the item as its own conflict.
+    /// It is the rename's PATCH, with no conflict behaviour.
+    #[tokio::test]
+    async fn a_case_only_replace_patches_without_replace() {
+        let (mut provider, patches) = provider_on_graph(false).await;
+        provider.replace("/a.txt", "/A.txt").await.expect("replace");
+        let patches = patches.lock().unwrap().clone();
+        assert_eq!(patches.len(), 1, "{patches:?}");
+        assert!(
+            !urlencoding::decode(&patches[0])
+                .unwrap()
+                .contains("conflictBehavior"),
             "{patches:?}"
         );
     }
