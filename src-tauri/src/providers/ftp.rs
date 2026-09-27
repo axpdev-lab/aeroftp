@@ -6141,8 +6141,12 @@ mod transfer_verdict_tests {
         stor_abor_late: bool,
     }
 
+    /// What the scripted server records in its log when the client closed the
+    /// data connection before the payload was written.
+    const EARLY_CLOSE_SEEN: &str = "(the client closed the data connection early)";
+
     /// A server that answers every control connection it is given with
-    /// `script`, recording each command line in `log`.
+    /// `script`, recording each command line in `log`, and each early close.
     async fn scripted_server(script: Script) -> (u16, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let data_listener = Arc::new(TcpListener::bind("127.0.0.1:0").await.unwrap());
@@ -6196,6 +6200,9 @@ mod transfer_verdict_tests {
                     // and the server's answer to it.
                     let complete = data.write_all(&script.retr_payload).await.is_ok();
                     drop(data);
+                    if !complete {
+                        log.lock().unwrap().push(EARLY_CLOSE_SEEN.to_string());
+                    }
                     if complete {
                         script.retr_reply.to_string()
                     } else {
@@ -6415,7 +6422,7 @@ mod transfer_verdict_tests {
             // a refusal written right after the data can reach the control
             // watch before the data is read, and a `226` is the only reply
             // valid there: the test then passes without the word.
-            let (port, _) = scripted_server(Script {
+            let (port, log) = scripted_server(Script {
                 retr_payload: vec![b'x'; 64 * 1024 * 1024],
                 retr_reply: "226 done\r\n",
                 retr_reply_after_early_close: word,
@@ -6432,6 +6439,16 @@ mod transfer_verdict_tests {
             .await
             .expect("the read must end");
             assert_eq!(read.ok(), Some(vec![b'x'; 10]), "{word:?}");
+            // None of the words is `226` or `250`: where the server saw the
+            // early close and answered it, the session is not handed on.
+            if log
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|line| line == EARLY_CLOSE_SEEN)
+            {
+                assert!(provider.stream.is_none(), "{word:?}");
+            }
         }
     }
 
@@ -6514,6 +6531,13 @@ mod transfer_verdict_tests {
         for word in WORDS_ON_AN_EARLY_CLOSE {
             assert!(one_window_answered_with(word).await.is_ok(), "{word:?}");
         }
+    }
+
+    /// A window read whole is not held by a server that says nothing about
+    /// its early close: the reply is not waited for past the budget.
+    #[tokio::test]
+    async fn a_parallel_window_the_server_never_answers_is_not_waited_for() {
+        assert!(one_window_answered_with("").await.is_ok());
     }
 
     /// A local read error in the middle of an upload used to drop the data
