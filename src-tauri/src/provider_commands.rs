@@ -83,6 +83,10 @@ struct CachedCryptOverlay {
 pub struct ProviderState {
     /// Currently active provider (if connected)
     pub provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    /// Abort used-storage I/O before disconnect waits for the provider lock.
+    used_scan_cancel: ListingCancelState,
+    quota_cancel: ListingCancelState,
+    folder_size_cancel: ListingCancelState,
     /// Connection-scoped unlocked-overlay-key cache for instant re-arm after a
     /// view-only lock. `std::sync::Mutex`: the critical sections are tiny and
     /// never await. Wiped (keys zeroized) on connect/disconnect and hard lock.
@@ -129,6 +133,9 @@ impl ProviderState {
     pub fn new() -> Self {
         Self {
             provider: Arc::new(Mutex::new(None)),
+            used_scan_cancel: ListingCancelState::new(),
+            quota_cancel: ListingCancelState::new(),
+            folder_size_cancel: ListingCancelState::new(),
             cached_overlay: std::sync::Mutex::new(None),
             connection_generation: Arc::new(AtomicU64::new(0)),
             config: Arc::new(Mutex::new(None)),
@@ -497,6 +504,30 @@ impl ListingCancelState {
         let token = CancellationToken::new();
         *self.lock() = Some((id, token.clone()));
         (id, token)
+    }
+
+    /// Atomically replace a quota refresh, so two racing refreshes cannot leave
+    /// an older request without a reachable cancellation token.
+    fn replace_and_cancel(&self) -> (u64, CancellationToken) {
+        let mut slot = self.lock();
+        if let Some((_, previous)) = slot.take() {
+            previous.cancel();
+        }
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let token = CancellationToken::new();
+        *slot = Some((id, token.clone()));
+        (id, token)
+    }
+
+    fn try_arm(&self) -> Result<(u64, CancellationToken), String> {
+        let mut slot = self.lock();
+        if slot.is_some() {
+            return Err("A storage scan is already running".into());
+        }
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let token = CancellationToken::new();
+        *slot = Some((id, token.clone()));
+        Ok((id, token))
     }
 
     /// Clear the slot when it still holds generation `id`. A no-op once a newer
@@ -1620,6 +1651,9 @@ async fn provider_connect_inner(
     //
     // Issue #233: drain in-flight DAG transfers BEFORE taking the slot, so
     // an active download/upload cannot see the box yanked from under it.
+    state.used_scan_cancel.cancel();
+    state.quota_cancel.cancel();
+    state.folder_size_cancel.cancel();
     drain_in_flight_transfers(&state, Duration::from_secs(30)).await;
     {
         let mut prov_lock = state.provider.lock().await;
@@ -1689,6 +1723,9 @@ pub async fn provider_disconnect(
     // mutating the provider slot. Without this, an active download/upload
     // sees the box yanked and surfaces a spurious `NotConnected` instead
     // of completing or failing on its real I/O error.
+    state.used_scan_cancel.cancel();
+    state.quota_cancel.cancel();
+    state.folder_size_cancel.cancel();
     drain_in_flight_transfers(&state, Duration::from_secs(30)).await;
 
     // AeroShare: closing a peer connection tab stands the received drive down
@@ -2033,6 +2070,9 @@ pub async fn provider_clear_crypt_overlay(
     state: State<'_, ProviderState>,
     full: Option<bool>,
 ) -> Result<bool, String> {
+    state.used_scan_cancel.cancel();
+    state.quota_cancel.cancel();
+    state.folder_size_cancel.cancel();
     let removed = {
         let mut guard = state.provider.lock().await;
         crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard)
@@ -6434,15 +6474,28 @@ pub async fn provider_bucket_encryption(
 /// Get storage quota information (used/total/free bytes)
 #[tauri::command]
 pub async fn provider_storage_info(state: State<'_, ProviderState>) -> Result<StorageInfo, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    // A fresh refresh supersedes the old one; teardown cancels both scans and quota reads.
+    let (id, token) = state.quota_cancel.replace_and_cancel();
+    let _guard = ListingTokenGuard::new(&state.quota_cancel, id);
+    let read = async {
+        storage_metadata_read(async {
+            let mut provider_guard = state.provider.lock().await;
+            let provider = provider_guard
+                .as_mut()
+                .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider
-        .storage_info()
-        .await
-        .map_err(|e| format!("Failed to get storage info: {}", e))
+            provider
+                .storage_info()
+                .await
+                .map_err(|e| format!("Failed to get storage info: {}", e))
+        })
+        .await?
+    };
+    tokio::select! {
+        biased;
+        _ = token.cancelled() => Err("Storage quota refresh cancelled".into()),
+        result = read => result,
+    }
 }
 
 /// Query MEGAcmd quota directly through `mega-df`.
@@ -9997,9 +10050,6 @@ pub async fn onedrive_permanent_delete(
 
 // ─── Folder Size Calculation ───
 
-/// Global cancellation flag for folder size scan
-static FOLDER_SIZE_CANCEL: AtomicBool = AtomicBool::new(false);
-
 /// Progress payload emitted during folder size scan
 #[derive(Clone, Serialize)]
 pub struct FolderSizeProgress {
@@ -10017,7 +10067,8 @@ pub async fn provider_calculate_folder_size(
     app: AppHandle,
     path: String,
 ) -> Result<FolderSizeProgress, String> {
-    FOLDER_SIZE_CANCEL.store(false, Ordering::Relaxed);
+    let (id, token) = state.folder_size_cancel.try_arm()?;
+    let _guard = ListingTokenGuard::new(&state.folder_size_cancel, id);
 
     let mut total_bytes: u64 = 0;
     let mut file_count: u64 = 0;
@@ -10031,7 +10082,7 @@ pub async fn provider_calculate_folder_size(
     let mut queue: Vec<(String, usize)> = vec![(path, 0)];
 
     while let Some((current_path, depth)) = queue.pop() {
-        if FOLDER_SIZE_CANCEL.load(Ordering::Relaxed) {
+        if token.is_cancelled() {
             // Cancelled: return partial results
             let result = FolderSizeProgress {
                 total_bytes,
@@ -10048,7 +10099,7 @@ pub async fn provider_calculate_folder_size(
         }
 
         // List directory contents
-        let entries = {
+        let entries = cancellable_storage_read(&token, async {
             let mut provider_lock = state.provider.lock().await;
             let provider = provider_lock
                 .as_mut()
@@ -10056,8 +10107,11 @@ pub async fn provider_calculate_folder_size(
             provider
                 .list(&current_path)
                 .await
-                .map_err(|e| format!("Failed to list {}: {}", current_path, e))?
-        };
+                .map_err(|e| format!("Failed to list {}: {}", current_path, e))
+        })
+        .await?;
+        let Some(entries) = entries else { break };
+        let entries = entries?;
 
         for entry in &entries {
             entries_scanned += 1;
@@ -10099,12 +10153,48 @@ pub async fn provider_calculate_folder_size(
 
 /// Cancel an in-progress folder size calculation
 #[tauri::command]
-pub async fn provider_cancel_folder_size() -> Result<(), String> {
-    FOLDER_SIZE_CANCEL.store(true, Ordering::Relaxed);
+pub async fn provider_cancel_folder_size(state: State<'_, ProviderState>) -> Result<(), String> {
+    state.folder_size_cancel.cancel();
     Ok(())
 }
 
-static USED_SCAN_CANCEL: AtomicBool = AtomicBool::new(false);
+/// Include mutex acquisition in the cancellable future: a queued scan must
+/// also stop. Dropping the async read releases its provider guard (#958).
+async fn run_used_scan<F>(state: &ListingCancelState, work: F) -> Result<UsedScanResult, String>
+where
+    F: std::future::Future<Output = Result<UsedScanResult, String>>,
+{
+    let (id, token) = state.try_arm()?;
+    let _guard = ListingTokenGuard::new(state, id);
+    tokio::select! {
+        biased;
+        _ = token.cancelled() => Ok(UsedScanResult {
+            used: 0, file_count: 0, dir_count: 0, truncated: true,
+            cancelled: true, unreadable_dirs: 0, hit_cap: false, method: "cancelled".into(),
+        }),
+        result = work => result,
+    }
+}
+
+/// Return no batch on cancellation, leaving the folder-size caller's prior
+/// counts intact. The read includes mutex acquisition as well as network I/O.
+async fn cancellable_storage_read<T>(
+    token: &CancellationToken,
+    read: impl std::future::Future<Output = T>,
+) -> Result<Option<T>, String> {
+    tokio::select! {
+        biased;
+        _ = token.cancelled() => Ok(None),
+        result = storage_metadata_read(read) => result.map(Some),
+    }
+}
+
+/// Bound each read, not the whole tree walk. Transfers keep their own timeouts.
+async fn storage_metadata_read<T>(read: impl std::future::Future<Output = T>) -> Result<T, String> {
+    tokio::time::timeout(Duration::from_secs(30), read)
+        .await
+        .map_err(|_| "Storage metadata request timed out after 30 seconds".into())
+}
 
 /// Result of the explicit "used storage" scan (item 4b).
 #[derive(Clone, Serialize)]
@@ -10166,7 +10256,19 @@ pub async fn provider_scan_used(
     app: AppHandle,
     path: String,
 ) -> Result<UsedScanResult, String> {
-    USED_SCAN_CANCEL.store(false, Ordering::Relaxed);
+    run_used_scan(
+        &state.used_scan_cancel,
+        provider_scan_used_inner(&state, &app, path),
+    )
+    .await
+}
+
+async fn provider_scan_used_inner(
+    state: &ProviderState,
+    app: &AppHandle,
+    path: String,
+) -> Result<UsedScanResult, String> {
+    let scan_cancel = AtomicBool::new(false);
 
     const MAX_DEPTH: usize = 100;
     const MAX_ENTRIES: u64 = 500_000;
@@ -10197,11 +10299,14 @@ pub async fn provider_scan_used(
             .as_mut()
             .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-        if let Some(fast) =
-            crate::used_scan::provider_list_recursive_fastpath(provider, &root).await
+        if let Some(fast) = storage_metadata_read(
+            crate::used_scan::provider_list_recursive_fastpath(provider, &root),
+        )
+        .await
+        .unwrap_or(None)
         {
             // Same reduction as `scan_used_bytes`: read `fast.truncated`,
-            // count directories against the cap, honour USED_SCAN_CANCEL
+            // count directories against the cap, honour scan cancellation
             // on the way out. The GUI does not request a depth, so the
             // parachute is left to the BFS below; filtering the list the
             // provider already delivered would throw away bytes.
@@ -10210,7 +10315,7 @@ pub async fn provider_scan_used(
                 &root,
                 None,
                 MAX_ENTRIES as usize,
-                &USED_SCAN_CANCEL,
+                &scan_cancel,
             );
             emit_progress(scan.file_count, scan.used_bytes, false);
             return Ok(UsedScanResult::from(&scan));
@@ -10225,7 +10330,6 @@ pub async fn provider_scan_used(
     let mut file_count = 0u64;
     let mut dir_count = 0u64;
     let mut truncated = false;
-    let mut cancelled = false;
     let mut unreadable_dirs = 0u64;
     let mut hit_cap = false;
     let mut queue: Vec<(String, usize)> = {
@@ -10244,11 +10348,6 @@ pub async fn provider_scan_used(
         .unwrap_or_else(std::time::Instant::now);
 
     while let Some((dir, depth)) = queue.pop() {
-        if USED_SCAN_CANCEL.load(Ordering::Relaxed) {
-            truncated = true;
-            cancelled = true;
-            break;
-        }
         if depth >= MAX_DEPTH || (file_count + dir_count) >= MAX_ENTRIES {
             truncated = true;
             hit_cap = true;
@@ -10259,7 +10358,7 @@ pub async fn provider_scan_used(
             let provider = guard
                 .as_mut()
                 .ok_or_else(|| "Not connected to any provider".to_string())?;
-            match provider.list(&dir).await {
+            match storage_metadata_read(provider.list(&dir)).await? {
                 Ok(e) => e,
                 Err(e) => {
                     // A single unreadable directory must not abort the
@@ -10300,20 +10399,13 @@ pub async fn provider_scan_used(
         }
     }
 
-    // Same exit poll as `bfs_used_bytes`: a cancel raised while the last
-    // directory was listed never sees another turn of this loop.
-    let cancelled = cancelled || USED_SCAN_CANCEL.load(Ordering::Relaxed);
-    if cancelled {
-        truncated = true;
-    }
-
     emit_progress(file_count, used, false);
     Ok(UsedScanResult {
         used,
         file_count,
         dir_count,
         truncated,
-        cancelled,
+        cancelled: false,
         unreadable_dirs,
         hit_cap,
         method: "bfs".to_string(),
@@ -10322,8 +10414,8 @@ pub async fn provider_scan_used(
 
 /// Cancel an in-progress used-storage scan.
 #[tauri::command]
-pub async fn provider_cancel_used_scan() -> Result<(), String> {
-    USED_SCAN_CANCEL.store(true, Ordering::Relaxed);
+pub async fn provider_cancel_used_scan(state: State<'_, ProviderState>) -> Result<(), String> {
+    state.used_scan_cancel.cancel();
     Ok(())
 }
 
@@ -14927,6 +15019,152 @@ mod tests {
         assert!(registry.cancel(key));
         assert_eq!(fut.await.unwrap_err(), CONNECT_CANCELLED);
         assert_eq!(registry.active_count(), 0, "guard must de-register on drop");
+    }
+
+    #[test]
+    fn ehud_quota_refresh_replaces_and_cancels_its_predecessor() {
+        let state = ListingCancelState::new();
+        let (first, a) = state.replace_and_cancel();
+        let (_, b) = state.replace_and_cancel();
+        assert!(a.is_cancelled());
+        assert!(!b.is_cancelled());
+        state.disarm(first);
+        assert!(state.cancel());
+        assert!(b.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn ehud_folder_size_cancel_drops_an_in_flight_read() {
+        let token = tokio_util::sync::CancellationToken::new();
+        let lock = tokio::sync::Mutex::new(());
+        let work = super::cancellable_storage_read(&token, async {
+            let _held = lock.lock().await;
+            std::future::pending::<()>().await;
+        });
+        tokio::pin!(work);
+        assert!(futures_util::poll!(&mut work).is_pending());
+        token.cancel();
+        assert!(work.await.unwrap().is_none());
+        assert!(lock.try_lock().is_ok());
+    }
+
+    #[tokio::test]
+    async fn ehud_storage_metadata_read_has_a_deadline_and_drops_its_lock() {
+        let lock = tokio::sync::Mutex::new(());
+        let result = super::storage_metadata_read(async {
+            let _held = lock.lock().await;
+            std::future::pending::<()>().await;
+        })
+        .await;
+        assert!(result.unwrap_err().contains("timed out"));
+        assert!(lock.try_lock().is_ok());
+    }
+
+    #[tokio::test]
+    async fn ehud_cancel_interrupts_a_stalled_webdav_infinity_request() {
+        use crate::providers::{webdav::WebDavProvider, StorageProvider, WebDavConfig};
+        use axum::{routing::any, Router};
+        let started = std::sync::Arc::new(tokio::sync::Notify::new());
+        let ready = started.clone();
+        let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+            let ready = ready.clone();
+            async move {
+                if request.headers().get("depth").is_some_and(|v| v == "infinity") {
+                    ready.notify_one();
+                    std::future::pending::<()>().await;
+                }
+                (axum::http::StatusCode::MULTI_STATUS,
+                 r#"<d:multistatus xmlns:d="DAV:"><d:response><d:href>/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#)
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = WebDavProvider::new(WebDavConfig {
+            url: format!("http://{addr}"),
+            username: "fixture".into(),
+            password: secrecy::SecretString::from("fixture".to_string()),
+            initial_path: None,
+            provider_id: Some("filen-webdav".into()),
+            verify_cert: true,
+            anonymous: true,
+        })
+        .unwrap();
+        provider.connect().await.unwrap();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(provider));
+        let work = async {
+            let mut guard = state.provider.lock().await;
+            crate::used_scan::provider_list_recursive_fastpath(guard.as_mut().unwrap(), "/").await;
+            panic!("stalled server must be interrupted");
+        };
+        let cancel = async {
+            started.notified().await;
+            state.used_scan_cancel.cancel();
+        };
+        let (result, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            tokio::join!(super::run_used_scan(&state.used_scan_cancel, work), cancel)
+        })
+        .await
+        .expect("Cancel must not wait for WebDAV's 1800s read timeout");
+        assert!(result.unwrap().cancelled);
+        assert!(state.provider.try_lock().is_ok());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn ehud_used_scan_cancel_drops_read_and_releases_provider_lock() {
+        let state = ProviderState::new();
+        let (ready, started) = tokio::sync::oneshot::channel();
+        let work = async {
+            let _provider = state.provider.lock().await;
+            ready.send(()).unwrap();
+            std::future::pending().await
+        };
+        let cancel = async {
+            started.await.unwrap();
+            assert!(state.used_scan_cancel.cancel());
+        };
+        let (result, ()) = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            tokio::join!(super::run_used_scan(&state.used_scan_cancel, work), cancel)
+        })
+        .await
+        .expect("cancel must interrupt I/O, not wait for its timeout");
+        let result = result.unwrap();
+        assert!(result.cancelled && result.truncated);
+        assert!(
+            state.provider.try_lock().is_ok(),
+            "disconnect can now acquire the provider"
+        );
+        assert!(!state.used_scan_cancel.is_armed());
+    }
+
+    #[tokio::test]
+    async fn ehud_used_scan_cancel_also_interrupts_lock_wait_and_rejects_duplicate() {
+        let state = ProviderState::new();
+        let _busy = state.provider.lock().await;
+        let work = async {
+            let _provider = state.provider.lock().await;
+            unreachable!("the provider is busy for this entire test")
+        };
+        let scan = super::run_used_scan(&state.used_scan_cancel, work);
+        tokio::pin!(scan);
+        // Poll the request until it has registered cancellation and is waiting.
+        assert!(futures_util::poll!(&mut scan).is_pending());
+        assert!(
+            super::run_used_scan(&state.used_scan_cancel, std::future::pending())
+                .await
+                .is_err()
+        );
+        assert!(state.used_scan_cancel.cancel());
+        let result = tokio::time::timeout(std::time::Duration::from_secs(1), &mut scan)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(result.cancelled);
+        assert!(!state.used_scan_cancel.is_armed());
     }
 
     #[tokio::test]

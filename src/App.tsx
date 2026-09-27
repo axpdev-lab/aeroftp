@@ -3458,6 +3458,7 @@ const App: React.FC = () => {
     // fetchStorageQuota).
     if (scanInFlightRef.current || usedScanStatus?.running) return;
     scanInFlightRef.current = true;
+    const quotaBeforeScan = storageQuota;
     const version = ++quotaVersionRef.current;
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const cp = scanOptions?.connectionParams || activeSession?.connectionParams || connectionParams;
@@ -3511,6 +3512,10 @@ const App: React.FC = () => {
         });
       }
     };
+    if (version !== quotaVersionRef.current) {
+      scanInFlightRef.current = false;
+      return;
+    }
     setUsedScanStatus({ running: true, files: 0, bytes: 0 });
     provisional(0);
     if (scanOptions?.automatic) {
@@ -3565,19 +3570,32 @@ const App: React.FC = () => {
       }
       return;
     }
-    const unlisten = await listen<{ used: number; file_count: number; scanning: boolean }>(
-      'used-scan-progress',
-      (event) => {
-        const p = event.payload;
-        setUsedScanStatus({ running: p.scanning, files: p.file_count, bytes: p.used });
-        provisional(p.used);
-      },
-    );
+    let unlisten: (() => void) | undefined;
     try {
+      unlisten = await listen<{ used: number; file_count: number; scanning: boolean }>(
+        'used-scan-progress',
+        (event) => {
+          if (version !== quotaVersionRef.current) return;
+          const p = event.payload;
+          setUsedScanStatus({ running: p.scanning, files: p.file_count, bytes: p.used });
+          provisional(p.used);
+        },
+      );
+      if (version !== quotaVersionRef.current) return;
       const res = await invoke<{
         used: number; file_count: number; dir_count: number;
         truncated: boolean; cancelled?: boolean; unreadable_dirs?: number; hit_cap?: boolean; method: string;
       }>('provider_scan_used', { path: scanRoot });
+      // A cancelled request has no complete figure; preserve the previous quota.
+      // Also discard events/results after a session switch.
+      if (res.cancelled || version !== quotaVersionRef.current) {
+        if (version === quotaVersionRef.current) setStorageQuota(quotaBeforeScan);
+        activityLog.updateEntry(scanLogId, {
+          status: 'success',
+          message: t('transfer.cancelled'),
+        });
+        return;
+      }
       if (res.used === 0 && res.file_count === 0 && res.dir_count > 0) {
         // Directories were listed but zero files were counted. On some old
         // WebDAV backends Depth:infinity is silently treated as Depth:1, so a
@@ -3639,6 +3657,7 @@ const App: React.FC = () => {
         });
       }
     } catch (err) {
+      if (version === quotaVersionRef.current) setStorageQuota(quotaBeforeScan);
       notify.error(t('statusBar.usedScanFailed'), String(err));
       activityLog.updateEntry(scanLogId, {
         status: 'error',
@@ -3646,7 +3665,7 @@ const App: React.FC = () => {
         details: String(err),
       });
     } finally {
-      unlisten();
+      unlisten?.();
       setUsedScanStatus(null);
       scanInFlightRef.current = false;
     }
@@ -7930,6 +7949,8 @@ const App: React.FC = () => {
   const closeAeroSyncForTornDownSession = () => setAeroSync(null);
 
   const disconnectFromFtp = async (reason?: 'button' | 'tab-close' | 'close-all') => {
+    quotaVersionRef.current++;
+    setStorageQuota(null);
     const logId = humanLog.logStart('DISCONNECT', { server: connectionParams.server });
     // The AeroSync dialog holds a Compare scan of THIS remote, so it stops
     // meaning anything the moment the session goes away: its entries point at
