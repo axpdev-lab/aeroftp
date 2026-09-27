@@ -372,6 +372,8 @@ mod tests {
             verified: None,
             bytes_transferred: 0,
             ec_status: None,
+            local_size: None,
+            local_modified: None,
         });
         journal.entries.push(SyncJournalEntry {
             relative_path: "b.txt".to_string(),
@@ -382,6 +384,8 @@ mod tests {
             verified: None,
             bytes_transferred: 0,
             ec_status: None,
+            local_size: None,
+            local_modified: None,
         });
         journal
     }

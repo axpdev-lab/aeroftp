@@ -628,6 +628,15 @@ export const runRemoteSync = async (
             modified: props?.modified ? `${props.modified}Z` : null,
         };
     };
+    // What the index records for a completed transfer, kept in its journal
+    // entry too: a run resumed from the journal reads nothing of the
+    // transfers it skips, and takes this for them.
+    const recordLanded = (item: SyncRunFile, entry: SyncJournalEntry | undefined) => {
+        if (!entry) return;
+        const landed = landedStates.get(item.relativePath);
+        entry.local_size = landed?.size ?? item.size;
+        entry.local_modified = landed ? landed.modified : item.mtime;
+    };
     journal.entries.forEach((entry, idx) => journalEntryMap.set(entry.relative_path, idx));
 
     // GAP-9a — Maniac mode disables journal persistence. The in-memory
@@ -803,6 +812,7 @@ export const runRemoteSync = async (
                     journalEntry.bytes_transferred = item.size;
                     journalEntry.verified = true;
                 }
+                recordLanded(item, journalEntry);
                 if (errorCorrectionEnabled) {
                     try {
                         const ecResult = await invoke<SyncEcCommandResult>('sync_ec_generate', {
@@ -913,6 +923,7 @@ export const runRemoteSync = async (
                         journalEntry.bytes_transferred = item.size;
                         journalEntry.verified = true;
                     }
+                    recordLanded(item, journalEntry);
                     captureDeltaForPath(item.relativePath);
                     setStatus(item.relativePath, 'success');
                 }
@@ -1072,13 +1083,6 @@ export const runRemoteSync = async (
             const mergedFiles: Record<string, SyncIndexEntry> = {
                 ...(existing?.files ?? {}),
             };
-            // An index saved after the resumed journal started was saved by the
-            // run it resumes, and its entries are of the files that run moved.
-            // One saved before it is older: a run that crashed saved none.
-            const savedByTheResumedRun =
-                !!deps.resumeJournal &&
-                !!existing &&
-                Date.parse(existing.last_sync) >= Date.parse(deps.resumeJournal.created_at);
             for (const f of files) {
                 const idx = journalEntryMap.get(f.relativePath);
                 const entry = idx !== undefined ? journal.entries[idx] : undefined;
@@ -1092,25 +1096,20 @@ export const runRemoteSync = async (
                     // journal) the file's own is recorded, read when the
                     // download completed or before the upload, or the local side
                     // would be compared by size alone and a same-size edit would
-                    // go unseen. A transfer the resumed journal had finished
-                    // was not read in this run: the entry the interrupted run
-                    // saved for it keeps its time, if that run saved one and it
-                    // is of that file (the same size).
+                    // go unseen. A transfer the resumed journal had finished was
+                    // not read in this run: its journal entry says what the run
+                    // that made it recorded. An entry written before these
+                    // fields existed gives no time.
                     let size = f.size;
                     let modified = f.mtime;
                     if (f.mtime == null) {
                         const landed = landedStates.get(f.relativePath);
-                        const earlier = existing?.files?.[f.relativePath];
                         if (landed) {
                             modified = landed.modified;
                             size = landed.size ?? f.size;
-                        } else if (
-                            savedByTheResumedRun &&
-                            earlier &&
-                            !earlier.is_dir &&
-                            earlier.size === f.size
-                        ) {
-                            modified = earlier.modified;
+                        } else {
+                            modified = entry.local_modified ?? null;
+                            size = entry.local_size ?? f.size;
                         }
                     }
                     mergedFiles[f.relativePath] = {

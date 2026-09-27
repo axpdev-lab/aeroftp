@@ -3625,7 +3625,13 @@ impl FtpProvider {
         let mut file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
+        let local_meta = file.metadata().await.map_err(ProviderError::IoError)?;
+        let total_size = local_meta.len();
+        // The time MFMT stamps on the remote at the end, read from the open
+        // file as the upload starts. Read from the path once it is over, it was
+        // the time of a save made meanwhile, lent to bytes that are not that
+        // save's: a sync then read the pair as identical.
+        let local_modified = local_meta.modified().ok();
 
         // Open streaming upload channel (PASV + STOR), under the same cap as the
         // reads: the two unbounded awaits live in `data_command`, which every
@@ -3699,23 +3705,15 @@ impl FtpProvider {
         // MFMT is a standalone FTP command, NOT a SITE sub-command.
         // Best practice: FileZilla, WinSCP, lftp all do this after upload.
         if self.mfmt_supported {
-            if let Ok(local_meta) = std::fs::metadata(local_path) {
-                if let Ok(mtime) = local_meta.modified() {
-                    if let Ok(duration) = mtime.duration_since(std::time::UNIX_EPOCH) {
-                        let dt = chrono::DateTime::from_timestamp(duration.as_secs() as i64, 0);
-                        if let Some(dt) = dt {
-                            let mfmt_time = dt.format("%Y%m%d%H%M%S").to_string();
-                            if let Some(stream) = self.stream.as_mut() {
-                                // MFMT <time-val> <pathname>: expects 213 response
-                                let cmd = format!("MFMT {} {}", mfmt_time, remote_path);
-                                if let Err(e) =
-                                    stream.custom_command(&cmd, &[suppaftp::Status::File]).await
-                                {
-                                    tracing::debug!("FTP MFMT failed (non-fatal): {}", e);
-                                }
-                            }
-                        }
-                    }
+            let mfmt_time = local_modified
+                .and_then(|mtime| mtime.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|duration| chrono::DateTime::from_timestamp(duration.as_secs() as i64, 0))
+                .map(|dt| dt.format("%Y%m%d%H%M%S").to_string());
+            if let (Some(mfmt_time), Some(stream)) = (mfmt_time, self.stream.as_mut()) {
+                // MFMT <time-val> <pathname>: expects 213 response
+                let cmd = format!("MFMT {} {}", mfmt_time, remote_path);
+                if let Err(e) = stream.custom_command(&cmd, &[suppaftp::Status::File]).await {
+                    tracing::debug!("FTP MFMT failed (non-fatal): {}", e);
                 }
             }
         }

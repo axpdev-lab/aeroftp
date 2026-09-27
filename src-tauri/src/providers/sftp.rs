@@ -1290,39 +1290,45 @@ impl SftpProvider {
     /// sync scans don't re-upload unchanged files just because the server
     /// stamped the upload time. Best-effort: failures are logged, not fatal.
     /// Shared by `upload` and `resume_upload`.
-    async fn preserve_remote_mtime(&self, sftp: &SftpSession, remote_path: &str, local_path: &str) {
-        match tokio::fs::metadata(local_path).await {
-            Ok(local_meta) => {
-                if let Ok(modified) = local_meta.modified() {
-                    if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
-                        match u32::try_from(duration.as_secs()) {
-                            Ok(epoch_secs) => {
-                                let mut attrs = russh_sftp::protocol::FileAttributes::empty();
-                                // SFTP's ACMODTIME attribute serializes both fields together;
-                                // reuse the source mtime for atime to avoid sending a zero atime.
-                                attrs.atime = Some(epoch_secs);
-                                attrs.mtime = Some(epoch_secs);
-                                if let Err(error) = sftp.set_metadata(remote_path, attrs).await {
-                                    tracing::warn!(
-                                        "SFTP: Failed to preserve remote mtime for {}: {}",
-                                        remote_path,
-                                        error
-                                    );
-                                }
-                            }
-                            Err(_) => tracing::warn!(
-                                "SFTP: Skipping mtime preservation for {} because source mtime is out of range",
-                                remote_path
-                            ),
-                        }
+    ///
+    /// `local_modified` is the source's time as the upload started. Read from
+    /// the path once the upload is over, it was the time of a save made
+    /// meanwhile, lent to bytes that are not that save's: a sync then read
+    /// the pair as identical and the save never went up.
+    async fn preserve_remote_mtime(
+        &self,
+        sftp: &SftpSession,
+        remote_path: &str,
+        local_modified: Option<std::time::SystemTime>,
+    ) {
+        let Some(modified) = local_modified else {
+            tracing::warn!(
+                "SFTP: No local time to preserve on {}: the source's metadata could not be read",
+                remote_path
+            );
+            return;
+        };
+        if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
+            match u32::try_from(duration.as_secs()) {
+                Ok(epoch_secs) => {
+                    let mut attrs = russh_sftp::protocol::FileAttributes::empty();
+                    // SFTP's ACMODTIME attribute serializes both fields together;
+                    // reuse the source mtime for atime to avoid sending a zero atime.
+                    attrs.atime = Some(epoch_secs);
+                    attrs.mtime = Some(epoch_secs);
+                    if let Err(error) = sftp.set_metadata(remote_path, attrs).await {
+                        tracing::warn!(
+                            "SFTP: Failed to preserve remote mtime for {}: {}",
+                            remote_path,
+                            error
+                        );
                     }
                 }
+                Err(_) => tracing::warn!(
+                    "SFTP: Skipping mtime preservation for {} because source mtime is out of range",
+                    remote_path
+                ),
             }
-            Err(error) => tracing::warn!(
-                "SFTP: Could not read local metadata for mtime preservation ({}): {}",
-                local_path,
-                error
-            ),
         }
     }
 }
@@ -2354,18 +2360,18 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Uploading {} to {}", local_path, full_path);
 
-        // Get local file size for progress reporting
-        let total_size = tokio::fs::metadata(local_path)
-            .await
-            .map(|m| m.len())
-            .unwrap_or(0);
-
-        tracing::info!("SFTP: Upload local file size: {} bytes", total_size);
-
         // Open local file
         let mut local_file = tokio::fs::File::open(local_path).await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to open local file: {}", e))
         })?;
+
+        // Its size for progress reporting, and its time as the upload starts,
+        // which the remote is stamped with at the end, read from the open file.
+        let local_meta = local_file.metadata().await.ok();
+        let total_size = local_meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let local_modified = local_meta.and_then(|m| m.modified().ok());
+
+        tracing::info!("SFTP: Upload local file size: {} bytes", total_size);
 
         // Create remote file via russh_sftp (uses existing SSH session, no second connection)
         let mut remote_file = sftp.create(&full_path).await.map_err(|e| {
@@ -2447,7 +2453,7 @@ impl StorageProvider for SftpProvider {
         // Keep remote mtime aligned with the local source so repeated sync
         // scans don't re-upload unchanged files just because the server stamped
         // the file with upload time.
-        self.preserve_remote_mtime(sftp, &full_path, local_path)
+        self.preserve_remote_mtime(sftp, &full_path, local_modified)
             .await;
 
         tracing::info!(
@@ -2529,6 +2535,8 @@ impl StorageProvider for SftpProvider {
         let total_size = tokio::fs::metadata(local_path).await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to stat local file: {}", e))
         })?;
+        // The source's time as the resume starts, stamped on the remote at the end.
+        let local_modified = total_size.modified().ok();
         let total_size = total_size.len();
 
         // Re-stat the remote so the resume offset reflects what actually landed.
@@ -2682,7 +2690,7 @@ impl StorageProvider for SftpProvider {
                 self.verify_remote_upload_size(sftp, &full_path, total_size)
                     .await?;
 
-                self.preserve_remote_mtime(sftp, &full_path, local_path)
+                self.preserve_remote_mtime(sftp, &full_path, local_modified)
                     .await;
 
                 tracing::info!("SFTP: Resume upload complete: {} bytes total", transferred);

@@ -4169,6 +4169,14 @@ pub struct SyncJournalEntry {
     pub bytes_transferred: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ec_status: Option<SyncEcStatus>,
+    /// The local file as the sync index records it once the transfer
+    /// completed: its size, and its time (the one a download left on it, the
+    /// one an upload sent). A resumed run reads nothing of the transfers it
+    /// skips, and takes these for them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_modified: Option<String>,
 }
 
 /// Persistent transfer journal for checkpoint/resume
@@ -6856,6 +6864,8 @@ mod tests {
             verified: None,
             bytes_transferred: 0,
             ec_status: None,
+            local_size: None,
+            local_modified: None,
         });
         assert!(journal.has_resumable_entries());
 
@@ -6882,6 +6892,8 @@ mod tests {
             verified: Some(true),
             bytes_transferred: 1024,
             ec_status: None,
+            local_size: None,
+            local_modified: None,
         });
         journal.entries.push(SyncJournalEntry {
             relative_path: "b.txt".to_string(),
@@ -6892,6 +6904,8 @@ mod tests {
             verified: None,
             bytes_transferred: 0,
             ec_status: None,
+            local_size: None,
+            local_modified: None,
         });
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Completed), 1);
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Failed), 1);

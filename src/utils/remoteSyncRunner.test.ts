@@ -1040,7 +1040,11 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
     // CodeRabbit on #949 (a90e5933): a download the interrupted run finished
     // is skipped on resume, so this run never reads its time, and the index
     // entry the interrupted run wrote with it was replaced by null (the
-    // remote gives none): the next compare fell back to size alone.
+    // remote gives none): the next compare fell back to size alone. Minor 4
+    // (verification of the fifth round): the time is the one the journal
+    // entry recorded when the download completed, not whatever the index
+    // holds (a crashed run saved none, and a chain of resumes carries older
+    // runs' entries forward).
     it('keeps the index time of a download the resumed journal finished', async () => {
         const resumeJournal: SyncJournal = {
             id: 'j-landed',
@@ -1052,7 +1056,8 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
             retry_policy: RETRY,
             verify_policy: 'none',
             entries: [
-                { relative_path: 'done.txt', action: 'download', status: 'completed', attempts: 1, last_error: null, verified: null, bytes_transferred: 7 },
+                { relative_path: 'done.txt', action: 'download', status: 'completed', attempts: 1, last_error: null, verified: null, bytes_transferred: 7, local_size: 7, local_modified: '2026-09-26T09:04:00Z' },
+                // Written before the journal kept these: no time.
                 { relative_path: 'resized.txt', action: 'download', status: 'completed', attempts: 1, last_error: null, verified: null, bytes_transferred: 9 },
             ],
             completed: false,
@@ -1065,10 +1070,9 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
                 local_path: '/home/u/work',
                 remote_path: '/srv/data',
                 files: {
-                    'done.txt': { size: 7, modified: '2026-09-26T09:04:00Z', is_dir: false },
-                    // An entry from before the download (another size) says
-                    // nothing about the file that landed.
-                    'resized.txt': { size: 3, modified: '2026-09-20T08:00:00Z', is_dir: false },
+                    // What an older run recorded: the journal wins.
+                    'done.txt': { size: 7, modified: '2026-09-20T08:00:00Z', is_dir: false },
+                    'resized.txt': { size: 9, modified: '2026-09-20T08:00:00Z', is_dir: false },
                 },
             }),
             save_sync_index_cmd: (args) => {
@@ -1149,9 +1153,7 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         let savedIndex: Record<string, unknown> | undefined;
         const { invoke, calls } = makeInvoke({
             get_file_properties: () => ({ size: 7, modified: '2026-09-26T10:00:00' }),
-            load_sync_index_cmd: savedAt('2026-09-26T09:05:00Z', {
-                'done.txt': { size: 5, modified: '2026-09-26T09:04:00Z', is_dir: false },
-            }),
+            load_sync_index_cmd: savedAt('2026-09-26T09:05:00Z', {}),
             save_sync_index_cmd: (args) => {
                 savedIndex = args?.index as Record<string, unknown>;
             },
@@ -1167,7 +1169,7 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
             noWaitDeps(invoke, {
                 writeIndex: true,
                 resumeJournal: resumeOf([
-                    { relative_path: 'done.txt', action: 'upload', status: 'completed', attempts: 1, last_error: null, verified: true, bytes_transferred: 5 },
+                    { relative_path: 'done.txt', action: 'upload', status: 'completed', attempts: 1, last_error: null, verified: true, bytes_transferred: 5, local_size: 5, local_modified: '2026-09-26T09:04:00Z' },
                     { relative_path: 'next.txt', action: 'upload', status: 'pending', attempts: 0, last_error: null, verified: null, bytes_transferred: 0 },
                 ]),
             }),
@@ -1176,6 +1178,33 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         const files = (savedIndex?.files ?? {}) as Record<string, { size: number; modified: string | null }>;
         expect(files['next.txt']).toMatchObject({ size: 7, modified: '2026-09-26T10:00:00Z' });
         expect(files['done.txt']).toMatchObject({ size: 5, modified: '2026-09-26T09:04:00Z' });
+    });
+
+    // Minor 4 (verification of the fifth round): a completed transfer keeps
+    // in its journal entry what the index records for it, so a later resume
+    // has it even when this run saves no index (it crashes).
+    it('records in the journal what the index records for a transfer', async () => {
+        const journals: SyncJournal[] = [];
+        const { invoke } = makeInvoke({
+            get_file_properties: () => ({ size: 7, modified: '2026-09-26T10:00:00' }),
+            save_sync_journal_cmd: (args) => {
+                journals.push(JSON.parse(JSON.stringify(args?.journal)) as SyncJournal);
+            },
+        });
+        await runRemoteSync(
+            [
+                file('listed.txt', 'download', { size: 7, mtime: null }),
+                file('dated.txt', 'upload', { size: 9 }),
+            ],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { writeIndex: true }),
+        );
+        const last = journals[journals.length - 1];
+        const byPath = Object.fromEntries(last.entries.map((e) => [e.relative_path, e]));
+        expect(byPath['listed.txt']).toMatchObject({ local_size: 7, local_modified: '2026-09-26T10:00:00Z' });
+        expect(byPath['dated.txt']).toMatchObject({ local_size: 9, local_modified: '2026-05-22T10:00:00Z' });
     });
 });
 

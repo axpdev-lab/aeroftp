@@ -57738,11 +57738,6 @@ fn should_exclude_watch_path(path: &std::path::Path) -> bool {
     ) {
         return true;
     }
-    // The bisync snapshot: every `both` cycle rewrites it inside the watched
-    // root, and a cycle must not start the next one.
-    if name == BISYNC_SNAPSHOT_FILE {
-        return true;
-    }
     // VCS / heavy dirs (will never be a leaf event worth syncing)
     if matches!(
         name,
@@ -57882,17 +57877,35 @@ struct WatchDeferred {
     paths: std::collections::BTreeSet<std::path::PathBuf>,
     /// When the cycle for them is due; `None` when nothing waits.
     due: Option<tokio::time::Instant>,
+    /// More than [`WATCH_DEFERRED_LIMIT`] paths waited: they are dropped and
+    /// the cycle for them is a full one.
+    overflowed: bool,
 }
+
+/// How many distinct paths wait for the next cycle before a full cycle is
+/// cheaper than keeping them (a checkout or an unpack touches thousands).
+const WATCH_DEFERRED_LIMIT: usize = 10_000;
 
 impl WatchDeferred {
     fn defer(&mut self, paths: Vec<std::path::PathBuf>, due: tokio::time::Instant) {
-        self.paths.extend(paths);
+        if !self.overflowed {
+            self.paths.extend(paths);
+            if self.paths.len() > WATCH_DEFERRED_LIMIT {
+                self.paths.clear();
+                self.overflowed = true;
+            }
+        }
         self.due.get_or_insert(due);
     }
 
-    /// The paths waiting, handed to the cycle that runs now.
-    fn take(&mut self) -> Vec<std::path::PathBuf> {
+    /// The paths waiting, handed to the cycle that runs now: the watched
+    /// `root` alone, which the loop reads as a full cycle, when there were
+    /// too many.
+    fn take(&mut self, root: &std::path::Path) -> Vec<std::path::PathBuf> {
         self.due = None;
+        if std::mem::take(&mut self.overflowed) {
+            return vec![root.to_path_buf()];
+        }
         std::mem::take(&mut self.paths).into_iter().collect()
     }
 }
@@ -57974,20 +57987,27 @@ fn incremental_local_scan(
 /// What the watcher forwards for one event: its paths worth a cycle, or the
 /// watched root alone when the event asks for a rescan (the kernel's event
 /// queue overflowed and what was in it is lost; the loop then runs a full
-/// cycle). A read (an open, an access, a close) changes nothing and is not
-/// forwarded: every `both` cycle reads the bisync snapshot inside the watched
-/// root, and forwarding that read started the next cycle, and so on forever.
+/// cycle). A read (an open, an access, a close that wrote nothing) changes
+/// nothing and is not forwarded; a close after a write is, since a program
+/// that writes through a memory map produces nothing else. The bisync
+/// snapshot at the root is not forwarded either: every `both` cycle reads and
+/// rewrites it there, and forwarding that started the next cycle, and so on
+/// forever. A sync root's snapshot deeper in the tree is a file like any
+/// other.
 fn watch_event_paths(event: &notify::Event, root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    use notify::event::{AccessKind, AccessMode};
     if event.need_rescan() {
         return vec![root.to_path_buf()];
     }
-    if matches!(event.kind, notify::EventKind::Access(_)) {
+    if matches!(event.kind, notify::EventKind::Access(access) if access != AccessKind::Close(AccessMode::Write))
+    {
         return Vec::new();
     }
+    let snapshot = root.join(BISYNC_SNAPSHOT_FILE);
     event
         .paths
         .iter()
-        .filter(|p| !should_exclude_watch_path(p))
+        .filter(|p| !should_exclude_watch_path(p) && **p != snapshot)
         .cloned()
         .collect()
 }
@@ -58099,7 +58119,14 @@ async fn cmd_sync_watch(
         );
         return 5;
     }
-    let local_path = std::path::Path::new(local);
+    // The watched root, absolute and resolved. Watcher events carry absolute
+    // paths (notify makes a relative watch path absolute; FSEvents reports
+    // /private/var for /var), and the incremental scan strips the root off
+    // each one: a relative root, as every example in the guide uses, failed
+    // that for every event and dropped it, so an edit waited for the periodic
+    // rescan and a remote change meanwhile downloaded over it.
+    let watch_root = std::fs::canonicalize(local).unwrap_or_else(|_| PathBuf::from(local));
+    let local_path = watch_root.as_path();
     if !local_path.is_dir() {
         if matches!(format, OutputFormat::Json) {
             print_json(
@@ -58341,7 +58368,7 @@ async fn cmd_sync_watch(
                     }
                     None
                 } else {
-                    let mut paths = deferred.take();
+                    let mut paths = deferred.take(local_path);
                     paths.extend(changed_paths);
                     Some(paths)
                 }
@@ -58349,7 +58376,7 @@ async fn cmd_sync_watch(
 
             _ = tokio::time::sleep_until(deferred.due.unwrap_or_else(tokio::time::Instant::now)),
                 if deferred.due.is_some() => {
-                Some(deferred.take())
+                Some(deferred.take(local_path))
             }
 
             _ = rescan_tick.tick() => {
@@ -80680,6 +80707,7 @@ mod tests {
     /// cooldown ends, and handed whole to the cycle that runs then.
     #[test]
     fn watch_events_in_the_cooldown_wait_for_the_next_cycle() {
+        let local_path = std::path::Path::new("/l");
         let start = tokio::time::Instant::now();
         let cooldown_end = start + std::time::Duration::from_secs(15);
         let mut deferred = WatchDeferred::default();
@@ -80694,7 +80722,7 @@ mod tests {
             Some(cooldown_end),
             "due when the cooldown ends"
         );
-        let paths = deferred.take();
+        let paths = deferred.take(local_path);
         assert_eq!(
             paths,
             vec![
@@ -80702,13 +80730,27 @@ mod tests {
                 std::path::PathBuf::from("/l/b.txt")
             ]
         );
-        assert!(deferred.due.is_none() && deferred.take().is_empty());
+        assert!(deferred.due.is_none() && deferred.take(local_path).is_empty());
         // An event storm repeats paths: each is kept once (m5, verification
         // of the fourth round of #949).
         for _ in 0..3 {
             deferred.defer(vec!["/l/a.txt".into()], cooldown_end);
         }
-        assert_eq!(deferred.take(), vec![std::path::PathBuf::from("/l/a.txt")]);
+        assert_eq!(
+            deferred.take(local_path),
+            vec![std::path::PathBuf::from("/l/a.txt")]
+        );
+        // Past the limit the paths are dropped, and the cycle for them is a
+        // full one: the root alone (nit, verification of the fifth round).
+        deferred.defer(
+            (0..=WATCH_DEFERRED_LIMIT)
+                .map(|i| std::path::PathBuf::from(format!("/l/{i}.txt")))
+                .collect(),
+            cooldown_end,
+        );
+        assert!(deferred.paths.is_empty());
+        assert_eq!(deferred.take(local_path), vec![local_path.to_path_buf()]);
+        assert!(deferred.take(local_path).is_empty());
     }
 
     /// M1 (verification of round 4 of #949): every `both` cycle reads and
@@ -80783,6 +80825,143 @@ mod tests {
         assert_eq!(
             watch_event_paths(&write, root),
             vec![std::path::PathBuf::from("/l/a.txt")]
+        );
+        // Minor 1 (verification of the fifth round): a close after a write is
+        // all a program writing through a memory map produces.
+        let closed_after_writing = notify::Event::new(notify::EventKind::Access(
+            notify::event::AccessKind::Close(notify::event::AccessMode::Write),
+        ))
+        .add_path("/l/a.txt".into());
+        assert_eq!(
+            watch_event_paths(&closed_after_writing, root),
+            vec![std::path::PathBuf::from("/l/a.txt")]
+        );
+        // The snapshot is left out at the root only: a sync root deeper in the
+        // tree has its own, a file like any other (nit, same verification).
+        let snapshots = notify::Event::new(notify::EventKind::Modify(
+            notify::event::ModifyKind::Data(notify::event::DataChange::Any),
+        ))
+        .add_path(root.join(BISYNC_SNAPSHOT_FILE))
+        .add_path(root.join("sub").join(BISYNC_SNAPSHOT_FILE));
+        assert_eq!(
+            watch_event_paths(&snapshots, root),
+            vec![root.join("sub").join(BISYNC_SNAPSHOT_FILE)]
+        );
+    }
+
+    /// `target` as a path relative to the current directory.
+    fn relative_to_cwd(target: &Path) -> PathBuf {
+        let cwd = std::env::current_dir().unwrap();
+        let (cwd, target) = (
+            cwd.components().collect::<Vec<_>>(),
+            target.components().collect::<Vec<_>>(),
+        );
+        let common = cwd.iter().zip(&target).take_while(|(a, b)| a == b).count();
+        let mut relative = PathBuf::new();
+        for _ in common..cwd.len() {
+            relative.push("..");
+        }
+        for part in &target[common..] {
+            relative.push(part.as_os_str());
+        }
+        relative
+    }
+
+    /// Pre-existing Major (verification of the fifth round of #949): with a
+    /// relative local path, as every example in CLI-GUIDE uses, notify made
+    /// the watch path absolute, and the incremental scan stripped the relative
+    /// one off each event, failed, and dropped it: an edit waited for the
+    /// periodic rescan, and a remote change meanwhile downloaded over it. The
+    /// watch loop end to end, on a relative path: a file written once the
+    /// watch runs reaches the remote through the watcher's cycle (the rescan
+    /// is an hour away).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_watch_on_a_relative_path_syncs_what_the_watcher_sees() {
+        let fixture = FilesFromFixture::new();
+        let absolute = fixture.local();
+        let relative = relative_to_cwd(Path::new(&absolute))
+            .to_string_lossy()
+            .into_owned();
+        let remote = SharedTreeProvider::default();
+        let files = Arc::clone(&remote.files);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&cancelled);
+        let user = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            std::fs::write(Path::new(&absolute).join("new.txt"), b"hello").unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            let arrived = loop {
+                if files.lock().unwrap().contains_key("/root/new.txt") {
+                    break true;
+                }
+                if std::time::Instant::now() > deadline {
+                    break false;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            };
+            stop.store(true, Ordering::Relaxed);
+            arrived
+        });
+        let tree = remote.clone();
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(64 * 1024 * 1024)
+                .spawn_scoped(scope, move || {
+                    TEST_PROVIDER_FACTORY.with(|slot| {
+                        *slot.borrow_mut() = Some(std::rc::Rc::new(move || {
+                            Box::new(tree.clone()) as Box<dyn StorageProvider>
+                        }));
+                    });
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("test runtime")
+                        .block_on(async move {
+                            let _session = SESSION_TRANSFER_TEST_LOCK.lock().await;
+                            cmd_sync_watch(
+                                "memory://",
+                                &relative,
+                                "/root",
+                                "upload",
+                                false,
+                                false,
+                                &[],
+                                None,
+                                0,
+                                false,
+                                None,
+                                None,
+                                "",
+                                false,
+                                None,
+                                None,
+                                None,
+                                NEWER_WINS,
+                                false,
+                                "native",
+                                100,
+                                0,
+                                3600,
+                                true,
+                                &cli,
+                                OutputFormat::Json,
+                                cancelled,
+                            )
+                            .await
+                        })
+                })
+                .expect("spawn the watch thread")
+                .join()
+                .expect("the watch thread panicked")
+        });
+        assert!(
+            user.join().unwrap(),
+            "a file written under a watch on a relative path never reached the remote"
         );
     }
 
