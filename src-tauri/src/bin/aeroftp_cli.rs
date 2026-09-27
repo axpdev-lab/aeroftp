@@ -30103,8 +30103,8 @@ fn webdav_move_may_overwrite(headers: &HeaderMap) -> bool {
 /// erased the directory of the same name (an S3 key `x` beside the prefix
 /// `x/`), and an ambiguous path (Cloudinary: an asset and a folder sharing a
 /// name) emptied the folder. The escalation now happens only for a path `stat`
-/// calls a directory, or one `stat` cannot see at all (S3 without the
-/// trailing slash), where the old chain is kept.
+/// calls a directory (not a link to one), or one it cannot describe (see
+/// [`stat_cannot_describe`]), where the old chain is kept.
 async fn served_webdav_delete(
     provider: &mut dyn StorageProvider,
     path: &str,
@@ -30115,9 +30115,9 @@ async fn served_webdav_delete(
         Err(e) => e,
     };
     match provider.stat(path).await {
-        Ok(entry) if !entry.is_dir => return Err(refused),
-        Err(ProviderError::InvalidPath(_)) | Err(ProviderError::Cancelled) => return Err(refused),
-        _ => {}
+        Ok(entry) if entry.is_dir && !entry.is_symlink => {}
+        Err(e) if stat_cannot_describe(&e) => {}
+        _ => return Err(refused),
     }
     match provider.rmdir(path).await {
         Ok(()) => Ok(()),
@@ -34919,10 +34919,11 @@ async fn run_rm_dry_run(
 /// path the provider cannot resolve to one item (Cloudinary answers
 /// `InvalidPath` for a name an asset and a folder share) then removed the
 /// folder, and a file `delete` refused for another reason was sent to `rmdir`.
-/// The fallback now asks `stat`: a directory goes to `rmdir`, a file or an
-/// ambiguous path keeps the `delete` error. A `stat` that cannot answer (S3
-/// sees no directory behind a path without its trailing slash) keeps the old
-/// fallback, so `rm` of an empty directory still works where it did.
+/// The fallback now asks `stat`: a directory (not a link to one) goes to
+/// `rmdir`, and so does a path `stat` cannot describe (see
+/// [`stat_cannot_describe`]), so `rm` of an empty directory still works
+/// where it did. A file, an ambiguous path, a link and a failed `stat` keep
+/// the `delete` error.
 async fn delete_file_or_empty_dir(
     provider: &mut dyn StorageProvider,
     path: &str,
@@ -34933,10 +34934,24 @@ async fn delete_file_or_empty_dir(
         Err(e) => e,
     };
     match provider.stat(path).await {
-        Ok(entry) if entry.is_dir => provider.rmdir(path).await,
-        Ok(_) | Err(ProviderError::InvalidPath(_)) | Err(ProviderError::Cancelled) => Err(refused),
-        Err(_) => provider.rmdir(path).await,
+        Ok(entry) if entry.is_dir && !entry.is_symlink => provider.rmdir(path).await,
+        Err(e) if stat_cannot_describe(&e) => provider.rmdir(path).await,
+        _ => Err(refused),
     }
+}
+
+/// A `stat` answer that says the provider cannot describe the path, as
+/// opposed to one that failed. S3, Azure, Swift and B2 see no directory
+/// behind a path without its trailing slash (NotFound); Box and GitHub fail
+/// to parse the answer for a folder (ParseError). A transient failure
+/// (network, server, timeout) says nothing about the path, and escalating on
+/// it reached the directory of the same name: on S3 and Azure `rmdir` is
+/// recursive.
+fn stat_cannot_describe(error: &ProviderError) -> bool {
+    matches!(
+        error,
+        ProviderError::NotFound(_) | ProviderError::NotSupported(_) | ProviderError::ParseError(_)
+    )
 }
 
 /// The real `rm`/`purge` when the global filter flags narrow the delete.
@@ -77403,6 +77418,83 @@ mod tests {
         unseen.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
         assert!(served_webdav_delete(&mut unseen, "/d").await.is_ok());
         assert_eq!(unseen.calls, ["delete", "stat", "rmdir", "rmdir_recursive"]);
+    }
+
+    /// A `stat` that failed says nothing about the path: escalating on it
+    /// reached the directory of the same name (recursive `rmdir` on S3 and
+    /// Azure). Only an answer that the provider cannot describe the path
+    /// (NotFound, NotSupported, ParseError as Box and GitHub give for a
+    /// folder) keeps the old fallback.
+    #[tokio::test]
+    async fn a_failed_stat_keeps_the_delete_error() {
+        for stat in [
+            (|| Err(ProviderError::NetworkError("reset".to_string())))
+                as fn() -> Result<RemoteEntry, ProviderError>,
+            || Err(ProviderError::ServerError("503".to_string())),
+            || Err(ProviderError::Timeout),
+            || Err(ProviderError::Cancelled),
+        ] {
+            let mut rm = DeleteFallbackProvider::new(
+                || Err(ProviderError::ServerError("503".to_string())),
+                stat,
+            );
+            let result = delete_file_or_empty_dir(&mut rm, "/x").await;
+            assert!(
+                matches!(result, Err(ProviderError::ServerError(_))),
+                "{result:?}"
+            );
+            assert_eq!(rm.calls, ["delete", "stat"]);
+
+            let mut served = DeleteFallbackProvider::new(
+                || Err(ProviderError::ServerError("503".to_string())),
+                stat,
+            );
+            let result = served_webdav_delete(&mut served, "/x").await;
+            assert!(
+                matches!(result, Err(ProviderError::ServerError(_))),
+                "{result:?}"
+            );
+            assert_eq!(served.calls, ["delete", "stat"]);
+        }
+
+        let mut parse = DeleteFallbackProvider::new(
+            || Err(ProviderError::ServerError("a folder".to_string())),
+            || Err(ProviderError::ParseError("an array".to_string())),
+        );
+        assert!(delete_file_or_empty_dir(&mut parse, "/d").await.is_ok());
+        assert_eq!(parse.calls, ["delete", "stat", "rmdir"]);
+    }
+
+    /// A link to a directory is not the directory: the served DELETE listed
+    /// through it and emptied the target.
+    #[tokio::test]
+    async fn a_link_to_a_directory_is_not_removed_as_one() {
+        let link = || {
+            let mut entry = RemoteEntry::directory("l".to_string(), "/l".to_string());
+            entry.is_symlink = true;
+            Ok(entry)
+        };
+        let mut rm = DeleteFallbackProvider::new(
+            || Err(ProviderError::PermissionDenied("/l".to_string())),
+            link,
+        );
+        let result = delete_file_or_empty_dir(&mut rm, "/l").await;
+        assert!(
+            matches!(result, Err(ProviderError::PermissionDenied(_))),
+            "{result:?}"
+        );
+        assert_eq!(rm.calls, ["delete", "stat"]);
+
+        let mut served = DeleteFallbackProvider::new(
+            || Err(ProviderError::PermissionDenied("/l".to_string())),
+            link,
+        );
+        let result = served_webdav_delete(&mut served, "/l").await;
+        assert!(
+            matches!(result, Err(ProviderError::PermissionDenied(_))),
+            "{result:?}"
+        );
+        assert_eq!(served.calls, ["delete", "stat"]);
     }
 
     /// `import rclone` printed section names, types and reasons from the file
