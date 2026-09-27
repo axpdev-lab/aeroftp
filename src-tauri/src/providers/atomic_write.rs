@@ -187,8 +187,13 @@ impl ResumableFile {
     /// Open a resumable file writer.
     /// In inplace mode, writes directly to the final path (no .aerotmp).
     pub async fn open(final_path: &str) -> Result<Self, std::io::Error> {
+        Self::open_in(final_path, inplace_active()).await
+    }
+
+    /// [`Self::open`] with the in-place mode given rather than read from the
+    /// process-wide flag, which a test cannot set without racing the others.
+    async fn open_in(final_path: &str, inplace: bool) -> Result<Self, std::io::Error> {
         let final_path = PathBuf::from(final_path);
-        let inplace = inplace_active();
         let temp_path = if inplace {
             final_path.clone()
         } else {
@@ -404,6 +409,23 @@ mod tests {
             .expect("once the first writer is gone");
         third.write_all(b"new").await.unwrap();
         third.commit().await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"new");
+    }
+
+    /// An in-place download over a file the user already has: that file is
+    /// the destination, not a part of this download. It was taken for one: a
+    /// file as long as the remote one was reported complete with its old
+    /// content, and a shorter one had the remote's tail appended to it.
+    #[tokio::test]
+    async fn an_inplace_download_starts_over_an_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        std::fs::write(&path, b"old content").unwrap();
+        let path = path.to_str().unwrap();
+        let mut file = ResumableFile::open_in(path, true).await.unwrap();
+        assert_eq!(file.offset(), 0, "the user's file was taken for a part");
+        file.write_all(b"new").await.unwrap();
+        file.commit().await.unwrap();
         assert_eq!(std::fs::read(path).unwrap(), b"new");
     }
 }

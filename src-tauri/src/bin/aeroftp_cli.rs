@@ -78453,6 +78453,148 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert!(printed.contains("\"hasCredential\":true"), "{printed}");
     }
 
+    /// Records the offset of every `resume_download`, and serves a 200-byte
+    /// file that supports resume.
+    struct ResumeOffsetProbe {
+        offsets: Arc<std::sync::Mutex<Vec<u64>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for ResumeOffsetProbe {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::S3
+        }
+        fn display_name(&self) -> String {
+            "resume-offset-probe".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        fn supports_resume(&self) -> bool {
+            true
+        }
+        async fn resume_download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            offset: u64,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.offsets.lock().expect("offset log").push(offset);
+            Ok(())
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Ok(RemoteEntry::file(
+                "f.bin".to_string(),
+                path.to_string(),
+                200,
+            ))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(200)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("resume-offset-probe".to_string())
+        }
+    }
+
+    /// `get --partial --inplace` goes on from the destination, which is the
+    /// part an in-place download leaves. A `.aerotmp` there, left by an
+    /// earlier download out of place, was read first and its length sent as
+    /// the offset while the provider resumes the destination: the remote
+    /// bytes from one offset were appended at another.
+    #[tokio::test]
+    async fn an_inplace_resume_goes_on_from_the_destination_not_a_stale_temporary() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        std::fs::write(&local, vec![b'a'; 50]).unwrap();
+        std::fs::write(dir.path().join("f.bin.aerotmp"), vec![b'b'; 100]).unwrap();
+        let offsets = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut provider = ResumeOffsetProbe {
+            offsets: Arc::clone(&offsets),
+        };
+        let cli = Cli {
+            partial: true,
+            inplace: true,
+            ..test_cli()
+        };
+        download_with_resume(
+            &mut provider,
+            "/f.bin",
+            local.to_str().unwrap(),
+            None,
+            &cli,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(*offsets.lock().unwrap(), vec![50]);
+    }
+
     static SESSION_TRANSFER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
 
     /// Records the actual provider path selected by the shared CLI batch, with
