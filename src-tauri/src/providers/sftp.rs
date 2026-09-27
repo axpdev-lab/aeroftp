@@ -106,6 +106,25 @@ fn classify_russh_err(
     }
 }
 
+/// Map an error of a request that creates, opens for writing, writes or
+/// closes a remote file, or looks at one to resume it. A request timeout
+/// there is not a limit reached with nothing failed (exit 8): the request may
+/// have reached the server, and a 0-byte or partial file may be left at the
+/// remote path, so the transfer failed (exit 4, still retried). The message
+/// keeps the word "timeout", which the CLI's worker batches read as a lost
+/// session. Every other error is classified as [`classify_russh_err`] does,
+/// a transfer failure where nothing more specific applies.
+fn classify_russh_write_err(e: impl std::fmt::Display, context: &str) -> ProviderError {
+    let fallback = |s: String| ProviderError::TransferFailed(format!("{context}: {s}"));
+    match classify_russh_err(e, fallback) {
+        ProviderError::Timeout => fallback(
+            "the server did not answer in time (timeout); the remote file may be incomplete"
+                .to_string(),
+        ),
+        other => other,
+    }
+}
+
 /// The provider's SFTP session, with the signal that its transport ended.
 ///
 /// russh-sftp 2.4 does not wake a request that waits for its reply when the
@@ -1504,12 +1523,10 @@ impl SftpProvider {
                 // No answer can come any more: a lost connection, not a
                 // verification to keep trying for its 3 s.
                 Err(error) if sftp.ended.is_cancelled() => {
-                    return Err(classify_russh_err(error, |s| {
-                        ProviderError::TransferFailed(format!(
-                            "Upload verification failed for {}: {}",
-                            remote_path, s
-                        ))
-                    }));
+                    return Err(classify_russh_write_err(
+                        error,
+                        &format!("Upload verification failed for {remote_path}"),
+                    ));
                 }
                 Err(error) => {
                     last_observation = error.to_string();
@@ -2631,11 +2648,10 @@ impl StorageProvider for SftpProvider {
         })?;
 
         // Create remote file via russh_sftp (uses existing SSH session, no second connection)
-        let mut remote_file = sftp.create(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!("Failed to create remote file: {}", s))
-            })
-        })?;
+        let mut remote_file = sftp
+            .create(&full_path)
+            .await
+            .map_err(|e| classify_russh_write_err(e, "Failed to create remote file"))?;
 
         let buffer_size = self.buffer_size;
         let upload_limit_bps = self.upload_limit_bps;
@@ -2668,11 +2684,7 @@ impl StorageProvider for SftpProvider {
                         .await;
                     write_sftp_acked(remote_file, &buffer[..bytes_read], ended)
                         .await
-                        .map_err(|e| {
-                            classify_russh_err(e, |s| {
-                                ProviderError::TransferFailed(format!("Remote write error: {}", s))
-                            })
-                        })?;
+                        .map_err(|e| classify_russh_write_err(e, "Remote write error"))?;
 
                     transferred += bytes_read as u64;
 
@@ -2699,11 +2711,7 @@ impl StorageProvider for SftpProvider {
         // the copy error if any, then a flush failure on the success path.
         let shutdown_res = shutdown_sftp_file(&mut remote_file, &ended).await;
         let transferred = streamed?;
-        shutdown_res.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!("Failed to flush remote file: {}", s))
-            })
-        })?;
+        shutdown_res.map_err(|e| classify_russh_write_err(e, "Failed to flush remote file"))?;
 
         self.verify_remote_upload_size(sftp, &full_path, total_size)
             .await?;
@@ -2810,12 +2818,10 @@ impl StorageProvider for SftpProvider {
                     0
                 }
                 Err(e) => {
-                    return Err(classify_russh_err(e, |s| {
-                        ProviderError::TransferFailed(format!(
-                            "Failed to stat remote for resume: {}",
-                            s
-                        ))
-                    }))
+                    return Err(classify_russh_write_err(
+                        e,
+                        "Failed to stat remote for resume",
+                    ))
                 }
             }
         };
@@ -2851,14 +2857,7 @@ impl StorageProvider for SftpProvider {
                 let mut remote_file = sftp
                     .open_with_flags(&full_path, OpenFlags::WRITE | OpenFlags::CREATE)
                     .await
-                    .map_err(|e| {
-                        classify_russh_err(e, |s| {
-                            ProviderError::TransferFailed(format!(
-                                "Failed to open remote for resume: {}",
-                                s
-                            ))
-                        })
-                    })?;
+                    .map_err(|e| classify_russh_write_err(e, "Failed to open remote for resume"))?;
                 let buffer_size = self.buffer_size;
                 let upload_limit_bps = self.upload_limit_bps;
                 let local_path_owned = local_path.to_string();
@@ -2923,14 +2922,7 @@ impl StorageProvider for SftpProvider {
                                 .await;
                             write_sftp_acked(remote_file, &buffer[..bytes_read], ended)
                                 .await
-                                .map_err(|e| {
-                                    classify_russh_err(e, |s| {
-                                        ProviderError::TransferFailed(format!(
-                                            "Remote write error: {}",
-                                            s
-                                        ))
-                                    })
-                                })?;
+                                .map_err(|e| classify_russh_write_err(e, "Remote write error"))?;
                             transferred += bytes_read as u64;
                             if let Some(ref progress) = on_progress {
                                 progress(transferred, total_size);
@@ -2952,11 +2944,8 @@ impl StorageProvider for SftpProvider {
                 .await;
                 let shutdown_res = shutdown_sftp_file(&mut remote_file, &ended).await;
                 let transferred = streamed?;
-                shutdown_res.map_err(|e| {
-                    classify_russh_err(e, |s| {
-                        ProviderError::TransferFailed(format!("Failed to flush remote file: {}", s))
-                    })
-                })?;
+                shutdown_res
+                    .map_err(|e| classify_russh_write_err(e, "Failed to flush remote file"))?;
 
                 self.verify_remote_upload_size(sftp, &full_path, total_size)
                     .await?;
@@ -5467,6 +5456,10 @@ mod tests {
         SlowWrites(std::time::Duration),
         /// Stays, and refuses every STAT, LSTAT and FSTAT.
         StatRefused,
+        /// Stays, and never answers an OPEN.
+        OpenUnanswered,
+        /// Stays, and never answers a CLOSE.
+        CloseUnanswered,
     }
 
     /// An SFTP server on an in-memory transport that goes away in the middle
@@ -5543,6 +5536,9 @@ mod tests {
             _pflags: russh_sftp::protocol::OpenFlags,
             _attrs: russh_sftp::protocol::FileAttributes,
         ) -> Result<russh_sftp::protocol::Handle, Self::Error> {
+            if matches!(self.at, GoAwayAt::OpenUnanswered) {
+                std::future::pending::<()>().await;
+            }
             Ok(russh_sftp::protocol::Handle {
                 id,
                 handle: filename,
@@ -5554,6 +5550,9 @@ mod tests {
             id: u32,
             _handle: String,
         ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            if matches!(self.at, GoAwayAt::CloseUnanswered) {
+                std::future::pending::<()>().await;
+            }
             Ok(Self::ok(id))
         }
 
@@ -5957,5 +5956,46 @@ mod tests {
         .await
         .expect("the write hung");
         written.expect("every piece was acknowledged in time");
+    }
+
+    /// A request timeout on the way into or out of the remote file fails the
+    /// upload (exit 4) instead of reporting a limit with nothing failed (exit
+    /// 8): the CREATE, the OPEN of a resume or the CLOSE may have reached the
+    /// server and left a 0-byte or partial file. The server here stays and
+    /// never answers the request, so russh-sftp's own 10 s is what ends it.
+    #[tokio::test(start_paused = true)]
+    async fn a_request_timeout_while_writing_a_remote_file_fails_the_transfer() {
+        let mut wrong = Vec::new();
+        for (case, at) in [
+            ("upload create", GoAwayAt::OpenUnanswered),
+            ("upload close", GoAwayAt::CloseUnanswered),
+            ("resume open", GoAwayAt::OpenUnanswered),
+            ("resume close", GoAwayAt::CloseUnanswered),
+        ] {
+            let mut provider =
+                provider_on_a_server_that_goes_away(at, vec![7u8; 1024 * 1024]).await;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let local = local_file(&dir, 2 * 1024 * 1024);
+            let outcome = tokio::time::timeout(GONE_SERVER_BOUND * 4, async {
+                if case.starts_with("resume") {
+                    provider
+                        .resume_upload(&local, "/f.bin", 1024 * 1024, None)
+                        .await
+                } else {
+                    provider.upload(&local, "/f.bin", None).await
+                }
+            })
+            .await
+            .unwrap_or_else(|_| panic!("{case}: hung"));
+            match outcome {
+                Err(ProviderError::TransferFailed(message))
+                    if message.contains("timeout") && message.contains("may be incomplete") => {}
+                other => wrong.push(format!("{case}: {other:?}")),
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "a timeout that fails an upload is a failed transfer: {wrong:#?}"
+        );
     }
 }
