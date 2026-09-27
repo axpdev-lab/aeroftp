@@ -6799,6 +6799,77 @@ mod transfer_verdict_tests {
         }
     }
 
+    /// Verification of the fifth and sixth rounds of #949: MFMT stamped the
+    /// remote with the time read from the path once the upload was over,
+    /// which is the time of a save made meanwhile, lent to bytes that are not
+    /// that save's: a sync then read the pair as identical. It stamps the time
+    /// read from the open file as the upload starts. Here the path is given
+    /// another file, with another time, while the server waits after the data
+    /// for a possible ABOR.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn mfmt_stamps_the_time_the_upload_started_from() {
+        let (port, log) = scripted_server(Script {
+            retr_payload: Vec::new(),
+            retr_reply: "226 done\r\n",
+            retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
+            stor_reply: "226 done\r\n",
+            stor_stalls: false,
+            stor_abor_late: false,
+        })
+        .await;
+        let mut provider = connected(port).await;
+        provider.mfmt_supported = true;
+        let dir = tempfile::tempdir().unwrap();
+        let stamp = |path: &std::path::Path, secs: u64| {
+            std::fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(secs))
+                .unwrap();
+        };
+        let local = dir.path().join("f.bin");
+        std::fs::write(&local, b"payload").unwrap();
+        stamp(&local, 1_700_000_000);
+        let saved = dir.path().join("saved");
+        std::fs::write(&saved, b"a later save").unwrap();
+        stamp(&saved, 1_800_000_000);
+        let saver = {
+            let (log, local, saved) = (Arc::clone(&log), local.clone(), saved.clone());
+            tokio::spawn(async move {
+                while !log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|line| line.starts_with("STOR"))
+                {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+                std::fs::rename(&saved, &local).unwrap();
+            })
+        };
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            provider.upload(local.to_str().unwrap(), "/f.bin", None),
+        )
+        .await
+        .expect("the upload must end")
+        .expect("the upload succeeds");
+        saver.await.unwrap();
+        let mfmt = log
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|line| line.starts_with("MFMT"))
+            .cloned();
+        assert_eq!(
+            mfmt.as_deref(),
+            Some("MFMT 20231114221320 /f.bin"),
+            "the time of the file that was sent (2023-11-14 22:13:20), not of the later save"
+        );
+    }
+
     /// A range the server cuts short and then fails (`451`) is an error, not
     /// a shorter read: only a file that really ends inside the range (`226`)
     /// may return fewer bytes than asked.
