@@ -133,6 +133,26 @@ export const collectLocalStorage = async (): Promise<Record<string, string>> => 
     return out;
 };
 
+/** What {@link applyLocalStorage} restored, and what it could not. */
+export interface AppliedLocalStorage {
+    /** Keys restored, the autostart toggle included. */
+    applied: number;
+    /**
+     * Why part of the preferences was not restored, or `null` when all of them
+     * were. The caller reports it: the import is otherwise announced as a
+     * success.
+     */
+    error: string | null;
+}
+
+const describeError = (e: unknown): string => {
+    if (e instanceof Error || (typeof DOMException !== 'undefined' && e instanceof DOMException)) {
+        const { name, message } = e as Error;
+        return name && name !== 'Error' ? `${name}: ${message}` : message;
+    }
+    return String(e);
+};
+
 /**
  * Restore a previously exported localStorage map into the running
  * window. Only keys still on the whitelist are applied; entries from
@@ -148,14 +168,17 @@ export const collectLocalStorage = async (): Promise<Record<string, string>> => 
  * on `window` so hooks that snapshot localStorage once on mount can
  * re-read their key without requiring the user to refresh the page.
  *
- * Returns the number of keys actually applied (including the
- * autostart toggle if present).
+ * Returns the number of keys actually applied (including the autostart
+ * toggle if present) and the failure, if any: a full storage quota stops
+ * the remaining keys, and a failed autostart change skips only itself.
+ * Neither aborts the import, and neither is swallowed.
  */
 export const applyLocalStorage = async (
     map: Record<string, string> | undefined | null,
-): Promise<number> => {
-    if (!map) return 0;
+): Promise<AppliedLocalStorage> => {
+    if (!map) return { applied: 0, error: null };
     let applied = 0;
+    const errors: string[] = [];
     const allowed = new Set(KEYSTORE_LS_WHITELIST);
     for (const [key, value] of Object.entries(map)) {
         if (key === AUTOSTART_KEY) {
@@ -167,9 +190,9 @@ export const applyLocalStorage = async (
                     await disable();
                 }
                 applied++;
-            } catch {
-                // Plugin unavailable: skip silently rather than fail
-                // the whole import.
+            } catch (e) {
+                // Report it, but keep restoring the other preferences.
+                errors.push(describeError(e));
             }
             continue;
         }
@@ -177,8 +200,9 @@ export const applyLocalStorage = async (
         try {
             localStorage.setItem(key, value);
             applied++;
-        } catch {
+        } catch (e) {
             // Quota: stop trying further keys to avoid partial-state churn.
+            errors.push(describeError(e));
             break;
         }
     }
@@ -193,5 +217,5 @@ export const applyLocalStorage = async (
             // CustomEvent missing in some test environments: ignore.
         }
     }
-    return applied;
+    return { applied, error: errors.length > 0 ? errors.join('; ') : null };
 };

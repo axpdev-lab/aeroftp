@@ -14429,11 +14429,19 @@ const App: React.FC = () => {
             importLocalStorage: true,
           });
           if (result.localStorage && Object.keys(result.localStorage).length > 0) {
+            let preferencesError: string | null = null;
             try {
               const { applyLocalStorage } = await import('./utils/keystoreLocalStorage');
-              await applyLocalStorage(result.localStorage);
+              preferencesError = (await applyLocalStorage(result.localStorage)).error;
             } catch (e) {
-              console.warn('Failed to apply restored localStorage:', e);
+              preferencesError = e instanceof Error ? e.message : String(e);
+            }
+            if (preferencesError) {
+              console.warn('Failed to apply restored localStorage:', preferencesError);
+              notify.warning(
+                t('settings.importKeystore') || 'Import Keystore',
+                t('settings.keystorePreferencesFailed', { error: preferencesError }),
+              );
             }
           }
           await refreshProfilesFromImportedKeystore();

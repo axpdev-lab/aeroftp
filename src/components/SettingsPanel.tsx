@@ -3685,7 +3685,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         if (result.localStorage && Object.keys(result.localStorage).length > 0) {
                                                                             try {
                                                                                 const { applyLocalStorage } = await import('../utils/keystoreLocalStorage');
-                                                                                await applyLocalStorage(result.localStorage);
+                                                                                const restored = await applyLocalStorage(result.localStorage);
+                                                                                if (restored.error) {
+                                                                                    console.warn('Failed to apply restored localStorage:', restored.error);
+                                                                                    preferencesError = restored.error;
+                                                                                }
                                                                                 // The import may have toggled OS-level
                                                                                 // autostart through applyLocalStorage; pull
                                                                                 // the new state back into the local toggle
