@@ -475,10 +475,11 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 #
 # WHERE THE PIN LIVES: commit 8d7c78f6 on branch `aeroftp/v12.1.0` of
 # axpdev-lab/suppaftp and, because a branch can move and a rev it no longer
-# reaches stops resolving for every uncached build, under the immutable tag
+# reaches stops resolving for every uncached build, under the annotated tag
 # `aeroftp-v12.1.0-buffered-reply-bytes-8d7c78f6`. The 4.2.0 pin (v10.0.2 plus
 # the same method, 2d39fadc) has `aeroftp-v10.0.2-buffered-reply-bytes-2d39fad`.
-# Protecting the `aeroftp/*` branches with a ruleset is the owner's call; an
+# Nothing on the fork stops a tag or a branch from moving yet: a ruleset on
+# `refs/tags/aeroftp-*` and the `aeroftp/*` branches is the owner's call; an
 # upstream pull request starts from a new branch, never by rewriting these.
 #
 # EXIT CONDITION: delete this entry as soon as an upstream release exposes

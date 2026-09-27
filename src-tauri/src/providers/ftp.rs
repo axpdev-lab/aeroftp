@@ -2277,25 +2277,41 @@ impl StorageProvider for FtpProvider {
             }
             total_read += n;
         }
-        let verdict = channel.close().await?;
-        let stopped_before_the_end = total_read == len as usize;
+        let read_whole = total_read == len as usize;
         buf.truncate(total_read);
 
-        // Bounded FTP reads intentionally stop before EOF. Some servers will report an
-        // error while finalizing that partial RETR; when that happens we proactively
-        // disconnect so the disposable chunk connection cannot be reused in a bad state.
-        // That complaint is a `426` (see `is_early_close_complaint`). A read that ended
-        // SHORT of the range is another matter: a file that ends inside the range is
-        // confirmed with `226`, and an error after a short read is the server cutting
-        // the transfer, so those bytes are not the range; nor are they after any other
-        // reply, which is not how a server answers an early close.
-        if let Err(err) = verdict {
-            let _ = self.disconnect().await;
-            if !stopped_before_the_end || !is_early_close_complaint(&err) {
-                return Err(ProviderError::TransferFailed(format!(
-                    "reading a range of {path}: the server ended the transfer after {total_read} of {len} bytes: {err}"
-                )));
+        if read_whole {
+            // Bounded FTP reads intentionally stop before EOF. The bytes asked
+            // for arrived whole, over TCP or TLS, and what the server says about
+            // the early close concerns only the part it did not send; servers
+            // say different things (`426` on vsftpd and ProFTPD, a `150 ...
+            // seconds (measured here)` rate line on Pure-FTPd, which reuses the
+            // code of its last reply). Any reply is accepted, and a session
+            // that did not end on `226` is closed rather than trusted. A server
+            // that never answers is not waited for past the budget: the
+            // dropped close takes the session.
+            match tokio::time::timeout(EARLY_STOP_BUDGET, channel.close()).await {
+                Ok(Ok(Ok(()))) => {}
+                Ok(Ok(Err(err))) => {
+                    tracing::debug!(
+                        "reading a range of {path}: {err} after the range was read whole"
+                    );
+                    let _ = self.disconnect().await;
+                }
+                Ok(Err(_)) | Err(_) => {}
             }
+            return Ok(buf);
+        }
+
+        // A read that ended SHORT of the range is another matter: a file that
+        // ends inside the range is confirmed with `226`, and an error after a
+        // short read is the server cutting the transfer, so those bytes are not
+        // the range.
+        if let Err(err) = channel.close().await? {
+            let _ = self.disconnect().await;
+            return Err(ProviderError::TransferFailed(format!(
+                "reading a range of {path}: the server ended the transfer after {total_read} of {len} bytes: {err}"
+            )));
         }
 
         Ok(buf)
@@ -3604,17 +3620,19 @@ impl FtpProvider {
             None => return Err(self.after_timed_out_open("uploading", remote_path).await),
         };
 
-        // Every way out before the end aborts the transfer. Dropping the data
-        // connection instead closes it cleanly, and the server reads that as
-        // the end of the file: it stores the part it received as the whole
-        // file and confirms it with `226`, which suppaftp then drains unseen
-        // before the next command. ABOR makes the server record the transfer
-        // as aborted, and reads its verdict under a budget. The channel does it
-        // for a failed write; the local read is not a channel operation, so its
-        // failure aborts here. A caller that drops this upload (a cancelled
-        // transfer) cannot abort, since that has to speak on the wire: the
-        // channel's `Drop` takes the session instead, so the next command dials
-        // again rather than wait, with no deadline, for this transfer's reply.
+        // Every way out before the end aborts the transfer and fails the
+        // upload. Dropping the data connection instead closes it cleanly, and
+        // the server reads that as the end of the file: it stores the part it
+        // received as the whole file and confirms it with `226`. ABOR asks it
+        // to abort, and its verdict is read under a budget; a server blocked in
+        // the read (vsftpd by default) may still store and confirm the part,
+        // then answer the ABOR, so the guarantee is the client's error, not the
+        // server's file. The channel aborts for a failed write; the local read
+        // is not a channel operation, so its failure aborts here. A caller that
+        // drops this upload (a cancelled transfer) cannot abort, since that has
+        // to speak on the wire: the channel's `Drop` takes the session instead,
+        // so no later command waits, with no deadline, for this transfer's
+        // reply.
         let mut channel = DataChannel::new(self, data_stream, "uploading", remote_path);
 
         // Write in 64KB chunks for optimal throughput
@@ -3625,6 +3643,12 @@ impl FtpProvider {
                 Ok(n) => n,
                 Err(e) => {
                     channel.abandon().await;
+                    drop(channel);
+                    // The ABOR can draw two replies (vsftpd: `226` for the part
+                    // it stored, then `225 No transfer to ABOR`), and the
+                    // second one may land after the next command has started,
+                    // to be read as its answer: the session is not handed on.
+                    self.stream = None;
                     return Err(ProviderError::IoError(e));
                 }
             };
@@ -3655,7 +3679,14 @@ impl FtpProvider {
         // suppaftp 12 a second shutdown of a socket closed on both sides
         // fails with "not connected", and `finish` reports that failure for
         // an upload even after a 226. A shutdown error is still reported, as
-        // before.
+        // before. Over TLS it can hide the server's refusal (M3, suppaftp's
+        // own semantics): a server that rejects the file at the end (`552`)
+        // and resets the data connection makes our close_notify fail with a
+        // broken pipe, which is what `finish` returns, and the stale-session
+        // check then retries the upload against a permanent refusal. Plain
+        // TCP is not affected: a shutdown after a reset is Ok, and the `552`
+        // is read. The fix belongs in the fork or upstream: the reply first,
+        // the shutdown error only when the reply is Ok.
         channel
             .close()
             .await?
@@ -3774,13 +3805,11 @@ impl FtpProvider {
     }
 }
 
-/// Whether an error from finishing a transfer the client stopped before its
-/// end is the server's complaint about that early close: `426` (connection
-/// closed, transfer aborted). Anything else (a `451` processing error, a `550`
-/// refusal) says the server did not stand behind the bytes that came.
-fn is_early_close_complaint(err: &FtpError) -> bool {
-    matches!(err, FtpError::UnexpectedResponse(reply) if reply.status.code() == 426)
-}
+/// How long a transfer the client stopped before its end waits for the
+/// server's word on that early close. The bytes asked for are already in, so
+/// the wait decides nothing about them: a server that never answers (no
+/// `426`, no rate line) must not hold the read until its idle timeout.
+const EARLY_STOP_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// PD-FTP-1 per-range writer. Dials a fresh independent FTP connection from
 /// `spec`, REST+RETR from `start`, and streams **exactly** `end - start + 1`
@@ -3886,20 +3915,17 @@ async fn ftp_download_one_range(
     out.flush().await.map_err(ProviderError::IoError)?;
     out.sync_all().await.map_err(ProviderError::IoError)?;
 
-    // The bounded RETR intentionally stopped before EOF, and the server may
-    // complain about that close (a `426`), which is expected; any other reply
-    // after the bytes means it did not stand behind them, and the window fails
-    // rather than letting the file be published. The connection is disposable
-    // (one per range), so disconnect regardless: the same posture as
-    // `read_range`.
-    let finished = data_stream.finish().await;
+    // The bounded RETR intentionally stopped before EOF, and the window's
+    // bytes are all in (the strict gate above): what the server says about
+    // the early close concerns the part it did not send, and servers say
+    // different things (`426`, or Pure-FTPd's `150 ... (measured here)` rate
+    // line), so any reply is accepted, and none is waited for past the
+    // budget. The connection is disposable (one per range), so disconnect
+    // regardless: the same posture as `read_range`.
+    let finished = tokio::time::timeout(EARLY_STOP_BUDGET, data_stream.finish()).await;
     let _ = worker.disconnect().await;
-    if let Err(err) = finished {
-        if !is_early_close_complaint(&err) {
-            return Err(ProviderError::TransferFailed(format!(
-                "FTP range at offset {start}: the server did not confirm it: {err}"
-            )));
-        }
+    if let Ok(Err(err)) = finished {
+        tracing::debug!("FTP range at offset {start}: {err} after the window was read whole");
     }
 
     Ok(ConcurrentRangeOutcome::Completed)
@@ -6103,6 +6129,9 @@ mod transfer_verdict_tests {
         /// STOR: the server takes the data connection and never reads it, so
         /// the client's writes stall once the socket buffers are full.
         stor_stalls: bool,
+        /// STOR: an ABOR is answered as vsftpd blocked in the read answers
+        /// it: `226` for the part it stored, then `225` about 100 ms later.
+        stor_abor_late: bool,
     }
 
     /// A server that answers every control connection it is given with
@@ -6184,10 +6213,21 @@ mod transfer_verdict_tests {
                     {
                         Ok(Ok(Some(next))) => {
                             log.lock().unwrap().push(next.clone());
-                            if next.to_uppercase().starts_with("ABOR") {
-                                "426 transfer aborted\r\n226 ABOR successful\r\n".to_string()
-                            } else {
+                            if !next.to_uppercase().starts_with("ABOR") {
                                 return;
+                            }
+                            if script.stor_abor_late {
+                                if write
+                                    .write_all(b"226 Transfer complete.\r\n")
+                                    .await
+                                    .is_err()
+                                {
+                                    return;
+                                }
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+                                "225 No transfer to ABOR.\r\n".to_string()
+                            } else {
+                                "426 transfer aborted\r\n226 ABOR successful\r\n".to_string()
                             }
                         }
                         _ => script.stor_reply.to_string(),
@@ -6230,6 +6270,7 @@ mod transfer_verdict_tests {
                 retr_reply_after_early_close: reply,
                 stor_reply: "226 done\r\n",
                 stor_stalls: false,
+                stor_abor_late: false,
             })
             .await;
             let mut provider = connected(port).await;
@@ -6260,6 +6301,7 @@ mod transfer_verdict_tests {
                 retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
                 stor_reply: reply,
                 stor_stalls: false,
+                stor_abor_late: false,
             })
             .await;
             let mut provider = connected(port).await;
@@ -6287,6 +6329,7 @@ mod transfer_verdict_tests {
             retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
             stor_reply: "226 done\r\n",
             stor_stalls: false,
+            stor_abor_late: false,
         })
         .await;
         let mut provider = connected(port).await;
@@ -6299,6 +6342,7 @@ mod transfer_verdict_tests {
             retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
             stor_reply: "226 done\r\n",
             stor_stalls: false,
+            stor_abor_late: false,
         })
         .await;
         let mut provider = connected(port).await;
@@ -6325,6 +6369,7 @@ mod transfer_verdict_tests {
                 "426 Connection closed; transfer aborted.\r\n226 closing\r\n",
             stor_reply: "226 done\r\n",
             stor_stalls: false,
+            stor_abor_late: false,
         })
         .await;
         let mut provider = connected(port).await;
@@ -6339,62 +6384,68 @@ mod transfer_verdict_tests {
         assert_eq!(second.unwrap(), vec![b'x'; 10]);
     }
 
-    /// An early close draws a transient complaint (`426`, a 4xx); a permanent
-    /// refusal (`550`) after it is not that complaint, and the bytes read are
-    /// not a range the server stood behind. Raised by CodeRabbit on #950.
+    /// What servers say after the client stopped a transfer early: vsftpd and
+    /// ProFTPD `426`; Pure-FTPd a rate line that reuses the code of its last
+    /// reply, the `150`; and any error a server may choose.
+    const WORDS_ON_AN_EARLY_CLOSE: [&str; 4] = [
+        "426 Connection closed; transfer aborted.\r\n",
+        "150 0.012 seconds (measured here), 1.00 Mbytes per second\r\n",
+        "451 Requested action aborted: local error.\r\n",
+        "550 Permission denied.\r\n",
+    ];
+
+    /// Verification of the fix rounds of #950: only a `426` was accepted after
+    /// a range read whole, and Pure-FTPd answers an early close with a rate
+    /// line on the `150` it sent before the data, so every range that stopped
+    /// before the end of a large file failed there. The bytes asked for are in
+    /// once the range is read whole; whatever the server says then concerns
+    /// the part it did not send.
     #[tokio::test]
-    async fn a_range_stopped_early_and_then_refused_is_an_error() {
-        // The same reply whether or not the server saw the early close: on
-        // Windows the whole payload fits the send buffer, the write succeeds
-        // and the server never sees it. The verdict under test is the client's.
-        let (port, _) = scripted_server(Script {
-            retr_payload: vec![b'x'; 64 * 1024 * 1024],
-            retr_reply: "550 Permission denied.\r\n",
-            retr_reply_after_early_close: "550 Permission denied.\r\n",
-            stor_reply: "226 done\r\n",
-            stor_stalls: false,
-        })
-        .await;
-        let mut provider = connected(port).await;
-        let refused = tokio::time::timeout(
-            Duration::from_secs(10),
-            provider.read_range("/f.bin", 0, 10),
-        )
-        .await
-        .expect("the read must end");
-        assert!(
-            refused.is_err(),
-            "a 550 after the range was read as success"
-        );
+    async fn a_range_read_whole_accepts_any_word_on_the_early_close() {
+        for word in WORDS_ON_AN_EARLY_CLOSE {
+            // The same reply whether or not the server saw the early close: on
+            // Windows the whole payload fits the send buffer.
+            let (port, _) = scripted_server(Script {
+                retr_payload: vec![b'x'; 64 * 1024 * 1024],
+                retr_reply: word,
+                retr_reply_after_early_close: word,
+                stor_reply: "226 done\r\n",
+                stor_stalls: false,
+                stor_abor_late: false,
+            })
+            .await;
+            let mut provider = connected(port).await;
+            let read = tokio::time::timeout(
+                Duration::from_secs(10),
+                provider.read_range("/f.bin", 0, 10),
+            )
+            .await
+            .expect("the read must end");
+            assert_eq!(read.ok(), Some(vec![b'x'; 10]), "{word:?}");
+        }
     }
 
-    /// Only the complaint about the early close (`426`) is accepted after a
-    /// range read in full: a `451` is the server's own processing error, and
-    /// it does not stand behind the bytes. Raised by CodeRabbit on #950.
+    /// A server that says nothing at all after the early close is not waited
+    /// for past the budget: the bytes are in.
     #[tokio::test]
-    async fn a_full_range_followed_by_a_451_is_an_error() {
-        // The same reply whether or not the server saw the early close: on
-        // Windows the whole payload fits the send buffer, the write succeeds
-        // and the server never sees it. The verdict under test is the client's.
+    async fn an_early_close_the_server_never_answers_is_not_waited_for() {
         let (port, _) = scripted_server(Script {
             retr_payload: vec![b'x'; 64 * 1024 * 1024],
-            retr_reply: "451 Requested action aborted: local error.\r\n",
-            retr_reply_after_early_close: "451 Requested action aborted: local error.\r\n",
+            retr_reply: "",
+            retr_reply_after_early_close: "",
             stor_reply: "226 done\r\n",
             stor_stalls: false,
+            stor_abor_late: false,
         })
         .await;
         let mut provider = connected(port).await;
-        let refused = tokio::time::timeout(
-            Duration::from_secs(10),
+        let read = tokio::time::timeout(
+            EARLY_STOP_BUDGET + Duration::from_secs(5),
             provider.read_range("/f.bin", 0, 10),
         )
         .await
-        .expect("the read must end");
-        assert!(
-            refused.is_err(),
-            "a 451 after the range was read as success"
-        );
+        .expect("the read waited for a reply that never comes");
+        assert_eq!(read.ok(), Some(vec![b'x'; 10]));
     }
 
     /// One window of the parallel download, against a server that ends it
@@ -6411,6 +6462,7 @@ mod transfer_verdict_tests {
             retr_reply_after_early_close: early_close_reply,
             stor_reply: "226 done\r\n",
             stor_stalls: false,
+            stor_abor_late: false,
         })
         .await;
         let dir = tempfile::tempdir().unwrap();
@@ -6443,64 +6495,69 @@ mod transfer_verdict_tests {
         .map(|_| ())
     }
 
-    /// A window of the parallel download read its bytes and dropped the
-    /// server's final reply: a refusal after the data still published the
-    /// file. Only the early-close complaint (`426`) is accepted there too.
-    /// Raised by CodeRabbit on #950 (outside the diff).
+    /// A window of the parallel download read whole accepts whatever the
+    /// server says about its early close, Pure-FTPd's rate line included:
+    /// only a `426` was accepted, and every window but the last failed there
+    /// with no fallback.
     #[tokio::test]
-    async fn a_parallel_window_the_server_refuses_is_an_error() {
-        assert!(
-            one_window_answered_with("426 Connection closed; transfer aborted.\r\n")
-                .await
-                .is_ok()
-        );
-        assert!(
-            one_window_answered_with("550 Permission denied.\r\n")
-                .await
-                .is_err(),
-            "a 550 after the window was read as a completed window"
-        );
+    async fn a_parallel_window_read_whole_accepts_any_word_on_the_early_close() {
+        for word in WORDS_ON_AN_EARLY_CLOSE {
+            assert!(one_window_answered_with(word).await.is_ok(), "{word:?}");
+        }
     }
 
     /// A local read error in the middle of an upload used to drop the data
     /// connection: the server saw a clean end of file, stored what it had
     /// received as the whole file and confirmed it with `226`, which the next
-    /// command then consumed unseen. The transfer is aborted instead, so the
-    /// server records it as aborted, and the session answers the next command.
+    /// command then consumed unseen. The transfer is aborted instead, and the
+    /// upload fails. m1 (verification of the fix rounds of #950): the ABOR
+    /// can draw two replies, vsftpd's `226` for the part it stored and then
+    /// `225`, the second after the next command has started, which read it as
+    /// its own answer; the session is not handed on, both with that order and
+    /// with `426` then `226`.
     #[cfg(unix)]
     #[tokio::test]
     async fn a_local_read_error_mid_upload_aborts_the_transfer() {
-        let (port, log) = scripted_server(Script {
-            retr_payload: Vec::new(),
-            retr_reply: "226 done\r\n",
-            retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
-            stor_reply: "226 done\r\n",
-            stor_stalls: false,
-        })
-        .await;
-        let mut provider = connected(port).await;
-        // Opening a directory succeeds on Unix and reading it fails: the
-        // failure comes after STOR has opened the data connection.
-        let dir = tempfile::tempdir().unwrap();
-        let outcome = tokio::time::timeout(
-            Duration::from_secs(10),
-            provider.upload(dir.path().to_str().unwrap(), "/f.bin", None),
-        )
-        .await
-        .expect("the upload must end");
-        assert!(outcome.is_err());
-        assert!(
-            log.lock()
-                .unwrap()
-                .iter()
-                .any(|line| line.starts_with("ABOR")),
-            "the server was never told: {:?}",
-            log.lock().unwrap()
-        );
-        let pwd = tokio::time::timeout(Duration::from_secs(10), provider.pwd())
+        for stor_abor_late in [false, true] {
+            let (port, log) = scripted_server(Script {
+                retr_payload: Vec::new(),
+                retr_reply: "226 done\r\n",
+                retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
+                stor_reply: "226 done\r\n",
+                stor_stalls: false,
+                stor_abor_late,
+            })
+            .await;
+            let mut provider = connected(port).await;
+            // Opening a directory succeeds on Unix and reading it fails: the
+            // failure comes after STOR has opened the data connection.
+            let dir = tempfile::tempdir().unwrap();
+            let outcome = tokio::time::timeout(
+                Duration::from_secs(10),
+                provider.upload(dir.path().to_str().unwrap(), "/f.bin", None),
+            )
             .await
-            .expect("the next command must end");
-        assert_eq!(pwd.unwrap(), "/");
+            .expect("the upload must end");
+            assert!(outcome.is_err());
+            assert!(
+                log.lock()
+                    .unwrap()
+                    .iter()
+                    .any(|line| line.starts_with("ABOR")),
+                "the server was never told: {:?}",
+                log.lock().unwrap()
+            );
+            assert!(
+                provider.stream.is_none(),
+                "the session was handed on with an ABOR reply still owed (late: {stor_abor_late})"
+            );
+            // A fresh session answers the next command.
+            provider.connect().await.expect("the redial must succeed");
+            let pwd = tokio::time::timeout(Duration::from_secs(10), provider.pwd())
+                .await
+                .expect("the next command must end");
+            assert_eq!(pwd.unwrap(), "/");
+        }
     }
 
     /// A TLS acceptor for a loopback server with a fresh self-signed
@@ -6630,6 +6687,7 @@ mod transfer_verdict_tests {
             retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
             stor_reply: "226 done\r\n",
             stor_stalls: true,
+            stor_abor_late: false,
         })
         .await;
         let mut provider = connected(port).await;
@@ -6665,6 +6723,7 @@ mod transfer_verdict_tests {
             retr_reply_after_early_close: "",
             stor_reply: "",
             stor_stalls: false,
+            stor_abor_late: false,
         })
         .await;
         let dir = tempfile::tempdir().unwrap();
