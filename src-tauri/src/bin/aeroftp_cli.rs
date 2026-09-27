@@ -10632,7 +10632,10 @@ async fn download_transfer_on(
 }
 
 /// One upload on a connection the caller holds: it neither opens nor closes
-/// it (see [`run_on_worker_connections`]).
+/// it (see [`run_on_worker_connections`]). With `create_parent` it creates the
+/// remote parent first; a caller that created every parent before its
+/// workers started passes false, since workers creating the same folder at
+/// once make two of it on Google Drive, which allows two folders of one name.
 #[allow(clippy::too_many_arguments)]
 async fn upload_transfer_on(
     provider: &mut dyn StorageProvider,
@@ -10640,6 +10643,7 @@ async fn upload_transfer_on(
     remote_path: String,
     cli: &Cli,
     no_clobber: bool,
+    create_parent: bool,
     aggregate: Option<Arc<AtomicU64>>,
     overall_pb: Option<ProgressBar>,
     max_transfer_limit: Option<u64>,
@@ -10711,8 +10715,10 @@ async fn upload_transfer_on(
         }
     }
 
-    if let Some(parent) = Path::new(&remote_path).parent() {
-        let _ = provider.mkdir(&parent.to_string_lossy()).await;
+    if create_parent {
+        if let Some(parent) = Path::new(&remote_path).parent() {
+            let _ = provider.mkdir(&parent.to_string_lossy()).await;
+        }
     }
 
     let file_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
@@ -35013,6 +35019,7 @@ async fn cmd_put_recursive(
                         remote_path,
                         cli,
                         no_clobber,
+                        true,
                         Some(aggregate),
                         overall_pb,
                         resolve_max_transfer(cli),
@@ -50232,6 +50239,7 @@ async fn cmd_sync(
                             remote_path.clone(),
                             cli,
                             false,
+                            true,
                             Some(aggregate),
                             overall_pb,
                             resolve_max_transfer(cli),
@@ -50327,6 +50335,7 @@ async fn cmd_sync(
                     remote_conflict.clone(),
                     cli,
                     false,
+                    true,
                     None,
                     None,
                     resolve_max_transfer(cli),
@@ -57731,13 +57740,14 @@ async fn cmd_put_glob(
 ) -> i32 {
     let raw_remote_base = remote_base.unwrap_or("/");
 
-    // Resolve remote_base against profile's initial_path
+    // Resolve remote_base against profile's initial_path. The connection
+    // stays open: it creates `remote_base` below, and serves the first
+    // worker of an `--immutable` or `--no-clobber` batch.
     let (mut probe_provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
     let glob_provider_type = probe_provider.provider_type();
-    let _ = probe_provider.disconnect().await;
     let remote_base = resolve_cli_remote_path(&initial_path, raw_remote_base);
     let remote_base = remote_base.as_str();
 
@@ -57765,6 +57775,7 @@ async fn cmd_put_glob(
         Ok(g) => g.compile_matcher(),
         Err(e) => {
             print_error(format, &format!("Invalid glob pattern: {}", e), 5);
+            let _ = probe_provider.disconnect().await;
             return 5;
         }
     };
@@ -57778,6 +57789,7 @@ async fn cmd_put_glob(
                 &format!("Cannot read directory '{}': {}", dir, e),
                 2,
             );
+            let _ = probe_provider.disconnect().await;
             return 2;
         }
     };
@@ -57806,6 +57818,7 @@ async fn cmd_put_glob(
                 2,
             ),
         }
+        let _ = probe_provider.disconnect().await;
         return 2;
     }
 
@@ -57837,9 +57850,16 @@ async fn cmd_put_glob(
         {
             let code = provider_error_to_exit_code(&e);
             print_error(format, &format!("put failed: {}", e), code);
+            let _ = probe_provider.disconnect().await;
             return code;
         }
     }
+
+    // The one remote parent of every file, created once and before any
+    // upload: the shared executor does not create it, and workers each
+    // creating it at once made two `remote_base` folders on Google Drive,
+    // which allows two folders of one name.
+    let _ = probe_provider.mkdir(remote_base).await;
 
     let mut uploaded: u32 = 0;
     // Left alone by `--immutable` or `--no-clobber`: done, not failed, as
@@ -57855,14 +57875,13 @@ async fn cmd_put_glob(
 
     // PD-CLI-CONV-C: converge the glob upload batch on the SAME shared
     // provider executor + orchestrator (PD-CLI-CONV-B), sink-agnostic.
-    // The probe connection was only used to resolve `initial_path`; the
-    // shared engine needs a live base whose connection spec backs the
-    // clone-pool workers, so a base provider is (re)connected here. The
-    // single remote parent (`remote_base`) is pre-created idempotently
-    // because the shared executor does not mkdir. `--immutable` and
-    // non-pool-backed providers (FTP, single-conn APIs) stay on the
-    // legacy independent-connection batch: honest fallback, no overclaim.
-    // The connection the legacy batch starts from, instead of closing it.
+    // The shared engine needs a live base whose connection spec backs the
+    // clone-pool workers, so a base provider is (re)connected here.
+    // `--immutable`, `--no-clobber` and non-pool-backed providers (FTP,
+    // single-conn APIs) stay on the legacy batch: honest fallback, no
+    // overclaim. The connection the legacy batch starts from: the probe
+    // for `--immutable` and `--no-clobber`, the base the shared executor
+    // hands back otherwise.
     let mut legacy_seed: Option<Box<dyn StorageProvider>> = None;
     let use_legacy = if cli.immutable || no_clobber {
         if !cli.quiet {
@@ -57876,11 +57895,12 @@ async fn cmd_put_glob(
                 }
             );
         }
+        legacy_seed = Some(probe_provider);
         true
     } else {
+        let _ = probe_provider.disconnect().await;
         match create_and_connect(url, cli, format).await {
-            Ok((mut provider, _)) => {
-                let _ = provider.mkdir(remote_base).await;
+            Ok((provider, _)) => {
                 match run_shared_provider_upload_batch(
                     provider,
                     &files,
@@ -57932,12 +57952,14 @@ async fn cmd_put_glob(
                         Ok(conn) => conn,
                         Err(err) => return WorkerJobDone::without_transfer(None, err),
                     };
+                    // `remote_base`, the parent of every file, exists already.
                     let outcome = upload_transfer_on(
                         &mut *conn,
                         local_path.clone(),
                         remote_path,
                         cli,
                         no_clobber,
+                        false,
                         Some(aggregate),
                         overall_pb,
                         resolve_max_transfer(cli),
@@ -78659,6 +78681,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         /// `stat` cannot read sizes: it reports 0 and the FTP marker, as for
         /// an MLST without a size fact.
         unreadable_sizes: bool,
+        /// `(connection id, path, transfers served before it)` for every
+        /// `mkdir`.
+        mkdirs: Vec<(usize, String, usize)>,
     }
 
     /// A provider without a transfer pool (SFTP type, no `clone_for_transfer`),
@@ -78863,7 +78888,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 .insert(remote_path.to_string(), bytes);
             Ok(())
         }
-        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+        async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            let mut st = self.state.lock().unwrap();
+            let served = st.served.len();
+            st.mkdirs.push((self.id, path.to_string(), served));
             Ok(())
         }
         async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
@@ -79370,6 +79398,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "/root/up.bin".to_string(),
             &cli,
             false,
+            true,
             Some(aggregate.clone()),
             None,
             None,
@@ -79411,6 +79440,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             remote.clone(),
             &cli,
             false,
+            true,
             None,
             None,
             None,
@@ -80321,6 +80351,46 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         let st = state.lock().unwrap();
         assert_eq!(code, 9, "every file skipped: {:?}", st.served);
         assert!(st.served.is_empty(), "nothing uploaded: {:?}", st.served);
+    }
+
+    /// `put` with a glob under `-n` or `--immutable` created the remote base
+    /// once per file, on the connection of the worker that ran it: on Google
+    /// Drive, which allows two folders of one name, two workers could each
+    /// create `/newdir`. It is created once, on the command's own connection,
+    /// before any upload.
+    #[test]
+    fn put_glob_creates_the_remote_base_once_before_the_workers() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let mut wrong = Vec::new();
+        for no_clobber in [true, false] {
+            let flag = if no_clobber { "-n" } else { "--immutable" };
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 2);
+            cli.immutable = !no_clobber;
+            let state = WorkerFake::state();
+            let pattern = format!("{local_dir}/*.txt");
+            let code = run_on_fake(&state, || async {
+                cmd_put_glob(
+                    "memory://",
+                    &pattern,
+                    Some("/root"),
+                    no_clobber,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            if code != 0 || st.files.len() != 5 {
+                wrong.push(format!("{flag}: exit {code}, {} files", st.files.len()));
+            }
+            // Connection 1 is the command's own.
+            if st.mkdirs != [(1, "/root".to_string(), 0)] {
+                wrong.push(format!("{flag}: mkdirs {:?}", st.mkdirs));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     /// `sync` opens a base connection for its transfer batch, which a
