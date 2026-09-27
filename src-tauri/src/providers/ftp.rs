@@ -6303,6 +6303,31 @@ mod transfer_verdict_tests {
         assert_eq!(second.unwrap(), vec![b'x'; 10]);
     }
 
+    /// An early close draws a transient complaint (`426`, a 4xx); a permanent
+    /// refusal (`550`) after it is not that complaint, and the bytes read are
+    /// not a range the server stood behind. Raised by CodeRabbit on #950.
+    #[tokio::test]
+    async fn a_range_stopped_early_and_then_refused_is_an_error() {
+        let (port, _) = scripted_server(Script {
+            retr_payload: vec![b'x'; 64 * 1024 * 1024],
+            retr_reply: "226 done\r\n",
+            retr_reply_after_early_close: "550 Permission denied.\r\n",
+            stor_reply: "226 done\r\n",
+        })
+        .await;
+        let mut provider = connected(port).await;
+        let refused = tokio::time::timeout(
+            Duration::from_secs(10),
+            provider.read_range("/f.bin", 0, 10),
+        )
+        .await
+        .expect("the read must end");
+        assert!(
+            refused.is_err(),
+            "a 550 after the range was read as success"
+        );
+    }
+
     /// A local read error in the middle of an upload used to drop the data
     /// connection: the server saw a clean end of file, stored what it had
     /// received as the whole file and confirmed it with `226`, which the next
