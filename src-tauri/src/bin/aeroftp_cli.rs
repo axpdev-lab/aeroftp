@@ -29084,7 +29084,15 @@ fn sanitize_served_relative_path(path: &str) -> Result<String, StatusCode> {
     let decoded = urlencoding::decode(path)
         .map_err(|_| StatusCode::BAD_REQUEST)?
         .into_owned();
+    sanitize_decoded_served_path(&decoded)
+}
 
+/// [`sanitize_served_relative_path`] for a path already percent-decoded, as
+/// axum's `Path` extractor hands a request path over. Decoding it a second
+/// time turned a name holding a literal `%41` into another name (`aA.txt`)
+/// while the `Destination` header was decoded once: a MOVE onto itself
+/// missed its 403 and moved another file over it.
+fn sanitize_decoded_served_path(decoded: &str) -> Result<String, StatusCode> {
     if decoded.contains('\0') {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -29718,7 +29726,7 @@ async fn serve_http_response(
     head_only: bool,
     range: Option<&HeaderValue>,
 ) -> Response {
-    let relative_path = match sanitize_served_relative_path(&relative_path) {
+    let relative_path = match sanitize_decoded_served_path(&relative_path) {
         Ok(path) => path,
         Err(status) => return serve_error_response(status, "Invalid request path"),
     };
@@ -30101,7 +30109,7 @@ async fn webdav_dispatch(
         return response;
     }
 
-    let relative_path = match sanitize_served_relative_path(&path) {
+    let relative_path = match sanitize_decoded_served_path(&path) {
         Ok(p) => p,
         Err(status) => return serve_error_response(status, "Invalid path"),
     };
@@ -30339,6 +30347,14 @@ async fn webdav_dispatch(
                 }
             };
             let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
+            // RFC 4918 section 9.8.5: a COPY whose source and destination are
+            // the same resource is 403.
+            if remote_path.trim_end_matches('/') == dest_remote.trim_end_matches('/') {
+                return serve_error_response(
+                    StatusCode::FORBIDDEN,
+                    "The source and the destination are the same resource",
+                );
+            }
             // The bridge shares the production copy DAG and its one
             // authoritative fallback classifier with GUI and `cp`.
             match ftp_client_gui_lib::transfer_dag_single_file::execute_copy_dag(
@@ -80493,6 +80509,74 @@ mod tests {
             line,
             serde_json::json!({ "status": "warning", "warning": "left /.b.txt.aeroftp-replaced-1" })
         );
+    }
+
+    /// One served WebDAV request `method` for `path` (as axum's `Path`
+    /// extractor hands it over, decoded once) with the `Destination`
+    /// `destination`, on `fake`; returns the status and the fake after.
+    async fn served_request(
+        method: &str,
+        path: &str,
+        destination: &'static str,
+        fake: CliEditFakeProvider,
+    ) -> (StatusCode, CliEditFakeProvider) {
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let state = ServeHttpState {
+            provider: Arc::new(AsyncMutex::new(provider)),
+            provider_label: "fake".to_string(),
+            base_path: "/".to_string(),
+            auth_token: None,
+            warnings: ServedWarnings::stderr(OutputFormat::Text),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert("Destination", HeaderValue::from_static(destination));
+        let response = webdav_dispatch(
+            state.clone(),
+            Method::from_bytes(method.as_bytes()).unwrap(),
+            path.to_string(),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake");
+        let fake = std::mem::replace(fake, CliEditFakeProvider::new());
+        (response.status(), fake)
+    }
+
+    /// The name `a%41.txt` arrives as the request path `a%2541.txt`, which
+    /// axum decodes to `a%41.txt`; the handler decoded it again to `aA.txt`
+    /// while the Destination was decoded once. A MOVE of `a%41.txt` onto
+    /// itself missed its 403 and put `aA.txt` over it.
+    #[tokio::test]
+    async fn served_webdav_move_of_a_percent_name_onto_itself_is_403() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a%41.txt".to_string(), b"mine".to_vec());
+        fake.remote_files
+            .insert("/aA.txt".to_string(), b"other".to_vec());
+        let (status, fake) =
+            served_request("MOVE", "a%41.txt", "http://127.0.0.1:8080/a%2541.txt", fake).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(fake.renames.is_empty(), "{:?}", fake.renames);
+        assert!(fake.replaces.is_empty(), "{:?}", fake.replaces);
+        assert_eq!(fake.remote_files["/a%41.txt"], b"mine");
+    }
+
+    /// A COPY onto its own path went through the copy DAG; RFC 4918 section
+    /// 9.8.5 makes it 403, answered before the provider is asked.
+    #[tokio::test]
+    async fn served_webdav_copy_onto_itself_is_403() {
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"mine".to_vec());
+        let (status, fake) =
+            served_request("COPY", "a.txt", "http://127.0.0.1:8080/a.txt", fake).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(fake.remote_files["/a.txt"], b"mine");
     }
 
     /// A MOVE onto its own path reached the backend's rename, a no-op, and
