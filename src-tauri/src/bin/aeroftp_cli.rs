@@ -29264,8 +29264,11 @@ fn resolve_served_backend_path(
     base_path: &str,
     requested_path: &str,
 ) -> Result<String, &'static str> {
+    // An FTP or SFTP path is not percent-encoded: decoding it made the name
+    // `a%41.txt` the file `aA.txt`, so DELE, RNFR and STOR acted on another
+    // file. `..` is still refused as a segment.
     let relative =
-        sanitize_served_relative_path(requested_path).map_err(|_| "path traversal denied")?;
+        sanitize_decoded_served_path(requested_path).map_err(|_| "path traversal denied")?;
     Ok(build_served_remote_path(base_path, &relative))
 }
 
@@ -74132,6 +74135,22 @@ mod tests {
         );
         assert!(resolve_served_backend_path("/base", "../secret.txt").is_err());
         assert!(resolve_served_backend_path("/base", "docs/../../secret.txt").is_err());
+    }
+
+    /// `serve ftp` and `serve sftp` hand over raw paths, which the resolver
+    /// percent-decoded: DELE, RNFR or STOR of `a%41.txt` acted on `aA.txt`.
+    /// A literal `%` stays in the name, and `..` is still refused.
+    #[test]
+    fn a_served_ftp_or_sftp_path_is_not_percent_decoded() {
+        assert_eq!(
+            resolve_served_backend_path("/base", "a%41.txt").unwrap(),
+            "/base/a%41.txt"
+        );
+        assert_eq!(
+            resolve_served_backend_path("/base", "%2e%2e/x").unwrap(),
+            "/base/%2e%2e/x"
+        );
+        assert!(resolve_served_backend_path("/base", "d/../../x").is_err());
     }
 
     #[test]
