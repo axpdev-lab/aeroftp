@@ -35,6 +35,8 @@ interface ImportedServer {
 interface BridgeImportResult {
     servers: ImportedServer[];
     skipped: Array<{ name: string; reason: string }>;
+    /** Imported without everything they carried, e.g. a password that did not reveal. */
+    warnings?: Array<{ name: string; reason: string }>;
     sourcePath: string | null;
     totalRemotes: number;
 }
@@ -400,6 +402,20 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                     {result.skipped.map((s, i) => (
                                         <div key={i} className="truncate">
                                             <span className="font-medium">{s.name}</span><span className="mx-1">-</span><span>{s.reason}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {result.warnings && result.warnings.length > 0 && (
+                            <div>
+                                <div className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">
+                                    {t('common.warning')} ({result.warnings.length})
+                                </div>
+                                <div className="text-xs text-gray-400 dark:text-gray-500 space-y-0.5 max-h-[110px] overflow-y-auto">
+                                    {result.warnings.map((w, i) => (
+                                        <div key={i} className="truncate">
+                                            <span className="font-medium">{w.name}</span><span className="mx-1">-</span><span>{w.reason}</span>
                                         </div>
                                     ))}
                                 </div>
