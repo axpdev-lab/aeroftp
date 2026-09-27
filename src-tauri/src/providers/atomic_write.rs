@@ -75,29 +75,7 @@ impl AtomicFile {
                 .open(&temp_path)
                 .await?
         } else {
-            let create = || async {
-                fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .open(&temp_path)
-                    .await
-            };
-            match create().await {
-                Ok(file) => file,
-                // A temporary left by a download that was killed, or by one
-                // dropped while its create was still on its way (the guard
-                // below did not exist yet to remove it). Nothing resumes an
-                // atomic download's temporary, and keeping it fails every later
-                // download of the file: removed, then created anew, as
-                // `ResumableFile::open_fresh` does (RESUME-01), so a writer that
-                // really is concurrent still loses the race on `create_new`. A
-                // symlink there is removed as a link, never followed.
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    let _ = fs::remove_file(&temp_path).await;
-                    create().await?
-                }
-                Err(e) => return Err(e),
-            }
+            fs::File::from_std(Self::create_locked(&temp_path)?)
         };
 
         Ok(Self {
@@ -107,6 +85,44 @@ impl AtomicFile {
             committed: false,
             inplace,
         })
+    }
+
+    /// Create the temporary and hold an exclusive lock on it for the
+    /// writer's lifetime (it goes with the file handle). One already at its
+    /// name is a live writer's or a stale one, and its lock tells which. A
+    /// live writer's (two downloads to one local path: the same file queued
+    /// twice, a sync and a manual `get`, two CLI runs) is left alone, and this
+    /// download fails on it as before: taking it let this writer's half-written
+    /// file be committed by the other as complete. A stale one (a download
+    /// killed, or dropped while its create was on its way) is removed and
+    /// created anew, as `ResumableFile::open_fresh` does (RESUME-01): nothing
+    /// resumes an atomic download's temporary, and keeping it failed every
+    /// later download of the file. A symlink there is removed as a link, never
+    /// followed.
+    fn create_locked(temp_path: &Path) -> std::io::Result<std::fs::File> {
+        let create = || -> std::io::Result<std::fs::File> {
+            let file = std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(temp_path)?;
+            file.try_lock().map_err(std::io::Error::from)?;
+            Ok(file)
+        };
+        match create() {
+            Err(taken) if taken.kind() == std::io::ErrorKind::AlreadyExists => {
+                if std::fs::symlink_metadata(temp_path)?.file_type().is_file() {
+                    let existing = std::fs::OpenOptions::new().write(true).open(temp_path)?;
+                    match existing.try_lock() {
+                        Ok(()) => {}
+                        Err(std::fs::TryLockError::WouldBlock) => return Err(taken),
+                        Err(std::fs::TryLockError::Error(e)) => return Err(e),
+                    }
+                }
+                std::fs::remove_file(temp_path)?;
+                create()
+            }
+            created => created,
+        }
     }
 
     /// Get a mutable reference to the underlying file for writing.
@@ -348,7 +364,7 @@ mod tests {
     /// Review of round 2 of #951: a `.aerotmp` left by a download that was
     /// killed, or dropped while its create was on its way, made every later
     /// atomic download of the file fail on `create_new` until it was removed
-    /// by hand.
+    /// by hand. Nothing holds its lock: it is stale, and replaced.
     #[tokio::test]
     async fn an_atomic_download_replaces_a_stale_temporary() {
         let dir = tempfile::tempdir().unwrap();
@@ -362,5 +378,32 @@ mod tests {
         file.commit().await.unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"new");
         assert!(!temp.exists());
+    }
+
+    /// Verification of round 3 of #951: replacing any temporary found at the
+    /// name took a live writer's too. Two downloads to one local path: the
+    /// second removed the first's `.aerotmp` and created its own, and the
+    /// first's commit renamed the second's half-written file onto the final
+    /// path, reported as complete. The second fails while the first lives,
+    /// and goes ahead once the first is gone.
+    #[tokio::test]
+    async fn a_live_writers_temporary_is_left_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let path = path.to_str().unwrap();
+        let first = AtomicFile::new(path).await.expect("the first writer");
+        let second = AtomicFile::new(path).await;
+        assert_eq!(
+            second.err().map(|e| e.kind()),
+            Some(std::io::ErrorKind::AlreadyExists),
+            "a live writer's temporary was taken"
+        );
+        drop(first);
+        let mut third = AtomicFile::new(path)
+            .await
+            .expect("once the first writer is gone");
+        third.write_all(b"new").await.unwrap();
+        third.commit().await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"new");
     }
 }

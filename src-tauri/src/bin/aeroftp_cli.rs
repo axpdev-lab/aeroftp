@@ -10291,9 +10291,13 @@ fn inplace_change(before: Option<LocalFileState>, now: Option<LocalFileState>) -
 fn remove_inplace_leftover(local_path: &str, before: Option<LocalFileState>) -> InplaceChange {
     let change = inplace_change(before, local_file_state(local_path));
     match change {
-        InplaceChange::Written => {
-            let _ = std::fs::remove_file(local_path);
-        }
+        InplaceChange::Written => match std::fs::remove_file(local_path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => eprintln!(
+                "Warning: '{local_path}' holds a partial download and could not be removed: {e}"
+            ),
+        },
         InplaceChange::MetadataOnly => eprintln!(
             "Warning: '{local_path}' kept, but it may hold a partial download: its size and time are as before, its metadata changed while the download ran"
         ),
@@ -77398,7 +77402,11 @@ mod tests {
         truncate_on_disconnect: bool,
         /// Changes only the local file's permissions, then fails: another
         /// program touching its metadata while the download waits.
+        #[cfg(unix)]
         chmod_then_refuse: bool,
+        /// The same, then waits for Ctrl-C instead of failing.
+        #[cfg(unix)]
+        chmod_then_wait: bool,
         /// The local path of the last download asked for.
         downloading: Arc<std::sync::Mutex<Option<String>>>,
         /// Serves range reads (so `get --segments` takes the segmented engine)
@@ -77466,12 +77474,15 @@ mod tests {
             self.downloads.fetch_add(1, Ordering::Relaxed);
             *self.downloading.lock().unwrap() = Some(local_path.to_string());
             #[cfg(unix)]
-            if self.chmod_then_refuse {
+            if self.chmod_then_refuse || self.chmod_then_wait {
                 use std::os::unix::fs::PermissionsExt;
                 // Past the clock tick of the file's own write.
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 std::fs::set_permissions(local_path, std::fs::Permissions::from_mode(0o600))
                     .unwrap();
+                if self.chmod_then_wait {
+                    std::future::pending::<()>().await;
+                }
                 return Err(ProviderError::TransferFailed("cut short".to_string()));
             }
             if self.write_then_refuse {
@@ -77939,15 +77950,29 @@ mod tests {
 
     /// Minor 2 (review of round 2 of #951): the untouched user file was
     /// deleted when another program changed only its metadata (here its
-    /// permissions) while the download waited on the server.
+    /// permissions) while the download waited on the server, which then
+    /// refused it.
     #[cfg(unix)]
     #[test]
-    fn a_metadata_only_change_keeps_the_local_file() {
+    fn a_metadata_only_change_keeps_the_local_file_after_a_failure() {
         let (code, kept) = inplace_get_over_an_existing_file(StallingProvider {
             chmod_then_refuse: true,
             ..Default::default()
         });
         assert_ne!(code, 0);
+        assert_eq!(kept.as_deref(), Some(&b"keep me"[..]));
+    }
+
+    /// The same when the user stops the download with Ctrl-C: the file is
+    /// looked at before and after the close, and kept both times.
+    #[cfg(unix)]
+    #[test]
+    fn a_metadata_only_change_keeps_the_local_file_after_ctrl_c() {
+        let (code, kept) = inplace_get_over_an_existing_file(StallingProvider {
+            chmod_then_wait: true,
+            ..Default::default()
+        });
+        assert_eq!(code, 130);
         assert_eq!(kept.as_deref(), Some(&b"keep me"[..]));
     }
 
