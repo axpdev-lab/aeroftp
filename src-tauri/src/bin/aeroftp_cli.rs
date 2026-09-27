@@ -36276,7 +36276,7 @@ fn rclone_import_listing(result: &ftp_client_gui_lib::rclone_import::RcloneImpor
                 sanitize_filename(&s.host),
                 s.port,
                 cred,
-                sanitize_filename(&s.cleartext_endpoint_note())
+                sanitize_filename(s.cleartext_endpoint_note())
             );
         }
         out.push('\n');
