@@ -1322,7 +1322,7 @@ impl StorageProvider for AzureProvider {
             reqwest::StatusCode::PARTIAL_CONTENT => {
                 let content_len = resp.content_length().unwrap_or(0);
                 let total_size = offset + content_len;
-                let mut resumable = super::atomic_write::ResumableFile::open(local_path)
+                let mut resumable = super::atomic_write::ResumableFile::open_resume(local_path)
                     .await
                     .map_err(ProviderError::IoError)?;
                 super::stream_response_to_resumable(resp, &mut resumable, total_size, progress)

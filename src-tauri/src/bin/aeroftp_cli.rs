@@ -10150,11 +10150,18 @@ async fn download_with_resume(
     if cli.partial && provider.supports_resume() {
         // Check for partial .aerotmp file from a previous interrupted download.
         // HTTP providers use ResumableFile internally (reads .aerotmp),
-        // while FTP/Koofr write directly to the final path (with seek).
+        // while FTP/Koofr write directly to the final path (with seek). In
+        // place the part is the destination itself, which the provider resumes:
+        // a `.aerotmp` there was left by an earlier download out of place, and
+        // its length is no offset into this one.
         let tmp_path = format!("{}.aerotmp", local_path);
-        let offset = std::fs::metadata(&tmp_path)
-            .map(|meta| meta.len())
-            .unwrap_or(0);
+        let offset = if cli.inplace {
+            0
+        } else {
+            std::fs::metadata(&tmp_path)
+                .map(|meta| meta.len())
+                .unwrap_or(0)
+        };
         // Also check the final file itself (FTP resume writes there directly)
         let final_offset = std::fs::metadata(local_path)
             .map(|meta| meta.len())
@@ -17820,6 +17827,12 @@ async fn run_cli_tui_worker(
                     std::path::Path::new(&local_path),
                 );
                 let _ = tokio::fs::remove_file(&temp).await;
+                let _ = tokio::fs::remove_file(
+                    ftp_client_gui_lib::providers::multi_thread::segmented_temp_path_for(
+                        std::path::Path::new(&local_path),
+                    ),
+                )
+                .await;
                 let readahead_temp =
                     ftp_client_gui_lib::providers::atomic_write::readahead_temp_path_for(
                         std::path::Path::new(&local_path),
@@ -32570,6 +32583,25 @@ async fn cmd_get(
 const PGET_MIN_FILE_SIZE: u64 = 4 * 1024 * 1024; // 4 MB minimum for segmented download
 const PGET_SUB_READ_SIZE: u64 = 64 * 1024 * 1024; // 64 MB max per read_range call
 
+/// How the windows of `pget` read under `limit_bps` (`--limit-rate`, or the
+/// `--bwlimit` schedule): the size of each `read_range`, and whether each is
+/// charged to the process-wide limiter first. `read_range` goes around the
+/// limiter the streamed downloads pace through, so a capped `pget` ran at full
+/// speed; each read is now about one second of the cap (at least 256 KiB, at
+/// most the 64 MiB the uncapped windows read), charged before it is made.
+fn pget_sub_reads(limit_bps: Option<u64>) -> (u64, bool) {
+    match limit_bps {
+        Some(bps) => (
+            bps.clamp(
+                ftp_client_gui_lib::transfer_dag::throttle::OWNED_BODY_CHUNK_BYTES as u64,
+                PGET_SUB_READ_SIZE,
+            ),
+            true,
+        ),
+        None => (PGET_SUB_READ_SIZE, false),
+    }
+}
+
 /// Effective pget segment count.
 ///
 /// The shared planner (`plan_segment_count`) owns the window math: hard cap
@@ -32626,7 +32658,7 @@ fn pget_planned_segments(file_size: u64, segments: usize, cutoff: u64) -> usize 
 /// transport-agnostic concurrent-range engine
 /// (`providers::multi_thread::run_concurrent_range_download`,
 /// PD-CLI-CONV-E). The engine owns the gap-free range plan, the single
-/// pre-allocated `.aerotmp`, its RAII cleanup, bounded concurrency,
+/// pre-allocated `.aerosegtmp`, its RAII cleanup, bounded concurrency,
 /// progress aggregation and cooperative cancellation; this function only
 /// supplies the provider-`read_range` window writer and the honest
 /// fallbacks. One independent connection per window preserves the
@@ -32645,8 +32677,8 @@ async fn pget_segmented_download(
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
-        aerotmp_path_for, open_after_transfer, range_source_changed_through,
-        read_range_source_through, run_concurrent_range_download, ConcurrentRangeConfig,
+        open_after_transfer, range_source_changed_through, read_range_source_through,
+        run_concurrent_range_download, segmented_temp_path_for, ConcurrentRangeConfig,
         ConcurrentRangeOutcome,
     };
 
@@ -32822,6 +32854,7 @@ async fn pget_segmented_download(
         max_parallel: effective_parallel_workers(cli).min(actual_segments),
     };
 
+    let (sub_read_size, paced) = pget_sub_reads(cli_speed_limit_bps(cli));
     let write_one_range =
         move |start_off: u64,
               end_off: u64,
@@ -32862,7 +32895,14 @@ async fn pget_segmented_download(
                             "Transfer cancelled by user".to_string(),
                         ));
                     }
-                    let sub_len = (window_len - written).min(PGET_SUB_READ_SIZE);
+                    let sub_len = (window_len - written).min(sub_read_size);
+                    if paced {
+                        ftp_client_gui_lib::transfer_dag::throttle::charge(
+                            ftp_client_gui_lib::transfer_dag::governor::TransferDirection::Download,
+                            sub_len,
+                        )
+                        .await;
+                    }
                     let data = provider
                         .read_range(&remote, start_off + written, sub_len)
                         .await
@@ -32916,9 +32956,9 @@ async fn pget_segmented_download(
 
     match outcome {
         Ok(ConcurrentRangeOutcome::Completed) => {
-            // The engine left `<local>.aerotmp` committed; atomically
+            // The engine left `<local>.aerosegtmp` committed; atomically
             // promote it to the final path like every other CLI transfer.
-            let temp = aerotmp_path_for(Path::new(local_path));
+            let temp = segmented_temp_path_for(Path::new(local_path));
             // A session of its own for the second reading, opened now rather
             // than kept idle through the transfer: the connections that read
             // the windows are closed by the engine, and a session parked for
@@ -73085,6 +73125,26 @@ mod tests {
         assert_eq!(partial_resume_plan(0, Some(0)), ResumePlan::Complete);
     }
 
+    /// `--limit-rate` did not hold on `pget` and `get --segments`: their
+    /// windows read through `read_range`, which the limiter never saw (40 MiB
+    /// in 141 ms at 1M, where `get` takes 39 s). Under a cap each read is about
+    /// one second of it, and is charged to the limiter first.
+    #[test]
+    fn a_capped_pget_reads_in_paced_steps() {
+        assert_eq!(pget_sub_reads(None), (PGET_SUB_READ_SIZE, false));
+        assert_eq!(pget_sub_reads(Some(1024 * 1024)), (1024 * 1024, true));
+        assert_eq!(
+            pget_sub_reads(Some(1)),
+            (256 * 1024, true),
+            "at least 256 KiB"
+        );
+        assert_eq!(
+            pget_sub_reads(Some(u64::MAX)),
+            (PGET_SUB_READ_SIZE, true),
+            "at most the uncapped read"
+        );
+    }
+
     #[test]
     fn speed_limit_arms_the_governor_from_limit_rate_then_bwlimit() {
         let mut cli = test_cli();
@@ -77968,12 +78028,45 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_metadata_only_change_keeps_the_local_file_after_ctrl_c() {
-        let (code, kept) = inplace_get_over_an_existing_file(StallingProvider {
-            chmod_then_wait: true,
-            ..Default::default()
-        });
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        std::fs::write(&local, b"keep me").unwrap();
+        std::fs::set_permissions(&local, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let local_str = local.to_string_lossy().into_owned();
+        let cli = Cli {
+            quiet: true,
+            inplace: true,
+            ..test_cli()
+        };
+        let code = against_stalling(
+            StallingProvider {
+                chmod_then_wait: true,
+                ..Default::default()
+            },
+            |cancelled| async move {
+                cmd_get(
+                    "memory://",
+                    "/f.bin",
+                    Some(local_str.as_str()),
+                    false,
+                    1,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                    cancelled,
+                )
+                .await
+            },
+        );
         assert_eq!(code, 130);
-        assert_eq!(kept.as_deref(), Some(&b"keep me"[..]));
+        assert_eq!(std::fs::read(&local).unwrap(), b"keep me");
+        // The change landed before the Ctrl-C: the branch under test is the
+        // interrupt's, with a metadata-only first look.
+        assert_eq!(
+            std::fs::metadata(&local).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
     }
 
     /// Only a change of size or time is a write; a change of the metadata

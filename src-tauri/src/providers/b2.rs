@@ -1495,7 +1495,7 @@ impl B2Provider {
     /// independent cloned workers (each its own pooled `reqwest` connection +
     /// the already-minted auth token) and reassembled in place by the shared
     /// [`crate::providers::multi_thread::run_concurrent_range_download`]
-    /// orchestrator: pre-allocated `.aerotmp`, RAII cleanup, bounded
+    /// orchestrator: pre-allocated `.aerosegtmp`, RAII cleanup, bounded
     /// concurrency, progress aggregation, cooperative cancellation. Equivalent
     /// to rclone `--multi-thread-streams N`.
     ///
@@ -1632,7 +1632,7 @@ impl B2Provider {
         .await;
 
         match outcome {
-            // The windows are in `<local>.aerotmp` and the file is not
+            // The windows are in `<local>.aerosegtmp` and the file is not
             // published here: the caller reads the object again through the
             // session it already holds and publishes only if it did not move.
             Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
@@ -1659,8 +1659,8 @@ impl B2Provider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<bool, ProviderError> {
         use super::multi_thread::{
-            aerotmp_path_for, parallel_refused, range_source_changed_through,
-            read_range_source_through, source_changed,
+            parallel_refused, range_source_changed_through, read_range_source_through,
+            segmented_temp_path_for, source_changed,
         };
         use std::path::Path;
 
@@ -1693,7 +1693,7 @@ impl B2Provider {
             Err(e) => return Err(e),
         }
 
-        let temp = aerotmp_path_for(Path::new(local_path));
+        let temp = segmented_temp_path_for(Path::new(local_path));
         if let Some(what) = range_source_changed_through(self, remote_path, &before).await {
             let _ = tokio::fs::remove_file(&temp).await;
             tracing::warn!("{}", source_changed("b2 multi-thread", remote_path, &what));

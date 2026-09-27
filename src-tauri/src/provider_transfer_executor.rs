@@ -348,8 +348,8 @@ pub async fn run_provider_segmented_download(
     cancel_token: CancellationToken,
 ) -> Result<(), String> {
     use crate::providers::multi_thread::{
-        aerotmp_path_for, parallel_refused, range_source_changed_through,
-        read_range_source_through, run_concurrent_range_download, source_changed,
+        parallel_refused, range_source_changed_through, read_range_source_through,
+        run_concurrent_range_download, segmented_temp_path_for, source_changed,
         ConcurrentRangeConfig, ConcurrentRangeOutcome,
     };
     use crate::providers::ProviderError;
@@ -499,7 +499,7 @@ pub async fn run_provider_segmented_download(
 
     match outcome {
         Ok(ConcurrentRangeOutcome::Completed) => {
-            let temp = aerotmp_path_for(Path::new(local_path));
+            let temp = segmented_temp_path_for(Path::new(local_path));
             let changed = range_source_changed_through(primary, remote_path, &before).await;
             match changed {
                 Some(what) => {
@@ -1076,7 +1076,11 @@ impl ProviderDownloadExecutor {
         let dl_start = std::time::Instant::now();
 
         let tmp_path = format!("{}.aerotmp", local_path);
-        let partial_offset = if attempt > 0 && provider.supports_resume() {
+        let partial_offset = if resumes_from_the_temporary(
+            attempt,
+            provider.supports_resume(),
+            crate::providers::atomic_write::inplace_active(),
+        ) {
             tokio::fs::metadata(&tmp_path)
                 .await
                 .map(|m| m.len())
@@ -2030,8 +2034,25 @@ fn attempt_is_over(locally_cancelled: bool, last_error: &str) -> bool {
     locally_cancelled || crate::transfer_dag::error::message_names_a_cancellation(last_error)
 }
 
+/// Whether a download retry goes on from the `.aerotmp` an earlier attempt
+/// left. Not in place: an in-place download writes the destination itself and
+/// leaves no `.aerotmp`, so one found there was left by an earlier download
+/// out of place, and its length is no offset into this one (the provider's
+/// resume would go on from the destination and append the remote bytes from
+/// one offset at another).
+fn resumes_from_the_temporary(attempt: u32, supports_resume: bool, inplace: bool) -> bool {
+    attempt > 0 && supports_resume && !inplace
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_retry_in_place_does_not_resume_from_a_temporary() {
+        assert!(super::resumes_from_the_temporary(1, true, false));
+        assert!(!super::resumes_from_the_temporary(1, true, true));
+        assert!(!super::resumes_from_the_temporary(0, true, false));
+        assert!(!super::resumes_from_the_temporary(1, false, false));
+    }
 
     /// A cancellation the provider reported ends the attempt, like our own flag.
     ///

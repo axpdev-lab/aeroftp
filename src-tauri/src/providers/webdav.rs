@@ -4557,7 +4557,7 @@ impl StorageProvider for WebDavProvider {
             StatusCode::PARTIAL_CONTENT => {
                 let content_len = response.content_length().unwrap_or(0);
                 let total_size = offset + content_len;
-                let mut resumable = super::atomic_write::ResumableFile::open(local_path)
+                let mut resumable = super::atomic_write::ResumableFile::open_resume(local_path)
                     .await
                     .map_err(ProviderError::IoError)?;
                 super::stream_response_to_resumable(

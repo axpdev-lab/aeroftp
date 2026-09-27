@@ -80,6 +80,86 @@ pub(crate) const TEMP_SUFFIX: &str = ".aerotmp";
 /// same path do not contend on the same `.aerotmp` filename.
 static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Open the temporary at `temp` for this writer, claimed, and empty it.
+///
+/// AeroFTP's other download writers use the same `<target>.aerotmp` and
+/// the same rules; this module keeps its own copy because it may not name
+/// the application's code. The writer holds an exclusive lock on the file for
+/// as long as it writes (it goes with the handle): one whose lock is held is
+/// a live writer's, and is refused with `AlreadyExists` instead of being
+/// truncated under it; one whose lock is free is stale, and is reused. The
+/// name must still point at the file the lock was taken on, or another
+/// writer replaced it in between. Unix only (Windows locks are mandatory and
+/// would stop the writer's own second handles); where the filesystem cannot
+/// lock, or on NFS, where `flock` can block even when asked not to, the file
+/// is opened as before these locks.
+fn claim_temp(temp: &Path) -> io::Result<std::fs::File> {
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(temp)?;
+    #[cfg(unix)]
+    if locks_usable(temp) {
+        match file.try_lock() {
+            Ok(()) => {
+                use std::os::unix::fs::MetadataExt;
+                let (open, named) = (file.metadata()?, std::fs::symlink_metadata(temp)?);
+                if open.dev() != named.dev() || open.ino() != named.ino() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        format!(
+                            "{} was replaced by another download while it was opened",
+                            temp.display()
+                        ),
+                    ));
+                }
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!(
+                        "another download of this file is writing {}",
+                        temp.display()
+                    ),
+                ));
+            }
+            Err(std::fs::TryLockError::Error(_)) => {}
+        }
+    }
+    file.set_len(0)?;
+    Ok(file)
+}
+
+/// Whether locks are used where `path` lives: not on NFS (Linux).
+#[cfg(target_os = "linux")]
+fn locks_usable(path: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let dir = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    let Ok(dir) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else {
+        return false;
+    };
+    let mut stat = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: `dir` is a NUL-terminated path, and `stat` is a writable buffer
+    // of the size `statfs` fills.
+    if unsafe { libc::statfs(dir.as_ptr(), stat.as_mut_ptr()) } != 0 {
+        return true;
+    }
+    // SAFETY: `statfs` returned 0, so it filled the buffer.
+    let kind = unsafe { stat.assume_init() }.f_type;
+    #[allow(clippy::unnecessary_cast)]
+    let on_nfs = kind as i64 == libc::NFS_SUPER_MAGIC as i64;
+    !on_nfs
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn locks_usable(_path: &Path) -> bool {
+    true
+}
+
 /// Append `TEMP_SUFFIX` to `target` preserving the original extension.
 /// `data.tar.gz` becomes `data.tar.gz.aerotmp`, not `data.tar.aerotmp`.
 fn temp_path_for_streaming(target: &Path) -> PathBuf {
@@ -396,18 +476,18 @@ impl StreamingAtomicWriter {
     /// Open `<target>.aerotmp` for writing. If a stale `.aerotmp` from a
     /// previous (crashed) session is in the way, it is truncated rather
     /// than erroring out: this is the idempotent recovery path the W2.3
-    /// acceptance test 7 pins.
+    /// acceptance test 7 pins. One another writer is still writing is
+    /// refused, not truncated (see [`claim_temp`]).
     ///
     /// The original `target` is **not** opened, modified, or even
     /// stat'd by `new`.
     pub async fn new(target: &Path) -> io::Result<Self> {
         let temp = temp_path_for_streaming(target);
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&temp)
-            .await?;
+        let claimed = temp.clone();
+        let file = tokio::task::spawn_blocking(move || claim_temp(&claimed))
+            .await
+            .map_err(io::Error::other)??;
+        let file = tokio::fs::File::from_std(file);
         Ok(Self {
             target: target.to_path_buf(),
             temp,
