@@ -1546,6 +1546,10 @@ impl StorageProvider for OneDriveProvider {
             (self.current_path.clone(), path)
         };
 
+        // A parent removed/recreated outside this connection (or beneath a
+        // deleted ancestor) can keep an obsolete ID in the path cache. Resolve
+        // the live path before this write; never create under a moved cached ID.
+        self.path_cache.remove(parent_path.trim_matches('/'));
         let parent_id = self.resolve_path(&parent_path).await?;
 
         let body = serde_json::json!({
@@ -2971,6 +2975,68 @@ mod tests {
             .await;
         assert!(outcome.is_err(), "{outcome:?}");
         assert!(!local.exists(), "{:?}", std::fs::read_to_string(&local));
+    }
+
+    #[tokio::test]
+    async fn ehud_mkdir_resolves_live_parent_instead_of_reusing_a_stale_id() {
+        use axum::{
+            http::{Method, StatusCode},
+            routing::any,
+            Json, Router,
+        };
+        use serde_json::json;
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = requests.clone();
+        let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+            let seen = seen.clone();
+            async move {
+                let method = request.method().clone();
+                let path = request.uri().path().to_string();
+                seen.lock().unwrap().push(format!("{method} {path}"));
+                match (method, path.as_str()) {
+                    (Method::GET, "/v1.0/me/drive/root:/parent") => (
+                        StatusCode::OK,
+                        Json(json!({"id":"live-parent","name":"parent","size":0,"folder":{}})),
+                    ),
+                    (Method::POST, "/v1.0/me/drive/items/live-parent/children") => {
+                        (StatusCode::CREATED, Json(json!({"id":"new-child"})))
+                    }
+                    (Method::POST, "/v1.0/me/drive/root/children") => {
+                        (StatusCode::CREATED, Json(json!({"id":"root-child"})))
+                    }
+                    _ => (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error":{"code":"itemNotFound"}})),
+                    ),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+        p.current_path = "/parent".into();
+        for path in ["/parent/child", "relative-child"] {
+            p.path_cache
+                .insert("parent".into(), "deleted-parent-id".into());
+            p.mkdir(path)
+                .await
+                .expect("mkdir must re-resolve the existing parent");
+        }
+        p.mkdir("/root-child").await.unwrap();
+        let paths = requests.lock().unwrap();
+        assert_eq!(paths.iter().filter(|p| p.starts_with("GET ")).count(), 2);
+        assert_eq!(paths.iter().filter(|p| p.starts_with("POST ")).count(), 3);
+        assert!(!paths.iter().any(|p| p.contains("deleted-parent-id")));
+        assert!(paths.last().unwrap().contains("/root/children"));
+        server.abort();
     }
 
     // ─── Live check for #397 on a real account ─────────────────────────
