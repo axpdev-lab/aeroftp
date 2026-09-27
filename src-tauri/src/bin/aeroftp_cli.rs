@@ -30107,7 +30107,8 @@ fn webdav_move_may_overwrite(headers: &HeaderMap) -> bool {
 /// `x/`), and an ambiguous path (Cloudinary: an asset and a folder sharing a
 /// name) emptied the folder. The escalation now happens only for a path `stat`
 /// calls a directory (not a link to one), or one it cannot describe (see
-/// [`stat_cannot_describe`]), where the old chain is kept.
+/// [`stat_cannot_describe`]) that the provider can list: on S3 the served
+/// collection `x` is the prefix `x/`, which no key names.
 async fn served_webdav_delete(
     provider: &mut dyn StorageProvider,
     path: &str,
@@ -30119,7 +30120,14 @@ async fn served_webdav_delete(
     };
     match provider.stat(path).await {
         Ok(entry) if entry.is_dir && !entry.is_symlink => {}
-        Err(e) if stat_cannot_describe(&e) => {}
+        // An object store sees no key `x` behind the collection `x/`: only a
+        // path the provider can list is a collection. A key that is simply
+        // gone keeps the delete error.
+        Err(e) if stat_cannot_describe(&e) => {
+            if provider.list(path).await.is_err() {
+                return Err(refused);
+            }
+        }
         _ => return Err(refused),
     }
     match provider.rmdir(path).await {
@@ -77219,6 +77227,7 @@ mod tests {
         delete: fn() -> Result<(), ProviderError>,
         stat: fn() -> Result<RemoteEntry, ProviderError>,
         rmdir: fn() -> Result<(), ProviderError>,
+        list: fn() -> Result<Vec<RemoteEntry>, ProviderError>,
         calls: Vec<&'static str>,
     }
 
@@ -77231,6 +77240,7 @@ mod tests {
                 delete,
                 stat,
                 rmdir: || Ok(()),
+                list: || Ok(Vec::new()),
                 calls: Vec::new(),
             }
         }
@@ -77256,8 +77266,9 @@ mod tests {
         fn is_connected(&self) -> bool {
             true
         }
-        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-            Err(ProviderError::NotFound(path.to_string()))
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.calls.push("list");
+            (self.list)()
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
             Ok("/".to_string())
@@ -77438,7 +77449,24 @@ mod tests {
         );
         unseen.rmdir = || Err(ProviderError::ServerError("not empty".to_string()));
         assert!(served_webdav_delete(&mut unseen, "/d").await.is_ok());
-        assert_eq!(unseen.calls, ["delete", "stat", "rmdir", "rmdir_recursive"]);
+        assert_eq!(
+            unseen.calls,
+            ["delete", "stat", "list", "rmdir", "rmdir_recursive"]
+        );
+
+        // A key that is gone and a path nobody can list: the delete error
+        // stays, and nothing recursive runs (CodeRabbit on a630c990).
+        let mut gone = DeleteFallbackProvider::new(
+            || Err(ProviderError::NotFound("/x".to_string())),
+            || Err(ProviderError::NotFound("/x".to_string())),
+        );
+        gone.list = || Err(ProviderError::NotFound("/x".to_string()));
+        let result = served_webdav_delete(&mut gone, "/x").await;
+        assert!(
+            matches!(result, Err(ProviderError::NotFound(_))),
+            "{result:?}"
+        );
+        assert_eq!(gone.calls, ["delete", "stat", "list"]);
     }
 
     /// A `stat` that failed says nothing about the path: escalating on it
