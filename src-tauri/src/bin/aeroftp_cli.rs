@@ -35565,13 +35565,17 @@ async fn publish_cli_edit_via_temp_rename(
     Ok(())
 }
 
+struct CliEditOptions {
+    replace_all: bool,
+    allow_non_atomic: bool,
+}
+
 async fn cmd_edit(
     url: &str,
     path: &str,
     find: &str,
     replace: &str,
-    replace_all: bool,
-    allow_non_atomic: bool,
+    options: CliEditOptions,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -35669,12 +35673,12 @@ async fn cmd_edit(
         return 0;
     }
 
-    let new_content = if replace_all {
+    let new_content = if options.replace_all {
         content.replace(find, replace)
     } else {
         content.replacen(find, replace, 1)
     };
-    let replaced = if replace_all { occurrences } else { 1 };
+    let replaced = if options.replace_all { occurrences } else { 1 };
 
     let mut temp_file = match NamedTempFile::new() {
         Ok(file) => file,
@@ -35700,8 +35704,13 @@ async fn cmd_edit(
     }
 
     let temp_path = temp_file.path().to_string_lossy().to_string();
-    match publish_cli_edit_via_temp_rename(provider.as_mut(), &temp_path, path, allow_non_atomic)
-        .await
+    match publish_cli_edit_via_temp_rename(
+        provider.as_mut(),
+        &temp_path,
+        path,
+        options.allow_non_atomic,
+    )
+    .await
     {
         Ok(()) => {
             match format {
@@ -66729,7 +66738,19 @@ async fn main() {
             } else {
                 (url.as_str(), path.as_str(), find.as_str(), replace.as_str())
             };
-            cmd_edit(u, p, f, r, !first, *allow_non_atomic, &cli, format).await
+            cmd_edit(
+                u,
+                p,
+                f,
+                r,
+                CliEditOptions {
+                    replace_all: !first,
+                    allow_non_atomic: *allow_non_atomic,
+                },
+                &cli,
+                format,
+            )
+            .await
         }
         Commands::Cat { url, path } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
