@@ -1210,7 +1210,7 @@ fn reject_oversize_edit_download(data_len: usize) -> Result<(), ToolError> {
     Ok(())
 }
 
-fn edit_temp_path(path: &str) -> String {
+pub(crate) fn edit_temp_path(path: &str) -> String {
     // Keep the staging file beside the target without copying its leaf:
     // an existing name may contain characters forbidden for new objects.
     let parent = path.rsplit_once('/').map(|(parent, _)| parent);
