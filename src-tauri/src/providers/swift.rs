@@ -840,6 +840,12 @@ impl SwiftProvider {
         let resp = self
             .swift_request(Method::PUT, &dest_url, Some(vec![]), &headers)
             .await?;
+        // The copy middleware answers 404 when the source object is missing
+        // (the container is the same for both ends, and the destination look
+        // above already reached it).
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Err(ProviderError::NotFound(from.to_string()));
+        }
         if !resp.status().is_success() {
             return Err(ProviderError::ServerError(format!(
                 "Copy for rename failed: HTTP {}",
@@ -1813,6 +1819,16 @@ mod tests {
         existing: &'static [&'static str],
         listing: serde_json::Value,
     ) -> (SwiftProvider, StorageLog) {
+        provider_on_storage_without(existing, listing, &[]).await
+    }
+
+    /// [`provider_on_storage`] where a copy from one of `absent` (an
+    /// `X-Copy-From` value) answers 404, as Swift does for a missing source.
+    async fn provider_on_storage_without(
+        existing: &'static [&'static str],
+        listing: serde_json::Value,
+        absent: &'static [&'static str],
+    ) -> (SwiftProvider, StorageLog) {
         let log: StorageLog = Default::default();
         let seen = std::sync::Arc::clone(&log);
         let app =
@@ -1826,6 +1842,9 @@ mod tests {
                         .headers()
                         .get("x-copy-from")
                         .map(|v| v.to_str().unwrap().to_string());
+                    let from_absent = copy_from
+                        .as_deref()
+                        .is_some_and(|source| absent.contains(&source));
                     let body = axum::body::to_bytes(req.into_body(), 1 << 20)
                         .await
                         .unwrap();
@@ -1836,6 +1855,7 @@ mod tests {
                     let status = match method.as_str() {
                         "HEAD" if existing.contains(&path.as_str()) => 200,
                         "HEAD" => 404,
+                        "PUT" if from_absent => 404,
                         "PUT" => 201,
                         "DELETE" => 204,
                         _ => 200,
@@ -1907,6 +1927,21 @@ mod tests {
             .unwrap()
             .iter()
             .any(|r| r.0 == "PUT" || r.0 == "DELETE"));
+    }
+
+    /// A missing source answered the copy with 404, reported as a server
+    /// error (CLI exit 10, seen live on Blomp): it is NotFound, and nothing
+    /// is deleted.
+    #[tokio::test]
+    async fn rename_of_a_missing_source_is_not_found() {
+        let (mut p, log) =
+            provider_on_storage_without(&[], serde_json::json!([]), &["/my%20box/d/a.txt"]).await;
+        let outcome = p.rename("/d/a.txt", "/d/x.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(!log.lock().unwrap().iter().any(|r| r.0 == "DELETE"));
     }
 
     /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
