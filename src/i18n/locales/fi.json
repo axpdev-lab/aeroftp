@@ -2433,7 +2433,8 @@
                 "rejectAllCalls": "Hylkää kaikki työkalukutsut",
                 "rejectExecution": "Hylkää työkalun suoritus",
                 "toggleDetails": "Näytä/piilota tiedot",
-                "allowSession": "Salli tälle istunnolle"
+                "allowSession": "Salli tälle istunnolle",
+                "nonAtomicReplace": "Ei-atominen korvaus: tiedosto puuttuu hetken"
             },
             "settings": {
                 "title": "Tekoälyasetukset",
