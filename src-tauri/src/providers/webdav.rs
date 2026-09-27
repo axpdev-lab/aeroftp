@@ -3522,6 +3522,20 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
+        // In single-file mode every path maps to the one configured URL, so
+        // a MOVE cannot name another resource: the URL comparison below read
+        // every rename as one onto itself and answered success with nothing
+        // moved.
+        if self.single_file_mode.is_some() {
+            if from.trim_end_matches('/') == to.trim_end_matches('/') {
+                return Ok(());
+            }
+            return Err(ProviderError::NotSupported(
+                "this WebDAV profile serves a single file, which cannot be renamed or moved"
+                    .to_string(),
+            ));
+        }
+
         let destination = self.build_url(to);
         if self.names_the_same_resource(from, &destination) {
             return Ok(());
@@ -3563,6 +3577,20 @@ impl StorageProvider for WebDavProvider {
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
+        }
+
+        // In single-file mode every path maps to the one configured URL, so
+        // a MOVE cannot name another resource: the URL comparison below read
+        // every rename as one onto itself and answered success with nothing
+        // moved.
+        if self.single_file_mode.is_some() {
+            if from.trim_end_matches('/') == to.trim_end_matches('/') {
+                return Ok(());
+            }
+            return Err(ProviderError::NotSupported(
+                "this WebDAV profile serves a single file, which cannot be renamed or moved"
+                    .to_string(),
+            ));
         }
 
         let destination = self.build_url(to);
@@ -6108,6 +6136,46 @@ mod tests {
         assert_eq!(provider.build_url("/"), url);
         assert_eq!(provider.build_url("/sample.png"), url);
         assert_eq!(provider.build_url("/anything-else"), url);
+    }
+
+    /// In single-file mode every path maps to the configured URL, so a
+    /// rename or replace compared two equal URLs and answered success with
+    /// nothing moved. Both are refused before any request; onto its own path
+    /// a rename stays a no-op.
+    #[tokio::test]
+    async fn a_single_file_profile_refuses_a_rename_or_replace() {
+        let mut provider =
+            WebDavProvider::new(test_config("http://127.0.0.1:9/77YnXboS/sample.png"))
+                .expect("provider");
+        provider.connected = true;
+        provider.single_file_mode = Some(RemoteEntry {
+            name: "sample.png".to_string(),
+            path: "/sample.png".to_string(),
+            is_dir: false,
+            size: 60630,
+            modified: None,
+            is_symlink: false,
+            link_target: None,
+            permissions: None,
+            owner: None,
+            group: None,
+            mime_type: Some("image/png".to_string()),
+            metadata: Default::default(),
+        });
+        let renamed = provider.rename("/sample.png", "/other.png").await;
+        assert!(
+            matches!(renamed, Err(ProviderError::NotSupported(_))),
+            "{renamed:?}"
+        );
+        let replaced = provider.replace("/sample.png", "/other.png").await;
+        assert!(
+            matches!(replaced, Err(ProviderError::NotSupported(_))),
+            "{replaced:?}"
+        );
+        provider
+            .rename("/sample.png", "/sample.png")
+            .await
+            .expect("onto its own path");
     }
 
     /// Issue #591 — vanilla WebDAV (SFTPGo, nginx DAV, Apache) must advertise
