@@ -58,6 +58,12 @@ describe('acceptFlatpakImport', () => {
         expect(await acceptFlatpakImport()).toEqual({ kind: 'nothing', vault: 'absent', nothingImportable: true });
     });
 
+    it('reads a report without nothing_importable as a sandbox that had every file', async () => {
+        const { nothing_importable: _omitted, ...older } = report(0);
+        mockInvoke.mockResolvedValueOnce(older);
+        expect(await acceptFlatpakImport()).toEqual({ kind: 'nothing', vault: 'absent', nothingImportable: false });
+    });
+
     it('reports the host vault it copied', async () => {
         mockInvoke.mockResolvedValueOnce(report(4, { vault_imported: true }));
         expect(await acceptFlatpakImport()).toEqual({ kind: 'imported', copied: 4, vault: 'imported' });

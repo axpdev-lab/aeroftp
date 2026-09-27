@@ -535,8 +535,10 @@ fn host_vault_outcome(src: &Path, dst: &Path) -> HostVault {
 /// Outcome of an import decision.
 #[derive(Debug, Clone)]
 pub struct FlatpakImportReport {
-    /// Files copied into the sandbox: 0 on a decline, and on an accept that found
-    /// every host file already in the sandbox.
+    /// Files copied into the sandbox: 0 on a decline, on an accept whose sandbox
+    /// already had a file with the same name for each file the import would copy,
+    /// and when the host config holds none (`nothing_importable`). Folders are
+    /// recreated in the sandbox but not counted.
     pub copied: usize,
     pub vault: HostVault,
     /// The host config holds no file the import copies (only empty folders,

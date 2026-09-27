@@ -38826,7 +38826,7 @@ fn flatpak_import_summary(report: &ftp_client_gui_lib::portable::FlatpakImportRe
         )
     } else if report.nothing_importable {
         format!(
-            "Nothing to import: {source} holds no file the import copies (it never copies empty folders, SQLite sidecar files or symbolic links)."
+            "Nothing to import: {source} holds no file the import copies (it copies files only, never SQLite sidecar files or symbolic links)."
         )
     } else {
         // The copy skips a file by name, never by content, so this says what it
@@ -38893,7 +38893,7 @@ mod flatpak_import_summary_tests {
         empty.nothing_importable = true;
         assert_eq!(
             flatpak_import_summary(&empty),
-            "Nothing to import: /home/u/.config/aeroftp holds no file the import copies (it never copies empty folders, SQLite sidecar files or symbolic links)."
+            "Nothing to import: /home/u/.config/aeroftp holds no file the import copies (it copies files only, never SQLite sidecar files or symbolic links)."
         );
     }
 
