@@ -27,7 +27,7 @@ use ripemd::Ripemd160;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use sha2::{Digest, Sha256, Sha512};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::types::InternxtConfig;
 use super::{
@@ -134,13 +134,6 @@ struct AccessUser {
     root_folder_uuid: Option<String>,
 }
 
-/// Folder listing response wrapper
-#[derive(Debug, Deserialize)]
-struct FoldersWrapper {
-    #[serde(default)]
-    folders: Vec<InternxtFolder>,
-}
-
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct InternxtFolder {
@@ -183,13 +176,6 @@ struct InternxtFolder {
     modification_time: Option<String>,
     #[serde(rename = "type", default)]
     folder_type: Option<String>,
-}
-
-/// File listing response wrapper
-#[derive(Debug, Deserialize)]
-struct FilesWrapper {
-    #[serde(default)]
-    files: Vec<InternxtFile>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -366,6 +352,36 @@ pub struct InternxtProvider {
 
 /// M3: Maximum number of cached directory entries to prevent unbounded memory growth.
 const DIR_CACHE_MAX_ENTRIES: usize = 10_000;
+
+/// Page size asked of the cursor-paginated folder content routes; the server
+/// accepts 50 to 1000, and rclone-adapter asks the maximum too.
+const CONTENT_PAGE_LIMIT: u32 = 1000;
+
+/// The cursors a folder content listing has followed. A server that hands one
+/// back again would loop the listing forever, so that is an error, never an end.
+#[derive(Default)]
+struct CursorTrail {
+    seen: HashSet<String>,
+}
+
+impl CursorTrail {
+    /// The cursor of the next page to read, or `None` when `next` says the
+    /// listing of `kind` (`folders` or `files`) is complete.
+    fn follow(
+        &mut self,
+        kind: &str,
+        next: Option<String>,
+    ) -> Result<Option<String>, ProviderError> {
+        match next {
+            None => Ok(None),
+            Some(cursor) if self.seen.insert(cursor.clone()) => Ok(Some(cursor)),
+            Some(_) => Err(ProviderError::ServerError(format!(
+                "List {} failed: the server repeated a page cursor, so the listing cannot be completed",
+                kind
+            ))),
+        }
+    }
+}
 
 impl InternxtProvider {
     pub fn new(config: InternxtConfig) -> Self {
@@ -730,32 +746,14 @@ impl InternxtProvider {
         parent_uuid: &str,
         name: &str,
     ) -> Result<Option<String>, ProviderError> {
-        let mut offset = 0;
+        let mut trail = CursorTrail::default();
+        let mut cursor: Option<String> = None;
         loop {
-            let url = format!(
-                "/folders/content/{}/folders?offset={}&limit=50&sort=plainName&order=ASC",
-                parent_uuid, offset
-            );
-
-            let resp = self
-                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
+            let (folders, next) = self
+                .content_page::<InternxtFolder>(parent_uuid, "folders", cursor.as_deref())
                 .await?;
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "List folders failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
-
-            let wrapper: FoldersWrapper = resp.json().await.map_err(|e| {
-                ProviderError::ServerError(format!("Failed to parse folders response: {}", e))
-            })?;
-
-            for folder in &wrapper.folders {
+            for folder in &folders {
                 let folder_name = folder
                     .plain_name
                     .as_deref()
@@ -766,12 +764,91 @@ impl InternxtProvider {
                 }
             }
 
-            if wrapper.folders.len() < 50 {
-                break;
+            match trail.follow("folders", next)? {
+                Some(next) => cursor = Some(next),
+                None => return Ok(None),
             }
-            offset += 50;
         }
-        Ok(None)
+    }
+
+    /// Read one page of `GET /folders/v2/content/{folder_uuid}/{kind}`, `kind`
+    /// being `folders` or `files`: its items and the cursor of the next page,
+    /// `None` on the last one. These cursor routes replace the deprecated
+    /// offset ones (`/folders/content/...`, drive-server-wip #1163).
+    async fn content_page<T: serde::de::DeserializeOwned>(
+        &mut self,
+        folder_uuid: &str,
+        kind: &str,
+        cursor: Option<&str>,
+    ) -> Result<(Vec<T>, Option<String>), ProviderError> {
+        let url = Self::content_page_url(folder_uuid, kind, cursor);
+        tracing::debug!(target: "internxt", "[LIST {}] GET {}/drive{}", kind, self.api_base, url);
+
+        let resp = self
+            .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
+            .await?;
+
+        let status = resp.status();
+        tracing::debug!(target: "internxt", "[LIST {}] Status: {}", kind, status);
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            tracing::debug!(target: "internxt", "[LIST {}] Error body: {}", kind, &body[..body.floor_char_boundary(200)]);
+            return Err(ProviderError::ServerError(format!(
+                "List {} failed ({}): {}",
+                kind,
+                status,
+                super::sanitize_api_error(&body)
+            )));
+        }
+
+        let raw = resp.text().await.map_err(|e| {
+            ProviderError::ServerError(format!("Failed to read {} response: {}", kind, e))
+        })?;
+        tracing::debug!(target: "internxt", "[LIST {}] Response ({} bytes): {}", kind, raw.len(), &raw[..raw.floor_char_boundary(200)]);
+        Self::parse_content_page(&raw, kind)
+    }
+
+    /// The drive path of a folder content page. The cursor is base64 (`+`, `/`,
+    /// `=`), so it goes out form-encoded.
+    fn content_page_url(folder_uuid: &str, kind: &str, cursor: Option<&str>) -> String {
+        let mut query = url::form_urlencoded::Serializer::new(String::new());
+        query
+            .append_pair("limit", &CONTENT_PAGE_LIMIT.to_string())
+            .append_pair("order", "ASC");
+        if let Some(cursor) = cursor {
+            query.append_pair("cursor", cursor);
+        }
+        format!(
+            "/folders/v2/content/{}/{}?{}",
+            folder_uuid,
+            kind,
+            query.finish()
+        )
+    }
+
+    /// Parse a folder content page. The `kind` array is required, since a page
+    /// without it is not an empty folder; `nextCursor` is a string, or null
+    /// (or absent) on the last page.
+    fn parse_content_page<T: serde::de::DeserializeOwned>(
+        raw: &str,
+        kind: &str,
+    ) -> Result<(Vec<T>, Option<String>), ProviderError> {
+        let invalid = |detail: String| {
+            ProviderError::ServerError(format!("Failed to parse {}: {}", kind, detail))
+        };
+        let mut page: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(raw).map_err(|e| invalid(e.to_string()))?;
+        let items = page
+            .remove(kind)
+            .ok_or_else(|| invalid(format!("the page has no {} array", kind)))?;
+        let items: Vec<T> = serde_json::from_value(items).map_err(|e| invalid(e.to_string()))?;
+        let next = match page.remove("nextCursor") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(cursor)) if cursor.is_empty() => None,
+            Some(serde_json::Value::String(cursor)) => Some(cursor),
+            Some(other) => return Err(invalid(format!("nextCursor is not a string: {}", other))),
+        };
+        Ok((items, next))
     }
 
     /// Normalize path: ensure leading /, remove trailing /, collapse //, resolve . and ..
@@ -836,32 +913,14 @@ impl InternxtProvider {
         folder_uuid: &str,
         filename: &str,
     ) -> Result<Option<(String, String, String)>, ProviderError> {
-        let mut offset = 0;
+        let mut trail = CursorTrail::default();
+        let mut cursor: Option<String> = None;
         loop {
-            let url = format!(
-                "/folders/content/{}/files?offset={}&limit=50&sort=plainName&order=ASC",
-                folder_uuid, offset
-            );
-
-            let resp = self
-                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
+            let (files, next) = self
+                .content_page::<InternxtFile>(folder_uuid, "files", cursor.as_deref())
                 .await?;
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "List files failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
-
-            let wrapper: FilesWrapper = resp.json().await.map_err(|e| {
-                ProviderError::ServerError(format!("Failed to parse files response: {}", e))
-            })?;
-
-            for file in &wrapper.files {
+            for file in &files {
                 let fname = Self::get_filename(file);
                 if fname.eq_ignore_ascii_case(filename) {
                     return Ok(Some((
@@ -872,12 +931,11 @@ impl InternxtProvider {
                 }
             }
 
-            if wrapper.files.len() < 50 {
-                break;
+            match trail.follow("files", next)? {
+                Some(next) => cursor = Some(next),
+                None => return Ok(None),
             }
-            offset += 50;
         }
-        Ok(None)
     }
 
     /// Get display filename from file entry
@@ -1280,44 +1338,15 @@ impl StorageProvider for InternxtProvider {
 
         let mut entries = Vec::new();
 
-        // List all folders (paginated)
-        let mut offset = 0;
+        // List all folders, every page
+        let mut trail = CursorTrail::default();
+        let mut cursor: Option<String> = None;
         loop {
-            let url = format!(
-                "/folders/content/{}/folders?offset={}&limit=50&sort=plainName&order=ASC",
-                folder_uuid, offset
-            );
-            let full_url = format!("{}/drive{}", self.api_base, url);
-            tracing::debug!(target: "internxt", "[LIST FOLDERS] GET {}", full_url);
-
-            let resp = self
-                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
+            let (folders, next) = self
+                .content_page::<InternxtFolder>(&folder_uuid, "folders", cursor.as_deref())
                 .await?;
 
-            let status = resp.status();
-            tracing::debug!(target: "internxt", "[LIST FOLDERS] Status: {}", status);
-
-            if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                tracing::debug!(target: "internxt", "[LIST FOLDERS] Error body: {}", &body[..body.floor_char_boundary(200)]);
-                return Err(ProviderError::ServerError(format!(
-                    "List folders failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
-
-            let raw_text = resp.text().await.map_err(|e| {
-                ProviderError::ServerError(format!("Failed to read folders response: {}", e))
-            })?;
-            tracing::debug!(target: "internxt", "[LIST FOLDERS] Response ({} bytes): {}", raw_text.len(), &raw_text[..raw_text.floor_char_boundary(200)]);
-            let wrapper: FoldersWrapper = serde_json::from_str(&raw_text).map_err(|e| {
-                tracing::debug!(target: "internxt", "[LIST FOLDERS] Parse error: {} | Response: {}", e, &raw_text[..raw_text.floor_char_boundary(200)]);
-                ProviderError::ServerError(format!("Failed to parse folders: {}", e))
-            })?;
-
-            let count = wrapper.folders.len();
-            for folder in wrapper.folders {
+            for folder in folders {
                 let name = folder
                     .plain_name
                     .or(folder.name)
@@ -1360,50 +1389,21 @@ impl StorageProvider for InternxtProvider {
                 });
             }
 
-            if count < 50 {
-                break;
+            match trail.follow("folders", next)? {
+                Some(next) => cursor = Some(next),
+                None => break,
             }
-            offset += 50;
         }
 
-        // List all files (paginated)
-        offset = 0;
+        // List all files, every page
+        let mut trail = CursorTrail::default();
+        let mut cursor: Option<String> = None;
         loop {
-            let url = format!(
-                "/folders/content/{}/files?offset={}&limit=50&sort=plainName&order=ASC",
-                folder_uuid, offset
-            );
-            let full_url = format!("{}/drive{}", self.api_base, url);
-            tracing::debug!(target: "internxt", "[LIST FILES] GET {}", full_url);
-
-            let resp = self
-                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
+            let (files, next) = self
+                .content_page::<InternxtFile>(&folder_uuid, "files", cursor.as_deref())
                 .await?;
 
-            let status = resp.status();
-            tracing::debug!(target: "internxt", "[LIST FILES] Status: {}", status);
-
-            if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                tracing::debug!(target: "internxt", "[LIST FILES] Error body: {}", &body[..body.floor_char_boundary(200)]);
-                return Err(ProviderError::ServerError(format!(
-                    "List files failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
-
-            let raw_text = resp.text().await.map_err(|e| {
-                ProviderError::ServerError(format!("Failed to read files response: {}", e))
-            })?;
-            tracing::debug!(target: "internxt", "[LIST FILES] Response ({} bytes): {}", raw_text.len(), &raw_text[..raw_text.floor_char_boundary(200)]);
-            let wrapper: FilesWrapper = serde_json::from_str(&raw_text).map_err(|e| {
-                tracing::debug!(target: "internxt", "[LIST FILES] Parse error: {} | Response: {}", e, &raw_text[..raw_text.floor_char_boundary(200)]);
-                ProviderError::ServerError(format!("Failed to parse files: {}", e))
-            })?;
-
-            let count = wrapper.files.len();
-            for file in wrapper.files {
+            for file in files {
                 // Skip deleted/trashed
                 if file.status.as_deref() == Some("TRASHED")
                     || file.status.as_deref() == Some("DELETED")
@@ -1439,10 +1439,10 @@ impl StorageProvider for InternxtProvider {
                 });
             }
 
-            if count < 50 {
-                break;
+            match trail.follow("files", next)? {
+                Some(next) => cursor = Some(next),
+                None => break,
             }
-            offset += 50;
         }
 
         internxt_log(&format!(
@@ -2781,6 +2781,232 @@ mod tests {
         assert_eq!(
             InternxtProvider::split_name_ext(".hidden"),
             (".hidden".to_string(), String::new())
+        );
+    }
+
+    /// One page of a folder content listing, as the drive answers it.
+    fn content_page(kind: &str, items: serde_json::Value, next: Option<&str>) -> serde_json::Value {
+        serde_json::json!({ kind: items, "nextCursor": next })
+    }
+
+    /// A provider connected to a local drive that serves the folder content
+    /// listings of `pages`, keyed by (folder uuid, `folders` or `files`), one
+    /// body per page. A request without a cursor gets the first page, one
+    /// with cursor `c` the page after the one whose `nextCursor` was `c`, and
+    /// an unknown cursor a 400, as Internxt does. The route version is not
+    /// checked, so a client on the offset routes reads the first page again
+    /// and again. Every request URI is recorded.
+    async fn provider_on_paged_drive(
+        pages: Vec<((&str, &str), Vec<serde_json::Value>)>,
+    ) -> (
+        InternxtProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let pages: Arc<HashMap<(String, String), Vec<serde_json::Value>>> = Arc::new(
+            pages
+                .into_iter()
+                .map(|((uuid, kind), bodies)| ((uuid.to_string(), kind.to_string()), bodies))
+                .collect(),
+        );
+        let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&requests);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (pages, seen) = (Arc::clone(&pages), Arc::clone(&seen));
+                async move {
+                    let uri = req.uri().clone();
+                    seen.lock().unwrap().push(uri.to_string());
+                    let not_found = axum::http::StatusCode::NOT_FOUND.into_response();
+                    let Some(rest) = uri.path().strip_prefix("/drive/folders/") else {
+                        return not_found;
+                    };
+                    let rest = rest.strip_prefix("v2/").unwrap_or(rest);
+                    let Some((uuid, kind)) = rest
+                        .strip_prefix("content/")
+                        .and_then(|r| r.split_once('/'))
+                    else {
+                        return not_found;
+                    };
+                    let Some(bodies) = pages.get(&(uuid.to_string(), kind.to_string())) else {
+                        return not_found;
+                    };
+                    let cursor = url::form_urlencoded::parse(uri.query().unwrap_or("").as_bytes())
+                        .find(|(k, _)| k == "cursor")
+                        .map(|(_, v)| v.into_owned());
+                    let at = match cursor {
+                        None => Some(0),
+                        Some(c) => bodies
+                            .iter()
+                            .position(|b| b["nextCursor"].as_str() == Some(c.as_str()))
+                            .map(|i| i + 1),
+                    };
+                    match at.and_then(|i| bodies.get(i)) {
+                        Some(body) => axum::Json(body.clone()).into_response(),
+                        None => {
+                            (axum::http::StatusCode::BAD_REQUEST, "Invalid cursor").into_response()
+                        }
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.root_folder_id = "R".to_string();
+        provider.current_folder_id = "R".to_string();
+        provider.api_base = format!("http://{addr}");
+        (provider, requests)
+    }
+
+    /// The offset routes are deprecated; the cursor routes hand out a
+    /// `nextCursor` until the last page. A listing longer than one page lost
+    /// every page after the first. The cursors are base64 (`+`, `/`, `=`), so
+    /// they must reach the server encoded.
+    #[tokio::test]
+    async fn a_listing_reads_every_cursor_page() {
+        let folder =
+            |uuid: &str, name: &str| serde_json::json!({ "uuid": uuid, "plainName": name });
+        let file = |uuid: &str, name: &str, ext: &str| serde_json::json!({ "uuid": uuid, "plainName": name, "type": ext, "size": "3" });
+        let (mut provider, requests) = provider_on_paged_drive(vec![
+            (
+                ("R", "folders"),
+                vec![
+                    content_page(
+                        "folders",
+                        serde_json::json!([folder("A", "a"), folder("B", "b")]),
+                        Some("Zm9s+/A="),
+                    ),
+                    content_page(
+                        "folders",
+                        serde_json::json!([folder("C", "c"), folder("D", "d")]),
+                        Some("Zm9s+/B=="),
+                    ),
+                    content_page("folders", serde_json::json!([folder("E", "e")]), None),
+                ],
+            ),
+            (
+                ("R", "files"),
+                vec![
+                    content_page(
+                        "files",
+                        serde_json::json!([file("X", "x", "txt"), file("Y", "y", "txt")]),
+                        Some("ZmlsZQ+/="),
+                    ),
+                    content_page("files", serde_json::json!([file("Z", "z", "bin")]), None),
+                ],
+            ),
+        ])
+        .await;
+
+        let entries = provider.list("/").await.expect("list");
+        let mut names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
+        names.sort();
+        assert_eq!(names, ["a", "b", "c", "d", "e", "x.txt", "y.txt", "z.bin"]);
+        assert_eq!(entries.iter().filter(|e| e.is_dir).count(), 5);
+
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 5, "{requests:?}");
+        for uri in requests.iter() {
+            assert!(uri.starts_with("/drive/folders/v2/content/R/"), "{uri}");
+            assert!(!uri.contains("offset=") && !uri.contains("sort="), "{uri}");
+            assert!(uri.contains("limit=") && uri.contains("order=ASC"), "{uri}");
+        }
+    }
+
+    /// A server that hands back a cursor it already gave would make the
+    /// listing loop forever or, cut short, look complete: it is an error.
+    #[tokio::test]
+    async fn a_repeated_cursor_fails_the_listing() {
+        let (mut provider, _) = provider_on_paged_drive(vec![
+            (
+                ("R", "folders"),
+                vec![
+                    content_page(
+                        "folders",
+                        serde_json::json!([{ "uuid": "A", "plainName": "a" }]),
+                        Some("same"),
+                    ),
+                    content_page(
+                        "folders",
+                        serde_json::json!([{ "uuid": "B", "plainName": "b" }]),
+                        Some("same"),
+                    ),
+                ],
+            ),
+            (
+                ("R", "files"),
+                vec![content_page("files", serde_json::json!([]), None)],
+            ),
+        ])
+        .await;
+
+        match provider.list("/").await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(message.contains("cursor"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// A page without its item array is not an empty folder.
+    #[tokio::test]
+    async fn a_page_without_its_items_fails_the_listing() {
+        let (mut provider, _) = provider_on_paged_drive(vec![
+            (
+                ("R", "folders"),
+                vec![serde_json::json!({ "nextCursor": null })],
+            ),
+            (
+                ("R", "files"),
+                vec![content_page("files", serde_json::json!([]), None)],
+            ),
+        ])
+        .await;
+
+        match provider.list("/").await {
+            Err(ProviderError::ServerError(message)) => {
+                assert!(message.contains("folders"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Path lookups page too: a folder or a file past the first page was
+    /// reported missing.
+    #[tokio::test]
+    async fn path_lookups_follow_the_cursor_past_the_first_page() {
+        let (mut provider, _) = provider_on_paged_drive(vec![
+            (
+                ("R", "folders"),
+                vec![
+                    content_page("folders", serde_json::json!([{ "uuid": "A", "plainName": "archive" }]), Some("cm9vdA==")),
+                    content_page("folders", serde_json::json!([{ "uuid": "D", "plainName": "docs" }]), None),
+                ],
+            ),
+            (
+                ("D", "files"),
+                vec![
+                    content_page("files", serde_json::json!([{ "uuid": "O", "plainName": "other", "type": "txt" }]), Some("ZG9jcw+=")),
+                    content_page("files", serde_json::json!([{ "uuid": "F", "plainName": "report", "type": "pdf", "fileId": "net-F" }]), None),
+                ],
+            ),
+        ])
+        .await;
+
+        assert_eq!(
+            provider.resolve_folder_uuid("/docs").await.expect("docs"),
+            "D"
+        );
+        let found = provider
+            .find_file_in_folder("D", "report.pdf")
+            .await
+            .expect("lookup");
+        assert_eq!(
+            found.map(|(uuid, file_id, _)| (uuid, file_id)),
+            Some(("F".to_string(), "net-F".to_string()))
         );
     }
 }
