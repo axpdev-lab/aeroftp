@@ -112,6 +112,15 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     // `loading` disables the button, but a second click can still fire from the
     // render that has not seen the state update yet. The ref closes that window.
     const committingRef = useRef(false);
+    // The delayed close after a success. A later export clears it: an earlier
+    // export's timer would otherwise close the panel over the skipped-profile
+    // reasons the later one stays open to show.
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const cancelDelayedClose = () => {
+        if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+    };
+    useEffect(() => cancelDelayedClose, []);
 
     // Pre-select exportable profiles (protocol supported by the target).
     const supported = meta?.supportedProtocols ?? [];
@@ -227,7 +236,8 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));
             if (outcome.updated > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(outcome.updated)));
             setSuccess(parts.join(', '));
-            setTimeout(() => onClose(), 2500);
+            cancelDelayedClose();
+            closeTimerRef.current = setTimeout(() => onClose(), 2500);
         } finally {
             committingRef.current = false;
             setLoading(false);
@@ -244,6 +254,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     // ---- Export ----
 
     const runExport = async () => {
+        cancelDelayedClose();
         const chosen = exportable.filter(s => exportSelectedIds.has(s.id));
         if (chosen.length === 0) return;
         const ext = meta?.exportExt || 'txt';
@@ -265,7 +276,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             setExportResult(r);
             setSuccess(t('settings.bridgeExportSuccess').replace('{count}', String(r.exported)));
             // Stay open when something was left out, so its reason can be read.
-            if (r.skipped.length === 0) setTimeout(() => onClose(), 2500);
+            if (r.skipped.length === 0) closeTimerRef.current = setTimeout(() => onClose(), 2500);
         } catch (e) {
             setError(String(e));
         } finally {
