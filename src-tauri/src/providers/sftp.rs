@@ -97,8 +97,10 @@ fn classify_russh_err(
     fallback: impl FnOnce(String) -> ProviderError,
 ) -> ProviderError {
     let s = e.to_string();
-    if is_session_closed_error_message(&s) || names_a_request_timeout(&s) {
+    if is_session_closed_error_message(&s) {
         ProviderError::ConnectionLost(s)
+    } else if is_request_timeout(&s) {
+        ProviderError::Timeout
     } else {
         fallback(s)
     }
@@ -246,17 +248,20 @@ async fn close_sftp_file(file: russh_sftp::client::fs::File, ended: &Cancellatio
 /// it gives the session up. It covers the case the end of the transport does
 /// not: an SSH connection that still answers its keepalives while the SFTP
 /// server behind it stopped answering. It leans toward patience. Writes go
-/// out in pieces of [`SFTP_WRITE_PIECE`], so one wait lasts at most until the
-/// oldest of the writes in flight is acknowledged, and russh-sftp keeps at
-/// most 8 of about 256 KiB in flight: only a link that cannot move those 2 MiB
-/// in five minutes (about 7 KB/s) trips it, whatever `--buffer-size` is.
+/// out in pieces of [`SFTP_WRITE_PIECE`] (2 MiB), and russh-sftp keeps at most
+/// 8 writes of just under 256 KiB in flight, so one wait covers at most about
+/// 9 acknowledgements, about 2.25 MiB: only a link that cannot move that in
+/// five minutes (about 7.5 KB/s) trips it, whatever `--buffer-size` is.
 const SFTP_WRITE_ACK_BOUND: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// The piece an upload hands to the SFTP file at a time (see
 /// [`SFTP_WRITE_ACK_BOUND`]): a write of a whole 16 MiB buffer would return
 /// only after most of it was acknowledged, and the bound would trip on links
-/// eight times faster.
-const SFTP_WRITE_PIECE: usize = 256 * 1024;
+/// eight times faster. 2 MiB, not 256 KiB: russh-sftp's largest write is just
+/// under 256 KiB, so a 256 KiB piece went out as a full write plus a tail of a
+/// few bytes and halved the data in flight; 2 MiB is also the most tokio reads
+/// from the file per call, so the wire pattern is the one it always was.
+const SFTP_WRITE_PIECE: usize = 2 * 1024 * 1024;
 
 /// Writes `data` to `file` piece by piece, each piece under
 /// [`until_sftp_acks`].
@@ -295,18 +300,17 @@ async fn until_sftp_acks<T>(
     }
 }
 
-/// russh-sftp's request timeout (`Error::Timeout`, printed "Timeout"): the
-/// server did not answer a request in 10 s. That is how the requests in flight
-/// when the transport ends finish (russh-sftp 2.4 does not wake them, see
-/// [`SftpChannel`]), and a session silent for that long cannot be trusted
-/// either. It is a lost connection, which the command layer retries: `list`
-/// and `stat` reported it as not found (exit 2), `mkdir` and `delete` as a
-/// server error.
-fn names_a_request_timeout(message: &str) -> bool {
-    message
-        .to_ascii_lowercase()
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .any(|word| word == "timeout")
+/// Whether an SFTP error is russh-sftp's own request timeout (its display is
+/// exactly `Timeout`): a reply that did not come within 10 s. It is a timeout,
+/// not a lost connection: a live but slow server (a large directory listing, a
+/// stat on a network filesystem) answers late and the session is still good,
+/// while a transport that really ended is seen by `is_connected` and redialled
+/// on the next call. `list` and `stat` used to report it as not found (exit 2),
+/// `mkdir` and `delete` as a server error; as a timeout it is exit 8, retried.
+/// Only the exact text counts: a server message that contains the word (a path
+/// such as `/x/timeout.log`) is not one.
+fn is_request_timeout(message: &str) -> bool {
+    message.trim() == "Timeout"
 }
 
 /// Map `SftpSession::try_exists` onto [`StorageProvider::exists`].
@@ -807,24 +811,31 @@ impl SftpProvider {
     /// first connect, `KeyChanged` is rejected). Defense in depth: the
     /// freshly accepted fingerprint is compared against the pin captured
     /// at the first connect and a mismatch aborts the worker.
+    /// Close the SSH connection this provider holds, without waiting on it for
+    /// long. After a stalled session it may still be up (an SFTP server that
+    /// stopped answering behind a live sshd, keepalives still answered), and
+    /// replacing the handle alone would leave it open for the life of the
+    /// process: the SFTP reader task keeps a clone of its sender.
+    async fn retire_ssh_connection(&mut self) {
+        if let Some(handle) = self.ssh_handle.take() {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async move {
+                let guard = handle.lock().await;
+                let _ = guard
+                    .disconnect(russh::Disconnect::ByApplication, "", "en")
+                    .await;
+            })
+            .await;
+        }
+    }
+
     async fn ensure_connected(&mut self) -> Result<(), ProviderError> {
         if self.is_connected() {
             return Ok(());
         }
         if self.sftp.take().is_some() {
             // A session whose transport ended answers nothing: dial again, as
-            // for a worker that never dialled. Its SSH connection may still be
-            // up (an SFTP server that stopped answering behind a live sshd),
-            // so close it, without waiting on it for long.
-            if let Some(handle) = self.ssh_handle.take() {
-                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async move {
-                    let guard = handle.lock().await;
-                    let _ = guard
-                        .disconnect(russh::Disconnect::ByApplication, "", "en")
-                        .await;
-                })
-                .await;
-            }
+            // for a worker that never dialled.
+            self.retire_ssh_connection().await;
         }
         let spec = self
             .connection_spec
@@ -1667,6 +1678,11 @@ impl StorageProvider for SftpProvider {
         // that was asked: after a dropped transport and a new dial it would be
         // a dead session, and every replace would fail on it.
         self.posix_rename = PosixRenameSupport::Unasked;
+        // A reconnect over a connection still held (the GUI's silent
+        // reconnect after a stalled session) closes it first instead of
+        // overwriting the handle.
+        self.sftp = None;
+        self.retire_ssh_connection().await;
 
         // Create SSH config with keepalive to prevent server from closing connection
         let preferred = if self.compression_enabled {
@@ -1874,11 +1890,13 @@ impl StorageProvider for SftpProvider {
 
         tracing::debug!("SFTP: Listing directory: {}", full_path);
 
-        let entries = sftp.read_dir(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::NotFound(format!("Failed to list directory: {}", s))
-            })
-        })?;
+        let entries = until_sftp_ends(&sftp.ended, sftp.read_dir(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::NotFound(format!("Failed to list directory: {}", s))
+                })
+            })?;
 
         // Build the work list from the READDIR reply without any further I/O.
         // Every entry's own attributes are already in hand; a follow-up request
@@ -2022,8 +2040,7 @@ impl StorageProvider for SftpProvider {
         // idle reaper, broken pipe) are routed to ConnectionLost so the
         // command layer can reconnect+replay instead of misclassifying
         // them as a missing path.
-        let metadata = sftp
-            .metadata(&full_path)
+        let metadata = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path))
             .await
             .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
 
@@ -2959,11 +2976,13 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Creating directory: {}", full_path);
 
-        sftp.create_dir(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to create directory: {}", s))
-            })
-        })?;
+        until_sftp_ends(&sftp.ended, sftp.create_dir(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to create directory: {}", s))
+                })
+            })?;
 
         Ok(())
     }
@@ -2974,11 +2993,13 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Deleting file: {}", full_path);
 
-        sftp.remove_file(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to delete file: {}", s))
-            })
-        })?;
+        until_sftp_ends(&sftp.ended, sftp.remove_file(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to delete file: {}", s))
+                })
+            })?;
 
         Ok(())
     }
@@ -2989,11 +3010,13 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Removing directory: {}", full_path);
 
-        sftp.remove_dir(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to remove directory: {}", s))
-            })
-        })?;
+        until_sftp_ends(&sftp.ended, sftp.remove_dir(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to remove directory: {}", s))
+                })
+            })?;
 
         Ok(())
     }
@@ -3035,7 +3058,7 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Renaming {} to {}", from_path, to_path);
 
-        let refusal = match sftp.rename(&from_path, &to_path).await {
+        let refusal = match until_sftp_ends(&sftp.ended, sftp.rename(&from_path, &to_path)).await {
             Ok(()) => return Ok(()),
             Err(e) => e,
         };
@@ -3145,8 +3168,7 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = sftp
-            .metadata(&full_path)
+        let metadata = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path))
             .await
             .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
 
@@ -3176,8 +3198,7 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = sftp
-            .metadata(&full_path)
+        let metadata = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path))
             .await
             .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
 
@@ -3187,7 +3208,7 @@ impl StorageProvider for SftpProvider {
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
-        map_sftp_try_exists(sftp.try_exists(&full_path).await)
+        map_sftp_try_exists(until_sftp_ends(&sftp.ended, sftp.try_exists(&full_path)).await)
     }
 
     fn supports_checksum(&self) -> bool {
@@ -5834,9 +5855,29 @@ mod tests {
         }
     }
 
-    /// A listing in flight when the server goes away ends with russh-sftp's
-    /// request timeout: a lost connection, which the command layer retries.
-    /// It was reported as "not found" (exit 2).
+    /// russh-sftp's own request timeout ("Timeout") is a timeout, not a lost
+    /// connection: a slow but live server answers late and the session is
+    /// still good. A server message that only contains the word (a path) keeps
+    /// its own class, and a closed session stays a lost connection.
+    #[test]
+    fn only_russh_sftps_own_timeout_is_a_timeout() {
+        assert!(matches!(
+            classify_russh_err("Timeout", ProviderError::NotFound),
+            ProviderError::Timeout
+        ));
+        assert!(matches!(
+            classify_russh_err("No such file: open /x/timeout.log", ProviderError::NotFound),
+            ProviderError::NotFound(_)
+        ));
+        assert!(
+            classify_russh_err(SFTP_TRANSPORT_ENDED, ProviderError::NotFound).is_connection_lost()
+        );
+    }
+
+    /// A listing in flight when the server goes away ends as a lost
+    /// connection as soon as the transport ends (the request is raced with
+    /// it), which the command layer retries. It waited out russh-sftp's 10 s
+    /// and was reported as "not found" (exit 2).
     #[tokio::test(start_paused = true)]
     async fn a_listing_cut_by_the_server_going_away_is_a_lost_connection() {
         let mut provider = provider_on_a_server_that_goes_away(GoAwayAt::OpenDir, Vec::new()).await;
