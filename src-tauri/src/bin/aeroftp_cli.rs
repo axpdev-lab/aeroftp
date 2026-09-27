@@ -36244,6 +36244,46 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
     }
 }
 
+/// The `import rclone --json` document. It carries no credential: servers say
+/// `hasCredential` instead of the password, and the options the importer fills
+/// with a revealed secret (the crypt password and salt, the Filen API key) are
+/// left out, as the GUI preview leaves them out.
+fn rclone_import_json(
+    result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
+    apply: bool,
+    applied_summary: Option<&RcloneApplySummary>,
+) -> serde_json::Value {
+    let mut redacted = serde_json::json!({
+        "servers": result.servers.iter().map(|s| serde_json::json!({
+            "id": s.id,
+            "name": s.name,
+            "host": s.host,
+            "port": s.port,
+            "username": s.username,
+            "protocol": s.protocol,
+            "initialPath": s.initial_path,
+            "options": ftp_client_gui_lib::rclone_import::options_without_secrets(
+                s.options.as_ref()
+            ),
+            "hasCredential": s.credential.is_some(),
+        })).collect::<Vec<_>>(),
+        "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+        "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
+        "sourcePath": result.source_path,
+        "totalRemotes": result.total_remotes,
+        "applied": apply,
+    });
+    if let Some(summary) = applied_summary {
+        redacted["appliedSummary"] = serde_json::json!({
+            "passwordsStored": summary.passwords_stored,
+            "oauthTokensStored": summary.oauth_tokens_stored,
+            "jottaRefreshStored": summary.jotta_refresh_stored,
+            "profilesAppended": summary.profiles_appended,
+        });
+    }
+    redacted
+}
+
 async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &Cli) -> i32 {
     use ftp_client_gui_lib::rclone_import;
 
@@ -36319,36 +36359,14 @@ async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &
             }
 
             if json {
-                // Redact credentials: never output plaintext passwords to stdout
-                let mut redacted = serde_json::json!({
-                    "servers": result.servers.iter().map(|s| serde_json::json!({
-                        "id": s.id,
-                        "name": s.name,
-                        "host": s.host,
-                        "port": s.port,
-                        "username": s.username,
-                        "protocol": s.protocol,
-                        "initialPath": s.initial_path,
-                        "options": s.options,
-                        "hasCredential": s.credential.is_some(),
-                    })).collect::<Vec<_>>(),
-                    "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
-                    "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
-                    "sourcePath": result.source_path,
-                    "totalRemotes": result.total_remotes,
-                    "applied": apply,
-                });
-                if let Some(summary) = &applied_summary {
-                    redacted["appliedSummary"] = serde_json::json!({
-                        "passwordsStored": summary.passwords_stored,
-                        "oauthTokensStored": summary.oauth_tokens_stored,
-                        "jottaRefreshStored": summary.jotta_refresh_stored,
-                        "profilesAppended": summary.profiles_appended,
-                    });
-                }
                 println!(
                     "{}",
-                    serde_json::to_string_pretty(&redacted).unwrap_or_default()
+                    serde_json::to_string_pretty(&rclone_import_json(
+                        &result,
+                        apply,
+                        applied_summary.as_ref()
+                    ))
+                    .unwrap_or_default()
                 );
             } else {
                 println!(
@@ -37032,8 +37050,8 @@ async fn cmd_export_rclone(
     let filter = parse_profile_name_filter(profiles);
 
     // Single source of truth shared with the GUI bridge: the credential
-    // backends (FTP/SFTP/WebDAV/S3/Filen/Mega/Azure/Swift/Koofr/OpenDrive/
-    // Backblaze) plus the #128-D OAuth-token providers (Drive/Dropbox/
+    // backends (FTP/SFTP/WebDAV/S3/Filen/Mega/Internxt/Azure/Swift/Koofr/
+    // OpenDrive/Backblaze) plus the #128-D OAuth-token providers (Drive/Dropbox/
     // OneDrive/Box/pCloud/Yandex/Zoho), whose token + BYO client_id/secret
     // are injected below. Jottacloud is appended CLI-only: its rclone export
     // rebuilds the persisted OIDC refresh token into a working token (verified
@@ -76939,6 +76957,54 @@ mod tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("mem-tree".to_string())
         }
+    }
+
+    /// `import rclone --json` printed every server's `options` as imported,
+    /// under a comment promising no plaintext password on stdout: a crypt
+    /// overlay's password and salt and a Filen API key went out revealed. The
+    /// values below come from the real `rclone obscure` (v1.75.1).
+    #[test]
+    fn import_rclone_json_prints_no_revealed_secret() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "\
+[base]
+type = sftp
+host = example.com
+user = me
+
+[vault]
+type = crypt
+remote = base:vault
+password = BgXYaxA3d0gsDcU-bvJ2XJz6EdJONj19szH2IdXkKg
+password2 = mjtTXNyNZn88PP0n-rDRojtkDnqkqRio7KzRQqJl-w
+
+[filen-acct]
+type = filen
+email = me@example.com
+password = CrJEBaRGAs70RSR0bcBPEkueD6ODk8bYD49QQDiJCQ
+api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
+",
+        )
+        .expect("write the config");
+        let result = ftp_client_gui_lib::rclone_import::import_rclone(&conf).expect("import");
+        assert_eq!(result.servers.len(), 3, "base, vault and filen-acct import");
+
+        let printed =
+            serde_json::to_string(&rclone_import_json(&result, false, None)).expect("serialize");
+        for secret in [
+            "CryptPassPlain1",
+            "CryptSaltPlain2",
+            "FilenApiKeyPlain3",
+            "FilenPassPlain4",
+        ] {
+            assert!(!printed.contains(secret), "'{secret}' on stdout: {printed}");
+        }
+        // What is left still says what was found.
+        assert!(printed.contains("\"rcloneCryptEnabled\":true"), "{printed}");
+        assert!(printed.contains("\"hasCredential\":true"), "{printed}");
     }
 
     static SESSION_TRANSFER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());

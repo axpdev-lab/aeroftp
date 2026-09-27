@@ -49,8 +49,11 @@ tool's format can carry them, so every non-rclone column would be `--`.
 Every provider in this table now both **imports and exports**. Recoverable-secret
 backends (user + password, account + key) export their secret directly. The OAuth
 backends (Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex, Zoho WorkDrive) export the OAuth
-token AeroFTP persists for the profile; rclone refreshes it on first use, so no
-provider-issued client setup is needed. Jottacloud follows the same token model
+token AeroFTP persists for the profile together with the `client_id` and
+`client_secret` of your own OAuth app that minted it, so rclone can refresh it
+with no setup of its own; when the vault lacks any of the three, the remote is
+still written, with a comment asking for `rclone config reconnect "<remote>:"`.
+Jottacloud follows the same token model
 via its persisted OIDC refresh token, and Filen exports its email, password and
 Filen CLI api key. (Token and credential export across these providers landed for
 v4.0.9.) Internxt exports its email and password; rclone then needs one
@@ -99,8 +102,10 @@ way: an importer reads whatever connection types it recognizes in the file.)
 
 - **rclone OAuth providers** (Google Drive, Dropbox, OneDrive, Box, pCloud,
   Yandex, Zoho WorkDrive) now export too: AeroFTP emits the OAuth token it persists for the
-  profile, which rclone refreshes on first use, so no provider-issued client
-  setup is needed. OneDrive also carries the captured drive_id/drive_type. The
+  profile with the `client_id` and `client_secret` of the OAuth app that minted
+  it, so rclone can refresh it; without all three in the vault the remote asks
+  for one `rclone config reconnect`. OneDrive also carries the captured
+  drive_id/drive_type, Zoho WorkDrive its region and root folder id. The
   recoverable-secret providers (MEGA, Azure, Swift, Koofr, OpenDrive, Backblaze
   B2), Jottacloud, Filen (email + password + api key) and Internxt (email +
   password, then one `rclone config reconnect`) export their secrets directly.
