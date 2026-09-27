@@ -30158,6 +30158,16 @@ async fn webdav_dispatch(
     };
     let remote_path = build_served_remote_path(&state.base_path, &relative_path);
 
+    // The served root is the share itself: a DELETE of it recursed into the
+    // whole base path, and a MOVE of it took the share away from under the
+    // server. A client removes or moves what is inside it.
+    if relative_path.is_empty() && matches!(method.as_str(), "DELETE" | "MOVE") {
+        return serve_error_response(
+            StatusCode::FORBIDDEN,
+            "The served root cannot be deleted or moved",
+        );
+    }
+
     match method.as_str() {
         "OPTIONS" => {
             let mut response = Response::new(Body::empty());
@@ -80880,6 +80890,45 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .expect("the fake");
         let fake = std::mem::replace(fake, CliEditFakeProvider::new());
         (response.status(), fake)
+    }
+
+    /// A DELETE of the served root recursed into the whole base path, and a
+    /// MOVE of it took the share away: both are 403 and nothing is touched.
+    #[tokio::test]
+    async fn the_served_root_cannot_be_deleted_or_moved() {
+        for method in ["DELETE", "MOVE"] {
+            let mut fake = CliEditFakeProvider::new();
+            fake.remote_files
+                .insert("/a.txt".to_string(), b"kept".to_vec());
+            let provider: Box<dyn StorageProvider> = Box::new(fake);
+            let state = ServeHttpState {
+                provider: Arc::new(AsyncMutex::new(provider)),
+                provider_label: "fake".to_string(),
+                base_path: "/".to_string(),
+                auth_token: None,
+                warnings: ServedWarnings::stderr(OutputFormat::Text),
+            };
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                "Destination",
+                HeaderValue::from_static("http://127.0.0.1:8080/moved"),
+            );
+            let response = webdav_dispatch(
+                state.clone(),
+                Method::from_bytes(method.as_bytes()).unwrap(),
+                String::new(),
+                headers,
+                Bytes::new(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{method}");
+            let mut guard = state.provider.lock().await;
+            let fake = guard
+                .as_any_mut()
+                .downcast_mut::<CliEditFakeProvider>()
+                .expect("the fake");
+            assert!(fake.remote_files.contains_key("/a.txt"), "{method}");
+        }
     }
 
     /// Office and most WebDAV editors save by writing a temporary and
