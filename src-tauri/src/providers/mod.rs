@@ -1782,6 +1782,43 @@ pub async fn delete_non_recursive(
     }
 }
 
+fn is_a_directory(path: &str) -> ProviderError {
+    ProviderError::InvalidPath(format!(
+        "{path} is a directory: this deletes files only; remove a directory with RMD or RMDIR"
+    ))
+}
+
+/// Delete `path` only if it is not a directory: the served FTP DELE (RFC
+/// 959) and SFTP REMOVE, which are file operations. Their directory verbs,
+/// RMD and RMDIR, go through [`remove_empty_directory`]. Unlike
+/// [`delete_non_recursive`], which `rm` uses, an empty directory is refused
+/// too, with InvalidPath, and nothing is removed.
+///
+/// A `stat` that cannot describe the path is judged by listing it. A
+/// listing with entries is a directory. An empty listing is one as well when
+/// `stat` failed to parse the path (Box and GitHub fail that way on a
+/// folder); after a NotFound it is an object-store name with nothing under
+/// it, and the `delete` of the name without its slash leaves a folder's
+/// marker alone. A listing that failed goes on to `delete` only when it says
+/// there is no folder there ([`listing_says_no_folder`]).
+pub async fn delete_file_only(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<(), ProviderError> {
+    match provider.stat(path).await {
+        Ok(entry) if entry.is_dir && !entry.is_symlink => Err(is_a_directory(path)),
+        Ok(_) => provider.delete(path).await,
+        Err(e) if stat_cannot_describe(&e) => match provider.list(path).await {
+            Ok(children) if !children.is_empty() => Err(is_a_directory(path)),
+            Ok(_) if !matches!(e, ProviderError::NotFound(_)) => Err(is_a_directory(path)),
+            Ok(_) => provider.delete(path).await,
+            Err(list_error) if listing_says_no_folder(&list_error) => provider.delete(path).await,
+            Err(list_error) => Err(list_error),
+        },
+        Err(e) => Err(e),
+    }
+}
+
 /// Refuse to stage a temporary that could not then be published.
 ///
 /// Every "write a remote file in place" path in this tree has the same shape:
@@ -3182,6 +3219,47 @@ mod non_recursive_delete_tests {
             assert!(result.is_err(), "{result:?}");
             assert_eq!(p.calls, ["stat", "list"], "{result:?}");
         }
+    }
+
+    /// The served DELE and REMOVE delete files only: a directory, empty or
+    /// not, is refused with nothing removed, and so is a path whose listing
+    /// failed for a reason that says nothing about it.
+    #[tokio::test]
+    async fn a_file_only_delete_refuses_every_directory() {
+        let mut empty = Scripted::new(dir, no_child);
+        let result = delete_file_only(&mut empty, "/d").await;
+        assert!(
+            matches!(result, Err(ProviderError::InvalidPath(ref m)) if m.contains("is a directory")),
+            "{result:?}"
+        );
+        assert_eq!(empty.calls, ["stat"]);
+
+        let mut f = Scripted::new(file, one_child);
+        delete_file_only(&mut f, "/f")
+            .await
+            .expect("DELE of a file");
+        assert_eq!(f.calls, ["stat", "delete"]);
+
+        let mut listed = Scripted::new(not_found, one_child);
+        assert!(delete_file_only(&mut listed, "/d").await.is_err());
+        assert_eq!(listed.calls, ["stat", "list"]);
+
+        let mut unparsed_folder = Scripted::new(
+            || Err(ProviderError::ParseError("an array".to_string())),
+            no_child,
+        );
+        assert!(delete_file_only(&mut unparsed_folder, "/d").await.is_err());
+        assert_eq!(unparsed_folder.calls, ["stat", "list"]);
+
+        let mut unlisted = Scripted::new(not_found, || Err(ProviderError::Timeout));
+        assert!(delete_file_only(&mut unlisted, "/d").await.is_err());
+        assert_eq!(unlisted.calls, ["stat", "list"]);
+
+        let mut object_name = Scripted::new(not_found, no_child);
+        delete_file_only(&mut object_name, "/f")
+            .await
+            .expect("DELE");
+        assert_eq!(object_name.calls, ["stat", "list", "delete"]);
     }
 
     /// An ambiguous path (Cloudinary) and a failed `stat` remove nothing.

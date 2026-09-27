@@ -30793,9 +30793,16 @@ mod serve_ftp_backend {
         ) -> FtpResult<()> {
             let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
-            ftp_client_gui_lib::providers::delete_non_recursive(p.as_mut(), &remote)
+            // DELE removes a file; RMD is the directory verb. A directory is
+            // refused with 550, as a server with a file system answers.
+            ftp_client_gui_lib::providers::delete_file_only(p.as_mut(), &remote)
                 .await
-                .map_err(Self::provider_err_to_ftp)
+                .map_err(|e| match e {
+                    ProviderError::InvalidPath(_) => {
+                        FtpError::new(FtpErrorKind::PermanentFileNotAvailable, e)
+                    }
+                    e => Self::provider_err_to_ftp(e),
+                })
         }
 
         async fn mkd<P: AsRef<Path> + Send + Debug>(
@@ -31133,6 +31140,31 @@ mod serve_sftp {
         rt: Arc<tokio::runtime::Runtime>,
     }
 
+    #[cfg(test)]
+    impl AeroSftpHandler {
+        /// A handler on `provider` serving `/`, without authentication.
+        pub(crate) fn for_tests(
+            provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+            rt: Arc<tokio::runtime::Runtime>,
+        ) -> Self {
+            Self {
+                provider,
+                base_path: "/".to_string(),
+                auth_credentials: None,
+                handles: HashMap::new(),
+                next_handle: 0,
+                dir_read: std::collections::HashSet::new(),
+                sftp_buf: Vec::new(),
+                rt,
+            }
+        }
+
+        /// The reply to one SFTP packet (type byte first, no length).
+        pub(crate) fn answer(&mut self, packet: &[u8]) -> Vec<u8> {
+            self.process_sftp(packet)
+        }
+    }
+
     impl AeroSftpHandler {
         fn resolve_path(&self, path: &str) -> Result<String, &'static str> {
             resolve_served_backend_path(&self.base_path, path)
@@ -31406,10 +31438,17 @@ mod serve_sftp {
                         }
                     };
                     let r = remote.clone();
+                    // REMOVE removes a file; RMDIR is the directory verb.
+                    // Protocol 3 has no "is a directory" status: it is
+                    // SSH_FX_FAILURE, as OpenSSH's sftp-server answers for
+                    // EISDIR, with a message that says why.
                     match prov!(provider, rt, async |p| {
-                        ftp_client_gui_lib::providers::delete_non_recursive(p, &r).await
+                        ftp_client_gui_lib::providers::delete_file_only(p, &r).await
                     }) {
                         Ok(()) => make_status(id, SSH_FX_OK, ""),
+                        Err(ProviderError::InvalidPath(_)) => {
+                            make_status(id, SSH_FX_FAILURE, "is a directory")
+                        }
                         Err(_) => make_status(id, SSH_FX_FAILURE, "delete failed"),
                     }
                 }
@@ -80646,6 +80685,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         chmod_supported: bool,
         /// When set, `chmod` fails with this.
         chmod_fails_with: Option<String>,
+        /// Empty directories: `stat` reports them as such, and both `rmdir`
+        /// and `delete` remove them, as on a backend whose delete of a
+        /// folder takes it along.
+        dirs: std::collections::HashSet<String>,
     }
 
     impl CliEditFakeProvider {
@@ -80667,6 +80710,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 links: HashMap::new(),
                 chmod_supported: false,
                 chmod_fails_with: None,
+                dirs: std::collections::HashSet::new(),
             }
         }
     }
@@ -80752,11 +80796,13 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
 
         async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
             self.remote_files.remove(path);
+            self.dirs.remove(path);
             self.deleted.push(path.to_string());
             Ok(())
         }
 
-        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.dirs.remove(path);
             Ok(())
         }
 
@@ -80831,6 +80877,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
             if let Some(msg) = &self.stat_fails_with {
                 return Err(ProviderError::ConnectionFailed(msg.clone()));
+            }
+            if self.dirs.contains(path) {
+                let name = path.rsplit('/').next().unwrap_or(path).to_string();
+                return Ok(RemoteEntry::directory(name, path.to_string()));
             }
             let mut entry = self
                 .remote_files
@@ -81492,6 +81542,93 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             provider.remote_files.get("/target.txt").map(Vec::as_slice),
             Some(b"old text".as_slice())
         );
+    }
+
+    /// A served provider holding the empty directory `/d`.
+    fn served_provider_with_an_empty_directory() -> Arc<AsyncMutex<Box<dyn StorageProvider>>> {
+        let mut fake = CliEditFakeProvider::new();
+        fake.dirs.insert("/d".to_string());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        Arc::new(AsyncMutex::new(provider))
+    }
+
+    async fn served_directory_is_there(
+        provider: &Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+    ) -> bool {
+        let mut guard = provider.lock().await;
+        guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake")
+            .dirs
+            .contains("/d")
+    }
+
+    /// DELE (RFC 959) deletes a file and RMD a directory. The served DELE
+    /// went through the non-recursive delete, which removes an empty
+    /// directory too: it now answers 550 and the directory stays, and RMD
+    /// still removes it.
+    #[tokio::test]
+    async fn served_ftp_dele_refuses_a_directory_and_rmd_removes_it() {
+        use unftp_core::storage::StorageBackend;
+        let provider = served_provider_with_an_empty_directory();
+        let backend = serve_ftp_backend::AeroFtpBackend::new(provider.clone(), "/".to_string());
+        let user = unftp_core::auth::DefaultUser;
+
+        let outcome = backend.del(&user, "/d").await;
+        assert!(
+            served_directory_is_there(&provider).await,
+            "DELE must not remove a directory: {outcome:?}"
+        );
+        let error = outcome.expect_err("DELE of a directory");
+        assert_eq!(
+            error.kind(),
+            unftp_core::storage::ErrorKind::PermanentFileNotAvailable,
+            "{error:?}"
+        );
+
+        backend
+            .rmd(&user, "/d")
+            .await
+            .expect("RMD of an empty directory");
+        assert!(!served_directory_is_there(&provider).await);
+    }
+
+    /// SSH_FXP_REMOVE is the file verb and SSH_FXP_RMDIR the directory one.
+    /// The served REMOVE removed an empty directory; it is now a failure and
+    /// the directory stays, and RMDIR still removes it.
+    #[test]
+    fn served_sftp_remove_refuses_a_directory_and_rmdir_removes_it() {
+        let rt = Arc::new(
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .expect("runtime"),
+        );
+        let provider = served_provider_with_an_empty_directory();
+        let mut handler = serve_sftp::AeroSftpHandler::for_tests(provider.clone(), rt.clone());
+        // SSH_FXP_REMOVE (13) or SSH_FXP_RMDIR (15), id 7, path `/d`.
+        let packet = |kind: u8| {
+            let mut packet = vec![kind];
+            packet.extend_from_slice(&7u32.to_be_bytes());
+            packet.extend_from_slice(&2u32.to_be_bytes());
+            packet.extend_from_slice(b"/d");
+            packet
+        };
+        // SSH_FXP_STATUS: type, id, then the status code.
+        let status = |reply: &[u8]| u32::from_be_bytes(reply[5..9].try_into().expect("code"));
+
+        let reply = handler.answer(&packet(13));
+        assert!(
+            rt.block_on(served_directory_is_there(&provider)),
+            "REMOVE must not remove a directory"
+        );
+        assert_eq!(status(&reply), 4, "SSH_FX_FAILURE");
+
+        let reply = handler.answer(&packet(15));
+        assert_eq!(status(&reply), 0, "SSH_FX_OK");
+        assert!(!rt.block_on(served_directory_is_there(&provider)));
     }
 
     #[test]
