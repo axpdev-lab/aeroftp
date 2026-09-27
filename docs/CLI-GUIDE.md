@@ -592,6 +592,8 @@ aeroftp-cli edit --profile "server" /var/www/index.html "Old Title" "New Title" 
 
 This is a scripted remote text edit flow, not an interactive `$EDITOR` session. The CLI downloads the remote UTF-8 file, applies a deterministic find/replace, then uploads the modified content.
 
+On a server that cannot put one file over another in a single step (MEGA, Filen, FileLu, Dropbox, Koofr, Drime, Box, Internxt, 4shared, WorkDrive), `edit` refuses and writes nothing. `--allow-non-atomic` is the opt-in: the previous file is set aside, the new one is moved into its place, and the old one is then deleted. There is a short moment with no file, and the old one is not lost. The same switch is `allow_non_atomic` on the MCP `aeroftp_edit` tool and on AeroAgent `remote_edit`.
+
 ### cat - Print File Content
 
 ```bash

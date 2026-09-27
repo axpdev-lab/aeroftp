@@ -10,7 +10,7 @@
 //!   aeroftp mv <url> <from> <to>              Rename/move
 //!   aeroftp cp <url> <from> <to>              Server-side copy when supported
 //!   aeroftp link <url> <path>                 Create a share link when supported
-//!   aeroftp edit <url> <path> <find> <replace> Replace text in a remote UTF-8 file
+//!   aeroftp edit <url> <path> <find> <replace> [--allow-non-atomic] Replace text in a remote UTF-8 file
 //!   aeroftp cat <url> <path>                  Print to stdout
 //!   aeroftp head <url> <path> [-n 20]         Print first N lines
 //!   aeroftp tail <url> <path> [-n 20]         Print last N lines
@@ -1926,6 +1926,12 @@ enum Commands {
         /// Replace only the first occurrence
         #[arg(long)]
         first: bool,
+        /// On a server that cannot put one file over another in one step,
+        /// set the previous file aside, move the new one into its place, and
+        /// then delete the old one. There is a short moment with no file.
+        /// Without this flag the edit is refused and nothing is written.
+        #[arg(long)]
+        allow_non_atomic: bool,
     },
     /// Print remote file to stdout (for piping)
     Cat {
@@ -26431,7 +26437,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
                 {"name": "mv", "syntax": "aeroftp-cli mv --profile NAME /old /new", "description": "Move/rename"},
                 {"name": "cp", "syntax": "aeroftp-cli cp --profile NAME /old /new", "description": "Server-side copy when supported"},
                 {"name": "link", "syntax": "aeroftp-cli link --profile NAME /path/file", "description": "Create share link when supported"},
-                {"name": "edit", "syntax": "aeroftp-cli edit --profile NAME /path/file \"find\" \"replace\" [--first]", "description": "Replace text in a remote UTF-8 file"},
+                {"name": "edit", "syntax": "aeroftp-cli edit --profile NAME /path/file \"find\" \"replace\" [--first] [--allow-non-atomic]", "description": "Replace text in a remote UTF-8 file"},
                 {"name": "sync", "syntax": "aeroftp-cli sync --profile NAME ./local/ /remote/ [--dry-run]", "description": "Sync directories"},
                 {"name": "transfer", "syntax": "aeroftp-cli transfer \"SRC_PROFILE\" \"DST_PROFILE\" /src/path /dst/path [-r] [--dry-run] [--skip-existing]", "description": "Copy files between two saved profiles (cross-profile, no local hop on disk)"},
             ],
@@ -35529,12 +35535,17 @@ async fn publish_cli_edit_via_temp_rename(
     provider: &mut dyn StorageProvider,
     local_temp_path: &str,
     remote_path: &str,
+    allow_non_atomic: bool,
 ) -> Result<(), ProviderError> {
     // Asked before the temporary exists, not after. A backend that cannot put
     // one file over another refuses here, while the server is still untouched,
     // so the refusal can say that nothing was written and be telling the truth
-    // (G119).
-    ftp_client_gui_lib::providers::ensure_atomic_replace(provider, remote_path).await?;
+    // (G119). `--allow-non-atomic` is the explicit opt-in to the set-aside
+    // replace those backends already implement: a short moment with no file,
+    // and the previous one is not lost.
+    if !allow_non_atomic {
+        ftp_client_gui_lib::providers::ensure_atomic_replace(provider, remote_path).await?;
+    }
 
     let remote_temp_path = cli_edit_temp_path(remote_path);
     if let Err(e) = provider
@@ -35560,6 +35571,7 @@ async fn cmd_edit(
     find: &str,
     replace: &str,
     replace_all: bool,
+    allow_non_atomic: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -35688,7 +35700,9 @@ async fn cmd_edit(
     }
 
     let temp_path = temp_file.path().to_string_lossy().to_string();
-    match publish_cli_edit_via_temp_rename(provider.as_mut(), &temp_path, path).await {
+    match publish_cli_edit_via_temp_rename(provider.as_mut(), &temp_path, path, allow_non_atomic)
+        .await
+    {
         Ok(()) => {
             match format {
                 OutputFormat::Text => {
@@ -66708,13 +66722,14 @@ async fn main() {
             find,
             replace,
             first,
+            allow_non_atomic,
         } => {
             let (u, p, f, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), path.as_str(), find.as_str())
             } else {
                 (url.as_str(), path.as_str(), find.as_str(), replace.as_str())
             };
-            cmd_edit(u, p, f, r, !first, &cli, format).await
+            cmd_edit(u, p, f, r, !first, *allow_non_atomic, &cli, format).await
         }
         Commands::Cat { url, path } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -80795,7 +80810,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .remote_files
             .insert("/target.txt".to_string(), b"old text".to_vec());
 
-        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
+        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
             .await
             .expect("publish should succeed");
 
@@ -81123,9 +81138,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .insert("/target.txt".to_string(), b"old text".to_vec());
         provider.replace_fails_with = Some("replace failed".to_string());
 
-        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
-            .await
-            .unwrap_err();
+        let err =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await
+                .unwrap_err();
         assert!(err.to_string().contains("replace failed"), "got: {err}");
 
         let temp_path = provider.uploads[0].0.clone();
@@ -81154,9 +81170,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .insert("/target.txt".to_string(), b"old text".to_vec());
         provider.atomic_replace = false;
 
-        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
-            .await
-            .unwrap_err();
+        let err =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await
+                .unwrap_err();
 
         assert!(
             provider.uploads.is_empty(),
@@ -81177,6 +81194,42 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert!(
             text.contains("put"),
             "the error must name the explicit alternative, got: {text}"
+        );
+        assert!(
+            text.contains("allow-non-atomic"),
+            "the error must name the edit opt-in, got: {text}"
+        );
+    }
+
+    /// `--allow-non-atomic` is the opt-in those backends were refused for.
+    /// The publish still goes through `replace` (set the old file aside, move
+    /// the new one in, delete the old), and it still happens only after the
+    /// caller asked.
+    #[tokio::test]
+    async fn cli_edit_publish_allow_non_atomic_replaces_without_an_atomic_backend() {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.atomic_replace = false;
+
+        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", true)
+            .await
+            .expect("opted-in publish should use replace");
+
+        assert_eq!(provider.uploads.len(), 1);
+        let temp_path = provider.uploads[0].0.clone();
+        assert_eq!(
+            provider.replaces,
+            vec![(temp_path, "/target.txt".to_string())]
+        );
+        assert!(provider.renames.is_empty());
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
         );
     }
 

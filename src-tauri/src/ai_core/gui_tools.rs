@@ -873,16 +873,42 @@ pub async fn dispatch_gui_tool(
             std::fs::write(&tmp_path, &new_content)
                 .map_err(|e| format!("Failed to write temp file: {}", e))?;
 
+            let allow_non_atomic = args
+                .get("allow_non_atomic")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let upload_result = if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
                 let provider = match provider.as_mut() {
-                    Some(p) => p,
+                    Some(p) => p.as_mut(),
                     None => return Err("No active provider connection".into()),
                 };
-                provider
-                    .upload(&tmp_path, &path, None)
-                    .await
-                    .map_err(|e| e.to_string())
+                if allow_non_atomic {
+                    // Set-aside replace: the previous file is renamed aside,
+                    // the new one moves into its place, then the old one is
+                    // deleted. A short moment with no file, and nothing lost.
+                    let remote_temp = format!("{path}.aeroedit-{}.tmp", uuid::Uuid::new_v4());
+                    if let Err(e) = provider.upload(&tmp_path, &remote_temp, None).await {
+                        let _ = provider.delete(&remote_temp).await;
+                        let _ = std::fs::remove_file(&tmp_path);
+                        return Err(e.to_string());
+                    }
+                    if let Err(e) = provider.replace(&remote_temp, &path).await {
+                        let _ = provider.delete(&remote_temp).await;
+                        let _ = std::fs::remove_file(&tmp_path);
+                        return Err(e.to_string());
+                    }
+                    Ok(())
+                } else if let Err(e) =
+                    crate::providers::ensure_atomic_replace(provider, &path).await
+                {
+                    Err(e.to_string())
+                } else {
+                    provider
+                        .upload(&tmp_path, &path, None)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
             } else if has_ftp(&app_state).await {
                 let mut manager = app_state.ftp_manager.lock().await;
                 manager

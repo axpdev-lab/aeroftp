@@ -1311,13 +1311,14 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_edit",
-            description: "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories.",
+            description: "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories. On a server that cannot replace a file in one step the edit is refused unless `allow_non_atomic` is true, in which case the previous file is set aside, the new one is moved into its place, and the old one is then deleted.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "path": { "type": "string", "description": "Remote file path (UTF-8 text)" },
                 "find": { "type": "string", "description": "Literal string to search for (not a regex)" },
                 "replace": { "type": "string", "description": "Replacement string" },
-                "first": { "type": "boolean", "description": "Replace only the first occurrence (default: false: replace all)" }
+                "first": { "type": "boolean", "description": "Replace only the first occurrence (default: false: replace all)" },
+                "allow_non_atomic": { "type": "boolean", "description": "When true, edit a file on a server that cannot replace it in one step: the previous file is set aside, the new one is moved into its place, and the old one is then deleted. There is a short moment with no file. Default: false, which refuses the edit and writes nothing." }
             }, "required": ["server", "path", "find", "replace"] }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,
@@ -1330,7 +1331,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                 "path": { "type": "string" },
                 "find": { "type": "string" },
                 "replace": { "type": "string" },
-                "first": { "type": "boolean" }
+                "first": { "type": "boolean" },
+                "allow_non_atomic": { "type": "boolean", "description": "When true, edit a file on a server that cannot replace it in one step: the previous file is set aside, the new one is moved into its place, and the old one is then deleted. There is a short moment with no file. Default: false, which refuses the edit and writes nothing." }
             }, "required": ["server", "path", "find", "replace"] }),
             danger: DangerLevel::Medium,
             surfaces: remote_surfaces,

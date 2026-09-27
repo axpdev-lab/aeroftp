@@ -1231,6 +1231,7 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let find = get_str(args, "find")?;
     let replace = get_str(args, "replace")?;
     let first_only = get_bool_opt(args, "first").unwrap_or(false);
+    let allow_non_atomic = get_bool_opt(args, "allow_non_atomic").unwrap_or(false);
 
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     let entry = backend.stat(&path).await.map_err(ToolError::Exec)?;
@@ -1296,15 +1297,20 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     // Asked before the temporary exists, not after: a backend that cannot put
     // one file over another refuses while the server is still untouched, so
     // the refusal the agent reads can say that nothing was written (G119).
-    if !backend
-        .supports_atomic_replace()
-        .await
-        .map_err(ToolError::Exec)?
+    // `allow_non_atomic` skips the refusal and still publishes with `replace`.
+    if !allow_non_atomic
+        && !backend
+            .supports_atomic_replace()
+            .await
+            .map_err(ToolError::Exec)?
     {
         return Err(ToolError::Exec(format!(
             "cannot edit `{path}` in place: this server offers no atomic way to put one \
              file over another, and doing it in two steps would leave a moment with no \
-             file at all. Nothing was written and `{path}` is unchanged."
+             file at all. Nothing was written and `{path}` is unchanged. Pass \
+             allow_non_atomic true to set the previous file aside, move the new one into \
+             its place, and then delete the old one: a short moment with no file, and \
+             the old one is not lost."
         )));
     }
 
@@ -3770,6 +3776,9 @@ mod tests {
         /// that refuses control characters), switchable so a test can stand
         /// on the encoding side of the rule (Box/Dropbox/Jottacloud/OpenDrive).
         provider_type: Option<ProviderType>,
+        /// What `supports_atomic_replace` answers. True, matching the trait
+        /// default, unless a test stands on a set-aside backend.
+        atomic_replace: bool,
     }
 
     impl FakeBackend {
@@ -3813,6 +3822,7 @@ mod tests {
                 mkdir_calls: Mutex::new(Vec::new()),
                 symlinks: std::collections::HashSet::new(),
                 provider_type: Some(ProviderType::Ftp),
+                atomic_replace: true,
             }
         }
 
@@ -3930,6 +3940,9 @@ mod tests {
                 .mkdir_fails_with
                 .clone()
                 .unwrap_or_else(|| "unused".to_string()))
+        }
+        async fn supports_atomic_replace(&self) -> Result<bool, String> {
+            Ok(self.atomic_replace)
         }
         async fn rename(&self, from: &str, to: &str) -> Result<(), String> {
             if let Some(msg) = &self.rename_fails_with {
@@ -4834,6 +4847,59 @@ mod tests {
                 .unwrap()
                 .contains_key(&temp_path),
             "rename failure cleanup must remove the staged temp"
+        );
+    }
+
+    /// A set-aside backend refuses `edit` until `allow_non_atomic` is set,
+    /// and then publishes with `replace` rather than writing nothing.
+    #[tokio::test]
+    async fn edit_allow_non_atomic_replaces_when_the_backend_cannot() {
+        let mut fake = FakeBackend::sample();
+        fake.atomic_replace = false;
+        fake.downloads
+            .insert("/root/a.txt".to_string(), b"old text".to_vec());
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+
+        let err = edit(
+            &ctx,
+            &json!({
+                "server": "s",
+                "path": "/root/a.txt",
+                "find": "old",
+                "replace": "new",
+            }),
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("allow_non_atomic"),
+            "the refusal must name the opt-in, got: {msg}"
+        );
+        assert!(backend.uploads.lock().unwrap().is_empty());
+
+        let value = edit(
+            &ctx,
+            &json!({
+                "server": "s",
+                "path": "/root/a.txt",
+                "find": "old",
+                "replace": "new",
+                "allow_non_atomic": true,
+            }),
+        )
+        .await
+        .expect("opted-in edit publishes with replace");
+        assert_eq!(value["replacements"], json!(1));
+        assert_eq!(
+            backend
+                .remote_files
+                .lock()
+                .unwrap()
+                .get("/root/a.txt")
+                .map(Vec::as_slice),
+            Some(b"new text".as_slice())
         );
     }
 

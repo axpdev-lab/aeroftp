@@ -1772,7 +1772,10 @@ pub async fn ensure_atomic_replace(
          file at all. Nothing was written and `{target}` is unchanged. To overwrite it \
          anyway, upload over it with `put`, which truncates and rewrites in place: that \
          is not atomic either, but it is your choice and its bad moment is a partial \
-         file rather than no file."
+         file rather than no file. `edit` can set the previous file aside instead: pass \
+         `--allow-non-atomic`, or `allow_non_atomic` true to the edit tool. The old file \
+         is renamed aside, the new one moves into its place, and the old one is then \
+         deleted. There is a short moment with no file, and the old one is not lost."
     )))
 }
 
