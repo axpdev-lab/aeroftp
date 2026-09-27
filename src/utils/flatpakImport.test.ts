@@ -107,7 +107,7 @@ describe('flatpakImportResultDialog', () => {
         });
     });
 
-    it('does not mention a vault the host config does not have', () => {
+    it('says no servers or vault came when the host config has none to copy', () => {
         expect(flatpakImportResultDialog({ kind: 'imported', copied: 1, vault: 'absent' }, t).message)
             .toBe('flatpak.importedNoVaultBody');
         expect(flatpakImportResultDialog({ kind: 'nothing', vault: 'absent', nothingImportable: false }, t).message)
