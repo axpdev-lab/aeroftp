@@ -10463,7 +10463,7 @@ async fn download_transfer_task(
     aggregate: Option<Arc<AtomicU64>>,
     overall_pb: Option<ProgressBar>,
     max_transfer_limit: Option<u64>,
-) -> Result<(), String> {
+) -> Result<Option<(u64, String)>, String> {
     // --max-transfer: skip if session limit already exceeded
     if session_transfer_exceeded(max_transfer_limit) {
         return Err("max-transfer limit reached".to_string());
@@ -10494,14 +10494,18 @@ async fn download_transfer_task(
 
     // Account transferred bytes, and keep the remote mtime on the local copy
     // (same as the shared executor and the GUI).
+    let mut landed = None;
     if result.is_ok() {
         ftp_client_gui_lib::preserve_remote_mtime(&local_path, remote_modified.as_deref());
         let bytes = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
         session_transfer_add(bytes);
+        // What the download left, read now rather than after the disconnect:
+        // an edit made later is a change, not the downloaded state.
+        landed = sync_local_state(&local_path);
     }
 
     let _ = provider.disconnect().await;
-    result
+    result.map(|()| landed)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -33458,6 +33462,7 @@ async fn cmd_get_glob(
                             resolve_max_transfer(cli),
                         )
                         .await
+                        .map(|_| ())
                         .map(|_| remote_path)
                     }
                 },
@@ -47364,13 +47369,14 @@ async fn sync_checksum_verdicts(
 fn sync_open_pairs_hint(direction: &str) -> &'static str {
     if direction == "both" {
         "To settle them: make the two copies the same, choose a rule for them \
-         (--conflict-mode rename, larger or smaller), or sync them one way \
-         (--direction upload or download, with --files-from naming them). \
-         --resync does not settle them. Deleting one copy by hand is not a way \
-         out: with --delete the next run deletes the other copy too."
+         (--conflict-mode rename; larger or smaller only for copies of different \
+         sizes), or sync them one way (--direction upload or download, with \
+         --files-from naming them). --resync does not settle them. Deleting one \
+         copy by hand is not a way out: with --delete the next run deletes the \
+         other copy too."
     } else {
         "To transfer them, run again with --conflict-mode source and without \
-         --update, or with --files-from naming the ones to copy."
+         --update (add --files-from naming them to copy only those)."
     }
 }
 
@@ -48188,13 +48194,13 @@ fn sync_relative_path(path: &Path, root: &str) -> String {
         .replace('\\', "/")
 }
 
-/// A local file's modification time in the form `sync` compares.
 /// A local file's size and mtime as the scans record them, read now.
 fn sync_local_state(path: &str) -> Option<(u64, String)> {
     let meta = std::fs::metadata(path).ok()?;
     Some((meta.len(), sync_local_mtime(&meta).unwrap_or_default()))
 }
 
+/// A local file's modification time in the form `sync` compares.
 fn sync_local_mtime(meta: &std::fs::Metadata) -> Option<String> {
     meta.modified().ok().map(|t| {
         let dt: chrono::DateTime<chrono::Utc> = t.into();
@@ -50257,7 +50263,6 @@ async fn cmd_sync(
                     if let Some(parent) = Path::new(&local_path).parent() {
                         let _ = std::fs::create_dir_all(parent);
                     }
-                    let written = local_path.clone();
                     match download_transfer_task(
                         url,
                         remote_path,
@@ -50271,7 +50276,7 @@ async fn cmd_sync(
                     )
                     .await
                     {
-                        Ok(()) => Ok((path, sync_local_state(&written))),
+                        Ok(landed) => Ok((path, landed)),
                         Err(err) => Err(format!("download {}: {}", path, err)),
                     }
                 }
@@ -57862,6 +57867,30 @@ fn watch_cycle_payload(
     payload
 }
 
+/// Watcher events that did not start a cycle: they came while one ran or in
+/// the cooldown after it. They are kept, not dropped, for the cycle that runs
+/// when the cooldown ends: the snapshot has to learn them (mostly a cycle's
+/// own writes), and a user edit among them has to be synced.
+#[derive(Default)]
+struct WatchDeferred {
+    paths: Vec<std::path::PathBuf>,
+    /// When the cycle for them is due; `None` when nothing waits.
+    due: Option<tokio::time::Instant>,
+}
+
+impl WatchDeferred {
+    fn defer(&mut self, paths: Vec<std::path::PathBuf>, due: tokio::time::Instant) {
+        self.paths.extend(paths);
+        self.due.get_or_insert(due);
+    }
+
+    /// The paths waiting, handed to the cycle that runs now.
+    fn take(&mut self) -> Vec<std::path::PathBuf> {
+        self.due = None;
+        std::mem::take(&mut self.paths)
+    }
+}
+
 /// Build the local side of a watch cycle incrementally: refresh metadata only
 /// for watcher-reported paths, and take everything else from the snapshot.
 /// This avoids a full walkdir when only a few files changed.
@@ -58115,15 +58144,12 @@ async fn cmd_sync_watch(
         .checked_sub(std::time::Duration::from_secs(watch_cooldown + 1))
         .unwrap_or_else(std::time::Instant::now);
 
+    // The watcher events that did not start a cycle (see `WatchDeferred`).
+    let mut deferred = WatchDeferred::default();
+
     // Helper macro to run one sync cycle.
     // Usage: run_sync_cycle!("trigger")           : full walkdir scan (None)
     //        run_sync_cycle!("trigger", entries)   : incremental (Some(entries))
-    // The paths the watcher reported while a cycle ran: mostly the cycle's
-    // own writes. They must not start another cycle, but the incremental
-    // snapshot has to learn them, or the next cycle reads a file the last one
-    // downloaded as it was before, and transfers it back.
-    let mut changed_during_cycle: Vec<std::path::PathBuf> = Vec::new();
-
     macro_rules! run_sync_cycle {
         ($trigger:expr) => {
             run_sync_cycle!($trigger, None)
@@ -58208,10 +58234,11 @@ async fn cmd_sync_watch(
                 }
             }
 
-            // Drain the watcher events accumulated during the sync: they do
-            // not start a cycle, and the incremental snapshot takes them in.
+            // Drain the watcher events accumulated during the sync, mostly its
+            // own writes: they wait for the cycle that runs when the cooldown
+            // ends, which brings them into the incremental snapshot.
             while let Ok(paths) = async_rx.try_recv() {
-                changed_during_cycle.extend(paths);
+                deferred.defer(paths, tokio::time::Instant::now() + cooldown_dur);
             }
 
             stats.exit_code
@@ -58253,7 +58280,6 @@ async fn cmd_sync_watch(
     }
 
     // Build initial snapshot after first sync (or immediately if --watch-no-initial)
-    changed_during_cycle.clear();
     if use_incremental {
         local_snapshot = build_watch_local_snapshot(local, &local_filter);
         note_incomplete_watch_snapshot(&local_snapshot, quiet);
@@ -58261,7 +58287,8 @@ async fn cmd_sync_watch(
 
     // Watch loop
     loop {
-        tokio::select! {
+        // The paths of the watcher cycle to run now, if one is due.
+        let due: Option<Vec<std::path::PathBuf>> = tokio::select! {
             biased; // prioritize ctrl_c
 
             _ = shutdown_tick.tick() => {
@@ -58274,65 +58301,32 @@ async fn cmd_sync_watch(
                     }
                     return 0;
                 }
+                None
             }
 
             Some(changed_paths) = async_rx.recv() => {
-                // Suppress if sync in progress
-                if syncing.load(Ordering::SeqCst) {
-                    while async_rx.try_recv().is_ok() {}
-                    continue;
-                }
-                // Cooldown check
-                if last_sync_completed.elapsed() < cooldown_dur {
-                    while async_rx.try_recv().is_ok() {}
-                    continue;
-                }
-                let path_count = changed_paths.len();
-                let trigger = format!("watcher: {} paths", path_count);
-
-                if use_incremental && local_snapshot.completeness.is_complete() {
-                    let scan = incremental_local_scan(
-                        local_path,
-                        &changed_paths,
-                        &local_snapshot,
-                        &local_filter,
-                    );
-                    local_snapshot = WatchLocalSnapshot::from_scan(&scan);
-                    run_sync_cycle!(trigger.as_str(), Some(scan));
-                    let written = std::mem::take(&mut changed_during_cycle);
-                    if !written.is_empty() {
-                        local_snapshot = WatchLocalSnapshot::from_scan(&incremental_local_scan(
-                            local_path,
-                            &written,
-                            &local_snapshot,
-                            &local_filter,
-                        ));
+                // During a cycle, or in the cooldown after one, an event does
+                // not start a cycle; it is kept for the cycle that runs when
+                // the cooldown ends. Dropped, the last writes of a cycle and a
+                // user edit made in the cooldown never reached the snapshot,
+                // and the next cycle could download over that edit.
+                if syncing.load(Ordering::SeqCst) || last_sync_completed.elapsed() < cooldown_dur {
+                    let at = tokio::time::Instant::from_std(last_sync_completed + cooldown_dur);
+                    deferred.defer(changed_paths, at);
+                    while let Ok(more) = async_rx.try_recv() {
+                        deferred.defer(more, at);
                     }
-                    if cancelled.load(Ordering::SeqCst) {
-                        if !quiet {
-                            eprintln!("\nWatch mode stopped. {} sync cycles completed.", cycle_count);
-                        }
-                        return 0;
-                    }
+                    None
                 } else {
-                    // A snapshot that could not read the whole tree is no base
-                    // for an incremental cycle: run a full one, whose own walk
-                    // decides whether --delete may proceed (TX-01), and take a
-                    // fresh snapshot for the next event, so a transient error
-                    // heals instead of lasting until the periodic rescan.
-                    run_sync_cycle!(trigger.as_str());
-                    changed_during_cycle.clear();
-                    if use_incremental {
-                        local_snapshot = build_watch_local_snapshot(local, &local_filter);
-                        note_incomplete_watch_snapshot(&local_snapshot, quiet);
-                    }
-                    if cancelled.load(Ordering::SeqCst) {
-                        if !quiet {
-                            eprintln!("\nWatch mode stopped. {} sync cycles completed.", cycle_count);
-                        }
-                        return 0;
-                    }
+                    let mut paths = deferred.take();
+                    paths.extend(changed_paths);
+                    Some(paths)
                 }
+            }
+
+            _ = tokio::time::sleep_until(deferred.due.unwrap_or_else(tokio::time::Instant::now)),
+                if deferred.due.is_some() => {
+                Some(deferred.take())
             }
 
             _ = rescan_tick.tick() => {
@@ -58340,7 +58334,6 @@ async fn cmd_sync_watch(
                     continue;
                 }
                 run_sync_cycle!("rescan");
-                changed_during_cycle.clear();
                 // Rebuild snapshot after full rescan
                 if use_incremental {
                     local_snapshot = build_watch_local_snapshot(local, &local_filter);
@@ -58352,7 +58345,39 @@ async fn cmd_sync_watch(
                     }
                     return 0;
                 }
+                None
             }
+        };
+        let Some(changed_paths) = due else {
+            continue;
+        };
+        let trigger = format!("watcher: {} paths", changed_paths.len());
+
+        if use_incremental && local_snapshot.completeness.is_complete() {
+            let scan =
+                incremental_local_scan(local_path, &changed_paths, &local_snapshot, &local_filter);
+            local_snapshot = WatchLocalSnapshot::from_scan(&scan);
+            run_sync_cycle!(trigger.as_str(), Some(scan));
+        } else {
+            // A snapshot that could not read the whole tree is no base for an
+            // incremental cycle: run a full one, whose own walk decides whether
+            // --delete may proceed (TX-01), and take a fresh snapshot for the
+            // next event, so a transient error heals instead of lasting until
+            // the periodic rescan.
+            run_sync_cycle!(trigger.as_str());
+            if use_incremental {
+                local_snapshot = build_watch_local_snapshot(local, &local_filter);
+                note_incomplete_watch_snapshot(&local_snapshot, quiet);
+            }
+        }
+        if cancelled.load(Ordering::SeqCst) {
+            if !quiet {
+                eprintln!(
+                    "\nWatch mode stopped. {} sync cycles completed.",
+                    cycle_count
+                );
+            }
+            return 0;
         }
     }
 }
@@ -80621,6 +80646,36 @@ mod tests {
         assert_eq!(estimate(true, false), Some(1));
         assert_eq!(estimate(false, false), Some(0));
         assert_eq!(estimate(true, true), Some(0));
+    }
+
+    /// Major 2 (fourth review of #949): events that came during a cycle or in
+    /// the cooldown after it were dropped. They are kept, due when the
+    /// cooldown ends, and handed whole to the cycle that runs then.
+    #[test]
+    fn watch_events_in_the_cooldown_wait_for_the_next_cycle() {
+        let start = tokio::time::Instant::now();
+        let cooldown_end = start + std::time::Duration::from_secs(15);
+        let mut deferred = WatchDeferred::default();
+        assert!(deferred.due.is_none());
+        deferred.defer(vec!["/l/a.txt".into()], cooldown_end);
+        deferred.defer(
+            vec!["/l/b.txt".into()],
+            cooldown_end + std::time::Duration::from_secs(1),
+        );
+        assert_eq!(
+            deferred.due,
+            Some(cooldown_end),
+            "due when the cooldown ends"
+        );
+        let paths = deferred.take();
+        assert_eq!(
+            paths,
+            vec![
+                std::path::PathBuf::from("/l/a.txt"),
+                std::path::PathBuf::from("/l/b.txt")
+            ]
+        );
+        assert!(deferred.due.is_none() && deferred.take().is_empty());
     }
 
     /// A watch cycle's JSON line names the pairs it left open and the

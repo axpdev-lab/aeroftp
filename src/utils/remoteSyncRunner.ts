@@ -613,6 +613,9 @@ export const runRemoteSync = async (
         completed: false,
     };
     const journalEntryMap = new Map<string, number>();
+    // The local time each completed download left, read when it completed,
+    // for the index entries of files whose remote gives no time.
+    const landedTimes = new Map<string, string | null>();
     journal.entries.forEach((entry, idx) => journalEntryMap.set(entry.relative_path, idx));
 
     // GAP-9a — Maniac mode disables journal persistence. The in-memory
@@ -880,6 +883,17 @@ export const runRemoteSync = async (
                     errors.push(errInfo);
                     setStatus(item.relativePath, 'verify_failed');
                 } else {
+                    // Read now, not when the index is saved after the run: a
+                    // same-size edit made in between is a change the next run
+                    // must see, not the synced state.
+                    if (deps.writeIndex && item.mtime == null) {
+                        const props = await invoke<{ modified: string | null } | undefined>(
+                            'get_file_properties',
+                            { path: localFilePath },
+                        ).catch(() => undefined);
+                        // get_file_properties formats UTC without the zone.
+                        landedTimes.set(item.relativePath, props?.modified ? `${props.modified}Z` : null);
+                    }
                     downloaded++;
                     totalBytes += item.size;
                     if (journalEntry) {
@@ -1055,17 +1069,13 @@ export const runRemoteSync = async (
                     // with the local clock. A download keeps the remote time,
                     // which it stamped on the local copy; a backend that lists
                     // none (FTP LIST dates) leaves the downloaded file's own,
-                    // read back from disk, or the local side would be compared
-                    // by size alone and a same-size edit would go unseen.
-                    let modified = f.mtime;
-                    if (f.action === 'download' && modified == null) {
-                        const props = await invoke<{ modified: string | null } | undefined>(
-                            'get_file_properties',
-                            { path: `${localBase}/${f.relativePath}` },
-                        ).catch(() => undefined);
-                        // get_file_properties formats UTC without the zone.
-                        modified = props?.modified ? `${props.modified}Z` : null;
-                    }
+                    // read when the download completed, or the local side would
+                    // be compared by size alone and a same-size edit would go
+                    // unseen.
+                    const modified =
+                        f.action === 'download' && f.mtime == null
+                            ? landedTimes.get(f.relativePath) ?? null
+                            : f.mtime;
                     mergedFiles[f.relativePath] = {
                         size: f.size,
                         modified,

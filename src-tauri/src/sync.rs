@@ -3347,12 +3347,12 @@ pub fn classify_with_summary(
                 // ciphertext size), so size is not a reliable change signal for
                 // it and comparing it would flag every file as changed every
                 // cycle. Such providers fall back to timestamp only.
-                // The baseline's time is a LOCAL mtime (a download records the
-                // remote side's time, which the downloaded file keeps, or the
-                // downloaded file's own when the remote lists none), so the
-                // local side is read with two local clocks: under a size-only
-                // pair window it would stop seeing a same-size local edit, and
-                // the remote change would then overwrite it.
+                // The baseline's time is a LOCAL mtime, the one the transfer
+                // left on the local file (read when it ended, after any time
+                // stamp), so the local side is read with two local clocks:
+                // under a size-only pair window it would stop seeing a
+                // same-size local edit, and the remote change would then
+                // overwrite it.
                 let local_changed = (options.compare_size && l.size != cached.size)
                     || (l.modified.is_some()
                         && cached.modified.is_some()

@@ -192,6 +192,16 @@ impl CloudService {
         }
     }
 
+    /// Whether the local file is still the one the scan saw: same size and
+    /// same time. A file saved again while it was uploaded is not the file
+    /// the remote now holds.
+    fn unchanged_since_scan(info: &FileInfo) -> bool {
+        std::fs::metadata(&info.path).is_ok_and(|meta| {
+            meta.len() == info.size
+                && meta.modified().ok().map(DateTime::<Utc>::from) == info.modified
+        })
+    }
+
     fn forget_landed(&self) {
         if let Ok(mut landed) = self.landed.lock() {
             landed.clear();
@@ -1664,7 +1674,16 @@ impl CloudService {
             _ => {}
         }
 
-        if matches!(action, SyncAction::Upload | SyncAction::Download) && !comparison.is_dir {
+        // An upload of a file saved again meanwhile is not noted: the baseline
+        // keeps the scan's time, and the next cycle sees the edit.
+        let landed = match (&action, comparison.local_info.as_ref()) {
+            (SyncAction::Upload, Some(info)) => Self::unchanged_since_scan(info),
+            _ => true,
+        };
+        if landed
+            && matches!(action, SyncAction::Upload | SyncAction::Download)
+            && !comparison.is_dir
+        {
             self.note_landed(config, &comparison.relative_path);
         }
         Ok(action)
@@ -1800,6 +1819,9 @@ impl CloudService {
         // Resolve via the shared decision so the executed action and the
         // recorded post-sync baseline are always derived the same way.
         let action = self.resolve_action(config, comparison);
+        // Whether the transfer left the local file as the baseline may
+        // record it (false for a file edited while it was uploaded).
+        let mut landed = true;
 
         // Execute action using provider methods
         match &action {
@@ -1849,22 +1871,33 @@ impl CloudService {
                     // After upload, stat the remote file to get the server-assigned mtime,
                     // then apply it to the local file so both sides match.
                     // This prevents ping-pong re-sync on all providers (SFTP, FTP, WebDAV, S3, cloud APIs).
-                    match provider.stat(&remote_path).await {
-                        Ok(remote_entry) => {
-                            if let Some(mtime_str) = &remote_entry.modified {
-                                // Parse and apply remote mtime to local file
-                                let remote_dt = crate::parse_remote_datetime(mtime_str);
-                                if let Some(dt) = remote_dt {
-                                    let local_path = std::path::Path::new(&local_info.path);
-                                    crate::preserve_remote_mtime_dt(local_path, Some(dt));
+                    // Not when the file was saved again while it uploaded: the
+                    // server's time would hide that edit, which the remote does
+                    // not have, and the next cycle must see it.
+                    if !Self::unchanged_since_scan(local_info) {
+                        landed = false;
+                        tracing::info!(
+                            "AeroCloud: '{}' changed while it uploaded; left for the next cycle",
+                            comparison.relative_path
+                        );
+                    } else {
+                        match provider.stat(&remote_path).await {
+                            Ok(remote_entry) => {
+                                if let Some(mtime_str) = &remote_entry.modified {
+                                    // Parse and apply remote mtime to local file
+                                    let remote_dt = crate::parse_remote_datetime(mtime_str);
+                                    if let Some(dt) = remote_dt {
+                                        let local_path = std::path::Path::new(&local_info.path);
+                                        crate::preserve_remote_mtime_dt(local_path, Some(dt));
+                                    }
                                 }
                             }
-                        }
-                        Err(e) => {
-                            tracing::debug!(
-                                "Could not stat remote file after upload (non-fatal): {}",
-                                e
-                            );
+                            Err(e) => {
+                                tracing::debug!(
+                                    "Could not stat remote file after upload (non-fatal): {}",
+                                    e
+                                );
+                            }
                         }
                     }
                 }
@@ -1970,7 +2003,10 @@ impl CloudService {
             _ => {}
         }
 
-        if matches!(action, SyncAction::Upload | SyncAction::Download) && !comparison.is_dir {
+        if landed
+            && matches!(action, SyncAction::Upload | SyncAction::Download)
+            && !comparison.is_dir
+        {
             self.note_landed(config, &comparison.relative_path);
         }
         Ok(action)
