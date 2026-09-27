@@ -20,13 +20,17 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /// The production part of a provider source: everything before its test
-/// module, which names the patterns on purpose.
+/// module, which names the patterns on purpose. A checkout with CRLF line
+/// endings (Git for Windows' default) is cut at the same place.
 fn production(source: &str) -> &str {
-    source
-        .split("\n#[cfg(test)]\nmod tests {")
-        .next()
-        .filter(|part| part.len() < source.len())
-        .expect("the source has a test module to cut at")
+    let at = [
+        "\n#[cfg(test)]\nmod tests {",
+        "\r\n#[cfg(test)]\r\nmod tests {",
+    ]
+    .iter()
+    .find_map(|marker| source.find(marker))
+    .expect("the source has a test module to cut at");
+    &source[..at]
 }
 
 /// The name of the function or struct a line opens, if it opens one: a
@@ -131,6 +135,20 @@ fn assert_confined(file: &str, source: &str, needle: &str, allowed: &[&str]) {
     assert!(
         stray.is_empty(),
         "{file}: `{needle}` outside {allowed:?}, resolve through parent_folder_id instead: {stray:?}"
+    );
+}
+
+/// A Windows checkout with CRLF line endings has no LF-only marker: the cut
+/// found none and the guard panicked before reading a line.
+#[test]
+fn a_crlf_checkout_is_cut_at_its_test_module() {
+    assert_eq!(
+        production("fn a() {}\r\n#[cfg(test)]\r\nmod tests {\r\n}\r\n"),
+        "fn a() {}"
+    );
+    assert_eq!(
+        production("fn a() {}\n#[cfg(test)]\nmod tests {\n}\n"),
+        "fn a() {}"
     );
 }
 
