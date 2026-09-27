@@ -10224,24 +10224,31 @@ async fn upload_with_resume(
     provider.upload(local_path, remote_path, progress_cb).await
 }
 
-/// Run a plain single-file CLI transfer through the engine chosen by the
-/// data-driven router (or by the user override, when `--transfer-engine`
-/// is not `auto`).
-///
-/// Reached for the plain leaf (`!cli.partial`, so neither
-/// `download_with_resume` nor `upload_with_resume` would take a resume
-/// branch and the leaf is a bare `provider.download` / `provider.upload`).
-/// The owned provider is briefly wrapped in an `Arc<Mutex<_>>` so the DAG
-/// transfer node can reach it from its spawned task, then handed back to
-/// the caller for the disconnect. The CLI renders progress through the
-/// `indicatif` callback and prints its own result line, so the graph runs
-/// with a `NoopDagObserver`.
 /// What a local file is before a download that may write it in place: its
-/// size and modification time, or nothing when it does not exist.
-fn local_file_state(path: &str) -> Option<(u64, Option<std::time::SystemTime>)> {
-    std::fs::metadata(path)
-        .ok()
-        .map(|meta| (meta.len(), meta.modified().ok()))
+/// size and modification time and, on Unix, its inode and change time (a
+/// same-length rewrite that puts the old time back still moves those), or
+/// nothing when it does not exist.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+struct LocalFileState {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+    identity: (u64, i64, i64),
+}
+
+fn local_file_state(path: &str) -> Option<LocalFileState> {
+    let meta = std::fs::metadata(path).ok()?;
+    #[cfg(unix)]
+    let identity = {
+        use std::os::unix::fs::MetadataExt;
+        (meta.ino(), meta.ctime(), meta.ctime_nsec())
+    };
+    #[cfg(not(unix))]
+    let identity = (0, 0, 0);
+    Some(LocalFileState {
+        len: meta.len(),
+        modified: meta.modified().ok(),
+        identity,
+    })
 }
 
 /// Remove what a failed or interrupted `--inplace` download left at
@@ -10249,17 +10256,19 @@ fn local_file_state(path: &str) -> Option<(u64, Option<std::time::SystemTime>)> 
 /// before it opened the destination (the server had not answered yet) never
 /// touched the file: it is the user's, as it was `before`, and stays. Once the
 /// download truncated it, the old content is gone and the partial one goes.
-fn remove_inplace_leftover(local_path: &str, before: Option<(u64, Option<std::time::SystemTime>)>) {
+fn remove_inplace_leftover(local_path: &str, before: Option<LocalFileState>) {
     if local_file_state(local_path) != before {
         let _ = std::fs::remove_file(local_path);
     }
 }
 
 /// Run a single transfer until it ends, or until Ctrl-C raises `cancelled`:
-/// `None` then, and the transfer future is dropped, which closes its
-/// connections and runs its guards (an atomic download removes its
-/// `.aerotmp`). The handler only sets the flag, so a transfer that never
-/// looks at it has to be raced against it, or it runs to its end.
+/// `None` then, and the transfer future is dropped here, inline, so its
+/// guards (an atomic download's `.aerotmp`) have run when this returns. The
+/// handler only sets the flag, so a transfer that never looks at it has to be
+/// raced against it, or it runs to its end. Not for a transfer that runs on
+/// tasks of its own (the graph engine): dropping it only schedules their
+/// abort, so it is given a cancel token instead and closes itself.
 async fn run_until_interrupted<T>(
     cancelled: &AtomicBool,
     transfer: impl std::future::Future<Output = T>,
@@ -10276,6 +10285,64 @@ async fn run_until_interrupted<T>(
     }
 }
 
+/// The error an interrupted transfer ends with.
+fn interrupted_by_user() -> ProviderError {
+    ProviderError::TransferFailed("Transfer cancelled by user".to_string())
+}
+
+/// How long a command stopped by Ctrl-C waits for its connection to close.
+/// The server may be the reason the user pressed it: a close it never
+/// answers must not hold the command until the second Ctrl-C.
+const INTERRUPTED_DISCONNECT_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// End a single-file command stopped by Ctrl-C: close its connection, if it
+/// has one, within [`INTERRUPTED_DISCONNECT_GRACE`], say what did not
+/// happen, and give the exit code (130, as a shell does for SIGINT).
+async fn interrupted_exit(
+    provider: Option<&mut dyn StorageProvider>,
+    format: OutputFormat,
+    what: &str,
+) -> i32 {
+    if let Some(provider) = provider {
+        let _ = tokio::time::timeout(INTERRUPTED_DISCONNECT_GRACE, provider.disconnect()).await;
+    }
+    print_error(format, &format!("Interrupted (Ctrl+C): {what}"), 130);
+    130
+}
+
+/// Run a `--delta` attempt until it ends or Ctrl-C stops it (`None`). The
+/// delta writer keeps its `<target>.aerotmp` when it is dropped (its
+/// abandon paths remove it by hand), and a temporary left there makes the
+/// next plain download of the file fail on it: an interrupted attempt
+/// removes the one it created, and never one that was there before it (the
+/// part a `--partial` download keeps for its resume).
+async fn delta_until_interrupted<T>(
+    cancelled: &AtomicBool,
+    local_path: &str,
+    attempt: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    let temp = ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for(Path::new(local_path));
+    let temp_was_there = temp.exists();
+    let outcome = run_until_interrupted(cancelled, attempt).await;
+    if outcome.is_none() && !temp_was_there {
+        let _ = std::fs::remove_file(&temp);
+    }
+    outcome
+}
+
+/// Run a plain single-file CLI transfer through the engine chosen by the
+/// data-driven router (or by the user override, when `--transfer-engine`
+/// is not `auto`).
+///
+/// Reached for the plain leaf (`!cli.partial`, so neither
+/// `download_with_resume` nor `upload_with_resume` would take a resume
+/// branch and the leaf is a bare `provider.download` / `provider.upload`).
+/// The owned provider is briefly wrapped in an `Arc<Mutex<_>>` so the DAG
+/// transfer node can reach it from its spawned task, then handed back to
+/// the caller for the disconnect. The CLI renders progress through the
+/// `indicatif` callback and prints its own result line, so the graph runs
+/// with a `NoopDagObserver`.
+#[allow(clippy::too_many_arguments)]
 async fn cli_run_single_file_dag(
     provider: Box<dyn StorageProvider>,
     direction: ftp_client_gui_lib::transfer_dag::TransferDirection,
@@ -10284,6 +10351,7 @@ async fn cli_run_single_file_dag(
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
     cli: &Cli,
     server_url: Option<&str>,
+    cancelled: Option<&Arc<AtomicBool>>,
 ) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
     // Resolve capabilities and the local file size before wrapping the
     // provider in the shared Arc: the shaped-graph builder needs both to
@@ -10360,13 +10428,21 @@ async fn cli_run_single_file_dag(
     // flagged as regressing under the shaped engine.
     if decision.engine == ftp_client_gui_lib::transfer_router::Engine::Legacy {
         let mut provider = provider;
-        let result = match direction {
-            ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
-                provider.upload(local, remote, progress_cb).await
+        let transfer = async {
+            match direction {
+                ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
+                    provider.upload(local, remote, progress_cb).await
+                }
+                ftp_client_gui_lib::transfer_dag::TransferDirection::Download => {
+                    provider.download(remote, local, progress_cb).await
+                }
             }
-            ftp_client_gui_lib::transfer_dag::TransferDirection::Download => {
-                provider.download(remote, local, progress_cb).await
-            }
+        };
+        let result = match cancelled {
+            Some(flag) => run_until_interrupted(flag, transfer)
+                .await
+                .unwrap_or_else(|| Err(interrupted_by_user())),
+            None => transfer.await,
         };
         return (provider, result);
     }
@@ -10378,6 +10454,20 @@ async fn cli_run_single_file_dag(
     let report = Arc::new(AtomicU64::new(0));
     let observer: Arc<dyn ftp_client_gui_lib::transfer_dag::DagObserver> =
         Arc::new(ftp_client_gui_lib::transfer_dag::NoopDagObserver);
+    // Ctrl-C raises the flag; the graph's transfer node races the token and
+    // closes itself, guards included, before the graph returns.
+    let cancel_token = cancelled.map(|flag| {
+        let token = tokio_util::sync::CancellationToken::new();
+        let watched = token.clone();
+        let flag = Arc::clone(flag);
+        let watcher = tokio::spawn(async move {
+            while !flag.load(Ordering::Relaxed) {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            watched.cancel();
+        });
+        (token, watcher)
+    });
     let result = ftp_client_gui_lib::transfer_dag_single_file::execute_single_file_dag(
         &built,
         Arc::clone(&arc),
@@ -10388,12 +10478,14 @@ async fn cli_run_single_file_dag(
         observer,
         report,
         file_size,
-        // The CLI relies on process-level Ctrl+C, not the GUI session token.
-        None,
+        cancel_token.as_ref().map(|(token, _)| token.clone()),
         // The real per-user checkpoint store: this is a production transfer.
         None,
     )
     .await;
+    if let Some((_, watcher)) = cancel_token {
+        watcher.abort();
+    }
     let provider = arc
         .lock()
         .await
@@ -32054,10 +32146,14 @@ async fn cmd_get(
         return cmd_get_glob(url, remote, local, cli, format, cancelled).await;
     }
 
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    const NOT_STARTED: &str = "the download did not start";
+    const NOT_FINISHED: &str = "the download did not finish";
+    let (mut provider, initial_path) =
+        match run_until_interrupted(&cancelled, create_and_connect(url, cli, format)).await {
+            Some(Ok(v)) => v,
+            Some(Err(code)) => return code,
+            None => return interrupted_exit(None, format, NOT_STARTED).await,
+        };
 
     let remote = &resolve_cli_remote_path(&initial_path, remote);
     let filename = remote.rsplit('/').next().unwrap_or("download");
@@ -32117,9 +32213,15 @@ async fn cmd_get(
     // Size for the progress bar, and the remote mtime to keep on the local
     // copy (the GUI does the same through `preserve_remote_mtime`). `size`
     // stays the fallback for a backend whose stat fails where size works.
-    let (total_size, remote_modified) = match provider.stat(remote).await {
-        Ok(entry) => (entry.size, entry.modified),
-        Err(_) => (provider.size(remote).await.unwrap_or(0), None),
+    let probed = run_until_interrupted(&cancelled, async {
+        match provider.stat(remote).await {
+            Ok(entry) => (entry.size, entry.modified),
+            Err(_) => (provider.size(remote).await.unwrap_or(0), None),
+        }
+    })
+    .await;
+    let Some((total_size, remote_modified)) = probed else {
+        return interrupted_exit(Some(&mut *provider), format, NOT_STARTED).await;
     };
 
     // ── Segmented parallel download (pget) ──
@@ -32190,13 +32292,23 @@ async fn cmd_get(
     // delta-aware print; `fallback_reason` falls through to the classic
     // download path.
     if delta {
-        let delta_outcome = ftp_client_gui_lib::delta_sync_rsync::try_delta_transfer(
-            &mut *provider,
-            ftp_client_gui_lib::delta_sync_rsync::SyncDirection::Download,
-            Path::new(local_path),
-            remote,
+        let attempt = delta_until_interrupted(
+            &cancelled,
+            local_path,
+            ftp_client_gui_lib::delta_sync_rsync::try_delta_transfer(
+                &mut *provider,
+                ftp_client_gui_lib::delta_sync_rsync::SyncDirection::Download,
+                Path::new(local_path),
+                remote,
+            ),
         )
         .await;
+        let Some(delta_outcome) = attempt else {
+            if let Some(pb) = pb {
+                pb.finish_and_clear();
+            }
+            return interrupted_exit(Some(&mut *provider), format, NOT_FINISHED).await;
+        };
         if let Some(result) = delta_outcome {
             if let Some(hard) = result.hard_error {
                 print_error(format, &format!("delta download hard error: {hard}"), 4);
@@ -32258,52 +32370,53 @@ async fn cmd_get(
 
     // DAG-ENGINE: route the plain classic single-file download through the
     // graph engine. `--partial` keeps the legacy `download_with_resume`
-    // (its resume branch is not the plain leaf).
+    // (its resume branch is not the plain leaf). Both stop on Ctrl-C and
+    // have closed the transfer, guards included, when they return.
     let before = local_file_state(local_path);
-    let transfer = async move {
-        if !cli.partial {
-            cli_run_single_file_dag(
-                provider,
-                ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
-                remote,
-                local_path,
-                progress_cb,
-                cli,
-                Some(url),
-            )
-            .await
-        } else {
-            let mut provider = provider;
-            let res = download_with_resume(
+    let (mut provider, dl_result) = if !cli.partial {
+        cli_run_single_file_dag(
+            provider,
+            ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
+            remote,
+            local_path,
+            progress_cb,
+            cli,
+            Some(url),
+            Some(&cancelled),
+        )
+        .await
+    } else {
+        let res = run_until_interrupted(
+            &cancelled,
+            download_with_resume(
                 &mut *provider,
                 remote,
                 local_path,
                 (total_size > 0).then_some(total_size),
                 cli,
                 progress_cb,
-            )
-            .await;
-            (provider, res)
-        }
+            ),
+        )
+        .await
+        .unwrap_or_else(|| Err(interrupted_by_user()));
+        (provider, res)
     };
-    let Some((returned, dl_result)) = run_until_interrupted(&cancelled, transfer).await else {
+    if dl_result.is_err() && cancelled.load(Ordering::Relaxed) {
         if let Some(pb) = pb {
             pb.finish_and_clear();
         }
-        // The transfer was dropped mid-way: an atomic download removes its
-        // `.aerotmp` as it goes, a `--partial` one keeps it for the resume, and
-        // only `--inplace` wrote the destination itself, if it got that far.
+        // What an interrupted download leaves depends on how the provider
+        // writes. Through `AtomicFile` (FTP, and the first download of a
+        // `--partial` one there) the `.aerotmp` goes with it; through
+        // `ResumableFile` (SFTP on one stream, S3, WebDAV, Azure, the HTTP
+        // resumable download) it stays, with or without `--partial`, and the
+        // next download resumes from it. Only `--inplace` wrote the
+        // destination itself, if it got that far.
         if cli.inplace && !cli.partial {
             remove_inplace_leftover(local_path, before);
         }
-        print_error(
-            format,
-            "Interrupted (Ctrl+C): the download did not finish",
-            130,
-        );
-        return 130;
-    };
-    let mut provider = returned;
+        return interrupted_exit(Some(&mut *provider), format, NOT_FINISHED).await;
+    }
 
     match dl_result {
         Ok(()) => {
@@ -32464,7 +32577,7 @@ async fn pget_segmented_download(
         // Degenerate: a single effective segment is just a single-stream
         // download. The initial probe provider was already disconnected by
         // the caller, so reconnect and stream once (honest, no overclaim).
-        return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+        return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await;
     }
 
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
@@ -32491,61 +32604,75 @@ async fn pget_segmented_download(
     // for the duration of the transfer rather than left idle: it would hold a
     // slot the windows may need, and a server's idle timeout would close it
     // exactly when the second reading matters most.
-    let mut checker = match create_and_connect(url, cli, format).await {
-        Ok((provider, _)) => provider,
-        Err(_) => {
-            if !quiet {
-                eprintln!("pget: no connection to read {remote_path} with; single download");
+    // The setup stops on Ctrl-C (`None`); `Some(None)` is a fallback to one
+    // stream, its reason already said.
+    let setup = run_until_interrupted(&cancelled, async {
+        let mut checker = match create_and_connect(url, cli, format).await {
+            Ok((provider, _)) => provider,
+            Err(_) => {
+                if !quiet {
+                    eprintln!("pget: no connection to read {remote_path} with; single download");
+                }
+                return None;
             }
-            return pget_fallback_single(url, remote_path, local_path, cli, format).await;
-        }
-    };
-    let before = match read_range_source_through(checker.as_mut(), remote_path).await {
-        Ok(reading) => match reading.matches_planned_size(file_size) {
-            Ok(()) => reading,
+        };
+        let before = match read_range_source_through(checker.as_mut(), remote_path).await {
+            Ok(reading) => match reading.matches_planned_size(file_size) {
+                Ok(()) => reading,
+                Err(why) => {
+                    let _ = checker.disconnect().await;
+                    if !quiet {
+                        eprintln!("pget: refusing to read {remote_path} in parallel: {why}");
+                    }
+                    return None;
+                }
+            },
             Err(why) => {
                 let _ = checker.disconnect().await;
                 if !quiet {
                     eprintln!("pget: refusing to read {remote_path} in parallel: {why}");
                 }
-                return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+                return None;
             }
-        },
-        Err(why) => {
-            let _ = checker.disconnect().await;
-            if !quiet {
-                eprintln!("pget: refusing to read {remote_path} in parallel: {why}");
-            }
-            return pget_fallback_single(url, remote_path, local_path, cli, format).await;
-        }
-    };
-    let _ = checker.disconnect().await;
+        };
+        let _ = checker.disconnect().await;
 
-    let mut conns: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(actual_segments);
-    for i in 0..actual_segments {
-        match create_and_connect(url, cli, format).await {
-            Ok((mut p, _)) => {
-                // Pin every window to the version the first reading saw, as
-                // the shared executor does: on S3 this is the `If-Match` that
-                // refuses a window the moment the object is replaced.
-                p.set_range_validator(before.validator());
-                conns.push(p)
-            }
-            Err(_) => {
-                for mut c in conns {
-                    let _ = c.disconnect().await;
+        let mut conns: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(actual_segments);
+        for i in 0..actual_segments {
+            match create_and_connect(url, cli, format).await {
+                Ok((mut p, _)) => {
+                    // Pin every window to the version the first reading saw, as
+                    // the shared executor does: on S3 this is the `If-Match` that
+                    // refuses a window the moment the object is replaced.
+                    p.set_range_validator(before.validator());
+                    conns.push(p)
                 }
-                if !quiet {
-                    eprintln!(
-                        "pget: connection {} of {} failed; falling back to single download",
-                        i + 1,
-                        actual_segments
-                    );
+                Err(_) => {
+                    for mut c in conns {
+                        let _ = c.disconnect().await;
+                    }
+                    if !quiet {
+                        eprintln!(
+                            "pget: connection {} of {} failed; falling back to single download",
+                            i + 1,
+                            actual_segments
+                        );
+                    }
+                    return None;
                 }
-                return pget_fallback_single(url, remote_path, local_path, cli, format).await;
             }
         }
-    }
+        Some((before, conns))
+    })
+    .await;
+    let (before, conns) = match setup {
+        Some(Some(ready)) => ready,
+        Some(None) => {
+            return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled)
+                .await
+        }
+        None => return interrupted_exit(None, format, "the download did not finish").await,
+    };
 
     // Progress bar (coarse, one tick per completed window via the engine's
     // `on_progress`; the aggregate it reports is bumped per sub-read).
@@ -32720,27 +32847,38 @@ async fn pget_segmented_download(
             // Opened twice if need be: the window connections have just
             // closed, and one refused connection must not discard a transfer
             // that is complete.
-            let reopened = open_after_transfer(|| create_and_connect(url, cli, format)).await;
-            let changed = match reopened {
-                Ok((mut session, _)) => {
-                    // The shared comparison, so this reading retries once like
-                    // the others before it discards a finished download.
-                    let changed =
-                        range_source_changed_through(session.as_mut(), remote_path, &before).await;
-                    let _ = session.disconnect().await;
-                    changed
+            let second_reading = run_until_interrupted(&cancelled, async {
+                let reopened = open_after_transfer(|| create_and_connect(url, cli, format)).await;
+                match reopened {
+                    Ok((mut session, _)) => {
+                        // The shared comparison, so this reading retries once
+                        // like the others before it discards a finished
+                        // download.
+                        let changed =
+                            range_source_changed_through(session.as_mut(), remote_path, &before)
+                                .await;
+                        let _ = session.disconnect().await;
+                        changed
+                    }
+                    Err(_) => Some(
+                        "it could not be read again after the transfer: no session to read it with"
+                            .to_string(),
+                    ),
                 }
-                Err(_) => Some(
-                    "it could not be read again after the transfer: no session to read it with"
-                        .to_string(),
-                ),
+            })
+            .await;
+            // Stopped before the file could be checked: nothing is published.
+            let Some(changed) = second_reading else {
+                let _ = tokio::fs::remove_file(&temp).await;
+                return interrupted_exit(None, format, "the download did not finish").await;
             };
             if let Some(what) = changed {
                 let _ = tokio::fs::remove_file(&temp).await;
                 if !quiet {
                     eprintln!("pget: {remote_path} was not published ({what}); single download");
                 }
-                return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+                return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled)
+                    .await;
             }
             if let Err(e) = tokio::fs::rename(&temp, local_path).await {
                 let _ = tokio::fs::remove_file(&temp).await;
@@ -32785,7 +32923,12 @@ async fn pget_segmented_download(
         Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
             // `read_range` cannot produce this (no HTTP-200 semantics); the
             // engine already dropped the temp. Defensive honest fallback.
-            pget_fallback_single(url, remote_path, local_path, cli, format).await
+            pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await
+        }
+        Err(_) if cancelled.load(Ordering::Relaxed) => {
+            // Ctrl-C stopped the windows (the engine's guard removed the
+            // temp): the user asked to stop, not for a single stream.
+            interrupted_exit(None, format, "the download did not finish").await
         }
         Err(e) => {
             // The engine's RAII guard already removed the temp. Honest
@@ -32796,7 +32939,7 @@ async fn pget_segmented_download(
                     e
                 );
             }
-            pget_fallback_single(url, remote_path, local_path, cli, format).await
+            pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await
         }
     }
 }
@@ -32808,19 +32951,27 @@ async fn pget_fallback_single(
     local_path: &str,
     cli: &Cli,
     format: OutputFormat,
+    cancelled: &AtomicBool,
 ) -> i32 {
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     if !quiet {
         eprintln!("pget: using single download (only 1 effective segment)");
     }
 
-    let (mut provider, _) = match create_and_connect(url, cli, format).await {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    const NOT_FINISHED: &str = "the download did not finish";
+    let (mut provider, _) =
+        match run_until_interrupted(cancelled, create_and_connect(url, cli, format)).await {
+            Some(Ok(v)) => v,
+            Some(Err(code)) => return code,
+            None => return interrupted_exit(None, format, NOT_FINISHED).await,
+        };
 
     let filename = remote_path.rsplit('/').next().unwrap_or("download");
-    let total_size = provider.size(remote_path).await.unwrap_or(0);
+    let Some(total_size) = run_until_interrupted(cancelled, provider.size(remote_path)).await
+    else {
+        return interrupted_exit(Some(&mut *provider), format, NOT_FINISHED).await;
+    };
+    let total_size = total_size.unwrap_or(0);
     let start = Instant::now();
 
     let pb = if !quiet && total_size > 0 {
@@ -32840,16 +32991,29 @@ async fn pget_fallback_single(
     });
 
     let before = local_file_state(local_path);
-    match download_with_resume(
-        &mut *provider,
-        remote_path,
-        local_path,
-        (total_size > 0).then_some(total_size),
-        cli,
-        progress_cb,
+    let result = run_until_interrupted(
+        cancelled,
+        download_with_resume(
+            &mut *provider,
+            remote_path,
+            local_path,
+            (total_size > 0).then_some(total_size),
+            cli,
+            progress_cb,
+        ),
     )
     .await
-    {
+    .unwrap_or_else(|| Err(interrupted_by_user()));
+    if result.is_err() && cancelled.load(Ordering::Relaxed) {
+        if let Some(pb) = pb {
+            pb.finish_and_clear();
+        }
+        if cli.inplace && !cli.partial {
+            remove_inplace_leftover(local_path, before);
+        }
+        return interrupted_exit(Some(&mut *provider), format, NOT_FINISHED).await;
+    }
+    match result {
         Ok(()) => {
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
@@ -33507,10 +33671,13 @@ async fn cmd_put(
         return cmd_put_glob(url, local, remote, cli, format, cancelled).await;
     }
 
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    const NOT_STARTED: &str = "the upload did not start";
+    let (mut provider, initial_path) =
+        match run_until_interrupted(&cancelled, create_and_connect(url, cli, format)).await {
+            Some(Ok(v)) => v,
+            Some(Err(code)) => return code,
+            None => return interrupted_exit(None, format, NOT_STARTED).await,
+        };
 
     let filename = Path::new(local)
         .file_name()
@@ -33526,65 +33693,77 @@ async fn cmd_put(
     let resolved_remote = resolve_cli_remote_path(&initial_path, &effective_remote);
     let remote_path = resolved_remote.as_str();
 
-    if let Some(code) =
-        reject_restricted_target(provider.as_mut(), remote_path, "put", format).await
-    {
-        return code;
-    }
+    // The checks on the remote side stop on Ctrl-C too (`None`);
+    // `Some(Some(code))` is a check that ends the command.
+    let checked = run_until_interrupted(&cancelled, async {
+        if let Some(code) =
+            reject_restricted_target(provider.as_mut(), remote_path, "put", format).await
+        {
+            return Some(code);
+        }
 
-    // A single `put` into a folder that does not exist yet used to fail on the
-    // path-rooted protocols ("Failed to create remote file: No such file" on
-    // SFTP), while `put -r` creates every missing ancestor and rclone's
-    // `copyto` creates parents as a matter of course. Same policy here, paid
-    // only when the parent is really missing (one `exists` round trip) and
-    // only where folders are real: object stores have no parent to create.
-    if matches!(
-        provider.provider_type(),
-        ProviderType::Sftp | ProviderType::Ftp | ProviderType::Ftps | ProviderType::WebDav
-    ) {
-        if let Some(parent) = remote_parent_dir(remote_path) {
-            if matches!(provider.exists(&parent).await, Ok(false)) {
-                if !cli.quiet && !matches!(format, OutputFormat::Json) {
-                    eprintln!(
-                        "Creating remote directory {} (missing parent of the target)",
-                        parent
-                    );
-                }
-                for ancestor in benchmark_mkdir_ladder(&parent) {
-                    match provider.mkdir(&ancestor).await {
-                        Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
-                        Err(mkd_err) => {
-                            let code = provider_error_to_exit_code(&mkd_err);
-                            print_error(
-                                format,
-                                &format!(
-                                    "Cannot create remote directory '{}': {}",
-                                    ancestor, mkd_err
-                                ),
-                                code,
-                            );
-                            let _ = provider.disconnect().await;
-                            return code;
+        // A single `put` into a folder that does not exist yet used to fail on the
+        // path-rooted protocols ("Failed to create remote file: No such file" on
+        // SFTP), while `put -r` creates every missing ancestor and rclone's
+        // `copyto` creates parents as a matter of course. Same policy here, paid
+        // only when the parent is really missing (one `exists` round trip) and
+        // only where folders are real: object stores have no parent to create.
+        if matches!(
+            provider.provider_type(),
+            ProviderType::Sftp | ProviderType::Ftp | ProviderType::Ftps | ProviderType::WebDav
+        ) {
+            if let Some(parent) = remote_parent_dir(remote_path) {
+                if matches!(provider.exists(&parent).await, Ok(false)) {
+                    if !cli.quiet && !matches!(format, OutputFormat::Json) {
+                        eprintln!(
+                            "Creating remote directory {} (missing parent of the target)",
+                            parent
+                        );
+                    }
+                    for ancestor in benchmark_mkdir_ladder(&parent) {
+                        match provider.mkdir(&ancestor).await {
+                            Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
+                            Err(mkd_err) => {
+                                let code = provider_error_to_exit_code(&mkd_err);
+                                print_error(
+                                    format,
+                                    &format!(
+                                        "Cannot create remote directory '{}': {}",
+                                        ancestor, mkd_err
+                                    ),
+                                    code,
+                                );
+                                let _ = provider.disconnect().await;
+                                return Some(code);
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    // --immutable / --no-clobber: skip upload if remote file already exists
-    if no_clobber || cli.immutable {
-        let flag_name = if cli.immutable {
-            "--immutable"
-        } else {
-            "--no-clobber"
-        };
-        if let Some(code) =
-            skip_if_destination_exists(provider.as_mut(), remote_path, flag_name, cli, format).await
-        {
-            let _ = provider.disconnect().await;
-            return code;
+        // --immutable / --no-clobber: skip upload if remote file already exists
+        if no_clobber || cli.immutable {
+            let flag_name = if cli.immutable {
+                "--immutable"
+            } else {
+                "--no-clobber"
+            };
+            if let Some(code) =
+                skip_if_destination_exists(provider.as_mut(), remote_path, flag_name, cli, format)
+                    .await
+            {
+                let _ = provider.disconnect().await;
+                return Some(code);
+            }
         }
+        None
+    })
+    .await;
+    match checked {
+        Some(None) => {}
+        Some(Some(code)) => return code,
+        None => return interrupted_exit(Some(&mut *provider), format, NOT_STARTED).await,
     }
 
     let file_size = match std::fs::metadata(local) {
@@ -33631,14 +33810,24 @@ async fn cmd_put(
     // is propagated up immediately and MUST NOT trigger a classic retry: it
     // signals a security-relevant fault (host-key mismatch, etc.) that the
     // operator must see.
+    let not_finished = format!("the upload did not finish, {remote_path} may be incomplete");
     if delta {
-        let delta_outcome = ftp_client_gui_lib::delta_sync_rsync::try_delta_transfer(
-            &mut *provider,
-            ftp_client_gui_lib::delta_sync_rsync::SyncDirection::Upload,
-            Path::new(local),
-            remote_path,
+        let attempt = run_until_interrupted(
+            &cancelled,
+            ftp_client_gui_lib::delta_sync_rsync::try_delta_transfer(
+                &mut *provider,
+                ftp_client_gui_lib::delta_sync_rsync::SyncDirection::Upload,
+                Path::new(local),
+                remote_path,
+            ),
         )
         .await;
+        let Some(delta_outcome) = attempt else {
+            if let Some(pb) = pb {
+                pb.finish_and_clear();
+            }
+            return interrupted_exit(Some(&mut *provider), format, &not_finished).await;
+        };
         if let Some(result) = delta_outcome {
             if let Some(hard) = result.hard_error {
                 print_error(format, &format!("delta upload hard error: {hard}"), 4);
@@ -33703,40 +33892,34 @@ async fn cmd_put(
 
     // DAG-ENGINE: route the plain classic single-file upload through the
     // graph engine. `--partial` keeps the legacy `upload_with_resume` (its
-    // resume branch is not the plain leaf).
-    let transfer = async move {
-        if !cli.partial {
-            cli_run_single_file_dag(
-                provider,
-                ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
-                remote_path,
-                local,
-                progress_cb,
-                cli,
-                Some(url),
-            )
-            .await
-        } else {
-            let mut provider = provider;
-            let res =
-                upload_with_resume(&mut *provider, local, remote_path, cli, progress_cb).await;
-            (provider, res)
-        }
+    // resume branch is not the plain leaf). Both stop on Ctrl-C.
+    let (mut provider, up_result) = if !cli.partial {
+        cli_run_single_file_dag(
+            provider,
+            ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
+            remote_path,
+            local,
+            progress_cb,
+            cli,
+            Some(url),
+            Some(&cancelled),
+        )
+        .await
+    } else {
+        let res = run_until_interrupted(
+            &cancelled,
+            upload_with_resume(&mut *provider, local, remote_path, cli, progress_cb),
+        )
+        .await
+        .unwrap_or_else(|| Err(interrupted_by_user()));
+        (provider, res)
     };
-    let Some((returned, up_result)) = run_until_interrupted(&cancelled, transfer).await else {
+    if up_result.is_err() && cancelled.load(Ordering::Relaxed) {
         if let Some(pb) = pb {
             pb.finish_and_clear();
         }
-        print_error(
-            format,
-            &format!(
-                "Interrupted (Ctrl+C): the upload did not finish, {remote_path} may be incomplete"
-            ),
-            130,
-        );
-        return 130;
-    };
-    let mut provider = returned;
+        return interrupted_exit(Some(&mut *provider), format, &not_finished).await;
+    }
 
     match up_result {
         Ok(()) => {
@@ -43853,6 +44036,7 @@ async fn cmd_benchmark(
                         progress_cb,
                         cli,
                         None,
+                        None,
                     )
                     .await;
                     provider = returned;
@@ -43950,6 +44134,7 @@ async fn cmd_benchmark(
                         &local_download_path,
                         progress_cb,
                         cli,
+                        None,
                         None,
                     )
                     .await;
@@ -61985,6 +62170,45 @@ fn read_batch_script(content: &str) -> Result<Vec<BatchLine>, (usize, String)> {
     Ok(lines)
 }
 
+/// Check a batch line's exit code against the ON_ERROR policy: `Some(code)`
+/// ends the batch with that code, `None` goes on. A line stopped by Ctrl-C
+/// (130) ends it whatever the policy: ON_ERROR CONTINUE is for failures, and
+/// the user asked the whole script to stop.
+fn batch_check_exit(
+    code: i32,
+    line_num: usize,
+    cmd: &str,
+    on_error_continue: bool,
+    failed_commands: &mut u32,
+) -> Option<i32> {
+    if code == 130 {
+        eprintln!("Batch interrupted at line {} ({})", line_num + 1, cmd);
+        return Some(130);
+    }
+    if code != 0 {
+        if on_error_continue {
+            eprintln!(
+                "Warning: line {} ({}) failed with exit code {} (continuing)",
+                line_num + 1,
+                cmd,
+                code
+            );
+            *failed_commands += 1;
+            None
+        } else {
+            eprintln!(
+                "Batch failed at line {} ({}): exit code {}",
+                line_num + 1,
+                cmd,
+                code
+            );
+            Some(code)
+        }
+    } else {
+        None
+    }
+}
+
 async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<AtomicBool>) -> i32 {
     // The `.aeroftp` extension is the canonical profile-export format
     // and is unrelated to batch scripts (issue #225). Reject it here
@@ -62050,39 +62274,6 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
     let mut cross_source: Option<(Box<dyn StorageProvider>, String)> = None; // (provider, profile_name)
     let mut cross_dest: Option<(Box<dyn StorageProvider>, String)> = None;
 
-    /// Check exit code and handle ON_ERROR policy.
-    /// Returns Some(exit_code) if batch should abort, None to continue.
-    fn check_exit(
-        code: i32,
-        line_num: usize,
-        cmd: &str,
-        on_error_continue: bool,
-        failed_commands: &mut u32,
-    ) -> Option<i32> {
-        if code != 0 {
-            if on_error_continue {
-                eprintln!(
-                    "Warning: line {} ({}) failed with exit code {} (continuing)",
-                    line_num + 1,
-                    cmd,
-                    code
-                );
-                *failed_commands += 1;
-                None
-            } else {
-                eprintln!(
-                    "Batch failed at line {} ({}): exit code {}",
-                    line_num + 1,
-                    cmd,
-                    code
-                );
-                Some(code)
-            }
-        } else {
-            None
-        }
-    }
-
     /// The active connection as the command line passes it: the URL with the
     /// batch CLI, or "_" with the CLI whose `--profile` is the connected one.
     fn require_target<'a>(
@@ -62117,7 +62308,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
         let line_num = line.line_num;
         if cancelled.load(Ordering::Relaxed) {
             eprintln!("Batch interrupted at line {}", line_num + 1);
-            return 4;
+            return 130;
         }
         let args: Vec<&str> = line.args.iter().map(String::as_str).collect();
         total_commands += 1;
@@ -62159,7 +62350,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 };
                 if exit_code == 0 {
                     current = Some(target);
-                } else if let Some(code) = check_exit(
+                } else if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "CONNECT",
@@ -62191,7 +62382,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     cancelled.clone(),
                 )
                 .await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "GET",
@@ -62220,7 +62411,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     cancelled.clone(),
                 )
                 .await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "PUT",
@@ -62237,7 +62428,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 };
                 let recursive = line.has_flag("-r") || line.has_flag("-rf");
                 exit_code = cmd_rm(&url, args[0], recursive, true, false, cli, format).await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "RM",
@@ -62253,7 +62444,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Err(code) => return code,
                 };
                 exit_code = cmd_mv(&url, args[0], args[1], cli, format).await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "MV",
@@ -62274,7 +62465,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     &url, path, long, "name", false, true, None, false, false, cli, format,
                 )
                 .await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "LS",
@@ -62290,7 +62481,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Err(code) => return code,
                 };
                 exit_code = cmd_cat(&url, args[0], cli, format).await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "CAT",
@@ -62306,7 +62497,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Err(code) => return code,
                 };
                 exit_code = cmd_stat(&url, args[0], cli, format).await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "STAT",
@@ -62322,7 +62513,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Err(code) => return code,
                 };
                 exit_code = cmd_find(&url, args[0], args[1], false, false, None, cli, format).await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "FIND",
@@ -62338,7 +62529,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Err(code) => return code,
                 };
                 exit_code = cmd_df(&url, false, false, cli, format).await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "DF",
@@ -62354,7 +62545,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Err(code) => return code,
                 };
                 exit_code = cmd_mkdir(&url, args[0], false, None, cli, format).await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "MKDIR",
@@ -62371,7 +62562,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 };
                 let path = args.first().copied().unwrap_or("/");
                 exit_code = cmd_tree(&url, path, 3, cli, format).await;
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "TREE",
@@ -62394,7 +62585,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                         5
                     }
                 };
-                if let Some(code) = check_exit(
+                if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
                     "SYNC",
@@ -62417,7 +62608,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                         cross_source = Some((provider, profile_name));
                     }
                     Err(code) => {
-                        if let Some(c) = check_exit(
+                        if let Some(c) = batch_check_exit(
                             code,
                             line_num,
                             "CONNECT_SOURCE_PROFILE",
@@ -62441,7 +62632,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                         cross_dest = Some((provider, profile_name));
                     }
                     Err(code) => {
-                        if let Some(c) = check_exit(
+                        if let Some(c) = batch_check_exit(
                             code,
                             line_num,
                             "CONNECT_DEST_PROFILE",
@@ -62540,7 +62731,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                                 exit_code = 4;
                             }
                         }
-                        if let Some(code) = check_exit(
+                        if let Some(code) = batch_check_exit(
                             exit_code,
                             line_num,
                             "TRANSFER",
@@ -62553,7 +62744,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Err(e) => {
                         let code = provider_error_to_exit_code(&e);
                         eprintln!("  Planning failed: {}", e);
-                        if let Some(c) = check_exit(
+                        if let Some(c) = batch_check_exit(
                             code,
                             line_num,
                             "TRANSFER",
@@ -66294,40 +66485,27 @@ async fn main() {
             } else {
                 (url.as_str(), remote.as_str(), local.as_deref())
             };
-            let max_attempts = effective_max_attempts(&cli, format);
-            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
-            let max_transfer_limit = resolve_max_transfer(&cli);
-            let mut last_code = 0i32;
-            for attempt in 1..=max_attempts {
-                last_code = cmd_get(
-                    u,
-                    r,
-                    l,
-                    false,
-                    *segments,
-                    false,
-                    &cli,
-                    format,
-                    cancelled.clone(),
-                )
-                .await;
-                if !is_retryable_exit(last_code)
-                    || session_transfer_exceeded(max_transfer_limit)
-                    || attempt == max_attempts
-                {
-                    break;
-                }
-                if !cli.quiet {
-                    eprintln!(
-                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
-                        attempt, max_attempts, last_code, sleep_dur
-                    );
-                }
-                if !sleep_dur.is_zero() {
-                    tokio::time::sleep(sleep_dur).await;
-                }
-            }
-            last_code
+            retry_transfer_command(
+                &cli,
+                effective_max_attempts(&cli, format),
+                parse_retry_sleep(&cli.retries_sleep),
+                resolve_max_transfer(&cli),
+                &cancelled,
+                || {
+                    cmd_get(
+                        u,
+                        r,
+                        l,
+                        false,
+                        *segments,
+                        false,
+                        &cli,
+                        format,
+                        cancelled.clone(),
+                    )
+                },
+            )
+            .await
         }
         Commands::Get {
             url,
@@ -66342,40 +66520,27 @@ async fn main() {
             } else {
                 (url.as_str(), remote.as_str(), local.as_deref())
             };
-            let max_attempts = effective_max_attempts(&cli, format);
-            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
-            let max_transfer_limit = resolve_max_transfer(&cli);
-            let mut last_code = 0i32;
-            for attempt in 1..=max_attempts {
-                last_code = cmd_get(
-                    u,
-                    r,
-                    l,
-                    *recursive,
-                    *segments,
-                    *delta,
-                    &cli,
-                    format,
-                    cancelled.clone(),
-                )
-                .await;
-                if !is_retryable_exit(last_code)
-                    || session_transfer_exceeded(max_transfer_limit)
-                    || attempt == max_attempts
-                {
-                    break;
-                }
-                if !cli.quiet {
-                    eprintln!(
-                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
-                        attempt, max_attempts, last_code, sleep_dur
-                    );
-                }
-                if !sleep_dur.is_zero() {
-                    tokio::time::sleep(sleep_dur).await;
-                }
-            }
-            last_code
+            retry_transfer_command(
+                &cli,
+                effective_max_attempts(&cli, format),
+                parse_retry_sleep(&cli.retries_sleep),
+                resolve_max_transfer(&cli),
+                &cancelled,
+                || {
+                    cmd_get(
+                        u,
+                        r,
+                        l,
+                        *recursive,
+                        *segments,
+                        *delta,
+                        &cli,
+                        format,
+                        cancelled.clone(),
+                    )
+                },
+            )
+            .await
         }
         Commands::Put {
             url,
@@ -66391,41 +66556,28 @@ async fn main() {
             } else {
                 (url.as_str(), local.as_str(), remote.as_deref())
             };
-            let max_attempts = effective_max_attempts(&cli, format);
-            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
-            let max_transfer_limit = resolve_max_transfer(&cli);
-            let mut last_code = 0i32;
-            for attempt in 1..=max_attempts {
-                last_code = cmd_put(
-                    u,
-                    l,
-                    r,
-                    *recursive,
-                    *no_clobber,
-                    *delta,
-                    *access,
-                    &cli,
-                    format,
-                    cancelled.clone(),
-                )
-                .await;
-                if !is_retryable_exit(last_code)
-                    || session_transfer_exceeded(max_transfer_limit)
-                    || attempt == max_attempts
-                {
-                    break;
-                }
-                if !cli.quiet {
-                    eprintln!(
-                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
-                        attempt, max_attempts, last_code, sleep_dur
-                    );
-                }
-                if !sleep_dur.is_zero() {
-                    tokio::time::sleep(sleep_dur).await;
-                }
-            }
-            last_code
+            retry_transfer_command(
+                &cli,
+                effective_max_attempts(&cli, format),
+                parse_retry_sleep(&cli.retries_sleep),
+                resolve_max_transfer(&cli),
+                &cancelled,
+                || {
+                    cmd_put(
+                        u,
+                        l,
+                        r,
+                        *recursive,
+                        *no_clobber,
+                        *delta,
+                        *access,
+                        &cli,
+                        format,
+                        cancelled.clone(),
+                    )
+                },
+            )
+            .await
         }
         Commands::Mkdir {
             url,
@@ -70023,6 +70175,53 @@ async fn main() {
 
 /// Check if a failed exit code is retryable.
 /// NOT retryable: success (0), usage error (5), auth failure (6), not supported (7).
+/// Run a single-file transfer command, and again while it fails with a
+/// retryable exit, up to `max_attempts`, waiting `sleep_dur` in between.
+/// Ctrl-C ends it: an interrupted attempt is not retried (130 is not a
+/// retryable exit), and a Ctrl-C that arrives after a failed attempt, or
+/// while the next one is awaited, ends the command with 130 rather than
+/// connecting again.
+async fn retry_transfer_command<Attempt, Run>(
+    cli: &Cli,
+    max_attempts: u32,
+    sleep_dur: std::time::Duration,
+    max_transfer_limit: Option<u64>,
+    cancelled: &AtomicBool,
+    mut attempt_once: Attempt,
+) -> i32
+where
+    Attempt: FnMut() -> Run,
+    Run: std::future::Future<Output = i32>,
+{
+    let mut last_code = 0i32;
+    for attempt in 1..=max_attempts {
+        last_code = attempt_once().await;
+        if !is_retryable_exit(last_code)
+            || session_transfer_exceeded(max_transfer_limit)
+            || attempt == max_attempts
+        {
+            break;
+        }
+        if cancelled.load(Ordering::Relaxed) {
+            return 130;
+        }
+        if !cli.quiet {
+            eprintln!(
+                "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                attempt, max_attempts, last_code, sleep_dur
+            );
+        }
+        if !sleep_dur.is_zero()
+            && run_until_interrupted(cancelled, tokio::time::sleep(sleep_dur))
+                .await
+                .is_none()
+        {
+            return 130;
+        }
+    }
+    last_code
+}
+
 fn is_retryable_exit(code: i32) -> bool {
     // Non-retryable categories (stable across retries, burning attempts is pure noise):
     //   0  success
@@ -77042,6 +77241,11 @@ mod tests {
         /// Rewrites the local file with as many bytes and puts its old mtime
         /// back, then fails: a change a (size, mtime) check cannot see.
         rewrite_same_length_then_refuse: bool,
+        /// Never answers a `stat` or an `exists`: a server that hangs before
+        /// the transfer starts.
+        stat_stalls: bool,
+        /// Counts the whole-file downloads started, across the clones.
+        downloads: Arc<AtomicU64>,
         /// Serves range reads (so `get --segments` takes the segmented engine)
         /// and reports this size; `0` means 1 000 000 bytes.
         ranged_size: u64,
@@ -77095,12 +77299,16 @@ mod tests {
             local_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            self.downloads.fetch_add(1, Ordering::Relaxed);
             if self.write_then_refuse {
                 std::fs::write(local_path, b"par").unwrap();
                 return Err(ProviderError::TransferFailed("cut short".to_string()));
             }
             if self.rewrite_same_length_then_refuse {
                 let meta = std::fs::metadata(local_path).unwrap();
+                // Past the clock tick of the file's own write (a few ms on
+                // Linux): within it, no timestamp tells the two apart.
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 std::fs::write(local_path, vec![b'z'; meta.len() as usize]).unwrap();
                 std::fs::File::options()
                     .write(true)
@@ -77171,6 +77379,9 @@ mod tests {
             Err(ProviderError::NotSupported("rename".to_string()))
         }
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            if self.stat_stalls {
+                std::future::pending::<()>().await;
+            }
             if path.ends_with("f.bin") {
                 Ok(RemoteEntry::file(
                     "f.bin".to_string(),
@@ -77185,6 +77396,9 @@ mod tests {
             Ok(self.file_size())
         }
         async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            if self.stat_stalls {
+                std::future::pending::<()>().await;
+            }
             Ok(false)
         }
         async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -77429,9 +77643,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let local = dir.path().join("f.bin").to_string_lossy().into_owned();
         let cli = quiet_cli();
+        let downloads = Arc::new(AtomicU64::new(0));
         let code = against_stalling(
             StallingProvider {
                 ranged_size: 16 * 1024 * 1024,
+                downloads: Arc::clone(&downloads),
                 ..Default::default()
             },
             |cancelled| async move {
@@ -77450,6 +77666,50 @@ mod tests {
             },
         );
         assert_eq!(code, 130, "-1 means the fallback was still downloading");
+        assert_eq!(
+            downloads.load(Ordering::Relaxed),
+            0,
+            "the single-stream fallback was started after the Ctrl-C"
+        );
+    }
+
+    /// M1 (review of #951): on the legacy engine the transfer is raced
+    /// against the flag inline.
+    #[test]
+    fn ctrl_c_stops_a_get_on_the_legacy_engine() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        let temp = format!("{local}.aerotmp");
+        let cli = Cli {
+            transfer_engine: "legacy".to_string(),
+            ..quiet_cli()
+        };
+        let code = against_stalling(
+            StallingProvider {
+                temp_then_wait: true,
+                ..Default::default()
+            },
+            |cancelled| async move {
+                let code = cmd_get(
+                    "memory://",
+                    "/f.bin",
+                    Some(local.as_str()),
+                    false,
+                    1,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                    cancelled,
+                )
+                .await;
+                if Path::new(&temp).exists() {
+                    -2
+                } else {
+                    code
+                }
+            },
+        );
+        assert_eq!(code, 130, "-1: still running; -2: the .aerotmp stayed");
     }
 
     /// m4 (review of #951): with `--partial` an interrupted download keeps
@@ -77492,8 +77752,9 @@ mod tests {
 
     /// m5 (review of #951): a failed in-place download that rewrote the file
     /// with as many bytes and put its time back read as untouched to a (size,
-    /// mtime) check, and its garbage stayed. The file's inode and change time
-    /// tell it apart.
+    /// mtime) check, and its garbage stayed. The file's change time tells it
+    /// apart (Unix only: Windows has no stable change time to read).
+    #[cfg(unix)]
     #[test]
     fn a_same_length_rewrite_is_not_taken_for_the_untouched_file() {
         let (code, kept) = inplace_get_over_an_existing_file(StallingProvider {
@@ -77502,6 +77763,305 @@ mod tests {
         });
         assert_ne!(code, 0);
         assert_eq!(kept, None, "the rewritten file stayed");
+    }
+
+    /// m2 (review of #951): the phases before the transfer did not look at
+    /// the flag, so a server that hung on the `stat` held `get` until the
+    /// second Ctrl-C.
+    #[test]
+    fn ctrl_c_stops_a_get_whose_server_hangs_before_the_transfer() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        let cli = quiet_cli();
+        let code = against_stalling(
+            StallingProvider {
+                stat_stalls: true,
+                ..Default::default()
+            },
+            |cancelled| async move {
+                cmd_get(
+                    "memory://",
+                    "/f.bin",
+                    Some(local.as_str()),
+                    false,
+                    1,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                    cancelled,
+                )
+                .await
+            },
+        );
+        assert_eq!(code, 130, "-1 means the get was still waiting on the stat");
+    }
+
+    /// The same for `put`, on the check for a missing parent folder.
+    #[test]
+    fn ctrl_c_stops_a_put_whose_server_hangs_before_the_transfer() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        std::fs::write(&local, b"payload").unwrap();
+        let local = local.to_string_lossy().into_owned();
+        let cli = quiet_cli();
+        let code = against_stalling(
+            StallingProvider {
+                stat_stalls: true,
+                ..Default::default()
+            },
+            |cancelled| async move {
+                cmd_put(
+                    "memory://",
+                    local.as_str(),
+                    Some("/dir/f.bin"),
+                    false,
+                    false,
+                    false,
+                    None,
+                    &cli,
+                    OutputFormat::Json,
+                    cancelled,
+                )
+                .await
+            },
+        );
+        assert_eq!(code, 130, "-1 means the put was still waiting on the check");
+    }
+
+    /// M2 (review of #951): the single stream `pget` falls back to read no
+    /// flag either.
+    #[test]
+    fn ctrl_c_stops_the_single_stream_fallback_of_pget() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        let cli = quiet_cli();
+        let code = interrupted_after_a_moment(|cancelled| async move {
+            pget_fallback_single(
+                "memory://",
+                "/f.bin",
+                local.as_str(),
+                &cli,
+                OutputFormat::Json,
+                &cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 130, "-1 means the fallback was still downloading");
+    }
+
+    /// A failed in-place download through `command` over a local file that
+    /// holds "keep me": what the file holds afterwards.
+    fn inplace_over_an_existing_file<F: std::future::Future<Output = i32>>(
+        provider: StallingProvider,
+        command: impl FnOnce(String, Cli) -> F + Send,
+    ) -> Option<Vec<u8>> {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        std::fs::write(&local, b"keep me").unwrap();
+        let local_str = local.to_string_lossy().into_owned();
+        let cli = Cli {
+            inplace: true,
+            ..quiet_cli()
+        };
+        let code = against_stalling(provider, |_| command(local_str, cli));
+        assert_ne!(code, 0, "the download was meant to fail");
+        std::fs::read(&local).ok()
+    }
+
+    /// m4 (review of #951): the transfer task of `get -r` and of a glob keeps
+    /// a local file its failed in-place download never wrote, and removes
+    /// what it did write.
+    #[test]
+    fn the_transfer_task_removes_only_what_a_failed_inplace_download_wrote() {
+        for (provider, expected) in [
+            (
+                StallingProvider {
+                    refuse: true,
+                    ..Default::default()
+                },
+                Some(b"keep me".to_vec()),
+            ),
+            (
+                StallingProvider {
+                    write_then_refuse: true,
+                    ..Default::default()
+                },
+                None,
+            ),
+        ] {
+            let kept = inplace_over_an_existing_file(provider, |local, cli| async move {
+                let result = download_transfer_task(
+                    "memory://",
+                    "/f.bin".to_string(),
+                    local,
+                    None,
+                    &cli,
+                    OutputFormat::Json,
+                    None,
+                    None,
+                    None,
+                )
+                .await;
+                i32::from(result.is_err())
+            });
+            assert_eq!(kept, expected);
+        }
+    }
+
+    /// m4 (review of #951): the same for the single stream `pget` falls back
+    /// to.
+    #[test]
+    fn the_pget_fallback_removes_only_what_a_failed_inplace_download_wrote() {
+        for (provider, expected) in [
+            (
+                StallingProvider {
+                    refuse: true,
+                    ..Default::default()
+                },
+                Some(b"keep me".to_vec()),
+            ),
+            (
+                StallingProvider {
+                    write_then_refuse: true,
+                    ..Default::default()
+                },
+                None,
+            ),
+        ] {
+            let kept = inplace_over_an_existing_file(provider, |local, cli| async move {
+                let never = AtomicBool::new(false);
+                pget_fallback_single(
+                    "memory://",
+                    "/f.bin",
+                    local.as_str(),
+                    &cli,
+                    OutputFormat::Json,
+                    &never,
+                )
+                .await
+            });
+            assert_eq!(kept, expected);
+        }
+    }
+
+    /// m2 (review of #951): a `--delta` attempt stopped by Ctrl-C removes
+    /// the `.aerotmp` its writer created (the writer keeps it when dropped,
+    /// and the next plain download of the file would fail on it), and never
+    /// one that was there before (a `--partial` download's part).
+    #[test]
+    fn an_interrupted_delta_attempt_removes_only_the_temporary_it_created() {
+        for temp_was_there in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+            let temp = format!("{local}.aerotmp");
+            if temp_was_there {
+                std::fs::write(&temp, b"first part").unwrap();
+            }
+            let cancelled = AtomicBool::new(true);
+            let attempt = async {
+                std::fs::write(&temp, b"delta").unwrap();
+                std::future::pending::<()>().await
+            };
+            let outcome = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(delta_until_interrupted(&cancelled, &local, attempt));
+            assert!(outcome.is_none());
+            assert_eq!(
+                Path::new(&temp).exists(),
+                temp_was_there,
+                "temporary there before: {temp_was_there}"
+            );
+        }
+    }
+
+    /// m3 (review of #951): after a failed attempt, a Ctrl-C was followed by
+    /// the `--retries-sleep` wait and a new connection before 130.
+    #[test]
+    fn ctrl_c_after_a_failed_attempt_ends_the_retries() {
+        let attempts = std::cell::Cell::new(0);
+        let cancelled = AtomicBool::new(false);
+        let code = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(retry_transfer_command(
+                &quiet_cli(),
+                3,
+                std::time::Duration::ZERO,
+                None,
+                &cancelled,
+                || {
+                    attempts.set(attempts.get() + 1);
+                    cancelled.store(true, Ordering::Relaxed);
+                    async { 1 }
+                },
+            ));
+        assert_eq!((code, attempts.get()), (130, 1));
+    }
+
+    /// And a Ctrl-C while the retry waits ends the wait.
+    #[test]
+    fn ctrl_c_during_the_retry_wait_ends_the_command() {
+        let attempts = AtomicU64::new(0);
+        let code = against_stalling(StallingProvider::default(), |cancelled| {
+            let attempts = &attempts;
+            async move {
+                retry_transfer_command(
+                    &quiet_cli(),
+                    3,
+                    std::time::Duration::from_secs(60),
+                    None,
+                    &cancelled,
+                    || {
+                        attempts.fetch_add(1, Ordering::Relaxed);
+                        async { 1 }
+                    },
+                )
+                .await
+            }
+        });
+        assert_eq!(
+            (code, attempts.load(Ordering::Relaxed)),
+            (130, 1),
+            "-1 means it was still waiting"
+        );
+    }
+
+    /// Nit (review of #951): under ON_ERROR CONTINUE a line stopped by Ctrl-C
+    /// was counted as a failure and the batch went on, to end with 4 at the
+    /// next line.
+    #[test]
+    fn an_interrupted_line_ends_the_batch_whatever_the_policy() {
+        let mut failed = 0;
+        assert_eq!(
+            batch_check_exit(130, 0, "GET", true, &mut failed),
+            Some(130)
+        );
+        assert_eq!(failed, 0);
+        assert_eq!(batch_check_exit(4, 0, "GET", true, &mut failed), None);
+        assert_eq!(failed, 1);
+    }
+
+    /// And a batch that finds the flag raised between two lines ends with
+    /// 130, the exit code of an interrupt, not 4.
+    #[test]
+    fn a_batch_interrupted_between_lines_ends_with_130() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("s.aeroftp-script");
+        std::fs::write(&script, "ECHO one\nECHO two\n").unwrap();
+        let code = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(cmd_batch(
+                &script.to_string_lossy(),
+                &quiet_cli(),
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(true)),
+            ));
+        assert_eq!(code, 130);
     }
 
     /// An interrupted transfer is not retried: `--retries` is for failures,
