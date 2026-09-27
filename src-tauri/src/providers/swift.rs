@@ -482,11 +482,101 @@ impl SwiftProvider {
         }
     }
 
+    /// Keystone v2 tokens URL. `base` is the auth root, but a saved profile
+    /// sometimes already ends in `/v2.0` or `/v2.0/tokens`. Appending the
+    /// suffix again is a path Keystone answers with 301.
+    fn keystone_v2_tokens_url(base: &str) -> String {
+        let trimmed = base.trim_end_matches('/');
+        if let Some(root) = trimmed.strip_suffix("/v2.0/tokens") {
+            format!("{root}/v2.0/tokens")
+        } else if let Some(root) = trimmed.strip_suffix("/v2.0") {
+            format!("{root}/v2.0/tokens")
+        } else {
+            format!("{trimmed}/v2.0/tokens")
+        }
+    }
+
+    /// Resolve a Keystone `Location` against the URL we posted to.
+    fn keystone_redirect_target(from: &str, location: &str) -> Option<String> {
+        let base = reqwest::Url::parse(from).ok()?;
+        let next = base.join(location).ok()?;
+        if !matches!(next.scheme(), "http" | "https") {
+            return None;
+        }
+        Some(next.to_string())
+    }
+
+    fn urls_match(a: &str, b: &str) -> bool {
+        match (reqwest::Url::parse(a), reqwest::Url::parse(b)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => a == b,
+        }
+    }
+
+    fn same_origin_url(a: &str, b: &str) -> bool {
+        let (Ok(a), Ok(b)) = (reqwest::Url::parse(a), reqwest::Url::parse(b)) else {
+            return false;
+        };
+        a.scheme() == b.scheme()
+            && a.host_str() == b.host_str()
+            && a.port_or_known_default() == b.port_or_known_default()
+    }
+
+    async fn post_keystone_json(
+        &self,
+        url: &str,
+        body: &serde_json::Value,
+    ) -> Result<reqwest::Response, ProviderError> {
+        self.client
+            .post(url)
+            .timeout(AUTH_REQUEST_TIMEOUT)
+            .header("Content-Type", "application/json")
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Keystone v2 request failed: {e}"))
+            })
+    }
+
+    /// POST the tokens body. reqwest's default redirect policy turns a 301
+    /// of a POST into a GET and drops the body, so this client refuses
+    /// redirects and, when Keystone points at another path on the same
+    /// origin (the trailing slash), posts again itself. An off-host 301 is
+    /// not a URL we built: one retry of the same POST, then the status stands.
+    async fn post_keystone_v2(
+        &self,
+        url: &str,
+        body: &serde_json::Value,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let resp = self.post_keystone_json(url, body).await?;
+        if !matches!(
+            resp.status(),
+            StatusCode::MOVED_PERMANENTLY
+                | StatusCode::FOUND
+                | StatusCode::TEMPORARY_REDIRECT
+                | StatusCode::PERMANENT_REDIRECT
+        ) {
+            return Ok(resp);
+        }
+        let location = resp
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        match Self::keystone_redirect_target(url, location) {
+            Some(next) if !Self::urls_match(url, &next) && Self::same_origin_url(url, &next) => {
+                self.post_keystone_json(&next, body).await
+            }
+            _ => self.post_keystone_json(url, body).await,
+        }
+    }
+
     /// Keystone v2: POST {base}/v2.0/tokens
     /// Body: {"auth":{"passwordCredentials":{"username":"...","password":"..."}}}
     /// Response: token in access.token.id, storage URL in access.serviceCatalog
     async fn auth_keystone_v2(&mut self, base: &str) -> Result<(), ProviderError> {
-        let url = format!("{base}/v2.0/tokens");
+        let url = Self::keystone_v2_tokens_url(base);
         debug!("Swift Keystone v2: {}", url);
 
         // Blomp uses tenantName = "storage" (fixed for all accounts).
@@ -501,17 +591,7 @@ impl SwiftProvider {
             }
         });
 
-        let resp = self
-            .client
-            .post(&url)
-            .timeout(AUTH_REQUEST_TIMEOUT)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| {
-                ProviderError::ConnectionFailed(format!("Keystone v2 request failed: {e}"))
-            })?;
+        let resp = self.post_keystone_v2(&url, &body).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -2354,6 +2434,132 @@ mod tests {
         assert!(p
             .validate_request_target("https://other.example.net/v1/AUTH_a/container/file")
             .is_err());
+    }
+
+    #[test]
+    fn keystone_v2_tokens_url_does_not_append_the_suffix_twice() {
+        assert_eq!(
+            SwiftProvider::keystone_v2_tokens_url("https://authenticate.blomp.com"),
+            "https://authenticate.blomp.com/v2.0/tokens"
+        );
+        assert_eq!(
+            SwiftProvider::keystone_v2_tokens_url("https://authenticate.blomp.com/"),
+            "https://authenticate.blomp.com/v2.0/tokens"
+        );
+        assert_eq!(
+            SwiftProvider::keystone_v2_tokens_url("https://authenticate.blomp.com/v2.0"),
+            "https://authenticate.blomp.com/v2.0/tokens"
+        );
+        assert_eq!(
+            SwiftProvider::keystone_v2_tokens_url("https://authenticate.blomp.com/v2.0/tokens/"),
+            "https://authenticate.blomp.com/v2.0/tokens"
+        );
+    }
+
+    /// Blomp's tokens path has answered 301 to the same path with a trailing
+    /// slash. reqwest would turn that POST into a GET. We post again, with
+    /// the body, and we do not follow a 301 that leaves the host.
+    #[tokio::test]
+    async fn keystone_v2_reposts_a_same_origin_301_and_retries_an_off_host_one() {
+        use std::sync::{Arc, Mutex};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                        .await
+                        .unwrap_or_default();
+                    if method == axum::http::Method::POST {
+                        seen.lock()
+                            .unwrap()
+                            .push(format!("{method} {path} {}", body.len()));
+                    }
+                    if path == "/v2.0/tokens/"
+                        && method == axum::http::Method::POST
+                        && !body.is_empty()
+                    {
+                        let json = r#"{"access":{"token":{"id":"tok"},"serviceCatalog":[{"type":"object-store","endpoints":[{"publicURL":"http://127.0.0.1/v1/AUTH_a"}]}]}}"#;
+                        return axum::response::Response::builder()
+                            .status(200)
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(json))
+                            .unwrap();
+                    }
+                    if path == "/off/v2.0/tokens" {
+                        return axum::response::Response::builder()
+                            .status(301)
+                            .header("location", "http://127.0.0.1:1/steal")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .status(301)
+                        .header("location", "/v2.0/tokens/")
+                        .body(axum::body::Body::empty())
+                        .unwrap()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+
+        let mut provider = SwiftProvider::new(SwiftConfig {
+            auth_url: format!("http://{addr}"),
+            username: "user".to_string(),
+            password: SecretString::from("pw".to_string()),
+            verify_cert: true,
+            allow_cleartext_storage_endpoint: true,
+        });
+        provider
+            .authenticate()
+            .await
+            .expect("same-origin 301 is re-posted");
+        let slash = log.lock().unwrap().clone();
+        assert_eq!(slash.len(), 2, "{slash:?}");
+        assert!(
+            slash[0].starts_with("POST /v2.0/tokens ")
+                && !slash[0].contains("/v2.0/tokens/")
+                && !slash[0].ends_with(" 0"),
+            "the first post must carry the JSON body, got {}",
+            slash[0]
+        );
+        assert!(
+            slash[1].starts_with("POST /v2.0/tokens/ ") && !slash[1].ends_with(" 0"),
+            "the redirect must be another POST with the body, got {}",
+            slash[1]
+        );
+        assert!(provider.storage_url().unwrap().contains("AUTH_a"));
+
+        log.lock().unwrap().clear();
+        let mut off = SwiftProvider::new(SwiftConfig {
+            auth_url: format!("http://{addr}/off"),
+            username: "user".to_string(),
+            password: SecretString::from("pw".to_string()),
+            verify_cert: true,
+            allow_cleartext_storage_endpoint: true,
+        });
+        let err = off
+            .authenticate()
+            .await
+            .expect_err("off-host 301 is not followed");
+        let text = err.to_string();
+        assert!(
+            text.contains("301"),
+            "the retry still answers 301, got: {text}"
+        );
+        let off_log = log.lock().unwrap().clone();
+        assert_eq!(off_log.len(), 2, "one retry, not a follow: {off_log:?}");
+        assert!(
+            off_log
+                .iter()
+                .all(|line| line.starts_with("POST /off/v2.0/tokens ")),
+            "{off_log:?}"
+        );
     }
 
     // Live smoke (ignored): confirms Blomp host forces Keystone and accepts HTTP storage URL shape.
