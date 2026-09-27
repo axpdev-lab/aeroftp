@@ -17,6 +17,17 @@ export interface KeystoreImportOutcome {
 }
 
 /**
+ * An error as the end of a sentence. The notes are joined with a space, and a
+ * note ending in a raw error (`...: {error}`) ran straight into the next one
+ * ("...: locked Restart AeroFTP..."). The errors are the backend's English
+ * text, so an English full stop is the right end for them.
+ */
+const asSentence = (error: string): string => {
+    const trimmed = error.trim();
+    return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+};
+
+/**
  * Build the message for a finished import. `preferencesError` is the failure,
  * if any, of restoring the app preferences carried in the backup: that step
  * runs in the WebView after the backend import, and its failure must reach the
@@ -44,10 +55,10 @@ export function keystoreImportSummary(
         extraNotes.push(t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0, defaultValue: '{count} account(s) could not be unlocked on this device. The backup was made on another computer: re-export it there with a password set on those accounts, then import it here.' }));
     }
     if (result.profileDecisionsError) {
-        extraNotes.push(t('settings.keystoreDecisionsFailed', { error: result.profileDecisionsError }));
+        extraNotes.push(t('settings.keystoreDecisionsFailed', { error: asSentence(result.profileDecisionsError) }));
     }
     if (preferencesError) {
-        extraNotes.push(t('settings.keystorePreferencesFailed', { error: preferencesError }));
+        extraNotes.push(t('settings.keystorePreferencesFailed', { error: asSentence(preferencesError) }));
     }
     if (result.requiresRestart) {
         extraNotes.push(t('settings.keystoreRestartRequired', { defaultValue: 'Restart AeroFTP to apply restored databases and plugins.' }));

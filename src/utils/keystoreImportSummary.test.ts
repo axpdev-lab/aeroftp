@@ -27,7 +27,7 @@ describe('keystoreImportSummary', () => {
     it('reports preferences that could not be restored, with the error', () => {
         const summary = keystoreImportSummary({ imported: 12, skipped: 0 }, 'QuotaExceededError', t);
         expect(summary.type).toBe('info');
-        expect(summary.text).toContain('settings.keystorePreferencesFailed(error=QuotaExceededError)');
+        expect(summary.text).toContain('settings.keystorePreferencesFailed(error=QuotaExceededError.)');
     });
 
     it('keeps reporting a restart and a failed profile decision', () => {
@@ -38,8 +38,20 @@ describe('keystoreImportSummary', () => {
         );
         expect(summary.type).toBe('info');
         expect(summary.text).toBe(
-            'settings.keystoreImported(imported=3,skipped=0). settings.keystoreDecisionsFailed(error=locked) settings.keystoreRestartRequired',
+            'settings.keystoreImported(imported=3,skipped=0). settings.keystoreDecisionsFailed(error=locked.) settings.keystoreRestartRequired',
         );
+    });
+
+    it('ends an error with a full stop, so the next note does not run into it', () => {
+        const summary = keystoreImportSummary(
+            { imported: 1, skipped: 0, requiresRestart: true },
+            'QuotaExceededError: The quota has been exceeded',
+            t,
+        );
+        expect(summary.text).toContain('(error=QuotaExceededError: The quota has been exceeded.) settings.keystoreRestartRequired');
+        // An error that already ends a sentence is left as it is.
+        expect(keystoreImportSummary({ imported: 1, skipped: 0 }, 'Disk full.', t).text)
+            .toContain('(error=Disk full.)');
     });
 
     it('treats re-keyed accounts as information, and unreadable ones as a warning', () => {
