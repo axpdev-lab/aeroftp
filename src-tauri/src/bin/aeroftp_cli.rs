@@ -58019,6 +58019,11 @@ async fn cmd_put_glob(
                         String::new()
                     }
                 );
+                // As `put -r` does: without them a refusal showed only as
+                // exit 4, and only `--json` said why.
+                for err in &errors {
+                    eprintln!("  Error: {}", err);
+                }
             }
         }
         OutputFormat::Json => {
@@ -80445,6 +80450,67 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             (count(UPLOAD_SKIP_PREFIX), count("no connection left")),
             (total, 0),
             "every file skipped, none left without a connection"
+        );
+    }
+
+    /// `put` with a glob printed nothing in text mode about the files it
+    /// failed on: a refusal showed only as exit 4, and only `--json` said
+    /// why. It prints them after its summary, as `put -r` does. The command
+    /// runs in a child process of this test binary whose stderr the test
+    /// reads, since libtest captures what the test's own threads print.
+    #[test]
+    fn put_glob_prints_its_errors_in_text_mode() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_PUT_GLOB_ERRORS_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 1);
+            cli.quiet = false;
+            cli.immutable = true;
+            let state = WorkerFake::state();
+            state
+                .lock()
+                .unwrap()
+                .files
+                .insert("/root/f2.txt".to_string(), b"fil".to_vec());
+            let pattern = format!("{local_dir}/*.txt");
+            let code = run_on_fake(&state, || async {
+                cmd_put_glob(
+                    "memory://",
+                    &pattern,
+                    Some("/root"),
+                    false,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            assert_eq!(code, 4, "a refusal is a failed file");
+            return;
+        }
+        let output = std::process::Command::new(std::env::current_exe().expect("the test binary"))
+            .args([
+                "--exact",
+                "tests::put_glob_prints_its_errors_in_text_mode",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("run the child");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success() && stdout.contains("1 passed"),
+            "the child: {stdout}\n{stderr}"
+        );
+        assert!(
+            stderr
+                .lines()
+                .any(|line| line.trim_start().starts_with("Error: ")
+                    && line.contains("/root/f2.txt exists with 3 bytes")),
+            "the refusal is printed: {stderr}"
         );
     }
 
