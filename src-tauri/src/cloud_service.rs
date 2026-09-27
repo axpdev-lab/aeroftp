@@ -166,6 +166,9 @@ pub struct CloudService {
     /// Files of the running cycle that kept changing while they uploaded
     /// (relative path): the cycle reports them once its baseline is saved.
     unsettled: Arc<std::sync::Mutex<Vec<String>>>,
+    /// Files a previous cycle left unsettled (their baseline is
+    /// `UNSETTLED_BASELINE`), read with the index each plan loads.
+    left_unsettled: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     /// How long an upload waits for its file to be left alone (see
     /// `SEND_QUIET_WINDOW`), a field so a test can give it a length.
     send_quiet_window: std::time::Duration,
@@ -206,9 +209,19 @@ const SEND_QUIET_WINDOW: std::time::Duration = if cfg!(test) {
     std::time::Duration::from_secs(2)
 };
 
-/// The longest an upload waits for its file to be left alone: a file written
-/// without pause is then sent as it is, and the resend loop reads it again.
+/// The longest an upload waits for its file to be left alone, over all its
+/// sends in a cycle: a file written without pause is then sent as it is, and
+/// the resend loop reads it again without waiting any more.
 const SEND_QUIET_BOUND: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How far ahead of the clock a file's time may be and still read as a change
+/// now: FAT rounds the last write up to its 2 s field, and a share's clock
+/// can run ahead (on Unix its change time comes from the server too).
+const AHEAD_READ_AS_NOW: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// The baseline time of a file that kept changing while it uploaded: a time
+/// neither side has, so the next cycle reads both as changed, a conflict.
+const UNSETTLED_BASELINE: DateTime<Utc> = DateTime::<Utc>::UNIX_EPOCH;
 
 impl CloudService {
     /// Create a new cloud service
@@ -221,6 +234,7 @@ impl CloudService {
             app_handle: None,
             landed: Arc::default(),
             unsettled: Arc::default(),
+            left_unsettled: Arc::default(),
             send_quiet_window: SEND_QUIET_WINDOW,
             send_quiet_bound: SEND_QUIET_BOUND,
         }
@@ -278,15 +292,14 @@ impl CloudService {
         })
     }
 
-    /// Wait until `path` has been left alone for `window`, at most `bound`
-    /// (see `SEND_QUIET_WINDOW`). A file that cannot be read is not waited
-    /// for: the upload reports what is wrong with it.
+    /// Wait until `path` has been left alone for `window`, until `deadline`
+    /// at the latest (see `SEND_QUIET_WINDOW`). A file that cannot be read is
+    /// not waited for: the upload reports what is wrong with it.
     async fn wait_until_quiet(
         path: &Path,
         window: std::time::Duration,
-        bound: std::time::Duration,
+        deadline: tokio::time::Instant,
     ) {
-        let deadline = tokio::time::Instant::now() + bound;
         while let Some(quiet_for) = Self::quiet_for(path) {
             let now = tokio::time::Instant::now();
             if quiet_for >= window || now >= deadline {
@@ -297,9 +310,7 @@ impl CloudService {
     }
 
     /// How long ago `path` last changed, by its time and, on Unix, its change
-    /// time. A time ahead of the clock (a stamp from a server whose clock is
-    /// ahead, a copied time) says nothing about the last write and is left
-    /// out.
+    /// time (see `quiet_age`).
     fn quiet_for(path: &Path) -> Option<std::time::Duration> {
         let meta = std::fs::metadata(path).ok()?;
         #[cfg(unix)]
@@ -318,7 +329,10 @@ impl CloudService {
         )
     }
 
-    /// The age at `now` of the youngest of `times`.
+    /// The age at `now` of the youngest of `times`. A time at most
+    /// `AHEAD_READ_AS_NOW` ahead of the clock is a change now; one further
+    /// ahead (a stamp from a server whose clock is well ahead, a copied time)
+    /// says nothing about the last write and is left out.
     fn quiet_age(
         now: std::time::SystemTime,
         times: [Option<std::time::SystemTime>; 2],
@@ -326,7 +340,13 @@ impl CloudService {
         times
             .into_iter()
             .flatten()
-            .filter_map(|time| now.duration_since(time).ok())
+            .filter_map(|time| match now.duration_since(time) {
+                Ok(age) => Some(age),
+                Err(ahead) if ahead.duration() <= AHEAD_READ_AS_NOW => {
+                    Some(std::time::Duration::ZERO)
+                }
+                Err(_) => None,
+            })
             .min()
     }
 
@@ -441,7 +461,25 @@ impl CloudService {
         if comparison.relative_path.contains('\\') {
             return SyncAction::Skip;
         }
+        let left_unsettled = || {
+            self.left_unsettled
+                .lock()
+                .is_ok_and(|left| left.contains(&comparison.relative_path))
+        };
         let action = match &comparison.status {
+            // A file a previous cycle left unsettled: the remote holds one of
+            // its sends, possibly torn, and a backend that sets its own time
+            // makes that send look newer. It is asked, not settled by time or
+            // by a preference for the remote; under PreferLocal the local
+            // file, complete, is still sent.
+            SyncStatus::Conflict | SyncStatus::SizeMismatch
+                if matches!(
+                    config.conflict_strategy,
+                    ConflictStrategy::PreferNewer | ConflictStrategy::PreferRemote
+                ) && left_unsettled() =>
+            {
+                SyncAction::AskUser
+            }
             SyncStatus::Conflict | SyncStatus::SizeMismatch => match config.conflict_strategy {
                 ConflictStrategy::AskUser => SyncAction::AskUser,
                 ConflictStrategy::KeepBoth => SyncAction::KeepBoth,
@@ -469,6 +507,24 @@ impl CloudService {
             return SyncAction::Skip;
         }
         action
+    }
+
+    /// Note which files a previous cycle left unsettled (see
+    /// `left_unsettled`).
+    fn remember_unsettled(&self, index: Option<&SyncIndex>) {
+        let unsettled = index
+            .map(|index| {
+                index
+                    .files
+                    .iter()
+                    .filter(|(_, entry)| entry.modified == Some(UNSETTLED_BASELINE))
+                    .map(|(path, _)| path.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Ok(mut left) = self.left_unsettled.lock() {
+            *left = unsettled;
+        }
     }
 
     /// How many files would have a delete propagated this cycle.
@@ -530,8 +586,12 @@ impl CloudService {
         prior_index: Option<&SyncIndex>,
     ) {
         // Only persist on a clean run (no errors) to avoid advancing the
-        // "last known good" snapshot on a partial/broken cycle.
+        // "last known good" snapshot on a partial/broken cycle. The one thing
+        // such a cycle still records is the sentinel of a file that kept
+        // changing while it uploaded: without it the next cycle reads the
+        // remote's last send, possibly torn, as the newer copy.
         if !result.errors.is_empty() {
+            self.save_unsettled_into(local, remote, comparisons, prior_index);
             return;
         }
         let idx = SyncIndex {
@@ -553,6 +613,51 @@ impl CloudService {
                 "Saved AeroCloud sync index for pair ({} tracked files)",
                 idx.files.len()
             );
+        }
+    }
+
+    /// Record in the prior index, and in nothing else, the sentinel of each
+    /// file of this cycle that kept changing while it uploaded.
+    fn save_unsettled_into(
+        &self,
+        local: &str,
+        remote: &str,
+        comparisons: &[FileComparison],
+        prior_index: Option<&SyncIndex>,
+    ) {
+        let unsettled = self
+            .unsettled
+            .lock()
+            .map(|unsettled| unsettled.clone())
+            .unwrap_or_default();
+        if unsettled.is_empty() {
+            return;
+        }
+        let mut idx = prior_index.cloned().unwrap_or_else(|| SyncIndex {
+            version: SYNC_INDEX_VERSION,
+            last_sync: Utc::now(),
+            local_path: local.to_string(),
+            remote_path: remote.to_string(),
+            files: HashMap::new(),
+            unverified_keys: Default::default(),
+        });
+        for path in unsettled {
+            let size = comparisons
+                .iter()
+                .find(|c| c.relative_path == path)
+                .and_then(|c| c.local_info.as_ref())
+                .map_or(0, |info| info.size);
+            idx.files.insert(
+                path,
+                SyncIndexEntry {
+                    size,
+                    modified: Some(UNSETTLED_BASELINE),
+                    is_dir: false,
+                },
+            );
+        }
+        if let Err(e) = save_sync_index(&idx) {
+            tracing::warn!("Failed to save AeroCloud sync index: {}", e);
         }
     }
 
@@ -737,6 +842,7 @@ impl CloudService {
 
         // Load prior sync index (if any) for delete propagation + conflict detection.
         let index = self.load_index(config);
+        self.remember_unsettled(index.as_ref());
         let prior_count = index.as_ref().map_or(0, |i| i.files.len());
         let local_len = local_files.len();
         let remote_len = remote_files.len();
@@ -1137,7 +1243,8 @@ impl CloudService {
     /// (permission flake, transient FS error), a mid-listing iterator error
     /// was swallowed, or the 100K index cap truncated the walk: the map then
     /// understates the local side and must never drive delete propagation.
-    /// Mirrors `scan_remote_folder`'s completeness contract. (CLAUDE-AV-B3-16)
+    /// Mirrors `scan_remote_folder_with_provider`'s completeness contract.
+    /// (CLAUDE-AV-B3-16)
     async fn scan_local_folder(
         &self,
         config: &CloudConfig,
@@ -1498,14 +1605,12 @@ impl CloudService {
                     let local_path = std::path::Path::new(&local_info.path);
                     landed = false;
                     let mut sends = 0;
+                    // One bound for all the sends of this file in this cycle.
+                    let quiet_deadline = tokio::time::Instant::now() + self.send_quiet_bound;
                     loop {
                         sends += 1;
-                        Self::wait_until_quiet(
-                            local_path,
-                            self.send_quiet_window,
-                            self.send_quiet_bound,
-                        )
-                        .await;
+                        Self::wait_until_quiet(local_path, self.send_quiet_window, quiet_deadline)
+                            .await;
                         let sent = Self::local_file_state(local_path);
                         tracing::info!(
                             "AeroCloud: uploading local '{}' ({} bytes) to remote '{}'",
@@ -1558,7 +1663,7 @@ impl CloudService {
                                 &comparison.relative_path,
                                 Landed {
                                     size: None,
-                                    modified: DateTime::<Utc>::UNIX_EPOCH,
+                                    modified: UNSETTLED_BASELINE,
                                 },
                             );
                             if let Ok(mut unsettled) = self.unsettled.lock() {
@@ -2633,13 +2738,23 @@ mod baseline_tests {
         std::fs::write(&file, b"payload").unwrap();
         tokio::time::sleep(window + std::time::Duration::from_millis(50)).await;
         let started = std::time::Instant::now();
-        CloudService::wait_until_quiet(&file, window, SEND_QUIET_BOUND).await;
+        CloudService::wait_until_quiet(
+            &file,
+            window,
+            tokio::time::Instant::now() + SEND_QUIET_BOUND,
+        )
+        .await;
         assert!(started.elapsed() < std::time::Duration::from_millis(100));
 
         // Written without pause: the bound ends the wait.
         std::fs::write(&file, b"payload").unwrap();
         let started = std::time::Instant::now();
-        CloudService::wait_until_quiet(&file, std::time::Duration::from_secs(60), window).await;
+        CloudService::wait_until_quiet(
+            &file,
+            std::time::Duration::from_secs(60),
+            tokio::time::Instant::now() + window,
+        )
+        .await;
         let waited = started.elapsed();
         assert!(
             waited >= at_least && waited < std::time::Duration::from_secs(5),
@@ -2654,7 +2769,12 @@ mod baseline_tests {
             std::fs::write(&file, b"payload").unwrap();
             stamp(&file, 1_700_000_000);
             let started = std::time::Instant::now();
-            CloudService::wait_until_quiet(&file, window, SEND_QUIET_BOUND).await;
+            CloudService::wait_until_quiet(
+                &file,
+                window,
+                tokio::time::Instant::now() + SEND_QUIET_BOUND,
+            )
+            .await;
             assert!(started.elapsed() >= at_least, "{:?}", started.elapsed());
         }
     }
