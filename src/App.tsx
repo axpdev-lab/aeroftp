@@ -471,7 +471,7 @@ import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { findGvfsMtpMount, isGvfsMtpPath } from './utils/gvfsMtpMount';
-import { acceptFlatpakImport, flatpakImportResultDialog } from './utils/flatpakImport';
+import { acceptFlatpakImport, flatpakImportResultDialog, flatpakOfferHandlers } from './utils/flatpakImport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -1946,14 +1946,15 @@ const App: React.FC = () => {
           'flatpak_config_import_status'
         );
         if (!st?.available) return;
-        setConfirmDialog({
-          message: t('flatpak.importBody'),
-          confirmLabel: t('flatpak.importAccept'),
-          confirmColor: 'blue',
-          onConfirm: async () => {
-            // A dialog, not a toast: toasts can be switched off, and the user
-            // just made a decision whose result they must see.
-            const result = flatpakImportResultDialog(await acceptFlatpakImport(), t);
+        const offer = flatpakOfferHandlers({
+          accept: acceptFlatpakImport,
+          decline: async () => {
+            try { await invoke('flatpak_config_import_apply', { accept: false }); } catch { /* ignore */ }
+          },
+          // A dialog, not a toast: toasts can be switched off, and the user
+          // just made a decision whose result they must see.
+          showOutcome: (outcome) => {
+            const result = flatpakImportResultDialog(outcome, t);
             setConfirmDialog({
               message: result.message,
               confirmLabel: result.confirmLabel,
@@ -1962,10 +1963,14 @@ const App: React.FC = () => {
               onCancel: () => setConfirmDialog(null),
             });
           },
-          onCancel: async () => {
-            try { await invoke('flatpak_config_import_apply', { accept: false }); } catch { /* ignore */ }
-            setConfirmDialog(null);
-          },
+          close: () => setConfirmDialog(null),
+        });
+        setConfirmDialog({
+          message: t('flatpak.importBody'),
+          confirmLabel: t('flatpak.importAccept'),
+          confirmColor: 'blue',
+          onConfirm: offer.onConfirm,
+          onCancel: offer.onCancel,
         });
       } catch {
         // Not in a Flatpak, or backend not ready: silently ignore.

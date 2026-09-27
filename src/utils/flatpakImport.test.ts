@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/api/core', () => ({
     invoke: (cmd: string, args?: unknown) => mockInvoke(cmd, args),
 }));
 
-import { acceptFlatpakImport, flatpakImportResultDialog } from './flatpakImport';
+import { acceptFlatpakImport, flatpakImportResultDialog, flatpakOfferHandlers, type FlatpakImportOutcome } from './flatpakImport';
 
 const report = (copied: number, vault: { vault_imported?: boolean; vault_skipped?: boolean } = {}) => ({
     imported: copied > 0,
@@ -113,3 +113,52 @@ describe('flatpakImportResultDialog', () => {
     });
 });
 
+describe('flatpakOfferHandlers', () => {
+    /** Imports that run until the test finishes them, as a slow copy does. */
+    const offer = () => {
+        const running: Array<(outcome: FlatpakImportOutcome) => void> = [];
+        const actions = {
+            accept: vi.fn(() => new Promise<FlatpakImportOutcome>(resolve => { running.push(resolve); })),
+            decline: vi.fn(async () => {}),
+            showOutcome: vi.fn(),
+            close: vi.fn(),
+        };
+        const finish = (outcome: FlatpakImportOutcome) => running.splice(0).forEach(resolve => resolve(outcome));
+        return { actions, handlers: flatpakOfferHandlers(actions), finish };
+    };
+
+    it('starts one import however many times Import is clicked', async () => {
+        const { actions, handlers, finish } = offer();
+        const first = handlers.onConfirm();
+        const second = handlers.onConfirm();
+        finish({ kind: 'nothing', vault: 'absent' });
+        await Promise.all([first, second]);
+        expect(actions.accept).toHaveBeenCalledTimes(1);
+        expect(actions.showOutcome).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores Cancel and Escape while the import runs', async () => {
+        const { actions, handlers, finish } = offer();
+        const running = handlers.onConfirm();
+        await handlers.onCancel();
+        // A decline here would write the decision marker, and a failed import
+        // would then promise an offer at the next start that never comes.
+        expect(actions.decline).not.toHaveBeenCalled();
+        expect(actions.close).not.toHaveBeenCalled();
+        finish({ kind: 'imported', copied: 2, vault: 'skipped' });
+        await running;
+        expect(actions.showOutcome).toHaveBeenCalledWith({ kind: 'imported', copied: 2, vault: 'skipped' });
+    });
+
+    it('declines once, and ignores Import after a decline', async () => {
+        const { actions, handlers, finish } = offer();
+        await handlers.onCancel();
+        await handlers.onCancel();
+        const late = handlers.onConfirm();
+        finish({ kind: 'nothing', vault: 'absent' });
+        await late;
+        expect(actions.decline).toHaveBeenCalledTimes(1);
+        expect(actions.close).toHaveBeenCalledTimes(1);
+        expect(actions.accept).not.toHaveBeenCalled();
+    });
+});

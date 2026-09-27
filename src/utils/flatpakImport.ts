@@ -53,6 +53,46 @@ export async function acceptFlatpakImport(): Promise<FlatpakImportOutcome> {
     return report.copied > 0 ? { kind: 'imported', copied: report.copied, vault } : { kind: 'nothing', vault };
 }
 
+/** What the offer's buttons need from the GUI. */
+export interface FlatpakOfferActions {
+    /** Run the accepted import; never rejects (see {@link acceptFlatpakImport}). */
+    accept: () => Promise<FlatpakImportOutcome>;
+    /** Record the decline. */
+    decline: () => Promise<void>;
+    /** Replace the offer with the dialog for this outcome. */
+    showOutcome: (outcome: FlatpakImportOutcome) => void;
+    /** Close the offer after a decline. */
+    close: () => void;
+}
+
+/**
+ * The confirm and cancel handlers of the import offer (Escape runs cancel).
+ * Only the first answer counts: the offer stays on screen while the copy runs,
+ * and a second click on Import would start a second copy whose result replaces
+ * the first one's dialog, while Cancel or Escape would record a decline, so a
+ * failed import would then promise an offer at the next start that never
+ * comes.
+ */
+export function flatpakOfferHandlers(actions: FlatpakOfferActions): {
+    onConfirm: () => Promise<void>;
+    onCancel: () => Promise<void>;
+} {
+    let answered = false;
+    return {
+        onConfirm: async () => {
+            if (answered) return;
+            answered = true;
+            actions.showOutcome(await actions.accept());
+        },
+        onCancel: async () => {
+            if (answered) return;
+            answered = true;
+            await actions.decline();
+            actions.close();
+        },
+    };
+}
+
 /** The dialog the GUI shows for an outcome. */
 export interface FlatpakImportResultDialog {
     message: string;
