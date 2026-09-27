@@ -482,6 +482,52 @@ pub struct CryptOverlayProvider {
 }
 
 impl CryptOverlayProvider {
+    /// `list`, with the number of rows inside the encrypted subtree and how
+    /// many of those decrypted. Rows whose name does not decrypt are dropped
+    /// (a foreign or corrupt file); when none decrypts, the key is probably
+    /// wrong, which [`apply_overlay_in_place`] reports once.
+    async fn list_counting(
+        &mut self,
+        path: &str,
+    ) -> Result<(Vec<RemoteEntry>, usize, usize), ProviderError> {
+        let enc_path = if path.is_empty() || path == "." {
+            path.to_string()
+        } else {
+            self.map(path, true, AccessKind::Read)?
+        };
+        let raw = self.inner.list(&enc_path).await?;
+        let mut out = Vec::with_capacity(raw.len());
+        let (mut encrypted_rows, mut decrypted_rows) = (0usize, 0usize);
+        for entry in raw {
+            if self.keys.is_sentinel(&entry.name) {
+                continue;
+            }
+            if self.wire_path_is_encrypted(&entry.path) {
+                encrypted_rows += 1;
+                // inside the encrypted subtree: decrypt (a real foreign/corrupt row still drops)
+                let Some(plain_name) = self.keys.decode_name(&entry.name, entry.is_dir) else {
+                    continue;
+                };
+                decrypted_rows += 1;
+                let plain_path = decode_entry_path(&self.keys, &entry.path, entry.is_dir);
+                let size = if entry.is_dir {
+                    0
+                } else {
+                    self.keys.decrypted_size(entry.size)
+                };
+                out.push(RemoteEntry {
+                    name: plain_name,
+                    path: plain_path,
+                    size,
+                    ..entry
+                });
+            } else {
+                out.push(entry); // outside/at/above anchor: raw plaintext row, unchanged
+            }
+        }
+        Ok((out, encrypted_rows, decrypted_rows))
+    }
+
     /// Wrap `inner` with the unlocked `keys` bound to the plaintext `scope`
     /// (`""`/`"/"` = the whole remote). The scope is normalized internally.
     pub fn new(inner: Box<dyn StorageProvider>, keys: OverlayKeys, scope: &str) -> Self {
@@ -923,39 +969,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let enc_path = if path.is_empty() || path == "." {
-            path.to_string()
-        } else {
-            self.map(path, true, AccessKind::Read)?
-        };
-        let raw = self.inner.list(&enc_path).await?;
-        let mut out = Vec::with_capacity(raw.len());
-        for entry in raw {
-            if self.keys.is_sentinel(&entry.name) {
-                continue;
-            }
-            if self.wire_path_is_encrypted(&entry.path) {
-                // inside the encrypted subtree: decrypt (a real foreign/corrupt row still drops)
-                let Some(plain_name) = self.keys.decode_name(&entry.name, entry.is_dir) else {
-                    continue;
-                };
-                let plain_path = decode_entry_path(&self.keys, &entry.path, entry.is_dir);
-                let size = if entry.is_dir {
-                    0
-                } else {
-                    self.keys.decrypted_size(entry.size)
-                };
-                out.push(RemoteEntry {
-                    name: plain_name,
-                    path: plain_path,
-                    size,
-                    ..entry
-                });
-            } else {
-                out.push(entry); // outside/at/above anchor: raw plaintext row, unchanged
-            }
-        }
-        Ok(out)
+        self.list_counting(path).await.map(|(out, _, _)| out)
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
@@ -1876,15 +1890,20 @@ pub async fn wrap_connected_provider_for_profile(
     // AeroCrypt vault legally has an empty password). FAIL-CLOSED on an
     // unreadable stored keyfile.
     let keyfile_digest = resolve_profile_keyfile_digest(store, id)?;
-    let password = crate::user_partitions::resolve_active_credential(
+    let stored_password = crate::user_partitions::resolve_active_credential(
         store,
         &format!("aerocrypt_overlay_pw_{}", id),
     )
     .ok()
     .flatten()
     .map(|s| s.to_string())
-    .filter(|s| !s.is_empty())
-    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok());
+    .filter(|s| !s.is_empty());
+    // A secret from the environment carries no recorded form.
+    let password_from_env = stored_password.is_none();
+    let password = stored_password
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
+        // Set but empty is no password: never rclone's all-zero key.
+        .filter(|s| !s.is_empty());
     // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
     let password = match password {
         Some(p) => p,
@@ -1894,15 +1913,17 @@ pub async fn wrap_connected_provider_for_profile(
                 .to_string(),
         ),
     };
-    let salt = crate::user_partitions::resolve_active_credential(
+    let stored_salt = crate::user_partitions::resolve_active_credential(
         store,
         &format!("aerocrypt_overlay_salt_{}", id),
     )
     .ok()
     .flatten()
-    .map(|s| s.to_string())
-    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
-    .unwrap_or_default();
+    .map(|s| s.to_string());
+    let salt_from_env = stored_salt.is_none();
+    let salt = stored_salt
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
+        .unwrap_or_default();
     let local_config_json = crate::user_partitions::resolve_active_credential(
         store,
         &format!("aerocrypt_overlay_config_{}", id),
@@ -1919,6 +1940,16 @@ pub async fn wrap_connected_provider_for_profile(
         } else {
             Some(salt.clone())
         },
+        password_form: crate::rclone_crypt::secret_form_for_source(
+            params.password_form,
+            password_from_env,
+            "AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM",
+        ),
+        salt_form: crate::rclone_crypt::secret_form_for_source(
+            params.salt_form,
+            salt_from_env,
+            "AEROFTP_CRYPT_OVERLAY_SALT_FORM",
+        ),
         ..params
     };
 
@@ -2105,6 +2136,13 @@ pub fn profile_protocol_class(profile: &serde_json::Value) -> &'static str {
     protocol_class(proto)
 }
 
+/// A folder whose every encrypted name fails to decrypt is the sign of a
+/// wrong password or salt (a foreign file among them drops alone). The rows
+/// are dropped either way; this only decides whether to say so.
+fn no_name_decrypted(encrypted_rows: usize, decrypted_rows: usize) -> bool {
+    encrypted_rows > 0 && decrypted_rows == 0
+}
+
 /// Extract the [`OverlayUnlockParams`] binding from a saved profile's
 /// `aeroCryptOverlay` JSON, or `None` when the profile carries no enabled
 /// overlay. Pure (no vault access): the secret lookup is the caller's job. The
@@ -2122,6 +2160,7 @@ pub(crate) fn overlay_binding_from_profile(
     {
         return None;
     }
+    let (password_form, salt_form) = crate::rclone_crypt::crypt_secret_forms(profile);
     Some(OverlayUnlockParams {
         kind: overlay_kind(overlay).to_string(),
         remote_scope: overlay
@@ -2151,6 +2190,10 @@ pub(crate) fn overlay_binding_from_profile(
             .get("withHeader")
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
+        // The forms the vault holds the password and salt in; a caller that
+        // takes a secret from anywhere else clears the one it replaces.
+        password_form,
+        salt_form,
     })
 }
 
@@ -2272,8 +2315,12 @@ async fn unlock_overlay_keys_encrypting(
                     "keyfiles are an AeroCrypt feature; this overlay is rclone-crypt".to_string(),
                 );
             }
-            let (name_key, data_key, name_tweak) =
-                rclone_crypt::derive_keys_with_tweak(password, salt)?;
+            let (name_key, data_key, name_tweak) = rclone_crypt::derive_keys_with_forms(
+                password,
+                params.password_form,
+                salt,
+                params.salt_form,
+            )?;
             let filename_encryption = match params.filename_encryption.as_str() {
                 "off" => FilenameEncryption::Off,
                 "obfuscate" => FilenameEncryption::Obfuscate,
@@ -2662,13 +2709,33 @@ pub async fn apply_overlay_in_place(
     let raw = slot
         .take()
         .expect("provider present after a successful unlock");
-    let wrapped = CryptOverlayProvider::new(raw, outcome.keys, &binding.remote_scope);
+    let mut wrapped = CryptOverlayProvider::new(raw, outcome.keys, &binding.remote_scope);
+    let scope = norm_anchor(&binding.remote_scope);
+    // rclone-crypt derives a key from whatever it is given, so a wrong password
+    // or salt unlocks without error and every name then fails to decrypt. Look
+    // once, here, rather than on every listing.
+    let mut warning = outcome.warning;
+    if binding.kind == "rclone-crypt" {
+        if let Ok((_, encrypted, decrypted)) = wrapped.list_counting(&scope).await {
+            if no_name_decrypted(encrypted, decrypted) {
+                let note = format!(
+                    "None of the {encrypted} names in the encrypted folder decrypted with this \
+                     password and salt: they are probably not the ones the files were written \
+                     with. Check whether each was typed or pasted from rclone.conf."
+                );
+                warning = Some(match warning {
+                    Some(previous) => format!("{previous} {note}"),
+                    None => note,
+                });
+            }
+        }
+    }
     *slot = Some(Box::new(wrapped));
     Ok(ApplyOverlayResult {
-        scope: norm_anchor(&binding.remote_scope),
+        scope,
         marker_restored: outcome.marker_restored,
         marker_path: outcome.marker_path,
-        warning: outcome.warning,
+        warning,
         has_legacy_marker: outcome.has_legacy_marker,
         has_current_marker: outcome.has_current_marker,
     })
@@ -2692,6 +2759,13 @@ pub fn clear_overlay_in_place(slot: &mut Option<Box<dyn StorageProvider>>) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_listing_is_flagged_only_when_no_encrypted_name_decrypts() {
+        assert!(no_name_decrypted(3, 0));
+        assert!(!no_name_decrypted(3, 1));
+        assert!(!no_name_decrypted(0, 0));
+    }
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -3762,6 +3836,8 @@ mod tests {
             local_config_json: Some(config_json),
             local_config_salt: Some(salt_b64),
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
 
         let inner = Box::new(MemProvider::new());
@@ -3815,6 +3891,8 @@ mod tests {
             local_config_json: Some(config_json.clone()),
             local_config_salt: Some(salt_b64),
             with_header: true,
+            password_form: None,
+            salt_form: None,
         };
 
         let mut mem = MemProvider::new();
@@ -3856,6 +3934,57 @@ mod tests {
         }
     }
 
+    /// rclone-crypt unlocks with any password; the sign of a wrong one is that
+    /// no name decrypts. `apply_overlay_in_place` says so once, in its result,
+    /// and says nothing when the key is right.
+    #[tokio::test]
+    async fn applying_rclone_crypt_with_the_wrong_key_warns_once() {
+        let binding = |_: ()| OverlayUnlockParams {
+            kind: "rclone-crypt".to_string(),
+            remote_scope: String::new(),
+            filename_encryption: "standard".to_string(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+            with_header: false,
+            password_form: None,
+            salt_form: None,
+        };
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(MemProvider::new()));
+        let applied =
+            apply_overlay_in_place(&mut slot, &binding(()), "pw", "salt", None, true, None)
+                .await
+                .unwrap();
+        assert!(
+            applied.warning.is_none(),
+            "an empty folder is not a wrong key"
+        );
+
+        let dir = std::env::temp_dir().join(format!("crypt_ovl_warn_{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let local = dir.join("secret.txt");
+        tokio::fs::write(&local, b"payload").await.unwrap();
+        slot.as_mut()
+            .unwrap()
+            .upload(local.to_str().unwrap(), "/secret.txt", None)
+            .await
+            .unwrap();
+        tokio::fs::remove_dir_all(&dir).await.ok();
+
+        let right = apply_overlay_in_place(&mut slot, &binding(()), "pw", "salt", None, true, None)
+            .await
+            .unwrap();
+        assert!(right.warning.is_none(), "{:?}", right.warning);
+        let wrong =
+            apply_overlay_in_place(&mut slot, &binding(()), "other", "salt", None, true, None)
+                .await
+                .unwrap();
+        let warning = wrong.warning.expect("a wrong key is reported");
+        assert!(warning.contains("None of the 1 names"), "{warning}");
+    }
+
     /// Phase 3 on-demand model: applying an overlay to a live slot wraps the raw
     /// provider (writes become encrypted), clearing reverts it to the SAME raw
     /// provider (showing the encrypted store verbatim), and a re-apply never
@@ -3873,6 +4002,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
 
         // No-op on a raw slot.
@@ -3990,6 +4121,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         let mut wrapped =
             wrap_provider_with_overlay_if_bound(inner, Some(&binding), "pw", "salt", None)
@@ -4015,6 +4148,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         // No config on the (empty) remote -> unlock fails, no raw provider handed
         // back.
@@ -4039,6 +4174,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         // Bootstrap a real v3 config under the CORRECT password.
         let mut mem = MemProvider::new();
@@ -4082,6 +4219,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         let mut mem = MemProvider::new();
         unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
@@ -4128,6 +4267,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         let res =
             unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
@@ -4160,6 +4301,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
 
         let res =
@@ -4204,6 +4347,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
 
         let keys =
@@ -4237,6 +4382,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         // allow_init=true (interactive), with_header=false (headerless), empty folder.
         let res =
@@ -4271,6 +4418,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
 
         let keys =
@@ -4315,6 +4464,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         let res =
             unlock_overlay_keys_encrypting(&mut mem, &other, "pw", "", None, false, true, None)
@@ -4357,6 +4508,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         let digest = crate::aerocrypt::keyfile_digest_from_file(
             crate::aerocrypt::generate_keyfile_v1().as_bytes(),
@@ -4428,6 +4581,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         unlock_overlay_keys_encrypting(&mut mem, &pw_only, "pw", "", None, true, true, None)
             .await
@@ -4467,6 +4622,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         let digest = crate::aerocrypt::keyfile_digest(b"kf");
         let err = unlock_err(
