@@ -29,7 +29,7 @@ use futures_util::StreamExt;
 use reqwest::{multipart, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Mutex;
 use tokio_util::io::ReaderStream;
@@ -1005,11 +1005,11 @@ impl StorageProvider for CloudinaryProvider {
             .map(|sf| folder_to_entry(&sf, &folder_norm))
             .collect();
         let dynamic = self.dynamic_folders();
-        entries.extend(
-            files
-                .iter()
-                .map(|f| resource_to_entry(f, &folder_norm, dynamic)),
-        );
+        let unique = names_listed_once(&files, dynamic);
+        entries.extend(files.iter().map(|f| {
+            let name_is_unique = unique.contains(&resource_name(f, dynamic));
+            resource_to_entry(f, &folder_norm, dynamic, name_is_unique)
+        }));
         Ok(entries)
     }
 
@@ -1478,16 +1478,52 @@ impl StorageProvider for CloudinaryProvider {
         // could not take the old one.
         // The name `list` shows comes first: with a raw `b` and an image
         // `b.png` (public id `b`), `/b` is the raw asset, whatever the order
-        // of the listing.
+        // of the listing. On a fixed-folder account two assets may show one
+        // name (public ids `a` and `a.jpg`, both listed `a.jpg`): the one
+        // whose public id is the path is meant, and with none of them it is
+        // refused as ambiguous rather than handing over the first listed.
         let dynamic = self.dynamic_folders();
-        let entry = match files.iter().position(|f| resource_name(f, dynamic) == name) {
-            Some(at) => Some(files.swap_remove(at)),
-            None => files
-                .into_iter()
-                .find(|f| !dynamic && f.public_id == trimmed),
+        let unique = names_listed_once(&files, dynamic);
+        // One asset listed twice (under two resource types) is one asset.
+        let mut named: Vec<usize> = Vec::new();
+        for at in 0..files.len() {
+            let f = &files[at];
+            if resource_name(f, dynamic) == name
+                && !named.iter().any(|&seen| same_asset(&files[seen], f))
+            {
+                named.push(at);
+            }
+        }
+        let at = match named.as_slice() {
+            [] => files
+                .iter()
+                .position(|f| !dynamic && f.public_id == trimmed),
+            [only] => Some(*only),
+            several if dynamic => several.first().copied(),
+            several => {
+                let by_id: Vec<usize> = several
+                    .iter()
+                    .copied()
+                    .filter(|&at| files[at].public_id == trimmed)
+                    .collect();
+                match by_id.as_slice() {
+                    [only] => Some(*only),
+                    _ => {
+                        return Err(ProviderError::InvalidPath(format!(
+                            "/{trimmed} names {} Cloudinary assets; use the path `ls` gives \
+                             each of them",
+                            several.len()
+                        )))
+                    }
+                }
+            }
         };
-        match entry {
-            Some(f) => Ok(resource_to_entry(&f, &parent, dynamic)),
+        match at {
+            Some(at) => {
+                let found = files.swap_remove(at);
+                let name_is_unique = unique.contains(&resource_name(&found, dynamic));
+                Ok(resource_to_entry(&found, &parent, dynamic, name_is_unique))
+            }
             None => Err(ProviderError::NotFound(format!("/{}", trimmed))),
         }
     }
@@ -1594,11 +1630,13 @@ impl StorageProvider for CloudinaryProvider {
             }
             let files = self.list_files(&dir).await?;
             let dynamic = self.dynamic_folders();
+            let unique = names_listed_once(&files, dynamic);
             for f in files {
                 self.cache_resource_type(&f.public_id, &f.resource_type);
                 let name = resource_name(&f, dynamic);
                 if super::matches_find_pattern(&name, pattern) {
-                    matches.push(resource_to_entry(&f, &dir, dynamic));
+                    let name_is_unique = unique.contains(&name);
+                    matches.push(resource_to_entry(&f, &dir, dynamic, name_is_unique));
                 }
             }
         }
@@ -1885,11 +1923,21 @@ fn resource_name(item: &CloudinaryResource, dynamic: bool) -> String {
 /// name `list` shows, the name `stat` resolves first. On a fixed-folder
 /// account it was the public id, which two assets of different types share
 /// (the image `b`, listed `b.png`, and a raw `b`): an action on the image
-/// through its listed path found the raw asset.
-fn resource_to_entry(item: &CloudinaryResource, parent: &str, dynamic: bool) -> RemoteEntry {
+/// through its listed path found the raw asset. A name the folder shows more
+/// than once (public ids `a` and `a.jpg`, both listed `a.jpg`) would give two
+/// assets one path, so on a fixed-folder account such an entry keeps its
+/// public id as its path (`name_is_unique` false).
+fn resource_to_entry(
+    item: &CloudinaryResource,
+    parent: &str,
+    dynamic: bool,
+    name_is_unique: bool,
+) -> RemoteEntry {
     let name = resource_name(item, dynamic);
     let folder = parent.trim_matches('/');
-    let path = if folder.is_empty() {
+    let path = if !dynamic && !name_is_unique {
+        format!("/{}", item.public_id.trim_start_matches('/'))
+    } else if folder.is_empty() {
         format!("/{name}")
     } else {
         format!("/{folder}/{name}")
@@ -1960,6 +2008,28 @@ fn normalize_path(path: &str) -> String {
         }
     }
     parts.join("/")
+}
+
+/// The names `files` shows for one asset each (see [`resource_to_entry`]).
+fn names_listed_once(files: &[CloudinaryResource], dynamic: bool) -> HashSet<String> {
+    let mut assets: HashMap<String, Vec<&CloudinaryResource>> = HashMap::new();
+    for f in files {
+        let named = assets.entry(resource_name(f, dynamic)).or_default();
+        if !named.iter().any(|seen| same_asset(seen, f)) {
+            named.push(f);
+        }
+    }
+    assets
+        .into_iter()
+        .filter(|(_, named)| named.len() == 1)
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// Whether two listed entries are one asset: public ids are unique per
+/// resource type.
+fn same_asset(a: &CloudinaryResource, b: &CloudinaryResource) -> bool {
+    a.public_id == b.public_id && a.resource_type == b.resource_type
 }
 
 fn basename(path: &str) -> &str {
@@ -2519,6 +2589,38 @@ mod tests {
                 entry.path
             );
         }
+    }
+
+    /// Two assets that show one name (public ids `a` and `a.jpg`, both listed
+    /// `a.jpg`) shared the path `/a.jpg`, and `stat` handed over the first
+    /// listed, so `rm` of one could delete the other. Such entries keep their
+    /// public id as their path, each resolving to its own asset; a path that
+    /// still names two assets (an image and a raw asset both `a.jpg`) is
+    /// refused as ambiguous.
+    #[tokio::test]
+    async fn a_name_two_assets_show_gives_each_its_own_path() {
+        let (mut provider, _) =
+            provider_on_fixed_folders(&[("a", "jpg", "image"), ("a.jpg", "jpg", "image")], &[])
+                .await;
+        let listed = provider.list("/").await.expect("list");
+        assert_eq!(listed.len(), 2, "{listed:?}");
+        for entry in listed {
+            let found = provider.stat(&entry.path).await.expect("stat");
+            assert_eq!(
+                found.metadata.get("public_id"),
+                entry.metadata.get("public_id"),
+                "{} resolved to {found:?}",
+                entry.path
+            );
+        }
+        let (mut provider, _) =
+            provider_on_fixed_folders(&[("a.jpg", "jpg", "image"), ("a.jpg", "", "raw")], &[])
+                .await;
+        let outcome = provider.stat("/a.jpg").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(_))),
+            "{outcome:?}"
+        );
     }
 
     /// A path names the asset `list` shows under that name first: with a
