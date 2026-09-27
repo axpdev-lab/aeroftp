@@ -1273,8 +1273,9 @@ impl StorageProvider for KDriveProvider {
             return Err(api_failure("Delete failed", Some(status), &body));
         }
 
-        // Remove from cache if directory
-        self.dir_cache.remove(&resolved);
+        // The folder ids cached for the path and everything under it point
+        // at items now in the trash.
+        super::forget_cached_subtree(&mut self.dir_cache, &resolved);
 
         Ok(())
     }
@@ -1313,6 +1314,12 @@ impl StorageProvider for KDriveProvider {
         let resp = self
             .post_with_retry(&url, "application/json", body_json)
             .await?;
+        // Whatever the answer, the folder ids cached for either path and
+        // everything under them may now point at a moved folder or at one in
+        // the trash (the one a replace set aside): a later `put` into
+        // `/dst/sub` wrote into the trashed folder.
+        super::forget_cached_subtree(&mut self.dir_cache, &resolved_from);
+        super::forget_cached_subtree(&mut self.dir_cache, &resolved_to);
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1331,8 +1338,6 @@ impl StorageProvider for KDriveProvider {
             return Err(api_failure("Rename failed", Some(status), &body));
         }
 
-        // Update cache
-        self.dir_cache.remove(&resolved_from);
         Ok(())
     }
 
@@ -2553,6 +2558,31 @@ mod tests {
         provider.connected = true;
         provider.api_base_override = Some(format!("http://{addr}"));
         (provider, store, changes)
+    }
+
+    /// A rename or a delete forgot only the folder id cached for its own
+    /// path, while a listing caches every subfolder: after `/dst` was
+    /// replaced (its old folder set aside and trashed) `/dst/sub` still
+    /// resolved to the trashed folder, and a `put` there wrote into it. The
+    /// ids under both paths are forgotten.
+    #[tokio::test]
+    async fn a_rename_or_delete_forgets_the_folder_ids_cached_under_it() {
+        let (mut provider, _, _) =
+            provider_on_kdrive_files(&[(21, "dst"), (22, "gone"), (23, "dstx")]).await;
+        for (path, id) in [
+            ("/dst", 21),
+            ("/dst/sub", 31),
+            ("/moved/old", 32),
+            ("/gone/deep/er", 33),
+            ("/dstx", 23),
+        ] {
+            provider.dir_cache_insert(path.to_string(), DirInfo { id });
+        }
+        provider.rename("/dst", "/moved").await.expect("rename");
+        provider.delete("/gone").await.expect("delete");
+        let mut cached: Vec<&str> = provider.dir_cache.keys().map(String::as_str).collect();
+        cached.sort();
+        assert_eq!(cached, ["/dstx"], "a sibling sharing the prefix stays");
     }
 
     /// A replace forwarded to the rename, which refuses the file it is meant
