@@ -306,6 +306,39 @@ impl AzureProvider {
         Ok(BASE64.encode(raw.as_bytes()))
     }
 
+    /// DELETE the blob that stands for a directory (`what` names it in the
+    /// error). A 404 is the normal case: most folders are prefixes only.
+    async fn delete_directory_blob(
+        &mut self,
+        blob_path: &str,
+        what: &str,
+    ) -> Result<(), ProviderError> {
+        let url = self.blob_url(blob_path);
+        let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        let resp = self
+            .send_with_auth_and_retry(reqwest::Method::DELETE, &url, headers, 0, None)
+            .await?;
+        let status = resp.status();
+        if !status.is_success()
+            && status.as_u16() != 202
+            && status != reqwest::StatusCode::NOT_FOUND
+        {
+            return Err(ProviderError::Other(format!(
+                "Delete of the {what} failed: {status}"
+            )));
+        }
+        Ok(())
+    }
+
     /// Build the full blob URL
     fn blob_url(&self, blob_path: &str) -> String {
         let endpoint = self.config.blob_endpoint();
@@ -1835,30 +1868,27 @@ impl StorageProvider for AzureProvider {
         // next listing. Delete it explicitly; a folder that only ever held
         // files has no marker, so a 404 here is the normal case and must not
         // fail the operation.
-        let marker = format!("{}/", self.resolve_blob_path(path).trim_end_matches('/'));
-        let url = self.blob_url(&marker);
-        let mut headers = HeaderMap::new();
-        let now = chrono::Utc::now()
-            .format("%a, %d %b %Y %H:%M:%S GMT")
+        let blob_path = self
+            .resolve_blob_path(path)
+            .trim_end_matches('/')
             .to_string();
-        headers.insert(
-            "x-ms-date",
-            HeaderValue::from_str(&now)
-                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
-        );
-        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-        let resp = self
-            .send_with_auth_and_retry(reqwest::Method::DELETE, &url, headers, 0, None)
+        self.delete_directory_blob(&format!("{blob_path}/"), "directory marker")
             .await?;
-        let status = resp.status();
-        if !status.is_success()
-            && status.as_u16() != 202
-            && status != reqwest::StatusCode::NOT_FOUND
-        {
-            return Err(ProviderError::Other(format!(
-                "Delete of the directory marker failed: {}",
-                status
-            )));
+
+        // The directory can also be a blob named `<path>` that carries
+        // `hdi_isfolder=true`: the directory of a hierarchical-namespace
+        // account, or the stub AzCopy (`--include-directory-stub`) and ADLS
+        // migrations leave on a flat account. `stat` reports it as a
+        // directory, so `rm` comes here, and deleting only the marker
+        // answered Ok while the stub stayed. A blob without the flag is a
+        // file that only shares the folder's name, and it stays.
+        match self.stat(path).await {
+            Ok(entry) if entry.is_dir => {
+                self.delete_directory_blob(&blob_path, "directory blob")
+                    .await?
+            }
+            Ok(_) | Err(ProviderError::NotFound(_)) => {}
+            Err(e) => return Err(e),
         }
 
         Ok(())
@@ -2827,6 +2857,100 @@ mod tests {
         assert!(!file.is_dir, "a blob with no flag stays a file");
         let marked = provider.stat("/marked-false").await.expect("stat");
         assert!(!marked.is_dir, "hdi_isfolder false stays a file");
+    }
+
+    /// L3 of the 4.2.1 closeout: on a flat account an `hdi_isfolder` stub
+    /// (AzCopy `--include-directory-stub`, data migrated from ADLS) stats as
+    /// a directory since `stat` reads the flag, so `rm` goes through `rmdir`,
+    /// and `rmdir_recursive` deleted only the `<path>/` marker: it answered
+    /// Ok while the stub stayed. The stub itself is deleted now, and a blob
+    /// without the flag that shares the folder's name is left alone.
+    #[tokio::test]
+    async fn removing_a_directory_deletes_its_hdi_isfolder_stub() {
+        use std::sync::{Arc, Mutex};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().to_string();
+                    let path = req.uri().path().to_string();
+                    seen.lock().unwrap().push(format!("{method} {path}"));
+                    let mut response = axum::response::Response::builder()
+                        .header("content-length", "0")
+                        .header("content-type", "application/octet-stream");
+                    let status = match (method.as_str(), path.as_str()) {
+                        ("GET", "/mycontainer") => {
+                            return axum::response::Response::builder()
+                                .status(200)
+                                .body(axum::body::Body::from(
+                                    "<EnumerationResults><Blobs /></EnumerationResults>",
+                                ))
+                                .unwrap();
+                        }
+                        ("HEAD", "/mycontainer/stub") => {
+                            response = response.header("x-ms-meta-hdi_isfolder", "true");
+                            200
+                        }
+                        ("HEAD", "/mycontainer/plain") => 200,
+                        ("DELETE", _) => 202,
+                        _ => 404,
+                    };
+                    response
+                        .status(status)
+                        .body(axum::body::Body::empty())
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut config = test_config();
+        config.endpoint = Some(format!("http://{addr}"));
+        let mut provider = AzureProvider::new(config);
+        provider.connected = true;
+
+        crate::providers::delete_non_recursive(&mut provider, "/stub")
+            .await
+            .expect("rm of an empty stub directory");
+        let deletes: Vec<String> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("DELETE "))
+            .cloned()
+            .collect();
+        assert!(
+            deletes
+                .iter()
+                .any(|line| line == "DELETE /mycontainer/stub"),
+            "the stub blob must be deleted, not only its marker: {deletes:?}"
+        );
+
+        log.lock().unwrap().clear();
+        provider
+            .rmdir_recursive("/plain")
+            .await
+            .expect("a folder whose name a flagless blob also holds");
+        let deletes: Vec<String> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("DELETE "))
+            .cloned()
+            .collect();
+        assert_eq!(
+            deletes,
+            ["DELETE /mycontainer/plain/"],
+            "a blob without the flag is a file, not this folder"
+        );
+
+        log.lock().unwrap().clear();
+        provider
+            .rmdir_recursive("/gone")
+            .await
+            .expect("a HEAD 404 is the normal case of a prefix-only folder");
     }
 
     /// Copy Blob overwrote the destination: a rename onto an existing blob
