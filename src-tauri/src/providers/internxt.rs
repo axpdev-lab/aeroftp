@@ -63,8 +63,6 @@ const GATEWAY: &str = "https://gateway.internxt.com";
 /// Changing this value would break compatibility with all Internxt clients.
 const APP_CRYPTO_SECRET: &str = "6KYQBP847D4ATSFA";
 
-// TODO: OPAQUE login protocol (future Internxt auth method)
-
 /// OpenSSL "Salted__" prefix
 const SALTED_PREFIX: &[u8] = b"Salted__";
 
