@@ -1036,6 +1036,60 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         // A remote time is kept: the download stamped it on the local copy.
         expect(files['dated.txt']?.modified).toBe('2026-05-22T10:00:00Z');
     });
+
+    // CodeRabbit on #949 (a90e5933): a download the interrupted run finished
+    // is skipped on resume, so this run never reads its time, and the index
+    // entry the interrupted run wrote with it was replaced by null (the
+    // remote gives none): the next compare fell back to size alone.
+    it('keeps the index time of a download the resumed journal finished', async () => {
+        const resumeJournal: SyncJournal = {
+            id: 'j-landed',
+            created_at: '2026-09-26T09:00:00Z',
+            updated_at: '2026-09-26T09:05:00Z',
+            local_path: '/home/u/work',
+            remote_path: '/srv/data',
+            direction: 'bidirectional',
+            retry_policy: RETRY,
+            verify_policy: 'none',
+            entries: [
+                { relative_path: 'done.txt', action: 'download', status: 'completed', attempts: 1, last_error: null, verified: null, bytes_transferred: 7 },
+                { relative_path: 'resized.txt', action: 'download', status: 'completed', attempts: 1, last_error: null, verified: null, bytes_transferred: 9 },
+            ],
+            completed: false,
+        };
+        let savedIndex: Record<string, unknown> | undefined;
+        const { invoke, calls } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 2,
+                last_sync: '2026-09-26T09:05:00Z',
+                local_path: '/home/u/work',
+                remote_path: '/srv/data',
+                files: {
+                    'done.txt': { size: 7, modified: '2026-09-26T09:04:00Z', is_dir: false },
+                    // An entry from before the download (another size) says
+                    // nothing about the file that landed.
+                    'resized.txt': { size: 3, modified: '2026-09-20T08:00:00Z', is_dir: false },
+                },
+            }),
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as Record<string, unknown>;
+            },
+        });
+        await runRemoteSync(
+            [
+                file('done.txt', 'download', { size: 7, mtime: null }),
+                file('resized.txt', 'download', { size: 9, mtime: null }),
+            ],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { writeIndex: true, resumeJournal }),
+        );
+        expect(calls.filter((c) => c.cmd === 'download_file')).toHaveLength(0);
+        const files = (savedIndex?.files ?? {}) as Record<string, { modified: string | null }>;
+        expect(files['done.txt']?.modified).toBe('2026-09-26T09:04:00Z');
+        expect(files['resized.txt']?.modified).toBeNull();
+    });
 });
 
 describe('remoteSyncRunner — GAP-7 keep-both rename', () => {
