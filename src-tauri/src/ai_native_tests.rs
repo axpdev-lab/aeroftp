@@ -58,10 +58,12 @@ fn model_studio_contract_is_endpoint_scoped_and_preserves_reasoning() {
                 }
             );
             req.web_search = Some(true);
+            let body = chat_body(&req, false).unwrap();
             if model == "kimi-k3" {
-                assert!(chat_body(&req, false).is_err());
+                // Hosted search is not part of the Kimi contract: run without it.
+                assert!(body.get("enable_search").is_none());
             } else {
-                assert_eq!(chat_body(&req, false).unwrap()["enable_search"], true);
+                assert_eq!(body["enable_search"], true);
             }
         }
     }
@@ -646,5 +648,16 @@ fn chat_deltas_skip_null_identity_and_keep_repeated_ids_whole() {
                 .is_err(),
             "{conflicting}"
         );
+    }
+}
+
+#[test]
+fn kimi_k3_runs_without_hosted_search_when_the_global_toggle_is_on() {
+    let mut req = request("kimi", "kimi-k3");
+    req.web_search = Some(true);
+    for stream in [false, true] {
+        let body = chat_body(&req, stream).unwrap();
+        assert!(body.get("enable_search").is_none());
+        assert_eq!(body["tools"].as_array().unwrap().len(), 1);
     }
 }

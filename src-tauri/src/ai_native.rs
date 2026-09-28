@@ -290,14 +290,10 @@ pub(crate) fn chat_body(request: &AIRequest, stream: bool) -> Result<Value, AIEr
             "This model requires Responses for reasoning with tools; enable OpenAI Responses",
         ));
     }
-    if (request.provider_type == AIProviderType::Kimi
-        || (model_studio(request) && request.model == "kimi-k3"))
-        && request.web_search.unwrap_or(false)
-    {
-        return Err(invalid(
-            "Kimi K3 hosted web search is not supported by this adapter",
-        ));
-    }
+    // Kimi K3 has no reviewed hosted search on either endpoint. The global
+    // web search toggle turns it off for this request instead of failing it.
+    let kimi_k3 = request.provider_type == AIProviderType::Kimi
+        || (model_studio(request) && request.model == "kimi-k3");
     let mut messages = Vec::new();
     for message in &request.messages {
         if let Some(turn) = &message.native_turn {
@@ -339,7 +335,7 @@ pub(crate) fn chat_body(request: &AIRequest, stream: bool) -> Result<Value, AIEr
     if let Some(value) = reasoning {
         body["reasoning_effort"] = json!(value);
     }
-    if model_studio(request) && request.web_search.unwrap_or(false) {
+    if model_studio(request) && !kimi_k3 && request.web_search.unwrap_or(false) {
         body["enable_search"] = json!(true);
     }
     if let Some(tools) = &request.tools {
