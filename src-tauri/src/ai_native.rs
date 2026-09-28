@@ -450,8 +450,8 @@ pub(crate) fn anthropic_body(request: &AIRequest, stream: bool) -> Result<Value,
 }
 
 pub(crate) fn parse(request: &AIRequest, value: &Value) -> Result<AIResponse, AIError> {
-    if value.get("error").is_some() {
-        return Err(invalid("Provider returned an error response"));
+    if !value["error"].is_null() {
+        return Err(AIError::Api(error_detail(&value.to_string())));
     }
     let anthropic = modern_anthropic(request);
     let (payload, reason) = if anthropic {
@@ -565,16 +565,27 @@ pub(crate) fn parse(request: &AIRequest, value: &Value) -> Result<AIResponse, AI
     })
 }
 
-pub(crate) async fn call(
+/// The provider's own error text: the JSON error message when there is one,
+/// otherwise the start of the body. Bounded, with credentials scrubbed.
+fn error_detail(body: &str) -> String {
+    let message = serde_json::from_str::<Value>(body).ok().and_then(|value| {
+        value
+            .pointer("/error/message")
+            .or_else(|| value.get("message"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    });
+    let detail = message.unwrap_or_else(|| body.trim().to_owned());
+    crate::ai::sanitize_error_message(crate::ai::truncate_safe(&detail, 500))
+}
+
+/// POST to the provider's native endpoint with its authentication headers.
+fn post(
     client: &reqwest::Client,
     request: &AIRequest,
-) -> Result<AIResponse, AIError> {
+    body: &Value,
+) -> Result<reqwest::RequestBuilder, AIError> {
     let anthropic = modern_anthropic(request);
-    let body = if anthropic {
-        anthropic_body(request, false)?
-    } else {
-        chat_body(request, false)?
-    };
     let path = if anthropic {
         "messages"
     } else {
@@ -591,20 +602,32 @@ pub(crate) async fn call(
     } else if let Some(key) = &request.api_key {
         builder = builder.bearer_auth(key);
     }
-    let response = builder.json(&body).send().await?;
+    Ok(builder.json(body))
+}
+
+pub(crate) async fn call(
+    client: &reqwest::Client,
+    request: &AIRequest,
+) -> Result<AIResponse, AIError> {
+    let body = if modern_anthropic(request) {
+        anthropic_body(request, false)?
+    } else {
+        chat_body(request, false)?
+    };
+    let response = post(client, request, &body)?.send().await?;
     let status = response.status();
-    let value: Value = response.json().await?;
+    // Read the status before the body is parsed: an HTML error page is a
+    // provider error with its own text, not a JSON decoding failure.
+    let text = response.text().await?;
     if !status.is_success() {
-        return Err(AIError::Api(format!(
-            "[{status}] {}",
-            crate::ai::sanitize_error_message(
-                value
-                    .pointer("/error/message")
-                    .and_then(Value::as_str)
-                    .unwrap_or("Provider request failed")
-            )
-        )));
+        return Err(AIError::Api(format!("[{status}] {}", error_detail(&text))));
     }
+    let value: Value = serde_json::from_str(&text).map_err(|_| {
+        invalid(&format!(
+            "Provider returned invalid JSON: {}",
+            error_detail(&text)
+        ))
+    })?;
     parse(request, &value)
 }
 
@@ -721,8 +744,11 @@ impl StreamState {
         if self.bytes > 16 * 1024 * 1024 {
             return Err("Native stream exceeds 16 MiB".into());
         }
-        if event.get("error").is_some() || event["type"] == "error" {
-            return Err("Provider stream failed".into());
+        if !event["error"].is_null() || event["type"] == "error" {
+            return Err(format!(
+                "Provider stream failed: {}",
+                error_detail(&event.to_string())
+            ));
         }
         let mut text = String::new();
         let mut thinking = String::new();
@@ -859,29 +885,20 @@ pub(crate) async fn stream(
     } else {
         chat_body(request, true)?
     };
-    let path = if anthropic {
-        "messages"
-    } else {
-        "chat/completions"
-    };
-    let mut builder = client.post(format!("{}/{path}", request.base_url.trim_end_matches('/')));
-    if anthropic {
-        builder = builder
-            .header(
-                "x-api-key",
-                request.api_key.as_ref().ok_or(AIError::MissingApiKey)?,
-            )
-            .header("anthropic-version", "2023-06-01");
-    } else if let Some(key) = &request.api_key {
-        builder = builder.bearer_auth(key);
-    }
+    let builder = post(client, request, &body)?;
     let response = tokio::select! {
         biased;
         _ = crate::ai_stream::wait_for_cancel(cancel) => return Ok(()),
-        result = builder.json(&body).send() => result?,
+        result = builder.send() => result?,
     };
-    if !response.status().is_success() {
-        return Err(format!("Provider HTTP {}", response.status()).into());
+    let status = response.status();
+    if !status.is_success() {
+        let text = tokio::select! {
+            biased;
+            _ = crate::ai_stream::wait_for_cancel(cancel) => return Ok(()),
+            text = response.text() => text.unwrap_or_default(),
+        };
+        return Err(format!("Provider HTTP {status}: {}", error_detail(&text)).into());
     }
     let mut bytes = response.bytes_stream();
     let mut buffer = Vec::new();

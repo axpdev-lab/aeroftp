@@ -661,3 +661,101 @@ fn kimi_k3_runs_without_hosted_search_when_the_global_toggle_is_on() {
         assert_eq!(body["tools"].as_array().unwrap().len(), 1);
     }
 }
+
+/// One HTTP exchange on 127.0.0.1. Resolves to the lowercased request head
+/// and the JSON request body.
+async fn one_shot_server(
+    status: &'static str,
+    content_type: &'static str,
+    reply: String,
+) -> (String, tokio::task::JoinHandle<(String, Value)>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut received = Vec::new();
+        let mut chunk = [0u8; 4096];
+        let (head, header_end, length) = loop {
+            let n = socket.read(&mut chunk).await.unwrap();
+            assert!(n > 0);
+            received.extend_from_slice(&chunk[..n]);
+            if let Some(index) = received.windows(4).position(|w| w == b"\r\n\r\n") {
+                let head = String::from_utf8_lossy(&received[..index]).to_ascii_lowercase();
+                let length = head
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length:"))
+                    .map(|v| v.trim().parse::<usize>().unwrap())
+                    .unwrap_or(0);
+                break (head, index + 4, length);
+            }
+        };
+        while received.len() < header_end + length {
+            let n = socket.read(&mut chunk).await.unwrap();
+            assert!(n > 0);
+            received.extend_from_slice(&chunk[..n]);
+        }
+        let request_body =
+            serde_json::from_slice(&received[header_end..header_end + length]).unwrap();
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+            reply.len()
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+        (head, request_body)
+    });
+    (format!("http://{address}/v1"), server)
+}
+
+#[tokio::test]
+async fn provider_errors_keep_status_and_a_bounded_body() {
+    let client = reqwest::Client::new();
+    let mut req = request("nvidia", "z-ai/glm-5.3");
+    // call(): an HTML 404 is reported with its status and text, not as a JSON
+    // decoding failure.
+    let page = format!(
+        "<html><body>No route for this model {}</body></html>",
+        "x".repeat(4000)
+    );
+    let (base, server) = one_shot_server("404 Not Found", "text/html", page).await;
+    req.base_url = base;
+    let err = call(&client, &req).await.unwrap_err().to_string();
+    server.await.unwrap();
+    assert!(
+        err.contains("404") && err.contains("No route for this model"),
+        "{err}"
+    );
+    assert!(err.len() < 1000, "unbounded: {} bytes", err.len());
+
+    // stream(): the body of a refused request survives too.
+    let refusal = json!({"error":{"message":"Rate limit reached for this key"}}).to_string();
+    let (base, server) =
+        one_shot_server("429 Too Many Requests", "application/json", refusal).await;
+    req.base_url = base;
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let err = stream(&client, &req, &Sink::default(), "refused", &cancel)
+        .await
+        .unwrap_err()
+        .to_string();
+    server.await.unwrap();
+    assert!(
+        err.contains("429") && err.contains("Rate limit reached for this key"),
+        "{err}"
+    );
+
+    // An SSE error event keeps the provider's message, on both event shapes.
+    let err = StreamState::default()
+        .ingest(
+            &json!({"error":{"message":"Upstream model overloaded"}}),
+            false,
+        )
+        .unwrap_err();
+    assert!(err.contains("Upstream model overloaded"), "{err}");
+    let err = StreamState::default()
+        .ingest(
+            &json!({"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}),
+            true,
+        )
+        .unwrap_err();
+    assert!(err.contains("Overloaded"), "{err}");
+}
