@@ -804,6 +804,25 @@ impl OneDriveProvider {
         Ok(all_entries)
     }
 
+    /// KE-B3.1: the sweep after an upload with `--onedrive-no-versions`:
+    /// resolve `path` afresh and delete the item's older versions. `stage`
+    /// names the upload path in the warning when the resolve fails. The id
+    /// cached for `path` may name the item from before this upload, so it is
+    /// dropped first, under the key the cache uses, without the slashes at
+    /// either end: removed with its leading slash it stayed, and the sweep
+    /// went to the stale id.
+    async fn purge_versions_after_upload(&mut self, path: &str, stage: &str) {
+        self.path_cache.remove(path.trim_matches('/'));
+        if let Ok(item_id) = self.resolve_path(path).await {
+            self.purge_old_versions(&item_id).await;
+        } else {
+            warn!(
+                "onedrive --onedrive-no-versions: {} resolve of {} failed; sweep skipped",
+                stage, path
+            );
+        }
+    }
+
     /// Move file(s) to trash (soft delete)
     pub async fn trash_file(&mut self, path: &str) -> Result<(), ProviderError> {
         let item_id = self.resolve_path(path).await?;
@@ -814,8 +833,13 @@ impl OneDriveProvider {
             .delete(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .await;
+        // Whatever the answer, the ids cached for the item and everything
+        // under it, under any capitalization (OneDrive paths ignore case),
+        // may now point into the recycle bin: a later `rm` of the same path
+        // got 404 for the trashed id and reported the live item deleted.
+        super::forget_cached_subtree_ignoring_case(&mut self.path_cache, path.trim_matches('/'));
+        let response = response.map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() && response.status().as_u16() != 204 {
             return Err(onedrive_error_from_response(response, "Trash failed:").await);
@@ -1503,17 +1527,7 @@ impl StorageProvider for OneDriveProvider {
         // delete all non-current versions. Failures are logged but the
         // upload is still reported as success.
         if self.no_versions {
-            // Path cache may have a stale entry from before this upload;
-            // dropping it forces a fresh resolve_path.
-            self.path_cache.remove(&path);
-            if let Ok(item_id) = self.resolve_path(&path).await {
-                self.purge_old_versions(&item_id).await;
-            } else {
-                warn!(
-                    "onedrive --onedrive-no-versions: post-upload resolve of {} failed; sweep skipped",
-                    path
-                );
-            }
+            self.purge_versions_after_upload(&path, "post-upload").await;
         }
 
         Ok(())
@@ -2434,15 +2448,8 @@ impl StorageProvider for OneDriveProvider {
                     remote_path
                 )
             };
-            self.path_cache.remove(&resolved);
-            if let Ok(item_id) = self.resolve_path(&resolved).await {
-                self.purge_old_versions(&item_id).await;
-            } else {
-                warn!(
-                    "onedrive --onedrive-no-versions: post-resume_upload resolve of {} failed; sweep skipped",
-                    resolved
-                );
-            }
+            self.purge_versions_after_upload(&resolved, "post-resume_upload")
+                .await;
         }
 
         Ok(())
@@ -3120,6 +3127,76 @@ mod tests {
             kept,
             ["Dirx", "dirx"],
             "a sibling sharing the prefix stays cached"
+        );
+        server.abort();
+    }
+
+    /// `trash_file` (behind `onedrive_trash_files`) left the cache alone:
+    /// the ids of the trashed item and of everything under it stayed, and a
+    /// later `rm` of the same path got 404 for the trashed id, which delete
+    /// reads as done, while the live item stayed. They are forgotten under
+    /// every capitalization; a sibling sharing the prefix stays.
+    #[tokio::test]
+    async fn trashing_forgets_the_cached_subtree() {
+        let (mut p, requests, server) =
+            graph_fixture(|_, _| (axum::http::StatusCode::NO_CONTENT, serde_json::Value::Null))
+                .await;
+        for (path, id) in [
+            ("dir", "id-dir"),
+            ("Dir/Sub", "id-sub"),
+            ("DIR/sub/file", "id-file"),
+            ("dirx", "id-dirx"),
+        ] {
+            p.path_cache.insert(path.into(), id.into());
+        }
+        p.trash_file("/dir").await.unwrap();
+        assert_eq!(
+            *requests.lock().unwrap(),
+            ["DELETE /v1.0/me/drive/items/id-dir"]
+        );
+        let kept: Vec<_> = p.path_cache.keys().cloned().collect();
+        assert_eq!(kept, ["dirx"], "a sibling sharing the prefix stays cached");
+        server.abort();
+    }
+
+    /// With `--onedrive-no-versions`, an upload drops the id cached for the
+    /// file so that the version sweep resolves it afresh. It dropped the key
+    /// with its leading slash while the cache keys have none: the id from
+    /// before the upload stayed, and the sweep went to that item's versions.
+    #[tokio::test]
+    async fn the_no_versions_sweep_resolves_the_uploaded_file_afresh() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::PUT, "/v1.0/me/drive/root:/a.txt:/content") => {
+                (StatusCode::OK, serde_json::json!({ "id": "NEW" }))
+            }
+            (&Method::GET, "/v1.0/me/drive/root:/a.txt") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "NEW", "name": "a.txt", "size": 3, "file": {} }),
+            ),
+            (&Method::GET, "/v1.0/me/drive/items/NEW/versions") => {
+                (StatusCode::OK, serde_json::json!({ "value": [] }))
+            }
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({ "error": { "code": "itemNotFound" } }),
+            ),
+        })
+        .await;
+        p.set_no_versions(true);
+        p.path_cache.insert("a.txt".into(), "OLD".into());
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), b"new").unwrap();
+        p.upload(file.path().to_str().unwrap(), "/a.txt", None)
+            .await
+            .expect("upload");
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [
+                "PUT /v1.0/me/drive/root:/a.txt:/content",
+                "GET /v1.0/me/drive/root:/a.txt",
+                "GET /v1.0/me/drive/items/NEW/versions",
+            ]
         );
         server.abort();
     }
