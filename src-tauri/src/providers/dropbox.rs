@@ -88,9 +88,17 @@ fn dropbox_is_rate_limited(status: u16, body: &str) -> bool {
     body.contains("too_many_requests") || body.contains("too_many_write_operations")
 }
 
-/// Compute the marker substring for a Dropbox rate-limit response. Prefers
-/// the JSON body's top-level `retry_after` field; falls back to the
-/// `Retry-After` header.
+/// Dropbox's retry hint for a throttled response: the JSON body's
+/// `retry_after` field, else the `Retry-After` header.
+fn dropbox_retry_hint(body: &str, retry_header: Option<&str>) -> Option<std::time::Duration> {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|json| super::retry_after::parse_retry_after_dropbox_value(&json))
+        .or_else(|| retry_header.and_then(super::retry_after::parse_retry_after_seconds))
+}
+
+/// Compute the marker substring for a Dropbox rate-limit response, from the
+/// hint [`dropbox_retry_hint`] reads.
 fn dropbox_retry_marker_tail(
     status: u16,
     body: &str,
@@ -99,13 +107,49 @@ fn dropbox_retry_marker_tail(
     if !dropbox_is_rate_limited(status, body) {
         return None;
     }
-    let hint = serde_json::from_str::<serde_json::Value>(body)
-        .ok()
-        .and_then(|json| super::retry_after::parse_retry_after_dropbox_value(&json))
-        .or_else(|| retry_header.and_then(super::retry_after::parse_retry_after_seconds))?;
+    let hint = dropbox_retry_hint(body, retry_header)?;
     Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
         hint.as_secs(),
     ))
+}
+
+/// #397: retries of one throttled trash request (a revision probe, or the
+/// restore call) before its throttle error is returned as it came.
+const TRASH_THROTTLE_RETRIES: u32 = 2;
+/// #397: total sleep one trash operation (a listing, or a restore) may spend
+/// waiting out throttles, shared by all of its requests.
+const TRASH_THROTTLE_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Run `call` again while Dropbox throttles it: sleep for its retry hint (else
+/// 1 s, then 2 s) out of the operation's shared `budget`, at most
+/// [`TRASH_THROTTLE_RETRIES`] times. Past either bound the throttle is
+/// returned as it came, so a persistent throttle stays an error and never
+/// becomes a falsely complete answer.
+async fn retry_trash_throttle<T, F, Fut>(
+    budget: &mut std::time::Duration,
+    mut call: F,
+) -> Result<T, TrashCallError>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, TrashCallError>>,
+{
+    let mut retries = 0;
+    loop {
+        match call().await {
+            Err(refused) if refused.throttled => {
+                let delay = refused
+                    .retry_after
+                    .unwrap_or_else(|| std::time::Duration::from_secs(1 << retries));
+                if retries >= TRASH_THROTTLE_RETRIES || delay > *budget {
+                    return Err(refused);
+                }
+                *budget = budget.saturating_sub(delay);
+                retries += 1;
+                tokio::time::sleep(delay).await;
+            }
+            result => return result,
+        }
+    }
 }
 
 /// Dropbox file metadata
@@ -139,22 +183,24 @@ struct ListFolderResult {
     has_more: bool,
 }
 
-/// A revision probe that did not name the entry kind. `throttled` separates
-/// "Dropbox refused to answer right now" from "Dropbox answered, and the answer
-/// does not establish a kind": only the second one may become
-/// `trash_kind: "unknown"`, which reads as a property of the entry and, with the
-/// folder-restore guard, blocks restore.
+/// A trash call (a revision probe, or the restore) that failed. `throttled`
+/// separates "Dropbox refused to answer right now" from every other failure:
+/// only a throttle is retried, and for a probe only the other failures may
+/// become `trash_kind: "unknown"`, which reads as a property of the entry and,
+/// with the folder-restore guard, blocks restore.
 #[derive(Debug)]
-struct TrashProbeError {
+struct TrashCallError {
     error: ProviderError,
     throttled: bool,
+    retry_after: Option<std::time::Duration>,
 }
 
-impl TrashProbeError {
+impl TrashCallError {
     fn hard(error: ProviderError) -> Self {
         Self {
             error,
             throttled: false,
+            retry_after: None,
         }
     }
 }
@@ -261,6 +307,10 @@ pub struct DropboxProvider {
     /// Never set on production connect paths; never logged or put in handles.
     #[cfg(test)]
     test_access_token: Option<String>,
+    /// Test-only [`TRASH_THROTTLE_BUDGET`] override, so a throttle test does
+    /// not sleep through real retry hints.
+    #[cfg(test)]
+    trash_throttle_budget: Option<std::time::Duration>,
 }
 
 impl Clone for DropboxProvider {
@@ -281,6 +331,8 @@ impl Clone for DropboxProvider {
             content_base_override: self.content_base_override.clone(),
             #[cfg(test)]
             test_access_token: self.test_access_token.clone(),
+            #[cfg(test)]
+            trash_throttle_budget: self.trash_throttle_budget,
         }
     }
 }
@@ -304,7 +356,18 @@ impl DropboxProvider {
             content_base_override: None,
             #[cfg(test)]
             test_access_token: None,
+            #[cfg(test)]
+            trash_throttle_budget: None,
         }
+    }
+
+    /// Sleep budget of one trash operation, see [`retry_trash_throttle`].
+    fn trash_throttle_budget(&self) -> std::time::Duration {
+        #[cfg(test)]
+        if let Some(budget) = self.trash_throttle_budget {
+            return budget;
+        }
+        TRASH_THROTTLE_BUDGET
     }
 
     /// Connected worker for unit tests (no network). Production clones use
@@ -455,17 +518,32 @@ impl DropboxProvider {
         endpoint: &str,
         body: &serde_json::Value,
     ) -> Result<T, ProviderError> {
+        self.rpc_call_classified(endpoint, body)
+            .await
+            .map_err(|failed| failed.error)
+    }
+
+    /// [`Self::rpc_call`], keeping a throttle apart from every other failure
+    /// so a trash operation can retry it.
+    async fn rpc_call_classified<T: serde::de::DeserializeOwned>(
+        &self,
+        endpoint: &str,
+        body: &serde_json::Value,
+    ) -> Result<T, TrashCallError> {
         let url = format!("{}/{}", self.rpc_api_base(), endpoint);
 
         let response = self
             .client
             .post(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(
+                AUTHORIZATION,
+                self.auth_header().await.map_err(TrashCallError::hard)?,
+            )
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_err(|e| TrashCallError::hard(ProviderError::ConnectionFailed(e.to_string())))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -478,7 +556,9 @@ impl DropboxProvider {
 
             // Check for path not found error
             if text.contains("path/not_found") {
-                return Err(ProviderError::NotFound(sanitize_api_error(&text)));
+                return Err(TrashCallError::hard(ProviderError::NotFound(
+                    sanitize_api_error(&text),
+                )));
             }
 
             let mut msg = format!("API error {}: {}", status, sanitize_api_error(&text));
@@ -487,13 +567,17 @@ impl DropboxProvider {
             {
                 msg.push_str(&tail);
             }
-            return Err(ProviderError::Other(msg));
+            return Err(TrashCallError {
+                error: ProviderError::Other(msg),
+                throttled: dropbox_is_rate_limited(status.as_u16(), &text),
+                retry_after: dropbox_retry_hint(&text, retry_header.as_deref()),
+            });
         }
 
         response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
+            .map_err(|e| TrashCallError::hard(ProviderError::Other(format!("Parse error: {}", e))))
     }
 
     fn rpc_api_base(&self) -> &str {
@@ -504,8 +588,8 @@ impl DropboxProvider {
         API_BASE
     }
 
-    async fn trash_revision(&self, path: &str) -> Result<TrashRevision, TrashProbeError> {
-        let auth = self.auth_header().await.map_err(TrashProbeError::hard)?;
+    async fn trash_revision(&self, path: &str) -> Result<TrashRevision, TrashCallError> {
+        let auth = self.auth_header().await.map_err(TrashCallError::hard)?;
         let response = self
             .client
             .post(format!("{}/files/list_revisions", self.rpc_api_base()))
@@ -516,7 +600,7 @@ impl DropboxProvider {
             }))
             .send()
             .await
-            .map_err(|e| TrashProbeError::hard(ProviderError::ConnectionFailed(e.to_string())))?;
+            .map_err(|e| TrashCallError::hard(ProviderError::ConnectionFailed(e.to_string())))?;
         let status = response.status();
         let retry_header = response
             .headers()
@@ -526,7 +610,7 @@ impl DropboxProvider {
         let body = response
             .text()
             .await
-            .map_err(|e| TrashProbeError::hard(ProviderError::Other(e.to_string())))?;
+            .map_err(|e| TrashCallError::hard(ProviderError::Other(e.to_string())))?;
         // The throttle test is `dropbox_is_rate_limited`, not the presence of a
         // retry marker: Dropbox can answer 429 with no `retry_after` anywhere,
         // and that is still a throttle.
@@ -541,12 +625,13 @@ impl DropboxProvider {
             {
                 msg.push_str(&tail);
             }
-            return Err(TrashProbeError {
+            return Err(TrashCallError {
                 error: ProviderError::Other(msg),
                 throttled: true,
+                retry_after: dropbox_retry_hint(&body, retry_header.as_deref()),
             });
         }
-        parse_trash_revision(status, &body).map_err(TrashProbeError::hard)
+        parse_trash_revision(status, &body).map_err(TrashCallError::hard)
     }
 
     /// List deleted files in a folder (includes deleted entries)
@@ -582,41 +667,40 @@ impl DropboxProvider {
             .map(|e| self.to_remote_entry(e))
             .collect();
 
-        // Enrich tombstones without turning a failed probe into a guessed file
-        // or hiding the entry. Bounded concurrency avoids one serial RTT per row.
-        // A throttled probe fails the whole listing. Four concurrent probes make
-        // 429 reachable on a large trash, and swallowing it would hand the UI a
-        // successful list in which throttled rows are indistinguishable from
-        // genuinely unidentifiable ones.
-        use futures_util::{stream, StreamExt, TryStreamExt};
-        let this = &*self;
-        let deleted: Vec<RemoteEntry> =
-            stream::iter(deleted.into_iter().map(|mut entry| async move {
-                match this.trash_revision(&entry.path).await {
-                    Ok(TrashRevision::Folder) => {
-                        entry.is_dir = true;
-                        entry.metadata.insert("trash_kind".into(), "folder".into());
-                    }
-                    Ok(TrashRevision::File {
-                        rev,
-                        size,
-                        deleted_at,
-                    }) => {
-                        entry.size = size;
-                        entry.modified = deleted_at;
-                        entry.metadata.insert("rev".into(), rev);
-                        entry.metadata.insert("trash_kind".into(), "file".into());
-                    }
-                    Err(probe) if probe.throttled => return Err(probe.error),
-                    Err(_) => {
-                        entry.metadata.insert("trash_kind".into(), "unknown".into());
-                    }
+        // #397: serialize revision probes so one trash listing cannot burst four
+        // requests into the same account limit. Retry only the refused lookup,
+        // keeping earlier rows, with a shared wait budget for the entire listing.
+        let mut wait_budget = self.trash_throttle_budget();
+        let mut enriched = Vec::with_capacity(deleted.len());
+        for mut entry in deleted {
+            let path = entry.path.clone();
+            let revision =
+                match retry_trash_throttle(&mut wait_budget, || self.trash_revision(&path)).await {
+                    Err(refused) if refused.throttled => return Err(refused.error),
+                    other => other,
+                };
+            match revision {
+                Ok(TrashRevision::Folder) => {
+                    entry.is_dir = true;
+                    entry.metadata.insert("trash_kind".into(), "folder".into());
                 }
-                Ok(entry)
-            }))
-            .buffered(4)
-            .try_collect()
-            .await?;
+                Ok(TrashRevision::File {
+                    rev,
+                    size,
+                    deleted_at,
+                }) => {
+                    entry.size = size;
+                    entry.modified = deleted_at;
+                    entry.metadata.insert("rev".into(), rev);
+                    entry.metadata.insert("trash_kind".into(), "file".into());
+                }
+                Err(_) => {
+                    entry.metadata.insert("trash_kind".into(), "unknown".into());
+                }
+            }
+            enriched.push(entry);
+        }
+        let deleted = enriched;
 
         info!("Listed {} deleted entries in {}", deleted.len(), path);
         Ok(deleted)
@@ -638,7 +722,13 @@ impl DropboxProvider {
         } else {
             format!("{}/{}", self.current_path, path)
         };
-        let effective_rev = match self.trash_revision(&lookup_path).await.map_err(|e| e.error)? {
+        // #397: restoring right after a large listing is when Dropbox throttles,
+        // so the lookup and the restore retry under the listing's bounded policy.
+        let mut wait_budget = self.trash_throttle_budget();
+        let revision = retry_trash_throttle(&mut wait_budget, || self.trash_revision(&lookup_path))
+            .await
+            .map_err(|failed| failed.error)?;
+        let effective_rev = match revision {
             TrashRevision::File { rev, .. } => rev,
             TrashRevision::Folder => return Err(ProviderError::Other("Dropbox's restore API restores file revisions, not folders. Restore this folder from Deleted files on dropbox.com.".into())),
         };
@@ -648,7 +738,11 @@ impl DropboxProvider {
             "rev": effective_rev
         });
 
-        let _: serde_json::Value = self.rpc_call("files/restore", &body).await?;
+        let _: serde_json::Value = retry_trash_throttle(&mut wait_budget, || {
+            self.rpc_call_classified("files/restore", &body)
+        })
+        .await
+        .map_err(|failed| failed.error)?;
 
         info!("Restored {} to revision {}", path, effective_rev);
         Ok(())
@@ -3282,6 +3376,9 @@ mod tests {
         });
         let mut provider = fixture_connected();
         provider.content_base_override = Some(format!("http://{addr}"));
+        // An empty budget refuses the 7 s hint at once: the test does not
+        // sleep through it, and the hint must still ride along.
+        provider.trash_throttle_budget = Some(std::time::Duration::ZERO);
         let err = provider
             .list_deleted("/")
             .await
@@ -3293,6 +3390,196 @@ mod tests {
             text.contains(&crate::transfer_dag::adaptive::embed_retry_after_marker(7)),
             "{text}"
         );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn ehud_trash_recovers_from_throttle_without_repeating_completed_probes() {
+        use axum::{http::StatusCode, routing::post, Json, Router};
+        use serde_json::{json, Value};
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = calls.clone();
+        let app = Router::new()
+            .route(
+                "/files/list_folder",
+                post(|| async {
+                    Json(json!({"entries":[
+                    {".tag":"deleted","name":"first","path_display":"/first"},
+                    {".tag":"deleted","name":"busy","path_display":"/busy"}
+                ],"cursor":"done","has_more":false}))
+                }),
+            )
+            .route(
+                "/files/list_revisions",
+                post(move |Json(request): Json<Value>| {
+                    let seen = seen.clone();
+                    async move {
+                        let path = request["path"].as_str().unwrap().to_owned();
+                        let mut calls = seen.lock().unwrap();
+                        let throttle = path == "/busy" && !calls.contains(&path);
+                        calls.push(path);
+                        if throttle {
+                            (
+                                StatusCode::TOO_MANY_REQUESTS,
+                                Json(json!({"error":{".tag":"too_many_requests"},"retry_after":0})),
+                            )
+                        } else {
+                            (
+                                StatusCode::OK,
+                                Json(json!({"is_deleted":true,
+                            "entries":[{"rev":"good","size":7,"is_restorable":true}]})),
+                            )
+                        }
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let rows = provider.list_deleted("/").await.unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows
+            .iter()
+            .all(|row| row.metadata.get("trash_kind").map(String::as_str) == Some("file")));
+        assert_eq!(*calls.lock().unwrap(), ["/first", "/busy", "/busy"]);
+        server.abort();
+    }
+
+    /// Local Dropbox fixture for the trash throttle tests: `list_folder` lists
+    /// `rows` as deleted entries, and `throttled(endpoint, path, attempt)`
+    /// decides which calls answer 429 with `body`. Every call is recorded as
+    /// `endpoint path`.
+    async fn trash_fixture(
+        rows: &'static [&'static str],
+        throttle_body: serde_json::Value,
+        throttled: fn(&str, &str, usize) -> bool,
+    ) -> (
+        DropboxProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use axum::{extract::Path, http::StatusCode, routing::post, Json, Router};
+        use serde_json::{json, Value};
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = calls.clone();
+        let app = Router::new()
+            .route(
+                "/files/list_folder",
+                post(move || async move {
+                    let entries: Vec<Value> = rows
+                        .iter()
+                        .map(|row| json!({".tag":"deleted","name":row,"path_display":format!("/{row}")}))
+                        .collect();
+                    Json(json!({"entries":entries,"cursor":"done","has_more":false}))
+                }),
+            )
+            .route(
+                "/files/{endpoint}",
+                post(move |Path(endpoint): Path<String>, Json(request): Json<Value>| {
+                    let seen = seen.clone();
+                    let throttle_body = throttle_body.clone();
+                    async move {
+                        let path = request["path"].as_str().unwrap().to_owned();
+                        let call = format!("{endpoint} {path}");
+                        let attempt = {
+                            let mut calls = seen.lock().unwrap();
+                            calls.push(call.clone());
+                            calls.iter().filter(|c| **c == call).count()
+                        };
+                        if throttled(&endpoint, &path, attempt) {
+                            return (StatusCode::TOO_MANY_REQUESTS, Json(throttle_body));
+                        }
+                        match endpoint.as_str() {
+                            "list_revisions" => (
+                                StatusCode::OK,
+                                Json(json!({"is_deleted":true,
+                                    "entries":[{"rev":"good","size":7,"is_restorable":true}]})),
+                            ),
+                            "restore" => (StatusCode::OK, Json(json!({"rev":"good"}))),
+                            other => panic!("unexpected endpoint {other}"),
+                        }
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        (provider, calls, server)
+    }
+
+    // #960 review low 3: restoring right after a large listing is when Dropbox
+    // throttles, and neither the revision lookup nor files/restore retried.
+    #[tokio::test]
+    async fn ehud_restore_retries_a_throttled_lookup_and_restore_call() {
+        let (mut provider, calls, server) = trash_fixture(
+            &["file.txt"],
+            serde_json::json!({"error":{".tag":"too_many_requests"},"retry_after":0}),
+            |_, _, attempt| attempt == 1,
+        )
+        .await;
+        provider
+            .restore_file("/file.txt", "")
+            .await
+            .expect("a throttled restore is retried like the listing");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "list_revisions /file.txt",
+                "list_revisions /file.txt",
+                "restore /file.txt",
+                "restore /file.txt",
+            ]
+        );
+        server.abort();
+    }
+
+    // Pre-existing, found by the #960 review: Dropbox nests `retry_after`
+    // under `error`, so the body hint was never read and a zero-second hint
+    // fell back to the 1 s default, past a spent budget.
+    #[tokio::test]
+    async fn ehud_trash_retry_reads_the_hint_nested_under_error() {
+        let (mut provider, calls, server) = trash_fixture(
+            &["busy"],
+            serde_json::json!({"error_summary":"too_many_requests/..",
+                "error":{"reason":{".tag":"too_many_requests"},"retry_after":0}}),
+            |_, _, attempt| attempt == 1,
+        )
+        .await;
+        provider.trash_throttle_budget = Some(std::time::Duration::ZERO);
+        let rows = provider
+            .list_deleted("/")
+            .await
+            .expect("a zero-second hint fits an empty budget");
+        assert_eq!(rows[0].metadata["trash_kind"], "file");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["list_revisions /busy", "list_revisions /busy"]
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn ehud_trash_gives_up_after_two_retries() {
+        let (mut provider, calls, server) = trash_fixture(
+            &["busy"],
+            serde_json::json!({"error":{".tag":"too_many_requests"},"retry_after":0}),
+            |_, _, _| true,
+        )
+        .await;
+        let err = provider
+            .list_deleted("/")
+            .await
+            .expect_err("a persistent throttle stays an error");
+        assert!(err.to_string().contains("throttled"), "{err}");
+        assert_eq!(calls.lock().unwrap().len(), 3, "one call and two retries");
         server.abort();
     }
 

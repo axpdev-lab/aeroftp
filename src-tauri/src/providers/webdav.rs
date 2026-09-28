@@ -433,7 +433,18 @@ pub struct WebDavProvider {
     /// here and `list()` / `download()` / `build_url()` short-circuit to
     /// operate on the verbatim URL.
     single_file_mode: Option<RemoteEntry>,
+    /// How long `list_recursive` waits for the `Depth: infinity` response
+    /// headers (#958). [`INFINITY_HEADERS_TIMEOUT`] outside tests.
+    infinity_headers_timeout: std::time::Duration,
 }
+
+/// Wait for the response headers of a `PROPFIND Depth: infinity` (#958). A
+/// server that never starts answering it (Filen WebDAV did) held the provider
+/// lock for the 1800 s read timeout, blocking the file browser and the
+/// disconnect behind it. The cap is on the headers only: once they arrive, a
+/// large tree streams under the idle read timeout and the scan's own cancel,
+/// never a wall clock. Past the cap the used-storage scan walks Depth:1.
+const INFINITY_HEADERS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Provider-specific hard cap on concurrent Range streams (mirrors S3's 16).
 const WEBDAV_MULTI_THREAD_MAX_STREAMS: usize = 16;
@@ -490,6 +501,7 @@ impl WebDavProvider {
             multi_thread_streams: 1,
             multi_thread_cutoff: 8 * 1024 * 1024,
             single_file_mode: None,
+            infinity_headers_timeout: INFINITY_HEADERS_TIMEOUT,
         })
     }
 
@@ -2011,12 +2023,20 @@ impl WebDavProvider {
         Ok(())
     }
 
+    /// Shorten the `Depth: infinity` header wait so a test does not sit
+    /// through the production 30 s.
+    #[cfg(test)]
+    pub(crate) fn set_infinity_headers_timeout(&mut self, timeout: std::time::Duration) {
+        self.infinity_headers_timeout = timeout;
+    }
+
     /// Single-request recursive listing via `PROPFIND Depth: infinity`
     /// (item 4b "used storage" scan). Returns every descendant of `path`
     /// flat (files at any depth + collections), reusing the same prop set
     /// and parser as `list()`. Servers that forbid or limit infinity
-    /// (403/400, or a non-multistatus status) yield an `Err` so the caller
-    /// falls back to the recursive Depth:1 BFS. Only `size`/`is_dir` are
+    /// (403/400, or a non-multistatus status), or that send no response
+    /// headers within [`INFINITY_HEADERS_TIMEOUT`], yield an `Err` so the
+    /// caller falls back to the recursive Depth:1 BFS. Only `size`/`is_dir` are
     /// relied on downstream, so the flat `name`/`path` (computed against
     /// the root) being approximate for deep entries does not matter.
     pub async fn list_recursive(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
@@ -2034,8 +2054,10 @@ impl WebDavProvider {
             path.to_string()
         };
 
-        let response = self
-            .send_propfind(
+        let headers_cap = self.infinity_headers_timeout;
+        let response = tokio::time::timeout(
+            headers_cap,
+            self.send_propfind(
                 &list_path,
                 "infinity",
                 r#"<?xml version="1.0" encoding="utf-8"?>
@@ -2049,8 +2071,14 @@ impl WebDavProvider {
                         <d:displayname/>
                     </d:prop>
                 </d:propfind>"#,
-            )
-            .await?;
+            ),
+        )
+        .await
+        .map_err(|_| {
+            ProviderError::ServerError(format!(
+                "Depth:infinity sent no response headers within {headers_cap:?}"
+            ))
+        })??;
 
         let status = response.status();
         match status {
