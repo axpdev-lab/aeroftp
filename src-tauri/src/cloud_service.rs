@@ -2823,6 +2823,61 @@ mod baseline_tests {
         );
     }
 
+    /// m1 (verification of 34bf4fdf): the prior index a cycle with errors
+    /// adds its sentinels to was migrated when it was loaded, and the keys the
+    /// migration could not vouch for live in `unverified_keys`, which is not
+    /// saved: written back, they became trusted, and a file whose upload had
+    /// failed read as already synced and was deleted locally the next cycle.
+    /// They are left out, read as never synced.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_cycle_with_errors_does_not_trust_keys_a_migration_could_not_vouch_for() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            let entry = |size| SyncIndexEntry {
+                size,
+                modified: None,
+                is_dir: false,
+            };
+            let prior = SyncIndex {
+                version: SYNC_INDEX_VERSION,
+                last_sync: Utc::now(),
+                local_path: "/l/unverified".to_string(),
+                remote_path: "/unverified".to_string(),
+                files: HashMap::from([
+                    ("sub/b.txt".to_string(), entry(3)),
+                    ("kept.txt".to_string(), entry(4)),
+                ]),
+                unverified_keys: std::collections::HashSet::from(["sub/b.txt".to_string()]),
+            };
+            let svc = CloudService::new();
+            svc.unsettled.lock().unwrap().push("f.txt".to_string());
+            svc.save_unsettled_into("/l/unverified", "/unverified", &[], Some(&prior));
+            let saved = load_sync_index("/l/unverified", "/unverified")
+                .unwrap()
+                .expect("the sentinel is recorded");
+            assert!(
+                !saved.files.contains_key("sub/b.txt"),
+                "a key the migration could not vouch for was saved as trusted"
+            );
+            assert!(saved.files.contains_key("kept.txt"));
+            assert_eq!(
+                saved.files.get("f.txt").and_then(|entry| entry.modified),
+                Some(UNSETTLED_BASELINE)
+            );
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
     /// F1 (verification of the final round): a time ahead of the clock was
     /// left out, so a file whose only times were a little ahead was never
     /// waited for. FAT rounds the last write up to its 2 s field, and a
