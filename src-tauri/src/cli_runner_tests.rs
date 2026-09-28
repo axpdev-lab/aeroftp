@@ -245,3 +245,21 @@ fn cli_tool_results_are_capped_at_a_char_boundary() {
     assert!(capped.ends_with(&format!("... [truncated, {} bytes total]", result.len())));
     assert_eq!(cap_tool_result("short é".into()), "short é");
 }
+
+#[test]
+fn cli_history_trim_falls_back_to_the_latest_user_turn() {
+    let msg =
+        |role: &str| serde_json::from_value(json!({"role": role, "content":"fixture"})).unwrap();
+    // One turn with many tool steps: no user message among the last three.
+    let mut history = vec![msg("user"), msg("assistant"), msg("user")];
+    for _ in 0..4 {
+        history.push(msg("assistant"));
+        history.push(msg("tool"));
+    }
+    agent_trim_history(&mut history, 3);
+    assert_eq!(history.len(), 9);
+    assert_eq!(history[0].role, "user");
+    // Already starting at the latest user message: nothing more to drop.
+    agent_trim_history(&mut history, 3);
+    assert_eq!(history.len(), 9);
+}

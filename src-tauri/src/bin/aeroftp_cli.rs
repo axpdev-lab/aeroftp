@@ -68273,11 +68273,15 @@ fn agent_failed_turn(history: &mut Vec<ftp_client_gui_lib::ai::ChatMessage>, pro
     }
 }
 
-/// Trim at a user boundary, never through an assistant/tool-result group.
+/// Trim at a user boundary, never through an assistant/tool-result group. When
+/// one turn with many tool steps fills the whole window, keep from the latest
+/// user message, so history stays bounded to that turn.
 fn agent_trim_history(history: &mut Vec<ftp_client_gui_lib::ai::ChatMessage>, max: usize) {
     if history.len() > max {
-        if let Some(index) =
-            (history.len() - max..history.len()).find(|&i| history[i].role == "user")
+        let is_user = |i: &usize| history[*i].role == "user";
+        if let Some(index) = (history.len() - max..history.len())
+            .find(is_user)
+            .or_else(|| (0..history.len()).rev().find(is_user))
         {
             history.drain(..index);
         }
