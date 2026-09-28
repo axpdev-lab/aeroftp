@@ -68290,18 +68290,24 @@ async fn agent_tool_loop(
             signal_cancel.cancel();
         }
     }));
-    agent_run(cfg, messages, is_tty, &cancel).await
+    let adapter = CliRunnerAdapter {
+        cfg,
+        is_tty,
+        streamed: Arc::default(),
+    };
+    agent_run(&adapter, messages, &cancel).await
 }
 
-/// One agent run under a caller-owned cancellation token.
+/// One agent run under a caller-owned cancellation token, through an adapter
+/// whose streamed text the caller can watch.
 async fn agent_run(
-    cfg: &AgentConfig,
+    adapter: &CliRunnerAdapter<'_>,
     messages: &mut Vec<ftp_client_gui_lib::ai::ChatMessage>,
-    is_tty: bool,
     cancel: &tokio_util::sync::CancellationToken,
 ) -> Result<String, AgentRunError> {
     use ftp_client_gui_lib::ai::{AIRequest, ChatMessage};
     use ftp_client_gui_lib::ai_core::runner::{run, RunnerOptions};
+    let cfg = adapter.cfg;
     let request = AIRequest {
         turn_scope: None,
         reasoning_effort: None,
@@ -68336,16 +68342,11 @@ async fn agent_run(
         ),
     };
 
-    let adapter = CliRunnerAdapter {
-        cfg,
-        is_tty,
-        streamed: Arc::default(),
-    };
     let options = RunnerOptions {
         max_steps: cfg.max_steps,
         plan_only: cfg.plan_only,
     };
-    run(&adapter, &request, messages, options, cancel)
+    run(adapter, &request, messages, options, cancel)
         .await
         .map_err(|error| {
             if cancel.is_cancelled() {

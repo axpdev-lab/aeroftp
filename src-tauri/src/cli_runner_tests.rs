@@ -202,7 +202,6 @@ async fn cli_interrupted_run_prints_partial_text_and_exits_130() {
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let cfg = config(format!("http://{}", listener.local_addr().unwrap()));
-        let (sent, streamed) = tokio::sync::oneshot::channel();
         let server = async {
             let (mut socket, _) = listener.accept().await.unwrap();
             read_request(&mut socket).await;
@@ -210,19 +209,21 @@ async fn cli_interrupted_run_prints_partial_text_and_exits_130() {
             // A close-delimited event stream that never finishes on its own.
             let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n";
             socket.write_all(format!("{head}data: {partial}\n\n").as_bytes()).await.unwrap();
-            sent.send(()).unwrap();
             // Hold the connection until the cancelled client drops it.
             let _ = socket.read(&mut [0u8; 1]).await;
         };
         let client = async {
             let cancel = tokio_util::sync::CancellationToken::new();
             let mut messages = vec![serde_json::from_value(json!({"role":"user","content":"fixture"})).unwrap()];
+            let adapter = CliRunnerAdapter { cfg: &cfg, is_tty: false, streamed: Arc::default() };
+            // Interrupt once the partial text has reached the sink, not after a guess.
             let interrupt = async {
-                streamed.await.unwrap();
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                while adapter.streamed.lock().unwrap().as_str() != "Partial answer" {
+                    tokio::task::yield_now().await;
+                }
                 cancel.cancel();
             };
-            let (outcome, ()) = tokio::join!(agent_run(&cfg, &mut messages, false, &cancel), interrupt);
+            let (outcome, ()) = tokio::join!(agent_run(&adapter, &mut messages, &cancel), interrupt);
             let mut out = Vec::new();
             let code = report_agent_oneshot(&mut out, outcome, OutputFormat::Text, true);
             assert_eq!(code, 130, "Ctrl-C is exit code 130 (Interrupted)");
