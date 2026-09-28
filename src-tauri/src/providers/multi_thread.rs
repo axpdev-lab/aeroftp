@@ -571,7 +571,7 @@ where
     let _claim = {
         let temp = temp_path.clone();
         let file = tokio::task::spawn_blocking(move || {
-            crate::providers::atomic_write::temp_claim::create(&temp)
+            crate::providers::atomic_write::temp_claim::create_fresh(&temp)
         })
         .await
         .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?

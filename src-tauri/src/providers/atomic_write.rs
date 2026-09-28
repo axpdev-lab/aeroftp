@@ -89,6 +89,30 @@ pub(crate) mod temp_claim {
         Ok(file)
     }
 
+    /// Create the temporary of a download that starts over (a fresh resumable
+    /// part, a segmented run): a stale one is replaced, a live one refused.
+    pub(crate) fn create_fresh(temp: &Path) -> Result<std::fs::File> {
+        create_fresh_with(temp, try_lock, locks_usable)
+    }
+
+    fn create_fresh_with(
+        temp: &Path,
+        lock: impl Fn(&std::fs::File) -> std::result::Result<(), std::fs::TryLockError>,
+        usable: impl Fn(&Path) -> bool,
+    ) -> Result<std::fs::File> {
+        if usable(temp) {
+            return create_with(temp, lock);
+        }
+        match std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(temp)
+        {
+            Err(taken) if taken.kind() == ErrorKind::AlreadyExists => Err(cannot_tell(temp)),
+            created => created,
+        }
+    }
+
     /// Remove the temporary at `temp` unless a live writer holds it: a stale
     /// one is removed while this call holds its lock, a live one is refused.
     /// Where locks are not used it is removed by name, as before them.
@@ -281,6 +305,38 @@ pub(crate) mod temp_claim {
         .contains(&kind)
     }
 
+    /// Where the locks are not used, on every platform.
+    #[cfg(test)]
+    mod fresh_tests {
+        use super::*;
+
+        /// CodeRabbit on 15a1e76d (#951): a download that starts over (open_fresh,
+        /// RESUME-01, and a segmented run) discards the part an interrupted one
+        /// left, which a resumable download keeps on purpose. Where the locks
+        /// are not used (Windows, NFS, SMB) the claim could not tell that part
+        /// from a live writer's and refused it, so every later fresh download of
+        /// the file failed until the part was removed by hand. There it is
+        /// discarded, as before the locks.
+        #[test]
+        fn a_fresh_download_where_locks_are_not_used_discards_an_interrupted_part() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            std::fs::write(&temp, b"an interrupted part").unwrap();
+            let fresh = create_fresh_with(&temp, try_lock, |_| false);
+            assert!(
+                fresh.is_ok(),
+                "a fresh download was refused over an interrupted part: {:?}",
+                fresh.err()
+            );
+            drop(fresh);
+            assert_eq!(
+                std::fs::read(&temp).unwrap(),
+                b"",
+                "the interrupted part was kept under the fresh download"
+            );
+        }
+    }
+
     /// Only Linux says what a mount is here: elsewhere a network share could
     /// turn the lock into a mandatory one (macOS smbfs maps flock onto SMB
     /// locks), so the temporaries go unlocked, as before these locks.
@@ -406,6 +462,35 @@ pub(crate) mod temp_claim {
             ] {
                 assert_eq!(locks_usable_on(kind), usable, "{kind:#x}");
             }
+        }
+
+        /// The other side of the fresh create: where the locks are used it
+        /// keeps the claim's rules, a live writer's part refused and a stale
+        /// one replaced, so discarding without looking is not the fix.
+        #[test]
+        fn a_fresh_download_where_locks_are_used_keeps_the_claim_rules() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            let live = create(&temp).unwrap();
+            assert_eq!(
+                create_fresh(&temp).err().map(|e| e.kind()),
+                Some(ErrorKind::AlreadyExists),
+                "a fresh download took a live writer's part"
+            );
+            drop(live);
+            std::fs::write(&temp, b"a stale part").unwrap();
+            let fresh = create_fresh(&temp);
+            assert!(
+                fresh.is_ok(),
+                "a fresh download was refused over a stale part: {:?}",
+                fresh.err()
+            );
+            drop(fresh);
+            assert_eq!(
+                std::fs::read(&temp).unwrap(),
+                b"",
+                "the stale part was kept under the fresh download"
+            );
         }
 
         /// The paths that discard or publish a part by name (`get --partial`,
@@ -723,7 +808,7 @@ impl ResumableFile {
             // retry until the user removes it by hand: the claim replaces a
             // stale one, and refuses one another writer still holds.
             let temp = temp_path.clone();
-            claimed(move || temp_claim::create(&temp)).await?
+            claimed(move || temp_claim::create_fresh(&temp)).await?
         };
 
         Ok(Self {

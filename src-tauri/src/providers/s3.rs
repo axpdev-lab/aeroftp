@@ -3650,11 +3650,12 @@ impl S3Provider {
         #[cfg(unix)]
         let _claim = {
             let temp = temp_path.clone();
-            let file =
-                tokio::task::spawn_blocking(move || super::atomic_write::temp_claim::create(&temp))
-                    .await
-                    .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?
-                    .map_err(ProviderError::IoError)?;
+            let file = tokio::task::spawn_blocking(move || {
+                super::atomic_write::temp_claim::create_fresh(&temp)
+            })
+            .await
+            .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?
+            .map_err(ProviderError::IoError)?;
             file.set_len(total_size).map_err(ProviderError::IoError)?;
             file.sync_all().map_err(ProviderError::IoError)?;
             file
