@@ -1672,13 +1672,17 @@ impl CloudService {
                             break;
                         };
                         if provider.reports_exact_size()
-                            && uploaded.as_ref().is_ok_and(|entry| entry.size != sent.len)
+                            && uploaded.as_ref().is_ok_and(|entry| {
+                                !crate::providers::ftp_listing::size_is_unreadable(entry)
+                                    && entry.size != sent.len
+                            })
                         {
                             // The remote is not what was sent: another client
                             // wrote it between the end of the upload and the
                             // stat (an overlay that reports the size on the
                             // wire, compressed or encrypted, never matches, and
-                            // is not asked). The local file is not stamped with a time
+                            // is not asked, nor is an FTP size that could not
+                            // be read). The local file is not stamped with a time
                             // that belongs to that write, and the baseline
                             // records what was sent: the next cycle reads the
                             // remote as changed.
