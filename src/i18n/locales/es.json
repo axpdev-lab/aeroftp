@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Recargar",
             "uiTokensReset": "Borrar anulaciones",
             "uiTokensApplied": "Sobrescrituras aplicadas: {count}",
-            "uiTokensRejected": "Entradas rechazadas: {count}"
+            "uiTokensRejected": "Entradas rechazadas: {count}",
+            "keystorePreferencesFailed": "La importación terminó, pero no se pudieron restaurar tus preferencias de la aplicación: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "Rechazar todas las llamadas de herramientas",
                 "rejectExecution": "Rechazar ejecución de herramienta",
                 "toggleDetails": "Mostrar/ocultar detalles",
-                "allowSession": "Permitir para esta sesión"
+                "allowSession": "Permitir para esta sesión",
+                "nonAtomicReplace": "Sustitución no atómica: el archivo desaparece un instante"
             },
             "settings": {
                 "title": "Ajustes de IA",
@@ -5874,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP encontró una configuración existente en tu carpeta personal. Esta instalación de Flatpak usa su propio almacenamiento separado, por lo que tus servidores guardados y la bóveda cifrada aún no se ven aquí. ¿Importarlos ahora? Los archivos solo se copian, no se sobrescribe nada, y la bóveda se desbloquea aquí de la misma forma que ahora.",
+            "importBody": "AeroFTP encontró una configuración existente en tu carpeta personal. Esta instalación de Flatpak usa su propio almacenamiento separado, por lo que tus servidores guardados y la bóveda cifrada aún no se ven aquí. ¿Importar tu configuración ahora? Los archivos solo se copian, y nunca se sobrescribe un archivo que esta instalación de Flatpak ya tenga.",
             "importAccept": "Importar",
             "importedBody": "Se importó tu configuración. Reinicia AeroFTP para cargar tus servidores y la bóveda.",
-            "restartNow": "Reiniciar ahora"
+            "restartNow": "Reiniciar ahora",
+            "importNothingBody": "No se copió ningún archivo: esta instalación de Flatpak ya tiene un archivo con el mismo nombre para cada archivo que la importación copiaría, y los archivos existentes nunca se sobrescriben.",
+            "importFailedBody": "La importación se detuvo con un error: {error}. Los archivos ya copiados en esta instalación de Flatpak permanecen ahí, y no se sobrescribió nada. AeroFTP volverá a ofrecer la importación en el próximo inicio.",
+            "importedNoVaultBody": "Se importó tu configuración, pero no contenía servidores guardados ni ninguna bóveda que la importación pudiera copiar. Reinicia AeroFTP para cargar lo que se importó.",
+            "importedVaultSkippedBody": "Se importó parte de tu configuración, pero no tus servidores guardados ni la bóveda: esta instalación de Flatpak ya tiene su propia bóveda, y los archivos existentes nunca se sobrescriben. Reinicia AeroFTP para cargar lo que se importó.",
+            "importNothingVaultSkippedBody": "No se copió ningún archivo, por lo que tus servidores guardados y la bóveda no se importaron: esta instalación de Flatpak ya tiene su propia bóveda y un archivo con el mismo nombre para cada archivo que la importación copiaría, y los archivos existentes nunca se sobrescriben.",
+            "importUnreadableResult": "AeroFTP no pudo leer el resultado de la importación",
+            "importNothingToImportBody": "No se copió ningún archivo: tu configuración existente no contiene ningún archivo que la importación copie (los enlaces simbólicos y los archivos temporales de SQLite nunca se copian)."
         },
         "picker": {
             "unavailable": {

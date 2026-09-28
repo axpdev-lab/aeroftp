@@ -478,6 +478,7 @@ import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { findGvfsMtpMount, isGvfsMtpPath } from './utils/gvfsMtpMount';
+import { acceptFlatpakImport, flatpakImportResultDialog, flatpakOfferHandlers } from './utils/flatpakImport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -1940,9 +1941,11 @@ const App: React.FC = () => {
   // one-time decision marker, so `available` is true only inside a Flatpak, when a
   // native config exists, and when the user has not decided yet. We wait for
   // `vaultBootComplete` and skip while a lock/setup dialog is up so the import
-  // offer never fights the first-run master-password flow; on a genuinely fresh
-  // sandbox (default AutoKeyring, no master password) neither is up, so the offer
-  // wins and brings the real vault in. `hasOfferedRef` guards StrictMode.
+  // offer never fights the first-run master-password flow. By then
+  // `init_credential_store` has created this install's own vault, which the
+  // import never overwrites, so on a fresh sandbox the host vault and the saved
+  // servers encrypted under it stay behind, and the result dialog says so.
+  // `flatpakImportOfferedRef` guards StrictMode.
   const flatpakImportOfferedRef = useRef(false);
   useEffect(() => {
     if (!vaultBootComplete || isAppLocked || showMasterPasswordSetup) return;
@@ -1954,28 +1957,31 @@ const App: React.FC = () => {
           'flatpak_config_import_status'
         );
         if (!st?.available) return;
+        const offer = flatpakOfferHandlers({
+          accept: acceptFlatpakImport,
+          decline: async () => {
+            try { await invoke('flatpak_config_import_apply', { accept: false }); } catch { /* ignore */ }
+          },
+          // A dialog, not a toast: toasts can be switched off, and the user
+          // just made a decision whose result they must see.
+          showOutcome: (outcome) => {
+            const result = flatpakImportResultDialog(outcome, t);
+            setConfirmDialog({
+              message: result.message,
+              confirmLabel: result.confirmLabel,
+              confirmColor: 'blue',
+              onConfirm: result.restart ? () => { invoke('restart_app'); } : () => setConfirmDialog(null),
+              onCancel: () => setConfirmDialog(null),
+            });
+          },
+          close: () => setConfirmDialog(null),
+        });
         setConfirmDialog({
           message: t('flatpak.importBody'),
           confirmLabel: t('flatpak.importAccept'),
           confirmColor: 'blue',
-          onConfirm: async () => {
-            try {
-              await invoke('flatpak_config_import_apply', { accept: true });
-            } catch (e) {
-              console.warn('flatpak import failed', e);
-            }
-            setConfirmDialog({
-              message: t('flatpak.importedBody'),
-              confirmLabel: t('flatpak.restartNow'),
-              confirmColor: 'blue',
-              onConfirm: () => { invoke('restart_app'); },
-              onCancel: () => setConfirmDialog(null),
-            });
-          },
-          onCancel: async () => {
-            try { await invoke('flatpak_config_import_apply', { accept: false }); } catch { /* ignore */ }
-            setConfirmDialog(null);
-          },
+          onConfirm: offer.onConfirm,
+          onCancel: offer.onCancel,
         });
       } catch {
         // Not in a Flatpak, or backend not ready: silently ignore.
@@ -14451,11 +14457,19 @@ const App: React.FC = () => {
             importLocalStorage: true,
           });
           if (result.localStorage && Object.keys(result.localStorage).length > 0) {
+            let preferencesError: string | null = null;
             try {
               const { applyLocalStorage } = await import('./utils/keystoreLocalStorage');
-              await applyLocalStorage(result.localStorage);
+              preferencesError = (await applyLocalStorage(result.localStorage)).error;
             } catch (e) {
-              console.warn('Failed to apply restored localStorage:', e);
+              preferencesError = e instanceof Error ? e.message : String(e);
+            }
+            if (preferencesError) {
+              console.warn('Failed to apply restored localStorage:', preferencesError);
+              notify.warning(
+                t('settings.importKeystore') || 'Import Keystore',
+                t('settings.keystorePreferencesFailed', { error: preferencesError }),
+              );
             }
           }
           await refreshProfilesFromImportedKeystore();

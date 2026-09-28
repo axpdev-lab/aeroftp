@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Genindlæs",
             "uiTokensReset": "Ryd tilsidesættelser",
             "uiTokensApplied": "Anvendte tilsidesættelser: {count}",
-            "uiTokensRejected": "Afviste poster: {count}"
+            "uiTokensRejected": "Afviste poster: {count}",
+            "keystorePreferencesFailed": "Importen er færdig, men dine appindstillinger kunne ikke gendannes: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "Afvis alle værktøjskald",
                 "rejectExecution": "Afvis værktøjsudførelse",
                 "toggleDetails": "Vis/skjul detaljer",
-                "allowSession": "Tillad for denne session"
+                "allowSession": "Tillad for denne session",
+                "nonAtomicReplace": "Ikke-atomisk udskiftning: filen mangler kortvarigt"
             },
             "settings": {
                 "title": "AI-indstillinger",
@@ -5874,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP fandt en eksisterende konfiguration i din hjemmemappe. Denne Flatpak-installation bruger sit eget separate lager, så dine gemte servere og krypterede boks er ikke synlige her endnu. Vil du importere dem nu? Filerne kopieres kun, intet overskrives, og boksen låses op her på samme måde som nu.",
+            "importBody": "AeroFTP fandt en eksisterende konfiguration i din hjemmemappe. Denne Flatpak-installation bruger sit eget separate lager, så dine gemte servere og krypterede boks er ikke synlige her endnu. Vil du importere din konfiguration nu? Filerne kopieres kun, og en fil, som denne Flatpak-installation allerede har, overskrives aldrig.",
             "importAccept": "Importér",
             "importedBody": "Din konfiguration blev importeret. Genstart AeroFTP for at indlæse dine servere og din boks.",
-            "restartNow": "Genstart nu"
+            "restartNow": "Genstart nu",
+            "importNothingBody": "Ingen filer blev kopieret: for hver fil, som importen ville kopiere, findes der allerede en fil med samme navn i denne Flatpak-installation, og eksisterende filer overskrives aldrig.",
+            "importFailedBody": "Importen stoppede med en fejl: {error}. Filer, der allerede er kopieret ind i denne Flatpak-installation, forbliver der, og intet blev overskrevet. AeroFTP vil tilbyde importen igen ved næste start.",
+            "importedNoVaultBody": "Din konfiguration blev importeret, men den indeholdt ingen gemte servere eller boks, som importen kunne kopiere. Genstart AeroFTP for at indlæse det, der blev importeret.",
+            "importedVaultSkippedBody": "En del af din konfiguration blev importeret, men ikke dine gemte servere og din boks: denne Flatpak-installation har allerede sin egen boks, og eksisterende filer overskrives aldrig. Genstart AeroFTP for at indlæse det, der blev importeret.",
+            "importNothingVaultSkippedBody": "Ingen filer blev kopieret, så dine gemte servere og din boks blev ikke importeret: denne Flatpak-installation har allerede sin egen boks og en fil med samme navn for hver fil, som importen ville kopiere, og eksisterende filer overskrives aldrig.",
+            "importUnreadableResult": "AeroFTP kunne ikke læse resultatet af importen",
+            "importNothingToImportBody": "Ingen filer blev kopieret: din eksisterende konfiguration indeholder ingen filer, som importen kopierer (symbolske links og midlertidige SQLite-filer kopieres aldrig)."
         },
         "picker": {
             "unavailable": {

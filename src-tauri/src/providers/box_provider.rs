@@ -3090,6 +3090,7 @@ mod tests {
     async fn box_does_not_claim_an_atomic_replace() {
         let mut p = BoxProvider::new(demo_cfg());
         assert!(!p.supports_atomic_replace().await.unwrap());
+        assert!(!p.replace_sets_aside());
     }
 
     /// Box refuses a rename or move onto a taken name with 409

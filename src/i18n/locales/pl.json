@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Załaduj ponownie",
             "uiTokensReset": "Wyczyść nadpisania",
             "uiTokensApplied": "Zastosowane nadpisania: {count}",
-            "uiTokensRejected": "Odrzucone wpisy: {count}"
+            "uiTokensRejected": "Odrzucone wpisy: {count}",
+            "keystorePreferencesFailed": "Import zakończył się, ale nie udało się przywrócić Twoich preferencji aplikacji: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "Odrzuć wszystkie wywołania narzędzi",
                 "rejectExecution": "Odrzuć wykonanie narzędzia",
                 "toggleDetails": "Pokaż/ukryj szczegóły",
-                "allowSession": "Zezwól na tę sesję"
+                "allowSession": "Zezwól na tę sesję",
+                "nonAtomicReplace": "Nieatomowa zamiana: plik chwilowo nie istnieje"
             },
             "settings": {
                 "title": "Ustawienia AI",
@@ -5874,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP znalazł istniejącą konfigurację w Twoim folderze domowym. Ta instalacja Flatpak korzysta z własnej, oddzielnej pamięci, więc zapisane serwery i zaszyfrowany sejf nie są tu jeszcze widoczne. Zaimportować je teraz? Pliki są tylko kopiowane, nic nie jest nadpisywane, a sejf odblokowuje się tutaj w taki sam sposób jak teraz.",
+            "importBody": "AeroFTP znalazł istniejącą konfigurację w Twoim folderze domowym. Ta instalacja Flatpak korzysta z własnej, oddzielnej pamięci, więc zapisane serwery i zaszyfrowany sejf nie są tu jeszcze widoczne. Zaimportować teraz Twoją konfigurację? Pliki są tylko kopiowane, a plik, który ta instalacja Flatpak już ma, nigdy nie jest nadpisywany.",
             "importAccept": "Importuj",
             "importedBody": "Twoja konfiguracja została zaimportowana. Uruchom ponownie AeroFTP, aby wczytać serwery i sejf.",
-            "restartNow": "Uruchom ponownie teraz"
+            "restartNow": "Uruchom ponownie teraz",
+            "importNothingBody": "Nie skopiowano żadnego pliku: dla każdego pliku, który import by skopiował, w tej instalacji Flatpak istnieje już plik o tej samej nazwie, a istniejące pliki nigdy nie są nadpisywane.",
+            "importFailedBody": "Import zatrzymał się z błędem: {error}. Pliki już skopiowane do tej instalacji Flatpak pozostają na miejscu, a nic nie zostało nadpisane. AeroFTP zaproponuje import ponownie przy następnym uruchomieniu.",
+            "importedNoVaultBody": "Twoja konfiguracja została zaimportowana, ale nie zawierała zapisanych serwerów ani sejfu, które import mógłby skopiować. Uruchom ponownie AeroFTP, aby wczytać to, co zostało zaimportowane.",
+            "importedVaultSkippedBody": "Część Twojej konfiguracji została zaimportowana, ale nie zapisane serwery i sejf: ta instalacja Flatpak ma już własny sejf, a istniejące pliki nigdy nie są nadpisywane. Uruchom ponownie AeroFTP, aby wczytać to, co zostało zaimportowane.",
+            "importNothingVaultSkippedBody": "Nie skopiowano żadnego pliku, więc zapisane serwery i sejf nie zostały zaimportowane: ta instalacja Flatpak ma już własny sejf oraz plik o tej samej nazwie dla każdego pliku, który import by skopiował, a istniejące pliki nigdy nie są nadpisywane.",
+            "importUnreadableResult": "AeroFTP nie mógł odczytać wyniku importu",
+            "importNothingToImportBody": "Nie skopiowano żadnego pliku: Twoja istniejąca konfiguracja nie zawiera żadnego pliku, który import kopiuje (dowiązania symboliczne i pliki tymczasowe SQLite nigdy nie są kopiowane)."
         },
         "picker": {
             "unavailable": {

@@ -1193,7 +1193,8 @@
             "uiTokensReload": "다시 로드",
             "uiTokensReset": "재정의 지우기",
             "uiTokensApplied": "적용된 재정의: {count}",
-            "uiTokensRejected": "거부된 항목: {count}"
+            "uiTokensRejected": "거부된 항목: {count}",
+            "keystorePreferencesFailed": "가져오기는 완료되었지만 앱 환경설정을 복원하지 못했습니다: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "모든 도구 호출 거부",
                 "rejectExecution": "도구 실행 거부",
                 "toggleDetails": "상세 정보 전환",
-                "allowSession": "이 세션 동안 허용"
+                "allowSession": "이 세션 동안 허용",
+                "nonAtomicReplace": "비원자적 교체: 파일이 잠시 사라집니다"
             },
             "settings": {
                 "title": "AI 설정",
@@ -5874,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP가 홈 폴더에서 기존 구성을 발견했습니다. 이 Flatpak 설치는 자체의 별도 저장소를 사용하므로 저장된 서버와 암호화된 보관소가 아직 여기에 표시되지 않습니다. 지금 가져올까요? 파일은 복사만 되며 아무것도 덮어쓰지 않고, 그리고 보관소는 여기서도 지금과 같은 방식으로 잠금 해제됩니다.",
+            "importBody": "AeroFTP가 홈 폴더에서 기존 구성을 발견했습니다. 이 Flatpak 설치는 자체의 별도 저장소를 사용하므로 저장된 서버와 암호화된 보관소가 아직 여기에 표시되지 않습니다. 지금 구성을 가져올까요? 파일은 복사만 되며, 이 Flatpak 설치에 이미 있는 파일은 절대 덮어쓰지 않습니다.",
             "importAccept": "가져오기",
             "importedBody": "구성을 가져왔습니다. 서버와 보관소를 불러오려면 AeroFTP를 다시 시작하세요.",
-            "restartNow": "지금 다시 시작"
+            "restartNow": "지금 다시 시작",
+            "importNothingBody": "복사된 파일이 없습니다: 가져오기가 복사할 모든 파일에 대해 이 Flatpak 설치에 같은 이름의 파일이 이미 있으며, 기존 파일은 절대 덮어쓰지 않습니다.",
+            "importFailedBody": "가져오기가 오류로 중단되었습니다: {error}. 이 Flatpak 설치에 이미 복사된 파일은 그대로 남아 있으며, 덮어쓴 항목은 없습니다. AeroFTP는 다음 시작 시 가져오기를 다시 제안합니다.",
+            "importedNoVaultBody": "구성을 가져왔지만, 해당 구성에는 가져오기로 복사할 수 있는 저장된 서버나 보관소가 없었습니다. 가져온 항목을 불러오려면 AeroFTP를 다시 시작하세요.",
+            "importedVaultSkippedBody": "구성의 일부를 가져왔지만 저장된 서버와 보관소는 가져오지 않았습니다: 이 Flatpak 설치에는 이미 자체 보관소가 있으며, 기존 파일은 절대 덮어쓰지 않습니다. 가져온 항목을 불러오려면 AeroFTP를 다시 시작하세요.",
+            "importNothingVaultSkippedBody": "복사된 파일이 없으므로 저장된 서버와 보관소를 가져오지 않았습니다: 이 Flatpak 설치에는 이미 자체 보관소가 있고, 가져오기가 복사할 모든 파일에 대해 여기에 같은 이름의 파일이 이미 있으며, 기존 파일은 절대 덮어쓰지 않습니다.",
+            "importUnreadableResult": "AeroFTP가 가져오기 결과를 읽을 수 없었습니다",
+            "importNothingToImportBody": "복사된 파일이 없습니다: 기존 구성에는 가져오기가 복사하는 파일이 없습니다(심볼릭 링크와 SQLite 임시 파일은 절대 복사되지 않습니다)."
         },
         "picker": {
             "unavailable": {

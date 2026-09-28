@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Lataa uudelleen",
             "uiTokensReset": "Tyhjennä ohitukset",
             "uiTokensApplied": "Käytetyt ohitukset: {count}",
-            "uiTokensRejected": "Hylätyt kohteet: {count}"
+            "uiTokensRejected": "Hylätyt kohteet: {count}",
+            "keystorePreferencesFailed": "Tuonti valmistui, mutta sovelluksen asetuksiasi ei voitu palauttaa: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "Hylkää kaikki työkalukutsut",
                 "rejectExecution": "Hylkää työkalun suoritus",
                 "toggleDetails": "Näytä/piilota tiedot",
-                "allowSession": "Salli tälle istunnolle"
+                "allowSession": "Salli tälle istunnolle",
+                "nonAtomicReplace": "Ei-atominen korvaus: tiedosto puuttuu hetken"
             },
             "settings": {
                 "title": "Tekoälyasetukset",
@@ -5874,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP löysi olemassa olevan määrityksen kotikansiostasi. Tämä Flatpak-asennus käyttää omaa erillistä tallennustilaansa, joten tallennetut palvelimesi ja salattu holvi eivät näy täällä vielä. Tuodaanko ne nyt? Tiedostot vain kopioidaan, mitään ei korvata, ja holvi avautuu täällä samalla tavalla kuin nyt.",
+            "importBody": "AeroFTP löysi olemassa olevan määrityksen kotikansiostasi. Tämä Flatpak-asennus käyttää omaa erillistä tallennustilaansa, joten tallennetut palvelimesi ja salattu holvi eivät näy täällä vielä. Tuodaanko määrityksesi nyt? Tiedostot vain kopioidaan, eikä tiedostoa, joka tässä Flatpak-asennuksessa jo on, koskaan korvata.",
             "importAccept": "Tuo",
             "importedBody": "Määrityksesi tuotiin. Käynnistä AeroFTP uudelleen ladataksesi palvelimesi ja holvisi.",
-            "restartNow": "Käynnistä uudelleen nyt"
+            "restartNow": "Käynnistä uudelleen nyt",
+            "importNothingBody": "Yhtään tiedostoa ei kopioitu: jokaiselle tiedostolle, jonka tuonti kopioisi, on tässä Flatpak-asennuksessa jo samanniminen tiedosto, eikä olemassa olevia tiedostoja koskaan korvata.",
+            "importFailedBody": "Tuonti pysähtyi virheeseen: {error}. Tähän Flatpak-asennukseen jo kopioidut tiedostot jäävät sinne, eikä mitään korvattu. AeroFTP tarjoaa tuontia uudelleen seuraavalla käynnistyskerralla.",
+            "importedNoVaultBody": "Määrityksesi tuotiin, mutta siinä ei ollut tallennettuja palvelimia eikä holvia, jotka tuonti olisi voinut kopioida. Käynnistä AeroFTP uudelleen ladataksesi tuodut tiedot.",
+            "importedVaultSkippedBody": "Osa määrityksestäsi tuotiin, mutta ei tallennettuja palvelimiasi eikä holvia: tässä Flatpak-asennuksessa on jo oma holvi, eikä olemassa olevia tiedostoja koskaan korvata. Käynnistä AeroFTP uudelleen ladataksesi tuodut tiedot.",
+            "importNothingVaultSkippedBody": "Yhtään tiedostoa ei kopioitu, joten tallennettuja palvelimiasi ja holvia ei tuotu: tässä Flatpak-asennuksessa on jo oma holvi ja samanniminen tiedosto jokaiselle tiedostolle, jonka tuonti kopioisi, eikä olemassa olevia tiedostoja koskaan korvata.",
+            "importUnreadableResult": "AeroFTP ei voinut lukea tuonnin tulosta",
+            "importNothingToImportBody": "Yhtään tiedostoa ei kopioitu: olemassa olevassa määrityksessäsi ei ole yhtään tiedostoa, jonka tuonti kopioi (symbolisia linkkejä ja SQLiten väliaikaistiedostoja ei koskaan kopioida)."
         },
         "picker": {
             "unavailable": {

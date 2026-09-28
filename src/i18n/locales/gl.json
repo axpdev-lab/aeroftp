@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Recargar",
             "uiTokensReset": "Borrar as substitucións",
             "uiTokensApplied": "Substitucións aplicadas: {count}",
-            "uiTokensRejected": "Entradas rexeitadas: {count}"
+            "uiTokensRejected": "Entradas rexeitadas: {count}",
+            "keystorePreferencesFailed": "A importación rematou, pero non se puideron restaurar as túas preferencias da aplicación: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2452,7 +2453,8 @@
                 "rejectAllCalls": "Rexeitar todas as chamadas de ferramentas",
                 "rejectExecution": "Rexeitar a execución da ferramenta",
                 "toggleDetails": "Amosar/ocultar detalles",
-                "allowSession": "Permitir para esta sesión"
+                "allowSession": "Permitir para esta sesión",
+                "nonAtomicReplace": "Substitución non atómica: o ficheiro desaparece un instante"
             },
             "settings": {
                 "title": "Configuración de IA",
@@ -5893,10 +5895,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP atopou unha configuración existente no teu cartafol persoal. Esta instalación de Flatpak usa o seu propio almacenamento separado, polo que os teus servidores gardados e a caixa forte cifrada aínda non se ven aquí. Queres importalos agora? Os ficheiros só se copian, non se sobrescribe nada, e a caixa forte desbloquéase aquí do mesmo xeito que agora.",
+            "importBody": "AeroFTP atopou unha configuración existente no teu cartafol persoal. Esta instalación de Flatpak usa o seu propio almacenamento separado, polo que os teus servidores gardados e a caixa forte cifrada aínda non se ven aquí. Queres importar a túa configuración agora? Os ficheiros só se copian, e nunca se sobrescribe un ficheiro que esta instalación de Flatpak xa teña.",
             "importAccept": "Importar",
             "importedBody": "Importouse a túa configuración. Reinicia AeroFTP para cargar os teus servidores e a caixa forte.",
-            "restartNow": "Reiniciar agora"
+            "restartNow": "Reiniciar agora",
+            "importNothingBody": "Non se copiou ningún ficheiro: esta instalación de Flatpak xa ten un ficheiro co mesmo nome para cada ficheiro que a importación copiaría, e os ficheiros existentes nunca se sobrescriben.",
+            "importFailedBody": "A importación detívose cun erro: {error}. Os ficheiros xa copiados nesta instalación de Flatpak permanecen alí, e non se sobrescribiu nada. AeroFTP volverá ofrecer a importación no seguinte inicio.",
+            "importedNoVaultBody": "Importouse a túa configuración, pero non contiña servidores gardados nin ningunha caixa forte que a importación puidese copiar. Reinicia AeroFTP para cargar o que se importou.",
+            "importedVaultSkippedBody": "Importouse parte da túa configuración, pero non os teus servidores gardados nin a caixa forte: esta instalación de Flatpak xa ten a súa propia caixa forte, e os ficheiros existentes nunca se sobrescriben. Reinicia AeroFTP para cargar o que se importou.",
+            "importNothingVaultSkippedBody": "Non se copiou ningún ficheiro, polo que os teus servidores gardados e a caixa forte non se importaron: esta instalación de Flatpak xa ten a súa propia caixa forte e un ficheiro co mesmo nome para cada ficheiro que a importación copiaría, e os ficheiros existentes nunca se sobrescriben.",
+            "importUnreadableResult": "AeroFTP non puido ler o resultado da importación",
+            "importNothingToImportBody": "Non se copiou ningún ficheiro: a túa configuración existente non contén ningún ficheiro que a importación copie (as ligazóns simbólicas e os ficheiros temporais de SQLite nunca se copian)."
         },
         "picker": {
             "unavailable": {

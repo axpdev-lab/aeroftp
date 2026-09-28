@@ -1425,6 +1425,7 @@ mod tests {
     async fn replace_moves_over_a_file_but_not_into_a_folder() {
         let (mut provider, log, _dir) = provider_on_stand_in_megacmd();
         assert!(!provider.supports_atomic_replace().await.unwrap());
+        assert!(!provider.replace_sets_aside());
         let outcome = provider.replace("/a.txt", "/d").await;
         assert!(outcome.is_err(), "{outcome:?}");
         assert!(moves(&log).is_empty(), "{:?}", moves(&log));

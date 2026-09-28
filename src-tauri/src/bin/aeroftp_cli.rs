@@ -10,7 +10,7 @@
 //!   aeroftp mv <url> <from> <to>              Rename/move
 //!   aeroftp cp <url> <from> <to>              Server-side copy when supported
 //!   aeroftp link <url> <path>                 Create a share link when supported
-//!   aeroftp edit <url> <path> <find> <replace> Replace text in a remote UTF-8 file
+//!   aeroftp edit <url> <path> <find> <replace> [--allow-non-atomic] Replace text in a remote UTF-8 file
 //!   aeroftp cat <url> <path>                  Print to stdout
 //!   aeroftp head <url> <path> [-n 20]         Print first N lines
 //!   aeroftp tail <url> <path> [-n 20]         Print last N lines
@@ -1736,6 +1736,15 @@ enum Commands {
     /// Run inside a Flatpak with a native `~/.config/aeroftp` present, this
     /// copies it into the sandbox (copy-only, never overwriting). Outside a
     /// Flatpak it is a no-op. Restart AeroFTP afterwards to load the import.
+    /// The host vault and saved servers come in only when the sandbox has no
+    /// vault of its own, and the output says whether they did.
+    ///
+    /// Exit codes: 0 when files were imported, when no file was copied (each
+    /// file the import would copy already has a file with the same name in the
+    /// sandbox, or the host config holds nothing the import copies), with
+    /// --status, and outside a Flatpak;
+    /// 1 when there is no host config, or when the copy failed (files copied
+    /// before the error stay in the sandbox).
     FlatpakImport {
         /// Only report whether an import is available; do not apply it.
         #[arg(long)]
@@ -1971,6 +1980,14 @@ enum Commands {
         /// Replace only the first occurrence
         #[arg(long)]
         first: bool,
+        /// On a server whose replace sets the previous file aside (MEGA
+        /// native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive): set it aside, move
+        /// the new one into its place, then delete the old one. There is a
+        /// short moment with no file. Without this flag such a server refuses
+        /// the edit and nothing is written; any other server that cannot
+        /// replace in one step refuses it with the flag too.
+        #[arg(long)]
+        allow_non_atomic: bool,
     },
     /// Print remote file to stdout (for piping)
     Cat {
@@ -16807,7 +16824,7 @@ async fn remove_tui_session_via_cli_handler(
     let result = if recursive {
         provider.rmdir_recursive(&resolved).await
     } else {
-        delete_file_or_empty_dir(provider, &resolved).await
+        ftp_client_gui_lib::providers::delete_non_recursive(provider, &resolved).await
     };
     result
         .map(|_| resolved)
@@ -26551,7 +26568,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
                 {"name": "mv", "syntax": "aeroftp-cli mv --profile NAME /old /new", "description": "Move/rename"},
                 {"name": "cp", "syntax": "aeroftp-cli cp --profile NAME /old /new", "description": "Server-side copy when supported"},
                 {"name": "link", "syntax": "aeroftp-cli link --profile NAME /path/file", "description": "Create share link when supported"},
-                {"name": "edit", "syntax": "aeroftp-cli edit --profile NAME /path/file \"find\" \"replace\" [--first]", "description": "Replace text in a remote UTF-8 file"},
+                {"name": "edit", "syntax": "aeroftp-cli edit --profile NAME /path/file \"find\" \"replace\" [--first] [--allow-non-atomic]", "description": "Replace text in a remote UTF-8 file"},
                 {"name": "sync", "syntax": "aeroftp-cli sync --profile NAME ./local/ /remote/ [--dry-run]", "description": "Sync directories"},
                 {"name": "transfer", "syntax": "aeroftp-cli transfer \"SRC_PROFILE\" \"DST_PROFILE\" /src/path /dst/path [-r] [--dry-run] [--skip-existing]", "description": "Copy files between two saved profiles (cross-profile, no local hop on disk)"},
             ],
@@ -30243,8 +30260,8 @@ fn webdav_move_may_overwrite(headers: &HeaderMap) -> bool {
 /// `x/`), and an ambiguous path (Cloudinary: an asset and a folder sharing a
 /// name) emptied the folder. The escalation now happens only for a path `stat`
 /// calls a directory (not a link to one), or one it cannot describe (see
-/// [`stat_cannot_describe`]) that the provider can list: on S3 the served
-/// collection `x` is the prefix `x/`, which no key names.
+/// `providers::stat_cannot_describe`) that the provider can list: on S3 the
+/// served collection `x` is the prefix `x/`, which no key names.
 async fn served_webdav_delete(
     provider: &mut dyn StorageProvider,
     path: &str,
@@ -30259,7 +30276,7 @@ async fn served_webdav_delete(
         // An object store sees no key `x` behind the collection `x/`: only a
         // path the provider can list is a collection. A key that is simply
         // gone keeps the delete error.
-        Err(e) if stat_cannot_describe(&e) => {
+        Err(e) if ftp_client_gui_lib::providers::stat_cannot_describe(&e) => {
             if provider.list(path).await.is_err() {
                 return Err(refused);
             }
@@ -30293,6 +30310,16 @@ async fn webdav_dispatch(
         Err(status) => return serve_error_response(status, "Invalid path"),
     };
     let remote_path = build_served_remote_path(&state.base_path, &relative_path);
+
+    // The served root is the share itself: a DELETE of it recursed into the
+    // whole base path, and a MOVE of it took the share away from under the
+    // server. A client removes or moves what is inside it.
+    if relative_path.is_empty() && matches!(method.as_str(), "DELETE" | "MOVE") {
+        return serve_error_response(
+            StatusCode::FORBIDDEN,
+            "The served root cannot be deleted or moved",
+        );
+    }
 
     match method.as_str() {
         "OPTIONS" => {
@@ -30772,7 +30799,9 @@ mod serve_ftp_backend {
 
         fn provider_err_to_ftp(e: ProviderError) -> FtpError {
             let kind = match &e {
-                ProviderError::NotFound(_) => FtpErrorKind::PermanentFileNotAvailable,
+                ProviderError::NotFound(_) | ProviderError::DirectoryNotEmpty(_) => {
+                    FtpErrorKind::PermanentFileNotAvailable
+                }
                 ProviderError::PermissionDenied(_) => FtpErrorKind::PermissionDenied,
                 _ => FtpErrorKind::LocalError,
             };
@@ -30909,7 +30938,16 @@ mod serve_ftp_backend {
         ) -> FtpResult<()> {
             let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
-            p.delete(&remote).await.map_err(Self::provider_err_to_ftp)
+            // DELE removes a file; RMD is the directory verb. A directory is
+            // refused with 550, as a server with a file system answers.
+            ftp_client_gui_lib::providers::delete_file_only(p.as_mut(), &remote)
+                .await
+                .map_err(|e| match e {
+                    ProviderError::InvalidPath(_) => {
+                        FtpError::new(FtpErrorKind::PermanentFileNotAvailable, e)
+                    }
+                    e => Self::provider_err_to_ftp(e),
+                })
         }
 
         async fn mkd<P: AsRef<Path> + Send + Debug>(
@@ -30943,7 +30981,9 @@ mod serve_ftp_backend {
         ) -> FtpResult<()> {
             let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
-            p.rmdir(&remote).await.map_err(Self::provider_err_to_ftp)
+            ftp_client_gui_lib::providers::remove_empty_directory(p.as_mut(), &remote)
+                .await
+                .map_err(Self::provider_err_to_ftp)
         }
 
         async fn cwd<P: AsRef<Path> + Send + Debug>(
@@ -31245,6 +31285,31 @@ mod serve_sftp {
         rt: Arc<tokio::runtime::Runtime>,
     }
 
+    #[cfg(test)]
+    impl AeroSftpHandler {
+        /// A handler on `provider` serving `/`, without authentication.
+        pub(crate) fn for_tests(
+            provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+            rt: Arc<tokio::runtime::Runtime>,
+        ) -> Self {
+            Self {
+                provider,
+                base_path: "/".to_string(),
+                auth_credentials: None,
+                handles: HashMap::new(),
+                next_handle: 0,
+                dir_read: std::collections::HashSet::new(),
+                sftp_buf: Vec::new(),
+                rt,
+            }
+        }
+
+        /// The reply to one SFTP packet (type byte first, no length).
+        pub(crate) fn answer(&mut self, packet: &[u8]) -> Vec<u8> {
+            self.process_sftp(packet)
+        }
+    }
+
     impl AeroSftpHandler {
         fn resolve_path(&self, path: &str) -> Result<String, &'static str> {
             resolve_served_backend_path(&self.base_path, path)
@@ -31518,8 +31583,17 @@ mod serve_sftp {
                         }
                     };
                     let r = remote.clone();
-                    match prov!(provider, rt, async |p| p.delete(&r).await) {
+                    // REMOVE removes a file; RMDIR is the directory verb.
+                    // Protocol 3 has no "is a directory" status: it is
+                    // SSH_FX_FAILURE, as OpenSSH's sftp-server answers for
+                    // EISDIR, with a message that says why.
+                    match prov!(provider, rt, async |p| {
+                        ftp_client_gui_lib::providers::delete_file_only(p, &r).await
+                    }) {
                         Ok(()) => make_status(id, SSH_FX_OK, ""),
+                        Err(ProviderError::InvalidPath(_)) => {
+                            make_status(id, SSH_FX_FAILURE, "is a directory")
+                        }
                         Err(_) => make_status(id, SSH_FX_FAILURE, "delete failed"),
                     }
                 }
@@ -31556,7 +31630,9 @@ mod serve_sftp {
                         }
                     };
                     let r = remote.clone();
-                    match prov!(provider, rt, async |p| p.rmdir(&r).await) {
+                    match prov!(provider, rt, async |p| {
+                        ftp_client_gui_lib::providers::remove_empty_directory(p, &r).await
+                    }) {
                         Ok(()) => make_status(id, SSH_FX_OK, ""),
                         Err(_) => make_status(id, SSH_FX_FAILURE, "rmdir failed"),
                     }
@@ -35060,47 +35136,6 @@ async fn run_rm_dry_run(
     0
 }
 
-/// Delete `path` as a file, or as an empty directory when it is one.
-///
-/// `rm` and the TUI used to fall back to `rmdir` after ANY `delete` failure. A
-/// path the provider cannot resolve to one item (Cloudinary answers
-/// `InvalidPath` for a name an asset and a folder share) then removed the
-/// folder, and a file `delete` refused for another reason was sent to `rmdir`.
-/// The fallback now asks `stat`: a directory (not a link to one) goes to
-/// `rmdir`, and so does a path `stat` cannot describe (see
-/// [`stat_cannot_describe`]), so `rm` of an empty directory still works
-/// where it did. A file, an ambiguous path, a link and a failed `stat` keep
-/// the `delete` error.
-async fn delete_file_or_empty_dir(
-    provider: &mut dyn StorageProvider,
-    path: &str,
-) -> Result<(), ProviderError> {
-    let refused = match provider.delete(path).await {
-        Ok(()) => return Ok(()),
-        Err(ProviderError::Cancelled) => return Err(ProviderError::Cancelled),
-        Err(e) => e,
-    };
-    match provider.stat(path).await {
-        Ok(entry) if entry.is_dir && !entry.is_symlink => provider.rmdir(path).await,
-        Err(e) if stat_cannot_describe(&e) => provider.rmdir(path).await,
-        _ => Err(refused),
-    }
-}
-
-/// A `stat` answer that says the provider cannot describe the path, as
-/// opposed to one that failed. S3, Azure, Swift and B2 see no directory
-/// behind a path without its trailing slash (NotFound); Box and GitHub fail
-/// to parse the answer for a folder (ParseError). A transient failure
-/// (network, server, timeout) says nothing about the path, and escalating on
-/// it reached the directory of the same name: on S3 and Azure `rmdir` is
-/// recursive.
-fn stat_cannot_describe(error: &ProviderError) -> bool {
-    matches!(
-        error,
-        ProviderError::NotFound(_) | ProviderError::NotSupported(_) | ProviderError::ParseError(_)
-    )
-}
-
 /// The real `rm`/`purge` when the global filter flags narrow the delete.
 ///
 /// It runs the same walk `--dry-run` prints and then deletes exactly that plan,
@@ -35313,7 +35348,7 @@ async fn cmd_rm(
     let result = if recursive {
         provider.rmdir_recursive(path).await
     } else {
-        delete_file_or_empty_dir(provider.as_mut(), path).await
+        ftp_client_gui_lib::providers::delete_non_recursive(provider.as_mut(), path).await
     };
 
     match result {
@@ -35686,12 +35721,26 @@ async fn publish_cli_edit_via_temp_rename(
     provider: &mut dyn StorageProvider,
     local_temp_path: &str,
     remote_path: &str,
+    allow_non_atomic: bool,
 ) -> Result<(), ProviderError> {
     // Asked before the temporary exists, not after. A backend that cannot put
     // one file over another refuses here, while the server is still untouched,
     // so the refusal can say that nothing was written and be telling the truth
-    // (G119).
-    ftp_client_gui_lib::providers::ensure_atomic_replace(provider, remote_path).await?;
+    // (G119). `--allow-non-atomic` is the explicit opt-in to the set-aside
+    // replace some of those backends implement (a short moment with no file,
+    // and the previous one is not lost); on the others it is refused here too.
+    ftp_client_gui_lib::providers::ensure_edit_can_replace(
+        provider,
+        remote_path,
+        allow_non_atomic,
+        "`--allow-non-atomic`",
+    )
+    .await?;
+    // The replace puts a new file in the target's place: a link is refused
+    // here, while nothing is written, and the mode of the file is read to
+    // be set on the temporary (M-A of the 4.2.1 closeout).
+    let original =
+        ftp_client_gui_lib::providers::inspect_edit_target(provider, remote_path).await?;
 
     let remote_temp_path = cli_edit_temp_path(remote_path);
     if let Err(e) = provider
@@ -35701,6 +35750,13 @@ async fn publish_cli_edit_via_temp_rename(
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
     }
+    let not_kept = ftp_client_gui_lib::providers::keep_edit_original(
+        provider,
+        &remote_temp_path,
+        remote_path,
+        &original,
+    )
+    .await;
     // `replace` and not `rename`: the destination exists by definition here,
     // and `rename` deliberately keeps refusing that case so an ordinary `mv`
     // cannot destroy a file the user did not mean to lose.
@@ -35708,7 +35764,16 @@ async fn publish_cli_edit_via_temp_rename(
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
     }
+    if let Some(warning) = not_kept {
+        tracing::warn!("{warning}");
+        ftp_client_gui_lib::providers::report_warning(warning);
+    }
     Ok(())
+}
+
+struct CliEditOptions {
+    replace_all: bool,
+    allow_non_atomic: bool,
 }
 
 async fn cmd_edit(
@@ -35716,7 +35781,7 @@ async fn cmd_edit(
     path: &str,
     find: &str,
     replace: &str,
-    replace_all: bool,
+    options: CliEditOptions,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -35814,12 +35879,12 @@ async fn cmd_edit(
         return 0;
     }
 
-    let new_content = if replace_all {
+    let new_content = if options.replace_all {
         content.replace(find, replace)
     } else {
         content.replacen(find, replace, 1)
     };
-    let replaced = if replace_all { occurrences } else { 1 };
+    let replaced = if options.replace_all { occurrences } else { 1 };
 
     let mut temp_file = match NamedTempFile::new() {
         Ok(file) => file,
@@ -35845,7 +35910,14 @@ async fn cmd_edit(
     }
 
     let temp_path = temp_file.path().to_string_lossy().to_string();
-    match publish_cli_edit_via_temp_rename(provider.as_mut(), &temp_path, path).await {
+    match publish_cli_edit_via_temp_rename(
+        provider.as_mut(),
+        &temp_path,
+        path,
+        options.allow_non_atomic,
+    )
+    .await
+    {
         Ok(()) => {
             match format {
                 OutputFormat::Text => {
@@ -38754,9 +38826,9 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
             ),
             OutputFormat::Text => match (st.available, st.source) {
                 (true, Some(src)) => println!("Import available from {}", src.display()),
-                _ => {
-                    println!("No host configuration to import (none present, or already decided).")
-                }
+                _ => println!(
+                    "No host configuration to import (none present, nothing in it to import, or already decided)."
+                ),
             },
         }
         return 0;
@@ -38764,25 +38836,15 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
 
     match portable::flatpak_host_import_apply(true) {
         Ok(report) => {
+            let imported = report.imported();
             match format {
-                OutputFormat::Json => println!(
-                    "{}",
-                    serde_json::json!({
-                        "imported": report.imported,
-                        "source": path_str(report.source),
-                        "target": path_str(report.target),
-                        "requires_restart": report.imported,
-                    })
-                ),
-                OutputFormat::Text => {
-                    if report.imported {
-                        println!(
-                            "Imported host configuration into the sandbox. Restart AeroFTP to load it."
-                        );
-                    } else {
-                        println!("Nothing to import.");
-                    }
+                OutputFormat::Json => {
+                    // The GUI command's fields, plus the restart flag of the CLI.
+                    let mut json = report.to_json();
+                    json["requires_restart"] = serde_json::Value::Bool(imported);
+                    println!("{json}");
                 }
+                OutputFormat::Text => println!("{}", flatpak_import_summary(&report)),
             }
             0
         }
@@ -38790,6 +38852,126 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
             print_error(format, &format!("flatpak-import failed: {e}"), 1);
             1
         }
+    }
+}
+
+/// The text `flatpak-import` prints after an accepted import: how many files it
+/// copied, and what happened to the host vault and saved servers.
+fn flatpak_import_summary(report: &ftp_client_gui_lib::portable::FlatpakImportReport) -> String {
+    use ftp_client_gui_lib::portable::HostVault;
+
+    let source = report
+        .source
+        .as_ref()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    if report.imported() {
+        let files = format!(
+            "Imported {} {} from {} into the sandbox",
+            report.copied,
+            if report.copied == 1 { "file" } else { "files" },
+            source
+        );
+        match report.vault {
+            HostVault::Imported => format!(
+                "{files}, including your saved servers and vault. Restart AeroFTP to load them."
+            ),
+            HostVault::Skipped => format!(
+                "{files}, but not your saved servers and vault: this Flatpak install already has its own vault, and existing files are never overwritten. Restart AeroFTP to load what was imported."
+            ),
+            HostVault::Absent => format!(
+                "{files}, but your existing configuration held no saved servers or vault the import could copy. Restart AeroFTP to load what was imported."
+            ),
+        }
+    } else if report.vault == HostVault::Skipped {
+        format!(
+            "No file was copied from {source}, so your saved servers and vault were not imported: this Flatpak install already has its own vault and a file with the same name for each file the import would copy, and existing files are never overwritten."
+        )
+    } else if report.nothing_importable {
+        format!(
+            "Nothing to import: {source} holds no file the import copies (it copies files only, never SQLite sidecar files or symbolic links)."
+        )
+    } else {
+        // The copy skips a file by name, never by content, so this says what it
+        // saw: a file with the same name, not the same file. And it never copies
+        // symbolic links or SQLite sidecars, so the claim covers only the files
+        // it would copy: a linked file on the host is not "already here".
+        format!(
+            "No file was copied: this Flatpak install already has a file with the same name for each file the import would copy from {source}, and existing files are never overwritten."
+        )
+    }
+}
+
+#[cfg(test)]
+mod flatpak_import_summary_tests {
+    use super::flatpak_import_summary;
+    use ftp_client_gui_lib::portable::{FlatpakImportReport, HostVault};
+    use std::path::PathBuf;
+
+    fn report(copied: usize, vault: HostVault) -> FlatpakImportReport {
+        FlatpakImportReport {
+            copied,
+            vault,
+            nothing_importable: false,
+            source: Some(PathBuf::from("/home/u/.config/aeroftp")),
+            target: Some(PathBuf::from(
+                "/home/u/.var/app/app.aeroftp.AeroFTP/config/aeroftp",
+            )),
+        }
+    }
+
+    #[test]
+    fn flatpak_import_says_the_vault_stayed_behind() {
+        let text = flatpak_import_summary(&report(2, HostVault::Skipped));
+        assert!(
+            text.starts_with("Imported 2 files from /home/u/.config/aeroftp"),
+            "{text}"
+        );
+        assert!(
+            text.contains("but not your saved servers and vault: this Flatpak install already has its own vault"),
+            "{text}"
+        );
+
+        // The claim covers the files the import copies, not every host file:
+        // symbolic links and SQLite sidecars are never copied.
+        assert_eq!(
+            flatpak_import_summary(&report(0, HostVault::Skipped)),
+            "No file was copied from /home/u/.config/aeroftp, so your saved servers and vault were not imported: this Flatpak install already has its own vault and a file with the same name for each file the import would copy, and existing files are never overwritten."
+        );
+    }
+
+    #[test]
+    fn flatpak_import_says_no_file_was_copied_not_that_none_was_needed() {
+        // The copy skips by name, never by content, and never copies symbolic
+        // links or SQLite sidecars: the claim is about the files it would copy.
+        assert_eq!(
+            flatpak_import_summary(&report(0, HostVault::Absent)),
+            "No file was copied: this Flatpak install already has a file with the same name for each file the import would copy from /home/u/.config/aeroftp, and existing files are never overwritten."
+        );
+    }
+
+    #[test]
+    fn flatpak_import_of_a_config_with_nothing_to_copy_says_nothing_to_import() {
+        let mut empty = report(0, HostVault::Absent);
+        empty.nothing_importable = true;
+        assert_eq!(
+            flatpak_import_summary(&empty),
+            "Nothing to import: /home/u/.config/aeroftp holds no file the import copies (it copies files only, never SQLite sidecar files or symbolic links)."
+        );
+    }
+
+    #[test]
+    fn flatpak_import_says_whether_the_servers_and_vault_came() {
+        let text = flatpak_import_summary(&report(3, HostVault::Imported));
+        assert!(
+            text.contains("including your saved servers and vault"),
+            "{text}"
+        );
+        // A user who expects the servers after the restart is told none came.
+        assert_eq!(
+            flatpak_import_summary(&report(1, HostVault::Absent)),
+            "Imported 1 file from /home/u/.config/aeroftp into the sandbox, but your existing configuration held no saved servers or vault the import could copy. Restart AeroFTP to load what was imported."
+        );
     }
 }
 
@@ -51726,7 +51908,7 @@ mod fuse_mount {
             let p = child_path.clone();
             let result = self.rt.block_on(async {
                 let mut prov = provider.lock().await;
-                prov.rmdir(&p).await
+                ftp_client_gui_lib::providers::remove_empty_directory(prov.as_mut(), &p).await
             });
 
             match result {
@@ -51738,6 +51920,7 @@ mod fuse_mount {
                     }
                     reply.ok();
                 }
+                Err(ProviderError::DirectoryNotEmpty(_)) => reply.error(Errno::ENOTEMPTY),
                 Err(_) => reply.error(Errno::EIO),
             }
         }
@@ -67205,13 +67388,26 @@ async fn main() {
             find,
             replace,
             first,
+            allow_non_atomic,
         } => {
             let (u, p, f, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), path.as_str(), find.as_str())
             } else {
                 (url.as_str(), path.as_str(), find.as_str(), replace.as_str())
             };
-            cmd_edit(u, p, f, r, !first, &cli, format).await
+            cmd_edit(
+                u,
+                p,
+                f,
+                r,
+                CliEditOptions {
+                    replace_all: !first,
+                    allow_non_atomic: *allow_non_atomic,
+                },
+                &cli,
+                format,
+            )
+            .await
         }
         Commands::Cat { url, path } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -77705,8 +77901,8 @@ mod tests {
         }
     }
 
-    /// Scripted answers for the delete fallbacks of `rm`, the TUI and the
-    /// served WebDAV DELETE; every call is recorded by name.
+    /// Scripted answers for the delete fallback of the served WebDAV
+    /// DELETE; every call is recorded by name.
     struct DeleteFallbackProvider {
         delete: fn() -> Result<(), ProviderError>,
         stat: fn() -> Result<RemoteEntry, ProviderError>,
@@ -77825,74 +78021,6 @@ mod tests {
         ProviderError::InvalidPath("'/photos' names an asset and a folder".to_string())
     }
 
-    /// Scenario C of the #944 review: Cloudinary refuses `rm /photos` because
-    /// an image and a folder share the name, and `rm` used to answer the
-    /// refusal with `rmdir`, removing the folder.
-    #[tokio::test]
-    async fn rm_does_not_turn_an_ambiguous_path_into_rmdir() {
-        let mut p = DeleteFallbackProvider::new(|| Err(ambiguous()), || Err(ambiguous()));
-        let result = delete_file_or_empty_dir(&mut p, "/photos").await;
-        assert!(
-            matches!(result, Err(ProviderError::InvalidPath(_))),
-            "{result:?}"
-        );
-        assert_eq!(p.calls, ["delete", "stat"]);
-    }
-
-    /// A file `delete` refused keeps its own error instead of the `rmdir` one.
-    #[tokio::test]
-    async fn rm_returns_the_delete_error_for_a_file() {
-        let mut p = DeleteFallbackProvider::new(
-            || Err(ProviderError::ServerError("503".to_string())),
-            || Ok(RemoteEntry::file("a".to_string(), "/a".to_string(), 1)),
-        );
-        let result = delete_file_or_empty_dir(&mut p, "/a").await;
-        assert!(
-            matches!(result, Err(ProviderError::ServerError(_))),
-            "{result:?}"
-        );
-        assert_eq!(p.calls, ["delete", "stat"]);
-    }
-
-    /// A cancelled `delete` stops there.
-    #[tokio::test]
-    async fn rm_stops_on_a_cancelled_delete() {
-        let mut p = DeleteFallbackProvider::new(
-            || Err(ProviderError::Cancelled),
-            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
-        );
-        let result = delete_file_or_empty_dir(&mut p, "/d").await;
-        assert!(
-            matches!(result, Err(ProviderError::Cancelled)),
-            "{result:?}"
-        );
-        assert_eq!(p.calls, ["delete"]);
-    }
-
-    /// The fallback still serves what it exists for: a directory `delete`
-    /// refuses (MTP answers InvalidPath "is a directory"), and a directory
-    /// `stat` cannot see (S3 without the trailing slash).
-    #[tokio::test]
-    async fn rm_still_removes_an_empty_directory() {
-        let mut dir = DeleteFallbackProvider::new(
-            || {
-                Err(ProviderError::InvalidPath(
-                    "/d is a directory; use rmdir".to_string(),
-                ))
-            },
-            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
-        );
-        assert!(delete_file_or_empty_dir(&mut dir, "/d").await.is_ok());
-        assert_eq!(dir.calls, ["delete", "stat", "rmdir"]);
-
-        let mut unseen = DeleteFallbackProvider::new(
-            || Err(ProviderError::NotFound("/d".to_string())),
-            || Err(ProviderError::NotFound("/d".to_string())),
-        );
-        assert!(delete_file_or_empty_dir(&mut unseen, "/d").await.is_ok());
-        assert_eq!(unseen.calls, ["delete", "stat", "rmdir"]);
-    }
-
     /// The served DELETE used to escalate to `rmdir_recursive` after any
     /// failure: an ambiguous path emptied the folder, and a file refused for a
     /// transient reason erased the directory of the same name.
@@ -77967,17 +78095,6 @@ mod tests {
             || Err(ProviderError::Timeout),
             || Err(ProviderError::Cancelled),
         ] {
-            let mut rm = DeleteFallbackProvider::new(
-                || Err(ProviderError::ServerError("503".to_string())),
-                stat,
-            );
-            let result = delete_file_or_empty_dir(&mut rm, "/x").await;
-            assert!(
-                matches!(result, Err(ProviderError::ServerError(_))),
-                "{result:?}"
-            );
-            assert_eq!(rm.calls, ["delete", "stat"]);
-
             let mut served = DeleteFallbackProvider::new(
                 || Err(ProviderError::ServerError("503".to_string())),
                 stat,
@@ -77989,13 +78106,6 @@ mod tests {
             );
             assert_eq!(served.calls, ["delete", "stat"]);
         }
-
-        let mut parse = DeleteFallbackProvider::new(
-            || Err(ProviderError::ServerError("a folder".to_string())),
-            || Err(ProviderError::ParseError("an array".to_string())),
-        );
-        assert!(delete_file_or_empty_dir(&mut parse, "/d").await.is_ok());
-        assert_eq!(parse.calls, ["delete", "stat", "rmdir"]);
     }
 
     /// A link to a directory is not the directory: the served DELETE listed
@@ -78007,17 +78117,6 @@ mod tests {
             entry.is_symlink = true;
             Ok(entry)
         };
-        let mut rm = DeleteFallbackProvider::new(
-            || Err(ProviderError::PermissionDenied("/l".to_string())),
-            link,
-        );
-        let result = delete_file_or_empty_dir(&mut rm, "/l").await;
-        assert!(
-            matches!(result, Err(ProviderError::PermissionDenied(_))),
-            "{result:?}"
-        );
-        assert_eq!(rm.calls, ["delete", "stat"]);
-
         let mut served = DeleteFallbackProvider::new(
             || Err(ProviderError::PermissionDenied("/l".to_string())),
             link,
@@ -81173,11 +81272,27 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         replace_refuses_as_existing: bool,
         /// What this fake answers to `supports_atomic_replace`.
         atomic_replace: bool,
+        /// What this fake answers to `replace_sets_aside`.
+        sets_aside: bool,
         /// When set, `stat` fails with this instead of answering.
         stat_fails_with: Option<String>,
         /// When set, a replace that succeeds leaves this warning, as a
         /// set-aside replace does when it cannot delete the old copy.
         replace_leaves_warning: Option<String>,
+        /// Unix mode per path, reported by `stat` as `-rw-r--r--`, the way
+        /// SFTP reports it. A new path gets 0644, the server default, and a
+        /// replace moves the mode of the file it moves, as posix-rename does.
+        modes: HashMap<String, u32>,
+        /// Symbolic links: path to the target `stat` reports.
+        links: HashMap<String, String>,
+        /// What `supports_chmod` answers.
+        chmod_supported: bool,
+        /// When set, `chmod` fails with this.
+        chmod_fails_with: Option<String>,
+        /// Empty directories: `stat` reports them as such, and both `rmdir`
+        /// and `delete` remove them, as on a backend whose delete of a
+        /// folder takes it along.
+        dirs: std::collections::HashSet<String>,
     }
 
     impl CliEditFakeProvider {
@@ -81192,8 +81307,14 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 replace_fails_with: None,
                 replace_refuses_as_existing: false,
                 atomic_replace: true,
+                sets_aside: false,
                 stat_fails_with: None,
                 replace_leaves_warning: None,
+                modes: HashMap::new(),
+                links: HashMap::new(),
+                chmod_supported: false,
+                chmod_fails_with: None,
+                dirs: std::collections::HashSet::new(),
             }
         }
     }
@@ -81268,6 +81389,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         ) -> Result<(), ProviderError> {
             let data = std::fs::read(local_path).map_err(ProviderError::IoError)?;
             self.uploads.push((remote_path.to_string(), data.clone()));
+            self.modes.entry(remote_path.to_string()).or_insert(0o644);
             self.remote_files.insert(remote_path.to_string(), data);
             Ok(())
         }
@@ -81278,11 +81400,13 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
 
         async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
             self.remote_files.remove(path);
+            self.dirs.remove(path);
             self.deleted.push(path.to_string());
             Ok(())
         }
 
-        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.dirs.remove(path);
             Ok(())
         }
 
@@ -81323,6 +81447,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 .remove(from)
                 .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
             self.remote_files.insert(to.to_string(), data);
+            if let Some(mode) = self.modes.remove(from) {
+                self.modes.insert(to.to_string(), mode);
+            }
+            self.links.remove(to);
             self.replaces.push((from.to_string(), to.to_string()));
             if let Some(warning) = &self.replace_leaves_warning {
                 ftp_client_gui_lib::providers::report_warning(warning.clone());
@@ -81334,16 +81462,57 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             Ok(self.atomic_replace)
         }
 
+        fn replace_sets_aside(&self) -> bool {
+            self.sets_aside
+        }
+
+        fn supports_chmod(&self) -> bool {
+            self.chmod_supported
+        }
+
+        async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
+            if let Some(message) = &self.chmod_fails_with {
+                return Err(ProviderError::ServerError(message.clone()));
+            }
+            self.modes.insert(path.to_string(), mode);
+            Ok(())
+        }
+
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
             if let Some(msg) = &self.stat_fails_with {
                 return Err(ProviderError::ConnectionFailed(msg.clone()));
             }
-            self.remote_files
+            if self.dirs.contains(path) {
+                let name = path.rsplit('/').next().unwrap_or(path).to_string();
+                return Ok(RemoteEntry::directory(name, path.to_string()));
+            }
+            let mut entry = self
+                .remote_files
                 .get(path)
                 .map(|data| {
                     RemoteEntry::file(path.to_string(), path.to_string(), data.len() as u64)
                 })
-                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            entry.link_target = self.links.get(path).cloned();
+            entry.is_symlink = entry.link_target.is_some();
+            entry.permissions = self.modes.get(path).map(|mode| {
+                let bit = |mask: u32, letter: char| if mode & mask != 0 { letter } else { '-' };
+                [
+                    '-',
+                    bit(0o400, 'r'),
+                    bit(0o200, 'w'),
+                    bit(0o100, 'x'),
+                    bit(0o040, 'r'),
+                    bit(0o020, 'w'),
+                    bit(0o010, 'x'),
+                    bit(0o004, 'r'),
+                    bit(0o002, 'w'),
+                    bit(0o001, 'x'),
+                ]
+                .iter()
+                .collect()
+            });
+            Ok(entry)
         }
 
         async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -81397,7 +81566,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .remote_files
             .insert("/target.txt".to_string(), b"old text".to_vec());
 
-        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
+        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
             .await
             .expect("publish should succeed");
 
@@ -81492,6 +81661,45 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .expect("the fake");
         let fake = std::mem::replace(fake, CliEditFakeProvider::new());
         (response.status(), fake)
+    }
+
+    /// A DELETE of the served root recursed into the whole base path, and a
+    /// MOVE of it took the share away: both are 403 and nothing is touched.
+    #[tokio::test]
+    async fn the_served_root_cannot_be_deleted_or_moved() {
+        for method in ["DELETE", "MOVE"] {
+            let mut fake = CliEditFakeProvider::new();
+            fake.remote_files
+                .insert("/a.txt".to_string(), b"kept".to_vec());
+            let provider: Box<dyn StorageProvider> = Box::new(fake);
+            let state = ServeHttpState {
+                provider: Arc::new(AsyncMutex::new(provider)),
+                provider_label: "fake".to_string(),
+                base_path: "/".to_string(),
+                auth_token: None,
+                warnings: ServedWarnings::stderr(OutputFormat::Text),
+            };
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                "Destination",
+                HeaderValue::from_static("http://127.0.0.1:8080/moved"),
+            );
+            let response = webdav_dispatch(
+                state.clone(),
+                Method::from_bytes(method.as_bytes()).unwrap(),
+                String::new(),
+                headers,
+                Bytes::new(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{method}");
+            let mut guard = state.provider.lock().await;
+            let fake = guard
+                .as_any_mut()
+                .downcast_mut::<CliEditFakeProvider>()
+                .expect("the fake");
+            assert!(fake.remote_files.contains_key("/a.txt"), "{method}");
+        }
     }
 
     /// Office and most WebDAV editors save by writing a temporary and
@@ -81686,9 +81894,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .insert("/target.txt".to_string(), b"old text".to_vec());
         provider.replace_fails_with = Some("replace failed".to_string());
 
-        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
-            .await
-            .unwrap_err();
+        let err =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await
+                .unwrap_err();
         assert!(err.to_string().contains("replace failed"), "got: {err}");
 
         let temp_path = provider.uploads[0].0.clone();
@@ -81717,9 +81926,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .insert("/target.txt".to_string(), b"old text".to_vec());
         provider.atomic_replace = false;
 
-        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
-            .await
-            .unwrap_err();
+        let err =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await
+                .unwrap_err();
 
         assert!(
             provider.uploads.is_empty(),
@@ -81741,6 +81951,288 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             text.contains("put"),
             "the error must name the explicit alternative, got: {text}"
         );
+        assert!(
+            !text.contains("allow-non-atomic"),
+            "a backend whose replace cannot set the file aside must not be offered \
+             the opt-in, got: {text}"
+        );
+
+        // A set-aside backend is refused the same way, and there the opt-in
+        // that would work is named.
+        provider.sets_aside = true;
+        let text =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await
+                .unwrap_err()
+                .to_string();
+        assert!(
+            provider.uploads.is_empty(),
+            "uploads: {:?}",
+            provider.uploads
+        );
+        assert!(
+            text.contains("--allow-non-atomic"),
+            "the error must name the edit opt-in, got: {text}"
+        );
+    }
+
+    /// M1 of the 4.2.1 closeout: on a backend whose replace is its rename
+    /// (Box, 4shared, Internxt, WorkDrive, GitHub, SFTP without
+    /// posix-rename...) `--allow-non-atomic` uploaded the temporary before
+    /// the replace refused the taken name. It is now refused first.
+    #[tokio::test]
+    async fn cli_edit_publish_allow_non_atomic_refuses_a_rename_only_backend_before_it_uploads() {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.atomic_replace = false;
+
+        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", true)
+            .await
+            .unwrap_err();
+
+        assert!(
+            provider.uploads.is_empty(),
+            "the opt-in must be refused before anything is staged; uploads: {:?}",
+            provider.uploads
+        );
+        assert!(provider.replaces.is_empty() && provider.renames.is_empty());
+        assert!(
+            provider.deleted.is_empty(),
+            "deleted: {:?}",
+            provider.deleted
+        );
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"old text".as_slice())
+        );
+        let text = err.to_string();
+        assert!(
+            text.contains("Nothing was written") && text.contains("--allow-non-atomic"),
+            "the refusal must name the opt-in it refuses and say the server is untouched, \
+             got: {text}"
+        );
+    }
+
+    /// `--allow-non-atomic` is the opt-in those backends were refused for.
+    /// The publish still goes through `replace` (set the old file aside, move
+    /// the new one in, delete the old), and it still happens only after the
+    /// caller asked.
+    #[tokio::test]
+    async fn cli_edit_publish_allow_non_atomic_replaces_without_an_atomic_backend() {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.atomic_replace = false;
+        provider.sets_aside = true;
+
+        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", true)
+            .await
+            .expect("opted-in publish should use replace");
+
+        assert_eq!(provider.uploads.len(), 1);
+        let temp_path = provider.uploads[0].0.clone();
+        assert_eq!(
+            provider.replaces,
+            vec![(temp_path, "/target.txt".to_string())]
+        );
+        assert!(provider.renames.is_empty());
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+    }
+
+    /// An SFTP-like target of mode 0600 and a local replacement to publish.
+    fn cli_edit_on_a_0600_target() -> (NamedTempFile, String, CliEditFakeProvider) {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.modes.insert("/target.txt".to_string(), 0o600);
+        provider.chmod_supported = true;
+        (local, local_path, provider)
+    }
+
+    /// M-A of the 4.2.1 closeout: the replace puts a NEW file over the
+    /// target, which on SFTP came back with the server default, so a 0600
+    /// `.env` became 0644. The mode is copied onto the temporary before the
+    /// replace.
+    #[tokio::test]
+    async fn cli_edit_publish_keeps_the_mode_of_the_file_it_replaces() {
+        let (_local, local_path, mut provider) = cli_edit_on_a_0600_target();
+
+        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+            .await
+            .expect("publish");
+
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+        assert_eq!(
+            provider.modes.get("/target.txt").copied(),
+            Some(0o600),
+            "the edited file must keep its mode, not the server default"
+        );
+    }
+
+    /// A chmod the server refuses leaves the edit done, and the warning says
+    /// which mode was not kept.
+    #[tokio::test]
+    async fn cli_edit_publish_says_which_permissions_it_could_not_keep() {
+        let (_local, local_path, mut provider) = cli_edit_on_a_0600_target();
+        provider.chmod_fails_with = Some("SITE CHMOD not understood".to_string());
+
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        warnings
+            .scope(publish_cli_edit_via_temp_rename(
+                &mut provider,
+                &local_path,
+                "/target.txt",
+                false,
+            ))
+            .await
+            .expect("the edit itself is done");
+
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+        let taken = warnings.take();
+        assert!(
+            taken
+                .iter()
+                .any(|w| w.contains("0600") && w.contains("SITE CHMOD not understood")),
+            "the warning must name the mode that was not kept and why: {taken:?}"
+        );
+    }
+
+    /// The replace would put a regular file in the link's place and leave the
+    /// file it points to unchanged: a link is refused before anything is
+    /// staged.
+    #[tokio::test]
+    async fn cli_edit_publish_refuses_a_symlink_before_it_uploads() {
+        let (_local, local_path, mut provider) = cli_edit_on_a_0600_target();
+        provider
+            .links
+            .insert("/target.txt".to_string(), "/srv/real.txt".to_string());
+
+        let outcome =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await;
+
+        assert!(
+            provider.uploads.is_empty() && provider.replaces.is_empty(),
+            "nothing may be staged over a link: {outcome:?}"
+        );
+        let text = outcome.unwrap_err().to_string();
+        assert!(
+            text.contains("symbolic link") && text.contains("/srv/real.txt"),
+            "{text}"
+        );
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"old text".as_slice())
+        );
+    }
+
+    /// A served provider holding the empty directory `/d`.
+    fn served_provider_with_an_empty_directory() -> Arc<AsyncMutex<Box<dyn StorageProvider>>> {
+        let mut fake = CliEditFakeProvider::new();
+        fake.dirs.insert("/d".to_string());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        Arc::new(AsyncMutex::new(provider))
+    }
+
+    async fn served_directory_is_there(
+        provider: &Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+    ) -> bool {
+        let mut guard = provider.lock().await;
+        guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake")
+            .dirs
+            .contains("/d")
+    }
+
+    /// DELE (RFC 959) deletes a file and RMD a directory. The served DELE
+    /// went through the non-recursive delete, which removes an empty
+    /// directory too: it now answers 550 and the directory stays, and RMD
+    /// still removes it.
+    #[tokio::test]
+    async fn served_ftp_dele_refuses_a_directory_and_rmd_removes_it() {
+        use unftp_core::storage::StorageBackend;
+        let provider = served_provider_with_an_empty_directory();
+        let backend = serve_ftp_backend::AeroFtpBackend::new(provider.clone(), "/".to_string());
+        let user = unftp_core::auth::DefaultUser;
+
+        let outcome = backend.del(&user, "/d").await;
+        assert!(
+            served_directory_is_there(&provider).await,
+            "DELE must not remove a directory: {outcome:?}"
+        );
+        let error = outcome.expect_err("DELE of a directory");
+        assert_eq!(
+            error.kind(),
+            unftp_core::storage::ErrorKind::PermanentFileNotAvailable,
+            "{error:?}"
+        );
+
+        backend
+            .rmd(&user, "/d")
+            .await
+            .expect("RMD of an empty directory");
+        assert!(!served_directory_is_there(&provider).await);
+    }
+
+    /// SSH_FXP_REMOVE is the file verb and SSH_FXP_RMDIR the directory one.
+    /// The served REMOVE removed an empty directory; it is now a failure and
+    /// the directory stays, and RMDIR still removes it.
+    #[test]
+    fn served_sftp_remove_refuses_a_directory_and_rmdir_removes_it() {
+        let rt = Arc::new(
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .expect("runtime"),
+        );
+        let provider = served_provider_with_an_empty_directory();
+        let mut handler = serve_sftp::AeroSftpHandler::for_tests(provider.clone(), rt.clone());
+        // SSH_FXP_REMOVE (13) or SSH_FXP_RMDIR (15), id 7, path `/d`.
+        let packet = |kind: u8| {
+            let mut packet = vec![kind];
+            packet.extend_from_slice(&7u32.to_be_bytes());
+            packet.extend_from_slice(&2u32.to_be_bytes());
+            packet.extend_from_slice(b"/d");
+            packet
+        };
+        // SSH_FXP_STATUS: type, id, then the status code.
+        let status = |reply: &[u8]| u32::from_be_bytes(reply[5..9].try_into().expect("code"));
+
+        let reply = handler.answer(&packet(13));
+        assert!(
+            rt.block_on(served_directory_is_there(&provider)),
+            "REMOVE must not remove a directory"
+        );
+        assert_eq!(status(&reply), 4, "SSH_FX_FAILURE");
+
+        let reply = handler.answer(&packet(15));
+        assert_eq!(status(&reply), 0, "SSH_FX_OK");
+        assert!(!rt.block_on(served_directory_is_there(&provider)));
     }
 
     #[test]

@@ -1821,6 +1821,7 @@ mod tests {
     async fn imagekit_does_not_claim_an_atomic_replace() {
         let mut provider = empty_provider();
         assert!(!provider.supports_atomic_replace().await.unwrap());
+        assert!(!provider.replace_sets_aside());
     }
 
     fn empty_provider() -> ImageKitProvider {

@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Muat Semula",
             "uiTokensReset": "Kosongkan gantian",
             "uiTokensApplied": "Tulis ganti yang digunakan: {count}",
-            "uiTokensRejected": "Entri yang ditolak: {count}"
+            "uiTokensRejected": "Entri yang ditolak: {count}",
+            "keystorePreferencesFailed": "Import selesai, tetapi keutamaan aplikasi anda tidak dapat dipulihkan: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "Tolak semua panggilan alat",
                 "rejectExecution": "Tolak pelaksanaan alat",
                 "toggleDetails": "Togol butiran",
-                "allowSession": "Benarkan untuk sesi ini"
+                "allowSession": "Benarkan untuk sesi ini",
+                "nonAtomicReplace": "Penggantian bukan atom: fail hilang seketika"
             },
             "settings": {
                 "title": "Tetapan AI",
@@ -5874,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP menemui konfigurasi sedia ada dalam folder rumah anda. Pemasangan Flatpak ini menggunakan storan berasingannya sendiri, jadi pelayan tersimpan dan bilik kebal tersulit anda belum kelihatan di sini. Import sekarang? Fail hanya disalin, tiada apa-apa ditulis ganti, dan bilik kebal dibuka di sini dengan cara yang sama seperti sekarang.",
+            "importBody": "AeroFTP menemui konfigurasi sedia ada dalam folder rumah anda. Pemasangan Flatpak ini menggunakan storan berasingannya sendiri, jadi pelayan tersimpan dan bilik kebal tersulit anda belum kelihatan di sini. Import konfigurasi anda sekarang? Fail hanya disalin, dan fail yang sudah ada dalam pemasangan Flatpak ini tidak sekali-kali ditulis ganti.",
             "importAccept": "Import",
             "importedBody": "Konfigurasi anda telah diimport. Mulakan semula AeroFTP untuk memuatkan pelayan dan bilik kebal anda.",
-            "restartNow": "Mula semula sekarang"
+            "restartNow": "Mula semula sekarang",
+            "importNothingBody": "Tiada fail disalin: untuk setiap fail yang akan disalin oleh import, pemasangan Flatpak ini sudah mempunyai fail dengan nama yang sama, dan fail sedia ada tidak sekali-kali ditulis ganti.",
+            "importFailedBody": "Import berhenti dengan ralat: {error}. Fail yang telah disalin ke dalam pemasangan Flatpak ini kekal di situ, dan tiada apa yang ditulis ganti. AeroFTP akan menawarkan import semula pada permulaan seterusnya.",
+            "importedNoVaultBody": "Konfigurasi anda telah diimport, tetapi ia tidak mengandungi pelayan tersimpan atau bilik kebal yang boleh disalin oleh import. Mulakan semula AeroFTP untuk memuatkan apa yang telah diimport.",
+            "importedVaultSkippedBody": "Sebahagian konfigurasi anda telah diimport, tetapi bukan pelayan tersimpan dan bilik kebal anda: pemasangan Flatpak ini sudah mempunyai bilik kebalnya sendiri, dan fail sedia ada tidak sekali-kali ditulis ganti. Mulakan semula AeroFTP untuk memuatkan apa yang telah diimport.",
+            "importNothingVaultSkippedBody": "Tiada fail disalin, jadi pelayan tersimpan dan bilik kebal anda tidak diimport: pemasangan Flatpak ini sudah mempunyai bilik kebalnya sendiri dan fail dengan nama yang sama untuk setiap fail yang akan disalin oleh import, dan fail sedia ada tidak sekali-kali ditulis ganti.",
+            "importUnreadableResult": "AeroFTP tidak dapat membaca hasil import",
+            "importNothingToImportBody": "Tiada fail disalin: konfigurasi sedia ada anda tidak mengandungi fail yang disalin oleh import (pautan simbolik dan fail sementara SQLite tidak sekali-kali disalin)."
         },
         "picker": {
             "unavailable": {

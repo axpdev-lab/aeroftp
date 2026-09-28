@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Endurhlaða",
             "uiTokensReset": "Hreinsa yfirskrifanir",
             "uiTokensApplied": "Beittar yfirskrifanir: {count}",
-            "uiTokensRejected": "Hafnaðar færslur: {count}"
+            "uiTokensRejected": "Hafnaðar færslur: {count}",
+            "keystorePreferencesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta stillingar þínar fyrir forritið: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "Hafna öllum verkfæraköllum",
                 "rejectExecution": "Hafna keyrslu verkfæris",
                 "toggleDetails": "Víxla upplýsingum",
-                "allowSession": "Leyfa fyrir þessa lotu"
+                "allowSession": "Leyfa fyrir þessa lotu",
+                "nonAtomicReplace": "Ósamfelld útskipting: skráin er horfin í skamma stund"
             },
             "settings": {
                 "title": "AI Stillingar",
@@ -5893,10 +5895,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP fann fyrirliggjandi stillingar í heimamöppunni þinni. Þessi Flatpak-uppsetning notar sína eigin aðskildu geymslu, svo vistuðu þjónarnir þínir og dulkóðaða hirslan sjást ekki hér enn. Flytja þau inn núna? Skrárnar eru aðeins afritaðar, engu er skrifað yfir, og hirslan opnast hér á sama hátt og hún gerir núna.",
+            "importBody": "AeroFTP fann fyrirliggjandi stillingar í heimamöppunni þinni. Þessi Flatpak-uppsetning notar sína eigin aðskildu geymslu, svo vistuðu þjónarnir þínir og dulkóðaða hirslan sjást ekki hér enn. Flytja stillingarnar þínar inn núna? Skrárnar eru aðeins afritaðar, og aldrei er skrifað yfir skrá sem þessi Flatpak-uppsetning hefur þegar.",
             "importAccept": "Flytja inn",
             "importedBody": "Stillingarnar þínar voru fluttar inn. Endurræstu AeroFTP til að hlaða inn þjónunum þínum og hirslunni.",
-            "restartNow": "Endurræsa núna"
+            "restartNow": "Endurræsa núna",
+            "importNothingBody": "Engin skrá var afrituð: fyrir hverja skrá sem innflutningurinn myndi afrita er þegar til skrá með sama nafni í þessari Flatpak-uppsetningu, og aldrei er skrifað yfir skrár sem fyrir eru.",
+            "importFailedBody": "Innflutningur stöðvaðist með villu: {error}. Skrár sem þegar hafa verið afritaðar í þessa Flatpak-uppsetningu haldast þar, og engu var skrifað yfir. AeroFTP mun bjóða upp á innflutninginn aftur við næstu ræsingu.",
+            "importedNoVaultBody": "Stillingarnar þínar voru fluttar inn, en þær innihéldu hvorki vistaða þjóna né hirslu sem innflutningurinn gat afritað. Endurræstu AeroFTP til að hlaða inn því sem var flutt inn.",
+            "importedVaultSkippedBody": "Hluti af stillingunum þínum var fluttur inn, en ekki vistuðu þjónarnir þínir og hirslan: þessi Flatpak-uppsetning hefur þegar sína eigin hirslu, og aldrei er skrifað yfir skrár sem fyrir eru. Endurræstu AeroFTP til að hlaða inn því sem var flutt inn.",
+            "importNothingVaultSkippedBody": "Engin skrá var afrituð, svo vistuðu þjónarnir þínir og hirslan voru ekki flutt inn: þessi Flatpak-uppsetning hefur þegar sína eigin hirslu, fyrir hverja skrá sem innflutningurinn myndi afrita er þegar til skrá með sama nafni hér, og aldrei er skrifað yfir skrár sem fyrir eru.",
+            "importUnreadableResult": "AeroFTP gat ekki lesið niðurstöðu innflutningsins",
+            "importNothingToImportBody": "Engin skrá var afrituð: fyrirliggjandi stillingar þínar innihalda enga skrá sem innflutningurinn afritar (táknrænir tenglar og tímabundnar SQLite-skrár eru aldrei afrituð)."
         },
         "picker": {
             "unavailable": {

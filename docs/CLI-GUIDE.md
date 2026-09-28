@@ -526,6 +526,8 @@ aeroftp-cli rm sftp://user@host /var/www/old-file.txt
 aeroftp-cli rm sftp://user@host /var/www/old-folder/ -rf
 ```
 
+Without `-r`, `rm` removes a file, a link, or an empty directory. A directory that still holds anything (dotfiles included) is refused with exit code 9 and nothing is removed: on S3, Azure, Google Drive, OneDrive, Dropbox, pCloud, Box, MEGA, Filen, kDrive, Koofr, Jottacloud and WebDAV the provider's own delete of a folder takes its content along, so `-r` is the only way to ask for that. The served FTP `RMD`, SFTP `RMDIR`, the mount's `rmdir`, and the MCP and AeroAgent deletes without `recursive` follow the same rule.
+
 ### rmdir - Remove an Empty Directory
 
 ```bash
@@ -589,6 +591,8 @@ aeroftp-cli edit --profile "server" /var/www/index.html "Old Title" "New Title" 
 ```
 
 This is a scripted remote text edit flow, not an interactive `$EDITOR` session. The CLI downloads the remote UTF-8 file, applies a deterministic find/replace, then uploads the modified content.
+
+On a server that cannot put one file over another in a single step, `edit` refuses and writes nothing. Where that server's replace sets the previous file aside (MEGA through the native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive), `--allow-non-atomic` is the opt-in: the previous file is set aside, the new one is moved into its place, and the old one is then deleted. There is a short moment with no file, and the old one is not lost. On any other such server (for example Box, Internxt, 4shared, WorkDrive, MEGAcmd, Jottacloud, or SFTP without `posix-rename@openssh.com`) the opt-in is refused as well, before anything is written. The same switch is `allow_non_atomic` on the MCP `aeroftp_edit` tool and on AeroAgent `remote_edit`.
 
 ### cat - Print File Content
 
@@ -1718,6 +1722,22 @@ AEROFTP_KEYSTORE_PASSWORD=MyBackupPassword \
 **Merge strategies on import**: `skip` (default, never overwrite existing vault entries), `overwrite` (force replace), `keep-newer` (compare timestamps). The `--skip-*` flags let you opt out of an entire section per import (vault, sqlite, files, local-storage).
 
 After a successful import that touched SQLite or files, the CLI prints `requires_restart=true` on stdout and exits 0. The AeroFTP GUI must be restarted before the restored databases become visible.
+
+### flatpak-import - Import a Native Configuration into the Flatpak Sandbox
+
+A Flatpak install keeps its own data root inside the sandbox, so it does not see the saved servers and encrypted vault of a native (`.deb`, `.rpm`, AppImage) install in `~/.config/aeroftp`. Run inside the Flatpak sandbox, `flatpak-import` copies that configuration into the sandbox. It copies only the files the sandbox does not have yet: an existing file is never overwritten, and SQLite sidecars and symbolic links inside the folder are never copied (a `~/.config/aeroftp` that is itself a link, as a dotfiles manager creates, is followed). The GUI offers the same import once, at its first start.
+
+```bash
+# Is an import available? Copies nothing.
+aeroftp-cli flatpak-import --status
+
+# Import, then restart AeroFTP to load what was copied
+aeroftp-cli flatpak-import --json
+```
+
+The host vault and the saved servers encrypted under it come in only when the sandbox has no vault of its own. The GUI creates one at its first start, so after a first start they stay behind, and the output says so. The JSON result carries `imported` and `requires_restart` (both true only when files were copied), `copied` (the number of files), `vault_imported`, `vault_skipped` (the host has a vault and the sandbox already had its own), `nothing_importable` (no file was copied because the host configuration holds none the import copies), `source` and `target`.
+
+Exit codes: `0` when files were imported, when no file was copied (each file the import would copy already has a file with the same name in the sandbox, or the host configuration holds nothing the import copies), with `--status`, and outside a Flatpak, where the command does nothing; `1` when there is no host configuration at `~/.config/aeroftp`, or when the copy failed (files copied before the error stay in the sandbox, and nothing is overwritten).
 
 ### completions - Generate Shell Completion Scripts
 

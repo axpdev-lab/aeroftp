@@ -740,7 +740,8 @@
                 "requiresConfirmation": "Requires Confirmation",
                 "toggleDetails": "Toggle details",
                 "toolExecution": "Tool Execution",
-                "allowSession": "Allow for this session"
+                "allowSession": "Allow for this session",
+                "nonAtomicReplace": "Non-atomic replace: the file is briefly missing"
             },
             "toolFailed": "Tool failed: {error}",
             "toolLabels": {
@@ -3307,6 +3308,7 @@
             "keystoreCopyName": "{name} (from backup)",
             "keystorePreviewLocalFromVault": "This device's server profile list could not be read, so the comparison uses the server list stored in the vault.",
             "keystoreDecisionsFailed": "The import finished, but your choices for server profiles could not be applied: {error}",
+            "keystorePreferencesFailed": "The import finished, but your app preferences could not be restored: {error}",
             "importKeystoreDesc": "Import credentials from a backup file",
             "importKeystorePrompt": "Enter the password used to encrypt this keystore backup.",
             "importServers": "Import Servers",
@@ -5874,9 +5876,16 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP found an existing configuration in your home folder. This Flatpak install uses its own separate storage, so your saved servers and encrypted vault are not visible here yet. Import them now? Files are only copied and nothing is overwritten, and your vault unlocks here the same way it does now.",
+            "importBody": "AeroFTP found an existing configuration in your home folder. This Flatpak install uses its own separate storage, so your saved servers and encrypted vault are not visible here yet. Import your configuration now? Files are only copied, and a file this Flatpak install already has is never overwritten.",
             "importAccept": "Import",
             "importedBody": "Your configuration was imported. Restart AeroFTP to load your servers and vault.",
+            "importedNoVaultBody": "Your configuration was imported, but it held no saved servers or vault the import could copy. Restart AeroFTP to load what was imported.",
+            "importedVaultSkippedBody": "Part of your configuration was imported, but not your saved servers and vault: this Flatpak install already has its own vault, and existing files are never overwritten. Restart AeroFTP to load what was imported.",
+            "importNothingBody": "No file was copied: this Flatpak install already has a file with the same name for each file the import would copy, and existing files are never overwritten.",
+            "importNothingVaultSkippedBody": "No file was copied, so your saved servers and vault were not imported: this Flatpak install already has its own vault and a file with the same name for each file the import would copy, and existing files are never overwritten.",
+            "importNothingToImportBody": "No file was copied: your existing configuration holds no file the import copies (symbolic links and SQLite temporary files are never copied).",
+            "importFailedBody": "The import stopped with an error: {error}. Files already copied into this Flatpak install stay there, and nothing was overwritten. AeroFTP will offer the import again at the next start.",
+            "importUnreadableResult": "AeroFTP could not read the result of the import",
             "restartNow": "Restart now"
         },
         "picker": {

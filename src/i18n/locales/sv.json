@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Ladda om",
             "uiTokensReset": "Rensa åsidosättningar",
             "uiTokensApplied": "Tillämpade åsidosättningar: {count}",
-            "uiTokensRejected": "Avvisade poster: {count}"
+            "uiTokensRejected": "Avvisade poster: {count}",
+            "keystorePreferencesFailed": "Importen är klar, men dina appinställningar kunde inte återställas: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "Avvisa alla verktygsanrop",
                 "rejectExecution": "Avvisa verktygskörning",
                 "toggleDetails": "Visa/dölj detaljer",
-                "allowSession": "Tillåt för denna session"
+                "allowSession": "Tillåt för denna session",
+                "nonAtomicReplace": "Icke-atomiskt utbyte: filen saknas kortvarigt"
             },
             "settings": {
                 "title": "AI-inställningar",
@@ -5874,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP hittade en befintlig konfiguration i din hemmapp. Den här Flatpak-installationen använder sitt eget separata lagringsutrymme, så dina sparade servrar och det krypterade valvet syns inte här ännu. Vill du importera dem nu? Filerna kopieras bara, inget skrivs över, och valvet låses upp här på samma sätt som nu.",
+            "importBody": "AeroFTP hittade en befintlig konfiguration i din hemmapp. Den här Flatpak-installationen använder sitt eget separata lagringsutrymme, så dina sparade servrar och det krypterade valvet syns inte här ännu. Vill du importera din konfiguration nu? Filerna kopieras bara, och en fil som den här Flatpak-installationen redan har skrivs aldrig över.",
             "importAccept": "Importera",
             "importedBody": "Din konfiguration importerades. Starta om AeroFTP för att läsa in dina servrar och ditt valv.",
-            "restartNow": "Starta om nu"
+            "restartNow": "Starta om nu",
+            "importNothingBody": "Ingen fil kopierades: den här Flatpak-installationen har redan en fil med samma namn för varje fil som importen skulle kopiera, och befintliga filer skrivs aldrig över.",
+            "importFailedBody": "Importen stoppades med ett fel: {error}. Filer som redan kopierats in i denna Flatpak-installation ligger kvar där, och inget skrevs över. AeroFTP kommer att erbjuda importen igen vid nästa start.",
+            "importedNoVaultBody": "Din konfiguration importerades, men den innehöll inga sparade servrar eller något valv som importen kunde kopiera. Starta om AeroFTP för att läsa in det som importerades.",
+            "importedVaultSkippedBody": "En del av din konfiguration importerades, men inte dina sparade servrar och ditt valv: den här Flatpak-installationen har redan ett eget valv, och befintliga filer skrivs aldrig över. Starta om AeroFTP för att läsa in det som importerades.",
+            "importNothingVaultSkippedBody": "Ingen fil kopierades, så dina sparade servrar och ditt valv importerades inte: den här Flatpak-installationen har redan ett eget valv och en fil med samma namn för varje fil som importen skulle kopiera, och befintliga filer skrivs aldrig över.",
+            "importUnreadableResult": "AeroFTP kunde inte läsa resultatet av importen",
+            "importNothingToImportBody": "Ingen fil kopierades: din befintliga konfiguration innehåller ingen fil som importen kopierar (symboliska länkar och tillfälliga SQLite-filer kopieras aldrig)."
         },
         "picker": {
             "unavailable": {
