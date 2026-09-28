@@ -106,6 +106,26 @@ pub trait RemoteBackend: Send + Sync {
         Ok(true)
     }
 
+    /// Whether [`replace`](RemoteBackend::replace) sets the previous file
+    /// aside when it cannot replace atomically, which is what an edit's
+    /// `allow_non_atomic` opt-in needs: see
+    /// `StorageProvider::replace_sets_aside`. Ask BEFORE staging.
+    async fn replace_sets_aside(&self) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    /// Whether [`chmod`](RemoteBackend::chmod) can set a file's Unix mode:
+    /// `StorageProvider::supports_chmod`. The edit asks it to carry the
+    /// mode of the file it replaces over to the new one.
+    async fn supports_chmod(&self) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    /// Set the Unix mode of `path`: `StorageProvider::chmod`.
+    async fn chmod(&self, _path: &str, _mode: u32) -> Result<(), String> {
+        Err("chmod is not supported by this backend".to_string())
+    }
+
     /// Search for files matching a pattern.
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String>;
 

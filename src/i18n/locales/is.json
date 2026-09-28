@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Hafna öllum verkfæraköllum",
                 "rejectExecution": "Hafna keyrslu verkfæris",
                 "toggleDetails": "Víxla upplýsingum",
-                "allowSession": "Leyfa fyrir þessa lotu"
+                "allowSession": "Leyfa fyrir þessa lotu",
+                "nonAtomicReplace": "Ósamfelld útskipting: skráin er horfin í skamma stund"
             },
             "settings": {
                 "title": "AI Stillingar",

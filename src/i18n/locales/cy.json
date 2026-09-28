@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Gwrthod pob galwad offeryn",
                 "rejectExecution": "Gwrthod rhedeg yr offeryn",
                 "toggleDetails": "Toglo manylion",
-                "allowSession": "Caniatáu ar gyfer y sesiwn hon"
+                "allowSession": "Caniatáu ar gyfer y sesiwn hon",
+                "nonAtomicReplace": "Amnewid heb fod yn atomig: mae'r ffeil ar goll am ennyd"
             },
             "settings": {
                 "title": "Gosodiadau AI",

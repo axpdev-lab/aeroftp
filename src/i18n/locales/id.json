@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Tolak semua panggilan alat",
                 "rejectExecution": "Tolak eksekusi alat",
                 "toggleDetails": "Tampilkan/sembunyikan detail",
-                "allowSession": "Izinkan untuk sesi ini"
+                "allowSession": "Izinkan untuk sesi ini",
+                "nonAtomicReplace": "Penggantian non-atomik: berkas sesaat tidak ada"
             },
             "settings": {
                 "title": "Pengaturan AI",

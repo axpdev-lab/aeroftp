@@ -2636,7 +2636,8 @@
                 "pendingApproval": "in attesa di approvazione",
                 "allowAllCalls": "Consenti tutte le chiamate",
                 "rejectAllCalls": "Rifiuta tutte le chiamate",
-                "allowSession": "Consenti per questa sessione"
+                "allowSession": "Consenti per questa sessione",
+                "nonAtomicReplace": "Sostituzione non atomica: il file manca per un istante"
             },
             "settings": {
                 "title": "Impostazioni AI",

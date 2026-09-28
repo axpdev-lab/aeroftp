@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Atmesti visus įrankio kvietimus",
                 "rejectExecution": "Atmesti įrankio vykdymą",
                 "toggleDetails": "Rodyti/slėpti detales",
-                "allowSession": "Leisti šiai sesijai"
+                "allowSession": "Leisti šiai sesijai",
+                "nonAtomicReplace": "Neatominis pakeitimas: failas trumpam pranyksta"
             },
             "settings": {
                 "title": "AI nustatymai",

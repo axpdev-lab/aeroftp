@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Từ chối tất cả lệnh gọi công cụ",
                 "rejectExecution": "Từ chối thực thi công cụ",
                 "toggleDetails": "Bật/tắt chi tiết",
-                "allowSession": "Cho phép cho phiên này"
+                "allowSession": "Cho phép cho phiên này",
+                "nonAtomicReplace": "Thay thế không nguyên tử: tệp biến mất trong chốc lát"
             },
             "settings": {
                 "title": "Cài đặt AI",

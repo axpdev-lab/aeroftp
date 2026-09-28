@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Avvisa alla verktygsanrop",
                 "rejectExecution": "Avvisa verktygskörning",
                 "toggleDetails": "Visa/dölj detaljer",
-                "allowSession": "Tillåt för denna session"
+                "allowSession": "Tillåt för denna session",
+                "nonAtomicReplace": "Icke-atomiskt utbyte: filen saknas kortvarigt"
             },
             "settings": {
                 "title": "AI-inställningar",

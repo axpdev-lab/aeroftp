@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Zamietnuť všetky volania nástrojov",
                 "rejectExecution": "Zamietnuť vykonanie nástroja",
                 "toggleDetails": "Zobraziť/skryť detaily",
-                "allowSession": "Povoliť pre túto reláciu"
+                "allowSession": "Povoliť pre túto reláciu",
+                "nonAtomicReplace": "Neatomická náhrada: súbor krátko chýba"
             },
             "settings": {
                 "title": "Nastavenia AI",

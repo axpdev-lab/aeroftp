@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Avvis alle verktøykall",
                 "rejectExecution": "Avvis verktøykjøring",
                 "toggleDetails": "Vis/skjul detaljer",
-                "allowSession": "Tillat for denne økten"
+                "allowSession": "Tillat for denne økten",
+                "nonAtomicReplace": "Ikke-atomisk utskifting: filen er borte et kort øyeblikk"
             },
             "settings": {
                 "title": "AI-innstillinger",

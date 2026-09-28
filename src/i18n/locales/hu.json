@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Összes eszközhívás elutasítása",
                 "rejectExecution": "Eszköz futtatásának elutasítása",
                 "toggleDetails": "Részletek megjelenítése/elrejtése",
-                "allowSession": "Engedélyezés ehhez a munkamenethez"
+                "allowSession": "Engedélyezés ehhez a munkamenethez",
+                "nonAtomicReplace": "Nem atomi csere: a fájl rövid ideig hiányzik"
             },
             "settings": {
                 "title": "MI beállítások",

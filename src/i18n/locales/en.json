@@ -740,7 +740,8 @@
                 "requiresConfirmation": "Requires Confirmation",
                 "toggleDetails": "Toggle details",
                 "toolExecution": "Tool Execution",
-                "allowSession": "Allow for this session"
+                "allowSession": "Allow for this session",
+                "nonAtomicReplace": "Non-atomic replace: the file is briefly missing"
             },
             "toolFailed": "Tool failed: {error}",
             "toolLabels": {

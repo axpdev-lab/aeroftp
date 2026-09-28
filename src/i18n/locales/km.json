@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "បដិសេធការហៅឧបករណ៍ទាំងអស់",
                 "rejectExecution": "បដិសេធការប្រតិបត្តិឧបករណ៍",
                 "toggleDetails": "បិទបើកព័ត៌មានលម្អិត",
-                "allowSession": "អនុញ្ញាតសម្រាប់សម័យនេះ"
+                "allowSession": "អនុញ្ញាតសម្រាប់សម័យនេះ",
+                "nonAtomicReplace": "ការជំនួសមិនអាតូមិក: ឯកសារបាត់មួយភ្លែត"
             },
             "settings": {
                 "title": "ការកំណត់ AI",

@@ -1347,19 +1347,22 @@ impl JottacloudProvider {
 
     /// Parse Jottacloud time format "2006-01-02-T15:04:05Z0700" into ISO 8601
     fn parse_jotta_time(s: &str) -> String {
-        // Jottacloud uses a non-standard format with an extra dash before T
-        // "2023-01-15-T10:30:45Z0100" → "2023-01-15T10:30:45+01:00"
+        // JFS puts a dash before the T. The listings the tests here quote are
+        // all UTC ("2024-03-04-T08:09:10Z"); a numeric offset without a colon
+        // ("2023-01-15-T10:30:45+0100") and RFC 3339 are parsed as well.
         let cleaned = s.replace("-T", "T");
-        // Try to parse and format nicely, or return as-is
-        if let Ok(dt) = chrono::DateTime::parse_from_str(&cleaned, "%Y-%m-%dT%H:%M:%S%z") {
-            return dt.format("%Y-%m-%d %H:%M:%SZ").to_string();
+        // Converted to UTC before formatting: the format ends in a literal
+        // `Z`, and formatting the parsed offset time printed its local hour
+        // under that `Z`, off by the offset.
+        let parsed = chrono::DateTime::parse_from_str(&cleaned, "%Y-%m-%dT%H:%M:%S%z")
+            .or_else(|_| chrono::DateTime::parse_from_rfc3339(&cleaned));
+        match parsed {
+            Ok(dt) => dt
+                .with_timezone(&chrono::Utc)
+                .format("%Y-%m-%d %H:%M:%SZ")
+                .to_string(),
+            Err(_) => cleaned,
         }
-        // Try RFC3339
-        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&cleaned) {
-            return dt.format("%Y-%m-%d %H:%M:%SZ").to_string();
-        }
-        // Return cleaned version
-        cleaned
     }
 }
 
@@ -3307,6 +3310,7 @@ mod tests {
     async fn jottacloud_does_not_claim_an_atomic_replace() {
         let mut p = test_provider();
         assert!(!p.supports_atomic_replace().await.unwrap());
+        assert!(!p.replace_sets_aside());
     }
 
     /// A byte cut inside a multibyte character panics: masking must cut on a
@@ -3953,6 +3957,37 @@ mod tests {
         // Fallback: string not parseable is returned cleaned (no "-T")
         let fallback = JottacloudProvider::parse_jotta_time("not-a-time");
         assert_eq!(fallback, "not-a-time");
+    }
+
+    /// Addendum to the 4.2.1 closeout: a time with an offset was formatted
+    /// as the local time of that offset with a literal `Z`, so every file
+    /// time the server sent with an offset was off by that offset, and sync
+    /// compared against the wrong instant. It is converted to UTC first.
+    #[test]
+    fn parse_jotta_time_converts_an_offset_to_utc() {
+        assert_eq!(
+            JottacloudProvider::parse_jotta_time("2023-01-15-T10:30:45+0100"),
+            "2023-01-15 09:30:45Z"
+        );
+        assert_eq!(
+            JottacloudProvider::parse_jotta_time("2023-01-15-T00:30:45+0100"),
+            "2023-01-14 23:30:45Z",
+            "the date moves with the hour"
+        );
+        assert_eq!(
+            JottacloudProvider::parse_jotta_time("2023-07-01-T08:00:00-0500"),
+            "2023-07-01 13:00:00Z"
+        );
+        assert_eq!(
+            JottacloudProvider::parse_jotta_time("2023-01-15T10:30:45+01:00"),
+            "2023-01-15 09:30:45Z",
+            "the RFC 3339 branch too"
+        );
+        assert_eq!(
+            JottacloudProvider::parse_jotta_time("2024-03-04-T08:09:10Z"),
+            "2024-03-04 08:09:10Z",
+            "a UTC time is unchanged"
+        );
     }
 
     #[test]

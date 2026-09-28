@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "拒绝所有工具调用",
                 "rejectExecution": "拒绝工具执行",
                 "toggleDetails": "切换详情",
-                "allowSession": "允许本次会话"
+                "allowSession": "允许本次会话",
+                "nonAtomicReplace": "非原子替换：文件会短暂消失"
             },
             "settings": {
                 "title": "AI 设置",

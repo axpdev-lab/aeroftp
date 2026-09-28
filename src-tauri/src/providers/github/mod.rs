@@ -1972,6 +1972,7 @@ mod tests {
         )
         .unwrap();
         assert!(!p.supports_atomic_replace().await.unwrap());
+        assert!(!p.replace_sets_aside());
     }
 
     /// The Contents API has no rename: download, upload, delete. Onto its

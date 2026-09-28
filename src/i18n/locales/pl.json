@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Odrzuć wszystkie wywołania narzędzi",
                 "rejectExecution": "Odrzuć wykonanie narzędzia",
                 "toggleDetails": "Pokaż/ukryj szczegóły",
-                "allowSession": "Zezwól na tę sesję"
+                "allowSession": "Zezwól na tę sesję",
+                "nonAtomicReplace": "Nieatomowa zamiana: plik chwilowo nie istnieje"
             },
             "settings": {
                 "title": "Ustawienia AI",

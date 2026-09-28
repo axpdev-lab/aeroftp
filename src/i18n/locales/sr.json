@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Одбиј све позиве алата",
                 "rejectExecution": "Одбиј извршавање алата",
                 "toggleDetails": "Прикажи/сакриј детаље",
-                "allowSession": "Дозволи за ову сесију"
+                "allowSession": "Дозволи за ову сесију",
+                "nonAtomicReplace": "Неатомска замена: датотека привремено недостаје"
             },
             "settings": {
                 "title": "AI подешавања",

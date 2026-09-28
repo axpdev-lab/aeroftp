@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Respinge toate apelurile de instrumente",
                 "rejectExecution": "Respinge executarea instrumentului",
                 "toggleDetails": "Afișează/ascunde detalii",
-                "allowSession": "Permite pentru această sesiune"
+                "allowSession": "Permite pentru această sesiune",
+                "nonAtomicReplace": "Înlocuire neatomică: fișierul lipsește pentru o clipă"
             },
             "settings": {
                 "title": "Setări AI",

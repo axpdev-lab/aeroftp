@@ -482,11 +482,127 @@ impl SwiftProvider {
         }
     }
 
+    /// Keystone v2 tokens URL. `base` is the auth root, but a saved profile
+    /// sometimes already ends in `/v2.0` or `/v2.0/tokens`. Appending the
+    /// suffix again is a path Keystone answers with 301.
+    fn keystone_v2_tokens_url(base: &str) -> String {
+        let trimmed = base.trim_end_matches('/');
+        if let Some(root) = trimmed.strip_suffix("/v2.0/tokens") {
+            format!("{root}/v2.0/tokens")
+        } else if let Some(root) = trimmed.strip_suffix("/v2.0") {
+            format!("{root}/v2.0/tokens")
+        } else {
+            format!("{trimmed}/v2.0/tokens")
+        }
+    }
+
+    /// Resolve a Keystone `Location` against the URL we posted to.
+    fn keystone_redirect_target(from: &str, location: &str) -> Option<String> {
+        let base = reqwest::Url::parse(from).ok()?;
+        let next = base.join(location).ok()?;
+        if !matches!(next.scheme(), "http" | "https") {
+            return None;
+        }
+        Some(next.to_string())
+    }
+
+    fn urls_match(a: &str, b: &str) -> bool {
+        match (reqwest::Url::parse(a), reqwest::Url::parse(b)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => a == b,
+        }
+    }
+
+    fn same_origin_url(a: &str, b: &str) -> bool {
+        let (Ok(a), Ok(b)) = (reqwest::Url::parse(a), reqwest::Url::parse(b)) else {
+            return false;
+        };
+        a.scheme() == b.scheme()
+            && a.host_str() == b.host_str()
+            && a.port_or_known_default() == b.port_or_known_default()
+    }
+
+    async fn post_keystone_json(
+        &self,
+        url: &str,
+        body: &serde_json::Value,
+    ) -> Result<reqwest::Response, ProviderError> {
+        self.client
+            .post(url)
+            .timeout(AUTH_REQUEST_TIMEOUT)
+            .header("Content-Type", "application/json")
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Keystone v2 request failed: {e}"))
+            })
+    }
+
+    /// POST the tokens body. reqwest's default redirect policy turns a 301
+    /// of a POST into a GET and drops the body, so this client refuses
+    /// redirects and, when Keystone points at another path on the same
+    /// origin (the trailing slash), posts again itself. An off-host 301 is
+    /// not a URL we built: one retry of the same POST, then the status stands.
+    ///
+    /// Returns the last response and the URL it answered.
+    async fn post_keystone_v2(
+        &self,
+        url: &str,
+        body: &serde_json::Value,
+    ) -> Result<(reqwest::Response, String), ProviderError> {
+        let resp = self.post_keystone_json(url, body).await?;
+        if !Self::is_keystone_redirect(resp.status()) {
+            return Ok((resp, url.to_string()));
+        }
+        let location = resp
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        match Self::keystone_redirect_target(url, location) {
+            Some(next) if !Self::urls_match(url, &next) && Self::same_origin_url(url, &next) => {
+                let resp = self.post_keystone_json(&next, body).await?;
+                Ok((resp, next))
+            }
+            _ => Ok((self.post_keystone_json(url, body).await?, url.to_string())),
+        }
+    }
+
+    fn is_keystone_redirect(status: StatusCode) -> bool {
+        matches!(
+            status,
+            StatusCode::MOVED_PERMANENTLY
+                | StatusCode::FOUND
+                | StatusCode::TEMPORARY_REDIRECT
+                | StatusCode::PERMANENT_REDIRECT
+        )
+    }
+
+    /// Where a redirect that was not followed pointed, for the error: the
+    /// origin and path of its `Location` resolved against `from`, never the
+    /// user, password, query or fragment it may carry.
+    fn redirect_origin_and_path(from: &str, location: Option<&str>) -> String {
+        let Some(location) = location.filter(|l| !l.trim().is_empty()) else {
+            return "no Location header".to_string();
+        };
+        match reqwest::Url::parse(from).and_then(|base| base.join(location)) {
+            Ok(next) if next.has_host() => {
+                format!(
+                    "Location {}{}",
+                    next.origin().ascii_serialization(),
+                    next.path()
+                )
+            }
+            _ => "a Location that is not a URL".to_string(),
+        }
+    }
+
     /// Keystone v2: POST {base}/v2.0/tokens
     /// Body: {"auth":{"passwordCredentials":{"username":"...","password":"..."}}}
     /// Response: token in access.token.id, storage URL in access.serviceCatalog
     async fn auth_keystone_v2(&mut self, base: &str) -> Result<(), ProviderError> {
-        let url = format!("{base}/v2.0/tokens");
+        let url = Self::keystone_v2_tokens_url(base);
         debug!("Swift Keystone v2: {}", url);
 
         // Blomp uses tenantName = "storage" (fixed for all accounts).
@@ -501,17 +617,7 @@ impl SwiftProvider {
             }
         });
 
-        let resp = self
-            .client
-            .post(&url)
-            .timeout(AUTH_REQUEST_TIMEOUT)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| {
-                ProviderError::ConnectionFailed(format!("Keystone v2 request failed: {e}"))
-            })?;
+        let (resp, answered) = self.post_keystone_v2(&url, &body).await?;
 
         match resp.status() {
             StatusCode::OK => {
@@ -594,6 +700,15 @@ impl SwiftProvider {
             StatusCode::FORBIDDEN => Err(ProviderError::AuthenticationFailed(
                 "Account suspended or forbidden".into(),
             )),
+            // Not followed (see `post_keystone_v2`). Where it pointed says
+            // whether an intermittent 301 left the host or named a path.
+            status if Self::is_keystone_redirect(status) => {
+                let location = resp.headers().get("location").and_then(|v| v.to_str().ok());
+                Err(ProviderError::AuthenticationFailed(format!(
+                    "Keystone v2 failed: HTTP {status}, redirect not followed ({})",
+                    Self::redirect_origin_and_path(&answered, location)
+                )))
+            }
             status => Err(ProviderError::AuthenticationFailed(format!(
                 "Keystone v2 failed: HTTP {status}"
             ))),
@@ -743,6 +858,80 @@ impl SwiftProvider {
             encode_swift_name(&self.container),
             encode_swift_name(object)
         )
+    }
+
+    /// Delete the objects `references` names (each an [`object_reference`])
+    /// with the bulk-delete middleware, 10000 per request.
+    ///
+    /// [`object_reference`]: SwiftProvider::object_reference
+    async fn bulk_delete(&mut self, references: &[String]) -> Result<(), ProviderError> {
+        for chunk in references.chunks(10000) {
+            let body = chunk.join("\n");
+            let bulk_url = format!("{}?bulk-delete", self.storage_url()?);
+
+            let headers = vec![
+                ("Content-Type".to_string(), "text/plain".to_string()),
+                ("Accept".to_string(), "application/json".to_string()),
+            ];
+
+            let resp = self
+                .swift_request(Method::POST, &bulk_url, Some(body.into_bytes()), &headers)
+                .await?;
+
+            if !resp.status().is_success() {
+                return Err(ProviderError::ServerError(format!(
+                    "Bulk delete failed: HTTP {}",
+                    resp.status()
+                )));
+            }
+
+            // Swift bulk-delete can return HTTP 200 with per-object failures in
+            // the JSON body (`Errors` array). Accept is already application/json;
+            // parse it so we do not report a full success when objects remain.
+            // Spec: https://docs.openstack.org/swift/latest/middleware.html#bulk-delete
+            let body_bytes = resp.bytes().await.map_err(|e| {
+                ProviderError::ServerError(format!("Bulk delete body read failed: {e}"))
+            })?;
+            if !body_bytes.is_empty() {
+                if let Ok(report) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+                    let errors = report
+                        .get("Errors")
+                        .or_else(|| report.get("errors"))
+                        .and_then(|e| e.as_array());
+                    if let Some(errors) = errors {
+                        if !errors.is_empty() {
+                            let sample = errors
+                                .iter()
+                                .take(3)
+                                .map(|e| e.to_string())
+                                .collect::<Vec<_>>()
+                                .join("; ");
+                            return Err(ProviderError::ServerError(format!(
+                                "Bulk delete reported {} object failure(s): {sample}",
+                                errors.len()
+                            )));
+                        }
+                    }
+                    // Some proxies put the overall status in the body even when
+                    // the HTTP status is 200.
+                    if let Some(rs) = report
+                        .get("Response Status")
+                        .or_else(|| report.get("response_status"))
+                        .and_then(|v| v.as_str())
+                    {
+                        let ok = rs.starts_with('2')
+                            || rs.to_ascii_lowercase().contains("200")
+                            || rs.eq_ignore_ascii_case("ok");
+                        if !ok {
+                            return Err(ProviderError::ServerError(format!(
+                                "Bulk delete response status: {rs}"
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Whether a folder is at `name`: Swift has no folders, only objects
@@ -1457,7 +1646,7 @@ impl StorageProvider for SwiftProvider {
         }
     }
 
-    /// Recursive delete via bulk-delete.
+    /// Recursive delete via bulk-delete, one listing page at a time.
     /// POST {storage_url}?bulk-delete
     ///   Content-Type: text/plain
     ///   Body: /{container}/path1\n/{container}/path2\n...
@@ -1471,103 +1660,77 @@ impl StorageProvider for SwiftProvider {
         }
         let prefix = Self::normalize_path(path);
 
-        // List all objects under prefix (no delimiter = flat recursive listing)
+        // Flat listing, every page, until a page comes back empty. One page of
+        // `limit=10000` used to answer Ok after deleting only that page, and a
+        // short page is not the last one either: a server whose listing cap is
+        // lower than the limit asked for (Ceph RGW answers at most 1000 by
+        // default) answers short pages all the way through.
+        //
+        // Each page is deleted before the next one is asked for, so memory
+        // holds one page and not the whole folder. That also carries a
+        // listing that ignores `marker` through: after a page is deleted it
+        // starts after what is gone, so a small folder is deleted as it was
+        // before paging, and a large one too. Swift lists names in byte
+        // order, so a page must end past the marker: one that does not (a
+        // listing that ignores `marker` and still shows what was deleted, or
+        // one that goes back) stops the delete with an error instead of
+        // looping, and a name it repeats from before the marker is not sent
+        // again. A failure after the first page leaves the pages before it
+        // deleted, as a failed bulk request already could.
         let base = format!("{}/{}", self.storage_url()?, self.container);
-        let url = format!(
-            "{}?format=json&prefix={}/&limit=10000",
-            base,
-            urlencoding::encode(&prefix)
-        );
-
-        let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
-        let entries: Vec<ObjectEntry> = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("List for delete failed: {e}")))?;
-
-        if entries.is_empty() {
-            let _ = self.rmdir(path).await;
-            return Ok(());
-        }
-
-        // Collect all object paths for bulk delete
-        let mut object_paths: Vec<String> = entries
-            .iter()
-            .filter_map(|e| e.name.as_ref())
-            .map(|n| self.object_reference(n))
-            .collect();
-
-        // Also delete the directory marker itself
-        object_paths.push(self.object_reference(&format!("{prefix}/")));
-
-        // Bulk delete in chunks of 10000
-        for chunk in object_paths.chunks(10000) {
-            let body = chunk.join("\n");
-            let bulk_url = format!("{}?bulk-delete", self.storage_url()?);
-
-            let headers = vec![
-                ("Content-Type".to_string(), "text/plain".to_string()),
-                ("Accept".to_string(), "application/json".to_string()),
-            ];
-
-            let resp = self
-                .swift_request(Method::POST, &bulk_url, Some(body.into_bytes()), &headers)
-                .await?;
-
-            if !resp.status().is_success() {
+        let mut marker = String::new();
+        let mut deleted_any = false;
+        loop {
+            let mut url = format!(
+                "{base}?format=json&prefix={}/&limit=10000",
+                urlencoding::encode(&prefix)
+            );
+            if !marker.is_empty() {
+                url.push_str(&format!("&marker={}", urlencoding::encode(&marker)));
+            }
+            let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
+            let status = resp.status();
+            if !status.is_success() {
                 return Err(ProviderError::ServerError(format!(
-                    "Bulk delete failed: HTTP {}",
-                    resp.status()
+                    "List for delete failed: HTTP {status}"
                 )));
             }
-
-            // Swift bulk-delete can return HTTP 200 with per-object failures in
-            // the JSON body (`Errors` array). Accept is already application/json;
-            // parse it so we do not report a full success when objects remain.
-            // Spec: https://docs.openstack.org/swift/latest/middleware.html#bulk-delete
-            let body_bytes = resp.bytes().await.map_err(|e| {
-                ProviderError::ServerError(format!("Bulk delete body read failed: {e}"))
-            })?;
-            if !body_bytes.is_empty() {
-                if let Ok(report) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
-                    let errors = report
-                        .get("Errors")
-                        .or_else(|| report.get("errors"))
-                        .and_then(|e| e.as_array());
-                    if let Some(errors) = errors {
-                        if !errors.is_empty() {
-                            let sample = errors
-                                .iter()
-                                .take(3)
-                                .map(|e| e.to_string())
-                                .collect::<Vec<_>>()
-                                .join("; ");
-                            return Err(ProviderError::ServerError(format!(
-                                "Bulk delete reported {} object failure(s): {sample}",
-                                errors.len()
-                            )));
-                        }
-                    }
-                    // Some proxies put the overall status in the body even when
-                    // the HTTP status is 200.
-                    if let Some(rs) = report
-                        .get("Response Status")
-                        .or_else(|| report.get("response_status"))
-                        .and_then(|v| v.as_str())
-                    {
-                        let ok = rs.starts_with('2')
-                            || rs.to_ascii_lowercase().contains("200")
-                            || rs.eq_ignore_ascii_case("ok");
-                        if !ok {
-                            return Err(ProviderError::ServerError(format!(
-                                "Bulk delete response status: {rs}"
-                            )));
-                        }
-                    }
-                }
+            // An empty listing may be a 204 with no body instead of `[]`.
+            let body = resp
+                .bytes()
+                .await
+                .map_err(|e| ProviderError::ServerError(format!("List for delete failed: {e}")))?;
+            if status == StatusCode::NO_CONTENT || body.iter().all(u8::is_ascii_whitespace) {
+                break;
             }
+            let entries: Vec<ObjectEntry> = serde_json::from_slice(&body)
+                .map_err(|e| ProviderError::ServerError(format!("List for delete failed: {e}")))?;
+            if entries.is_empty() {
+                break;
+            }
+            let names: Vec<String> = entries.into_iter().filter_map(|entry| entry.name).collect();
+            let last_name = names.last().cloned().unwrap_or_default();
+            if last_name.as_str() <= marker.as_str() {
+                return Err(ProviderError::ServerError(
+                    "Swift listing for delete did not advance past its page".into(),
+                ));
+            }
+            let references: Vec<String> = names
+                .iter()
+                .filter(|name| name.as_str() > marker.as_str())
+                .map(|name| self.object_reference(name))
+                .collect();
+            self.bulk_delete(&references).await?;
+            deleted_any = true;
+            marker = last_name;
         }
 
+        // Also delete the directory marker itself. A folder that held nothing
+        // is answered Ok whatever its marker does, as it always was.
+        let marker_deleted = self.rmdir(path).await;
+        if deleted_any {
+            marker_deleted?;
+        }
         Ok(())
     }
 
@@ -1838,6 +2001,15 @@ mod tests {
                 async move {
                     let method = req.method().to_string();
                     let path = req.uri().path().to_string();
+                    // A listing past `marker` holds only the names after it,
+                    // as on Swift: a paging loop sees its last page empty.
+                    let marker = req
+                        .uri()
+                        .query()
+                        .unwrap_or("")
+                        .split('&')
+                        .find_map(|pair| pair.strip_prefix("marker="))
+                        .map(|m| urlencoding::decode(m).unwrap().to_string());
                     let copy_from = req
                         .headers()
                         .get("x-copy-from")
@@ -1860,10 +2032,21 @@ mod tests {
                         "DELETE" => 204,
                         _ => 200,
                     };
-                    let body = if method == "GET" {
-                        listing.to_string()
-                    } else {
-                        String::new()
+                    let body = match (method.as_str(), &marker, listing.as_array()) {
+                        ("GET", Some(marker), Some(entries)) => serde_json::Value::Array(
+                            entries
+                                .iter()
+                                .filter(|entry| {
+                                    entry["name"]
+                                        .as_str()
+                                        .is_some_and(|name| name > marker.as_str())
+                                })
+                                .cloned()
+                                .collect(),
+                        )
+                        .to_string(),
+                        ("GET", _, _) => listing.to_string(),
+                        _ => String::new(),
                     };
                     axum::response::Response::builder()
                         .status(status)
@@ -2047,7 +2230,355 @@ mod tests {
         p.rmdir_recursive("/d").await.expect("recursive delete");
         let log = log.lock().unwrap().clone();
         let bulk = log.iter().find(|r| r.0 == "POST").expect("a bulk delete");
-        assert_eq!(bulk.3, "/my%20box/d/a%20b%25.txt\n/my%20box/d/");
+        assert_eq!(bulk.3, "/my%20box/d/a%20b%25.txt");
+        assert!(
+            log.iter()
+                .any(|r| r.0 == "DELETE" && r.1 == "/v1/AUTH_a/my%20box/d/"),
+            "the folder marker goes last, once the pages are deleted: {log:?}"
+        );
+    }
+
+    /// A folder of more than one page used to be deleted only up to the first
+    /// `limit=10000`, and the call still answered Ok. Both pages are deleted.
+    #[tokio::test]
+    async fn recursive_delete_follows_the_listing_marker_until_the_page_is_short() {
+        let log: StorageLog = Default::default();
+        let seen = std::sync::Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = std::sync::Arc::clone(&seen);
+                async move {
+                    let method = req.method().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 8 << 20)
+                        .await
+                        .unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    seen.lock().unwrap().push((
+                        method.clone(),
+                        path,
+                        Some(query.clone()),
+                        body.clone(),
+                    ));
+                    let listing = if method == "GET" {
+                        if query.contains("marker=d%2Flast") {
+                            "[]".to_string()
+                        } else if query.contains("marker=") {
+                            r#"[{"name":"d/last","bytes":1}]"#.to_string()
+                        } else {
+                            let mut page = String::from("[");
+                            for i in 0..10000 {
+                                if i > 0 {
+                                    page.push(',');
+                                }
+                                page.push_str(&format!(r#"{{"name":"d/f{i:05}","bytes":1}}"#));
+                            }
+                            page.push(']');
+                            page
+                        }
+                    } else {
+                        String::new()
+                    };
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(listing))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "my box".to_string();
+        p.rmdir_recursive("/d").await.expect("both pages");
+        let log = log.lock().unwrap().clone();
+        let queries: Vec<&str> = log
+            .iter()
+            .filter(|row| row.0 == "GET")
+            .map(|row| row.2.as_deref().unwrap_or(""))
+            .collect();
+        assert_eq!(
+            queries.len(),
+            3,
+            "a full page asks for the next one, and so does a short one, until a page \
+             comes back empty: {queries:?}"
+        );
+        assert!(
+            queries[1].contains("marker=d%2Ff09999"),
+            "the second page starts after the last name of the first: {}",
+            queries[1]
+        );
+        assert!(queries[2].contains("marker=d%2Flast"), "{}", queries[2]);
+        let bulk: String = log
+            .iter()
+            .filter(|row| row.0 == "POST")
+            .map(|row| row.3.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(bulk.contains("/my%20box/d/f00000"), "{bulk}");
+        assert!(bulk.contains("/my%20box/d/f09999"), "{bulk}");
+        assert!(bulk.contains("/my%20box/d/last"), "{bulk}");
+        assert!(bulk.contains("/my%20box/d/"), "{bulk}");
+    }
+
+    /// L6 of the 4.2.1 closeout: a server whose listing cap is lower than
+    /// the `limit=10000` asked for (Ceph RGW answers at most 1000 by
+    /// default) answers short pages that are not the last one. Stopping on a
+    /// short page deleted the first page and answered Ok. The listing now
+    /// goes on until a page is empty, and an empty page may be a 204 with no
+    /// body, which used to fail the whole delete before anything went.
+    #[tokio::test]
+    async fn recursive_delete_pages_a_server_with_a_smaller_listing_cap() {
+        const CAP: usize = 3;
+        let names: Vec<String> = (0..6).map(|i| format!("d/o{i}")).collect();
+        let log: StorageLog = Default::default();
+        let seen = std::sync::Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = std::sync::Arc::clone(&seen);
+                let names = names.clone();
+                async move {
+                    let method = req.method().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    seen.lock()
+                        .unwrap()
+                        .push((method.clone(), path, Some(query.clone()), body));
+                    if method != "GET" {
+                        return axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let marker = query
+                        .split('&')
+                        .find_map(|pair| pair.strip_prefix("marker="))
+                        .map(|m| urlencoding::decode(m).unwrap().to_string())
+                        .unwrap_or_default();
+                    let page: Vec<String> = names
+                        .iter()
+                        .filter(|name| marker.is_empty() || name.as_str() > marker.as_str())
+                        .take(CAP)
+                        .map(|name| format!(r#"{{"name":"{name}","bytes":1}}"#))
+                        .collect();
+                    if page.is_empty() {
+                        return axum::response::Response::builder()
+                            .status(204)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(format!("[{}]", page.join(","))))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "c".to_string();
+        p.rmdir_recursive("/d").await.expect("every page");
+        let log = log.lock().unwrap().clone();
+        let queries: Vec<&str> = log
+            .iter()
+            .filter(|row| row.0 == "GET")
+            .map(|row| row.2.as_deref().unwrap_or(""))
+            .collect();
+        assert_eq!(
+            queries.len(),
+            3,
+            "two pages of 3, then the empty 204: {queries:?}"
+        );
+        assert!(queries[1].contains("marker=d%2Fo2"), "{}", queries[1]);
+        assert!(queries[2].contains("marker=d%2Fo5"), "{}", queries[2]);
+        let bulk: String = log
+            .iter()
+            .filter(|row| row.0 == "POST")
+            .map(|row| row.3.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        for i in 0..6 {
+            assert!(
+                bulk.contains(&format!("/c/d/o{i}")),
+                "d/o{i} not deleted: {bulk}"
+            );
+        }
+        // Each page is deleted before the next one is asked for, so what the
+        // delete holds is one page, not the whole folder.
+        let methods: Vec<&str> = log.iter().map(|row| row.0.as_str()).collect();
+        let first_post = methods.iter().position(|m| *m == "POST");
+        let second_get = methods
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| **m == "GET")
+            .nth(1)
+            .map(|(i, _)| i);
+        assert!(
+            matches!((first_post, second_get), (Some(post), Some(get)) if post < get),
+            "the first page must be deleted before the second is listed: {methods:?}"
+        );
+    }
+
+    /// A storage double whose listing ignores `marker` and answers the
+    /// first `cap` names still stored, the way a listing that drops the
+    /// parameter would; the bulk delete removes the names it is sent.
+    async fn provider_on_a_listing_that_ignores_the_marker(
+        names: Vec<String>,
+        cap: usize,
+    ) -> (
+        SwiftProvider,
+        std::sync::Arc<std::sync::Mutex<std::collections::BTreeSet<String>>>,
+    ) {
+        let stored: std::sync::Arc<std::sync::Mutex<std::collections::BTreeSet<String>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(names.into_iter().collect()));
+        let shared = std::sync::Arc::clone(&stored);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let stored = std::sync::Arc::clone(&shared);
+                async move {
+                    let method = req.method().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    match method.as_str() {
+                        "GET" => {
+                            let page: Vec<String> = stored
+                                .lock()
+                                .unwrap()
+                                .iter()
+                                .take(cap)
+                                .map(|name| format!(r#"{{"name":"{name}","bytes":1}}"#))
+                                .collect();
+                            axum::response::Response::builder()
+                                .status(200)
+                                .header("content-type", "application/json")
+                                .body(axum::body::Body::from(format!("[{}]", page.join(","))))
+                                .unwrap()
+                        }
+                        "POST" => {
+                            let mut stored = stored.lock().unwrap();
+                            for line in body.lines() {
+                                let line = urlencoding::decode(line).unwrap();
+                                if let Some(name) = line.strip_prefix("/c/") {
+                                    stored.remove(name);
+                                }
+                            }
+                            axum::response::Response::builder()
+                                .status(200)
+                                .body(axum::body::Body::empty())
+                                .unwrap()
+                        }
+                        _ => axum::response::Response::builder()
+                            .status(204)
+                            .body(axum::body::Body::empty())
+                            .unwrap(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "c".to_string();
+        (p, stored)
+    }
+
+    /// L-d of the 4.2.1 closeout: against a listing that ignores `marker`,
+    /// collecting every page before deleting saw the first page again and
+    /// failed with "did not advance", with nothing deleted, even on a folder
+    /// that fits one page, which the delete before paging did remove. With
+    /// each page deleted before the next listing, the next listing starts
+    /// after what is gone: a small folder is deleted as it used to be, and a
+    /// larger one too.
+    #[tokio::test]
+    async fn recursive_delete_empties_a_folder_on_a_listing_that_ignores_the_marker() {
+        for (count, cap) in [(2, 1000), (6, 3)] {
+            let names: Vec<String> = (0..count).map(|i| format!("d/o{i}")).collect();
+            let (mut p, stored) = provider_on_a_listing_that_ignores_the_marker(names, cap).await;
+            p.rmdir_recursive("/d")
+                .await
+                .unwrap_or_else(|e| panic!("{count} objects, pages of {cap}: {e}"));
+            assert!(
+                stored.lock().unwrap().is_empty(),
+                "{count} objects, pages of {cap}: left {:?}",
+                stored.lock().unwrap()
+            );
+        }
+    }
+
+    /// A listing that goes back to a page before the marker looped forever:
+    /// the guard caught only a page ending exactly on the marker, and every
+    /// name was kept in memory meanwhile. A page with no name past the
+    /// marker now stops the delete with an error.
+    #[tokio::test]
+    async fn recursive_delete_stops_on_a_listing_that_goes_back() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = std::sync::Arc::clone(&calls);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = std::sync::Arc::clone(&counter);
+                async move {
+                    if req.method() != axum::http::Method::GET {
+                        return axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let n = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let page = if n.is_multiple_of(2) {
+                        r#"[{"name":"d/a","bytes":1},{"name":"d/b","bytes":1}]"#
+                    } else {
+                        r#"[{"name":"d/c","bytes":1},{"name":"d/d","bytes":1}]"#
+                    };
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(page))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "c".to_string();
+
+        let outcome = tokio::time::timeout(Duration::from_secs(10), p.rmdir_recursive("/d")).await;
+        let listings = calls.load(std::sync::atomic::Ordering::SeqCst);
+        let outcome = outcome
+            .unwrap_or_else(|_| panic!("the delete never stopped: {listings} listings in 10 s"));
+        let error = outcome.expect_err("a listing that goes back cannot be deleted through");
+        assert!(error.to_string().contains("did not advance"), "{error}");
+        assert_eq!(listings, 3, "the third page goes back and stops it");
     }
 
     /// The GUI's default listing path is `"."`, not `"/"`, and Swift turned that
@@ -2354,6 +2885,145 @@ mod tests {
         assert!(p
             .validate_request_target("https://other.example.net/v1/AUTH_a/container/file")
             .is_err());
+    }
+
+    #[test]
+    fn keystone_v2_tokens_url_does_not_append_the_suffix_twice() {
+        assert_eq!(
+            SwiftProvider::keystone_v2_tokens_url("https://authenticate.blomp.com"),
+            "https://authenticate.blomp.com/v2.0/tokens"
+        );
+        assert_eq!(
+            SwiftProvider::keystone_v2_tokens_url("https://authenticate.blomp.com/"),
+            "https://authenticate.blomp.com/v2.0/tokens"
+        );
+        assert_eq!(
+            SwiftProvider::keystone_v2_tokens_url("https://authenticate.blomp.com/v2.0"),
+            "https://authenticate.blomp.com/v2.0/tokens"
+        );
+        assert_eq!(
+            SwiftProvider::keystone_v2_tokens_url("https://authenticate.blomp.com/v2.0/tokens/"),
+            "https://authenticate.blomp.com/v2.0/tokens"
+        );
+    }
+
+    /// Blomp's tokens path has answered 301 to the same path with a trailing
+    /// slash. reqwest would turn that POST into a GET. We post again, with
+    /// the body, and we do not follow a 301 that leaves the host.
+    #[tokio::test]
+    async fn keystone_v2_reposts_a_same_origin_301_and_retries_an_off_host_one() {
+        use std::sync::{Arc, Mutex};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                        .await
+                        .unwrap_or_default();
+                    if method == axum::http::Method::POST {
+                        seen.lock()
+                            .unwrap()
+                            .push(format!("{method} {path} {}", body.len()));
+                    }
+                    if path == "/v2.0/tokens/"
+                        && method == axum::http::Method::POST
+                        && !body.is_empty()
+                    {
+                        let json = r#"{"access":{"token":{"id":"tok"},"serviceCatalog":[{"type":"object-store","endpoints":[{"publicURL":"http://127.0.0.1/v1/AUTH_a"}]}]}}"#;
+                        return axum::response::Response::builder()
+                            .status(200)
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(json))
+                            .unwrap();
+                    }
+                    if path == "/off/v2.0/tokens" {
+                        return axum::response::Response::builder()
+                            .status(301)
+                            .header(
+                                "location",
+                                "http://leak:hunter2@127.0.0.1:1/steal?token=abc#frag",
+                            )
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .status(301)
+                        .header("location", "/v2.0/tokens/")
+                        .body(axum::body::Body::empty())
+                        .unwrap()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+
+        let mut provider = SwiftProvider::new(SwiftConfig {
+            auth_url: format!("http://{addr}"),
+            username: "user".to_string(),
+            password: SecretString::from("pw".to_string()),
+            verify_cert: true,
+            allow_cleartext_storage_endpoint: true,
+        });
+        provider
+            .authenticate()
+            .await
+            .expect("same-origin 301 is re-posted");
+        let slash = log.lock().unwrap().clone();
+        assert_eq!(slash.len(), 2, "{slash:?}");
+        assert!(
+            slash[0].starts_with("POST /v2.0/tokens ")
+                && !slash[0].contains("/v2.0/tokens/")
+                && !slash[0].ends_with(" 0"),
+            "the first post must carry the JSON body, got {}",
+            slash[0]
+        );
+        assert!(
+            slash[1].starts_with("POST /v2.0/tokens/ ") && !slash[1].ends_with(" 0"),
+            "the redirect must be another POST with the body, got {}",
+            slash[1]
+        );
+        assert!(provider.storage_url().unwrap().contains("AUTH_a"));
+
+        log.lock().unwrap().clear();
+        let mut off = SwiftProvider::new(SwiftConfig {
+            auth_url: format!("http://{addr}/off"),
+            username: "user".to_string(),
+            password: SecretString::from("pw".to_string()),
+            verify_cert: true,
+            allow_cleartext_storage_endpoint: true,
+        });
+        let err = off
+            .authenticate()
+            .await
+            .expect_err("off-host 301 is not followed");
+        let text = err.to_string();
+        assert!(
+            text.contains("301"),
+            "the retry still answers 301, got: {text}"
+        );
+        // L5 of the 4.2.1 closeout: the 301 that is not followed names where
+        // it pointed, so the next intermittent one says whether it left the
+        // host. Origin and path only: no user, password, query or fragment.
+        assert!(
+            text.contains("http://127.0.0.1:1/steal"),
+            "the error must name the Location's origin and path, got: {text}"
+        );
+        for secret in ["leak", "hunter2", "token=abc", "frag", "\"pw\""] {
+            assert!(!text.contains(secret), "{secret} leaked into: {text}");
+        }
+        let off_log = log.lock().unwrap().clone();
+        assert_eq!(off_log.len(), 2, "one retry, not a follow: {off_log:?}");
+        assert!(
+            off_log
+                .iter()
+                .all(|line| line.starts_with("POST /off/v2.0/tokens ")),
+            "{off_log:?}"
+        );
     }
 
     // Live smoke (ignored): confirms Blomp host forces Keystone and accepts HTTP storage URL shape.

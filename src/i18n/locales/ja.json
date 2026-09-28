@@ -2399,7 +2399,8 @@
                 "rejectAllCalls": "すべてのツール呼び出しを拒否",
                 "rejectExecution": "ツールの実行を拒否",
                 "toggleDetails": "詳細を切替",
-                "allowSession": "このセッションで許可"
+                "allowSession": "このセッションで許可",
+                "nonAtomicReplace": "非アトミックな置き換え: ファイルが一瞬存在しなくなります"
             },
             "settings": {
                 "title": "AI設定",

@@ -1143,7 +1143,12 @@ impl FtpProvider {
                     .parent()
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| "/".to_string());
-                if let Some(entry) = self.parse_mlsd_entry(mlst_line.trim(), &parent) {
+                if let Some(mut entry) = self.parse_mlsd_entry(mlst_line.trim(), &parent) {
+                    // Facts without a size, which RFC 3659 allows: ask SIZE,
+                    // as below for a LIST row.
+                    if !entry.is_dir && super::ftp_listing::size_is_unreadable(&entry) {
+                        self.read_size_into(path, &mut entry).await;
+                    }
                     return Ok(entry);
                 }
             }
@@ -1178,11 +1183,19 @@ impl FtpProvider {
         // fix, it is the proven one put where all three surfaces reach it, and
         // the CLI helper goes away in the same change.
         if !entry.is_dir && entry.size == 0 {
-            if let Ok(size) = self.size_inner(path).await {
-                entry.size = size;
-            }
+            self.read_size_into(path, &mut entry).await;
         }
         Ok(entry)
+    }
+
+    /// Ask SIZE for `entry`'s size. What it answers is the file's size, so a
+    /// marker saying the listing could not read one no longer applies; when
+    /// SIZE fails, the entry is left as it was.
+    async fn read_size_into(&mut self, path: &str, entry: &mut RemoteEntry) {
+        if let Ok(size) = self.size_inner(path).await {
+            entry.size = size;
+            entry.metadata.remove(super::ftp_listing::SIZE_UNREADABLE);
+        }
     }
 
     async fn size_inner(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -5908,6 +5921,10 @@ mod rename_contract_tests {
         case_insensitive: bool,
         /// A write-only drop folder: no MLST/MLSD, and LIST is refused.
         listing_denied: bool,
+        /// MLST answers without a `size` fact.
+        mlst_without_size: bool,
+        /// SIZE is refused.
+        size_refused: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -5951,10 +5968,14 @@ mod rename_contract_tests {
                 "MLST" if argument == "/" || argument.is_empty() => {
                     "250-Listing /\r\n type=dir; /\r\n250 End\r\n".to_string()
                 }
+                "MLST" if present(&argument) && quirks.mlst_without_size => format!(
+                    "250-Listing {argument}\r\n type=file;modify=20240101000000; {argument}\r\n250 End\r\n"
+                ),
                 "MLST" if present(&argument) => format!(
                     "250-Listing {argument}\r\n type=file;size=3;modify=20240101000000; {argument}\r\n250 End\r\n"
                 ),
                 "MLST" => "550 No such file or directory\r\n".to_string(),
+                "SIZE" if quirks.size_refused => "550 SIZE not allowed\r\n".to_string(),
                 "SIZE" if present(&argument) => "213 3\r\n".to_string(),
                 "SIZE" => "550 No such file\r\n".to_string(),
                 "PASV" => {
@@ -6061,6 +6082,34 @@ mod rename_contract_tests {
             .await
             .expect("connect to the scripted server");
         (provider, log)
+    }
+
+    /// `stat` on a server whose MLST sends no `size` fact asks SIZE, as it
+    /// does for a LIST row, and the size it reads there is exact: the entry
+    /// carries no marker. It returned the 0 of the missing fact, which the
+    /// CLI's `--immutable` compared as a size. When SIZE is refused too, the
+    /// 0 stays, marked as a size that could not be read.
+    #[tokio::test]
+    async fn stat_reads_the_size_mlst_did_not_send() {
+        use crate::providers::ftp_listing::SIZE_UNREADABLE;
+        let quirks = Quirks {
+            mlst_without_size: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/a.txt"], quirks).await;
+        let entry = provider.stat("/a.txt").await.expect("stat");
+        assert_eq!(entry.size, 3, "{entry:?}");
+        assert!(!entry.metadata.contains_key(SIZE_UNREADABLE), "{entry:?}");
+
+        let quirks = Quirks {
+            mlst_without_size: true,
+            size_refused: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/a.txt"], quirks).await;
+        let entry = provider.stat("/a.txt").await.expect("stat");
+        assert_eq!(entry.size, 0, "{entry:?}");
+        assert!(entry.metadata.contains_key(SIZE_UNREADABLE), "{entry:?}");
     }
 
     /// RNTO onto an existing file replaces it on vsftpd, ProFTPD and
