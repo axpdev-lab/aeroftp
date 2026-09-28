@@ -866,13 +866,15 @@ impl StreamState {
 
     /// The connection closed without a terminal marker. Some Chat servers end
     /// that way after the finish_reason chunk; as the legacy reader did, a
-    /// finished text-only answer is accepted. A tool call still needs [DONE],
-    /// and an Anthropic message still needs message_stop.
+    /// text-only answer that finished with "stop" is accepted. Any other
+    /// reason ("tool_calls" whose deltas never came, "length") and any tool
+    /// call still need [DONE], and an Anthropic message still needs
+    /// message_stop.
     pub(crate) fn end_of_stream(&mut self, anthropic: bool) {
         let no_tool_calls = self.message["tool_calls"]
             .as_array()
             .is_none_or(|calls| calls.is_empty());
-        if !anthropic && self.reason.is_some() && no_tool_calls {
+        if !anthropic && self.reason.as_deref() == Some("stop") && no_tool_calls {
             self.complete = true;
         }
     }

@@ -900,6 +900,21 @@ fn empty_tool_calls_in_a_text_stream_do_not_require_done() {
     assert!(parsed.tool_calls.is_none());
 }
 
+#[test]
+fn a_tool_calls_finish_without_done_is_not_taken_for_text() {
+    let req = request("nvidia", "z-ai/glm-5.3");
+    let mut state = StreamState::default();
+    state
+        .ingest(
+            &json!({"choices":[{"delta":{"role":"assistant","content":"Calling"},"finish_reason":"tool_calls"}]}),
+            false,
+        )
+        .unwrap();
+    state.end_of_stream(false);
+    // The tool call deltas never arrived: this is not a finished answer.
+    assert!(state.finish(&req).is_err());
+}
+
 #[tokio::test]
 async fn anthropic_requests_reach_v1_messages_from_either_base_url_form() {
     let reply = json!({"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}).to_string();
