@@ -45,7 +45,7 @@
     "country-flag-icons": "^1.6.20",
     "dompurify": "^3.4.14",
     "lucide-react": "^1.0.1",
-    "monaco-editor": "^0.56.0",
+    "monaco-editor": "^0.57.0",
     "prismjs": "^1.30.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
