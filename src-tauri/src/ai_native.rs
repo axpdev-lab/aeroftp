@@ -866,7 +866,10 @@ impl StreamState {
     /// finished text-only answer is accepted. A tool call still needs [DONE],
     /// and an Anthropic message still needs message_stop.
     pub(crate) fn end_of_stream(&mut self, anthropic: bool) {
-        if !anthropic && self.reason.is_some() && self.message["tool_calls"].is_null() {
+        let no_tool_calls = self.message["tool_calls"]
+            .as_array()
+            .is_none_or(|calls| calls.is_empty());
+        if !anthropic && self.reason.is_some() && no_tool_calls {
             self.complete = true;
         }
     }

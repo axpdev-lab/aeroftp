@@ -875,3 +875,27 @@ fn responses_continuation_asks_for_reasoning_only_when_it_replays_some() {
     let body = crate::openai_responses::build_request_body(&continuation, false).unwrap();
     assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
 }
+
+#[test]
+fn empty_tool_calls_in_a_text_stream_do_not_require_done() {
+    let req = request("nvidia", "z-ai/glm-5.3");
+    let mut state = StreamState::default();
+    for (delta, reason) in [
+        (
+            json!({"role":"assistant","content":"All ","tool_calls":[]}),
+            None,
+        ),
+        (json!({"content":"done.","tool_calls":[]}), Some("stop")),
+    ] {
+        state
+            .ingest(
+                &json!({"choices":[{"delta":delta,"finish_reason":reason}]}),
+                false,
+            )
+            .unwrap();
+    }
+    state.end_of_stream(false);
+    let parsed = state.finish(&req).unwrap();
+    assert_eq!(parsed.content, "All done.");
+    assert!(parsed.tool_calls.is_none());
+}
