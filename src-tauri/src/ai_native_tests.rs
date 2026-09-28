@@ -824,3 +824,24 @@ async fn openrouter_native_requests_carry_attribution_headers() {
     assert!(head.contains("http-referer: https://aeroftp.app"), "{head}");
     assert!(head.contains("x-title: aeroftp"), "{head}");
 }
+
+#[test]
+fn provider_error_text_is_scrubbed_before_it_is_cut() {
+    // A key that straddles the 500-byte cut must not leave its prefix behind.
+    for key in [
+        "Bearer sk-proj-abcdefghijklmnopqrstuvwxyz0123456789",
+        "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789",
+        "nvapi-abcdefghijklmnopqrstuvwxyz0123456789",
+    ] {
+        for offset in 470..500 {
+            let body = format!("{} {key} rejected", "x".repeat(offset));
+            let detail = error_detail(&body);
+            assert!(detail.len() <= 500, "{offset}: {} bytes", detail.len());
+            assert!(
+                !detail.contains("proj-ab") && !detail.contains("nvapi-ab"),
+                "{offset}: {}",
+                &detail[detail.len().saturating_sub(40)..]
+            );
+        }
+    }
+}

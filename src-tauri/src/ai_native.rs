@@ -576,7 +576,9 @@ fn error_detail(body: &str) -> String {
             .map(str::to_owned)
     });
     let detail = message.unwrap_or_else(|| body.trim().to_owned());
-    crate::ai::sanitize_error_message(crate::ai::truncate_safe(&detail, 500))
+    // Scrub before cutting: a key cut at the boundary is too short for the
+    // patterns to recognise, and its prefix would reach the message.
+    crate::ai::truncate_safe(&crate::ai::sanitize_error_message(&detail), 500).to_owned()
 }
 
 /// POST to the provider's native endpoint with its authentication headers.
