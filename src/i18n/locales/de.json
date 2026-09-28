@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Alle Werkzeugaufrufe ablehnen",
                 "rejectExecution": "Werkzeugausführung ablehnen",
                 "toggleDetails": "Details ein-/ausblenden",
-                "allowSession": "Für diese Sitzung erlauben"
+                "allowSession": "Für diese Sitzung erlauben",
+                "nonAtomicReplace": "Nicht atomarer Ersatz: die Datei fehlt kurz"
             },
             "settings": {
                 "title": "KI-Einstellungen",

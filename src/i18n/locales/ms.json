@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Tolak semua panggilan alat",
                 "rejectExecution": "Tolak pelaksanaan alat",
                 "toggleDetails": "Togol butiran",
-                "allowSession": "Benarkan untuk sesi ini"
+                "allowSession": "Benarkan untuk sesi ini",
+                "nonAtomicReplace": "Penggantian bukan atom: fail hilang seketika"
             },
             "settings": {
                 "title": "Tetapan AI",

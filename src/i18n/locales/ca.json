@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Rebutjar totes les crides d'eines",
                 "rejectExecution": "Rebutjar l'execució de l'eina",
                 "toggleDetails": "Alternar detalls",
-                "allowSession": "Permet per a aquesta sessió"
+                "allowSession": "Permet per a aquesta sessió",
+                "nonAtomicReplace": "Substitució no atòmica: el fitxer desapareix un instant"
             },
             "settings": {
                 "title": "Configuració d'IA",

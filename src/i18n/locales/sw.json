@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Kataa wito zote za zana",
                 "rejectExecution": "Kataa utekelezaji wa zana",
                 "toggleDetails": "Onyesha/ficha maelezo",
-                "allowSession": "Ruhusu kwa kipindi hiki"
+                "allowSession": "Ruhusu kwa kipindi hiki",
+                "nonAtomicReplace": "Ubadilishaji si atomiki: faili haipo kwa muda mfupi"
             },
             "settings": {
                 "title": "Mipangilio ya AI",

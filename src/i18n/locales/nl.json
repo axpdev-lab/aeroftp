@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Alle tooloproepen afwijzen",
                 "rejectExecution": "Tooluitvoering afwijzen",
                 "toggleDetails": "Details in-/uitschakelen",
-                "allowSession": "Toestaan voor deze sessie"
+                "allowSession": "Toestaan voor deze sessie",
+                "nonAtomicReplace": "Niet-atomaire vervanging: het bestand is even afwezig"
             },
             "settings": {
                 "title": "AI-instellingen",

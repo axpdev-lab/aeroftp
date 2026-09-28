@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Afvis alle værktøjskald",
                 "rejectExecution": "Afvis værktøjsudførelse",
                 "toggleDetails": "Vis/skjul detaljer",
-                "allowSession": "Tillad for denne session"
+                "allowSession": "Tillad for denne session",
+                "nonAtomicReplace": "Ikke-atomisk udskiftning: filen mangler kortvarigt"
             },
             "settings": {
                 "title": "AI-indstillinger",

@@ -192,6 +192,31 @@ async fn seed(mock: &mut Mock) -> PathBuf {
     local
 }
 
+#[test]
+fn pin_source_mtime_stamps_the_file_instead_of_leaving_the_clock() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("local.bin");
+    std::fs::write(&path, b"x").unwrap();
+    pin_source_mtime(&path);
+}
+
+/// The Windows CI clock moves a freshly written file's mtime between the
+/// two samples the delta guard compares, and the transfer then refuses with
+/// `source_changed`. Pin the stamp so both samples are this value.
+fn pin_source_mtime(path: &std::path::Path) {
+    let stamp = filetime::FileTime::from_unix_time(1_700_000_000, 0);
+    filetime::set_file_mtime(path, stamp).expect("pin source mtime");
+    let modified = std::fs::metadata(path)
+        .unwrap()
+        .modified()
+        .expect("modified");
+    assert_eq!(
+        filetime::FileTime::from_system_time(modified).unix_seconds(),
+        1_700_000_000,
+        "the source mtime must be the stamp this test set, not a filesystem clock sample"
+    );
+}
+
 async fn seed_zero_signature(mock: &Mock) {
     let mut hash = BaselineHasher::new(SIZE).unwrap();
     let buf = vec![0u8; 1024 * 1024];
@@ -223,7 +248,11 @@ async fn s3_adapter_middle_append_and_successive_delta_have_independent_wire_rat
         .await
         .unwrap();
     file.write_all(b"edit").await.unwrap();
+    // Before the stamp, as on the append leg below: a write still in flight
+    // when the file is dropped could land after `pin_source_mtime`.
+    file.sync_all().await.unwrap();
     drop(file);
+    pin_source_mtime(&local);
     let seeded_len = std::fs::metadata(&local).unwrap().len();
     for (index, expected_wire) in [GRID, 9 * 1024 * 1024, 0].into_iter().enumerate() {
         if index == 1 {
@@ -262,6 +291,10 @@ async fn s3_adapter_middle_append_and_successive_delta_have_independent_wire_rat
                 seeded_len + 9 * 1024 * 1024,
                 "the 9 MiB append had not landed before the transfer planned over it"
             );
+            // The append just moved the mtime. Pin it again before the guard
+            // samples it twice, or a Windows clock tick between those samples
+            // is reported as source_changed.
+            pin_source_mtime(&local);
         }
         mock.seen.wire.store(0, Ordering::SeqCst);
         mock.seen.copy_headers.lock().unwrap().clear();

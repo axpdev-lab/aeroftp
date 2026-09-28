@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Check, X, ChevronDown, ChevronRight, Loader2, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel } from '../../types/tools';
+import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel, requestsNonAtomicReplace } from '../../types/tools';
 import { DiffPreview } from './DiffPreview';
 import { CodingPatchReview } from './CodingPatchReview';
 import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
@@ -56,6 +56,7 @@ const BatchToolItem: React.FC<{
     const [diffLoading, setDiffLoading] = useState(false);
     const [diffError, setDiffError] = useState<string | null>(null);
     const isEditTool = tc.toolName === 'local_edit' || tc.toolName === 'remote_edit';
+    const nonAtomicReplace = requestsNonAtomicReplace(tc);
     const isPatchTool = tc.toolName === 'coding_apply_patch';
     const isCheckpointRestoreTool = tc.toolName === 'coding_checkpoint_restore';
     const isGitMutationTool = tc.toolName === 'coding_git_stage' || tc.toolName === 'coding_git_commit';
@@ -128,6 +129,11 @@ const BatchToolItem: React.FC<{
                         <span className="text-gray-600">{'\u2039'}</span>
                         <span className="text-purple-300 font-mono truncate max-w-[160px]">{mainArg}</span>
                     </>
+                )}
+                {nonAtomicReplace && (
+                    <span className="text-yellow-400 text-[11px]">
+                        {'\u26A0'} {t('ai.toolApproval.nonAtomicReplace') || 'Non-atomic replace: the file is briefly missing'}
+                    </span>
                 )}
 
                 {/* Expand toggle */}

@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "모든 도구 호출 거부",
                 "rejectExecution": "도구 실행 거부",
                 "toggleDetails": "상세 정보 전환",
-                "allowSession": "이 세션 동안 허용"
+                "allowSession": "이 세션 동안 허용",
+                "nonAtomicReplace": "비원자적 교체: 파일이 잠시 사라집니다"
             },
             "settings": {
                 "title": "AI 설정",

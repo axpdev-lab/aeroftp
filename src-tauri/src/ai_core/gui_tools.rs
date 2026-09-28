@@ -33,6 +33,56 @@ fn guard_no_raw_crypt_write(
     state.guard_no_raw_crypt_write(op)
 }
 
+/// Publish the edited text staged at `local_temp` over `path` on the
+/// connected provider (AeroAgent `remote_edit`), the way the CLI `edit` and
+/// the MCP `aeroftp_edit` do: a temporary beside the file, then `replace`.
+///
+/// Asked first (G119): without an atomic replace the edit is refused before
+/// anything is written, unless `allow_non_atomic` is set and the backend's
+/// replace sets the previous file aside. An upload over the file in place,
+/// what this path did until 4.2.0, leaves a partial file when it breaks.
+///
+/// The replace puts a new file in the target's place, which the upload in
+/// place did not: a symbolic link is refused before anything is staged,
+/// and the mode of the file is set on the temporary before the replace. A
+/// mode that could not be set is reported through
+/// [`crate::providers::report_warning`] once the edit is done.
+async fn publish_remote_edit(
+    provider: &mut dyn crate::providers::StorageProvider,
+    local_temp: &str,
+    path: &str,
+    allow_non_atomic: bool,
+) -> Result<(), String> {
+    crate::providers::ensure_edit_can_replace(
+        provider,
+        path,
+        allow_non_atomic,
+        "`allow_non_atomic` true",
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    let original = crate::providers::inspect_edit_target(provider, path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let remote_temp = crate::ai_core::remote_tools::edit_temp_path(path);
+    if let Err(e) = provider.upload(local_temp, &remote_temp, None).await {
+        let _ = provider.delete(&remote_temp).await;
+        return Err(e.to_string());
+    }
+    let not_kept =
+        crate::providers::keep_edit_original(provider, &remote_temp, path, &original).await;
+    // `replace` and not `rename`: the destination exists by definition.
+    if let Err(e) = provider.replace(&remote_temp, path).await {
+        let _ = provider.delete(&remote_temp).await;
+        return Err(e.to_string());
+    }
+    if let Some(warning) = not_kept {
+        tracing::warn!("{warning}");
+        crate::providers::report_warning(warning);
+    }
+    Ok(())
+}
+
 pub async fn dispatch_gui_tool(
     ctx: &dyn crate::ai_core::tools::ToolCtx,
     tool_name: &str,
@@ -873,16 +923,26 @@ pub async fn dispatch_gui_tool(
             std::fs::write(&tmp_path, &new_content)
                 .map_err(|e| format!("Failed to write temp file: {}", e))?;
 
+            let allow_non_atomic = args
+                .get("allow_non_atomic")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            // What the publish could not keep (a mode `chmod` refused) is
+            // reported as a warning, and this call's own go in its answer:
+            // the GUI does not show the process queue.
+            let warnings = crate::providers::CallWarnings::default();
             let upload_result = if has_provider(&state).await {
                 let mut provider = state.provider.lock().await;
-                let provider = match provider.as_mut() {
-                    Some(p) => p,
-                    None => return Err("No active provider connection".into()),
-                };
-                provider
-                    .upload(&tmp_path, &path, None)
-                    .await
-                    .map_err(|e| e.to_string())
+                // No early return: the local temporary is removed below
+                // whatever happens here.
+                match provider.as_mut() {
+                    Some(p) => {
+                        let publish =
+                            publish_remote_edit(p.as_mut(), &tmp_path, &path, allow_non_atomic);
+                        warnings.scope(publish).await
+                    }
+                    None => Err("No active provider connection".to_string()),
+                }
             } else if has_ftp(&app_state).await {
                 let mut manager = app_state.ftp_manager.lock().await;
                 manager
@@ -897,12 +957,17 @@ pub async fn dispatch_gui_tool(
             upload_result?;
 
             let replaced = if replace_all { occurrences } else { 1 };
-            Ok(json!({
+            let mut answer = json!({
                 "success": true,
                 "message": format!("Replaced {} occurrence(s) in {}", replaced, path),
                 "occurrences": occurrences,
                 "replaced": replaced,
-            }))
+            });
+            let warnings = warnings.take();
+            if !warnings.is_empty() {
+                answer["warnings"] = json!(warnings);
+            }
+            Ok(answer)
 
         }
         _ => Err(tool_name.to_string()),
@@ -912,5 +977,178 @@ pub async fn dispatch_gui_tool(
         Ok(v) => Ok(v),
         Err(e) if e == tool_name => Err(ToolError::NotMigrated(e)),
         Err(e) => Err(ToolError::Exec(e)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::publish_remote_edit;
+    use crate::providers::edit_replace_tests::EditFake;
+
+    fn staged(text: &[u8]) -> tempfile::NamedTempFile {
+        let file = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(file.path(), text).expect("stage");
+        file
+    }
+
+    /// M2 of the 4.2.1 closeout: the default path asked for an atomic
+    /// replace and then uploaded over the file in place, so the answer it
+    /// had just checked was never used. It now stages a temporary beside the
+    /// file and publishes it with `replace`, as the CLI and MCP edits do.
+    #[tokio::test]
+    async fn remote_edit_publishes_a_temporary_with_replace() {
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+        let mut p = EditFake::new(true, false);
+        publish_remote_edit(&mut p, &local, "/t.txt", false)
+            .await
+            .expect("atomic backend");
+        assert_eq!(p.uploads.len(), 1, "{:?}", p.uploads);
+        assert_ne!(
+            p.uploads[0], "/t.txt",
+            "never an upload over the file itself"
+        );
+        assert_eq!(
+            p.replaces,
+            vec![(p.uploads[0].clone(), "/t.txt".to_string())]
+        );
+        assert_eq!(p.files.get("/t.txt").map(Vec::as_slice), Some(&b"new"[..]));
+        assert_eq!(
+            p.files.len(),
+            1,
+            "the temporary is gone: {:?}",
+            p.files.keys()
+        );
+    }
+
+    /// Without an atomic replace the default refuses before anything is
+    /// staged, and names the opt-in only where it can work.
+    #[tokio::test]
+    async fn remote_edit_refuses_a_backend_without_atomic_replace_before_it_uploads() {
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+        for sets_aside in [false, true] {
+            let mut p = EditFake::new(false, sets_aside);
+            let text = publish_remote_edit(&mut p, &local, "/t.txt", false)
+                .await
+                .unwrap_err();
+            assert!(p.uploads.is_empty(), "{:?}", p.uploads);
+            assert!(text.contains("Nothing was written"), "{text}");
+            assert_eq!(
+                text.contains("allow_non_atomic"),
+                sets_aside,
+                "the opt-in is named exactly where it works: {text}"
+            );
+            assert_eq!(p.files.get("/t.txt").map(Vec::as_slice), Some(&b"old"[..]));
+        }
+    }
+
+    /// The opt-in publishes on a set-aside backend and is refused, before
+    /// the upload, on one whose replace is its rename.
+    #[tokio::test]
+    async fn remote_edit_opt_in_is_gated_by_the_set_aside_capability() {
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+
+        let mut aside = EditFake::new(false, true);
+        publish_remote_edit(&mut aside, &local, "/t.txt", true)
+            .await
+            .expect("set-aside backend");
+        assert_eq!(aside.replaces.len(), 1);
+        assert_eq!(
+            aside.files.get("/t.txt").map(Vec::as_slice),
+            Some(&b"new"[..])
+        );
+
+        let mut rename_only = EditFake::new(false, false);
+        let text = publish_remote_edit(&mut rename_only, &local, "/t.txt", true)
+            .await
+            .unwrap_err();
+        assert!(
+            rename_only.uploads.is_empty() && rename_only.deleted.is_empty(),
+            "nothing may be written: uploads {:?}, deleted {:?}",
+            rename_only.uploads,
+            rename_only.deleted
+        );
+        assert!(text.contains("Nothing was written"), "{text}");
+        assert_eq!(
+            rename_only.files.get("/t.txt").map(Vec::as_slice),
+            Some(&b"old"[..])
+        );
+    }
+
+    /// M-A of the 4.2.1 closeout: the upload in place this path made until
+    /// 4.2.0 truncated the same file and kept its mode. The replace puts a
+    /// new file there, which on SFTP came back with the server default
+    /// (a 0600 `.env` became 0644). The mode is copied onto the temporary
+    /// before the replace.
+    #[tokio::test]
+    async fn remote_edit_keeps_the_mode_of_the_file_it_replaces() {
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+        let mut p = EditFake::new(true, false);
+        p.chmod = true;
+        p.modes.insert("/t.txt".to_string(), 0o600);
+
+        publish_remote_edit(&mut p, &local, "/t.txt", false)
+            .await
+            .expect("atomic backend");
+
+        assert_eq!(p.files.get("/t.txt").map(Vec::as_slice), Some(&b"new"[..]));
+        assert_eq!(
+            p.modes.get("/t.txt").copied(),
+            Some(0o600),
+            "the edited file must keep its mode, not the server default"
+        );
+    }
+
+    /// A chmod the server refuses leaves the edit done, and says so.
+    #[tokio::test]
+    async fn remote_edit_says_which_permissions_it_could_not_keep() {
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+        let mut p = EditFake::new(true, false);
+        p.chmod = true;
+        p.chmod_fails_with = Some("permission denied".to_string());
+        p.modes.insert("/t.txt".to_string(), 0o600);
+
+        let warnings = crate::providers::CallWarnings::default();
+        warnings
+            .scope(publish_remote_edit(&mut p, &local, "/t.txt", false))
+            .await
+            .expect("the edit itself is done");
+
+        assert_eq!(p.files.get("/t.txt").map(Vec::as_slice), Some(&b"new"[..]));
+        let taken = warnings.take();
+        assert!(
+            taken
+                .iter()
+                .any(|w| w.contains("0600") && w.contains("permission denied")),
+            "the warning must name the mode that was not kept and why: {taken:?}"
+        );
+    }
+
+    /// The replace would put a regular file in the link's place and leave
+    /// the file it points to unchanged: a link is refused before anything
+    /// is staged, and the refusal names the path to edit instead.
+    #[tokio::test]
+    async fn remote_edit_refuses_a_symlink_before_it_uploads() {
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+        let mut p = EditFake::new(true, false);
+        p.links.insert("/t.txt".to_string(), "real.txt".to_string());
+
+        let outcome = publish_remote_edit(&mut p, &local, "/t.txt", false).await;
+
+        assert!(
+            p.uploads.is_empty() && p.replaces.is_empty(),
+            "nothing may be staged over a link: {outcome:?}"
+        );
+        let text = outcome.unwrap_err();
+        assert!(
+            text.contains("symbolic link") && text.contains("/real.txt"),
+            "{text}"
+        );
+        assert_eq!(p.files.get("/t.txt").map(Vec::as_slice), Some(&b"old"[..]));
     }
 }

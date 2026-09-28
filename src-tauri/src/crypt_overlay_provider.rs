@@ -1153,6 +1153,10 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.supports_atomic_replace().await
     }
 
+    fn replace_sets_aside(&self) -> bool {
+        self.inner.replace_sets_aside()
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         let mut entry = self.inner.stat(&enc).await?;

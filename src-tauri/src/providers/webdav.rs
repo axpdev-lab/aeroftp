@@ -6278,6 +6278,7 @@ mod tests {
 
         // The first step asks, and the answer is no.
         assert!(!provider.supports_atomic_replace().await.expect("asked"));
+        assert!(!provider.replace_sets_aside());
 
         // The edit's steps, in its order.
         let temp = "/.sample.png.aeroftp-edit";

@@ -5333,8 +5333,9 @@ pub async fn provider_delete_dir(
             .await
             .map_err(|e| format!("Failed to delete directory: {}", e))?;
     } else {
-        provider
-            .rmdir(&path)
+        // Not recursive: only an empty directory, since `rmdir` itself takes
+        // the content along on several backends.
+        crate::providers::remove_empty_directory(provider.as_mut(), &path)
             .await
             .map_err(|e| format!("Failed to delete directory: {}", e))?;
     }

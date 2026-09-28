@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Tüm araç çağrılarını reddet",
                 "rejectExecution": "Araç çalıştırmayı reddet",
                 "toggleDetails": "Ayrıntıları aç/kapat",
-                "allowSession": "Bu oturum için izin ver"
+                "allowSession": "Bu oturum için izin ver",
+                "nonAtomicReplace": "Atomik olmayan değiştirme: dosya kısa süreliğine kaybolur"
             },
             "settings": {
                 "title": "AI Ayarları",

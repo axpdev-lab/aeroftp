@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Keeldu kõigist tööriistakutsetest",
                 "rejectExecution": "Keeldu tööriista käivitamisest",
                 "toggleDetails": "Lülita üksikasjad",
-                "allowSession": "Luba selles seansis"
+                "allowSession": "Luba selles seansis",
+                "nonAtomicReplace": "Mitteatomaarne asendamine: fail on hetkeks puudu"
             },
             "settings": {
                 "title": "AI seaded",

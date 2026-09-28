@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Rejeter tous les appels d'outils",
                 "rejectExecution": "Rejeter l'exécution de l'outil",
                 "toggleDetails": "Afficher/masquer les détails",
-                "allowSession": "Autoriser pour cette session"
+                "allowSession": "Autoriser pour cette session",
+                "nonAtomicReplace": "Remplacement non atomique : le fichier est brièvement absent"
             },
             "settings": {
                 "title": "Paramètres IA",

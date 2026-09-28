@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Zavrni vse klice orodij",
                 "rejectExecution": "Zavrni izvajanje orodja",
                 "toggleDetails": "Preklopi podrobnosti",
-                "allowSession": "Dovoli za to sejo"
+                "allowSession": "Dovoli za to sejo",
+                "nonAtomicReplace": "Neatomarna zamenjava: datoteka za trenutek manjka"
             },
             "settings": {
                 "title": "Nastavitve AI",

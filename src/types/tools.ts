@@ -31,6 +31,15 @@ export interface AgentToolCall {
     validation?: { valid: boolean; errors: string[]; warnings: string[] };
 }
 
+/**
+ * Whether a call asks `remote_edit` for the non-atomic replace
+ * (`allow_non_atomic`). Only a JSON `true` counts, as in the backend, which
+ * reads the argument with `as_bool` and no string coercion.
+ */
+export function requestsNonAtomicReplace(call: Pick<AgentToolCall, 'toolName' | 'args'>): boolean {
+    return call.toolName === 'remote_edit' && call.args.allow_non_atomic === true;
+}
+
 // Provider-agnostic tool definitions (works with all 21 protocols)
 export const AGENT_TOOLS: AITool[] = [
     // Safe: auto-execute
@@ -164,6 +173,7 @@ export const AGENT_TOOLS: AITool[] = [
             { name: 'find', type: 'string', description: 'Exact text to find (literal string, no regex)', required: true },
             { name: 'replace', type: 'string', description: 'Replacement text', required: true },
             { name: 'replace_all', type: 'boolean', description: 'Replace all occurrences (default: true)', required: false },
+            { name: 'allow_non_atomic', type: 'boolean', description: 'Only for a server whose replace sets the previous file aside (MEGA through the native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive): when true, the previous file is renamed aside, the new one is moved into its place, and the old one is then deleted, with a short moment with no file. Default false: such a server refuses the edit and nothing is written. Any other server that cannot replace a file in one step refuses the edit either way.', required: false },
         ],
         dangerLevel: 'medium',
     },

@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Tanggihan lahat ng tool calls",
                 "rejectExecution": "Tanggihan ang tool execution",
                 "toggleDetails": "I-toggle ang mga detalye",
-                "allowSession": "Payagan para sa session na ito"
+                "allowSession": "Payagan para sa session na ito",
+                "nonAtomicReplace": "Hindi atomikong pagpapalit: pansamantalang nawawala ang file"
             },
             "settings": {
                 "title": "AI Settings",

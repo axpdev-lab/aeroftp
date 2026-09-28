@@ -2453,7 +2453,8 @@
                 "rejectAllCalls": "Ukatu tresna-dei guztiak",
                 "rejectExecution": "Ukatu tresnaren exekuzioa",
                 "toggleDetails": "Txandakatu xehetasunak",
-                "allowSession": "Baimendu saio honetarako"
+                "allowSession": "Baimendu saio honetarako",
+                "nonAtomicReplace": "Ordezkapen ez-atomikoa: fitxategia labur batez falta da"
             },
             "settings": {
                 "title": "AI Ezarpenak",

@@ -528,6 +528,8 @@ aeroftp-cli rm sftp://user@host /var/www/old-file.txt
 aeroftp-cli rm sftp://user@host /var/www/old-folder/ -rf
 ```
 
+Without `-r`, `rm` removes a file, a link, or an empty directory. A directory that still holds anything (dotfiles included) is refused with exit code 9 and nothing is removed: on S3, Azure, Google Drive, OneDrive, Dropbox, pCloud, Box, MEGA, Filen, kDrive, Koofr, Jottacloud and WebDAV the provider's own delete of a folder takes its content along, so `-r` is the only way to ask for that. The served FTP `RMD`, SFTP `RMDIR`, the mount's `rmdir`, and the MCP and AeroAgent deletes without `recursive` follow the same rule.
+
 ### rmdir - Remove an Empty Directory
 
 ```bash
@@ -591,6 +593,8 @@ aeroftp-cli edit --profile "server" /var/www/index.html "Old Title" "New Title" 
 ```
 
 This is a scripted remote text edit flow, not an interactive `$EDITOR` session. The CLI downloads the remote UTF-8 file, applies a deterministic find/replace, then uploads the modified content.
+
+On a server that cannot put one file over another in a single step, `edit` refuses and writes nothing. Where that server's replace sets the previous file aside (MEGA through the native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive), `--allow-non-atomic` is the opt-in: the previous file is set aside, the new one is moved into its place, and the old one is then deleted. There is a short moment with no file, and the old one is not lost. On any other such server (for example Box, Internxt, 4shared, WorkDrive, MEGAcmd, Jottacloud, or SFTP without `posix-rename@openssh.com`) the opt-in is refused as well, before anything is written. The same switch is `allow_non_atomic` on the MCP `aeroftp_edit` tool and on AeroAgent `remote_edit`.
 
 ### cat - Print File Content
 

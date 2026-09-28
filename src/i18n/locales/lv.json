@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Noraidīt visus rīku izsaukumus",
                 "rejectExecution": "Noraidīt rīka izpildi",
                 "toggleDetails": "Pārslēgt detaļas",
-                "allowSession": "Atļaut šai sesijai"
+                "allowSession": "Atļaut šai sesijai",
+                "nonAtomicReplace": "Neatomiska aizstāšana: fails īslaicīgi pazūd"
             },
             "settings": {
                 "title": "AI iestatījumi",

@@ -2434,7 +2434,8 @@
                 "rejectAllCalls": "Rejeitar todas as chamadas de ferramentas",
                 "rejectExecution": "Rejeitar execução da ferramenta",
                 "toggleDetails": "Mostrar/ocultar detalhes",
-                "allowSession": "Permitir para esta sessão"
+                "allowSession": "Permitir para esta sessão",
+                "nonAtomicReplace": "Substituição não atómica: o ficheiro fica ausente por um instante"
             },
             "settings": {
                 "title": "Configurações de IA",

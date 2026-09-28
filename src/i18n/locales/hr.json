@@ -2453,7 +2453,8 @@
                 "rejectAllCalls": "Odbij sve pozive alata",
                 "rejectExecution": "Odbij izvršavanje alata",
                 "toggleDetails": "Prikaži/sakrij detalje",
-                "allowSession": "Dopusti za ovu sesiju"
+                "allowSession": "Dopusti za ovu sesiju",
+                "nonAtomicReplace": "Neatomska zamjena: datoteka nakratko nedostaje"
             },
             "settings": {
                 "title": "AI postavke",
