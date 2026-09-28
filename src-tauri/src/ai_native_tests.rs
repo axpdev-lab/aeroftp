@@ -595,3 +595,56 @@ fn responses_replay_drops_reasoning_without_encrypted_content() {
         .get("include")
         .is_none());
 }
+
+#[test]
+fn chat_deltas_skip_null_identity_and_keep_repeated_ids_whole() {
+    let req = request("nvidia", "z-ai/glm-5.3");
+    let mut state = StreamState::default();
+    for delta in [
+        json!({"role":"assistant","content":"","tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"inspect","arguments":""}}]}),
+        json!({"role":null,"content":null,"tool_calls":[{"index":0,"id":"call-1","type":null,"function":{"name":"inspect","arguments":"{\"path\":"}}]}),
+        json!({"role":null,"tool_calls":[{"index":0,"id":"","type":"function","function":{"name":null,"arguments":"\"f\"}"}}]}),
+    ] {
+        state
+            .ingest(
+                &json!({"choices":[{"delta":delta,"finish_reason":null}]}),
+                false,
+            )
+            .unwrap();
+    }
+    state
+        .ingest(
+            &json!({"choices":[{"delta":{"role":null},"finish_reason":"tool_calls"}]}),
+            false,
+        )
+        .unwrap();
+    state.complete = true;
+    let parsed = state.finish(&req).unwrap();
+    let call = &parsed.tool_calls.unwrap()[0];
+    assert_eq!(
+        (call.id.as_str(), call.name.as_str()),
+        ("call-1", "inspect")
+    );
+    assert_eq!(call.arguments, json!({"path":"f"}));
+    let native = parsed.native_turn.unwrap();
+    assert_eq!(native.payload["role"], "assistant");
+    assert_eq!(native.payload["tool_calls"][0]["id"], "call-1");
+
+    // A different non-empty identity is still a conflict, never a merge.
+    for conflicting in [
+        json!({"role":"user"}),
+        json!({"tool_calls":[{"index":0,"id":"call-2"}]}),
+        json!({"tool_calls":[{"index":0,"function":{"name":"delete"}}]}),
+    ] {
+        let mut state = StreamState::default();
+        state
+            .ingest(&json!({"choices":[{"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"inspect","arguments":"{}"}}]}}]}), false)
+            .unwrap();
+        assert!(
+            state
+                .ingest(&json!({"choices":[{"delta":conflicting}]}), false)
+                .is_err(),
+            "{conflicting}"
+        );
+    }
+}

@@ -640,14 +640,16 @@ fn merge_delta(target: &mut Value, delta: &Value) -> Result<(), String> {
                     continue;
                 }
                 let slot = object.entry(key.clone()).or_insert(Value::Null);
+                // SGLang-style servers repeat every field with null once it is
+                // set ("role": null after "assistant"): null carries nothing.
+                if value.is_null() {
+                    continue;
+                }
                 if key == "reasoning_details" {
                     // OpenRouter defines this as an ordered sequence of detail
                     // chunks, not tool-call fragments. Preserve complete objects
                     // (including optional index, repeated IDs, format and signed
                     // data) exactly as received for the next request.
-                    if value.is_null() {
-                        continue;
-                    }
                     let items = value.as_array().ok_or("Invalid reasoning details")?;
                     if !items.iter().all(Value::is_object) {
                         return Err("Invalid reasoning detail chunk".into());
@@ -658,8 +660,14 @@ fn merge_delta(target: &mut Value, delta: &Value) -> Result<(), String> {
                     slot.as_array_mut()
                         .ok_or("Inconsistent reasoning details")?
                         .extend(items.iter().cloned());
-                } else if matches!(key.as_str(), "role" | "type") && !slot.is_null() {
-                    if slot != value {
+                } else if matches!(key.as_str(), "role" | "type" | "id" | "name") {
+                    // Identity fields arrive whole and may be repeated in later
+                    // chunks: keep the first value, never concatenate, and
+                    // refuse a different one.
+                    let unset = |v: &Value| v.is_null() || v.as_str() == Some("");
+                    if unset(slot) {
+                        *slot = value.clone();
+                    } else if !unset(value) && slot != value {
                         return Err("Conflicting assistant delta identity".into());
                     }
                 } else {
