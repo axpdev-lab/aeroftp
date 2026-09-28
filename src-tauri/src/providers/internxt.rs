@@ -905,6 +905,21 @@ impl InternxtProvider {
         }
     }
 
+    /// The uuid of the folder at `path`, every name on the way matched
+    /// exactly, walked from the root without the cache (which holds the
+    /// spellings the fallback resolved). One listing per level.
+    async fn resolve_folder_uuid_exact(&mut self, path: &str) -> Result<String, ProviderError> {
+        let normalized = Self::normalize_path(path);
+        let mut current = self.root_folder_id.clone();
+        for part in normalized.split('/').filter(|part| !part.is_empty()) {
+            current = self
+                .find_subfolder_matching(&current, part, false)
+                .await?
+                .ok_or_else(|| ProviderError::NotFound(normalized.clone()))?;
+        }
+        Ok(current)
+    }
+
     /// The uuid of the folder at `resolved`, its own name matched exactly,
     /// for a step that destroys it: `rmdir /docs` beside only `Docs` removed
     /// `Docs`. The folders above it resolve as every lookup does.
@@ -2258,25 +2273,38 @@ impl StorageProvider for InternxtProvider {
         // hard (the trash listing remains empty after the call) so this
         // override mostly returns Ok(false). It is wired anyway because
         // other Internxt deployments and workspace plans do route through
-        // a recoverable trash, in which case the basename match + DELETE
+        // a recoverable trash, in which case the name match + DELETE
         // /storage/trash flow works correctly.
-        let basename = path
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .unwrap_or(path);
+        //
+        // The match is by exact name among the items trashed from the
+        // path's folder (resolved by exact names): by name alone, a purge of
+        // `/new/a.txt` could take a trashed `/old/a.txt`. Ok(false) when
+        // the folder is no longer there to tell which item is this path.
+        let resolved = self.resolve_path(path);
+        let (parent_path, basename) = Self::split_path(&resolved);
+        let (parent_path, basename) = (parent_path.to_string(), basename.to_string());
         if basename.is_empty() {
             return Ok(false);
         }
+        let parent_uuid = match self.resolve_folder_uuid_exact(&parent_path).await {
+            Ok(uuid) => uuid,
+            Err(ProviderError::NotFound(_)) => return Ok(false),
+            Err(e) => return Err(e),
+        };
         let trashed = self.list_trash().await?;
-        let target = trashed.iter().find(|e| e.name == basename).and_then(|e| {
-            let uuid = e.path.strip_prefix("[Trash]/")?.to_string();
-            if uuid.is_empty() {
-                None
-            } else {
-                Some((uuid, e.is_dir))
-            }
-        });
+        let from_parent = |e: &&RemoteEntry| e.metadata.get("parent_uuid") == Some(&parent_uuid);
+        let target = trashed
+            .iter()
+            .filter(from_parent)
+            .find(|e| e.name == basename)
+            .and_then(|e| {
+                let uuid = e.path.strip_prefix("[Trash]/")?.to_string();
+                if uuid.is_empty() {
+                    None
+                } else {
+                    Some((uuid, e.is_dir))
+                }
+            });
         let (uuid, is_dir) = match target {
             Some(t) => t,
             None => return Ok(false),
@@ -2805,6 +2833,16 @@ impl InternxtProvider {
                     .get("updatedAt")
                     .and_then(|v| v.as_str())
                     .map(String::from);
+                // The folder the item was trashed from: `folderUuid` on a
+                // file, `parentUuid` on a folder.
+                let mut metadata = HashMap::new();
+                if let Some(parent) = item
+                    .get("folderUuid")
+                    .or_else(|| item.get("parentUuid"))
+                    .and_then(|v| v.as_str())
+                {
+                    metadata.insert("parent_uuid".to_string(), parent.to_string());
+                }
                 if kind == "folders" {
                     let name = item
                         .get("plainName")
@@ -2824,7 +2862,7 @@ impl InternxtProvider {
                         is_symlink: false,
                         link_target: None,
                         mime_type: None,
-                        metadata: Default::default(),
+                        metadata,
                     });
                 } else {
                     let plain_name = item
@@ -2851,7 +2889,7 @@ impl InternxtProvider {
                         is_symlink: false,
                         link_target: None,
                         mime_type: None,
-                        metadata: Default::default(),
+                        metadata,
                     });
                 }
             }
@@ -2926,8 +2964,10 @@ mod tests {
     /// answers 403. A rename to a name starting with `failsquat` also puts
     /// another `a.txt` (`SQ`) in `src`, as a second client taking the name
     /// meanwhile. A delete removes, and `POST /files` (the metadata of an
-    /// upload) adds the file `NEW`. Returns a provider on it, the files,
-    /// and every change as `METHOD path`.
+    /// upload) adds the file `NEW`. A file held in the folder `trash:F` is in
+    /// the trash, trashed from `F`, and a purge from the trash removes it.
+    /// Returns a provider on it, the files, and every change as `METHOD
+    /// path`, a purge as `PURGE uuid`.
     #[allow(clippy::type_complexity)]
     async fn provider_on_drive(
         files: &[(&str, &str, &str)],
@@ -2977,6 +3017,7 @@ mod tests {
                 async move {
                     let method = req.method().clone();
                     let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
                     let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
                     let args: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
                     let mut items = items.lock().unwrap();
@@ -2989,6 +3030,23 @@ mod tests {
                     };
                     if method == axum::http::Method::GET {
                         let body = match path.as_str() {
+                            // The trash, files only: a file trashed from the
+                            // folder `F` is held with the folder `trash:F`.
+                            "/drive/storage/trash/paginated" => {
+                                let files: Vec<serde_json::Value> = items
+                                    .iter()
+                                    .filter(|_| query.contains("type=files"))
+                                    .filter_map(|f| {
+                                        let from = f.2.strip_prefix("trash:")?;
+                                        let (stem, ext) = f.1.rsplit_once('.').unwrap();
+                                        Some(serde_json::json!({
+                                            "uuid": f.0, "plainName": stem, "type": ext,
+                                            "folderUuid": from,
+                                        }))
+                                    })
+                                    .collect();
+                                serde_json::json!({ "result": files })
+                            }
                             p if p.ends_with("/folders") => {
                                 let parent = p
                                     .trim_start_matches("/drive/folders/v2/content/")
@@ -3016,6 +3074,12 @@ mod tests {
                             }
                         };
                         return axum::Json(body).into_response();
+                    }
+                    if path == "/drive/storage/trash" {
+                        let uuid = args["items"][0]["uuid"].as_str().unwrap_or("").to_string();
+                        seen.lock().unwrap().push(format!("PURGE {uuid}"));
+                        items.retain(|f| f.0 != uuid);
+                        return axum::Json(serde_json::json!({})).into_response();
                     }
                     seen.lock().unwrap().push(format!("{method} {path}"));
                     if method == axum::http::Method::DELETE {
@@ -3189,6 +3253,31 @@ mod tests {
         let mut cached: Vec<&str> = provider.dir_cache.keys().map(String::as_str).collect();
         cached.sort();
         assert_eq!(cached, ["/docsx"]);
+    }
+
+    /// The purge after a delete looked the trash up by name alone: with
+    /// `/src/a.txt` and `/dst/a.txt` both trashed, `delete_permanent` of
+    /// `/dst/a.txt` purged `/src/a.txt`, listed first. It takes the item
+    /// trashed from the path's folder, found by exact names; with no such
+    /// folder nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_takes_the_trashed_item_of_its_own_folder() {
+        let (mut provider, _, changes) = provider_on_drive(&[
+            ("TS", "a.txt", "trash:S"),
+            ("TD", "a.txt", "trash:D"),
+            ("TB", "b.txt", "trash:D"),
+        ])
+        .await;
+        assert!(provider
+            .delete_permanent("/dst/a.txt")
+            .await
+            .expect("purge"));
+        assert_eq!(*changes.lock().unwrap(), ["PURGE TD"]);
+        assert!(!provider
+            .delete_permanent("/DST/b.txt")
+            .await
+            .expect("no folder of that case"));
+        assert_eq!(changes.lock().unwrap().len(), 1);
     }
 
     /// Internxt is taken to keep `Docs` and `docs` as two folders: `rmdir

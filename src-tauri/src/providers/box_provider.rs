@@ -241,6 +241,15 @@ struct BoxTrashItem {
     size: Option<u64>,
     modified_at: Option<String>,
     trashed_at: Option<String>,
+    /// The folder the item was trashed from.
+    #[serde(default)]
+    parent: Option<BoxFolderRef>,
+}
+
+/// A folder named by its id, as Box nests it in an item (`parent`).
+#[derive(Debug, Deserialize)]
+struct BoxFolderRef {
+    id: String,
 }
 
 /// Box trash items collection
@@ -652,7 +661,7 @@ impl BoxProvider {
         loop {
             let token = self.get_token().await?;
             let url = format!(
-                "{}/folders/trash/items?fields=name,type,id,size,modified_at,trashed_at&limit={}&offset={}",
+                "{}/folders/trash/items?fields=name,type,id,size,modified_at,trashed_at,parent&limit={}&offset={}",
                 self.api_base(), PAGE_LIMIT, offset
             );
             let resp = self
@@ -678,6 +687,9 @@ impl BoxProvider {
                 metadata.insert("item_type".to_string(), item.item_type.clone());
                 if let Some(ref t) = item.trashed_at {
                     metadata.insert("trashed_at".to_string(), t.clone());
+                }
+                if let Some(ref parent) = item.parent {
+                    metadata.insert("parent_id".to_string(), parent.id.clone());
                 }
 
                 let name = crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name);
@@ -2120,23 +2132,36 @@ impl StorageProvider for BoxProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        // Box trash listing carries id and item_type ("file"|"folder") in
-        // metadata. Match by basename and dispatch to the existing inherent
-        // helper. Ok(false) when the trash search returns no match.
-        let basename = path
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .unwrap_or(path);
+        // Box trash listing carries id, item_type ("file"|"folder") and the
+        // folder the item was trashed from in metadata. Match by name among
+        // the items trashed from the path's folder and dispatch to the
+        // existing inherent helper: by name alone, a purge of `/new/a.txt`
+        // could take a trashed `/old/a.txt`. Ok(false) when nothing matches,
+        // or the folder is no longer there to tell which item is this path.
+        let normalized = Self::normalize_path(path);
+        let (parent_path, basename) = match normalized.rfind('/') {
+            Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
+            _ => ("/", normalized.trim_start_matches('/')),
+        };
         if basename.is_empty() {
             return Ok(false);
         }
+        let parent_id = match self.resolve_folder_id(parent_path).await {
+            Ok(id) => id,
+            Err(ProviderError::NotFound(_)) => return Ok(false),
+            Err(e) => return Err(e),
+        };
         let trashed = self.list_trash().await?;
-        let target = trashed.iter().find(|e| e.name == basename).and_then(|e| {
-            let id = e.metadata.get("id")?;
-            let kind = e.metadata.get("item_type")?;
-            Some((id.clone(), kind.clone()))
-        });
+        let from_parent = |e: &&RemoteEntry| e.metadata.get("parent_id") == Some(&parent_id);
+        let target = trashed
+            .iter()
+            .filter(from_parent)
+            .find(|e| e.name == basename)
+            .and_then(|e| {
+                let id = e.metadata.get("id")?;
+                let kind = e.metadata.get("item_type")?;
+                Some((id.clone(), kind.clone()))
+            });
         match target {
             Some((id, kind)) => {
                 self.permanent_delete_from_trash(&id, &kind).await?;
@@ -3575,6 +3600,26 @@ mod tests {
             *changes.lock().unwrap(),
             ["copy folder 1 B in 0", "copy file 11 g.txt in 0"]
         );
+    }
+
+    /// The purge after a delete looked the trash up by name alone: with
+    /// `/old/a.txt` and `/new/a.txt` both trashed, `delete_permanent` of
+    /// `/new/a.txt` purged `/old/a.txt`, listed first. It takes the item
+    /// trashed from the path's folder.
+    #[tokio::test]
+    async fn a_permanent_delete_takes_the_trashed_item_of_its_own_folder() {
+        let (mut p, _, changes) = provider_on_box(&[
+            ("1", "old", "0", "folder"),
+            ("2", "new", "0", "folder"),
+            ("11", "a.txt", "trash:1", "file"),
+            ("12", "a.txt", "trash:2", "file"),
+        ])
+        .await;
+        assert!(p.delete_permanent("/new/a.txt").await.expect("purge"));
+        assert_eq!(*changes.lock().unwrap(), ["purge file 12"]);
+        // No folder to tell which trashed `a.txt` is this path: none.
+        assert!(!p.delete_permanent("/gone/a.txt").await.expect("no folder"));
+        assert_eq!(changes.lock().unwrap().len(), 1);
     }
 
     /// A one-byte local file to upload.

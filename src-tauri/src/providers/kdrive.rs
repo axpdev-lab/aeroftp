@@ -176,6 +176,9 @@ struct TrashFile {
     last_modified: Option<i64>,
     deleted_at: Option<i64>,
     path: Option<String>,
+    /// The folder the item was trashed from.
+    #[serde(default)]
+    parent_id: Option<i64>,
 }
 
 /// Paginated response shape for trash listings
@@ -702,6 +705,27 @@ impl KDriveProvider {
         filename: &str,
     ) -> Result<Option<(i64, bool)>, ProviderError> {
         self.find_in_folder(folder_id, filename, true).await
+    }
+
+    /// The id of the folder at `path`, every name on the way matched
+    /// exactly, walked from the root without the cache (which holds the
+    /// spellings the fallback resolved). For a step that must not take a
+    /// folder of another case for the one named: one listing per level.
+    async fn resolve_folder_id_exact(&self, path: &str) -> Result<i64, ProviderError> {
+        let normalized = Self::normalize_path(path);
+        let mut current = self.root_file_id;
+        for part in normalized.split('/').filter(|part| !part.is_empty()) {
+            current = match self.find_exact_in_folder(current, part).await? {
+                Some((id, true)) => id,
+                _ => {
+                    return Err(ProviderError::NotFound(format!(
+                        "Folder '{}' not found in {}",
+                        part, normalized
+                    )))
+                }
+            };
+        }
+        Ok(current)
     }
 
     /// [`Self::find_file_in_folder`] without the fallback to another letter
@@ -1420,19 +1444,27 @@ impl StorageProvider for KDriveProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        // kDrive trash entries carry file_id in metadata. Match by basename
-        // and dispatch to the inherent permanently_delete_trash helper.
-        let basename = path
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .unwrap_or(path);
+        // kDrive trash entries carry file_id and the folder they were
+        // trashed from in metadata. Match by exact name among the items
+        // trashed from the path's folder, resolved by exact names, and
+        // dispatch to the inherent permanently_delete_trash helper: by name
+        // alone, a purge of `/new/a.txt` could take a trashed `/old/a.txt`.
+        // Ok(false) when nothing matches, or the folder is no longer there
+        // to tell which item is this path.
+        let resolved = self.resolve_path(path);
+        let (parent_path, basename) = Self::split_path(&resolved);
         if basename.is_empty() {
             return Ok(false);
         }
+        let parent_id = match self.resolve_folder_id_exact(parent_path).await {
+            Ok(id) => id.to_string(),
+            Err(ProviderError::NotFound(_)) => return Ok(false),
+            Err(e) => return Err(e),
+        };
         let trashed = self.list_trash().await?;
         let id = trashed
             .iter()
+            .filter(|e| e.metadata.get("parent_id") == Some(&parent_id))
             .find(|e| e.name == basename)
             .and_then(|e| e.metadata.get("file_id").cloned());
         match id {
@@ -2045,6 +2077,9 @@ impl KDriveProvider {
 
                 let mut metadata = std::collections::HashMap::new();
                 metadata.insert("file_id".to_string(), f.id.to_string());
+                if let Some(parent) = f.parent_id {
+                    metadata.insert("parent_id".to_string(), parent.to_string());
+                }
 
                 RemoteEntry {
                     name,
@@ -2677,6 +2712,85 @@ mod tests {
         let mut cached: Vec<&str> = provider.dir_cache.keys().map(String::as_str).collect();
         cached.sort();
         assert_eq!(cached, ["/Dstx"], "a sibling sharing the prefix stays");
+    }
+
+    /// A kDrive double whose root (id 1) holds the folders `folders` (id,
+    /// name) and whose trash holds `trashed` (id, name, the id of the folder
+    /// it was trashed from). Returns a provider on it and every purge as
+    /// `purge ID`.
+    async fn provider_on_kdrive_trash(
+        folders: &'static [(i64, &'static str)],
+        trashed: &'static [(i64, &'static str, i64)],
+    ) -> (
+        KDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let purges: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&purges);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let ok = |data: serde_json::Value| {
+                        axum::Json(serde_json::json!({ "result": "success", "data": data }))
+                            .into_response()
+                    };
+                    if req.method() == axum::http::Method::DELETE {
+                        let id = path.rsplit('/').next().unwrap_or("").to_string();
+                        seen.lock().unwrap().push(format!("purge {id}"));
+                        return ok(serde_json::json!({}));
+                    }
+                    match path.as_str() {
+                        "/3/drive/987654/files/1/files" => ok(serde_json::json!(folders
+                            .iter()
+                            .map(|(id, name)| serde_json::json!({ "id": id, "name": name, "type": "dir" }))
+                            .collect::<Vec<_>>())),
+                        "/3/drive/987654/trash" => ok(serde_json::json!(trashed
+                            .iter()
+                            .map(|(id, name, parent)| serde_json::json!({
+                                "id": id, "name": name, "type": "file", "parent_id": parent,
+                            }))
+                            .collect::<Vec<_>>())),
+                        _ => ok(serde_json::json!([])),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.root_file_id = 1;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, purges)
+    }
+
+    /// The purge after a delete looked the trash up by name alone: with
+    /// `/old/a.txt` and `/new/a.txt` both trashed, `delete_permanent` of
+    /// `/new/a.txt` purged `/old/a.txt`, listed first. It takes the item
+    /// trashed from the path's folder, found by exact names; with no such
+    /// folder nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_takes_the_trashed_item_of_its_own_folder() {
+        let (mut provider, purges) = provider_on_kdrive_trash(
+            &[(21, "old"), (22, "new")],
+            &[(31, "a.txt", 21), (32, "a.txt", 22)],
+        )
+        .await;
+        assert!(provider
+            .delete_permanent("/new/a.txt")
+            .await
+            .expect("purge"));
+        assert_eq!(*purges.lock().unwrap(), ["purge 32"]);
+        assert!(!provider
+            .delete_permanent("/NEW/a.txt")
+            .await
+            .expect("no folder of that case"));
+        assert_eq!(purges.lock().unwrap().len(), 1);
     }
 
     /// kDrive keeps `A.txt` and `a.txt` as two files, and the lookup falls
