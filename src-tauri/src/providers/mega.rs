@@ -476,6 +476,11 @@ impl StorageProvider for MegaCmdProvider {
         ProviderType::Mega
     }
 
+    /// `mega-ls -l` prints its date and time columns with no zone.
+    fn mtime_precision(&self) -> Option<std::time::Duration> {
+        None
+    }
+
     fn display_name(&self) -> String {
         self.config.email.clone()
     }
@@ -1425,6 +1430,7 @@ mod tests {
     async fn replace_moves_over_a_file_but_not_into_a_folder() {
         let (mut provider, log, _dir) = provider_on_stand_in_megacmd();
         assert!(!provider.supports_atomic_replace().await.unwrap());
+        assert!(!provider.replace_sets_aside());
         let outcome = provider.replace("/a.txt", "/d").await;
         assert!(outcome.is_err(), "{outcome:?}");
         assert!(moves(&log).is_empty(), "{:?}", moves(&log));

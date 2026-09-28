@@ -194,13 +194,14 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_edit",
-            description: "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories.",
+            description: "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories. On a server that cannot replace a file in one step the edit is refused and nothing is written. Where that server's replace sets the previous file aside (MEGA through the native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive), `allow_non_atomic` true accepts it: the previous file is set aside, the new one is moved into its place, and the old one is then deleted.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "path": { "type": "string", "description": "Remote file path (UTF-8 text)" },
                 "find": { "type": "string", "description": "Literal string to search for (not a regex)" },
                 "replace": { "type": "string", "description": "Replacement string" },
-                "first": { "type": "boolean", "description": "Replace only the first occurrence (default: false: replace all)" }
+                "first": { "type": "boolean", "description": "Replace only the first occurrence (default: false: replace all)" },
+                "allow_non_atomic": { "type": "boolean", "description": "Only for a server whose replace sets the previous file aside (MEGA through the native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive): when true, the previous file is set aside, the new one is moved into its place, and the old one is then deleted, with a short moment with no file. Default: false, which refuses the edit there and writes nothing. Any other server that cannot replace a file in one step refuses the edit either way." }
             }, "required": ["server", "path", "find", "replace"] }),
             category: RateCategory::Mutative,
         },
@@ -1718,6 +1719,7 @@ pub async fn execute_tool(
                             "remote_dir": remote_dir,
                             "direction": direction_raw,
                             "delta_policy": delta_policy.as_str(),
+                            "modify_window": report.modify_window,
                             "dry_run": true,
                             "summary_only": summary_only,
                             "planned": {
@@ -1830,6 +1832,7 @@ pub async fn execute_tool(
                             "remote_dir": remote_dir,
                             "direction": direction_raw,
                             "delta_policy": delta_policy.as_str(),
+                            "modify_window": report.modify_window,
                             "dry_run": false,
                             "summary_only": summary_only,
                             "summary": Value::Object(summary),
@@ -3004,9 +3007,22 @@ mod tests {
             .get("properties")
             .and_then(|v| v.as_object())
             .expect("properties");
-        for key in ["server", "path", "find", "replace", "first"] {
+        for key in [
+            "server",
+            "path",
+            "find",
+            "replace",
+            "first",
+            "allow_non_atomic",
+        ] {
             assert!(props.contains_key(key), "missing property: {key}");
         }
+        assert_eq!(
+            props["allow_non_atomic"]
+                .get("type")
+                .and_then(|v| v.as_str()),
+            Some("boolean")
+        );
         let required = t
             .input_schema
             .get("required")
@@ -3017,6 +3033,7 @@ mod tests {
             assert!(req.contains(&key), "missing required: {key}");
         }
         assert!(!req.contains(&"first"));
+        assert!(!req.contains(&"allow_non_atomic"));
         assert_eq!(t.category, super::RateCategory::Mutative);
     }
 

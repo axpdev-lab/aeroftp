@@ -1221,6 +1221,7 @@ mod tests {
         })
         .unwrap();
         assert!(!p.supports_atomic_replace().await.unwrap());
+        assert!(!p.replace_sets_aside());
     }
 
     #[test]

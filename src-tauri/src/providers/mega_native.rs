@@ -1982,6 +1982,13 @@ impl StorageProvider for MegaNativeProvider {
         Ok(false)
     }
 
+    /// Yes: the replace above renames the item at the destination aside,
+    /// moves the new one in, and only then deletes the old one, which is
+    /// what an edit's non-atomic opt-in needs.
+    fn replace_sets_aside(&self) -> bool {
+        true
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         self.ensure_nodes_loaded().await?;
         let handle = self.resolve_path(path)?;
@@ -2932,6 +2939,7 @@ mod tests {
             .await
             .expect("replace");
         assert_eq!(*commands.lock().unwrap(), ["a G", "m F B", "m G TRASH"]);
+        assert!(provider.replace_sets_aside(), "what the edit opt-in asks");
     }
 
     /// A replace puts one file in place of another. Onto a folder it set the

@@ -2845,6 +2845,7 @@ mod tests {
     async fn opendrive_does_not_claim_an_atomic_replace() {
         let (mut provider, _) = provider_for_file_move(false).await;
         assert!(!provider.supports_atomic_replace().await.unwrap());
+        assert!(!provider.replace_sets_aside());
     }
 
     #[tokio::test]

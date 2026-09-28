@@ -32,8 +32,6 @@ use crate::providers::{
     ChecksumCapability, ProviderError, ProviderType, RemoteEntry, StorageProvider,
 };
 
-use aerovault::v3::chunking::zstd_decompress_bounded;
-
 /// On-wire header: magic(4) + mode(1) + u64 LE plaintext_len(8) = 13 bytes.
 const COMPRESS_HEADER_MAGIC: &[u8; 4] = b"AECP";
 const COMPRESS_HEADER_LEN: usize = 4 + 1 + 8;
@@ -166,6 +164,60 @@ fn ensure_source_unchanged(plain_len: u64, read: u64) -> Result<(), ProviderErro
     }
 }
 
+/// A decoded zstd payload must be exactly the `plain_len` its header declares.
+/// A truncated frame is already an error from the decoder, but a complete frame
+/// that disagrees with the header (a corrupt or tampered object) was not: one
+/// that decoded shorter came back short with no error, and one that decoded
+/// longer was cut at `plain_len` on the streaming path and returned one byte
+/// long by `download_to_bytes`.
+fn ensure_decoded_len(plain_len: u64, decoded: u64) -> Result<(), ProviderError> {
+    if decoded > plain_len {
+        Err(ProviderError::TransferFailed(format!(
+            "compressed object decodes past the {plain_len} bytes its header declares: \
+             the object is corrupt"
+        )))
+    } else if decoded < plain_len {
+        Err(ProviderError::TransferFailed(format!(
+            "compressed object ended after {decoded} of the {plain_len} bytes its header \
+             declares: the object is corrupt"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+/// Streaming decode of a zstd payload into `out`, held to `plain_len`: at most
+/// one byte past it is decoded (anti-bomb), and a frame that ends before it or
+/// runs past it is an error instead of a short or silently cut file.
+fn decode_zstd_to_writer<R: std::io::BufRead, W: Write>(
+    payload: R,
+    out: &mut W,
+    plain_len: u64,
+) -> Result<(), ProviderError> {
+    let mut decoder = zstd::Decoder::with_buffer(payload)
+        .map_err(|e| ProviderError::TransferFailed(format!("zstd decoder: {e}")))?;
+    let decoded = std::io::copy(&mut (&mut decoder).take(plain_len.saturating_add(1)), out)
+        .map_err(|e| ProviderError::TransferFailed(format!("decompress: {e}")))?;
+    ensure_decoded_len(plain_len, decoded)
+}
+
+/// In-memory decode of a zstd payload for `download_to_bytes`, through the same
+/// size-held path as the streaming download.
+fn decode_zstd_to_bytes(payload: &[u8], plain_len: u64) -> Result<Vec<u8>, ProviderError> {
+    // The header is the object's own claim: a crafted one declaring u64::MAX
+    // would leave the decode below unbounded, so the in-memory path keeps the
+    // cap of every other in-memory download.
+    if plain_len > crate::providers::MAX_DOWNLOAD_TO_BYTES {
+        return Err(ProviderError::TransferFailed(format!(
+            "compressed object declares {plain_len} bytes, above the in-memory download limit of {} bytes",
+            crate::providers::MAX_DOWNLOAD_TO_BYTES
+        )));
+    }
+    let mut out = Vec::with_capacity(plain_len.min(1 << 20) as usize);
+    decode_zstd_to_writer(payload, &mut out, plain_len)?;
+    Ok(out)
+}
+
 /// Write the object to upload for `local_path`: the header followed by either
 /// the zstd frame or the raw bytes, whichever is smaller. Streams through temp
 /// files, so memory stays bounded regardless of file size.
@@ -258,6 +310,10 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.provider_type()
     }
 
+    fn mtime_precision(&self) -> Option<std::time::Duration> {
+        self.inner.mtime_precision()
+    }
+
     fn display_name(&self) -> String {
         format!("{}+compress", self.inner.display_name())
     }
@@ -336,11 +392,7 @@ impl StorageProvider for CompressOverlayProvider {
                     .map_err(|e| ProviderError::TransferFailed(format!("copy stored: {e}")))?;
             }
             WirePlan::Zstd(plain_len) => {
-                // Streaming decode, output capped at plain_len (bounded, anti-bomb).
-                let mut decoder = zstd::Decoder::new(std::io::BufReader::new(wire))
-                    .map_err(|e| ProviderError::TransferFailed(format!("zstd decoder: {e}")))?;
-                std::io::copy(&mut (&mut decoder).take(plain_len), &mut out)
-                    .map_err(|e| ProviderError::TransferFailed(format!("decompress: {e}")))?;
+                decode_zstd_to_writer(std::io::BufReader::new(wire), &mut out, plain_len)?;
             }
         }
         out.flush()
@@ -359,8 +411,7 @@ impl StorageProvider for CompressOverlayProvider {
                 Ok(wire[start.min(wire.len())..end].to_vec())
             }
             WirePlan::Zstd(plain_len) => {
-                zstd_decompress_bounded(&wire[COMPRESS_HEADER_LEN..], plain_len)
-                    .map_err(|e| ProviderError::TransferFailed(format!("decompress: {e}")))
+                decode_zstd_to_bytes(&wire[COMPRESS_HEADER_LEN..], plain_len)
             }
         }
     }
@@ -406,6 +457,10 @@ impl StorageProvider for CompressOverlayProvider {
 
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
         self.inner.supports_atomic_replace().await
+    }
+
+    fn replace_sets_aside(&self) -> bool {
+        self.inner.replace_sets_aside()
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -459,6 +514,26 @@ impl StorageProvider for CompressOverlayProvider {
 
 #[cfg(test)]
 mod tests {
+
+    /// The in-memory decode trusted the header's plain length: a frame whose
+    /// header declares more than the in-memory limit is refused before any
+    /// byte is decoded.
+    #[test]
+    fn an_in_memory_decode_refuses_a_declared_length_past_the_limit() {
+        let frame = zstd::encode_all(&b"small"[..], 3).unwrap();
+        let err = decode_zstd_to_bytes(&frame, u64::MAX).expect_err("u64::MAX is refused");
+        assert!(
+            err.to_string().contains("in-memory download limit"),
+            "{err}"
+        );
+        let err = decode_zstd_to_bytes(&frame, crate::providers::MAX_DOWNLOAD_TO_BYTES + 1)
+            .expect_err("one past the limit is refused");
+        assert!(
+            err.to_string().contains("in-memory download limit"),
+            "{err}"
+        );
+        assert_eq!(decode_zstd_to_bytes(&frame, 5).unwrap(), b"small");
+    }
     use super::*;
     use aerovault::v3::chunking::zstd_compress;
 
@@ -540,11 +615,59 @@ mod tests {
             WirePlan::Zstd(len) => {
                 assert_eq!(len, plain.len() as u64);
                 let out =
-                    zstd_decompress_bounded(&wire[COMPRESS_HEADER_LEN..], len).expect("decompress");
+                    decode_zstd_to_bytes(&wire[COMPRESS_HEADER_LEN..], len).expect("decompress");
                 assert_eq!(out, plain);
             }
             other => panic!("expected Zstd, got {other:?}"),
         }
+    }
+
+    // A complete zstd frame that disagrees with the length its header declares
+    // (a corrupt or tampered object) is refused on both download paths. Before,
+    // a frame that decoded shorter came back short with no error, and one that
+    // decoded longer was cut at the declared length by the streaming download
+    // and returned one byte long by download_to_bytes.
+    #[test]
+    fn a_zstd_payload_that_disagrees_with_its_header_is_refused() {
+        let plain = b"hello aerocompress world, this will be compressed a bit";
+        let frame = zstd_compress(plain, 3).expect("compress");
+        let n = plain.len() as u64;
+
+        // Truthful header: both paths return the plaintext.
+        assert_eq!(decode_zstd_to_bytes(&frame, n).expect("exact"), plain);
+        let mut streamed = Vec::new();
+        decode_zstd_to_writer(&frame[..], &mut streamed, n).expect("exact");
+        assert_eq!(streamed, plain);
+
+        for (declared, expected) in [
+            (n + 5, format!("ended after {n} of the {} bytes", n + 5)),
+            (n - 5, format!("decodes past the {} bytes", n - 5)),
+            (
+                crate::providers::MAX_DOWNLOAD_TO_BYTES,
+                format!(
+                    "ended after {n} of the {} bytes",
+                    crate::providers::MAX_DOWNLOAD_TO_BYTES
+                ),
+            ),
+        ] {
+            let err = decode_zstd_to_bytes(&frame, declared)
+                .expect_err("in memory")
+                .to_string();
+            assert!(err.contains(&expected), "declared {declared}: {err}");
+            let err = decode_zstd_to_writer(&frame[..], &mut Vec::new(), declared)
+                .expect_err("streaming")
+                .to_string();
+            assert!(err.contains(&expected), "declared {declared}: {err}");
+        }
+        // Past the in-memory limit only the streaming path decodes, and it
+        // still reports the short payload.
+        let err = decode_zstd_to_writer(&frame[..], &mut Vec::new(), u64::MAX)
+            .expect_err("streaming")
+            .to_string();
+        assert!(
+            err.contains(&format!("ended after {n} of the {} bytes", u64::MAX)),
+            "{err}"
+        );
     }
 
     #[test]

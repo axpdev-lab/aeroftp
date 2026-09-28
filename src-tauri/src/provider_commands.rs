@@ -1798,6 +1798,13 @@ pub struct ApplyCryptOverlayParams {
     pub password: String,
     /// rclone-crypt salt (ignored by aerocrypt, which reads its remote config).
     pub salt: Option<String>,
+    /// rclone-crypt: whether `password` / `salt` are as typed (`"clear"`) or
+    /// rclone-obscured (`"obscured"`). Absent for a caller that does not know,
+    /// which gets the guarded automatic reading (`rclone_crypt::resolve_crypt_password`).
+    #[serde(default)]
+    pub password_form: Option<String>,
+    #[serde(default)]
+    pub salt_form: Option<String>,
     /// Optional AeroCrypt keyfile path (Tier 1 second factor). Resolved to its
     /// digest here, fail-closed: an unreadable file is an error, never a silent
     /// password-only unlock.
@@ -1812,6 +1819,55 @@ pub struct ApplyCryptOverlayParams {
     /// create path uses the public constant instead of a random per-vault salt.
     #[serde(default)]
     pub use_default_salt: Option<bool>,
+}
+
+type CryptSecretForms = (
+    Option<crate::rclone_crypt::CryptSecretForm>,
+    Option<crate::rclone_crypt::CryptSecretForm>,
+);
+
+/// A saved profile by id from the open vault, `None` when the vault is not
+/// open or no profile has that id.
+fn saved_profile_by_id(profile_id: &str) -> Option<serde_json::Value> {
+    let store = crate::credential_store::CredentialStore::from_cache()?;
+    crate::user_partitions::mcp_list_active_server_profiles(&store)
+        .ok()?
+        .into_iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+}
+
+/// The forms `provider_apply_crypt_overlay` reads an rclone-crypt password and
+/// salt in: the caller's when it states them (typed in the unlock dialog),
+/// otherwise the saved profile's, read here rather than trusted from the
+/// renderer, by the rule every other reader uses
+/// ([`crate::rclone_crypt::crypt_secret_forms`]). A connection that is not a
+/// saved profile has none recorded, and gets the documented guess. A saved
+/// profile that cannot be read is refused: guessing there would open a
+/// recorded-clear secret that happens to decode with a weak key. AeroCrypt
+/// has no forms, so nothing is looked up for it.
+fn apply_overlay_secret_forms(
+    kind: &str,
+    stated: CryptSecretForms,
+    profile_id: Option<&str>,
+    saved_profile: impl FnOnce(&str) -> Option<serde_json::Value>,
+) -> Result<CryptSecretForms, String> {
+    if kind != "rclone-crypt" {
+        return Ok(stated);
+    }
+    let (Some(_), Some(_)) = stated else {
+        let Some(id) = profile_id else {
+            return Ok(stated);
+        };
+        let profile = saved_profile(id).ok_or_else(|| {
+            "the saved profile of this rclone-crypt overlay could not be read, so how its \
+             password and salt are written is unknown, and AeroFTP does not guess. Unlock \
+             the vault and connect again"
+                .to_string()
+        })?;
+        let saved = crate::rclone_crypt::crypt_secret_forms(&profile);
+        return Ok((stated.0.or(saved.0), stated.1.or(saved.1)));
+    };
+    Ok(stated)
 }
 
 /// Apply a crypt overlay (rclone-crypt or AeroCrypt) to the live connection in
@@ -1856,6 +1912,15 @@ pub async fn provider_apply_crypt_overlay(
     };
 
     let with_header = params.with_header.unwrap_or(false);
+    let (password_form, salt_form) = apply_overlay_secret_forms(
+        &params.kind,
+        (
+            crate::rclone_crypt::CryptSecretForm::parse(params.password_form.as_deref()),
+            crate::rclone_crypt::CryptSecretForm::parse(params.salt_form.as_deref()),
+        ),
+        params.profile_id.as_deref(),
+        saved_profile_by_id,
+    )?;
     let binding = crate::crypt_compare::OverlayUnlockParams {
         kind: params.kind,
         remote_scope: params.remote_scope,
@@ -1868,6 +1933,8 @@ pub async fn provider_apply_crypt_overlay(
         local_config_json,
         local_config_salt,
         with_header,
+        password_form,
+        salt_form,
     };
     let salt = params.salt.unwrap_or_default();
     let use_default_salt = params.use_default_salt;
@@ -4091,18 +4158,10 @@ async fn provider_download_folder_inner(
                 let local_p = std::path::Path::new(&entry.local_path);
                 if let Ok(local_meta) = std::fs::metadata(local_p) {
                     if local_meta.is_file() {
-                        let remote_modified = entry.modified.as_ref().and_then(|s| {
-                            let clean = s.strip_suffix('Z').unwrap_or(s);
-                            chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                                .or_else(|_| {
-                                    chrono::NaiveDateTime::parse_from_str(
-                                        clean,
-                                        "%Y-%m-%dT%H:%M:%S",
-                                    )
-                                })
-                                .ok()
-                                .map(|ndt| ndt.and_utc())
-                        });
+                        let remote_modified = entry
+                            .modified
+                            .as_deref()
+                            .and_then(crate::parse_remote_datetime);
                         if crate::should_skip_file_download(
                             &file_exists_action,
                             remote_modified,
@@ -4535,8 +4594,10 @@ async fn provider_upload_folder_inner(
                         for entry in entries.into_iter().filter(|entry| !entry.is_dir) {
                             let fallback_path =
                                 format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
-                            let modified =
-                                crate::parse_remote_modified_datetime(entry.modified.as_deref());
+                            let modified = entry
+                                .modified
+                                .as_deref()
+                                .and_then(crate::parse_remote_datetime);
                             remote_index.insert(fallback_path.clone(), (entry.size, modified));
                             if entry.path != fallback_path {
                                 remote_index.insert(entry.path, (entry.size, modified));
@@ -5306,8 +5367,9 @@ pub async fn provider_delete_dir(
             .await
             .map_err(|e| format!("Failed to delete directory: {}", e))?;
     } else {
-        provider
-            .rmdir(&path)
+        // Not recursive: only an empty directory, since `rmdir` itself takes
+        // the content along on several backends.
+        crate::providers::remove_empty_directory(provider.as_mut(), &path)
             .await
             .map_err(|e| format!("Failed to delete directory: {}", e))?;
     }
@@ -7283,25 +7345,10 @@ pub async fn provider_compare_directories(
             } else {
                 format!("{}/{}", remote_path, relative_path.trim_start_matches('/'))
             };
-            let modified = entry.mtime.and_then(|s| {
-                chrono::DateTime::parse_from_rfc3339(&s)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .ok()
-                    .or_else(|| {
-                        let clean = s.strip_suffix('Z').unwrap_or(&s);
-                        chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
-                            .or_else(|_| {
-                                chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                            })
-                            .ok()
-                            .map(|dt| {
-                                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                                    dt,
-                                    chrono::Utc,
-                                )
-                            })
-                    })
-            });
+            let modified = entry
+                .mtime
+                .as_deref()
+                .and_then(crate::parse_remote_datetime);
 
             let file_info = FileInfo {
                 name,
@@ -7377,6 +7424,11 @@ pub async fn provider_compare_directories(
                 crate::SCAN_INCOMPLETE_MARKER
             ));
         }
+        // Read after the scan: an FTP session whose MLSD broke during it has
+        // fallen back to LIST, and its dates stopped being comparable.
+        options.modify_window =
+            crate::sync_core::mtime::ModifyWindow::against_provider(None, provider.as_ref());
+        info!("Provider compare: {}", options.modify_window.describe());
     }
 
     // A scan that missed a part of the tree it cannot name refuses the run, and
@@ -13301,25 +13353,10 @@ async fn walk_compare_remote_serially(
                 continue;
             }
 
-            let modified = entry.modified.and_then(|s| {
-                chrono::DateTime::parse_from_rfc3339(&s)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .ok()
-                    .or_else(|| {
-                        let clean = s.strip_suffix('Z').unwrap_or(&s);
-                        chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
-                            .or_else(|_| {
-                                chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                            })
-                            .ok()
-                            .map(|dt| {
-                                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                                    dt,
-                                    chrono::Utc,
-                                )
-                            })
-                    })
-            });
+            let modified = entry
+                .modified
+                .as_deref()
+                .and_then(crate::parse_remote_datetime);
 
             let file_info = crate::sync::FileInfo {
                 name: entry.name.clone(),
@@ -13457,6 +13494,66 @@ pub(crate) fn bound_compare_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The overlay IPC reads the forms from the saved profile when the caller
+    /// states none, refuses an rclone-crypt profile it cannot read instead of
+    /// guessing, keeps a form the caller states, and looks nothing up for
+    /// AeroCrypt or for a connection that is not a saved profile.
+    #[test]
+    fn apply_overlay_forms_come_from_the_saved_profile_or_the_apply_is_refused() {
+        use crate::rclone_crypt::CryptSecretForm::{Clear, ImportedUnrecorded, Obscured};
+        let never = |_: &str| -> Option<serde_json::Value> { panic!("no lookup expected") };
+        let bound = serde_json::json!({
+            "id": "p1",
+            "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt",
+                                 "passwordForm": "obscured", "saltForm": "clear"}
+        });
+
+        let found = apply_overlay_secret_forms("rclone-crypt", (None, None), Some("p1"), |_| {
+            Some(bound.clone())
+        });
+        assert_eq!(found, Ok((Some(Obscured), Some(Clear))));
+
+        let stated_wins =
+            apply_overlay_secret_forms("rclone-crypt", (Some(Clear), None), Some("p1"), |_| {
+                Some(bound.clone())
+            });
+        assert_eq!(stated_wins, Ok((Some(Clear), Some(Clear))));
+
+        let e = apply_overlay_secret_forms("rclone-crypt", (None, None), Some("gone"), |_| None)
+            .unwrap_err();
+        assert!(e.contains("does not guess"), "{e}");
+
+        let imported = serde_json::json!({
+            "id": "p2",
+            "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt"},
+            "options": {"rcloneCryptOverlayName": "vault"}
+        });
+        assert_eq!(
+            apply_overlay_secret_forms("rclone-crypt", (None, None), Some("p2"), |_| {
+                Some(imported.clone())
+            }),
+            Ok((Some(ImportedUnrecorded), Some(ImportedUnrecorded)))
+        );
+
+        assert_eq!(
+            apply_overlay_secret_forms(
+                "rclone-crypt",
+                (Some(Clear), Some(Obscured)),
+                Some("p1"),
+                never
+            ),
+            Ok((Some(Clear), Some(Obscured)))
+        );
+        assert_eq!(
+            apply_overlay_secret_forms("rclone-crypt", (None, None), None, never),
+            Ok((None, None))
+        );
+        assert_eq!(
+            apply_overlay_secret_forms("aerocrypt", (None, None), Some("p1"), never),
+            Ok((None, None))
+        );
+    }
 
     /// The same derived keys under another naming mode. The mode is what
     /// decides how a directory is spelled on the wire, which is what the two

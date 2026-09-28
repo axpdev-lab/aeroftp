@@ -224,7 +224,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 ### Internxt Drive
 - **Auth**: email + password (no OAuth). Optional TOTP 2FA.
 - **Encryption**: zero-knowledge, end-to-end AES-256-CTR. BIP39 mnemonic derived from password.
-- **API**: \`https://api.internxt.com\` (drive) + \`https://gateway.internxt.com\` (network/storage).
+- **API**: \`https://gateway.internxt.com\` (drive under /drive, network/storage under /network).
 - **Features**: E2E encrypted upload/download, folder hierarchy, trash (soft delete), storage quota.
 - **Limits**: Free plan 1GB. Files encrypted client-side before upload.
 

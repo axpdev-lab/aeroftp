@@ -14,6 +14,7 @@ use crate::error_correction::{
     ERROR_CORRECTION_DEFAULT_PCT, ERROR_CORRECTION_MAX_PCT, ERROR_CORRECTION_MIN_PCT,
 };
 use crate::providers::{ProviderError, ProviderTransferExecutorKind, StorageProvider};
+use crate::sync_core::mtime::ModifyWindow;
 use crate::sync_core::scan::{
     scan_local_tree_checked, scan_remote_tree_checked, ScanCompleteness, ScanOptions,
 };
@@ -38,10 +39,6 @@ static MULTI_PATH_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> =
 /// destination from two simultaneous renames.
 static ATOMIC_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> =
     std::sync::LazyLock::new(|| Mutex::new(()));
-
-/// Tolerance for timestamp comparison (seconds)
-/// Accounts for filesystem and timezone differences
-const TIMESTAMP_TOLERANCE_SECS: i64 = 30;
 
 /// Status of a file comparison
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -124,6 +121,10 @@ pub struct CompareSummary {
 pub struct CompareReport {
     pub differences: Vec<FileComparison>,
     pub summary: CompareSummary,
+    /// How modification times were compared: within a window, or not at all
+    /// (size only, with the reason), for a frontend to state the size-only
+    /// case. The Compare and Plan views do not show it yet.
+    pub modify_window: ModifyWindow,
 }
 
 fn default_error_correction_pct() -> u32 {
@@ -261,6 +262,11 @@ pub struct CompareOptions {
     /// that re-includes a path the configured list excludes survives both.
     #[serde(skip)]
     pub aeroignore: Option<std::sync::Arc<crate::sync_ignore::AeroIgnore>>,
+    /// The same-instant window for this pair of stores, set by the compare
+    /// command from the two sides' precision
+    /// ([`ModifyWindow::resolve`]); never taken from the frontend.
+    #[serde(skip)]
+    pub modify_window: ModifyWindow,
 }
 
 impl CompareOptions {
@@ -328,6 +334,7 @@ impl Default for CompareOptions {
             max_age_secs: None,
             backup_dir: None,
             aeroignore: None,
+            modify_window: ModifyWindow::default(),
         }
     }
 }
@@ -632,6 +639,9 @@ pub enum FileOutcome {
 /// Aggregated counters returned by [`sync_tree_core`].
 #[derive(Debug, Clone, Default)]
 pub struct SyncReport {
+    /// How modification times were compared on this run (see
+    /// [`ModifyWindow`]); size only is stated, never silent.
+    pub modify_window: ModifyWindow,
     pub uploaded: u32,
     pub downloaded: u32,
     pub deleted: u32,
@@ -899,35 +909,38 @@ fn should_filter(info: Option<&FileInfo>, options: &CompareOptions) -> bool {
     false
 }
 
-/// Compare two timestamps with tolerance.
-/// When both timestamps are absent, returns true (cannot distinguish: treat as equal).
-pub fn timestamps_equal(local: Option<DateTime<Utc>>, remote: Option<DateTime<Utc>>) -> bool {
+/// Whether two timestamps are the same instant under `window`. Both absent,
+/// or a size-only window, cannot tell them apart and reads as equal; one
+/// present and one absent is not equal.
+pub fn timestamps_equal(
+    local: Option<DateTime<Utc>>,
+    remote: Option<DateTime<Utc>>,
+    window: ModifyWindow,
+) -> bool {
+    if !window.compares_times() {
+        return true;
+    }
     match (local, remote) {
         (Some(l), Some(r)) => {
-            (l.signed_duration_since(r)).num_seconds().abs() <= TIMESTAMP_TOLERANCE_SECS
+            window.order(Some(l.timestamp()), Some(r.timestamp()))
+                == Some(std::cmp::Ordering::Equal)
         }
-        (None, None) => true, // Both absent: cannot distinguish, treat as equal
-        _ => false,           // One present, one absent: not equal
+        (None, None) => true,
+        _ => false,
     }
 }
 
-/// Determine which timestamp is newer
+/// Which timestamp is newer under `window`: `None` when they are the same
+/// instant, when either is missing, or when the window is size only.
 pub fn compare_timestamps(
     local: Option<DateTime<Utc>>,
     remote: Option<DateTime<Utc>>,
+    window: ModifyWindow,
 ) -> Option<SyncStatus> {
-    match (local, remote) {
-        (Some(l), Some(r)) => {
-            let diff = l.signed_duration_since(r).num_seconds();
-            if diff.abs() <= TIMESTAMP_TOLERANCE_SECS {
-                None // Equal within tolerance
-            } else if diff > 0 {
-                Some(SyncStatus::LocalNewer)
-            } else {
-                Some(SyncStatus::RemoteNewer)
-            }
-        }
-        _ => None, // Can't compare if timestamps missing
+    match window.order(local.map(|t| t.timestamp()), remote.map(|t| t.timestamp()))? {
+        std::cmp::Ordering::Greater => Some(SyncStatus::LocalNewer),
+        std::cmp::Ordering::Less => Some(SyncStatus::RemoteNewer),
+        std::cmp::Ordering::Equal => None,
     }
 }
 
@@ -961,8 +974,12 @@ pub fn compare_file_pair(
                         }
                         // Hashes differ - determine which is newer by timestamp
                         if options.compare_timestamp {
-                            return compare_timestamps(l.modified, r.modified)
-                                .unwrap_or(SyncStatus::Conflict);
+                            return compare_timestamps(
+                                l.modified,
+                                r.modified,
+                                options.modify_window,
+                            )
+                            .unwrap_or(SyncStatus::Conflict);
                         } else {
                             // No timestamp comparison, but hashes differ
                             return SyncStatus::Conflict;
@@ -988,17 +1005,20 @@ pub fn compare_file_pair(
                 }
             }
 
-            // ──── Size-only fallback when timestamps absent ────
-            // Providers like FileLu may return modified=None for folders or files.
-            // When timestamps are unavailable, fall back to size-only comparison
-            // to avoid infinite re-sync loops.
-            let both_timestamps_present = l.modified.is_some() && r.modified.is_some();
+            // ──── Size-only when the times cannot be compared ────
+            // A missing timestamp (FileLu folders, GitHub listings) or a pair of
+            // stores whose times are not comparable (an FTP LIST listing, see
+            // `ModifyWindow::SizeOnly`) falls back to size only, which also
+            // avoids endless re-syncs.
+            let both_timestamps_present = options.modify_window.compares_times()
+                && l.modified.is_some()
+                && r.modified.is_some();
 
             // First check size if enabled
             if options.compare_size && l.size != r.size {
                 // Different sizes - determine which is newer
                 if options.compare_timestamp && both_timestamps_present {
-                    match compare_timestamps(l.modified, r.modified) {
+                    match compare_timestamps(l.modified, r.modified, options.modify_window) {
                         Some(status) => return status,
                         None => return SyncStatus::SizeMismatch,
                     }
@@ -1013,10 +1033,10 @@ pub fn compare_file_pair(
                     // One or both timestamps absent: size already matched (or not compared),
                     // treat as identical to avoid spurious re-syncs
                     SyncStatus::Identical
-                } else if timestamps_equal(l.modified, r.modified) {
+                } else if timestamps_equal(l.modified, r.modified, options.modify_window) {
                     SyncStatus::Identical
                 } else {
-                    match compare_timestamps(l.modified, r.modified) {
+                    match compare_timestamps(l.modified, r.modified, options.modify_window) {
                         Some(status) => status,
                         None => SyncStatus::Identical,
                     }
@@ -1439,12 +1459,14 @@ pub async fn sync_tree_core(
     );
 
     sink.on_phase(SyncPhase::Planning);
+    let modify_window = ModifyWindow::against_provider(None, &**provider);
     let mut report = SyncReport {
         dry_run: opts.dry_run,
         direction: Some(opts.direction),
         delta_policy: Some(opts.delta_policy),
         skipped_links: bound.reported_links(&local_boundaries),
         unseen_paths: bound.unseen().to_vec(),
+        modify_window,
         ..SyncReport::default()
     };
     // A scan that missed a part of the tree it cannot name leaves nothing to
@@ -1507,6 +1529,7 @@ pub async fn sync_tree_core(
                 remote_entry,
                 opts.delta_policy,
                 opts.conflict_mode,
+                modify_window,
             );
             match decision.action {
                 SyncTreeAction::Copy => {
@@ -1571,6 +1594,7 @@ pub async fn sync_tree_core(
                     .copied(),
                 opts.delta_policy,
                 opts.conflict_mode,
+                modify_window,
                 handled_by_upload,
             );
             match decision.action {
@@ -1728,6 +1752,7 @@ pub(crate) fn decide_upload(
     remote_entry: Option<&crate::sync_core::RemoteEntry>,
     policy: DeltaPolicy,
     mode: ConflictMode,
+    window: ModifyWindow,
 ) -> SyncTreeDecision {
     let Some(remote_entry) = remote_entry else {
         return SyncTreeDecision {
@@ -1745,6 +1770,7 @@ pub(crate) fn decide_upload(
             remote_entry.mtime.as_deref(),
             mode,
             policy,
+            window,
         ),
         DeltaPolicy::Hash | DeltaPolicy::Delta => decide_upload_by_hash(
             SyncFileMeta {
@@ -1759,6 +1785,7 @@ pub(crate) fn decide_upload(
             },
             mode,
             policy,
+            window,
         ),
     }
 }
@@ -1768,6 +1795,7 @@ pub(crate) fn decide_download(
     local_entry: Option<&crate::sync_core::LocalEntry>,
     policy: DeltaPolicy,
     mode: ConflictMode,
+    window: ModifyWindow,
     already_handled_by_upload: bool,
 ) -> SyncTreeDecision {
     if already_handled_by_upload {
@@ -1792,6 +1820,7 @@ pub(crate) fn decide_download(
             local_entry.mtime.as_deref(),
             mode,
             policy,
+            window,
         ),
         DeltaPolicy::Hash | DeltaPolicy::Delta => decide_download_by_hash(
             SyncFileMeta {
@@ -1806,13 +1835,15 @@ pub(crate) fn decide_download(
             },
             mode,
             policy,
+            window,
         ),
     }
 }
 
-fn newer_without_timestamp_skip(winner: &str) -> String {
-    format!("timestamp missing or unreadable, size decides: {winner}")
-}
+/// Why `newer` leaves a changed pair alone when no date orders it (the
+/// size-only policy, a date missing, the same date within the window): the
+/// size is not a stand-in for the date, in either direction.
+const NEWER_UNORDERED: &str = "no date orders the pair: cannot tell which copy is newer";
 
 fn decide_upload_by_size(
     local_size: u64,
@@ -1823,13 +1854,9 @@ fn decide_upload_by_size(
         SyncTreeAction::Skip("identical size".to_string())
     } else {
         match mode {
-            ConflictMode::Larger | ConflictMode::Newer if local_size > remote_size => {
-                SyncTreeAction::Copy
-            }
+            ConflictMode::Larger if local_size > remote_size => SyncTreeAction::Copy,
             ConflictMode::Larger => SyncTreeAction::Skip("remote is larger".to_string()),
-            ConflictMode::Newer => {
-                SyncTreeAction::Skip(newer_without_timestamp_skip("remote is larger"))
-            }
+            ConflictMode::Newer => SyncTreeAction::Skip(NEWER_UNORDERED.to_string()),
             ConflictMode::Skip => SyncTreeAction::Skip("conflict skip".to_string()),
         }
     };
@@ -1848,13 +1875,9 @@ fn decide_download_by_size(
         SyncTreeAction::Skip("identical size".to_string())
     } else {
         match mode {
-            ConflictMode::Larger | ConflictMode::Newer if remote_size > local_size => {
-                SyncTreeAction::Copy
-            }
+            ConflictMode::Larger if remote_size > local_size => SyncTreeAction::Copy,
             ConflictMode::Larger => SyncTreeAction::Skip("local is larger".to_string()),
-            ConflictMode::Newer => {
-                SyncTreeAction::Skip(newer_without_timestamp_skip("local is larger"))
-            }
+            ConflictMode::Newer => SyncTreeAction::Skip(NEWER_UNORDERED.to_string()),
             ConflictMode::Skip => SyncTreeAction::Skip("conflict skip".to_string()),
         }
     };
@@ -1871,8 +1894,9 @@ fn decide_upload_by_mtime(
     remote_mtime: Option<&str>,
     mode: ConflictMode,
     requested_policy: DeltaPolicy,
+    window: ModifyWindow,
 ) -> SyncTreeDecision {
-    if let Some(ordering) = compare_scan_mtimes(local_mtime, remote_mtime) {
+    if let Some(ordering) = window.order_text(local_mtime, remote_mtime) {
         let action = match ordering {
             std::cmp::Ordering::Greater => SyncTreeAction::Copy,
             std::cmp::Ordering::Less => SyncTreeAction::Skip("remote is newer".to_string()),
@@ -1893,6 +1917,19 @@ fn decide_upload_by_mtime(
         };
     }
 
+    // A backend that keeps no comparable time cannot say which copy is
+    // newer: `newer` leaves the pair alone instead of letting the larger copy
+    // win (a missing date on a backend that keeps dates does the same through
+    // the size decision below, with its own reason).
+    if matches!(mode, ConflictMode::Newer) && !window.compares_times() && local_size != remote_size
+    {
+        return SyncTreeDecision {
+            action: SyncTreeAction::Skip(
+                "the backend keeps no comparable time: cannot tell which copy is newer".to_string(),
+            ),
+            decision_policy: DeltaPolicy::SizeOnly,
+        };
+    }
     decide_upload_by_size(local_size, remote_size, mode)
 }
 
@@ -1903,8 +1940,9 @@ fn decide_download_by_mtime(
     local_mtime: Option<&str>,
     mode: ConflictMode,
     requested_policy: DeltaPolicy,
+    window: ModifyWindow,
 ) -> SyncTreeDecision {
-    if let Some(ordering) = compare_scan_mtimes(remote_mtime, local_mtime) {
+    if let Some(ordering) = window.order_text(remote_mtime, local_mtime) {
         let action = match ordering {
             std::cmp::Ordering::Greater => SyncTreeAction::Copy,
             std::cmp::Ordering::Less => SyncTreeAction::Skip("local is newer".to_string()),
@@ -1925,6 +1963,19 @@ fn decide_download_by_mtime(
         };
     }
 
+    // A backend that keeps no comparable time cannot say which copy is
+    // newer: `newer` leaves the pair alone instead of letting the larger copy
+    // win (a missing date on a backend that keeps dates does the same through
+    // the size decision below, with its own reason).
+    if matches!(mode, ConflictMode::Newer) && !window.compares_times() && remote_size != local_size
+    {
+        return SyncTreeDecision {
+            action: SyncTreeAction::Skip(
+                "the backend keeps no comparable time: cannot tell which copy is newer".to_string(),
+            ),
+            decision_policy: DeltaPolicy::SizeOnly,
+        };
+    }
     decide_download_by_size(remote_size, local_size, mode)
 }
 
@@ -1933,6 +1984,7 @@ fn decide_upload_by_hash(
     remote: SyncFileMeta<'_>,
     mode: ConflictMode,
     requested_policy: DeltaPolicy,
+    window: ModifyWindow,
 ) -> SyncTreeDecision {
     if let (Some(local_hash), Some(remote_hash)) = (local.hash, remote.hash) {
         if local_hash.eq_ignore_ascii_case(remote_hash) {
@@ -1950,6 +2002,7 @@ fn decide_upload_by_hash(
         remote.mtime,
         mode,
         requested_policy,
+        window,
     )
 }
 
@@ -1958,6 +2011,7 @@ fn decide_download_by_hash(
     local: SyncFileMeta<'_>,
     mode: ConflictMode,
     requested_policy: DeltaPolicy,
+    window: ModifyWindow,
 ) -> SyncTreeDecision {
     if let (Some(remote_hash), Some(local_hash)) = (remote.hash, local.hash) {
         if remote_hash.eq_ignore_ascii_case(local_hash) {
@@ -1975,27 +2029,8 @@ fn decide_download_by_hash(
         local.mtime,
         mode,
         requested_policy,
+        window,
     )
-}
-
-fn compare_scan_mtimes(left: Option<&str>, right: Option<&str>) -> Option<std::cmp::Ordering> {
-    let left = left.and_then(parse_scan_mtime)?;
-    let right = right.and_then(parse_scan_mtime)?;
-    Some(left.cmp(&right))
-}
-
-fn parse_scan_mtime(raw: &str) -> Option<chrono::DateTime<Utc>> {
-    chrono::DateTime::parse_from_rfc3339(raw)
-        .map(|dt| dt.with_timezone(&Utc))
-        .ok()
-        .or_else(|| {
-            let trimmed = raw.strip_suffix('Z').unwrap_or(raw);
-            chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%dT%H:%M:%S")
-                .or_else(|_| chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S"))
-                .or_else(|_| chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M"))
-                .ok()
-                .map(|naive| chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
-        })
 }
 
 fn remote_sha256_hex(entry: &crate::sync_core::RemoteEntry) -> Option<&str> {
@@ -3312,14 +3347,20 @@ pub fn classify_with_summary(
                 // ciphertext size), so size is not a reliable change signal for
                 // it and comparing it would flag every file as changed every
                 // cycle. Such providers fall back to timestamp only.
+                // The baseline's time is a LOCAL mtime, the one the transfer
+                // left on the local file (read when it ended, after any time
+                // stamp), so the local side is read with two local clocks:
+                // under a size-only pair window it would stop seeing a
+                // same-size local edit, and the remote change would then
+                // overwrite it.
                 let local_changed = (options.compare_size && l.size != cached.size)
                     || (l.modified.is_some()
                         && cached.modified.is_some()
-                        && !timestamps_equal(l.modified, cached.modified));
+                        && !timestamps_equal(l.modified, cached.modified, ModifyWindow::LOCAL));
                 let remote_changed = (options.compare_size && r.size != cached.size)
                     || (r.modified.is_some()
                         && cached.modified.is_some()
-                        && !timestamps_equal(r.modified, cached.modified));
+                        && !timestamps_equal(r.modified, cached.modified, options.modify_window));
 
                 if local_changed && remote_changed {
                     // Both sides changed since last sync → true conflict
@@ -3377,6 +3418,7 @@ pub fn classify_with_summary(
     CompareReport {
         differences: results,
         summary,
+        modify_window: options.modify_window,
     }
 }
 
@@ -4024,7 +4066,7 @@ pub fn verify_local_file(
         if let (Some(meta), Some(expected)) = (&metadata, expected_mtime) {
             meta.modified().ok().map(|t| {
                 let actual: DateTime<Utc> = t.into();
-                timestamps_equal(Some(actual), Some(expected))
+                timestamps_equal(Some(actual), Some(expected), ModifyWindow::default())
             })
         } else {
             None
@@ -4127,6 +4169,14 @@ pub struct SyncJournalEntry {
     pub bytes_transferred: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ec_status: Option<SyncEcStatus>,
+    /// The local file as the sync index records it once the transfer
+    /// completed: its size, and its time (the one a download left on it, the
+    /// one an upload sent). A resumed run reads nothing of the transfers it
+    /// skips, and takes these for them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_modified: Option<String>,
 }
 
 /// Persistent transfer journal for checkpoint/resume
@@ -6814,6 +6864,8 @@ mod tests {
             verified: None,
             bytes_transferred: 0,
             ec_status: None,
+            local_size: None,
+            local_modified: None,
         });
         assert!(journal.has_resumable_entries());
 
@@ -6840,6 +6892,8 @@ mod tests {
             verified: Some(true),
             bytes_transferred: 1024,
             ec_status: None,
+            local_size: None,
+            local_modified: None,
         });
         journal.entries.push(SyncJournalEntry {
             relative_path: "b.txt".to_string(),
@@ -6850,6 +6904,8 @@ mod tests {
             verified: None,
             bytes_transferred: 0,
             ec_status: None,
+            local_size: None,
+            local_modified: None,
         });
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Completed), 1);
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Failed), 1);
@@ -7343,6 +7399,289 @@ mod tests {
         );
     }
 
+    /// C1 (review of #949): under a size-only window (an FTP LIST listing,
+    /// FileLu) the index compare read the LOCAL side against its baseline with
+    /// that window too, so a local edit of the same size was invisible: the
+    /// remote change then won as RemoteNewer and was downloaded over the local
+    /// edit, and a same-size local edit was never uploaded. The baseline's time
+    /// is a local mtime, and local times always compare.
+    #[test]
+    fn a_same_size_local_edit_is_seen_against_the_baseline_under_a_size_only_window() {
+        let t0 = chrono::DateTime::parse_from_rfc3339("2026-09-25T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let at = |secs: i64| Some(t0 + chrono::Duration::seconds(secs));
+        let mut index = SyncIndex::new("/l".to_string(), "/r".to_string());
+        for name in ["a.txt", "b.txt"] {
+            index.files.insert(
+                name.to_string(),
+                serde_json::from_value(serde_json::json!({
+                    "size": 10,
+                    "modified": "2026-09-25T12:00:00Z",
+                    "is_dir": false
+                }))
+                .unwrap(),
+            );
+        }
+        let local = HashMap::from([
+            ("a.txt".to_string(), mk_file_info("a.txt", 10, at(3600))),
+            ("b.txt".to_string(), mk_file_info("b.txt", 10, at(3600))),
+        ]);
+        let remote = HashMap::from([
+            ("a.txt".to_string(), mk_file_info("a.txt", 12, at(60))),
+            ("b.txt".to_string(), mk_file_info("b.txt", 10, at(30))),
+        ]);
+        let options = CompareOptions {
+            modify_window: ModifyWindow::SizeOnly {
+                reason: crate::sync_core::mtime::SizeOnlyReason::FtpListDates,
+            },
+            ..CompareOptions::default()
+        };
+        let report = classify_with_summary(local, remote, &options, Some(&index));
+        let status = |name: &str| {
+            report
+                .differences
+                .iter()
+                .find(|row| row.relative_path == name)
+                .map(|row| row.status.clone())
+        };
+        assert_eq!(
+            status("a.txt"),
+            Some(SyncStatus::Conflict),
+            "edited on both sides"
+        );
+        assert_eq!(
+            status("b.txt"),
+            Some(SyncStatus::LocalNewer),
+            "edited locally"
+        );
+    }
+
+    /// M1 (review of #949): `newer` in `sync_tree` cannot be decided by size
+    /// when the dates do not order the pair; the larger copy used to win.
+    #[test]
+    fn sync_tree_newer_is_not_decided_by_size_when_dates_do_not_order() {
+        let size_only = ModifyWindow::SizeOnly {
+            reason: crate::sync_core::mtime::SizeOnlyReason::FtpListDates,
+        };
+        let local = crate::sync_core::LocalEntry {
+            rel_path: "a.txt".to_string(),
+            size: 5000,
+            mtime: Some("2026-09-25T13:00:00Z".to_string()),
+            sha256: None,
+        };
+        let remote = crate::sync_core::RemoteEntry {
+            rel_path: "a.txt".to_string(),
+            size: 5120,
+            mtime: Some("2026-09-25T12:00:00Z".to_string()),
+            checksum_alg: None,
+            checksum_hex: None,
+        };
+        let down = super::decide_download(
+            &remote,
+            Some(&local),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+            size_only,
+            false,
+        );
+        assert!(matches!(down.action, SyncTreeAction::Skip(_)));
+        let bigger_local = crate::sync_core::LocalEntry {
+            size: 6000,
+            ..local
+        };
+        let up = super::decide_upload(
+            &bigger_local,
+            Some(&remote),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+            size_only,
+        );
+        assert!(matches!(up.action, SyncTreeAction::Skip(_)));
+    }
+
+    /// Minor 4 (re-review of #949): `sync_tree` still let the larger copy win
+    /// `newer` wherever no date ordered the pair: under the size-only policy,
+    /// for a file whose date is missing on a backend that keeps dates, and for
+    /// dates the same within the window. None of them says which copy is
+    /// newer, so the pair is left alone in both directions, like the CLI.
+    #[test]
+    fn sync_tree_newer_is_never_decided_by_size() {
+        let window = ModifyWindow::default();
+        let local = |size, mtime: Option<&str>| crate::sync_core::LocalEntry {
+            rel_path: "a.txt".to_string(),
+            size,
+            mtime: mtime.map(str::to_string),
+            sha256: None,
+        };
+        let remote = |size, mtime: Option<&str>| crate::sync_core::RemoteEntry {
+            rel_path: "a.txt".to_string(),
+            size,
+            mtime: mtime.map(str::to_string),
+            checksum_alg: None,
+            checksum_hex: None,
+        };
+        let at = Some("2026-09-25T12:00:00Z");
+        let cases = [
+            (DeltaPolicy::SizeOnly, local(6000, at), remote(5120, at)),
+            (DeltaPolicy::Mtime, local(6000, None), remote(5120, at)),
+            (DeltaPolicy::Mtime, local(6000, at), remote(5120, at)),
+        ];
+        for (policy, local, remote) in cases {
+            let up =
+                super::decide_upload(&local, Some(&remote), policy, ConflictMode::Newer, window);
+            assert!(
+                matches!(up.action, SyncTreeAction::Skip(_)),
+                "{policy:?} {:?}: the upload copies",
+                local.mtime
+            );
+            let smaller_local = crate::sync_core::LocalEntry { size: 10, ..local };
+            let down = super::decide_download(
+                &remote,
+                Some(&smaller_local),
+                policy,
+                ConflictMode::Newer,
+                window,
+                false,
+            );
+            assert!(
+                matches!(down.action, SyncTreeAction::Skip(_)),
+                "{policy:?} {:?}: the download copies",
+                smaller_local.mtime
+            );
+        }
+    }
+
+    /// `sync_tree` (MCP, AeroAgent) decided by the exact second: a copy one
+    /// second off its source was uploaded again on every run, where the GUI
+    /// compare and the CLI read the two as the same instant. It reads the
+    /// window of the pair of stores now, and a size-only window (an FTP LIST
+    /// listing) decides by size alone.
+    #[test]
+    fn sync_tree_decisions_read_the_modify_window() {
+        let local = |mtime: &str| crate::sync_core::LocalEntry {
+            rel_path: "a.txt".to_string(),
+            size: 10,
+            mtime: Some(mtime.to_string()),
+            sha256: None,
+        };
+        let remote = crate::sync_core::RemoteEntry {
+            rel_path: "a.txt".to_string(),
+            size: 10,
+            mtime: Some("2026-09-25T12:00:00Z".to_string()),
+            checksum_alg: None,
+            checksum_hex: None,
+        };
+        let one_second_later = local("2026-09-25T12:00:01Z");
+        let decide = |entry: &crate::sync_core::LocalEntry, window| {
+            super::decide_upload(
+                entry,
+                Some(&remote),
+                DeltaPolicy::Mtime,
+                ConflictMode::Newer,
+                window,
+            )
+            .action
+        };
+        assert!(
+            matches!(
+                decide(&one_second_later, ModifyWindow::default()),
+                SyncTreeAction::Skip(_)
+            ),
+            "one second apart is the same instant under the 2 s window"
+        );
+        assert!(matches!(
+            decide(&one_second_later, ModifyWindow::Seconds { secs: 0 }),
+            SyncTreeAction::Copy
+        ));
+        let size_only = ModifyWindow::SizeOnly {
+            reason: crate::sync_core::mtime::SizeOnlyReason::FtpListDates,
+        };
+        assert!(matches!(
+            decide(&local("2026-09-25T13:00:00Z"), size_only),
+            SyncTreeAction::Skip(_)
+        ));
+    }
+
+    /// The GUI compare read two times up to 30 s apart as the same instant,
+    /// so a file saved 20 s after its copy was identical and never synced.
+    /// The window is 2 s, raised to what the stores keep, and a pair whose
+    /// times cannot be compared is compared by size alone.
+    #[test]
+    fn compare_file_pair_reads_the_modify_window() {
+        let t0 = chrono::DateTime::parse_from_rfc3339("2026-09-25T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let at = |secs: i64| Some(t0 + chrono::Duration::seconds(secs));
+        let opts = CompareOptions::default();
+        let remote = mk_file_info("a", 10, at(0));
+        let saved_later = mk_file_info("a", 10, at(20));
+        assert_eq!(
+            compare_file_pair(Some(&saved_later), Some(&remote), &opts),
+            SyncStatus::LocalNewer
+        );
+        let same_instant = mk_file_info("a", 10, at(2));
+        assert_eq!(
+            compare_file_pair(Some(&same_instant), Some(&remote), &opts),
+            SyncStatus::Identical
+        );
+        let minute = CompareOptions {
+            modify_window: ModifyWindow::Seconds { secs: 60 },
+            ..CompareOptions::default()
+        };
+        assert_eq!(
+            compare_file_pair(Some(&saved_later), Some(&remote), &minute),
+            SyncStatus::Identical
+        );
+        let size_only = CompareOptions {
+            modify_window: ModifyWindow::SizeOnly {
+                reason: crate::sync_core::mtime::SizeOnlyReason::FtpListDates,
+            },
+            ..CompareOptions::default()
+        };
+        assert_eq!(
+            compare_file_pair(Some(&saved_later), Some(&remote), &size_only),
+            SyncStatus::Identical
+        );
+        let grown = mk_file_info("a", 12, at(20));
+        assert_eq!(
+            compare_file_pair(Some(&grown), Some(&remote), &size_only),
+            SyncStatus::SizeMismatch
+        );
+        assert_eq!(
+            compare_file_pair(Some(&grown), Some(&remote), &opts),
+            SyncStatus::LocalNewer
+        );
+    }
+
+    /// The decisions under the default window (2 s): what the MCP walk uses
+    /// when both sides keep whole seconds.
+    fn decide_upload(
+        local: &crate::sync_core::LocalEntry,
+        remote: Option<&crate::sync_core::RemoteEntry>,
+        policy: DeltaPolicy,
+        mode: ConflictMode,
+    ) -> SyncTreeDecision {
+        super::decide_upload(local, remote, policy, mode, ModifyWindow::default())
+    }
+
+    fn decide_download(
+        remote: &crate::sync_core::RemoteEntry,
+        local: Option<&crate::sync_core::LocalEntry>,
+        policy: DeltaPolicy,
+        mode: ConflictMode,
+        already_handled_by_upload: bool,
+    ) -> SyncTreeDecision {
+        super::decide_download(
+            remote,
+            local,
+            policy,
+            mode,
+            ModifyWindow::default(),
+            already_handled_by_upload,
+        )
+    }
+
     fn local_entry(
         size: u64,
         mtime: Option<&str>,
@@ -7631,99 +7970,36 @@ mod tests {
         }
     }
 
-    /// G44 / D28: with no usable timestamp, Newer must pick the larger file
-    /// in both directions. Before the fix, upload copied and download skipped,
-    /// so a two-way run silently preferred the local side.
+    /// G44 / D28: with no usable timestamp the two directions of `newer` must
+    /// agree, so a two-way run does not silently prefer one side (upload used
+    /// to copy while download skipped). Since the re-review of #949 they agree
+    /// by leaving the pair alone in both directions: no date orders it, and
+    /// the size is not a stand-in for the date.
     #[test]
-    fn newer_without_timestamp_picks_the_larger_file_in_both_directions() {
+    fn newer_without_timestamp_leaves_the_pair_alone_in_both_directions() {
         let larger_local = local_entry(20, None, None);
         let smaller_local = local_entry(5, None, None);
         let remote = remote_entry(10, None, None);
 
         for policy in [DeltaPolicy::SizeOnly, DeltaPolicy::Mtime] {
-            let upload_when_local_larger =
-                decide_upload(&larger_local, Some(&remote), policy, ConflictMode::Newer);
-            let download_when_local_larger = decide_download(
-                &remote,
-                Some(&larger_local),
-                policy,
-                ConflictMode::Newer,
-                false,
-            );
-            assert!(
-                matches!(upload_when_local_larger.action, SyncTreeAction::Copy),
-                "{policy:?}"
-            );
-            assert_eq!(
-                skip_reason(&download_when_local_larger.action),
-                "timestamp missing or unreadable, size decides: local is larger",
-                "{policy:?}"
-            );
-
-            let upload_when_remote_larger =
-                decide_upload(&smaller_local, Some(&remote), policy, ConflictMode::Newer);
-            let download_when_remote_larger = decide_download(
-                &remote,
-                Some(&smaller_local),
-                policy,
-                ConflictMode::Newer,
-                false,
-            );
-            assert_eq!(
-                skip_reason(&upload_when_remote_larger.action),
-                "timestamp missing or unreadable, size decides: remote is larger",
-                "{policy:?}"
-            );
-            assert!(
-                matches!(download_when_remote_larger.action, SyncTreeAction::Copy),
-                "{policy:?}"
-            );
+            for local in [&larger_local, &smaller_local] {
+                let upload = decide_upload(local, Some(&remote), policy, ConflictMode::Newer);
+                let download =
+                    decide_download(&remote, Some(local), policy, ConflictMode::Newer, false);
+                assert_eq!(
+                    skip_reason(&upload.action),
+                    NEWER_UNORDERED,
+                    "{policy:?} local {}",
+                    local.size
+                );
+                assert_eq!(
+                    skip_reason(&download.action),
+                    NEWER_UNORDERED,
+                    "{policy:?} local {}",
+                    local.size
+                );
+            }
         }
-    }
-
-    /// Same pair on a two-way run: the upload skip must not suppress the
-    /// download that should win, and the upload copy must still suppress
-    /// the download of the smaller remote.
-    #[test]
-    fn newer_without_timestamp_two_way_legs_do_not_contradict() {
-        let local_larger = local_entry(20, None, None);
-        let local_smaller = local_entry(5, None, None);
-        let remote = remote_entry(10, None, None);
-
-        let upload = decide_upload(
-            &local_larger,
-            Some(&remote),
-            DeltaPolicy::Mtime,
-            ConflictMode::Newer,
-        );
-        assert!(matches!(upload.action, SyncTreeAction::Copy));
-        let download_after_upload = decide_download(
-            &remote,
-            Some(&local_larger),
-            DeltaPolicy::Mtime,
-            ConflictMode::Newer,
-            true,
-        );
-        assert!(matches!(
-            download_after_upload.action,
-            SyncTreeAction::Skip(_)
-        ));
-
-        let upload = decide_upload(
-            &local_smaller,
-            Some(&remote),
-            DeltaPolicy::Mtime,
-            ConflictMode::Newer,
-        );
-        assert!(matches!(upload.action, SyncTreeAction::Skip(_)));
-        let download_after_skip = decide_download(
-            &remote,
-            Some(&local_smaller),
-            DeltaPolicy::Mtime,
-            ConflictMode::Newer,
-            false,
-        );
-        assert!(matches!(download_after_skip.action, SyncTreeAction::Copy));
     }
 
     /// With timestamps present, Newer still decides by mtime. Larger and Skip
@@ -7995,6 +8271,18 @@ mod tests {
         }
     }
 
+    fn mk_dir_info(name: &str) -> FileInfo {
+        FileInfo {
+            name: name.to_string(),
+            path: format!("/tmp/{}", name),
+            size: 0,
+            modified: None,
+            is_dir: true,
+            checksum: None,
+            checksum_alg: None,
+        }
+    }
+
     /// A `!` in `.aeroignore` that re-includes a path the configured list
     /// excludes survived AeroCloud's scans and was then dropped by the
     /// compare, which read the configured list alone.
@@ -8026,19 +8314,6 @@ mod tests {
         let legacy = build_comparison_results(local, HashMap::new(), &opts);
         let paths: Vec<_> = legacy.iter().map(|c| c.relative_path.as_str()).collect();
         assert_eq!(paths, vec!["build/keep.txt"]);
-    }
-
-    #[allow(dead_code)]
-    fn mk_dir_info(name: &str) -> FileInfo {
-        FileInfo {
-            name: name.to_string(),
-            path: format!("/tmp/{}", name),
-            size: 0,
-            modified: None,
-            is_dir: true,
-            checksum: None,
-            checksum_alg: None,
-        }
     }
 
     #[test]

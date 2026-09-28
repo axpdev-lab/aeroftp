@@ -2414,6 +2414,7 @@ mod tests {
     async fn fourshared_does_not_claim_an_atomic_replace() {
         let mut p = test_provider();
         assert!(!p.supports_atomic_replace().await.unwrap());
+        assert!(!p.replace_sets_aside());
     }
 
     /// The upload streams the file: the bar follows the bytes going out and

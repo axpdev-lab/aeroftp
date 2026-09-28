@@ -116,7 +116,11 @@ fn legacy_app_config_dir() -> Option<PathBuf> {
     dirs::config_dir().map(|base| base.join(LEGACY_APP_IDENTIFIER))
 }
 
-fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+/// The entries the import never carries, whatever the destination holds: a
+/// SQLite sidecar and a symbolic link. Shared by [`copy_missing_tree`] and by
+/// [`has_importable_file`], so the offer and the copy apply the same skip
+/// rules.
+fn never_copied(src: &Path) -> bool {
     // SQLite sidecars belong to one database generation, not to a directory.
     // In particular, after a keystore restore removed -wal/-shm, copying the
     // legacy sidecars on the next boot can replay OLD pages over the restored
@@ -127,7 +131,7 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
         .iter()
         .any(|suffix| name.ends_with(suffix))
     {
-        return Ok(());
+        return true;
     }
     // The tree we import here is a config tree the user consented to copy, but a
     // symlink inside it can point anywhere: outside the consented tree (dragging
@@ -135,11 +139,44 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
     // would recurse until path-length exhaustion. So we never follow links, we
     // skip them; skipping also kills the cycle recursion. `symlink_metadata`
     // never follows the link; a metadata error means the path is gone, and the
-    // `is_dir`/`is_file` checks below already no-op on a missing path.
+    // callers' `is_dir`/`is_file` checks already no-op on a missing path.
     if let Ok(meta) = src.symlink_metadata() {
         if meta.file_type().is_symlink() {
-            return Ok(());
+            return true;
         }
+    }
+    false
+}
+
+/// True when `src` holds at least one file [`copy_missing_tree`] would carry,
+/// at any depth. An empty host config, or one made only of sidecars, symbolic
+/// links and empty folders, has nothing to import. A folder or entry this walk
+/// cannot read counts as importable: the copy fails on it and reports the
+/// error, where answering "nothing here" would silently hide a configuration
+/// the offer could not look into.
+fn has_importable_file(src: &Path) -> bool {
+    if never_copied(src) {
+        return false;
+    }
+    if src.is_dir() {
+        match std::fs::read_dir(src) {
+            Ok(entries) => entries.into_iter().any(|entry| match entry {
+                Ok(entry) => has_importable_file(&entry.path()),
+                Err(_) => true,
+            }),
+            Err(_) => true,
+        }
+    } else {
+        src.is_file()
+    }
+}
+
+/// Copy into `dst` every file of `src` that `dst` does not have yet, never
+/// replacing one, and return how many files were copied: zero when `dst`
+/// already had all of them, so a caller can report only what happened.
+fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
+    if never_copied(src) {
+        return Ok(0);
     }
     if src.is_dir() {
         std::fs::create_dir_all(dst)?;
@@ -148,11 +185,13 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o700));
         }
+        let mut copied = 0;
         for entry in std::fs::read_dir(src)? {
             let entry = entry?;
             let name = entry.file_name();
-            copy_missing_tree(&entry.path(), &dst.join(name))?;
+            copied += copy_missing_tree(&entry.path(), &dst.join(name))?;
         }
+        Ok(copied)
     } else if src.is_file() && !dst.exists() {
         if let Some(parent) = dst.parent() {
             std::fs::create_dir_all(parent)?;
@@ -177,19 +216,21 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
             snapshot.as_file().sync_all()?;
             match snapshot.persist_noclobber(dst) {
                 Ok(_) => {}
-                Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
+                Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(0),
                 Err(e) => return Err(e.error),
             }
         } else if !copy_file_noclobber(src, dst)? {
-            return Ok(());
+            return Ok(0);
         }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o600));
         }
+        Ok(1)
+    } else {
+        Ok(0)
     }
-    Ok(())
 }
 
 /// Copy `src` to `dst` unless `dst` exists, without ever replacing it. The bytes
@@ -216,18 +257,28 @@ fn copy_file_noclobber(src: &Path, dst: &Path) -> std::io::Result<bool> {
 
 const LEGACY_CONFIG_MERGED_MARKER: &str = ".legacy-config-merged";
 
+/// What one call of [`merge_legacy_config_once`] did.
+#[derive(Debug, PartialEq, Eq)]
+enum LegacyMerge {
+    /// The marker was there: an earlier start merged, nothing was looked at.
+    AlreadyMerged,
+    /// The merge ran now and copied this many files, zero when the data root
+    /// already had all of them. The marker is written either way.
+    Merged { copied: usize },
+}
+
 /// Merge the legacy tree into `new_dir` once per data root. Without a durable
 /// record every start copied again whatever was missing, so a file the user
 /// deleted from the data root (a database, a plugin) came back from the legacy
 /// tree on the next start.
-fn merge_legacy_config_once(legacy_dir: &Path, new_dir: &Path) -> std::io::Result<bool> {
+fn merge_legacy_config_once(legacy_dir: &Path, new_dir: &Path) -> std::io::Result<LegacyMerge> {
     let marker = new_dir.join(LEGACY_CONFIG_MERGED_MARKER);
     if marker.exists() {
-        return Ok(false);
+        return Ok(LegacyMerge::AlreadyMerged);
     }
-    copy_missing_tree(legacy_dir, new_dir)?;
+    let copied = copy_missing_tree(legacy_dir, new_dir)?;
     std::fs::write(&marker, b"merged\n")?;
-    Ok(true)
+    Ok(LegacyMerge::Merged { copied })
 }
 
 fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
@@ -243,11 +294,35 @@ fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
     if !legacy_dir.is_dir() || legacy_dir == new_dir {
         return;
     }
-    match merge_legacy_config_once(&legacy_dir, new_dir) {
-        Ok(_) => tracing::info!(
-            "Migrated legacy AeroFTP app config from {} to {}",
+    merge_legacy_config_and_log(&legacy_dir, new_dir);
+    let _ = LEGACY_APP_CONFIG_MIGRATED.set(());
+}
+
+/// Run the one-time merge and report what it did. Every start after the first
+/// finds the marker, and a first start can find every legacy file already in
+/// the data root: in both cases nothing is copied, so only a merge that copied
+/// files may say "Migrated". A support log that reports a migration that did
+/// not happen misleads whoever reads it.
+fn merge_legacy_config_and_log(legacy_dir: &Path, new_dir: &Path) {
+    match merge_legacy_config_once(legacy_dir, new_dir) {
+        Ok(LegacyMerge::Merged { copied }) if copied > 0 => tracing::info!(
+            "Migrated legacy AeroFTP app config from {} to {} ({} {} copied)",
             legacy_dir.display(),
-            new_dir.display()
+            new_dir.display(),
+            copied,
+            if copied == 1 { "file" } else { "files" }
+        ),
+        Ok(LegacyMerge::Merged { .. }) => tracing::debug!(
+            "Legacy AeroFTP app config at {} had nothing missing from {}, nothing copied ({} written)",
+            legacy_dir.display(),
+            new_dir.display(),
+            LEGACY_CONFIG_MERGED_MARKER
+        ),
+        Ok(LegacyMerge::AlreadyMerged) => tracing::debug!(
+            "Legacy AeroFTP app config already merged into {} ({} present), nothing copied from {}",
+            new_dir.display(),
+            LEGACY_CONFIG_MERGED_MARKER,
+            legacy_dir.display()
         ),
         Err(e) => tracing::warn!(
             "Failed to migrate legacy AeroFTP app config from {} to {}: {}",
@@ -256,7 +331,6 @@ fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
             e
         ),
     }
-    let _ = LEGACY_APP_CONFIG_MIGRATED.set(());
 }
 
 /// Resolve the per-app config directory. In portable mode this is
@@ -338,24 +412,44 @@ pub fn is_flatpak() -> bool {
     std::env::var_os("FLATPAK_ID").is_some()
 }
 
-/// Testable core of [`host_config_dir_under_flatpak`]. Kept pure (no env, no
-/// implicit filesystem beyond the `is_dir` probe passed in) so the branch logic
-/// is unit-tested without a real sandbox.
+/// Testable core of [`host_config_dir_under_flatpak`]: no env, the home and the
+/// data root come in resolved, so the branch logic is unit-tested on a temporary
+/// home without a real sandbox.
 fn host_config_dir_impl(
     is_flatpak: bool,
     home: Option<PathBuf>,
     leaf: &str,
     current: Option<PathBuf>,
-    is_dir: impl Fn(&Path) -> bool,
 ) -> Option<PathBuf> {
     if !is_flatpak {
         return None;
     }
     let candidate = home?.join(".config").join(leaf);
-    // A no-op (candidate == data root) or a non-existent host config is nothing
-    // to import; bail so the caller never offers an empty or self-referential
-    // migration.
-    if current.as_deref() == Some(candidate.as_path()) || !is_dir(&candidate) {
+    // A dotfiles manager (GNU Stow and the like) links the whole folder into
+    // place. That link is the user's own config, so the root is resolved once
+    // here, and the never-follow rule of [`never_copied`] applies to what is
+    // inside it.
+    let root_is_link = candidate
+        .symlink_metadata()
+        .is_ok_and(|meta| meta.file_type().is_symlink());
+    let candidate = if root_is_link {
+        std::fs::canonicalize(&candidate).unwrap_or(candidate)
+    } else {
+        candidate
+    };
+    // A no-op (candidate == data root, compared resolved so that a link to the
+    // data root counts too) or a missing host config is nothing to import; bail
+    // so the caller never runs a self-referential migration. Whether the offer
+    // is shown also depends on what the folder holds, which [`import_offer`]
+    // decides.
+    let is_data_root = current.as_deref().is_some_and(|current| {
+        current == candidate
+            || matches!(
+                (std::fs::canonicalize(current), std::fs::canonicalize(&candidate)),
+                (Ok(current), Ok(candidate)) if current == candidate
+            )
+    });
+    if is_data_root || !candidate.is_dir() {
         return None;
     }
     Some(candidate)
@@ -364,6 +458,8 @@ fn host_config_dir_impl(
 /// The real host `~/.config/<leaf>` as seen from inside a Flatpak sandbox
 /// (visible thanks to `--filesystem=home`). `None` when not under Flatpak, when
 /// that directory does not exist, or when it resolves to the current data root.
+/// A directory with nothing the import would copy is returned: an explicit
+/// import of it reports that nothing was copied, and only the offer skips it.
 ///
 /// `$HOME` inside the sandbox is the real host home, while `dirs::config_dir()`
 /// is redirected into the sandbox, so the host path is built from `$HOME`
@@ -374,7 +470,6 @@ pub fn host_config_dir_under_flatpak() -> Option<PathBuf> {
         dirs::home_dir(),
         aeroftp_data_leaf(),
         aeroftp_data_root(),
-        |p| p.is_dir(),
     )
 }
 
@@ -388,12 +483,107 @@ pub struct FlatpakImportStatus {
     pub target: Option<PathBuf>,
 }
 
+/// The files that hold the vault and the saved servers encrypted under it: the
+/// server list lives in `user_partitions.db`, and the key of each account there
+/// is wrapped by the vault. The import never overwrites, so when this install
+/// already has one of them the host's stay behind, and the report says so.
+const VAULT_FILES: [&str; 3] = [
+    crate::credential_store::VAULTKEY_FILENAME,
+    crate::credential_store::VAULT_FILENAME,
+    crate::user_partitions::DB_FILENAME,
+];
+
+/// What an accepted import did with the host vault and saved servers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostVault {
+    /// Nothing to report: the host config holds no vault, or the import was
+    /// declined.
+    Absent,
+    /// Copied: this install had no vault of its own.
+    Imported,
+    /// Left on the host: this install already has its own vault (the GUI creates
+    /// one at the first start, before the offer), and the import never replaces
+    /// a file.
+    Skipped,
+}
+
+/// Whether the host vault and saved servers will come in with the copy. The
+/// copy never replaces a file, so a vault file this install already has (the
+/// GUI creates one at the first start, before the offer) keeps the host's out.
+/// A name counts as present even when it is a dangling link, as it does for the
+/// copy's no-clobber rename.
+fn host_vault_outcome(src: &Path, dst: &Path) -> HostVault {
+    let on_host: Vec<&str> = VAULT_FILES
+        .into_iter()
+        .filter(|name| {
+            let file = src.join(name);
+            !never_copied(&file) && file.is_file()
+        })
+        .collect();
+    if on_host.is_empty() {
+        HostVault::Absent
+    } else if on_host
+        .iter()
+        .any(|name| dst.join(name).symlink_metadata().is_ok())
+    {
+        HostVault::Skipped
+    } else {
+        HostVault::Imported
+    }
+}
+
 /// Outcome of an import decision.
 #[derive(Debug, Clone)]
 pub struct FlatpakImportReport {
-    pub imported: bool,
+    /// Files copied into the sandbox: 0 on a decline, on an accept whose sandbox
+    /// already had a file with the same name for each file the import would copy,
+    /// and when the host config holds none (`nothing_importable`). Folders are
+    /// recreated in the sandbox but not counted.
+    pub copied: usize,
+    pub vault: HostVault,
+    /// The host config holds no file the import copies (only empty folders,
+    /// SQLite sidecars or symbolic links), so an accept that copied nothing says
+    /// "nothing to import" rather than "every file already has one here". The
+    /// offer is never shown for such a config; the explicit CLI import is.
+    pub nothing_importable: bool,
     pub source: Option<PathBuf>,
     pub target: Option<PathBuf>,
+}
+
+impl FlatpakImportReport {
+    /// True only when the import brought files in, the one case in which a
+    /// restart has something new to load.
+    pub fn imported(&self) -> bool {
+        self.copied > 0
+    }
+
+    /// The host vault and saved servers were copied into this install.
+    pub fn vault_imported(&self) -> bool {
+        self.vault == HostVault::Imported
+    }
+
+    /// The host has a vault, and this install already had its own, so the host
+    /// vault and saved servers were not imported.
+    pub fn vault_skipped(&self) -> bool {
+        self.vault == HostVault::Skipped
+    }
+
+    /// The report as the GUI command `flatpak_config_import_apply` and
+    /// `aeroftp-cli flatpak-import --json` return it. One serializer for both,
+    /// so every caller can tell "nothing to import" from "every file the import
+    /// copies is already here", and a field added to the report reaches both.
+    pub fn to_json(&self) -> serde_json::Value {
+        let path = |p: Option<&PathBuf>| p.map(|p| p.to_string_lossy().into_owned());
+        serde_json::json!({
+            "imported": self.imported(),
+            "copied": self.copied,
+            "vault_imported": self.vault_imported(),
+            "vault_skipped": self.vault_skipped(),
+            "nothing_importable": self.nothing_importable,
+            "source": path(self.source.as_ref()),
+            "target": path(self.target.as_ref()),
+        })
+    }
 }
 
 fn flatpak_import_marker_path() -> Option<PathBuf> {
@@ -406,21 +596,32 @@ fn flatpak_import_decided() -> bool {
         .unwrap_or(false)
 }
 
-fn write_flatpak_import_marker() {
-    if let Some(marker) = flatpak_import_marker_path() {
-        if let Some(parent) = marker.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::write(&marker, b"decided\n");
-    }
+fn write_flatpak_import_marker(data_root: &Path) {
+    let _ = std::fs::create_dir_all(data_root);
+    let _ = std::fs::write(data_root.join(FLATPAK_IMPORT_DECIDED_MARKER), b"decided\n");
 }
 
 /// Should the first-run host-config import prompt be shown, and from/to where.
 pub fn flatpak_host_import_status() -> FlatpakImportStatus {
-    let source = host_config_dir_under_flatpak();
-    let target = aeroftp_data_root();
+    import_offer(
+        host_config_dir_under_flatpak(),
+        aeroftp_data_root(),
+        flatpak_import_decided(),
+    )
+}
+
+/// Testable core of [`flatpak_host_import_status`]. The offer says an existing
+/// configuration was found, so it is shown only when the host config holds a
+/// file the copy would carry: accepting one made only of empty folders, SQLite
+/// sidecars and symbolic links would end in "nothing to import".
+fn import_offer(
+    source: Option<PathBuf>,
+    target: Option<PathBuf>,
+    decided: bool,
+) -> FlatpakImportStatus {
+    let offerable = source.as_deref().is_some_and(has_importable_file);
     FlatpakImportStatus {
-        available: source.is_some() && !flatpak_import_decided(),
+        available: offerable && !decided,
         source,
         target,
     }
@@ -431,33 +632,51 @@ pub fn flatpak_host_import_status() -> FlatpakImportStatus {
 /// On accept, copy the host config into the sandbox data root with
 /// `copy_missing_tree`, which copies only absent files and never overwrites, so
 /// re-running it is safe and a partially set-up sandbox is preserved. Either way
-/// the decision is recorded so the prompt is not shown again. The vault is
-/// copied as an encrypted blob: it unlocks only with the master password, and
-/// the import moves the blob, it does not unlock anything.
+/// the decision is recorded so the prompt is not shown again. The host vault
+/// comes in only when this install has none of its own; the report says which
+/// ([`HostVault`]), because the GUI creates this install's vault at the first
+/// start, before the offer, and a vault the copy left behind must not be
+/// announced as imported.
 pub fn flatpak_host_import_apply(accept: bool) -> Result<FlatpakImportReport, String> {
-    let source = host_config_dir_under_flatpak();
-    let target = aeroftp_data_root();
+    apply_flatpak_host_import(accept, host_config_dir_under_flatpak(), aeroftp_data_root())
+}
+
+/// Testable core of [`flatpak_host_import_apply`]: the paths come in resolved,
+/// and the decision marker goes into `target`, the data root where
+/// [`flatpak_import_decided`] looks for it.
+fn apply_flatpak_host_import(
+    accept: bool,
+    source: Option<PathBuf>,
+    target: Option<PathBuf>,
+) -> Result<FlatpakImportReport, String> {
     let mut report = FlatpakImportReport {
-        imported: false,
+        copied: 0,
+        vault: HostVault::Absent,
+        nothing_importable: false,
         source: source.clone(),
         target: target.clone(),
     };
     if accept {
         match (source.as_ref(), target.as_ref()) {
             (Some(src), Some(dst)) => {
-                copy_missing_tree(src, dst).map_err(|e| {
+                // Looked at before the copy: what this install already has is
+                // exactly what the copy leaves in place.
+                report.vault = host_vault_outcome(src, dst);
+                report.copied = copy_missing_tree(src, dst).map_err(|e| {
                     format!(
                         "Import host config from {} to {}: {e}",
                         src.display(),
                         dst.display()
                     )
                 })?;
-                report.imported = true;
+                report.nothing_importable = report.copied == 0 && !has_importable_file(src);
             }
             _ => return Err("No host configuration available to import".to_string()),
         }
     }
-    write_flatpak_import_marker();
+    if let Some(dst) = target.as_deref() {
+        write_flatpak_import_marker(dst);
+    }
     Ok(report)
 }
 
@@ -900,6 +1119,121 @@ mod tests {
         assert_eq!(name, "latest committed profile");
     }
 
+    struct CaptureWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Run one merge the way a release start does and return everything it
+    /// wrote to the log, at every level.
+    fn merge_log_of_one_start(legacy: &Path, current: &Path) -> String {
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_writer(move || CaptureWriter(sink.clone()))
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            merge_legacy_config_and_log(legacy, current)
+        });
+        let bytes = buf.lock().unwrap().clone();
+        String::from_utf8(bytes).unwrap()
+    }
+
+    #[test]
+    fn legacy_merge_reports_a_migration_only_when_it_copied() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("legacy");
+        let current = root.path().join("current");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("settings.json"), b"{}").unwrap();
+
+        // First start after the upgrade: the file is copied and the log says so.
+        // This also proves the capture sees the line the next start must not print.
+        let first = merge_log_of_one_start(&legacy, &current);
+        assert!(current.join("settings.json").is_file());
+        assert!(
+            first.contains("Migrated legacy AeroFTP app config"),
+            "the start that copied did not report it: {first:?}"
+        );
+
+        // Every later start finds the marker and copies nothing: the file removed
+        // from the data root stays removed, and the log must not claim otherwise.
+        std::fs::remove_file(current.join("settings.json")).unwrap();
+        let later = merge_log_of_one_start(&legacy, &current);
+        assert!(!current.join("settings.json").exists());
+        assert!(
+            !later.contains("Migrated"),
+            "a start that copied nothing reported a migration: {later:?}"
+        );
+    }
+
+    #[test]
+    fn legacy_merge_with_nothing_missing_reports_no_migration() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("legacy");
+        let current = root.path().join("current");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::create_dir_all(&current).unwrap();
+        std::fs::write(legacy.join("settings.json"), b"{\"old\":true}").unwrap();
+        std::fs::write(current.join("settings.json"), b"{\"new\":true}").unwrap();
+
+        // No marker yet, so the merge runs, but the data root already has every
+        // legacy file: nothing is copied and the log must not say otherwise.
+        let log = merge_log_of_one_start(&legacy, &current);
+        assert_eq!(
+            std::fs::read(current.join("settings.json")).unwrap(),
+            b"{\"new\":true}"
+        );
+        assert!(
+            !log.contains("Migrated"),
+            "a merge that copied nothing reported a migration: {log:?}"
+        );
+        // The merge still counts as done: the next start must skip it.
+        assert!(current.join(LEGACY_CONFIG_MERGED_MARKER).is_file());
+    }
+
+    #[test]
+    fn copy_missing_tree_counts_only_the_files_it_copied() {
+        let root = tempfile::tempdir().unwrap();
+        let src = root.path().join("legacy");
+        let dst = root.path().join("current");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::create_dir_all(&dst).unwrap();
+        std::fs::write(src.join("a.json"), b"a").unwrap();
+        std::fs::write(src.join("b.json"), b"legacy b").unwrap();
+        std::fs::write(src.join("sub").join("c.json"), b"c").unwrap();
+        {
+            let c = rusqlite::Connection::open(src.join("x.db")).unwrap();
+            c.execute_batch("CREATE TABLE t(v TEXT); INSERT INTO t VALUES('x');")
+                .unwrap();
+        }
+        // A sidecar never travels on its own, so it is not a copied file.
+        std::fs::write(src.join("orphan.db-wal"), b"stale").unwrap();
+        // Already in the data root: kept as it is, and not counted.
+        std::fs::write(dst.join("b.json"), b"current b").unwrap();
+
+        // Copied and skipped siblings in whatever order read_dir yields them, plus
+        // a subfolder: the result is the sum, not the outcome of the last child.
+        assert_eq!(copy_missing_tree(&src, &dst).unwrap(), 3);
+        assert_eq!(std::fs::read(dst.join("b.json")).unwrap(), b"current b");
+        assert!(dst.join("a.json").is_file());
+        assert!(dst.join("sub").join("c.json").is_file());
+        assert!(dst.join("x.db").is_file());
+        assert!(!dst.join("orphan.db-wal").exists());
+
+        assert_eq!(copy_missing_tree(&src, &dst).unwrap(), 0);
+    }
+
     /// Marker absent ⇒ not portable, all helpers fall through to Tauri/dirs.
     /// We can't easily run `app_config_dir` here without an AppHandle, but we
     /// can sanity-check the detection contract.
@@ -948,12 +1282,14 @@ mod tests {
     /// AppImage installs untouched.
     #[test]
     fn host_config_absent_when_not_flatpak() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("servers.json"), b"{}").unwrap();
         let got = host_config_dir_impl(
             false,
-            Some(PathBuf::from("/home/user")),
+            Some(home),
             "aeroftp",
             Some(PathBuf::from("/whatever")),
-            |_| true,
         );
         assert!(got.is_none());
     }
@@ -961,28 +1297,27 @@ mod tests {
     /// Under Flatpak with a real host config present, resolve `$HOME/.config/<leaf>`.
     #[test]
     fn host_config_resolved_under_flatpak() {
-        let home = PathBuf::from("/home/user");
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("servers.json"), b"{}").unwrap();
         let got = host_config_dir_impl(
             true,
-            Some(home.clone()),
+            Some(home),
             "aeroftp",
-            Some(PathBuf::from(
-                "/home/user/.var/app/com.aeroftp.AeroFTP/config/aeroftp",
-            )),
-            |p| p == home.join(".config").join("aeroftp"),
+            Some(tmp.path().join("sandbox").join("aeroftp")),
         );
-        assert_eq!(got, Some(home.join(".config").join("aeroftp")));
+        assert_eq!(got, Some(config));
     }
 
     /// A host config that does not exist on disk is not offered.
     #[test]
     fn host_config_skipped_when_dir_missing() {
+        let tmp = tempfile::tempdir().unwrap();
         let got = host_config_dir_impl(
             true,
-            Some(PathBuf::from("/home/user")),
+            Some(tmp.path().join("home")),
             "aeroftp",
-            Some(PathBuf::from("/sandbox/aeroftp")),
-            |_| false,
+            Some(tmp.path().join("sandbox").join("aeroftp")),
         );
         assert!(got.is_none());
     }
@@ -992,10 +1327,380 @@ mod tests {
     /// non-redirected environment from copying a tree onto itself).
     #[test]
     fn host_config_skipped_when_equal_to_data_root() {
-        let home = PathBuf::from("/home/user");
-        let same = home.join(".config").join("aeroftp");
-        let got = host_config_dir_impl(true, Some(home), "aeroftp", Some(same), |_| true);
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("servers.json"), b"{}").unwrap();
+        let got = host_config_dir_impl(true, Some(home), "aeroftp", Some(config));
         assert!(got.is_none());
+    }
+
+    /// The home layout the offer looks at: `<home>/.config/aeroftp`.
+    fn host_config_home(tmp: &tempfile::TempDir) -> (PathBuf, PathBuf) {
+        let home = tmp.path().join("home");
+        let config = home.join(".config").join("aeroftp");
+        std::fs::create_dir_all(&config).unwrap();
+        (home, config)
+    }
+
+    /// A host config that exists but holds nothing the import copies is still
+    /// the source of an explicit import (the CLI `flatpak-import`): it ends in
+    /// "nothing to import", not in "no host configuration available".
+    #[test]
+    fn an_explicit_import_of_a_host_config_with_nothing_to_copy_copies_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("history.db-wal"), b"stale").unwrap();
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+
+        let source = host_config_dir_impl(true, Some(home), "aeroftp", Some(sandbox.clone()));
+        let report = apply_flatpak_host_import(true, source, Some(sandbox))
+            .expect("an explicit import of a host config with nothing to copy failed");
+
+        assert_eq!(report.copied, 0);
+        assert!(!report.imported());
+        assert!(
+            report.nothing_importable,
+            "a host config with nothing to copy was reported as if its files were already here"
+        );
+    }
+
+    /// The GUI reads the report as JSON: without `nothing_importable` it tells a
+    /// user whose host config holds only links and sidecars that this install
+    /// already has a file with the same name for each of them.
+    #[test]
+    fn the_import_report_json_says_when_there_was_nothing_to_import() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("history.db-wal"), b"stale").unwrap();
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+        let source = host_config_dir_impl(true, Some(home), "aeroftp", Some(sandbox.clone()));
+
+        let json = apply_flatpak_host_import(true, source, Some(sandbox))
+            .unwrap()
+            .to_json();
+
+        assert_eq!(json["copied"], 0);
+        assert_eq!(json["imported"], false);
+        assert_eq!(
+            json["nothing_importable"], true,
+            "the report JSON does not say the host config held nothing to import: {json}"
+        );
+
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        std::fs::create_dir_all(&sandbox).unwrap();
+        std::fs::write(sandbox.join("servers.json"), b"sandbox servers").unwrap();
+        let json = apply_flatpak_host_import(true, Some(host), Some(sandbox))
+            .unwrap()
+            .to_json();
+        assert_eq!(json["copied"], 0);
+        assert_eq!(json["nothing_importable"], false, "{json}");
+    }
+
+    /// What the GUI offer sees for the host config under `home`, through the
+    /// same two steps [`flatpak_host_import_status`] runs.
+    fn offer_for(home: PathBuf, tmp: &tempfile::TempDir) -> FlatpakImportStatus {
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+        import_offer(
+            host_config_dir_impl(true, Some(home), "aeroftp", Some(sandbox.clone())),
+            Some(sandbox),
+            false,
+        )
+    }
+
+    #[test]
+    fn host_config_with_nothing_to_copy_is_not_offered() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        // Only what the import never copies: an empty folder, a SQLite sidecar
+        // and a symbolic link.
+        std::fs::create_dir_all(config.join("plugins")).unwrap();
+        std::fs::write(config.join("history.db-wal"), b"stale").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(tmp.path(), config.join("elsewhere")).unwrap();
+
+        let status = offer_for(home, &tmp);
+
+        assert!(
+            !status.available,
+            "an import with nothing to copy was offered from {:?}",
+            status.source
+        );
+    }
+
+    #[test]
+    fn host_config_with_a_file_to_copy_is_offered() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        std::fs::create_dir_all(config.join("plugins").join("p")).unwrap();
+        std::fs::write(config.join("plugins").join("p").join("plugin.json"), b"{}").unwrap();
+
+        let status = offer_for(home, &tmp);
+
+        assert!(status.available);
+        assert_eq!(status.source, Some(config));
+    }
+
+    #[test]
+    fn a_decided_import_is_not_offered_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_home, config) = host_config_home(&tmp);
+        std::fs::write(config.join("servers.json"), b"{}").unwrap();
+
+        let status = import_offer(Some(config), Some(tmp.path().join("sandbox")), true);
+
+        assert!(!status.available);
+    }
+
+    /// A folder the offer cannot read is offered, so the copy reports the error
+    /// instead of the offer silently hiding a configuration it could not look
+    /// into.
+    #[cfg(unix)]
+    #[test]
+    fn host_config_with_an_unreadable_folder_is_offered_and_the_copy_reports_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let (home, config) = host_config_home(&tmp);
+        let locked = config.join("plugins");
+        std::fs::create_dir_all(&locked).unwrap();
+        std::fs::write(locked.join("plugin.json"), b"{}").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Root reads a 0o000 folder anyway, so the premise does not hold there.
+        let premise_holds = std::fs::read_dir(&locked).is_err();
+
+        let status = offer_for(home, &tmp);
+        let result = apply_flatpak_host_import(true, status.source.clone(), status.target.clone());
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        if !premise_holds {
+            eprintln!("skipped: a 0o000 folder is readable here (running as root)");
+            return;
+        }
+        assert!(
+            status.available,
+            "a host config the offer could not read was not offered"
+        );
+        assert!(
+            result.is_err(),
+            "the copy did not report the unreadable folder: {:?}",
+            result.map(|r| r.copied)
+        );
+    }
+
+    /// A dotfiles manager (GNU Stow and the like) links the whole
+    /// `~/.config/aeroftp` into place. That link is the user's own config, so the
+    /// root is resolved once, and the never-follow rule applies to what is
+    /// inside it.
+    #[cfg(unix)]
+    #[test]
+    fn a_host_config_linked_in_by_a_dotfiles_manager_is_imported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let dotfiles = home.join("dotfiles").join("aeroftp");
+        std::fs::create_dir_all(&dotfiles).unwrap();
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        std::fs::write(dotfiles.join("servers.json"), b"host servers").unwrap();
+        // A link inside the tree is still never followed.
+        std::os::unix::fs::symlink(tmp.path(), dotfiles.join("elsewhere")).unwrap();
+        std::os::unix::fs::symlink(&dotfiles, home.join(".config").join("aeroftp")).unwrap();
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+
+        let status = offer_for(home, &tmp);
+        assert!(status.available, "a linked host config was not offered");
+        let report = apply_flatpak_host_import(true, status.source, Some(sandbox.clone())).unwrap();
+
+        assert_eq!(report.copied, 1);
+        assert_eq!(
+            std::fs::read(sandbox.join("servers.json")).unwrap(),
+            b"host servers"
+        );
+        assert!(sandbox.join("elsewhere").symlink_metadata().is_err());
+    }
+
+    /// Resolving a linked root must not defeat the self-reference guard: a host
+    /// config that is a link to the data root is not an import source.
+    #[cfg(unix)]
+    #[test]
+    fn a_host_config_linked_to_the_data_root_is_not_imported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+        std::fs::create_dir_all(&sandbox).unwrap();
+        std::fs::write(sandbox.join("servers.json"), b"sandbox servers").unwrap();
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        std::os::unix::fs::symlink(&sandbox, home.join(".config").join("aeroftp")).unwrap();
+
+        let got = host_config_dir_impl(true, Some(home), "aeroftp", Some(sandbox));
+
+        assert!(
+            got.is_none(),
+            "the data root was offered as its own source: {got:?}"
+        );
+    }
+
+    /// A host config and an empty sandbox data root, as the import finds them.
+    fn flatpak_import_fixture() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let host = tmp.path().join("host").join("aeroftp");
+        let sandbox = tmp.path().join("sandbox").join("aeroftp");
+        std::fs::create_dir_all(&host).unwrap();
+        std::fs::write(host.join("servers.json"), b"host servers").unwrap();
+        (tmp, host, sandbox)
+    }
+
+    #[test]
+    fn flatpak_import_accepted_copies_what_is_missing_and_records_the_decision() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert!(report.imported());
+        assert_eq!(report.copied, 1);
+        assert_eq!(
+            std::fs::read(sandbox.join("servers.json")).unwrap(),
+            b"host servers"
+        );
+        assert!(sandbox.join(FLATPAK_IMPORT_DECIDED_MARKER).is_file());
+    }
+
+    #[test]
+    fn flatpak_import_with_nothing_missing_is_not_reported_as_imported() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        std::fs::create_dir_all(&sandbox).unwrap();
+        std::fs::write(sandbox.join("servers.json"), b"sandbox servers").unwrap();
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        // Nothing was copied, so the GUI must not announce an import and ask for
+        // a restart, and the CLI must not print "Imported".
+        assert!(
+            !report.imported(),
+            "an import that copied nothing was reported as imported"
+        );
+        assert_eq!(report.copied, 0);
+        assert!(!report.nothing_importable);
+        assert_eq!(
+            std::fs::read(sandbox.join("servers.json")).unwrap(),
+            b"sandbox servers"
+        );
+        assert!(sandbox.join(FLATPAK_IMPORT_DECIDED_MARKER).is_file());
+    }
+
+    /// A host vault, marked by `vault.key` and a real SQLite
+    /// `user_partitions.db`. The real `vault.db` is JSON, which the `.db`
+    /// snapshot in `copy_missing_tree` cannot copy into an install that lacks
+    /// one, so the fixture leaves it out.
+    fn write_host_vault(host: &Path) {
+        std::fs::write(
+            host.join(crate::credential_store::VAULTKEY_FILENAME),
+            b"host key",
+        )
+        .unwrap();
+        let db =
+            rusqlite::Connection::open(host.join(crate::user_partitions::DB_FILENAME)).unwrap();
+        db.execute_batch("CREATE TABLE users(name TEXT); INSERT INTO users VALUES('host');")
+            .unwrap();
+    }
+
+    /// What the first start of a Flatpak install writes before the import is
+    /// offered: `init_credential_store` creates `vault.key` and `vault.db`, and
+    /// the account setup creates `user_partitions.db`.
+    fn write_sandbox_vault(sandbox: &Path) {
+        std::fs::create_dir_all(sandbox).unwrap();
+        for name in VAULT_FILES {
+            std::fs::write(sandbox.join(name), b"sandbox").unwrap();
+        }
+    }
+
+    #[test]
+    fn flatpak_import_says_the_host_vault_stayed_behind_when_this_install_has_one() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        write_host_vault(&host);
+        write_sandbox_vault(&sandbox);
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        // servers.json was copied, the vault was not: the report must not let
+        // the GUI say "restart to load your servers and vault".
+        assert_eq!(report.copied, 1);
+        assert_eq!(
+            report.vault,
+            HostVault::Skipped,
+            "a host vault this install already has was reported as {:?}",
+            report.vault
+        );
+        assert!(report.vault_skipped() && !report.vault_imported());
+        for name in VAULT_FILES {
+            assert_eq!(std::fs::read(sandbox.join(name)).unwrap(), b"sandbox");
+        }
+    }
+
+    #[test]
+    fn flatpak_import_says_the_host_vault_stayed_behind_when_nothing_was_copied() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        std::fs::remove_file(host.join("servers.json")).unwrap();
+        write_host_vault(&host);
+        write_sandbox_vault(&sandbox);
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert_eq!(report.copied, 0);
+        assert_eq!(report.vault, HostVault::Skipped);
+    }
+
+    #[test]
+    fn flatpak_import_reports_the_host_vault_it_copied() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        write_host_vault(&host);
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert_eq!(report.copied, 3);
+        assert_eq!(report.vault, HostVault::Imported);
+        assert_eq!(
+            std::fs::read(sandbox.join(crate::credential_store::VAULTKEY_FILENAME)).unwrap(),
+            b"host key"
+        );
+    }
+
+    #[test]
+    fn flatpak_import_without_a_host_vault_reports_none() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        write_sandbox_vault(&sandbox);
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert_eq!(report.copied, 1);
+        assert_eq!(report.vault, HostVault::Absent);
+    }
+
+    #[test]
+    fn flatpak_import_declined_copies_nothing_and_records_the_decision() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+
+        let report =
+            apply_flatpak_host_import(false, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert!(!report.imported());
+        assert_eq!(report.copied, 0);
+        assert!(!sandbox.join("servers.json").exists());
+        assert!(sandbox.join(FLATPAK_IMPORT_DECIDED_MARKER).is_file());
+    }
+
+    #[test]
+    fn flatpak_import_without_a_host_config_fails_and_keeps_the_offer_open() {
+        let (_tmp, _host, sandbox) = flatpak_import_fixture();
+
+        let result = apply_flatpak_host_import(true, None, Some(sandbox.clone()));
+
+        assert!(result.is_err());
+        // No marker: the next start offers the import again.
+        assert!(!sandbox.join(FLATPAK_IMPORT_DECIDED_MARKER).exists());
     }
 
     /// The import copies only what is absent and never overwrites an existing

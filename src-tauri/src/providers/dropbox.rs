@@ -1521,6 +1521,13 @@ impl StorageProvider for DropboxProvider {
         Ok(false)
     }
 
+    /// Yes: the replace above renames the item at the destination aside,
+    /// moves the new one in, and only then deletes the old one, which is
+    /// what an edit's non-atomic opt-in needs.
+    fn replace_sets_aside(&self) -> bool {
+        true
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
@@ -3188,6 +3195,7 @@ mod tests {
     async fn dropbox_does_not_claim_an_atomic_replace() {
         let mut provider = fixture_connected();
         assert!(!provider.supports_atomic_replace().await.unwrap());
+        assert!(provider.replace_sets_aside());
     }
 
     fn fixture_connected() -> DropboxProvider {

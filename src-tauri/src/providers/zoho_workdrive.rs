@@ -3012,6 +3012,13 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
+        // `mkdir` is not documented as idempotent. An existing child of this
+        // name is AlreadyExists, the refusal the other providers give, rather
+        // than a second folder of the same name.
+        if self.find_by_name(folder_name, &parent_id).await?.is_some() {
+            return Err(ProviderError::AlreadyExists(path.to_string()));
+        }
+
         // JSON:API format for folder creation
         let body = serde_json::json!({
             "data": {
@@ -3870,6 +3877,7 @@ mod tests {
     async fn zoho_does_not_claim_an_atomic_replace() {
         let mut p = ZohoWorkdriveProvider::new(config("com"));
         assert!(!p.supports_atomic_replace().await.unwrap());
+        assert!(!p.replace_sets_aside());
     }
 
     /// After `cd /docs`: `/x` and `x` name different folders, `/x` the
@@ -3995,6 +4003,49 @@ mod tests {
         }
         provider.current_folder_id = "ROOT".to_string();
         provider
+    }
+
+    /// `mkdir` does not say it is idempotent. A name the parent already holds
+    /// is AlreadyExists, and the create request is not sent.
+    #[tokio::test]
+    async fn mkdir_refuses_a_name_the_parent_already_holds() {
+        use std::sync::{Arc, Mutex};
+        let posts = Arc::new(Mutex::new(0u32));
+        let seen = Arc::clone(&posts);
+        let listing = r#"{"data":[{"id":"A","attributes":{"name":"taken","type":"folder"}}]}"#;
+        let app = axum::Router::new()
+            .route(
+                "/workdrive/api/v1/files/ROOT/files",
+                axum::routing::get(move || async move { listing }),
+            )
+            .route(
+                "/workdrive/api/v1/files",
+                axum::routing::post(move || {
+                    let seen = Arc::clone(&seen);
+                    async move {
+                        *seen.lock().unwrap() += 1;
+                        (axum::http::StatusCode::CREATED, r#"{"data":{"id":"N"}}"#)
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.endpoint_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("test-token".into());
+        provider.connected = true;
+        provider
+            .folder_cache
+            .insert("/".to_string(), "ROOT".to_string());
+        provider.current_folder_id = "ROOT".to_string();
+
+        let err = provider.mkdir("/taken").await.unwrap_err();
+        assert!(matches!(err, ProviderError::AlreadyExists(_)), "{err:?}");
+        assert_eq!(*posts.lock().unwrap(), 0, "an existing name is not created");
+
+        provider.mkdir("/fresh").await.expect("a free name");
+        assert_eq!(*posts.lock().unwrap(), 1);
     }
 
     /// After `/a` moved to `/b`, the cache still mapped `/a` (and `/a/sub`)

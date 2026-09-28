@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, X, ChevronDown, ChevronRight, Loader2, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel } from '../../types/tools';
+import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel, requestsNonAtomicReplace } from '../../types/tools';
 import { DiffPreview } from './DiffPreview';
 import { CodingPatchReview } from './CodingPatchReview';
 import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
@@ -68,6 +68,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
     const isPending = toolCall.status === 'pending' || toolCall.status === 'approved';
 
     const isEditTool = toolCall.toolName === 'local_edit' || toolCall.toolName === 'remote_edit';
+    const nonAtomicReplace = requestsNonAtomicReplace(toolCall);
     const isPatchTool = toolCall.toolName === 'coding_apply_patch';
     const isCheckpointRestoreTool = toolCall.toolName === 'coding_checkpoint_restore';
     const isGitMutationTool = toolCall.toolName === 'coding_git_stage' || toolCall.toolName === 'coding_git_commit';
@@ -148,6 +149,11 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                     {mainArg && (
                         <span className="text-purple-300/80 font-mono text-xs truncate max-w-[200px]">
                             &lsaquo; {mainArg}
+                        </span>
+                    )}
+                    {nonAtomicReplace && (
+                        <span className="text-yellow-400 text-[11px] flex items-center gap-1">
+                            {'\u26A0'} {t('ai.toolApproval.nonAtomicReplace') || 'Non-atomic replace: the file is briefly missing'}
                         </span>
                     )}
 

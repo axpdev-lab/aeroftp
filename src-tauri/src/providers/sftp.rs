@@ -99,9 +99,237 @@ fn classify_russh_err(
     let s = e.to_string();
     if is_session_closed_error_message(&s) {
         ProviderError::ConnectionLost(s)
+    } else if is_request_timeout(&s) {
+        ProviderError::Timeout
     } else {
         fallback(s)
     }
+}
+
+/// Map an error of a request that creates, opens for writing, writes or
+/// closes a remote file, or looks at one to resume it. A request timeout
+/// there is not a limit reached with nothing failed (exit 8): the request may
+/// have reached the server, and a 0-byte or partial file may be left at the
+/// remote path, so the transfer failed (exit 4, still retried). The message
+/// keeps the word "timeout", which the CLI's worker batches read as a lost
+/// session. Every other error is classified as [`classify_russh_err`] does,
+/// a transfer failure where nothing more specific applies.
+fn classify_russh_write_err(e: impl std::fmt::Display, context: &str) -> ProviderError {
+    let fallback = |s: String| ProviderError::TransferFailed(format!("{context}: {s}"));
+    match classify_russh_err(e, fallback) {
+        ProviderError::Timeout => fallback(
+            "the server did not answer in time (timeout); the remote file may be incomplete"
+                .to_string(),
+        ),
+        other => other,
+    }
+}
+
+/// The provider's SFTP session, with the signal that its transport ended.
+///
+/// russh-sftp 2.4 does not wake a request that waits for its reply when the
+/// transport goes away: its reader stops, but the senders the replies would
+/// have gone through stay registered in a map the session still owns, so
+/// nothing answers them. Most requests carry the session's 10 s timeout. The
+/// acknowledgement of a pipelined WRITE carries none, and an upload waits on
+/// the oldest one before it sends more, so an upload in flight when the
+/// server died or restarted waited forever (live: `docker restart` of the
+/// server during `put -r`, killed by the timeout). The transfer loops race
+/// their waits against `ended` instead ([`until_sftp_ends`]).
+struct SftpChannel {
+    session: SftpSession,
+    ended: CancellationToken,
+}
+
+impl SftpChannel {
+    /// The SFTP session over `stream`, watched ([`WatchedSftpStream`]).
+    async fn open<S>(stream: S) -> Result<Self, russh_sftp::client::error::Error>
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
+        let ended = CancellationToken::new();
+        let stream = WatchedSftpStream {
+            inner: stream,
+            ended: ended.clone(),
+        };
+        let session = SftpSession::new(stream).await?;
+        Ok(Self { session, ended })
+    }
+}
+
+impl std::ops::Deref for SftpChannel {
+    type Target = SftpSession;
+
+    fn deref(&self) -> &SftpSession {
+        &self.session
+    }
+}
+
+impl std::ops::DerefMut for SftpChannel {
+    fn deref_mut(&mut self) -> &mut SftpSession {
+        &mut self.session
+    }
+}
+
+/// The stream under an [`SftpChannel`]: the first read that finds it ended or
+/// failed, and the first write or flush that fails, cancel `ended`.
+struct WatchedSftpStream<S> {
+    inner: S,
+    ended: CancellationToken,
+}
+
+impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for WatchedSftpStream<S> {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        let room = buf.remaining();
+        let before = buf.filled().len();
+        let poll = std::pin::Pin::new(&mut this.inner).poll_read(cx, buf);
+        let ended = match &poll {
+            std::task::Poll::Ready(Ok(())) => room > 0 && buf.filled().len() == before,
+            std::task::Poll::Ready(Err(_)) => true,
+            std::task::Poll::Pending => false,
+        };
+        if ended {
+            this.ended.cancel();
+        }
+        poll
+    }
+}
+
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for WatchedSftpStream<S> {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let this = self.get_mut();
+        let poll = std::pin::Pin::new(&mut this.inner).poll_write(cx, buf);
+        if matches!(poll, std::task::Poll::Ready(Err(_))) {
+            this.ended.cancel();
+        }
+        poll
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        let poll = std::pin::Pin::new(&mut this.inner).poll_flush(cx);
+        if matches!(poll, std::task::Poll::Ready(Err(_))) {
+            this.ended.cancel();
+        }
+        poll
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
+    }
+}
+
+/// What a transfer wait cut short by the end of the transport reports. The
+/// wording is one of `SESSION_CLOSED_NEEDLES`, so the command layer reads it
+/// as a lost connection it may retry.
+const SFTP_TRANSPORT_ENDED: &str = "SFTP session closed: the connection to the server ended";
+
+/// One wait on the SFTP session that russh-sftp would not end if the
+/// transport went away (see [`SftpChannel`]), ended as soon as it does.
+async fn until_sftp_ends<T, E: From<std::io::Error>>(
+    ended: &CancellationToken,
+    wait: impl std::future::Future<Output = Result<T, E>>,
+) -> Result<T, E> {
+    tokio::select! {
+        biased;
+        result = wait => result,
+        () = ended.cancelled() => Err(E::from(std::io::Error::new(
+            std::io::ErrorKind::ConnectionAborted,
+            SFTP_TRANSPORT_ENDED,
+        ))),
+    }
+}
+
+/// Closes a read handle without waiting on a transport that ended. The
+/// `ended` token fires in russh-sftp's reader task before its writer drops the
+/// request channel, so a CLOSE sent in that window registers a reply nobody
+/// will send and waits out the session's 10 s; racing it ends it at once.
+async fn close_sftp_file(file: russh_sftp::client::fs::File, ended: &CancellationToken) {
+    let _ = until_sftp_ends(ended, file.close()).await;
+}
+
+/// How long an upload waits for the server to acknowledge its writes before
+/// it gives the session up. It covers the case the end of the transport does
+/// not: an SSH connection that still answers its keepalives while the SFTP
+/// server behind it stopped answering. It leans toward patience. Writes go
+/// out in pieces of [`SFTP_WRITE_PIECE`] (2 MiB), and russh-sftp keeps at most
+/// 8 writes of just under 256 KiB in flight, so one wait covers at most about
+/// 9 acknowledgements, about 2.25 MiB: only a link that cannot move that in
+/// five minutes (about 7.5 KB/s) trips it, whatever `--buffer-size` is.
+const SFTP_WRITE_ACK_BOUND: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// The piece an upload hands to the SFTP file at a time (see
+/// [`SFTP_WRITE_ACK_BOUND`]): a write of a whole 16 MiB buffer would return
+/// only after most of it was acknowledged, and the bound would trip on links
+/// eight times faster. 2 MiB, not 256 KiB: russh-sftp's largest write is just
+/// under 256 KiB, so a 256 KiB piece went out as a full write plus a tail of a
+/// few bytes and halved the data in flight; 2 MiB is also the most tokio reads
+/// from the file per call, so the wire pattern is the one it always was.
+const SFTP_WRITE_PIECE: usize = 2 * 1024 * 1024;
+
+/// Writes `data` to `file` piece by piece, each piece under
+/// [`until_sftp_acks`].
+async fn write_sftp_acked(
+    file: &mut russh_sftp::client::fs::File,
+    data: &[u8],
+    ended: &CancellationToken,
+) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    for piece in data.chunks(SFTP_WRITE_PIECE) {
+        until_sftp_acks(ended, file.write_all(piece)).await?;
+    }
+    Ok(())
+}
+
+/// A wait on write acknowledgements (a write that fills the pipeline, the
+/// close that drains it): ended by the end of the transport or, failing
+/// that, by [`SFTP_WRITE_ACK_BOUND`]. A session that ran into the bound
+/// cannot be trusted any more, so it counts as ended.
+async fn until_sftp_acks<T>(
+    ended: &CancellationToken,
+    wait: impl std::future::Future<Output = std::io::Result<T>>,
+) -> std::io::Result<T> {
+    match tokio::time::timeout(SFTP_WRITE_ACK_BOUND, until_sftp_ends(ended, wait)).await {
+        Ok(result) => result,
+        Err(_) => {
+            ended.cancel();
+            Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!(
+                    "SFTP server acknowledged no write in {} s: operation timed out",
+                    SFTP_WRITE_ACK_BOUND.as_secs()
+                ),
+            ))
+        }
+    }
+}
+
+/// Whether an SFTP error is russh-sftp's own request timeout (its display is
+/// exactly `Timeout`): a reply that did not come within 10 s. It is a timeout,
+/// not a lost connection: a live but slow server (a large directory listing, a
+/// stat on a network filesystem) answers late and the session is still good,
+/// while a transport that really ended is seen by `is_connected` and redialled
+/// on the next call. `list` and `stat` used to report it as not found (exit 2),
+/// `mkdir` and `delete` as a server error; as a timeout it is exit 8, retried.
+/// Only the exact text counts: a server message that contains the word (a path
+/// such as `/x/timeout.log`) is not one.
+fn is_request_timeout(message: &str) -> bool {
+    message.trim() == "Timeout"
 }
 
 /// Map `SftpSession::try_exists` onto [`StorageProvider::exists`].
@@ -475,7 +703,7 @@ pub struct SftpProvider {
     /// SSH connection handle (shared so rsync-over-SSH can open exec channels on the same session).
     ssh_handle: Option<SharedSshHandle>,
     /// SFTP session for file operations
-    sftp: Option<SftpSession>,
+    sftp: Option<SftpChannel>,
     /// Current working directory
     current_dir: String,
     /// Home directory (resolved on connect)
@@ -602,9 +830,31 @@ impl SftpProvider {
     /// first connect, `KeyChanged` is rejected). Defense in depth: the
     /// freshly accepted fingerprint is compared against the pin captured
     /// at the first connect and a mismatch aborts the worker.
+    /// Close the SSH connection this provider holds, without waiting on it for
+    /// long. After a stalled session it may still be up (an SFTP server that
+    /// stopped answering behind a live sshd, keepalives still answered), and
+    /// replacing the handle alone would leave it open for the life of the
+    /// process: the SFTP reader task keeps a clone of its sender.
+    async fn retire_ssh_connection(&mut self) {
+        if let Some(handle) = self.ssh_handle.take() {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async move {
+                let guard = handle.lock().await;
+                let _ = guard
+                    .disconnect(russh::Disconnect::ByApplication, "", "en")
+                    .await;
+            })
+            .await;
+        }
+    }
+
     async fn ensure_connected(&mut self) -> Result<(), ProviderError> {
-        if self.sftp.is_some() {
+        if self.is_connected() {
             return Ok(());
+        }
+        if self.sftp.take().is_some() {
+            // A session whose transport ended answers nothing: dial again, as
+            // for a worker that never dialled.
+            self.retire_ssh_connection().await;
         }
         let spec = self
             .connection_spec
@@ -643,11 +893,10 @@ impl SftpProvider {
     /// on SFTP a session is a full handshake: about 1.3 seconds on the lab
     /// link, twice per segmented download, whether or not anything changed.
     async fn range_source_reading(
-        sftp: &SftpSession,
+        sftp: &SftpChannel,
         full_path: &str,
     ) -> Result<RangeSourceFingerprint, String> {
-        let metadata = sftp
-            .metadata(full_path)
+        let metadata = until_sftp_ends(&sftp.ended, sftp.metadata(full_path))
             .await
             .map_err(|e| format!("it could not be read ({e})"))?;
         let entry = Self::metadata_to_entry(String::new(), full_path.to_string(), &metadata);
@@ -1128,13 +1377,13 @@ impl SftpProvider {
         })
     }
 
-    fn get_sftp(&self) -> Result<&SftpSession, ProviderError> {
+    fn get_sftp(&self) -> Result<&SftpChannel, ProviderError> {
         self.sftp.as_ref().ok_or(ProviderError::NotConnected)
     }
 
     /// Get mutable SFTP session or error if not connected
     #[allow(dead_code)]
-    fn get_sftp_mut(&mut self) -> Result<&mut SftpSession, ProviderError> {
+    fn get_sftp_mut(&mut self) -> Result<&mut SftpChannel, ProviderError> {
         self.sftp.as_mut().ok_or(ProviderError::NotConnected)
     }
 
@@ -1251,7 +1500,7 @@ impl SftpProvider {
 
     async fn verify_remote_upload_size(
         &self,
-        sftp: &SftpSession,
+        sftp: &SftpChannel,
         remote_path: &str,
         expected_size: u64,
     ) -> Result<(), ProviderError> {
@@ -1259,7 +1508,7 @@ impl SftpProvider {
         let mut last_observation = format!("expected {} bytes, got no metadata yet", expected_size);
 
         loop {
-            match sftp.metadata(remote_path).await {
+            match until_sftp_ends(&sftp.ended, sftp.metadata(remote_path)).await {
                 Ok(metadata) => {
                     let actual_size = metadata.size.unwrap_or(0);
                     if actual_size == expected_size {
@@ -1269,6 +1518,14 @@ impl SftpProvider {
                         "expected {} bytes, got {} bytes",
                         expected_size, actual_size
                     );
+                }
+                // No answer can come any more: a lost connection, not a
+                // verification to keep trying for its 3 s.
+                Err(error) if sftp.ended.is_cancelled() => {
+                    return Err(classify_russh_write_err(
+                        error,
+                        &format!("Upload verification failed for {remote_path}"),
+                    ));
                 }
                 Err(error) => {
                     last_observation = error.to_string();
@@ -1290,39 +1547,47 @@ impl SftpProvider {
     /// sync scans don't re-upload unchanged files just because the server
     /// stamped the upload time. Best-effort: failures are logged, not fatal.
     /// Shared by `upload` and `resume_upload`.
-    async fn preserve_remote_mtime(&self, sftp: &SftpSession, remote_path: &str, local_path: &str) {
-        match tokio::fs::metadata(local_path).await {
-            Ok(local_meta) => {
-                if let Ok(modified) = local_meta.modified() {
-                    if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
-                        match u32::try_from(duration.as_secs()) {
-                            Ok(epoch_secs) => {
-                                let mut attrs = russh_sftp::protocol::FileAttributes::empty();
-                                // SFTP's ACMODTIME attribute serializes both fields together;
-                                // reuse the source mtime for atime to avoid sending a zero atime.
-                                attrs.atime = Some(epoch_secs);
-                                attrs.mtime = Some(epoch_secs);
-                                if let Err(error) = sftp.set_metadata(remote_path, attrs).await {
-                                    tracing::warn!(
-                                        "SFTP: Failed to preserve remote mtime for {}: {}",
-                                        remote_path,
-                                        error
-                                    );
-                                }
-                            }
-                            Err(_) => tracing::warn!(
-                                "SFTP: Skipping mtime preservation for {} because source mtime is out of range",
-                                remote_path
-                            ),
-                        }
+    ///
+    /// `local_modified` is the source's time as the upload started. Read from
+    /// the path once the upload is over, it was the time of a save made
+    /// meanwhile, lent to bytes that are not that save's: a sync then read
+    /// the pair as identical and the save never went up.
+    async fn preserve_remote_mtime(
+        &self,
+        sftp: &SftpChannel,
+        remote_path: &str,
+        local_modified: Option<std::time::SystemTime>,
+    ) {
+        let Some(modified) = local_modified else {
+            tracing::warn!(
+                "SFTP: No local time to preserve on {}: the source's metadata could not be read",
+                remote_path
+            );
+            return;
+        };
+        if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
+            match u32::try_from(duration.as_secs()) {
+                Ok(epoch_secs) => {
+                    let mut attrs = russh_sftp::protocol::FileAttributes::empty();
+                    // SFTP's ACMODTIME attribute serializes both fields together;
+                    // reuse the source mtime for atime to avoid sending a zero atime.
+                    attrs.atime = Some(epoch_secs);
+                    attrs.mtime = Some(epoch_secs);
+                    if let Err(error) =
+                        until_sftp_ends(&sftp.ended, sftp.set_metadata(remote_path, attrs)).await
+                    {
+                        tracing::warn!(
+                            "SFTP: Failed to preserve remote mtime for {}: {}",
+                            remote_path,
+                            error
+                        );
                     }
                 }
+                Err(_) => tracing::warn!(
+                    "SFTP: Skipping mtime preservation for {} because source mtime is out of range",
+                    remote_path
+                ),
             }
-            Err(error) => tracing::warn!(
-                "SFTP: Could not read local metadata for mtime preservation ({}): {}",
-                local_path,
-                error
-            ),
         }
     }
 }
@@ -1433,6 +1698,15 @@ impl StorageProvider for SftpProvider {
             self.config.host,
             self.config.port
         );
+        // The posix-rename answer and its session belong to the connection
+        // that was asked: after a dropped transport and a new dial it would be
+        // a dead session, and every replace would fail on it.
+        self.posix_rename = PosixRenameSupport::Unasked;
+        // A reconnect over a connection still held (the GUI's silent
+        // reconnect after a stalled session) closes it first instead of
+        // overwriting the handle.
+        self.sftp = None;
+        self.retire_ssh_connection().await;
 
         // Create SSH config with keepalive to prevent server from closing connection
         let preferred = if self.compression_enabled {
@@ -1545,14 +1819,18 @@ impl StorageProvider for SftpProvider {
         })?;
 
         // Create SFTP session from channel
-        let sftp = SftpSession::new(channel.into_stream()).await.map_err(|e| {
-            ProviderError::ConnectionFailed(format!("Failed to create SFTP session: {}", e))
-        })?;
+        let sftp = SftpChannel::open(channel.into_stream())
+            .await
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Failed to create SFTP session: {}", e))
+            })?;
 
         // Get home directory (canonicalize ".")
-        let home = sftp.canonicalize(".").await.map_err(|e| {
-            ProviderError::ConnectionFailed(format!("Failed to get home directory: {}", e))
-        })?;
+        let home = until_sftp_ends(&sftp.ended, sftp.canonicalize("."))
+            .await
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Failed to get home directory: {}", e))
+            })?;
 
         self.home_dir = home;
 
@@ -1627,7 +1905,9 @@ impl StorageProvider for SftpProvider {
     }
 
     fn is_connected(&self) -> bool {
-        self.sftp.is_some()
+        self.sftp
+            .as_ref()
+            .is_some_and(|sftp| !sftp.ended.is_cancelled())
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
@@ -1636,11 +1916,13 @@ impl StorageProvider for SftpProvider {
 
         tracing::debug!("SFTP: Listing directory: {}", full_path);
 
-        let entries = sftp.read_dir(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::NotFound(format!("Failed to list directory: {}", s))
-            })
-        })?;
+        let entries = until_sftp_ends(&sftp.ended, sftp.read_dir(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::NotFound(format!("Failed to list directory: {}", s))
+                })
+            })?;
 
         // Build the work list from the READDIR reply without any further I/O.
         // Every entry's own attributes are already in hand; a follow-up request
@@ -1707,7 +1989,8 @@ impl StorageProvider for SftpProvider {
                 // servers). Bounded to the attr-less case so well-behaved
                 // servers pay no extra round-trip.
                 if remote_entry.permissions.is_none() {
-                    if let Ok(stat) = sftp.metadata(&entry_path).await {
+                    if let Ok(stat) = until_sftp_ends(&sftp.ended, sftp.metadata(&entry_path)).await
+                    {
                         remote_entry =
                             Self::metadata_to_entry(name.clone(), entry_path.clone(), &stat);
                     }
@@ -1721,8 +2004,7 @@ impl StorageProvider for SftpProvider {
                 // which follow the link and so can never show S_IFLNK.
                 let is_symlink = match readdir_attrs.permissions.and_then(symlink_bit) {
                     Some(flag) => flag,
-                    None => sftp
-                        .symlink_metadata(&entry_path)
+                    None => until_sftp_ends(&sftp.ended, sftp.symlink_metadata(&entry_path))
                         .await
                         .ok()
                         .and_then(|link_meta| link_meta.permissions)
@@ -1732,12 +2014,16 @@ impl StorageProvider for SftpProvider {
 
                 if is_symlink {
                     remote_entry.is_symlink = true;
-                    if let Ok(target) = sftp.read_link(&entry_path).await {
+                    if let Ok(target) =
+                        until_sftp_ends(&sftp.ended, sftp.read_link(&entry_path)).await
+                    {
                         remote_entry.link_target = Some(target);
                     }
                     // Follow the symlink to determine the real type (file vs directory)
                     // metadata() follows symlinks, unlike symlink_metadata()
-                    if let Ok(target_meta) = sftp.metadata(&entry_path).await {
+                    if let Ok(target_meta) =
+                        until_sftp_ends(&sftp.ended, sftp.metadata(&entry_path)).await
+                    {
                         if let Some(target_perms) = target_meta.permissions {
                             remote_entry.is_dir = (target_perms & 0o40000) != 0;
                         }
@@ -1753,6 +2039,16 @@ impl StorageProvider for SftpProvider {
             .buffer_unordered(LIST_FOLLOWUP_CONCURRENCY)
             .collect()
             .await;
+
+        // The follow-ups drop their errors on purpose (a server that refuses
+        // one STAT still lists), so one cut by the end of the transport left
+        // its entry half read, as a file with no mode. That is a lost
+        // connection, which the caller reconnects for, not a listing.
+        if sftp.ended.is_cancelled() {
+            return Err(ProviderError::ConnectionLost(
+                SFTP_TRANSPORT_ENDED.to_string(),
+            ));
+        }
 
         // Sort: directories first, then by name. buffer_unordered yields in
         // completion order, so the tiebreak on the exact name (not only the
@@ -1784,8 +2080,7 @@ impl StorageProvider for SftpProvider {
         // idle reaper, broken pipe) are routed to ConnectionLost so the
         // command layer can reconnect+replay instead of misclassifying
         // them as a missing path.
-        let metadata = sftp
-            .metadata(&full_path)
+        let metadata = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path))
             .await
             .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
 
@@ -1839,10 +2134,16 @@ impl StorageProvider for SftpProvider {
         let small_enough_for_serial =
             matches!(size_hint, Some(hint) if hint <= self.buffer_size as u64);
         let (metadata, preopened) = if small_enough_for_serial {
-            let (metadata, opened) = tokio::join!(sftp.metadata(&full_path), sftp.open(&full_path));
+            let (metadata, opened) = tokio::join!(
+                until_sftp_ends(&sftp.ended, sftp.metadata(&full_path)),
+                until_sftp_ends(&sftp.ended, sftp.open(&full_path)),
+            );
             (metadata, Some(opened))
         } else {
-            (sftp.metadata(&full_path).await, None)
+            (
+                until_sftp_ends(&sftp.ended, sftp.metadata(&full_path)).await,
+                None,
+            )
         };
         let metadata = match metadata {
             Ok(metadata) => metadata,
@@ -1850,7 +2151,7 @@ impl StorageProvider for SftpProvider {
                 // OPEN may have succeeded independently of STAT. Finish its
                 // CLOSE before returning, including on servers that deny STAT.
                 if let Some(Ok(file)) = preopened {
-                    let _ = file.close().await;
+                    close_sftp_file(file, &sftp.ended).await;
                 }
                 return Err(classify_russh_err(error, ProviderError::NotFound));
             }
@@ -1886,7 +2187,7 @@ impl StorageProvider for SftpProvider {
         macro_rules! close_preopened {
             () => {
                 if let Some(file) = preopened.take() {
-                    let _ = file.close().await;
+                    close_sftp_file(file, &sftp.ended).await;
                 }
             };
         }
@@ -2078,11 +2379,13 @@ impl StorageProvider for SftpProvider {
         // The handle may already be open from the STAT/OPEN overlap above.
         let mut remote_file = match preopened.take() {
             Some(file) => file,
-            None => sftp.open(&full_path).await.map_err(|e| {
-                classify_russh_err(e, |s| {
-                    ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
-                })
-            })?,
+            None => until_sftp_ends(&sftp.ended, sftp.open(&full_path))
+                .await
+                .map_err(|e| {
+                    classify_russh_err(e, |s| {
+                        ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
+                    })
+                })?,
         };
 
         // Everything that can fail once the handle is open runs inside this
@@ -2094,11 +2397,13 @@ impl StorageProvider for SftpProvider {
         // cell). The awaited close used to sit on the success path alone, so a
         // failed local create, seek, read or write, and the early return for a
         // partial that already holds the whole file, all left it to Drop.
+        let ended = sftp.ended.clone();
         let streamed: Result<(super::atomic_write::ResumableFile, u64, bool), ProviderError> = {
             // Moved in, not borrowed: a borrowed `on_progress` would make this
             // future require `Sync` from a callback that is only `Send`. The
             // remote handle is lent for the duration and closed right after.
             let remote_file = &mut remote_file;
+            let ended = &ended;
             let buffer_size = self.buffer_size;
             let download_limit_bps = self.download_limit_bps;
             async move {
@@ -2180,11 +2485,13 @@ impl StorageProvider for SftpProvider {
                             allowance,
                         )
                         .await;
-                    let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
-                        classify_russh_err(e, |s| {
-                            ProviderError::TransferFailed(format!("Read error: {}", s))
-                        })
-                    })?;
+                    let bytes_read = until_sftp_ends(ended, remote_file.read(&mut buffer))
+                        .await
+                        .map_err(|e| {
+                            classify_russh_err(e, |s| {
+                                ProviderError::TransferFailed(format!("Read error: {}", s))
+                            })
+                        })?;
 
                     if bytes_read == 0 {
                         break;
@@ -2221,7 +2528,7 @@ impl StorageProvider for SftpProvider {
         }
         .await;
 
-        let _ = remote_file.close().await;
+        close_sftp_file(remote_file, &ended).await;
         let (resumable, transferred, from_partial) = streamed?;
         resumable.commit().await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
@@ -2246,7 +2553,7 @@ impl StorageProvider for SftpProvider {
         tracing::debug!("SFTP: Reading file to bytes: {}", full_path);
 
         // H2: Check file size before reading to prevent OOM
-        if let Ok(metadata) = sftp.metadata(&full_path).await {
+        if let Ok(metadata) = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path)).await {
             if metadata.size.unwrap_or(0) > limit {
                 return Err(ProviderError::TransferFailed(format!(
                     "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
@@ -2256,11 +2563,13 @@ impl StorageProvider for SftpProvider {
             }
         }
 
-        let data = sftp.read(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!("Failed to read file: {}", s))
-            })
-        })?;
+        let data = until_sftp_ends(&sftp.ended, sftp.read(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!("Failed to read file: {}", s))
+                })
+            })?;
 
         if data.len() as u64 > limit {
             return Err(ProviderError::TransferFailed(format!(
@@ -2291,7 +2600,7 @@ impl StorageProvider for SftpProvider {
         // Honest servers get rejected up front. A server that under-reports
         // `size` here is NOT trusted: the streaming loop below refuses before
         // the buffer crosses `max_bytes`, so the lying body is never fully read.
-        if let Ok(metadata) = sftp.metadata(&full_path).await {
+        if let Ok(metadata) = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path)).await {
             if metadata.size.unwrap_or(0) > max_bytes {
                 return Err(ProviderError::TransferFailed(format!(
                     "File too large for in-memory download ({:.1} MB). Cap is {:.0} MB.",
@@ -2301,22 +2610,28 @@ impl StorageProvider for SftpProvider {
             }
         }
 
-        let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
-            })
-        })?;
+        let mut remote_file = until_sftp_ends(&sftp.ended, sftp.open(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
+                })
+            })?;
 
         // Bound the accumulator to `max_bytes`: refuse a chunk that would push
         // it over the cap instead of `read`-ing the whole file into memory.
         let buffer_size = self.buffer_size;
+        let ended = sftp.ended.clone();
         let streamed: Result<Vec<u8>, ProviderError> = {
             let remote_file = &mut remote_file;
+            let ended = &ended;
             async move {
                 let mut data: Vec<u8> = Vec::new();
                 let mut buffer = vec![0u8; buffer_size.max(4096)];
                 loop {
-                    let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
+                    let bytes_read = until_sftp_ends(ended, remote_file.read(&mut buffer))
+                        .await
+                        .map_err(|e| {
                         classify_russh_err(e, |s| {
                             ProviderError::TransferFailed(format!("Read error: {}", s))
                         })
@@ -2336,7 +2651,7 @@ impl StorageProvider for SftpProvider {
             }
         }
         .await;
-        let _ = remote_file.close().await;
+        close_sftp_file(remote_file, &ended).await;
         streamed
     }
 
@@ -2346,38 +2661,36 @@ impl StorageProvider for SftpProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        use tokio::io::AsyncWriteExt;
-
         self.ensure_connected().await?;
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
 
         tracing::info!("SFTP: Uploading {} to {}", local_path, full_path);
 
-        // Get local file size for progress reporting
-        let total_size = tokio::fs::metadata(local_path)
-            .await
-            .map(|m| m.len())
-            .unwrap_or(0);
-
-        tracing::info!("SFTP: Upload local file size: {} bytes", total_size);
-
         // Open local file
         let mut local_file = tokio::fs::File::open(local_path).await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to open local file: {}", e))
         })?;
 
+        // Its size for progress reporting, and its time as the upload starts,
+        // which the remote is stamped with at the end, read from the open file.
+        let local_meta = local_file.metadata().await.ok();
+        let total_size = local_meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let local_modified = local_meta.and_then(|m| m.modified().ok());
+
+        tracing::info!("SFTP: Upload local file size: {} bytes", total_size);
+
         // Create remote file via russh_sftp (uses existing SSH session, no second connection)
-        let mut remote_file = sftp.create(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!("Failed to create remote file: {}", s))
-            })
-        })?;
+        let mut remote_file = until_sftp_ends(&sftp.ended, sftp.create(&full_path))
+            .await
+            .map_err(|e| classify_russh_write_err(e, "Failed to create remote file"))?;
 
         let buffer_size = self.buffer_size;
         let upload_limit_bps = self.upload_limit_bps;
+        let ended = sftp.ended.clone();
         let streamed: Result<u64, ProviderError> = {
             let remote_file = &mut remote_file;
+            let ended = &ended;
             async move {
                 let mut buffer = vec![0u8; buffer_size];
                 let mut transferred: u64 = 0;
@@ -2401,14 +2714,9 @@ impl StorageProvider for SftpProvider {
                             bytes_read as u64,
                         )
                         .await;
-                    remote_file
-                        .write_all(&buffer[..bytes_read])
+                    write_sftp_acked(remote_file, &buffer[..bytes_read], ended)
                         .await
-                        .map_err(|e| {
-                            classify_russh_err(e, |s| {
-                                ProviderError::TransferFailed(format!("Remote write error: {}", s))
-                            })
-                        })?;
+                        .map_err(|e| classify_russh_write_err(e, "Remote write error"))?;
 
                     transferred += bytes_read as u64;
 
@@ -2433,13 +2741,9 @@ impl StorageProvider for SftpProvider {
         // shutdown() is the awaited close for a write handle (russh-sftp
         // File::close is equivalent). Run it on every exit, then propagate
         // the copy error if any, then a flush failure on the success path.
-        let shutdown_res = shutdown_sftp_file(&mut remote_file).await;
+        let shutdown_res = shutdown_sftp_file(&mut remote_file, &ended).await;
         let transferred = streamed?;
-        shutdown_res.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!("Failed to flush remote file: {}", s))
-            })
-        })?;
+        shutdown_res.map_err(|e| classify_russh_write_err(e, "Failed to flush remote file"))?;
 
         self.verify_remote_upload_size(sftp, &full_path, total_size)
             .await?;
@@ -2447,7 +2751,7 @@ impl StorageProvider for SftpProvider {
         // Keep remote mtime aligned with the local source so repeated sync
         // scans don't re-upload unchanged files just because the server stamped
         // the file with upload time.
-        self.preserve_remote_mtime(sftp, &full_path, local_path)
+        self.preserve_remote_mtime(sftp, &full_path, local_modified)
             .await;
 
         tracing::info!(
@@ -2522,24 +2826,38 @@ impl StorageProvider for SftpProvider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         use russh_sftp::protocol::OpenFlags;
-        use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
         self.ensure_connected().await?;
 
         let total_size = tokio::fs::metadata(local_path).await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to stat local file: {}", e))
         })?;
+        // The source's time as the resume starts, stamped on the remote at the end.
+        let local_modified = total_size.modified().ok();
         let total_size = total_size.len();
 
         // Re-stat the remote so the resume offset reflects what actually landed.
+        // Only "no such file" means there is nothing to resume from. Any other
+        // failure (a connection lost in that very window) is reported: read as
+        // 0 it turned the resume into a full upload that truncated the remote.
         let remote_size = {
             let sftp = self.get_sftp()?;
             let full_path = self.normalize_path(remote_path);
-            sftp.metadata(&full_path)
-                .await
-                .ok()
-                .and_then(|m| m.size)
-                .unwrap_or(0)
+            match until_sftp_ends(&sftp.ended, sftp.metadata(&full_path)).await {
+                Ok(metadata) => metadata.size.unwrap_or(0),
+                Err(russh_sftp::client::error::Error::Status(status))
+                    if status.status_code == russh_sftp::protocol::StatusCode::NoSuchFile =>
+                {
+                    0
+                }
+                Err(e) => {
+                    return Err(classify_russh_write_err(
+                        e,
+                        "Failed to stat remote for resume",
+                    ))
+                }
+            }
         };
 
         match plan_resume_upload(offset, remote_size, total_size) {
@@ -2570,22 +2888,19 @@ impl StorageProvider for SftpProvider {
                 // Open WRITE|CREATE (no TRUNCATE) and seek to the partial's end.
                 // We seek explicitly instead of using APPEND: some servers ignore
                 // the seek when APPEND is set and always write at EOF.
-                let mut remote_file = sftp
-                    .open_with_flags(&full_path, OpenFlags::WRITE | OpenFlags::CREATE)
-                    .await
-                    .map_err(|e| {
-                        classify_russh_err(e, |s| {
-                            ProviderError::TransferFailed(format!(
-                                "Failed to open remote for resume: {}",
-                                s
-                            ))
-                        })
-                    })?;
+                let mut remote_file = until_sftp_ends(
+                    &sftp.ended,
+                    sftp.open_with_flags(&full_path, OpenFlags::WRITE | OpenFlags::CREATE),
+                )
+                .await
+                .map_err(|e| classify_russh_write_err(e, "Failed to open remote for resume"))?;
                 let buffer_size = self.buffer_size;
                 let upload_limit_bps = self.upload_limit_bps;
                 let local_path_owned = local_path.to_string();
+                let ended = sftp.ended.clone();
                 let streamed: Result<u64, ProviderError> = {
                     let remote_file = &mut remote_file;
+                    let ended = &ended;
                     async move {
                         remote_file
                             .seek(std::io::SeekFrom::Start(start_offset))
@@ -2641,17 +2956,9 @@ impl StorageProvider for SftpProvider {
                                     bytes_read as u64,
                                 )
                                 .await;
-                            remote_file
-                                .write_all(&buffer[..bytes_read])
+                            write_sftp_acked(remote_file, &buffer[..bytes_read], ended)
                                 .await
-                                .map_err(|e| {
-                                    classify_russh_err(e, |s| {
-                                        ProviderError::TransferFailed(format!(
-                                            "Remote write error: {}",
-                                            s
-                                        ))
-                                    })
-                                })?;
+                                .map_err(|e| classify_russh_write_err(e, "Remote write error"))?;
                             transferred += bytes_read as u64;
                             if let Some(ref progress) = on_progress {
                                 progress(transferred, total_size);
@@ -2671,18 +2978,15 @@ impl StorageProvider for SftpProvider {
                     }
                 }
                 .await;
-                let shutdown_res = shutdown_sftp_file(&mut remote_file).await;
+                let shutdown_res = shutdown_sftp_file(&mut remote_file, &ended).await;
                 let transferred = streamed?;
-                shutdown_res.map_err(|e| {
-                    classify_russh_err(e, |s| {
-                        ProviderError::TransferFailed(format!("Failed to flush remote file: {}", s))
-                    })
-                })?;
+                shutdown_res
+                    .map_err(|e| classify_russh_write_err(e, "Failed to flush remote file"))?;
 
                 self.verify_remote_upload_size(sftp, &full_path, total_size)
                     .await?;
 
-                self.preserve_remote_mtime(sftp, &full_path, local_path)
+                self.preserve_remote_mtime(sftp, &full_path, local_modified)
                     .await;
 
                 tracing::info!("SFTP: Resume upload complete: {} bytes total", transferred);
@@ -2697,11 +3001,13 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Creating directory: {}", full_path);
 
-        sftp.create_dir(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to create directory: {}", s))
-            })
-        })?;
+        until_sftp_ends(&sftp.ended, sftp.create_dir(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to create directory: {}", s))
+                })
+            })?;
 
         Ok(())
     }
@@ -2712,11 +3018,13 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Deleting file: {}", full_path);
 
-        sftp.remove_file(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to delete file: {}", s))
-            })
-        })?;
+        until_sftp_ends(&sftp.ended, sftp.remove_file(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to delete file: {}", s))
+                })
+            })?;
 
         Ok(())
     }
@@ -2727,11 +3035,13 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Removing directory: {}", full_path);
 
-        sftp.remove_dir(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to remove directory: {}", s))
-            })
-        })?;
+        until_sftp_ends(&sftp.ended, sftp.remove_dir(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to remove directory: {}", s))
+                })
+            })?;
 
         Ok(())
     }
@@ -2773,7 +3083,7 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Renaming {} to {}", from_path, to_path);
 
-        let refusal = match sftp.rename(&from_path, &to_path).await {
+        let refusal = match until_sftp_ends(&sftp.ended, sftp.rename(&from_path, &to_path)).await {
             Ok(()) => return Ok(()),
             Err(e) => e,
         };
@@ -2811,7 +3121,7 @@ impl StorageProvider for SftpProvider {
             let (to_parent, to_name) = split(&to_path);
             let (from_parent, from_name) = split(&from_path);
             let one_folder_two_spellings = from_parent == to_parent && from_name != to_name;
-            match sftp.read_dir(&to_parent).await {
+            match until_sftp_ends(&sftp.ended, sftp.read_dir(&to_parent)).await {
                 Ok(entries) => {
                     let names: Vec<String> =
                         entries.into_iter().map(|entry| entry.file_name()).collect();
@@ -2821,7 +3131,8 @@ impl StorageProvider for SftpProvider {
                 Err(_) => false,
             }
         } else {
-            map_sftp_try_exists(sftp.try_exists(&to_path).await).unwrap_or(false)
+            map_sftp_try_exists(until_sftp_ends(&sftp.ended, sftp.try_exists(&to_path)).await)
+                .unwrap_or(false)
         };
         if taken {
             return Err(ProviderError::AlreadyExists(to_path));
@@ -2852,6 +3163,9 @@ impl StorageProvider for SftpProvider {
             ProviderError::ServerError(format!("Failed to encode {POSIX_RENAME_EXTENSION}: {e}"))
         })?;
 
+        // The rename goes over a second channel of the same SSH connection,
+        // so the end of the main session's transport is its end too.
+        let ended = self.get_sftp()?.ended.clone();
         let Some(session) = self.posix_rename_session().await? else {
             return Err(ProviderError::NotSupported(format!(
                 "cannot replace `{to_path}` atomically: this SFTP server does not announce \
@@ -2863,7 +3177,7 @@ impl StorageProvider for SftpProvider {
             )));
         };
 
-        match session.extended(POSIX_RENAME_EXTENSION, payload).await {
+        match until_sftp_ends(&ended, session.extended(POSIX_RENAME_EXTENSION, payload)).await {
             Ok(Packet::Status(status)) if status.status_code == StatusCode::Ok => Ok(()),
             Ok(Packet::Status(status)) => Err(ProviderError::ServerError(format!(
                 "Failed to replace: {} ({:?})",
@@ -2883,8 +3197,7 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = sftp
-            .metadata(&full_path)
+        let metadata = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path))
             .await
             .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
 
@@ -2895,16 +3208,26 @@ impl StorageProvider for SftpProvider {
 
         let mut entry = Self::metadata_to_entry(name, full_path.clone(), &metadata);
 
-        // Check for symlink
-        if let Ok(link_meta) = sftp.symlink_metadata(&full_path).await {
+        // Check for symlink. The check is best effort, but not over a
+        // transport that ended while it was asked: the entry would say "not a
+        // link" for a question that got no answer.
+        let link_meta = until_sftp_ends(&sftp.ended, sftp.symlink_metadata(&full_path)).await;
+        if let Ok(link_meta) = link_meta {
             if let Some(perms) = link_meta.permissions {
                 if (perms & 0o170000) == 0o120000 {
                     entry.is_symlink = true;
-                    if let Ok(target) = sftp.read_link(&full_path).await {
+                    if let Ok(target) =
+                        until_sftp_ends(&sftp.ended, sftp.read_link(&full_path)).await
+                    {
                         entry.link_target = Some(target);
                     }
                 }
             }
+        }
+        if sftp.ended.is_cancelled() {
+            return Err(ProviderError::ConnectionLost(
+                SFTP_TRANSPORT_ENDED.to_string(),
+            ));
         }
 
         Ok(entry)
@@ -2914,8 +3237,7 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = sftp
-            .metadata(&full_path)
+        let metadata = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path))
             .await
             .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
 
@@ -2925,7 +3247,7 @@ impl StorageProvider for SftpProvider {
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
-        map_sftp_try_exists(sftp.try_exists(&full_path).await)
+        map_sftp_try_exists(until_sftp_ends(&sftp.ended, sftp.try_exists(&full_path)).await)
     }
 
     fn supports_checksum(&self) -> bool {
@@ -3003,11 +3325,13 @@ impl StorageProvider for SftpProvider {
         // ConnectionLost so the caller can reconnect+replay rather than
         // treating it as a permanent disconnect.
         if let Some(sftp) = &self.sftp {
-            sftp.canonicalize(".").await.map_err(|e| {
-                classify_russh_err(e, |s| {
-                    ProviderError::ConnectionLost(format!("SFTP keepalive failed: {}", s))
-                })
-            })?;
+            until_sftp_ends(&sftp.ended, sftp.canonicalize("."))
+                .await
+                .map_err(|e| {
+                    classify_russh_err(e, |s| {
+                        ProviderError::ConnectionLost(format!("SFTP keepalive failed: {}", s))
+                    })
+                })?;
         }
 
         Ok(())
@@ -3035,11 +3359,13 @@ impl StorageProvider for SftpProvider {
             ..Default::default()
         };
 
-        sftp.set_metadata(&full_path, attrs).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to chmod: {}", s))
-            })
-        })?;
+        until_sftp_ends(&sftp.ended, sftp.set_metadata(&full_path, attrs))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to chmod: {}", s))
+                })
+            })?;
 
         Ok(())
     }
@@ -3059,9 +3385,15 @@ impl StorageProvider for SftpProvider {
         let mut dirs_to_scan = vec![root];
 
         while let Some(dir) = dirs_to_scan.pop() {
-            let entries = match sftp.read_dir(&dir).await {
+            let entries = match until_sftp_ends(&sftp.ended, sftp.read_dir(&dir)).await {
                 Ok(e) => e,
-                Err(_) => continue, // Skip inaccessible directories
+                // A folder that cannot be read is skipped; a connection that
+                // ended is not a folder, and the rest of the walk could not
+                // be read either.
+                Err(e) => match classify_russh_err(e, ProviderError::ServerError) {
+                    lost @ ProviderError::ConnectionLost(_) => return Err(lost),
+                    _ => continue,
+                },
             };
 
             for entry in entries {
@@ -3099,8 +3431,7 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let path = self.normalize_path(".");
 
-        let stat = sftp
-            .fs_info(path)
+        let stat = until_sftp_ends(&sftp.ended, sftp.fs_info(path))
             .await
             .map_err(|e| {
                 classify_russh_err(e, |s| {
@@ -3334,14 +3665,18 @@ impl StorageProvider for SftpProvider {
             .ok_or_else(|| ProviderError::NotConnected)?;
         let full_path = self.normalize_path(path);
 
-        let mut file = sftp.open(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to open file for range read: {}", s))
-            })
-        })?;
+        let mut file = until_sftp_ends(&sftp.ended, sftp.open(&full_path))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to open file for range read: {}", s))
+                })
+            })?;
 
+        let ended = sftp.ended.clone();
         let streamed: Result<Vec<u8>, ProviderError> = {
             let file = &mut file;
+            let ended = &ended;
             async move {
                 use tokio::io::{AsyncReadExt, AsyncSeekExt};
                 file.seek(std::io::SeekFrom::Start(offset))
@@ -3364,11 +3699,13 @@ impl StorageProvider for SftpProvider {
                 let mut buf = vec![0u8; len as usize];
                 let mut total_read = 0usize;
                 while total_read < len as usize {
-                    let n = file.read(&mut buf[total_read..]).await.map_err(|e| {
-                        classify_russh_err(e, |s| {
-                            ProviderError::ServerError(format!("Failed to read range: {}", s))
-                        })
-                    })?;
+                    let n = until_sftp_ends(ended, file.read(&mut buf[total_read..]))
+                        .await
+                        .map_err(|e| {
+                            classify_russh_err(e, |s| {
+                                ProviderError::ServerError(format!("Failed to read range: {}", s))
+                            })
+                        })?;
                     if n == 0 {
                         break;
                     }
@@ -3379,7 +3716,7 @@ impl StorageProvider for SftpProvider {
             }
         }
         .await;
-        let _ = file.close().await;
+        close_sftp_file(file, &ended).await;
         streamed
     }
 }
@@ -3482,6 +3819,7 @@ async fn sftp_pipelined_read_window(
     file: &mut russh_sftp::client::fs::File,
     abs_off: u64,
     want: usize,
+    ended: &CancellationToken,
 ) -> Result<Vec<u8>, ProviderError> {
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
@@ -3496,11 +3834,13 @@ async fn sftp_pipelined_read_window(
     let mut buf = vec![0u8; want];
     let mut filled = 0usize;
     while filled < want {
-        let n = file.read(&mut buf[filled..]).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!("Read error (pipeline): {}", s))
-            })
-        })?;
+        let n = until_sftp_ends(ended, file.read(&mut buf[filled..]))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!("Read error (pipeline): {}", s))
+                })
+            })?;
         if n == 0 {
             break;
         }
@@ -3602,9 +3942,9 @@ impl Drop for ReadaheadTempGuard {
 /// `total_for_progress`; it is taken by value (an owned `Box<dyn Fn + Send>` is
 /// `Send`, so holding it across the writer's awaits keeps this future `Send`,
 /// with no spawned ticker to leak).
-async fn close_sftp_files(files: Vec<russh_sftp::client::fs::File>) {
+async fn close_sftp_files(files: Vec<russh_sftp::client::fs::File>, ended: &CancellationToken) {
     for file in files {
-        let _ = file.close().await;
+        close_sftp_file(file, ended).await;
     }
 }
 
@@ -3612,18 +3952,22 @@ async fn close_sftp_files(files: Vec<russh_sftp::client::fs::File>) {
 /// acks first; a rejected write returns before CLOSE is sent, so Drop would
 /// only queue `close_nowait`. A second shutdown, with the ack queue empty,
 /// awaits the CLOSE.
-async fn shutdown_sftp_file(file: &mut russh_sftp::client::fs::File) -> std::io::Result<()> {
+async fn shutdown_sftp_file(
+    file: &mut russh_sftp::client::fs::File,
+    ended: &CancellationToken,
+) -> std::io::Result<()> {
     use tokio::io::AsyncWriteExt;
-    let first = file.shutdown().await;
-    if first.is_err() {
-        let _ = file.shutdown().await;
+    // The close waits for every write still in flight: see `until_sftp_acks`.
+    let first = until_sftp_acks(ended, file.shutdown()).await;
+    if first.is_err() && !ended.is_cancelled() {
+        let _ = until_sftp_acks(ended, file.shutdown()).await;
     }
     first
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn sftp_readahead_range_into(
-    sftp: &SftpSession,
+    sftp: &SftpChannel,
     full_path: &str,
     start: u64,
     expected: u64,
@@ -3649,8 +3993,9 @@ async fn sftp_readahead_range_into(
     // Successful opens from a failed batch are closed and awaited before
     // retrying with a smaller window: Drop would only queue close_nowait.
     let handles = loop {
-        let open_fut =
-            futures_util::future::join_all((0..eff_window).map(|_| sftp.open(full_path)));
+        let open_fut = futures_util::future::join_all(
+            (0..eff_window).map(|_| until_sftp_ends(&sftp.ended, sftp.open(full_path))),
+        );
         tokio::pin!(open_fut);
         let mut cancelled = false;
         let opened = tokio::select! {
@@ -3665,7 +4010,7 @@ async fn sftp_readahead_range_into(
                     Ok(r) => r,
                     Err(_) => {
                         return Err(ProviderError::TransferFailed(
-                            "Transfer cancelled by user".to_string(),
+                            SFTP_TRANSFER_CANCELLED.to_string(),
                         ));
                     }
                 }
@@ -3681,15 +4026,15 @@ async fn sftp_readahead_range_into(
             }
         }
         if cancelled {
-            close_sftp_files(ok).await;
+            close_sftp_files(ok, &sftp.ended).await;
             return Err(ProviderError::TransferFailed(
-                "Transfer cancelled by user".to_string(),
+                SFTP_TRANSFER_CANCELLED.to_string(),
             ));
         }
         match err {
             None => break ok,
             Some(e) if eff_window > 1 => {
-                close_sftp_files(ok).await;
+                close_sftp_files(ok, &sftp.ended).await;
                 let reduced = (eff_window / 2).max(1);
                 tracing::warn!(
                     "SFTP read-ahead: opening {} handles failed ({}); retrying with {}",
@@ -3700,7 +4045,7 @@ async fn sftp_readahead_range_into(
                 eff_window = reduced;
             }
             Some(e) => {
-                close_sftp_files(ok).await;
+                close_sftp_files(ok, &sftp.ended).await;
                 return Err(classify_russh_err(e, |s| {
                     ProviderError::TransferFailed(format!(
                         "Failed to open remote file (readahead): {}",
@@ -3731,7 +4076,7 @@ async fn sftp_readahead_range_into(
                         loop {
                             if work_cancel.is_cancelled() {
                                 return Err(ProviderError::TransferFailed(
-                                    "Transfer cancelled by user".to_string(),
+                                    SFTP_TRANSFER_CANCELLED.to_string(),
                                 ));
                             }
                             let j = next_chunk.fetch_add(1, Ordering::Relaxed);
@@ -3744,10 +4089,10 @@ async fn sftp_readahead_range_into(
                             let buf = tokio::select! {
                                 _ = work_cancel.cancelled() => {
                                     return Err(ProviderError::TransferFailed(
-                                        "Transfer cancelled by user".to_string(),
+                                        SFTP_TRANSFER_CANCELLED.to_string(),
                                     ));
                                 }
-                                r = sftp_pipelined_read_window(&mut file, abs_off, want) => r?,
+                                r = sftp_pipelined_read_window(&mut file, abs_off, want, &sftp.ended) => r?,
                             };
                             if buf.len() != want {
                                 return Err(ProviderError::TransferFailed(format!(
@@ -3760,7 +4105,7 @@ async fn sftp_readahead_range_into(
                             tokio::select! {
                                 _ = work_cancel.cancelled() => {
                                     return Err(ProviderError::TransferFailed(
-                                        "Transfer cancelled by user".to_string(),
+                                        SFTP_TRANSFER_CANCELLED.to_string(),
                                     ));
                                 }
                                 sent = tx.send((abs_off, buf)) => {
@@ -3774,7 +4119,7 @@ async fn sftp_readahead_range_into(
                         Ok(())
                     }
                     .await;
-                    let _ = file.close().await;
+                    close_sftp_file(file, &sftp.ended).await;
                     if result.is_err() {
                         work_cancel.cancel();
                     }
@@ -3785,7 +4130,7 @@ async fn sftp_readahead_range_into(
             // gone; otherwise the writer would wait forever.
             drop(tx);
             let results = futures_util::future::join_all(reader_tasks).await;
-            results.into_iter().find(|r| r.is_err()).unwrap_or(Ok(()))
+            first_reader_cause(results)
         }
     };
 
@@ -3798,7 +4143,7 @@ async fn sftp_readahead_range_into(
             while let Some((abs_off, buf)) = rx.recv().await {
                 if work_cancel.is_cancelled() {
                     return Err(ProviderError::TransferFailed(
-                        "Transfer cancelled by user".to_string(),
+                        SFTP_TRANSFER_CANCELLED.to_string(),
                     ));
                 }
                 if fail_write.swap(false, Ordering::SeqCst) {
@@ -3829,15 +4174,48 @@ async fn sftp_readahead_range_into(
     match (reader_res, writer_res) {
         (Ok(()), Ok(())) => Ok(()),
         (Ok(()), Err(e)) | (Err(e), Ok(())) => Err(e),
-        (Err(a), Err(b)) => {
-            let a_cancel = a.to_string().contains("cancelled");
-            let b_cancel = b.to_string().contains("cancelled");
-            if a_cancel && !b_cancel {
-                Err(b)
-            } else {
-                Err(a)
+        // The readers' error, unless it is a cancellation and the writer's
+        // is not (the readers stopped because the writer failed).
+        (Err(a), Err(b)) => first_reader_cause(vec![Err(a), Err(b)]),
+    }
+}
+
+/// The error a group of read-ahead readers reports. When one reader fails
+/// it cancels the others, and each of them then fails as cancelled; the first
+/// error in reader order was often one of those, so a connection lost by one
+/// reader surfaced as "Transfer cancelled by user", which nobody did and which
+/// the command layer does not retry. The first error that is not such a
+/// cancellation is the cause; a cancellation is reported only when every
+/// failure was one (the caller's own cancel).
+///
+/// A cancellation is the error this module writes for one
+/// ([`SFTP_TRANSFER_CANCELLED`]) or [`ProviderError::Cancelled`], nothing
+/// else: a real error whose text merely contains the word (a path such as
+/// `/data/cancelled/x.bin`) is a cause.
+fn first_reader_cause(results: Vec<Result<(), ProviderError>>) -> Result<(), ProviderError> {
+    let mut cancelled = None;
+    for result in results {
+        match result {
+            Ok(()) => {}
+            Err(e) if is_transfer_cancellation(&e) => {
+                cancelled.get_or_insert(e);
             }
+            Err(e) => return Err(e),
         }
+    }
+    cancelled.map_or(Ok(()), Err)
+}
+
+/// What a transfer of this module reports when it was cancelled, by the
+/// caller or by a sibling reader that failed.
+const SFTP_TRANSFER_CANCELLED: &str = "Transfer cancelled by user";
+
+/// Whether `error` is a cancellation (see [`first_reader_cause`]).
+fn is_transfer_cancellation(error: &ProviderError) -> bool {
+    match error {
+        ProviderError::Cancelled => true,
+        ProviderError::TransferFailed(message) => message == SFTP_TRANSFER_CANCELLED,
+        _ => false,
     }
 }
 
@@ -3848,7 +4226,7 @@ async fn sftp_readahead_range_into(
 /// file; SHA-256 gated.
 #[allow(clippy::too_many_arguments)]
 async fn sftp_readahead_download(
-    sftp: &SftpSession,
+    sftp: &SftpChannel,
     full_path: &str,
     total_size: u64,
     local_path: &str,
@@ -3993,7 +4371,7 @@ async fn sftp_readahead_download(
 /// the metadata size for windowing is the same accepted discipline as the
 /// shipped PD-SFTP-2 range worker; every run is SHA-256 gated.
 async fn sftp_pipelined_download(
-    sftp: &SftpSession,
+    sftp: &SftpChannel,
     full_path: &str,
     total_size: u64,
     atomic: &mut super::atomic_write::AtomicFile,
@@ -4035,10 +4413,10 @@ async fn sftp_pipelined_download(
     // RawSftpSession multiplexes the concurrent reads by request id.
     let mut handles: Vec<russh_sftp::client::fs::File> = Vec::with_capacity(eff_window);
     for _ in 0..eff_window {
-        match sftp.open(full_path).await {
+        match until_sftp_ends(&sftp.ended, sftp.open(full_path)).await {
             Ok(f) => handles.push(f),
             Err(e) => {
-                close_sftp_files(handles).await;
+                close_sftp_files(handles, &sftp.ended).await;
                 return Err(classify_russh_err(e, |s| {
                     ProviderError::TransferFailed(format!(
                         "Failed to open remote file (pipeline): {}",
@@ -4078,7 +4456,7 @@ async fn sftp_pipelined_download(
                 let mut futs = Vec::with_capacity(n);
                 let mut abs = batch_base;
                 for (f, &want) in used.iter_mut().zip(wants.iter()) {
-                    futs.push(sftp_pipelined_read_window(f, abs, want));
+                    futs.push(sftp_pipelined_read_window(f, abs, want, &sftp.ended));
                     abs += want as u64;
                 }
                 let results = futures_util::future::try_join_all(futs).await?;
@@ -4102,7 +4480,7 @@ async fn sftp_pipelined_download(
         }
     }
     .await;
-    close_sftp_files(handles).await;
+    close_sftp_files(handles, &sftp.ended).await;
     streamed?;
 
     let changed = match SftpProvider::range_source_reading(sftp, full_path).await {
@@ -4165,6 +4543,7 @@ async fn sftp_pipelined_range_read_strict(
     file: &mut russh_sftp::client::fs::File,
     abs_off: u64,
     want: usize,
+    ended: &CancellationToken,
 ) -> Result<Vec<u8>, ProviderError> {
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
@@ -4179,11 +4558,13 @@ async fn sftp_pipelined_range_read_strict(
     let mut buf = vec![0u8; want];
     let mut filled = 0usize;
     while filled < want {
-        let n = file.read(&mut buf[filled..]).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!("Range read error: {}", s))
-            })
-        })?;
+        let n = until_sftp_ends(ended, file.read(&mut buf[filled..]))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!("Range read error: {}", s))
+                })
+            })?;
         sftp_strict_short_read_check(n, filled, want, abs_off)?;
         filled += n;
     }
@@ -4205,7 +4586,7 @@ async fn sftp_pipelined_range_read_strict(
 /// the read scheduling differs.
 #[allow(clippy::too_many_arguments)]
 async fn sftp_pipelined_range_into(
-    sftp: &SftpSession,
+    sftp: &SftpChannel,
     full_path: &str,
     start: u64,
     expected: u64,
@@ -4226,10 +4607,10 @@ async fn sftp_pipelined_range_into(
     // SSH channel, the RawSftpSession multiplexes the concurrent reads by id.
     let mut handles: Vec<russh_sftp::client::fs::File> = Vec::with_capacity(eff_window);
     for _ in 0..eff_window {
-        match sftp.open(full_path).await {
+        match until_sftp_ends(&sftp.ended, sftp.open(full_path)).await {
             Ok(f) => handles.push(f),
             Err(e) => {
-                close_sftp_files(handles).await;
+                close_sftp_files(handles, &sftp.ended).await;
                 return Err(classify_russh_err(e, |s| {
                     ProviderError::TransferFailed(format!(
                         "Failed to open remote file for range (pipeline): {}",
@@ -4267,7 +4648,7 @@ async fn sftp_pipelined_range_into(
             let mut futs = Vec::with_capacity(n);
             let mut abs = batch_base;
             for (f, &want) in used.iter_mut().zip(wants.iter()) {
-                futs.push(sftp_pipelined_range_read_strict(f, abs, want));
+                futs.push(sftp_pipelined_range_read_strict(f, abs, want, &sftp.ended));
                 abs += want as u64;
             }
 
@@ -4276,7 +4657,7 @@ async fn sftp_pipelined_range_into(
             let results = tokio::select! {
                 _ = cancel.cancelled() => {
                     return Err(ProviderError::TransferFailed(
-                        "Transfer cancelled by user".to_string(),
+                        SFTP_TRANSFER_CANCELLED.to_string(),
                     ));
                 }
                 r = futures_util::future::try_join_all(futs) => r?,
@@ -4299,7 +4680,7 @@ async fn sftp_pipelined_range_into(
         Ok(())
     }
     .await;
-    close_sftp_files(handles).await;
+    close_sftp_files(handles, &sftp.ended).await;
     streamed
 }
 
@@ -4425,11 +4806,16 @@ async fn sftp_download_one_range(
         }
     }
 
-    let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
-        classify_russh_err(e, |s| {
-            ProviderError::TransferFailed(format!("Failed to open remote file for range: {}", s))
-        })
-    })?;
+    let mut remote_file = until_sftp_ends(&sftp.ended, sftp.open(&full_path))
+        .await
+        .map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!(
+                    "Failed to open remote file for range: {}",
+                    s
+                ))
+            })
+        })?;
     let streamed: Result<(), ProviderError> = async {
         remote_file
             .seek(std::io::SeekFrom::Start(start))
@@ -4457,7 +4843,7 @@ async fn sftp_download_one_range(
             tokio::select! {
                 _ = cancel.cancelled() => {
                     return Err(ProviderError::TransferFailed(
-                        "Transfer cancelled by user".to_string(),
+                        SFTP_TRANSFER_CANCELLED.to_string(),
                     ));
                 }
                 _ = global_bw.charge(crate::transfer_dag::governor::TransferDirection::Download, allowance) => {}
@@ -4465,10 +4851,10 @@ async fn sftp_download_one_range(
             tokio::select! {
                 _ = cancel.cancelled() => {
                     return Err(ProviderError::TransferFailed(
-                        "Transfer cancelled by user".to_string(),
+                        SFTP_TRANSFER_CANCELLED.to_string(),
                     ));
                 }
-                read = remote_file.read(&mut buf) => {
+                read = until_sftp_ends(&sftp.ended, remote_file.read(&mut buf)) => {
                     let n = read.map_err(|e| {
                         classify_russh_err(e, |s| {
                             ProviderError::TransferFailed(format!("Range read error: {}", s))
@@ -4505,7 +4891,7 @@ async fn sftp_download_one_range(
         Ok(())
     }
     .await;
-    let _ = remote_file.close().await;
+    close_sftp_file(remote_file, &sftp.ended).await;
     streamed?;
     let _ = worker.disconnect().await;
     Ok(ConcurrentRangeOutcome::Completed)
@@ -5124,6 +5510,776 @@ mod tests {
         assert!(
             map_sftp_try_exists(Err(err)).is_err(),
             "an I/O failure must stay an error, not Ok(false)"
+        );
+    }
+
+    /// Where [`GoingAwayServer`] stops: from the n-th WRITE or the n-th READ
+    /// it receives it answers nothing, and a moment later the transport
+    /// between it and the client is cut, as when the server process dies or
+    /// restarts mid-transfer. The moment lets the client fill its pipeline:
+    /// every request in flight is then waiting at the cut, and none goes out
+    /// after it (one would fail at once on the closed session and prove
+    /// nothing). `Stall` stops answering at the n-th WRITE and keeps the
+    /// transport, as an SFTP server stuck behind an SSH connection that still
+    /// answers.
+    #[derive(Clone, Copy)]
+    enum GoAwayAt {
+        Write(usize),
+        Read(usize),
+        Stall(usize),
+        /// Goes away at the n-th STAT, LSTAT or FSTAT.
+        Stat(usize),
+        /// Goes away at the first OPENDIR.
+        OpenDir,
+        /// Stays, and answers every WRITE after this long.
+        SlowWrites(std::time::Duration),
+        /// Stays, and refuses every STAT, LSTAT and FSTAT.
+        StatRefused,
+        /// Goes away at the first OPEN (a create is an OPEN too).
+        Open,
+        /// Goes away at the first SETSTAT.
+        SetStat,
+        /// Goes away at the first REALPATH.
+        RealPath,
+        /// Stays, and never answers an OPEN.
+        OpenUnanswered,
+        /// Stays, and never answers a CLOSE.
+        CloseUnanswered,
+        /// Lists entries without attributes, so that a listing asks for each
+        /// one, and goes away at the first of those STATs.
+        ListFollowUp,
+        /// Goes away at the n-th OPENDIR, after listing a folder `sub` and
+        /// a file `b.txt` in every folder it opened before.
+        OpenDirAt(usize),
+    }
+
+    /// An SFTP server on an in-memory transport that goes away in the middle
+    /// of a transfer. It serves `source` to reads and answers stat with its
+    /// size, so an upload, a resumed upload and a download all get going.
+    struct GoingAwayServer {
+        at: GoAwayAt,
+        writes: usize,
+        reads: usize,
+        stats: usize,
+        opendirs: usize,
+        /// Directory handles whose entries were sent: the next READDIR of
+        /// each ends the listing.
+        listed: std::collections::HashSet<String>,
+        source: Arc<Vec<u8>>,
+        cut: Arc<tokio::sync::Notify>,
+    }
+
+    impl GoingAwayServer {
+        fn ok(id: u32) -> russh_sftp::protocol::Status {
+            russh_sftp::protocol::Status {
+                id,
+                status_code: russh_sftp::protocol::StatusCode::Ok,
+                error_message: "Ok".to_string(),
+                language_tag: "en-US".to_string(),
+            }
+        }
+
+        fn attrs(&self, id: u32) -> russh_sftp::protocol::Attrs {
+            russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    size: Some(self.source.len() as u64),
+                    permissions: Some(0o100644),
+                    ..Default::default()
+                },
+            }
+        }
+
+        /// The answer to a STAT, LSTAT or FSTAT.
+        async fn stat_reply(
+            &mut self,
+            id: u32,
+        ) -> Result<russh_sftp::protocol::Attrs, russh_sftp::protocol::StatusCode> {
+            self.stats += 1;
+            if matches!(self.at, GoAwayAt::Stat(n) if n == self.stats)
+                || matches!(self.at, GoAwayAt::ListFollowUp)
+            {
+                self.go_away().await;
+            }
+            if matches!(self.at, GoAwayAt::StatRefused) {
+                return Err(russh_sftp::protocol::StatusCode::PermissionDenied);
+            }
+            Ok(self.attrs(id))
+        }
+
+        /// Answer nothing more, and cut the transport a moment later.
+        async fn go_away(&self) -> ! {
+            let cut = self.cut.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                cut.notify_one();
+            });
+            std::future::pending::<()>().await;
+            unreachable!()
+        }
+    }
+
+    impl russh_sftp::server::Handler for GoingAwayServer {
+        type Error = russh_sftp::protocol::StatusCode;
+
+        fn unimplemented(&self) -> Self::Error {
+            russh_sftp::protocol::StatusCode::OpUnsupported
+        }
+
+        async fn open(
+            &mut self,
+            id: u32,
+            filename: String,
+            _pflags: russh_sftp::protocol::OpenFlags,
+            _attrs: russh_sftp::protocol::FileAttributes,
+        ) -> Result<russh_sftp::protocol::Handle, Self::Error> {
+            if matches!(self.at, GoAwayAt::Open) {
+                self.go_away().await;
+            }
+            if matches!(self.at, GoAwayAt::OpenUnanswered) {
+                std::future::pending::<()>().await;
+            }
+            Ok(russh_sftp::protocol::Handle {
+                id,
+                handle: filename,
+            })
+        }
+
+        async fn close(
+            &mut self,
+            id: u32,
+            _handle: String,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            if matches!(self.at, GoAwayAt::CloseUnanswered) {
+                std::future::pending::<()>().await;
+            }
+            Ok(Self::ok(id))
+        }
+
+        async fn setstat(
+            &mut self,
+            id: u32,
+            _path: String,
+            _attrs: russh_sftp::protocol::FileAttributes,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            if matches!(self.at, GoAwayAt::SetStat) {
+                self.go_away().await;
+            }
+            Ok(Self::ok(id))
+        }
+
+        async fn realpath(
+            &mut self,
+            id: u32,
+            path: String,
+        ) -> Result<russh_sftp::protocol::Name, Self::Error> {
+            if matches!(self.at, GoAwayAt::RealPath) {
+                self.go_away().await;
+            }
+            Ok(russh_sftp::protocol::Name {
+                id,
+                files: vec![russh_sftp::protocol::File::dummy(path)],
+            })
+        }
+
+        async fn write(
+            &mut self,
+            id: u32,
+            _handle: String,
+            _offset: u64,
+            _data: Vec<u8>,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            self.writes += 1;
+            if matches!(self.at, GoAwayAt::Write(n) if n == self.writes) {
+                self.go_away().await;
+            }
+            if matches!(self.at, GoAwayAt::Stall(n) if n == self.writes) {
+                std::future::pending::<()>().await;
+            }
+            if let GoAwayAt::SlowWrites(delay) = self.at {
+                tokio::time::sleep(delay).await;
+            }
+            Ok(Self::ok(id))
+        }
+
+        async fn read(
+            &mut self,
+            id: u32,
+            _handle: String,
+            offset: u64,
+            len: u32,
+        ) -> Result<russh_sftp::protocol::Data, Self::Error> {
+            self.reads += 1;
+            if matches!(self.at, GoAwayAt::Read(n) if n == self.reads) {
+                self.go_away().await;
+            }
+            let start = offset as usize;
+            if start >= self.source.len() {
+                return Err(russh_sftp::protocol::StatusCode::Eof);
+            }
+            let end = (start + len as usize).min(self.source.len());
+            Ok(russh_sftp::protocol::Data {
+                id,
+                data: self.source[start..end].to_vec(),
+            })
+        }
+
+        async fn stat(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            self.stat_reply(id).await
+        }
+
+        async fn lstat(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            self.stat_reply(id).await
+        }
+
+        async fn fstat(
+            &mut self,
+            id: u32,
+            _handle: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            self.stat_reply(id).await
+        }
+
+        async fn opendir(
+            &mut self,
+            id: u32,
+            path: String,
+        ) -> Result<russh_sftp::protocol::Handle, Self::Error> {
+            self.opendirs += 1;
+            if matches!(self.at, GoAwayAt::OpenDir)
+                || matches!(self.at, GoAwayAt::OpenDirAt(n) if n == self.opendirs)
+            {
+                self.go_away().await;
+            }
+            Ok(russh_sftp::protocol::Handle { id, handle: path })
+        }
+
+        async fn readdir(
+            &mut self,
+            id: u32,
+            handle: String,
+        ) -> Result<russh_sftp::protocol::Name, Self::Error> {
+            if !self.listed.insert(handle) {
+                return Err(russh_sftp::protocol::StatusCode::Eof);
+            }
+            let with_mode = |mode: Option<u32>| russh_sftp::protocol::FileAttributes {
+                permissions: mode,
+                ..Default::default()
+            };
+            let files = if matches!(self.at, GoAwayAt::ListFollowUp) {
+                ["a.txt", "b.txt", "c.txt"]
+                    .map(|name| russh_sftp::protocol::File::new(name, with_mode(None)))
+                    .into()
+            } else {
+                vec![
+                    russh_sftp::protocol::File::new("sub", with_mode(Some(0o40755))),
+                    russh_sftp::protocol::File::new("b.txt", with_mode(Some(0o100644))),
+                ]
+            };
+            Ok(russh_sftp::protocol::Name { id, files })
+        }
+    }
+
+    /// A provider whose SFTP session runs over the transport of a
+    /// [`GoingAwayServer`].
+    async fn provider_on_a_server_that_goes_away(at: GoAwayAt, source: Vec<u8>) -> SftpProvider {
+        let (client, proxy_client_side) = tokio::io::duplex(1 << 20);
+        let (proxy_server_side, server) = tokio::io::duplex(1 << 20);
+        let cut = Arc::new(tokio::sync::Notify::new());
+        russh_sftp::server::run(
+            server,
+            GoingAwayServer {
+                at,
+                writes: 0,
+                reads: 0,
+                stats: 0,
+                opendirs: 0,
+                listed: Default::default(),
+                source: Arc::new(source),
+                cut: cut.clone(),
+            },
+        )
+        .await;
+        tokio::spawn(async move {
+            let (mut a, mut b) = (proxy_client_side, proxy_server_side);
+            tokio::select! {
+                _ = tokio::io::copy_bidirectional(&mut a, &mut b) => {}
+                _ = cut.notified() => {}
+            }
+            // Both ends drop here: the client reads end of stream.
+        });
+        let mut provider = SftpProvider::new(SftpConfig {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: None,
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        });
+        provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
+        provider
+    }
+
+    /// Longer than any of these transfers takes against the in-memory server,
+    /// so running into it means the transfer hung.
+    const GONE_SERVER_BOUND: std::time::Duration = std::time::Duration::from_secs(15);
+
+    fn local_file(dir: &tempfile::TempDir, len: usize) -> String {
+        let path = dir.path().join("local.bin");
+        std::fs::write(&path, vec![7u8; len]).expect("local file");
+        path.to_string_lossy().into_owned()
+    }
+
+    /// An upload whose server goes away while writes are in flight must fail,
+    /// not wait forever: russh-sftp 2.4 never completes the acknowledgement of
+    /// a pipelined WRITE once the transport is gone, and the upload waits on
+    /// the oldest one before it sends more (live: `docker restart` of the
+    /// server during `put -r`, killed by the timeout).
+    #[tokio::test]
+    async fn an_upload_fails_when_the_server_goes_away_mid_transfer() {
+        let mut provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::Write(3), Vec::new()).await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = local_file(&dir, 8 * 1024 * 1024);
+        let outcome =
+            tokio::time::timeout(GONE_SERVER_BOUND, provider.upload(&local, "/big.bin", None))
+                .await
+                .expect("the upload hung after the server went away");
+        let err = outcome.expect_err("an upload cut in the middle cannot succeed");
+        assert!(err.is_connection_lost(), "{err:?}");
+        assert!(!provider.is_connected(), "the session is gone, and says so");
+    }
+
+    /// The same when every WRITE of the file is already sent and the upload
+    /// is waiting for them in the close that ends it.
+    #[tokio::test]
+    async fn an_upload_fails_when_the_server_goes_away_before_the_close() {
+        let mut provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::Write(2), Vec::new()).await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = local_file(&dir, 300 * 1024);
+        let outcome = tokio::time::timeout(
+            GONE_SERVER_BOUND,
+            provider.upload(&local, "/small.bin", None),
+        )
+        .await
+        .expect("the close hung after the server went away");
+        let err = outcome.expect_err("an upload cut before its close cannot succeed");
+        assert!(err.is_connection_lost(), "{err:?}");
+    }
+
+    /// A resumed upload writes through the same pipeline.
+    #[tokio::test]
+    async fn a_resumed_upload_fails_when_the_server_goes_away_mid_transfer() {
+        let mut provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::Write(3), vec![7u8; 1024 * 1024]).await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = local_file(&dir, 8 * 1024 * 1024);
+        let outcome = tokio::time::timeout(
+            GONE_SERVER_BOUND,
+            provider.resume_upload(&local, "/big.bin", 1024 * 1024, None),
+        )
+        .await
+        .expect("the resumed upload hung after the server went away");
+        let err = outcome.expect_err("a resumed upload cut in the middle cannot succeed");
+        assert!(err.is_connection_lost(), "{err:?}");
+    }
+
+    /// Read-ahead readers report their cause, not the cancellation it caused
+    /// in the others: a lost connection used to surface as "Transfer
+    /// cancelled by user" whenever a cancelled reader came first.
+    #[test]
+    fn read_ahead_readers_report_the_cause_not_the_cancellations() {
+        let cancelled = || {
+            Err(ProviderError::TransferFailed(
+                "Transfer cancelled by user".to_string(),
+            ))
+        };
+        let lost = || Err(ProviderError::ConnectionLost("session closed".to_string()));
+        let picked = first_reader_cause(vec![cancelled(), Ok(()), lost(), cancelled()]);
+        assert!(
+            matches!(picked, Err(ProviderError::ConnectionLost(_))),
+            "{picked:?}"
+        );
+        let picked = first_reader_cause(vec![cancelled(), cancelled()]);
+        assert!(
+            picked
+                .as_ref()
+                .is_err_and(|e| e.to_string().contains("cancelled")),
+            "a cancellation alone is still reported: {picked:?}"
+        );
+        assert!(first_reader_cause(vec![Ok(()), Ok(())]).is_ok());
+    }
+
+    /// A server whose SSH connection still answers while its SFTP server
+    /// stopped acknowledging writes: the transport never ends, and the upload
+    /// gives the session up after `SFTP_WRITE_ACK_BOUND` instead of waiting
+    /// forever.
+    #[tokio::test(start_paused = true)]
+    async fn an_upload_gives_up_on_a_server_that_stops_acknowledging() {
+        let mut provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::Stall(3), Vec::new()).await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = local_file(&dir, 8 * 1024 * 1024);
+        let started = tokio::time::Instant::now();
+        let outcome = tokio::time::timeout(
+            SFTP_WRITE_ACK_BOUND * 2,
+            provider.upload(&local, "/big.bin", None),
+        )
+        .await
+        .expect("the upload waited past its bound");
+        let err = outcome.expect_err("a stalled upload cannot succeed");
+        assert!(err.is_connection_lost(), "{err:?}");
+        assert!(started.elapsed() >= SFTP_WRITE_ACK_BOUND);
+        assert!(!provider.is_connected(), "a stalled session is not reused");
+    }
+
+    /// A download's reads time out on their own after russh-sftp's 10 s, but
+    /// once the transport is gone there is nothing to wait for: it fails at
+    /// once, as a lost connection the command layer can retry.
+    #[tokio::test]
+    async fn a_download_fails_at_once_when_the_server_goes_away_mid_transfer() {
+        let mut provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::Read(3), vec![7u8; 8 * 1024 * 1024])
+                .await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("down.bin");
+        let started = std::time::Instant::now();
+        let outcome = tokio::time::timeout(
+            GONE_SERVER_BOUND,
+            provider.download("/big.bin", &local.to_string_lossy(), None),
+        )
+        .await
+        .expect("the download hung after the server went away");
+        let err = outcome.expect_err("a download cut in the middle cannot succeed");
+        assert!(err.is_connection_lost(), "{err:?}");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "took {:?}: it waited for replies that could no longer come",
+            started.elapsed()
+        );
+    }
+
+    /// The other reads of a session race the end of its transport too: the
+    /// serial download (a file of one buffer), `download_to_bytes`,
+    /// `download_to_bytes_capped` and `read_range` each fail at once as a lost
+    /// connection, where they waited out russh-sftp's 10 s.
+    #[tokio::test]
+    async fn the_other_reads_fail_at_once_when_the_server_goes_away() {
+        let source = vec![7u8; 200 * 1024];
+        for path in ["download", "to_bytes", "capped", "range"] {
+            let mut provider =
+                provider_on_a_server_that_goes_away(GoAwayAt::Read(1), source.clone()).await;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let local = dir.path().join("down.bin").to_string_lossy().into_owned();
+            let started = std::time::Instant::now();
+            let outcome = tokio::time::timeout(GONE_SERVER_BOUND, async {
+                match path {
+                    "download" => provider.download("/small.bin", &local, None).await,
+                    "to_bytes" => provider.download_to_bytes("/small.bin").await.map(|_| ()),
+                    "capped" => provider
+                        .download_to_bytes_capped("/small.bin", 1 << 20)
+                        .await
+                        .map(|_| ()),
+                    _ => provider
+                        .read_range("/small.bin", 0, 100 * 1024)
+                        .await
+                        .map(|_| ()),
+                }
+            })
+            .await
+            .unwrap_or_else(|_| panic!("{path}: hung after the server went away"));
+            let err = outcome.expect_err(path);
+            assert!(err.is_connection_lost(), "{path}: {err:?}");
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(5),
+                "{path}: took {:?}",
+                started.elapsed()
+            );
+        }
+    }
+
+    /// russh-sftp's own request timeout ("Timeout") is a timeout, not a lost
+    /// connection: a slow but live server answers late and the session is
+    /// still good. A server message that only contains the word (a path) keeps
+    /// its own class, and a closed session stays a lost connection.
+    #[test]
+    fn only_russh_sftps_own_timeout_is_a_timeout() {
+        assert!(matches!(
+            classify_russh_err("Timeout", ProviderError::NotFound),
+            ProviderError::Timeout
+        ));
+        assert!(matches!(
+            classify_russh_err("No such file: open /x/timeout.log", ProviderError::NotFound),
+            ProviderError::NotFound(_)
+        ));
+        assert!(
+            classify_russh_err(SFTP_TRANSPORT_ENDED, ProviderError::NotFound).is_connection_lost()
+        );
+    }
+
+    /// A listing in flight when the server goes away ends as a lost
+    /// connection as soon as the transport ends (the request is raced with
+    /// it), which the command layer retries. It waited out russh-sftp's 10 s
+    /// and was reported as "not found" (exit 2).
+    #[tokio::test(start_paused = true)]
+    async fn a_listing_cut_by_the_server_going_away_is_a_lost_connection() {
+        let mut provider = provider_on_a_server_that_goes_away(GoAwayAt::OpenDir, Vec::new()).await;
+        let err = tokio::time::timeout(GONE_SERVER_BOUND * 4, provider.list("/"))
+            .await
+            .expect("the listing hung")
+            .expect_err("a listing cut in the middle cannot succeed");
+        assert!(err.is_connection_lost(), "{err:?}");
+    }
+
+    /// An upload whose size check meets a server that has gone away is a lost
+    /// connection at once, where it kept asking for its 3 s and then reported
+    /// a verification failure.
+    #[tokio::test]
+    async fn an_upload_verified_against_a_gone_server_is_a_lost_connection() {
+        let mut provider = provider_on_a_server_that_goes_away(GoAwayAt::Stat(1), Vec::new()).await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = local_file(&dir, 100 * 1024);
+        let started = std::time::Instant::now();
+        let outcome = tokio::time::timeout(
+            GONE_SERVER_BOUND,
+            provider.upload(&local, "/small.bin", None),
+        )
+        .await
+        .expect("the verification hung");
+        let err = outcome.expect_err("an upload that cannot be verified cannot succeed");
+        assert!(err.is_connection_lost(), "{err:?}");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(3),
+            "took {:?}",
+            started.elapsed()
+        );
+    }
+
+    /// A resume whose look at the remote fails reports it. The failure was
+    /// read as "nothing there", and the resume became a full upload that
+    /// truncated the remote file.
+    #[tokio::test]
+    async fn a_resume_that_cannot_see_the_remote_is_not_run_as_a_full_upload() {
+        let mut provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::StatRefused, Vec::new()).await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = local_file(&dir, 64 * 1024);
+        let outcome = tokio::time::timeout(
+            GONE_SERVER_BOUND,
+            provider.resume_upload(&local, "/big.bin", 1024, None),
+        )
+        .await
+        .expect("the resume hung");
+        let err = outcome.expect_err("a resume that cannot see the remote cannot go on");
+        assert!(
+            err.to_string().contains("stat remote for resume"),
+            "reported, not uploaded over: {err:?}"
+        );
+    }
+
+    /// The write bound holds per acknowledgement, not per write: 16 MiB
+    /// handed over at once to a server that takes 6 s over each write all go
+    /// out, each piece acknowledged in time. One write of the 16 MiB would
+    /// wait for about 56 acknowledgements and give up at 300 s. (An upload
+    /// reads its file at most 2 MiB at a time, tokio's `MAX_BUF`, so it does
+    /// not reach this today; the pieces keep the bound from depending on it.)
+    #[tokio::test(start_paused = true)]
+    async fn a_large_write_to_a_slow_server_stays_inside_the_ack_bound() {
+        let provider = provider_on_a_server_that_goes_away(
+            GoAwayAt::SlowWrites(std::time::Duration::from_secs(6)),
+            Vec::new(),
+        )
+        .await;
+        let sftp = provider.sftp.as_ref().expect("a session");
+        let mut file = sftp.create("/big.bin").await.expect("create");
+        let data = vec![0u8; 16 * 1024 * 1024];
+        let written = tokio::time::timeout(
+            SFTP_WRITE_ACK_BOUND * 10,
+            write_sftp_acked(&mut file, &data, &sftp.ended),
+        )
+        .await
+        .expect("the write hung");
+        written.expect("every piece was acknowledged in time");
+    }
+
+    /// A request timeout on the way into or out of the remote file fails the
+    /// upload (exit 4) instead of reporting a limit with nothing failed (exit
+    /// 8): the CREATE, the OPEN of a resume or the CLOSE may have reached the
+    /// server and left a 0-byte or partial file. The server here stays and
+    /// never answers the request, so russh-sftp's own 10 s is what ends it.
+    #[tokio::test(start_paused = true)]
+    async fn a_request_timeout_while_writing_a_remote_file_fails_the_transfer() {
+        let mut wrong = Vec::new();
+        for (case, at) in [
+            ("upload create", GoAwayAt::OpenUnanswered),
+            ("upload close", GoAwayAt::CloseUnanswered),
+            ("resume open", GoAwayAt::OpenUnanswered),
+            ("resume close", GoAwayAt::CloseUnanswered),
+        ] {
+            let mut provider =
+                provider_on_a_server_that_goes_away(at, vec![7u8; 1024 * 1024]).await;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let local = local_file(&dir, 2 * 1024 * 1024);
+            let outcome = tokio::time::timeout(GONE_SERVER_BOUND * 4, async {
+                if case.starts_with("resume") {
+                    provider
+                        .resume_upload(&local, "/f.bin", 1024 * 1024, None)
+                        .await
+                } else {
+                    provider.upload(&local, "/f.bin", None).await
+                }
+            })
+            .await
+            .unwrap_or_else(|_| panic!("{case}: hung"));
+            match outcome {
+                Err(ProviderError::TransferFailed(message))
+                    if message.contains("timeout") && message.contains("may be incomplete") => {}
+                other => wrong.push(format!("{case}: {other:?}")),
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "a timeout that fails an upload is a failed transfer: {wrong:#?}"
+        );
+    }
+
+    /// The requests around a transfer race the end of the transport too. An
+    /// OPEN (a capped download's, an upload's create, a resume's, the one a
+    /// small download sends next to its STAT), a SETSTAT (chmod), a REALPATH
+    /// (the keepalive) and the symlink check of a stat, each in flight when
+    /// the server goes away, fail at once as a lost connection. They waited
+    /// out russh-sftp's 10 s and ended as a timeout, and the stat reported
+    /// the entry as if the check had answered.
+    #[tokio::test(start_paused = true)]
+    async fn requests_in_flight_fail_at_once_when_the_server_goes_away() {
+        let mut wrong = Vec::new();
+        for case in [
+            "capped",
+            "hinted",
+            "upload",
+            "resume",
+            "chmod",
+            "keepalive",
+            "stat",
+        ] {
+            let at = match case {
+                "chmod" => GoAwayAt::SetStat,
+                "keepalive" => GoAwayAt::RealPath,
+                "stat" => GoAwayAt::Stat(2),
+                _ => GoAwayAt::Open,
+            };
+            let mut provider =
+                provider_on_a_server_that_goes_away(at, vec![7u8; 1024 * 1024]).await;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let local = local_file(&dir, 2 * 1024 * 1024);
+            let down = dir.path().join("down.bin").to_string_lossy().into_owned();
+            let started = tokio::time::Instant::now();
+            let outcome = tokio::time::timeout(GONE_SERVER_BOUND * 4, async {
+                match case {
+                    "capped" => provider
+                        .download_to_bytes_capped("/f.bin", 4 * 1024 * 1024)
+                        .await
+                        .map(|_| ()),
+                    "hinted" => {
+                        provider
+                            .download_with_size_hint("/f.bin", &down, Some(1024), None)
+                            .await
+                    }
+                    "upload" => provider.upload(&local, "/f.bin", None).await,
+                    "resume" => {
+                        provider
+                            .resume_upload(&local, "/f.bin", 1024 * 1024, None)
+                            .await
+                    }
+                    "chmod" => provider.chmod("/f.bin", 0o644).await,
+                    "keepalive" => provider.keep_alive().await,
+                    _ => provider.stat("/f.bin").await.map(|_| ()),
+                }
+            })
+            .await
+            .unwrap_or_else(|_| panic!("{case}: hung"));
+            let took = started.elapsed();
+            let lost = matches!(&outcome, Err(err) if err.is_connection_lost());
+            if !lost || took >= std::time::Duration::from_secs(5) {
+                wrong.push(format!("{case}: {outcome:?} after {took:?}"));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "a lost connection at once, not a timeout 10 s later: {wrong:#?}"
+        );
+    }
+
+    /// Only a cancellation counts as one: a real error whose text merely
+    /// contains the word (a path such as `/data/cancelled/x.bin`) is the
+    /// cause, and it is reported over the cancellations it caused.
+    #[test]
+    fn a_reader_error_that_names_a_cancelled_path_is_the_cause() {
+        let cancelled = || {
+            Err(ProviderError::TransferFailed(
+                "Transfer cancelled by user".to_string(),
+            ))
+        };
+        let real = || {
+            Err(ProviderError::TransferFailed(
+                "Read error (pipeline): Failure: /data/cancelled/x.bin".to_string(),
+            ))
+        };
+        let picked = first_reader_cause(vec![cancelled(), real()]);
+        assert!(
+            matches!(&picked, Err(ProviderError::TransferFailed(m)) if m.contains("/data/cancelled/")),
+            "{picked:?}"
+        );
+        let picked = first_reader_cause(vec![Err(ProviderError::Cancelled), real()]);
+        assert!(
+            matches!(&picked, Err(ProviderError::TransferFailed(m)) if m.contains("/data/cancelled/")),
+            "{picked:?}"
+        );
+    }
+
+    /// A listing whose follow-ups (the STAT of entries sent without
+    /// attributes, the symlink checks) are cut by the end of the transport is
+    /// a lost connection, not a listing: the follow-ups' errors are dropped
+    /// on purpose, and the entries they would have completed came back as
+    /// plain files with no mode, as if the listing had worked.
+    #[tokio::test(start_paused = true)]
+    async fn a_listing_whose_follow_ups_are_cut_is_a_lost_connection() {
+        let mut provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::ListFollowUp, Vec::new()).await;
+        let outcome = tokio::time::timeout(GONE_SERVER_BOUND * 4, provider.list("/"))
+            .await
+            .expect("the listing hung");
+        assert!(
+            matches!(&outcome, Err(err) if err.is_connection_lost()),
+            "{outcome:?}"
+        );
+    }
+
+    /// `find` skips a folder it cannot read, but not a transport that ended
+    /// in the middle of the walk: that is a lost connection, where it
+    /// returned what it had found so far as the whole result.
+    #[tokio::test(start_paused = true)]
+    async fn a_find_cut_by_the_transport_is_a_lost_connection() {
+        let mut provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::OpenDirAt(2), Vec::new()).await;
+        let outcome = tokio::time::timeout(GONE_SERVER_BOUND * 4, provider.find("/", "*"))
+            .await
+            .expect("the find hung");
+        assert!(
+            matches!(&outcome, Err(err) if err.is_connection_lost()),
+            "{outcome:?}"
         );
     }
 }
