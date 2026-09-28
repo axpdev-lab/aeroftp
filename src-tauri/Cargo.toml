@@ -204,7 +204,6 @@ bzip2 = "0.6"                                                         # Bzip2 co
 arboard = "3"                                                         # Native clipboard access
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff"] }  # Image editing + tray badge
 libc = "0.2"                                                              # Unix UID for badge socket path
-cap-std = "=4.0.3"                                                       # Confined worker file handles (Linux/macOS/Windows)
 
 # Cryptomator vault support (v1.6.0)
 scrypt = "0.11"                                                        # Cryptomator KDF

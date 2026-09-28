@@ -78,7 +78,6 @@ const DEPENDENCY_CATEGORIES: &[(&str, &[&str])] = &[
             "argon2",
             "base64",
             "blake3",
-            "cap-std",
             "cbc",
             "chacha20poly1305",
             "crypto_secretbox",
