@@ -1045,8 +1045,11 @@ impl OneDriveProvider {
 
         // The ids cached for either path and everything under them now point
         // at a moved item, or at the one a replace sent to the recycle bin.
-        super::forget_cached_subtree(&mut self.path_cache, from_path.trim_matches('/'));
-        super::forget_cached_subtree(&mut self.path_cache, to_path.trim_matches('/'));
+        super::forget_cached_subtree_ignoring_case(
+            &mut self.path_cache,
+            from_path.trim_matches('/'),
+        );
+        super::forget_cached_subtree_ignoring_case(&mut self.path_cache, to_path.trim_matches('/'));
 
         info!("Renamed {} to {}", from, to);
         Ok(())
@@ -1616,7 +1619,10 @@ impl StorageProvider for OneDriveProvider {
 
         // The ids cached for the deleted item and everything under it now
         // point into the recycle bin.
-        super::forget_cached_subtree(&mut self.path_cache, full_path.trim_matches('/'));
+        super::forget_cached_subtree_ignoring_case(
+            &mut self.path_cache,
+            full_path.trim_matches('/'),
+        );
 
         info!("Deleted: {}", path);
         Ok(())
@@ -3093,8 +3099,11 @@ mod tests {
         for (path, id) in [
             ("dir", "id-dir"),
             ("dir/sub", "id-sub"),
+            ("Dir/Sub", "id-sub"),
             ("dir/sub/file", "id-file"),
+            ("DIR/sub/file", "id-file"),
             ("dirx", "id-dirx"),
+            ("Dirx", "id-dirx"),
         ] {
             p.path_cache.insert(path.into(), id.into());
         }
@@ -3105,7 +3114,13 @@ mod tests {
         );
         let mut kept: Vec<_> = p.path_cache.keys().cloned().collect();
         kept.sort();
-        assert_eq!(kept, ["dirx"], "a sibling sharing the prefix stays cached");
+        // OneDrive paths ignore case: `Dir/Sub` and `DIR/sub/file` name items
+        // under the deleted folder too, while `Dirx` is still a sibling.
+        assert_eq!(
+            kept,
+            ["Dirx", "dirx"],
+            "a sibling sharing the prefix stays cached"
+        );
         server.abort();
     }
 
