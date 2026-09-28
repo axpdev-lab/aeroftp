@@ -724,13 +724,19 @@ impl BoxProvider {
             };
             let url = format!("{}/{}/{}", self.api_base(), endpoint, item_id);
 
-            let resp = self
+            let sent = self
                 .client
                 .delete(&url)
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .await;
+            // The folder ids cached for the item and everything under it,
+            // under any capitalization, may now point into the trash.
+            super::forget_cached_subtree_ignoring_case(
+                &mut self.id_cache,
+                &Self::normalize_path(path),
+            );
+            let resp = sent.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 return Err(box_error_from_response(resp, "Trash failed:").await);
@@ -2084,7 +2090,7 @@ impl StorageProvider for BoxProvider {
         let folder_id = self.resolve_folder_id(path).await?;
         let token = self.get_token().await?;
 
-        let resp = self
+        let sent = self
             .client
             .delete(format!(
                 "{}/folders/{}?recursive=true",
@@ -2093,8 +2099,11 @@ impl StorageProvider for BoxProvider {
             ))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .await;
+        // Not only the folder's own id: every folder cached under it, under
+        // any capitalization, is in the trash with it.
+        super::forget_cached_subtree_ignoring_case(&mut self.id_cache, &Self::normalize_path(path));
+        let resp = sent.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 204 {
             return Err(ProviderError::Other(format!(
@@ -2102,10 +2111,6 @@ impl StorageProvider for BoxProvider {
                 resp.status()
             )));
         }
-
-        // Remove from cache
-        let normalized = Self::normalize_path(path);
-        self.id_cache.remove(&normalized);
 
         Ok(())
     }
@@ -2182,14 +2187,21 @@ impl StorageProvider for BoxProvider {
             };
             body["parent"] = serde_json::json!({"id": dest_folder_id});
         }
-        let resp = self
+        let sent = self
             .client
             .put(format!("{}/{}/{}", self.api_base(), endpoint, item_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .json(&body)
             .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .await;
+        // Whatever the answer, even none (a move Box applied whose answer
+        // was lost), the folder ids cached for either path and everything
+        // under them may point at the moved item: after `mv /A /B` and a new
+        // `mkdir /A`, a `put /A/f` landed in `/B`. Box names ignore letter
+        // case, so every capitalization of the paths goes.
+        super::forget_cached_subtree_ignoring_case(&mut self.id_cache, &Self::normalize_path(from));
+        super::forget_cached_subtree_ignoring_case(&mut self.id_cache, &Self::normalize_path(to));
+        let resp = sent.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -3496,6 +3508,75 @@ mod tests {
             *changes.lock().unwrap(),
             ["put folder 1 C in 0", "put file 11 g.txt in 2"]
         );
+    }
+
+    /// A one-byte local file to upload.
+    fn local_file() -> tempfile::NamedTempFile {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), b"x").unwrap();
+        file
+    }
+
+    /// Box names ignore letter case, and the id cache keeps the spelling
+    /// each lookup used: after another client renamed `A` to `a`, the
+    /// folder was cached as both `/A` and `/a`. `mv /a /B` forgot nothing
+    /// (later only `/a`), so once a new `/A` was made, `put /A/f` landed in
+    /// `/B`. Every capitalization of both paths is forgotten.
+    #[tokio::test]
+    async fn after_a_move_a_new_folder_of_the_old_name_gets_the_upload() {
+        let (mut p, items, changes) = provider_on_box(&[("1", "A", "0", "folder")]).await;
+        p.list("/A").await.expect("list /A");
+        items.lock().unwrap()[0].1 = "a".to_string();
+        p.list("/a").await.expect("list /a");
+        p.rename("/a", "/B").await.expect("mv /a /B");
+        p.mkdir("/A").await.expect("mkdir /A");
+        let file = local_file();
+        p.upload(file.path().to_str().unwrap(), "/A/f", None)
+            .await
+            .expect("put /A/f");
+        assert_eq!(
+            *changes.lock().unwrap(),
+            [
+                "put folder 1 B in 0",
+                "create A in 0 as 100",
+                "upload f in 100"
+            ]
+        );
+    }
+
+    /// Trashing or removing `/a` forgot nothing (trash) or only the exact
+    /// key (rmdir): `/A/sub`, cached before another client changed the
+    /// case, kept the id of the trashed folder, and a new `/A/sub` never got
+    /// what was put there.
+    #[tokio::test]
+    async fn after_a_folder_is_trashed_a_new_one_of_that_name_gets_the_upload() {
+        for trash in [true, false] {
+            let (mut p, items, changes) =
+                provider_on_box(&[("1", "A", "0", "folder"), ("2", "sub", "1", "folder")]).await;
+            p.list("/A/sub").await.expect("list /A/sub");
+            items.lock().unwrap()[0].1 = "a".to_string();
+            p.list("/a/sub").await.expect("list /a/sub");
+            if trash {
+                p.trash_files(&["/a".to_string()]).await.expect("trash /a");
+            } else {
+                p.rmdir("/a").await.expect("rmdir /a");
+            }
+            p.mkdir("/A").await.expect("mkdir /A");
+            p.mkdir("/A/sub").await.expect("mkdir /A/sub");
+            let file = local_file();
+            p.upload(file.path().to_str().unwrap(), "/A/sub/f", None)
+                .await
+                .expect("put /A/sub/f");
+            assert_eq!(
+                changes.lock().unwrap()[1..],
+                [
+                    "create A in 0 as 100",
+                    "create sub in 100 as 101",
+                    "upload f in 101"
+                ],
+                "trash: {trash}"
+            );
+        }
     }
 
     #[test]

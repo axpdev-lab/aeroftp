@@ -2468,9 +2468,15 @@ pub(crate) fn forget_cached_subtree<V>(cache: &mut HashMap<String, V>, path: &st
     cache.retain(|cached, _| cached != path && !cached.starts_with(&below));
 }
 
-/// `forget_cached_subtree` for a backend whose paths ignore letter case
-/// (OneDrive): a key cached under another capitalization of `path`, or of a
-/// folder above it, names the same item and is forgotten too.
+/// `forget_cached_subtree` under every capitalization of `path`: a key cached
+/// under another capitalization of `path`, or of a folder above it, is
+/// forgotten too. On a backend whose paths ignore letter case (OneDrive, Box)
+/// such a key names the same item. On one that resolves a name ignoring case
+/// only as a fallback (kDrive, Drime, Internxt, Google Drive's name search)
+/// it may name the same item, and forgetting a sibling of another case costs
+/// one lookup, while keeping a stale id sends a later write to a moved or
+/// trashed item. Keys are never lowercased: where `A` and `a` are two items
+/// they stay two keys.
 pub(crate) fn forget_cached_subtree_ignoring_case<V>(cache: &mut HashMap<String, V>, path: &str) {
     let path = path.trim_end_matches('/').to_lowercase();
     let below = format!("{path}/");
