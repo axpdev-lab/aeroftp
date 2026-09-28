@@ -120,7 +120,7 @@ describe('namespaced tool registry and scoped exposure', () => {
 
     it('uses identical selected tool schemas in text fallback and native requests', () => {
         const exposure = new ToolExposure('turn', buildToolRegistry([], []));
-        const text = generateToolsPrompt(undefined, exposure.tools());
+        const text = generateToolsPrompt(exposure.tools());
         for (const tool of exposure.definitions()) expect(text).toContain(`- ${tool.name}:`);
         expect(text).not.toContain('- local_read:');
         const discovered = exposure.search('local_read');

@@ -14,7 +14,6 @@ import {
     lookupModelSpec,
     reconcilePersistedModel,
     resolveModelContext,
-    resolveModelRuntimeSupport,
     shouldUseOpenAIResponses,
 } from './aiModelRegistry';
 
@@ -331,12 +330,7 @@ describe('provider contracts and implemented adapter support', () => {
         expect(result.capabilitySource).toBe('registry');
         expect(result.isEnabled).toBe(true);
         expect(result.isDefault).toBe(true);
-        const runtime = resolveModelRuntimeSupport(name);
-        expect(runtime.discoveryReady).toBe(true);
-        expect(runtime.pendingAdapterRequirements).toEqual([]);
-        expect(runtime.subagents).toBe(false);
-        expect(runtime.toolSearch).toBe(false);
-        expect(runtime.nativeTurnState).toBe(true);
+        expect(MODEL_REGISTRY[name].pendingAdapterRequirements ?? []).toEqual([]);
         expect(shouldUseOpenAIResponses('openai', result, true)).toBe(name.startsWith('gpt-'));
     });
 
@@ -360,18 +354,12 @@ describe('provider contracts and implemented adapter support', () => {
         const result = applyRegistryDefaults({ name: 'gpt-6-astra', nativeCapabilities: { reasoningEfforts: ['none'] } });
         result.nativeCapabilities?.reasoningEfforts?.push('none');
         expect(MODEL_REGISTRY['gpt-6-astra'].nativeCapabilities?.reasoningEfforts).not.toContain('none');
-        const runtime = resolveModelRuntimeSupport('gpt-6-astra');
-        runtime.pendingAdapterRequirements.push('native-turn-state');
-        expect(resolveModelRuntimeSupport('gpt-6-astra').pendingAdapterRequirements).toEqual([]);
     });
 
-    it('does not promote provider features to local runtime features', () => {
-        expect(MODEL_REGISTRY['gpt-5.6-sol'].nativeCapabilities?.multiAgent).toBe(true);
-        expect(resolveModelRuntimeSupport('gpt-5.6-sol')).toMatchObject({
-            discoveryReady: true, subagents: false, toolSearch: false, nativeTurnState: true,
-        });
-        expect(resolveModelRuntimeSupport('private-model').discoveryReady).toBe(false);
+    it('lets discovery enable a known model only when its adapter contract is ready', () => {
+        expect(applyDiscoveredModelDefaults({ name: 'gpt-5.6-sol', isEnabled: true }).isEnabled).toBe(true);
         expect(applyDiscoveredModelDefaults({ name: 'grok-3', isEnabled: true }).isEnabled).toBe(false);
+        expect(applyDiscoveredModelDefaults({ name: 'moonshot-v1-8k', isEnabled: true, isDefault: true })).toMatchObject({ isEnabled: false, isDefault: false });
     });
 
     it('rejects forged native capability metadata and cross-provider Responses claims', () => {

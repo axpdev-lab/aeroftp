@@ -12,7 +12,6 @@ import { getResponseStyleDirective } from './aiChatResponseStyles';
 export type AgentPromptProfile = 'file_manager' | 'coding_agent';
 
 export interface BuildSystemPromptOptions {
-    extraTools?: Array<{name: string; description: string; parameters?: Record<string, unknown>}>;
     promptProfile?: AgentPromptProfile;
     selectedTools?: AITool[];
 }
@@ -325,7 +324,6 @@ export function buildSystemPrompt(
     const styleDirective = getResponseStyleDirective(settings.advancedSettings?.responseStyle);
     const styleSection = styleDirective ? `\n\n## Output Style\n${styleDirective}` : '';
     const promptProfile = options.promptProfile || 'file_manager';
-    const extraTools = options.extraTools;
 
     // Use custom prompt if configured
     const customPrompt = settings.advancedSettings?.useCustomPrompt && settings.advancedSettings?.customSystemPrompt?.trim();
@@ -336,7 +334,7 @@ export function buildSystemPrompt(
             : PROVIDER_PROFILES.openai;
         const toolSection = profile.toolFormat === 'native'
             ? ''
-            : `\n\n## Tools\nWhen you need to use a tool, respond with:\nTOOL: tool_name\nARGS: {"param": "value"}\n\nAvailable tools:\n${generateToolsPrompt(extraTools, options.selectedTools)}`;
+            : `\n\n## Tools\nWhen you need to use a tool, respond with:\nTOOL: tool_name\nARGS: {"param": "value"}\n\nAvailable tools:\n${generateToolsPrompt(options.selectedTools)}`;
         const profileSection = promptProfile === 'coding_agent'
             ? `\n\n## Active Agent Profile: Coding Agent\n${CODING_AGENT_CAPABILITIES}\n\nBehavior:\n${CODING_AGENT_BEHAVIOR_RULES}\n\nResponse format:\n${CODING_AGENT_RESPONSE_FORMAT}`
             : '';
@@ -355,7 +353,7 @@ export function buildSystemPrompt(
 
     const toolSection = profile.toolFormat === 'native'
         ? '' // Native function calling: no text format needed in prompt
-        : `\n\n## Tools\nWhen you need to use a tool, respond with:\nTOOL: tool_name\nARGS: {"param": "value"}\n\nWhen you need to use multiple tools, list them consecutively:\nTOOL: tool_name_1\nARGS: {"param1": "value1"}\n\nTOOL: tool_name_2\nARGS: {"param2": "value2"}\n\nAvailable tools:\n${generateToolsPrompt(extraTools, options.selectedTools)}`;
+        : `\n\n## Tools\nWhen you need to use a tool, respond with:\nTOOL: tool_name\nARGS: {"param": "value"}\n\nWhen you need to use multiple tools, list them consecutively:\nTOOL: tool_name_1\nARGS: {"param1": "value1"}\n\nTOOL: tool_name_2\nARGS: {"param2": "value2"}\n\nAvailable tools:\n${generateToolsPrompt(options.selectedTools)}`;
 
     // Token-aware protocol expertise (#71)
     let protocolSection = PROTOCOL_EXPERTISE;

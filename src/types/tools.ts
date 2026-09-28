@@ -726,25 +726,12 @@ export const isSafeTool = (toolName: string, allTools?: AITool[]): boolean => {
 };
 
 // Generate tool description for AI system prompt
-export const generateToolsPrompt = (extraTools?: Array<{name: string; description: string; parameters?: Record<string, unknown>}>, selectedTools: AITool[] = AGENT_TOOLS): string => {
+export const generateToolsPrompt = (selectedTools: AITool[] = AGENT_TOOLS): string => {
     const builtInSection = selectedTools.map(t => `- ${t.name}: ${t.description}
   Parameters: ${t.parameters.map(p => `${p.name} (${p.type}${p.required ? ', required' : ''})`).join(', ')}`).join('\n\n');
 
-    let extraSection = '';
-    if (extraTools && extraTools.length > 0) {
-        extraSection = '\n\n' + extraTools.map(t => {
-            const params = t.parameters;
-            const props = (params?.properties ?? {}) as Record<string, { type?: string; description?: string }>;
-            const required = (params?.required ?? []) as string[];
-            const paramList = Object.entries(props).map(([name, spec]) =>
-                `${name} (${spec.type || 'string'}${required.includes(name) ? ', required' : ''})`
-            ).join(', ');
-            return `- ${t.name}: ${t.description}${paramList ? `\n  Parameters: ${paramList}` : ''}`;
-        }).join('\n\n');
-    }
-
     return `AVAILABLE TOOLS:
-${builtInSection}${extraSection}
+${builtInSection}
 
 RULES:
 1. Safe tools (remote_list, remote_read, remote_info, remote_search) execute automatically.

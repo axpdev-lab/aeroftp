@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { AITool, AIToolParameter } from '../../types/tools';
+import { AIToolParameter } from '../../types/tools';
 
 /** Maximum total tool steps allowed across all macro nesting levels */
 export const MAX_TOTAL_MACRO_STEPS = 20;
@@ -44,32 +44,6 @@ export function resolveMacroSteps(macro: ToolMacro, params: Record<string, unkno
         }
         return { toolName: step.toolName, args: resolvedArgs };
     });
-}
-
-/**
- * Convert macros to AITool definitions for injection into the system prompt.
- */
-export function macrosToToolDefinitions(macros: ToolMacro[]): AITool[] {
-    return macros.map(macro => ({
-        name: `macro_${macro.name}`,
-        description: `[Macro] ${macro.description}`,
-        parameters: macro.parameters,
-        dangerLevel: 'medium' as const,
-    }));
-}
-
-/**
- * Check if a tool name is a macro call.
- */
-export function isMacroCall(toolName: string): boolean {
-    return toolName.startsWith('macro_');
-}
-
-/**
- * Extract the macro name from a tool call name.
- */
-export function getMacroName(toolName: string): string {
-    return toolName.replace(/^macro_/, '');
 }
 
 /** Default built-in macros */

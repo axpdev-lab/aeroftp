@@ -822,20 +822,10 @@ export function isFirstPartyOpenAIBaseUrl(baseUrl?: string | null): boolean {
     }
 }
 
-/** Local implementation status, recomputed from code rather than persisted model flags. */
-export function resolveModelRuntimeSupport(modelName: string) {
+/** Discovery may enable a known model only once its adapter contract is implemented. */
+function isDiscoveryReady(modelName: string): boolean {
     const spec = lookupModelSpec(modelName);
-    return {
-        // No provider's multiAgent/toolSearch flag turns these local features on.
-        subagents: false,
-        toolSearch: false,
-        // Foreground replay only; durable conversation state is a separate lane.
-        nativeTurnState: !!spec?.nativeCapabilities?.responses
-            || ['claude-opus-5-5', 'claude-fable-5-1', 'grok-4.7', 'kimi-k3'].includes(modelName),
-        pendingAdapterRequirements: [...(spec?.pendingAdapterRequirements ?? [])],
-        discoveryReady: !!spec && spec.lifecycleStatus !== 'retired'
-            && !spec.pendingAdapterRequirements?.length,
-    };
+    return !!spec && spec.lifecycleStatus !== 'retired' && !spec.pendingAdapterRequirements?.length;
 }
 
 /** Resolve how much context AeroAgent may safely budget without confusing output tokens for context. */
@@ -911,10 +901,6 @@ export function reconcilePersistedModel(
         };
     }
     return model;
-}
-
-export function reconcilePersistedModels(models: AIModel[] | undefined): AIModel[] {
-    return (models ?? []).map((model) => reconcilePersistedModel(model) as AIModel);
 }
 
 export interface ModelEditorForm {
@@ -1018,7 +1004,7 @@ export function applyDiscoveredModelDefaults(
         const resolved = applyRegistryDefaults(model);
         // Discovery proves availability, not that our adapter satisfies the contract.
         // Existing user enablement is preserved by reconcilePersistedModel instead.
-        return resolveModelRuntimeSupport(model.name).discoveryReady
+        return isDiscoveryReady(model.name)
             ? resolved
             : { ...resolved, isEnabled: false, isDefault: false };
     }
