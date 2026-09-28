@@ -2869,7 +2869,7 @@
             "errorToolUse": "Denne modellen støtter ikke bruk av verktøy. Deaktiver \"Verktøy\" for denne modellen i AI Settings → Models, eller bytt til en modell som støtter function calling.",
             "agentMode": {
                 "title": "Agentmodus",
-                "description": "Styrer verktoyets godkjenningsatferd, trinngrenser og autonominiva.",
+                "description": "Styrer verktøyets godkjenningsatferd, trinngrenser og autonominivå.",
                 "safe": "Sikker",
                 "safeDesc": "Kun sikre verktøy kjøres automatisk. Ingen sesjonsminne. Maks. 5 trinn.",
                 "normal": "Normal",
