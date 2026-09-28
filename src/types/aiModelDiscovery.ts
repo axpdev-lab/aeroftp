@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import type { AIModel, AIProvider } from './ai';
+import type { AIModel, AIProvider, AISettings } from './ai';
 import { applyDiscoveredModelDefaults, reconcilePersistedModel } from './aiModelRegistry';
 import { usesModelStudioContract } from './aiModelStudio';
 
@@ -120,6 +120,14 @@ export function resolveProviderModel(model: Partial<AIModel> & {name: string}, p
 
 export function reconcileProviderModels(models: AIModel[] | undefined, providers: AIProvider[]): AIModel[] {
     return (models || []).map(model => resolveProviderModel(model, providers.find(p => p.id === model.providerId)) as AIModel);
+}
+
+/** Apply an edit of one provider to the settings. Its models are re-resolved
+ *  only when the edit is committed: a Base URL still being typed must not
+ *  invalidate verified capabilities, overrides and ceilings on each keystroke. */
+export function withProviderEdit(settings: AISettings, provider: AIProvider, commit: boolean): AISettings {
+    const providers = settings.providers.map(p => p.id === provider.id ? { ...provider, updatedAt: new Date() } : p);
+    return { ...settings, providers, models: commit ? reconcileProviderModels(settings.models, providers) : settings.models };
 }
 
 /** Keep stable IDs, endpoints and user names while updating the old preset label. */

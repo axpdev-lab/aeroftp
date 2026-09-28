@@ -18,7 +18,7 @@ import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureSt
 import { ProviderMarketplace } from './ProviderMarketplace';
 import { PluginBrowser } from './PluginBrowser';
 import { applyDiscoveredModelDefaults, buildSavedModelRecord, getModelCapabilitySource, lookupModelSpec } from '../../types/aiModelRegistry';
-import { CAPABILITY_KEYS, DiscoveredModelInfo, normalizeModelCatalog, providerModelSnapshot, reconcileProviderModels, reconcileProviderNames, resolveProviderModel } from '../../types/aiModelDiscovery';
+import { CAPABILITY_KEYS, DiscoveredModelInfo, normalizeModelCatalog, providerModelSnapshot, reconcileProviderModels, reconcileProviderNames, resolveProviderModel, withProviderEdit } from '../../types/aiModelDiscovery';
 import { useTranslation } from '../../i18n';
 import { AEROAGENT_VERSION } from '../../utils/aeroagentVersion';
 import { createTauriListener } from '../../hooks/useTauriListener';
@@ -485,14 +485,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     };
 
     // Update provider
-    const updateProvider = (provider: AIProvider) => {
-        const current = settingsRef.current;
-        const providers = current.providers.map(p => p.id === provider.id ? { ...provider, updatedAt: new Date() } : p);
-        saveSettings({
-            ...current,
-            providers,
-            models: reconcileProviderModels(current.models, providers),
-        });
+    const updateProvider = (provider: AIProvider, commit = true) => {
+        saveSettings(withProviderEdit(settingsRef.current, provider, commit));
         setEditingProvider(null);
     };
 
@@ -1052,6 +1046,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                             type="text"
                                                             value={provider.baseUrl}
                                                             onChange={(e) =>
+                                                                updateProvider({
+                                                                    ...provider,
+                                                                    baseUrl: e.target.value,
+                                                                }, false)
+                                                            }
+                                                            onBlur={(e) =>
                                                                 updateProvider({
                                                                     ...provider,
                                                                     baseUrl: e.target.value,

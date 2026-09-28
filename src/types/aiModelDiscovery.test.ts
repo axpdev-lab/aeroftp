@@ -2,8 +2,8 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
-import type { AIModel, AIProvider } from './ai';
-import { normalizeModelCatalog, providerModelSnapshot, reconcileProviderNames, resolveProviderModel } from './aiModelDiscovery';
+import type { AIModel, AIProvider, AISettings } from './ai';
+import { normalizeModelCatalog, providerModelSnapshot, reconcileProviderNames, resolveProviderModel, withProviderEdit } from './aiModelDiscovery';
 import { isModelStudioEndpoint, MODEL_STUDIO_MODELS } from './aiModelStudio';
 import { requiresNativeTurn } from '../components/DevTools/aiChatNativeTurn';
 import { resolveModelContext } from './aiModelRegistry';
@@ -106,5 +106,22 @@ describe('provider capability discovery', () => {
         const info = { id: 'new/model', supportsTools: true, maxTokens: 8192, maxContextTokens: 32000 };
         expect(resolveProviderModel({ name: info.id, maxTokens: 100000, maxContextTokens: 100000 }, router, info)).toMatchObject({ maxTokens: 8192, maxContextTokens: 32000 });
         expect(resolveProviderModel({ name: info.id, maxTokens: 1000, maxContextTokens: 16000 }, router, info)).toMatchObject({ maxTokens: 1000, maxContextTokens: 16000 });
+    });
+    it('keeps verified capabilities and overrides while a Base URL edit is being typed', () => {
+        const resolved = resolveProviderModel({ name: 'new/model:free' }, router, { id: 'new/model:free', supportsTools: true, supportsVision: false, maxContextTokens: 32000 });
+        const model = { ...resolved, id: 'm', providerId: router.id, capabilityOverrides: { supportsVision: true } } as AIModel;
+        const settings = { providers: [router], models: [model] } as unknown as AISettings;
+        // A typo and then the original URL again, keystroke by keystroke.
+        let typed = withProviderEdit(settings, { ...router, baseUrl: 'https://openrouter.ai/api/v' }, false);
+        typed = withProviderEdit(typed, router, false);
+        expect(typed.models).toEqual(settings.models);
+        // Committing the unchanged endpoint keeps the snapshot and the user override.
+        expect(withProviderEdit(typed, router, true).models[0]).toMatchObject({
+            capabilitySource: 'provider', supportsTools: true, supportsVision: true, maxContextTokens: 32000, capabilityOverrides: { supportsVision: true },
+        });
+        // Committing a real endpoint change still invalidates them.
+        const moved = withProviderEdit(typed, { ...router, baseUrl: 'https://private.example/v1' }, true).models[0];
+        expect(moved.capabilityOverrides).toBeUndefined();
+        expect(moved.providerCapabilities).toBeUndefined();
     });
 });
