@@ -105,5 +105,8 @@ describe('isWrongPasswordError (extract error routing)', () => {
         expect(isWrongPasswordError("Wrong password for 'passwords.txt'")).toBe(true);
         expect(isWrongPasswordError("Failed to extract entry 'can't decrypt.txt': Permission denied")).toBe(false);
         expect(isWrongPasswordError("Entry 'bob's password.txt' not found in archive")).toBe(false);
+        expect(isWrongPasswordError("Entry 'James' password.txt' not found in archive")).toBe(false);
+        expect(isWrongPasswordError("Failed to extract entry 'James' password.txt': Permission denied")).toBe(false);
+        expect(isWrongPasswordError("Failed to extract entry 'a.txt': Wrong password")).toBe(true);
     });
 });

@@ -100,15 +100,20 @@ export function needsPasswordPrompt(probe: Pick<ExtractProbe, 'encrypted'>): boo
  * (`Invalid password or corrupt archive`, `Decryption failed`, `wrong password
  * or tampered crypt config`, ...). Quoted text is left out first: the lanes
  * quote entry and file names, and a failure on `'passwords.txt'` is not a
- * password error. An apostrophe inside a quoted name (`'can't decrypt.txt'`)
- * does not end it: only a quote followed by a space, punctuation or the end
- * closes the name. Pure, so the routing is unit-tested.
+ * password error. A name in the lanes' own forms ends where the form goes on
+ * (`': ` or `' not found`), so `'James' password.txt'` and `'can't
+ * decrypt.txt'` stay whole; any other quoted text ends at a quote followed by
+ * a space, punctuation or the end. Pure, so the routing is unit-tested.
  */
 export function isWrongPasswordError(err: unknown): boolean {
     const msg = String(
         err instanceof Error ? err.message : (err ?? ''),
     )
         .toLowerCase()
+                // The lanes' own forms first ("entry 'NAME': ..." and "Entry 'NAME' not
+        // found"): the name ends where that form continues, whatever quotes it
+        // holds.
+        .replace(/'.*?'(?=: | not found)/g, "''")
         .replace(/'(?:[^']|'(?![\s:,.;)]|$))*'|"[^"]*"/g, "''");
     return (
         msg.includes('password') ||
