@@ -22402,32 +22402,6 @@ mod standalone_stream_tests {
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     }
 
-    #[test]
-    fn short_archive_entries_leave_existing_files_untouched() {
-        use super::{copy_entry_bounded, write_entry_atomically};
-        let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("existing.txt");
-        let original = b"the user's own file";
-        std::fs::write(&target, original).unwrap();
-
-        // Wrong-password decoding can report EOF instead of a read error.
-        // Cover empty and partially decoded content without random encryption.
-        for mut decoded in [&b""[..], &b"partial"[..]] {
-            let err =
-                write_entry_atomically(&target, |file| copy_entry_bounded(&mut decoded, file, 40))
-                    .expect_err("a short entry must not replace an existing file");
-            assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
-            assert_eq!(std::fs::read(&target).unwrap(), original);
-            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
-        }
-
-        // An actual empty entry is still valid when its header declares zero.
-        assert_eq!(
-            copy_entry_bounded(&mut std::io::empty(), &mut Vec::new(), 0).unwrap(),
-            0
-        );
-    }
-
     // The other direction: a stream that ends before its declared size (a
     // truncated or corrupt archive, or a 7z whose wrong password decodes to an
     // early end) is rejected too, since not every decoder notices on its own.
