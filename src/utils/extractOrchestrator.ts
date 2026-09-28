@@ -100,14 +100,16 @@ export function needsPasswordPrompt(probe: Pick<ExtractProbe, 'encrypted'>): boo
  * (`Invalid password or corrupt archive`, `Decryption failed`, `wrong password
  * or tampered crypt config`, ...). Quoted text is left out first: the lanes
  * quote entry and file names, and a failure on `'passwords.txt'` is not a
- * password error. Pure, so the routing is unit-tested.
+ * password error. An apostrophe inside a quoted name (`'can't decrypt.txt'`)
+ * does not end it: only a quote followed by a space, punctuation or the end
+ * closes the name. Pure, so the routing is unit-tested.
  */
 export function isWrongPasswordError(err: unknown): boolean {
     const msg = String(
         err instanceof Error ? err.message : (err ?? ''),
     )
         .toLowerCase()
-        .replace(/'[^']*'|"[^"]*"/g, "''");
+        .replace(/'(?:[^']|'(?![\s:,.;)]|$))*'|"[^"]*"/g, "''");
     return (
         msg.includes('password') ||
         msg.includes('decrypt') ||

@@ -103,5 +103,7 @@ describe('isWrongPasswordError (extract error routing)', () => {
         expect(isWrongPasswordError("Failed to extract entry 'passwords.txt': Permission denied (os error 13)")).toBe(false);
         expect(isWrongPasswordError('Entry "decrypted-notes.md" not found in archive')).toBe(false);
         expect(isWrongPasswordError("Wrong password for 'passwords.txt'")).toBe(true);
+        expect(isWrongPasswordError("Failed to extract entry 'can't decrypt.txt': Permission denied")).toBe(false);
+        expect(isWrongPasswordError("Entry 'bob's password.txt' not found in archive")).toBe(false);
     });
 });
