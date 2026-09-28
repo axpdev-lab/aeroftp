@@ -88,6 +88,7 @@ pub(crate) fn build_request_body(request: &AIRequest, stream: bool) -> Result<Va
         .join("\n\n");
 
     let mut input = Vec::new();
+    let mut continuation = false;
     for message in request
         .messages
         .iter()
@@ -98,7 +99,21 @@ pub(crate) fn build_request_body(request: &AIRequest, stream: bool) -> Result<Va
             let items = output
                 .as_array()
                 .ok_or_else(|| AIError::InvalidResponse("Invalid Responses replay items".into()))?;
-            input.extend(items.iter().cloned());
+            continuation = true;
+            // Under store:false the provider keeps nothing, so a reasoning item
+            // is replayable only with its encrypted content. One without it
+            // (from a request that did not ask) would be refused as "not found".
+            input.extend(
+                items
+                    .iter()
+                    .filter(|item| {
+                        item["type"] != "reasoning"
+                            || item["encrypted_content"]
+                                .as_str()
+                                .is_some_and(|content| !content.is_empty())
+                    })
+                    .cloned(),
+            );
             continue;
         }
         if message.role == "tool" {
@@ -175,6 +190,13 @@ pub(crate) fn build_request_body(request: &AIRequest, stream: bool) -> Result<Va
     }
     if let Some(effort) = crate::ai_native::effort(request)? {
         body["reasoning"] = json!({ "effort": effort, "context": "current_turn" });
+    }
+    // Ask for the encrypted reasoning the next step must replay: on every
+    // request to a reviewed reasoning model (it reasons even when no effort is
+    // set) and on every continuation. A model without a reviewed reasoning
+    // contract is not asked on its first request, since it may reject it.
+    if continuation || !crate::ai_native::reasoning_efforts(request).is_empty() {
+        body["include"] = json!(["reasoning.encrypted_content"]);
     }
 
     // GPT reasoning models do not consistently accept sampling controls. The

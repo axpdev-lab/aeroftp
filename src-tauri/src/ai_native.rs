@@ -209,12 +209,11 @@ pub(crate) fn modern_chat(request: &AIRequest) -> bool {
         && !request.use_responses_api.unwrap_or(false)
 }
 
-/// Budget sliders are translated only for reviewed provider/model contracts.
-/// Explicit effort is validated, never silently downgraded.
-pub(crate) fn effort(request: &AIRequest) -> Result<Option<String>, AIError> {
-    let model = request.model.as_str();
+/// Reasoning efforts of a reviewed provider/model contract; empty when the
+/// model has none (or has not been reviewed).
+pub(crate) fn reasoning_efforts(request: &AIRequest) -> &'static [&'static str] {
     let studio = model_studio(request);
-    let allowed: &[&str] = match (&request.provider_type, model) {
+    match (&request.provider_type, request.model.as_str()) {
         (_, "qwen3.8-flash" | "qwen3.8-max-0902") if studio => &["none", "low", "medium", "xhigh"],
         (_, "qwen3.8-2.4t-a95b") if studio => &["low", "medium", "xhigh"],
         (_, "kimi-k3" | "deepseek-v4-pro-0813" | "deepseek-v4.1-flash") if studio => {
@@ -235,7 +234,15 @@ pub(crate) fn effort(request: &AIRequest) -> Result<Option<String>, AIError> {
             &["low", "medium", "high", "xhigh", "max"]
         }
         _ => &[],
-    };
+    }
+}
+
+/// Budget sliders are translated only for reviewed provider/model contracts.
+/// Explicit effort is validated, never silently downgraded.
+pub(crate) fn effort(request: &AIRequest) -> Result<Option<String>, AIError> {
+    let model = request.model.as_str();
+    let studio = model_studio(request);
+    let allowed = reasoning_efforts(request);
     if let Some(explicit) = &request.reasoning_effort {
         if !allowed.contains(&explicit.as_str()) {
             return Err(invalid(

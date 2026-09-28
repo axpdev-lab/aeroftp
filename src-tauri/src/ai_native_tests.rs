@@ -241,6 +241,10 @@ fn anthropic_parallel_results_follow_unchanged_thinking_and_tool_blocks() {
 fn responses_replay_two_turns_including_encrypted_reasoning_and_phase() {
     let mut req = request("openai", "gpt-6-astra");
     req.use_responses_api = Some(true);
+    // Under store:false a reasoning item is replayable only with its encrypted
+    // content, which the provider returns only when the request asks for it.
+    let first = crate::openai_responses::build_request_body(&req, true).unwrap();
+    assert_eq!(first["include"], json!(["reasoning.encrypted_content"]));
     for id in ["first", "second"] {
         let output = json!([
             {"type":"reasoning","id":"rs1","encrypted_content":"opaque","summary":[]},
@@ -257,6 +261,7 @@ fn responses_replay_two_turns_including_encrypted_reasoning_and_phase() {
         );
         assert_eq!(input.last().unwrap()["call_id"], id);
         assert_eq!(body["store"], false);
+        assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
     }
 }
 
@@ -554,4 +559,39 @@ fn historical_anthropic_tool_records_remain_paired_without_opaque_storage() {
     assert_eq!(body["messages"][1]["content"][1]["id"], "old");
     assert_eq!(body["messages"][2]["content"][0]["tool_use_id"], "old");
     assert!(!body.to_string().contains("signature"));
+}
+
+#[test]
+fn responses_replay_drops_reasoning_without_encrypted_content() {
+    // A model that reasons by default, with no effort requested (the CLI case).
+    let mut req = request("openai", "gpt-6-sol");
+    req.use_responses_api = Some(true);
+    req.thinking_budget = None;
+    let first = crate::openai_responses::build_request_body(&req, false).unwrap();
+    assert_eq!(first["include"], json!(["reasoning.encrypted_content"]));
+    let output = json!([
+        {"type":"reasoning","id":"rs_plain","summary":[]},
+        {"type":"reasoning","id":"rs_null","encrypted_content":null,"summary":[]},
+        {"type":"reasoning","id":"rs_kept","encrypted_content":"opaque","summary":[]},
+        {"type":"function_call","call_id":"c1","name":"inspect","arguments":"{}"}
+    ]);
+    req.messages.push(assistant(&req, output));
+    req.messages.push(result("c1", "ok"));
+    for stream in [false, true] {
+        let body = crate::openai_responses::build_request_body(&req, stream).unwrap();
+        let input = body["input"].as_array().unwrap();
+        let reasoning: Vec<&Value> = input.iter().filter(|i| i["type"] == "reasoning").collect();
+        assert_eq!(reasoning.len(), 1, "{input:?}");
+        assert_eq!(reasoning[0]["id"], "rs_kept");
+        assert_eq!(input[input.len() - 2]["call_id"], "c1");
+        assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
+    }
+    // A model with no reviewed reasoning contract is not asked for reasoning
+    // content it may reject, unless it already produced reasoning to replay.
+    let mut plain = request("openai", "gpt-4.1");
+    plain.use_responses_api = Some(true);
+    assert!(crate::openai_responses::build_request_body(&plain, false)
+        .unwrap()
+        .get("include")
+        .is_none());
 }
