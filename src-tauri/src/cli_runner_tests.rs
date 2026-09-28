@@ -103,7 +103,7 @@ async fn cli_runner_surfaces_http_failure_without_publishing_history() {
         };
         let mut messages = vec![];
         let (result, ()) = tokio::join!(agent_tool_loop(&cfg, &mut messages, false), server);
-        assert!(result.unwrap_err().contains("429"));
+        assert!(result.unwrap_err().to_string().contains("429"));
         assert!(messages.is_empty());
     })
     .await
@@ -113,7 +113,8 @@ async fn cli_runner_surfaces_http_failure_without_publishing_history() {
 #[test]
 fn cli_sink_discards_post_cancel_chunks() {
     let cancel = tokio_util::sync::CancellationToken::new();
-    let sink = CollectingCliSink::new(false, cancel.clone());
+    let streamed = Arc::new(Mutex::new(String::new()));
+    let sink = CollectingCliSink::new(false, cancel.clone(), streamed.clone());
     let mut chunk = ftp_client_gui_lib::ai_stream::StreamChunk {
         native_turn: None,
         content: "before".into(),
@@ -132,6 +133,7 @@ fn cli_sink_discards_post_cancel_chunks() {
     chunk.done = true;
     sink.emit_stream_chunk("fixture", &chunk);
     assert_eq!(sink.into_response("fixture").content, "before");
+    assert_eq!(*streamed.lock().unwrap(), "before");
 }
 
 #[tokio::test]
@@ -163,7 +165,7 @@ async fn cli_failed_continuation_keeps_pairing_for_next_prompt() {
         };
         let client = async {
             let mut messages = vec![serde_json::from_value(json!({"role":"user","content":"first"})).unwrap()];
-            let error = agent_tool_loop(&cfg, &mut messages, false).await.unwrap_err();
+            let error = agent_tool_loop(&cfg, &mut messages, false).await.unwrap_err().to_string();
             assert!(error.contains("503"), "{error}");
             agent_failed_turn(&mut messages, 0);
             assert_eq!(messages.len(), 3);
@@ -193,4 +195,41 @@ fn cli_history_cleanup_keeps_whole_turns() {
     agent_trim_history(&mut history, 3);
     assert_eq!(history.len(), 2);
     assert_eq!(history[0].role, "user");
+}
+
+#[tokio::test]
+async fn cli_interrupted_run_prints_partial_text_and_exits_130() {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let cfg = config(format!("http://{}", listener.local_addr().unwrap()));
+        let (sent, streamed) = tokio::sync::oneshot::channel();
+        let server = async {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            read_request(&mut socket).await;
+            let partial = json!({"choices":[{"delta":{"role":"assistant","content":"Partial answer"},"finish_reason":null}]});
+            // A close-delimited event stream that never finishes on its own.
+            let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n";
+            socket.write_all(format!("{head}data: {partial}\n\n").as_bytes()).await.unwrap();
+            sent.send(()).unwrap();
+            // Hold the connection until the cancelled client drops it.
+            let _ = socket.read(&mut [0u8; 1]).await;
+        };
+        let client = async {
+            let cancel = tokio_util::sync::CancellationToken::new();
+            let mut messages = vec![serde_json::from_value(json!({"role":"user","content":"fixture"})).unwrap()];
+            let interrupt = async {
+                streamed.await.unwrap();
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                cancel.cancel();
+            };
+            let (outcome, ()) = tokio::join!(agent_run(&cfg, &mut messages, false, &cancel), interrupt);
+            let mut out = Vec::new();
+            let code = report_agent_oneshot(&mut out, outcome, OutputFormat::Text, true);
+            assert_eq!(code, 130, "Ctrl-C is exit code 130 (Interrupted)");
+            assert_eq!(String::from_utf8(out).unwrap(), "Partial answer\n");
+        };
+        tokio::join!(client, server);
+    })
+    .await
+    .unwrap();
 }

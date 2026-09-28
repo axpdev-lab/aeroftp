@@ -67953,6 +67953,8 @@ struct CollectingCliSink {
     print_live: bool,
     cancel: tokio_util::sync::CancellationToken,
     inner: std::sync::Mutex<CollectingSinkState>,
+    /// Text streamed so far, readable after the run is interrupted.
+    streamed: Arc<Mutex<String>>,
 }
 
 #[derive(Default)]
@@ -67970,11 +67972,16 @@ struct CollectingSinkState {
 }
 
 impl CollectingCliSink {
-    fn new(print_live: bool, cancel: tokio_util::sync::CancellationToken) -> Self {
+    fn new(
+        print_live: bool,
+        cancel: tokio_util::sync::CancellationToken,
+        streamed: Arc<Mutex<String>>,
+    ) -> Self {
         Self {
             print_live,
             cancel,
             inner: std::sync::Mutex::new(CollectingSinkState::default()),
+            streamed,
         }
     }
 
@@ -68033,6 +68040,9 @@ impl ftp_client_gui_lib::ai_core::EventSink for CollectingCliSink {
                 state.error_seen = true;
             }
             state.content.push_str(&chunk.content);
+            if let Ok(mut streamed) = self.streamed.lock() {
+                streamed.push_str(&chunk.content);
+            }
             if let Some(ref t) = chunk.thinking {
                 state.thinking.push_str(t);
             }
@@ -68078,6 +68088,25 @@ impl ftp_client_gui_lib::ai_core::EventSink for CollectingCliSink {
 struct CliRunnerAdapter<'a> {
     cfg: &'a AgentConfig,
     is_tty: bool,
+    /// Text of the model step being streamed; what an interrupted run had.
+    streamed: Arc<Mutex<String>>,
+}
+
+/// Why an agent run returned without an answer.
+#[derive(Debug)]
+enum AgentRunError {
+    /// Ctrl-C. Carries the text the interrupted step had already streamed.
+    Interrupted(String),
+    Failed(String),
+}
+
+impl std::fmt::Display for AgentRunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Interrupted(_) => f.write_str(ftp_client_gui_lib::ai_core::runner::CANCELLED),
+            Self::Failed(error) => f.write_str(error),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -68092,7 +68121,14 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
         cancel: &tokio_util::sync::CancellationToken,
     ) -> Result<ftp_client_gui_lib::ai::AIResponse, String> {
         let stream_id = format!("cli-agent-{}", uuid::Uuid::new_v4());
-        let sink = CollectingCliSink::new(self.is_tty && !self.cfg.plan_only, cancel.clone());
+        if let Ok(mut streamed) = self.streamed.lock() {
+            streamed.clear();
+        }
+        let sink = CollectingCliSink::new(
+            self.is_tty && !self.cfg.plan_only,
+            cancel.clone(),
+            self.streamed.clone(),
+        );
         ftp_client_gui_lib::ai_stream::ai_chat_stream_with_sink(&sink, request, &stream_id).await?;
         Ok(sink.into_response(&self.cfg.model))
     }
@@ -68241,11 +68277,29 @@ fn agent_trim_history(history: &mut Vec<ftp_client_gui_lib::ai::ChatMessage>, ma
     }
 }
 
+/// One agent run that Ctrl-C cancels.
 async fn agent_tool_loop(
     cfg: &AgentConfig,
     messages: &mut Vec<ftp_client_gui_lib::ai::ChatMessage>,
     is_tty: bool,
-) -> Result<String, String> {
+) -> Result<String, AgentRunError> {
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let signal_cancel = cancel.clone();
+    let _signal_task = AgentSignalTask(tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            signal_cancel.cancel();
+        }
+    }));
+    agent_run(cfg, messages, is_tty, &cancel).await
+}
+
+/// One agent run under a caller-owned cancellation token.
+async fn agent_run(
+    cfg: &AgentConfig,
+    messages: &mut Vec<ftp_client_gui_lib::ai::ChatMessage>,
+    is_tty: bool,
+    cancel: &tokio_util::sync::CancellationToken,
+) -> Result<String, AgentRunError> {
     use ftp_client_gui_lib::ai::{AIRequest, ChatMessage};
     use ftp_client_gui_lib::ai_core::runner::{run, RunnerOptions};
     let request = AIRequest {
@@ -68282,24 +68336,25 @@ async fn agent_tool_loop(
         ),
     };
 
-    let cancel = tokio_util::sync::CancellationToken::new();
-    let signal_cancel = cancel.clone();
-    let _signal_task = AgentSignalTask(tokio::spawn(async move {
-        if tokio::signal::ctrl_c().await.is_ok() {
-            signal_cancel.cancel();
-        }
-    }));
-    run(
-        &CliRunnerAdapter { cfg, is_tty },
-        &request,
-        messages,
-        RunnerOptions {
-            max_steps: cfg.max_steps,
-            plan_only: cfg.plan_only,
-        },
-        &cancel,
-    )
-    .await
+    let adapter = CliRunnerAdapter {
+        cfg,
+        is_tty,
+        streamed: Arc::default(),
+    };
+    let options = RunnerOptions {
+        max_steps: cfg.max_steps,
+        plan_only: cfg.plan_only,
+    };
+    run(&adapter, &request, messages, options, cancel)
+        .await
+        .map_err(|error| {
+            if cancel.is_cancelled() {
+                let streamed = adapter.streamed.lock().map(|s| s.clone());
+                AgentRunError::Interrupted(streamed.unwrap_or_default())
+            } else {
+                AgentRunError::Failed(error)
+            }
+        })
 }
 
 /// Run the agent in interactive REPL, one-shot, or orchestration mode
@@ -68518,12 +68573,26 @@ async fn cmd_agent_oneshot(message: &str, cfg: &AgentConfig, format: OutputForma
     }];
 
     let is_tty = io::stdin().is_terminal();
+    let outcome = agent_tool_loop(cfg, &mut messages, is_tty).await;
+    // T4: when is_tty the final response was already streamed to stdout
+    // token-by-token by the sink, so it is printed again only otherwise.
+    report_agent_oneshot(&mut io::stdout(), outcome, format, !is_tty || cfg.plan_only)
+}
 
-    match agent_tool_loop(cfg, &mut messages, is_tty).await {
+/// Print a one-shot agent outcome and return its exit code. `print_text` is
+/// false when the answer was already streamed to the terminal.
+fn report_agent_oneshot(
+    out: &mut dyn IoWrite,
+    outcome: Result<String, AgentRunError>,
+    format: OutputFormat,
+    print_text: bool,
+) -> i32 {
+    match outcome {
         Ok(response) => {
             match format {
                 OutputFormat::Json => {
-                    println!(
+                    let _ = writeln!(
+                        out,
                         "{}",
                         serde_json::json!({
                             "status": "ok",
@@ -68532,20 +68601,40 @@ async fn cmd_agent_oneshot(message: &str, cfg: &AgentConfig, format: OutputForma
                     );
                 }
                 OutputFormat::Text => {
-                    // T4: when is_tty the final response was already streamed to
-                    // stdout token-by-token by the sink, so avoid duplicating it.
-                    // Ensure there is a trailing newline for non-streamed paths.
-                    if !is_tty || cfg.plan_only {
-                        println!("{}", response);
+                    if print_text {
+                        let _ = writeln!(out, "{}", response);
                     }
                 }
             }
             0
         }
-        Err(e) => {
+        // Ctrl-C keeps what the model had written, as before the shared
+        // runner, and exits with the documented code 130 (Interrupted).
+        Err(AgentRunError::Interrupted(partial)) => {
             match format {
                 OutputFormat::Json => {
-                    println!(
+                    let _ = writeln!(
+                        out,
+                        "{}",
+                        serde_json::json!({
+                            "status": "interrupted",
+                            "response": partial,
+                        })
+                    );
+                }
+                OutputFormat::Text => {
+                    if print_text && !partial.is_empty() {
+                        let _ = writeln!(out, "{}", partial);
+                    }
+                }
+            }
+            130
+        }
+        Err(AgentRunError::Failed(e)) => {
+            match format {
+                OutputFormat::Json => {
+                    let _ = writeln!(
+                        out,
                         "{}",
                         serde_json::json!({
                             "status": "error",
@@ -68732,7 +68821,17 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
                 const MAX_CONVERSATION_MESSAGES: usize = 40;
                 agent_trim_history(&mut conversation, MAX_CONVERSATION_MESSAGES);
             }
-            Err(e) => {
+            Err(AgentRunError::Interrupted(partial)) => {
+                if is_tty {
+                    // The partial answer is already on screen.
+                    eprint!("\r                    \r");
+                } else if !partial.is_empty() {
+                    println!("\n{}\n", partial);
+                }
+                eprintln!("\n  Interrupted.\n");
+                agent_failed_turn(&mut conversation, prompt_index);
+            }
+            Err(AgentRunError::Failed(e)) => {
                 if is_tty {
                     eprint!("\r                    \r");
                 }
@@ -68922,7 +69021,7 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
                             "{}",
                             serde_json::json!({
                                 "jsonrpc": "2.0", "id": id,
-                                "error": { "code": -32000, "message": e }
+                                "error": { "code": -32000, "message": e.to_string() }
                             })
                         );
                     }
