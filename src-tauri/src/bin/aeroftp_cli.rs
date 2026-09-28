@@ -3827,7 +3827,7 @@ enum Commands {
         /// All are readable by the extractor. Ignored for other formats.
         #[arg(long = "method", value_enum)]
         method: Option<SevenZMethod>,
-        /// 7z LZMA2 only: dictionary size in bytes (encoder clamps to 4096..=4 GiB),
+        /// 7z LZMA2 only: dictionary size in bytes (clamped to 4096..=1073741823),
         /// e.g. 16777216 for 16 MiB. Ignored for other methods/formats.
         #[arg(long = "dictionary")]
         dictionary: Option<u64>,

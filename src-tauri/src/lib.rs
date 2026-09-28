@@ -7847,12 +7847,22 @@ async fn extract_archive(
 /// defaults). Surfaced by the CompressDialog "Advanced" section and the CLI
 /// `compress` flags. `dictionary_size` and `threads` apply to LZMA2 only; the
 /// other methods are driven by the level alone.
+/// The largest LZMA2 dictionary the 7z encoder accepts: sevenz-rust2 0.23
+/// refuses to encode with a larger one (1 GiB - 1 bytes).
+pub const MAX_7Z_DICTIONARY: u32 = 1_073_741_823;
+
+/// A requested 7z dictionary size, clamped to what the encoder accepts, so a
+/// larger request compresses with the largest dictionary instead of failing.
+fn clamp_7z_dictionary(requested: u64) -> u32 {
+    requested.clamp(4096, MAX_7Z_DICTIONARY as u64) as u32
+}
+
 #[derive(Debug, Default, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SevenZAdvanced {
     /// Content method: "lzma2" (default) | "lzma" | "ppmd" | "bzip2".
     pub method: Option<String>,
-    /// LZMA2 dictionary size in bytes (the encoder clamps it to 4096..=4 GiB).
+    /// LZMA2 dictionary size in bytes, clamped to 4096..=`MAX_7Z_DICTIONARY`.
     pub dictionary_size: Option<u64>,
     /// Pack every file into one solid block: better ratio on many small files,
     /// slower random extraction. Off by default.
@@ -7980,7 +7990,7 @@ async fn compress_7z_impl(
                 None => encoder_options::Lzma2Options::from_level(level),
             };
             if let Some(d) = adv.dictionary_size {
-                o.set_dictionary_size(d.min(u32::MAX as u64) as u32);
+                o.set_dictionary_size(clamp_7z_dictionary(d));
             }
             o.into()
         }
@@ -22372,6 +22382,21 @@ mod standalone_stream_tests {
     // A stream that expands past its declared size (a decompression bomb, or a
     // corrupt entry) must be rejected, and a truthful stream must pass through
     // unchanged. Guards the whole-archive extract paths (zip/7z/tar). (audit A-F1)
+    /// sevenz-rust2 0.23 refuses to encode with a dictionary above 1 GiB - 1;
+    /// the clamp that used to stop at u32::MAX now stops there, so a larger
+    /// request compresses with the largest dictionary instead of failing.
+    #[test]
+    fn a_7z_dictionary_request_is_clamped_to_what_the_encoder_accepts() {
+        use super::{clamp_7z_dictionary, MAX_7Z_DICTIONARY};
+        assert_eq!(
+            clamp_7z_dictionary(2 * 1024 * 1024 * 1024),
+            MAX_7Z_DICTIONARY
+        );
+        assert_eq!(clamp_7z_dictionary(u64::MAX), MAX_7Z_DICTIONARY);
+        assert_eq!(clamp_7z_dictionary(16 * 1024 * 1024), 16 * 1024 * 1024);
+        assert_eq!(clamp_7z_dictionary(1), 4096);
+    }
+
     #[test]
     fn copy_entry_bounded_rejects_overrun_and_passes_truthful() {
         use super::copy_entry_bounded;
