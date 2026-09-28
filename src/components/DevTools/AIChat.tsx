@@ -1758,7 +1758,6 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             setPendingToolCalls([]);
             return formattedResult;
         } catch (error: any) {
-            if (options.macroState) options.macroState.failed = true;
             const errorStr = error.message || error.toString();
             const strategy = analyzeToolError(toolCall.toolName, toolCall.args, errorStr);
 
@@ -1795,7 +1794,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     setPendingToolCalls([]);
                     return retryFormatted;
                 } catch (retryError: any) {
-                    // Retry exhausted, fall through to error display
+                    // Retry exhausted, fall through to error display. Only now has the
+                    // step failed: a macro keeps going when an automatic retry recovers.
+                    if (options.macroState) options.macroState.failed = true;
                     const exhaustedStr = retryError.message || retryError.toString();
                     const errorMessage: Message = {
                         id: crypto.randomUUID(),
@@ -1810,6 +1811,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }
 
             // Non-retryable error
+            if (options.macroState) options.macroState.failed = true;
             const errorMessage: Message = {
                 id: crypto.randomUUID(),
                 role: 'assistant',
