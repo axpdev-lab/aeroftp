@@ -845,3 +845,33 @@ fn provider_error_text_is_scrubbed_before_it_is_cut() {
         }
     }
 }
+
+#[test]
+fn responses_continuation_asks_for_reasoning_only_when_it_replays_some() {
+    // A model without a reviewed reasoning contract.
+    let mut req = request("openai", "gpt-4.1");
+    req.use_responses_api = Some(true);
+    let plain = json!([
+        {"type":"message","role":"assistant","content":[{"type":"output_text","text":"checking"}]},
+        {"type":"function_call","call_id":"c1","name":"inspect","arguments":"{}"}
+    ]);
+    let mut continuation = req.clone();
+    continuation.messages.push(assistant(&continuation, plain));
+    continuation.messages.push(result("c1", "ok"));
+    let body = crate::openai_responses::build_request_body(&continuation, false).unwrap();
+    assert!(body.get("include").is_none(), "{body}");
+
+    // Reasoning in the replay proves the model reasons: ask for it from now on,
+    // even though this item is dropped for lacking its encrypted content.
+    let reasoned = json!([
+        {"type":"reasoning","id":"rs_plain","summary":[]},
+        {"type":"function_call","call_id":"c1","name":"inspect","arguments":"{}"}
+    ]);
+    let mut continuation = req.clone();
+    continuation
+        .messages
+        .push(assistant(&continuation, reasoned));
+    continuation.messages.push(result("c1", "ok"));
+    let body = crate::openai_responses::build_request_body(&continuation, false).unwrap();
+    assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
+}

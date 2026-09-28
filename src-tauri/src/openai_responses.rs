@@ -88,7 +88,7 @@ pub(crate) fn build_request_body(request: &AIRequest, stream: bool) -> Result<Va
         .join("\n\n");
 
     let mut input = Vec::new();
-    let mut continuation = false;
+    let mut replays_reasoning = false;
     for message in request
         .messages
         .iter()
@@ -99,7 +99,7 @@ pub(crate) fn build_request_body(request: &AIRequest, stream: bool) -> Result<Va
             let items = output
                 .as_array()
                 .ok_or_else(|| AIError::InvalidResponse("Invalid Responses replay items".into()))?;
-            continuation = true;
+            replays_reasoning |= items.iter().any(|item| item["type"] == "reasoning");
             // Under store:false the provider keeps nothing, so a reasoning item
             // is replayable only with its encrypted content. One without it
             // (from a request that did not ask) would be refused as "not found".
@@ -193,9 +193,9 @@ pub(crate) fn build_request_body(request: &AIRequest, stream: bool) -> Result<Va
     }
     // Ask for the encrypted reasoning the next step must replay: on every
     // request to a reviewed reasoning model (it reasons even when no effort is
-    // set) and on every continuation. A model without a reviewed reasoning
-    // contract is not asked on its first request, since it may reject it.
-    if continuation || !crate::ai_native::reasoning_efforts(request).is_empty() {
+    // set), and on a continuation whose replay shows the model reasons. Any
+    // other model is not asked, since it may reject the field.
+    if replays_reasoning || !crate::ai_native::reasoning_efforts(request).is_empty() {
         body["include"] = json!(["reasoning.encrypted_content"]);
     }
 
