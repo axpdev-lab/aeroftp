@@ -1345,6 +1345,9 @@ export interface SyncJournalEntry {
   verified: boolean | null;
   bytes_transferred: number;
   ec_status?: SyncEcStatus | null;
+  /** The local file as the sync index records it once the transfer completed (size, and the time a download left or an upload sent). A resumed run takes these for the transfers it skips. */
+  local_size?: number | null;
+  local_modified?: string | null;
 }
 
 export interface SyncJournal {

@@ -613,6 +613,30 @@ export const runRemoteSync = async (
         completed: false,
     };
     const journalEntryMap = new Map<string, number>();
+    // The local file of each transfer as the index records it, for the files
+    // this run knows no time of (a remote that lists none, a run resumed from
+    // its journal): read when a download completed, and before an upload.
+    const landedStates = new Map<string, { size: number | null; modified: string | null }>();
+    const readLocalState = async (path: string) => {
+        const props = await invoke<{ size?: number; modified: string | null } | undefined>(
+            'get_file_properties',
+            { path },
+        ).catch(() => undefined);
+        // get_file_properties formats UTC without the zone.
+        return {
+            size: typeof props?.size === 'number' ? props.size : null,
+            modified: props?.modified ? `${props.modified}Z` : null,
+        };
+    };
+    // What the index records for a completed transfer, kept in its journal
+    // entry too: a run resumed from the journal reads nothing of the
+    // transfers it skips, and takes this for them.
+    const recordLanded = (item: SyncRunFile, entry: SyncJournalEntry | undefined) => {
+        if (!entry) return;
+        const landed = landedStates.get(item.relativePath);
+        entry.local_size = landed?.size ?? item.size;
+        entry.local_modified = landed ? landed.modified : item.mtime;
+    };
     journal.entries.forEach((entry, idx) => journalEntryMap.set(entry.relative_path, idx));
 
     // GAP-9a — Maniac mode disables journal persistence. The in-memory
@@ -769,6 +793,11 @@ export const runRemoteSync = async (
                 cmd = 'upload_file';
                 args = { params: { local_path: localFilePath, remote_path: remoteFilePath, use_delta: config.deltaSyncEnabled } };
             }
+            // A run resumed from its journal knows no time of the file it
+            // uploads: read it before the upload, the copy that goes up.
+            if (deps.writeIndex && item.mtime == null) {
+                landedStates.set(item.relativePath, await readLocalState(localFilePath));
+            }
             const result = await executeTransferWithRetry(cmd, args, item.relativePath);
             if (journalEntry) {
                 journalEntry.attempts = result.attempts;
@@ -783,6 +812,7 @@ export const runRemoteSync = async (
                     journalEntry.bytes_transferred = item.size;
                     journalEntry.verified = true;
                 }
+                recordLanded(item, journalEntry);
                 if (errorCorrectionEnabled) {
                     try {
                         const ecResult = await invoke<SyncEcCommandResult>('sync_ec_generate', {
@@ -880,6 +910,12 @@ export const runRemoteSync = async (
                     errors.push(errInfo);
                     setStatus(item.relativePath, 'verify_failed');
                 } else {
+                    // Read now, not when the index is saved after the run: a
+                    // same-size edit made in between is a change the next run
+                    // must see, not the synced state.
+                    if (deps.writeIndex && item.mtime == null) {
+                        landedStates.set(item.relativePath, await readLocalState(localFilePath));
+                    }
                     downloaded++;
                     totalBytes += item.size;
                     if (journalEntry) {
@@ -887,6 +923,7 @@ export const runRemoteSync = async (
                         journalEntry.bytes_transferred = item.size;
                         journalEntry.verified = true;
                     }
+                    recordLanded(item, journalEntry);
                     captureDeltaForPath(item.relativePath);
                     setStatus(item.relativePath, 'success');
                 }
@@ -1051,9 +1088,33 @@ export const runRemoteSync = async (
                 const entry = idx !== undefined ? journal.entries[idx] : undefined;
                 if (entry?.status !== 'completed') continue;
                 if (f.action === 'upload' || f.action === 'download') {
+                    // The next compare reads the local side against this time
+                    // with the local clock. A download keeps the remote time,
+                    // which it stamped on the local copy, and an upload the
+                    // time the scan read. With neither (a backend that lists no
+                    // time, such as FTP LIST dates, or a run resumed from its
+                    // journal) the file's own is recorded, read when the
+                    // download completed or before the upload, or the local side
+                    // would be compared by size alone and a same-size edit would
+                    // go unseen. A transfer the resumed journal had finished was
+                    // not read in this run: its journal entry says what the run
+                    // that made it recorded. An entry written before these
+                    // fields existed gives no time.
+                    let size = f.size;
+                    let modified = f.mtime;
+                    if (f.mtime == null) {
+                        const landed = landedStates.get(f.relativePath);
+                        if (landed) {
+                            modified = landed.modified;
+                            size = landed.size ?? f.size;
+                        } else {
+                            modified = entry.local_modified ?? null;
+                            size = entry.local_size ?? f.size;
+                        }
+                    }
                     mergedFiles[f.relativePath] = {
-                        size: f.size,
-                        modified: f.mtime,
+                        size,
+                        modified,
                         is_dir: false,
                     };
                 } else {

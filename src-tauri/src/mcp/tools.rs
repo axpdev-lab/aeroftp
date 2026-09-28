@@ -1719,6 +1719,7 @@ pub async fn execute_tool(
                             "remote_dir": remote_dir,
                             "direction": direction_raw,
                             "delta_policy": delta_policy.as_str(),
+                            "modify_window": report.modify_window,
                             "dry_run": true,
                             "summary_only": summary_only,
                             "planned": {
@@ -1831,6 +1832,7 @@ pub async fn execute_tool(
                             "remote_dir": remote_dir,
                             "direction": direction_raw,
                             "delta_policy": delta_policy.as_str(),
+                            "modify_window": report.modify_window,
                             "dry_run": false,
                             "summary_only": summary_only,
                             "summary": Value::Object(summary),

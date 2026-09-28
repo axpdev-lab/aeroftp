@@ -911,13 +911,24 @@ impl FtpManager {
     /// A row that is not a listing row is now an error, which the caller
     /// already skips, instead of an invention.
     fn parse_ftp_listing(&self, listing: &str) -> Result<RemoteFile> {
+        self.parse_ftp_listing_at(listing, chrono::Utc::now().naive_utc())
+    }
+
+    /// [`Self::parse_ftp_listing`] with the present given, which decides the
+    /// year of a Unix date that omits it.
+    fn parse_ftp_listing_at(
+        &self,
+        listing: &str,
+        now: chrono::NaiveDateTime,
+    ) -> Result<RemoteFile> {
         if listing.trim().is_empty() {
             return Err(FtpManagerError::InvalidPath("Empty listing".to_string()).into());
         }
-        let entry = crate::providers::ftp_listing::parse_listing(listing, &self.current_path)
-            .ok_or_else(|| {
-                FtpManagerError::InvalidPath(format!("Unrecognised listing row: {listing}"))
-            })?;
+        let entry =
+            crate::providers::ftp_listing::parse_listing_at(listing, &self.current_path, now)
+                .ok_or_else(|| {
+                    FtpManagerError::InvalidPath(format!("Unrecognised listing row: {listing}"))
+                })?;
         Ok(RemoteFile {
             name: entry.name,
             path: entry.path,
@@ -976,9 +987,13 @@ mod charac_tests {
 
     fn charac_table() -> String {
         let m = FtpManager::new();
+        // The present a year-less Unix date is read against, fixed so the
+        // baseline does not age (the same one as the provider twin).
+        let charac_now =
+            chrono::NaiveDateTime::parse_from_str("2026-09-25 12:00", "%Y-%m-%d %H:%M").unwrap();
         let mut out = String::new();
         for line in CHARAC_ROWS {
-            let rendered = match m.parse_ftp_listing(line) {
+            let rendered = match m.parse_ftp_listing_at(line, charac_now) {
                 Err(e) => format!("<err: {e}>"),
                 Ok(f) => format!(
                     "name={:?} path={:?} dir={} size={:?} perms={:?} mod={:?}",
@@ -1002,23 +1017,23 @@ mod charac_tests {
     }
 
     const CHARAC_BASELINE: &str = r#"LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects"
-  name="projects" path="/projects" dir=true size=Some(4096) perms=Some("drwxr-xr-x") mod=Some("Jan 20 10:00")
+  name="projects" path="/projects" dir=true size=Some(4096) perms=Some("drwxr-xr-x") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt"
-  name="notes.txt" path="/notes.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
+  name="notes.txt" path="/notes.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt"
-  name="my report.txt" path="/my report.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
+  name="my report.txt" path="/my report.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt"
-  name="a  b.txt" path="/a  b.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
+  name="a  b.txt" path="/a  b.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("2026-01-20 10:00")
 LIST "01-23-24  10:30AM  12345  my  file.txt"
-  name="my  file.txt" path="/my  file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
+  name="my  file.txt" path="/my  file.txt" dir=false size=Some(12345) perms=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM  ????  odd.txt"
-  name="odd.txt" path="/odd.txt" dir=false size=Some(0) perms=None mod=Some("01-23-24 10:30AM")
+  name="odd.txt" path="/odd.txt" dir=false size=Some(0) perms=None mod=Some("2024-01-23 10:30")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target"
-  name="link" path="/link" dir=false size=Some(7) perms=Some("lrwxrwxrwx") mod=Some("Jan 20 10:00")
+  name="link" path="/link" dir=false size=Some(7) perms=Some("lrwxrwxrwx") mod=Some("2026-01-20 10:00")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling"
-  name="dangling" path="/dangling" dir=false size=Some(7) perms=Some("lrwxrwxrwx") mod=Some("Jan 20 10:00")
+  name="dangling" path="/dangling" dir=false size=Some(7) perms=Some("lrwxrwxrwx") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt"
-  name="odd.txt" path="/odd.txt" dir=false size=Some(0) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
+  name="odd.txt" path="/odd.txt" dir=false size=Some(0) perms=Some("-rw-r--r--") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r-- 1 user group 123 Jan 20 10:00"
   <err: Invalid path: Unrecognised listing row: -rw-r--r-- 1 user group 123 Jan 20 10:00>
 LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ."
@@ -1030,15 +1045,15 @@ LIST ""
 LIST "total 12"
   <err: Invalid path: Unrecognised listing row: total 12>
 LIST "01-23-24  10:30AM       <DIR>          folder"
-  name="folder" path="/folder" dir=true size=Some(0) perms=None mod=Some("01-23-24 10:30AM")
+  name="folder" path="/folder" dir=true size=Some(0) perms=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM           12345      file.txt"
-  name="file.txt" path="/file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
+  name="file.txt" path="/file.txt" dir=false size=Some(12345) perms=None mod=Some("2024-01-23 10:30")
 LIST "01-23-2024  10:30AM         12345      file.txt"
-  name="file.txt" path="/file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-2024 10:30AM")
+  name="file.txt" path="/file.txt" dir=false size=Some(12345) perms=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM           12345      my file.txt"
-  name="my file.txt" path="/my file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
+  name="my file.txt" path="/my file.txt" dir=false size=Some(12345) perms=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24 10:30AM 12345 a b c d e f"
-  name="a b c d e f" path="/a b c d e f" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
+  name="a b c d e f" path="/a b c d e f" dir=false size=Some(12345) perms=None mod=Some("2024-01-23 10:30")
 LIST "not-a-date 10:30AM <DIR> folder"
   <err: Invalid path: Unrecognised listing row: not-a-date 10:30AM <DIR> folder>
 LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ."

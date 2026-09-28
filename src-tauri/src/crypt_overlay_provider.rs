@@ -948,6 +948,10 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.provider_type()
     }
 
+    fn mtime_precision(&self) -> Option<std::time::Duration> {
+        self.inner.mtime_precision()
+    }
+
     fn display_name(&self) -> String {
         self.inner.display_name()
     }

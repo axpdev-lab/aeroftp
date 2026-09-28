@@ -2165,6 +2165,14 @@ impl StorageProvider for FtpProvider {
         self.hash.any()
     }
 
+    /// MLSD dates are UTC to the second (RFC 3659). A session that lists with
+    /// `LIST` (no MLSD, or MLSD that broke, which never comes back) reads the
+    /// server's local time with no zone, so its dates are not comparable.
+    fn mtime_precision(&self) -> Option<std::time::Duration> {
+        self.mlsd_supported
+            .then_some(std::time::Duration::from_secs(1))
+    }
+
     /// Narrowed to what THIS server advertised in FEAT, which is the whole
     /// point on FTP: the matrix lists the algorithms the protocol can carry,
     /// but a server whose `HASH` line lists SHA-1 and SHA-256, or which
@@ -3735,7 +3743,13 @@ impl FtpProvider {
         let mut file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
+        let local_meta = file.metadata().await.map_err(ProviderError::IoError)?;
+        let total_size = local_meta.len();
+        // The time MFMT stamps on the remote at the end, read from the open
+        // file as the upload starts. Read from the path once it is over, it was
+        // the time of a save made meanwhile, lent to bytes that are not that
+        // save's: a sync then read the pair as identical.
+        let local_modified = local_meta.modified().ok();
 
         // Open streaming upload channel (PASV + STOR), under the same cap as the
         // reads: the two unbounded awaits live in `data_command`, which every
@@ -3825,23 +3839,15 @@ impl FtpProvider {
         // MFMT is a standalone FTP command, NOT a SITE sub-command.
         // Best practice: FileZilla, WinSCP, lftp all do this after upload.
         if self.mfmt_supported {
-            if let Ok(local_meta) = std::fs::metadata(local_path) {
-                if let Ok(mtime) = local_meta.modified() {
-                    if let Ok(duration) = mtime.duration_since(std::time::UNIX_EPOCH) {
-                        let dt = chrono::DateTime::from_timestamp(duration.as_secs() as i64, 0);
-                        if let Some(dt) = dt {
-                            let mfmt_time = dt.format("%Y%m%d%H%M%S").to_string();
-                            if let Some(stream) = self.stream.as_mut() {
-                                // MFMT <time-val> <pathname>: expects 213 response
-                                let cmd = format!("MFMT {} {}", mfmt_time, remote_path);
-                                if let Err(e) =
-                                    stream.custom_command(&cmd, &[suppaftp::Status::File]).await
-                                {
-                                    tracing::debug!("FTP MFMT failed (non-fatal): {}", e);
-                                }
-                            }
-                        }
-                    }
+            let mfmt_time = local_modified
+                .and_then(|mtime| mtime.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|duration| chrono::DateTime::from_timestamp(duration.as_secs() as i64, 0))
+                .map(|dt| dt.format("%Y%m%d%H%M%S").to_string());
+            if let (Some(mfmt_time), Some(stream)) = (mfmt_time, self.stream.as_mut()) {
+                // MFMT <time-val> <pathname>: expects 213 response
+                let cmd = format!("MFMT {} {}", mfmt_time, remote_path);
+                if let Err(e) = stream.custom_command(&cmd, &[suppaftp::Status::File]).await {
+                    tracing::debug!("FTP MFMT failed (non-fatal): {}", e);
                 }
             }
         }
@@ -4501,6 +4507,33 @@ mod tests {
     // evidence that the move preserved behaviour. Fixes belong to a later
     // change, which will edit this baseline deliberately and say why.
 
+    /// MLSD dates are UTC to the second; a session that lists with LIST
+    /// (no MLSD, or MLSD that broke) reads server-local dates with no zone.
+    /// The sync reads the answer per session: compared within 2 s, or by
+    /// size only with the FTP reason stated.
+    #[test]
+    fn mtime_precision_follows_the_listing_the_session_reads() {
+        use crate::sync_core::mtime::{ModifyWindow, SizeOnlyReason};
+        let mut provider = charac_provider();
+        provider.mlsd_supported = false;
+        assert_eq!(provider.mtime_precision(), None);
+        assert_eq!(
+            ModifyWindow::against_provider(None, &provider),
+            ModifyWindow::SizeOnly {
+                reason: SizeOnlyReason::FtpListDates
+            }
+        );
+        provider.mlsd_supported = true;
+        assert_eq!(
+            provider.mtime_precision(),
+            Some(std::time::Duration::from_secs(1))
+        );
+        assert_eq!(
+            ModifyWindow::against_provider(None, &provider),
+            ModifyWindow::Seconds { secs: 2 }
+        );
+    }
+
     fn charac_provider() -> FtpProvider {
         FtpProvider::new(FtpConfig {
             host: "test".to_string(),
@@ -4602,9 +4635,13 @@ mod tests {
 
     fn charac_table() -> String {
         let p = charac_provider();
+        // The present a year-less Unix date is read against, fixed so the
+        // baseline does not age.
+        let charac_now =
+            chrono::NaiveDateTime::parse_from_str("2026-09-25 12:00", "%Y-%m-%d %H:%M").unwrap();
         let mut out = String::new();
         for (line, base) in CHARAC_LIST_ROWS {
-            let rendered = match super::super::ftp_listing::parse_listing(line, base) {
+            let rendered = match super::super::ftp_listing::parse_listing_at(line, base, charac_now) {
                 None => "<none>".to_string(),
                 Some(e) => format!(
                     "name={:?} path={:?} dir={} size={} sym={} link={:?} perms={:?} owner={:?} group={:?} mod={:?}",
@@ -4639,23 +4676,23 @@ mod tests {
     }
 
     const CHARAC_BASELINE: &str = r#"LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects" @ "/"
-  name="projects" path="/projects" dir=true size=4096 sym=false link=None perms=Some("drwxr-xr-x") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="projects" path="/projects" dir=true size=4096 sym=false link=None perms=Some("drwxr-xr-x") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt" @ "/"
-  name="notes.txt" path="/notes.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="notes.txt" path="/notes.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt" @ "/"
-  name="my report.txt" path="/my report.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="my report.txt" path="/my report.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt" @ "/"
-  name="a  b.txt" path="/a  b.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="a  b.txt" path="/a  b.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "01-23-24  10:30AM  12345  my  file.txt" @ "/"
-  name="my  file.txt" path="/my  file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="my  file.txt" path="/my  file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM  ????  odd.txt" @ "/"
-  name="odd.txt" path="/odd.txt" dir=false size=0 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="odd.txt" path="/odd.txt" dir=false size=0 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target" @ "/"
-  name="link" path="/link" dir=false size=7 sym=true link=Some("target") perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="link" path="/link" dir=false size=7 sym=true link=Some("target") perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling" @ "/"
-  name="dangling" path="/dangling" dir=false size=7 sym=true link=None perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="dangling" path="/dangling" dir=false size=7 sym=true link=None perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt" @ "/"
-  name="odd.txt" path="/odd.txt" dir=false size=0 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="odd.txt" path="/odd.txt" dir=false size=0 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r-- 1 user group 123 Jan 20 10:00" @ "/"
   <none>
 LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ." @ "/"
@@ -4663,23 +4700,23 @@ LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ." @ "/"
 LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .." @ "/"
   <none>
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 f.txt" @ "/scope"
-  name="f.txt" path="/scope/f.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="f.txt" path="/scope/f.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 f.txt" @ "/scope/"
-  name="f.txt" path="/scope/f.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="f.txt" path="/scope/f.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("2026-01-20 10:00")
 LIST "" @ "/"
   <none>
 LIST "total 12" @ "/"
   <none>
 LIST "01-23-24  10:30AM       <DIR>          folder" @ "/"
-  name="folder" path="/folder" dir=true size=0 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="folder" path="/folder" dir=true size=0 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM           12345      file.txt" @ "/"
-  name="file.txt" path="/file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="file.txt" path="/file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "01-23-2024  10:30AM         12345      file.txt" @ "/"
-  name="file.txt" path="/file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-2024 10:30AM")
+  name="file.txt" path="/file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM           12345      my file.txt" @ "/"
-  name="my file.txt" path="/my file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="my file.txt" path="/my file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24 10:30AM 12345 a b c d e f" @ "/"
-  name="a b c d e f" path="/a b c d e f" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+  name="a b c d e f" path="/a b c d e f" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("2024-01-23 10:30")
 LIST "not-a-date 10:30AM <DIR> folder" @ "/"
   <none>
 LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ." @ "/"
@@ -4704,7 +4741,12 @@ MLSD "no-facts-here" @ "/"
     #[test]
     fn test_parse_unix_listing() {
         let line = "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects";
-        let entry = super::super::ftp_listing::parse_unix_listing(line, "/").unwrap();
+        let entry = super::super::ftp_listing::parse_unix_listing(
+            line,
+            "/",
+            chrono::Utc::now().naive_utc(),
+        )
+        .unwrap();
 
         assert_eq!(entry.name, "projects");
         assert!(entry.is_dir);
@@ -6806,6 +6848,77 @@ mod transfer_verdict_tests {
                 .count();
             assert_eq!(stors, 1, "{reply:?}: the file was sent again");
         }
+    }
+
+    /// Verification of the fifth and sixth rounds of #949: MFMT stamped the
+    /// remote with the time read from the path once the upload was over,
+    /// which is the time of a save made meanwhile, lent to bytes that are not
+    /// that save's: a sync then read the pair as identical. It stamps the time
+    /// read from the open file as the upload starts. Here the path is given
+    /// another file, with another time, while the server waits after the data
+    /// for a possible ABOR.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn mfmt_stamps_the_time_the_upload_started_from() {
+        let (port, log) = scripted_server(Script {
+            retr_payload: Vec::new(),
+            retr_reply: "226 done\r\n",
+            retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
+            stor_reply: "226 done\r\n",
+            stor_stalls: false,
+            stor_abor_late: false,
+        })
+        .await;
+        let mut provider = connected(port).await;
+        provider.mfmt_supported = true;
+        let dir = tempfile::tempdir().unwrap();
+        let stamp = |path: &std::path::Path, secs: u64| {
+            std::fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(secs))
+                .unwrap();
+        };
+        let local = dir.path().join("f.bin");
+        std::fs::write(&local, b"payload").unwrap();
+        stamp(&local, 1_700_000_000);
+        let saved = dir.path().join("saved");
+        std::fs::write(&saved, b"a later save").unwrap();
+        stamp(&saved, 1_800_000_000);
+        let saver = {
+            let (log, local, saved) = (Arc::clone(&log), local.clone(), saved.clone());
+            tokio::spawn(async move {
+                while !log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|line| line.starts_with("STOR"))
+                {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+                std::fs::rename(&saved, &local).unwrap();
+            })
+        };
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            provider.upload(local.to_str().unwrap(), "/f.bin", None),
+        )
+        .await
+        .expect("the upload must end")
+        .expect("the upload succeeds");
+        saver.await.unwrap();
+        let mfmt = log
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|line| line.starts_with("MFMT"))
+            .cloned();
+        assert_eq!(
+            mfmt.as_deref(),
+            Some("MFMT 20231114221320 /f.bin"),
+            "the time of the file that was sent (2023-11-14 22:13:20), not of the later save"
+        );
     }
 
     /// A range the server cuts short and then fails (`451`) is an error, not

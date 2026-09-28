@@ -125,7 +125,6 @@ pub(crate) async fn extract_zip_entry_impl(
     app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
     use std::fs::{self, File};
-    use std::io::Read;
 
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
@@ -169,22 +168,16 @@ pub(crate) async fn extract_zip_entry_impl(
         .suffix(".aerotmp")
         .tempfile_in(parent)
         .map_err(|e| format!("Failed to create temp file: {}", e))?;
-    // Bound extraction to the entry's declared uncompressed size (+1 to detect a
-    // stream that expands past what it declared), defusing a deflate bomb that
-    // would otherwise stream unbounded data to disk (CLAUDE-AV-015).
+    // Hold extraction to the entry's declared uncompressed size in both
+    // directions: a stream that expands past it is a deflate bomb that would
+    // otherwise stream unbounded data to disk (CLAUDE-AV-015), one that ends
+    // before it is a truncated or corrupt entry that must not be persisted.
     let declared = entry.size();
     let mut progress = ArchiveProgress::for_optional_app(app, phase::EXTRACTING, declared);
-    let written = {
-        let mut limited = entry.by_ref().take(declared + 1);
-        let mut counted = ProgressReader::new(&mut limited, &mut progress);
-        std::io::copy(&mut counted, tmp.as_file_mut())
-            .map_err(|e| format!("Failed to extract entry: {}", e))?
-    };
-    if written > declared {
-        return Err(format!(
-            "Archive entry '{}' expands past its declared size (compression bomb?)",
-            entry_name
-        ));
+    {
+        let mut counted = ProgressReader::new(&mut entry, &mut progress);
+        crate::copy_entry_bounded(&mut counted, tmp.as_file_mut(), declared)
+            .map_err(|e| format!("Failed to extract entry '{}': {}", entry_name, e))?;
     }
     tmp.persist(out_path)
         .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
@@ -294,7 +287,19 @@ pub async fn extract_7z_entry(
     password: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    use sevenz_rust2::{ArchiveReader, Password};
+    extract_7z_entry_impl(archive_path, entry_name, output_path, password, Some(app)).await
+}
+
+/// Implementation of `extract_7z_entry`; `app` is `None` for headless callers
+/// (tests), which get a silent progress emitter.
+pub(crate) async fn extract_7z_entry_impl(
+    archive_path: String,
+    entry_name: String,
+    output_path: String,
+    password: Option<String>,
+    app: Option<tauri::AppHandle>,
+) -> Result<String, String> {
+    use sevenz_rust2::{Archive, BlockDecoder, Password};
     use std::fs::{self, File};
     use std::io::BufReader;
 
@@ -309,15 +314,23 @@ pub async fn extract_7z_entry(
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
     let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::new(file);
 
     let pwd = secret_password
         .as_ref()
         .map(|p| Password::from(p.expose_secret()))
         .unwrap_or_else(Password::empty);
 
-    let mut archive =
-        ArchiveReader::new(reader, pwd).map_err(|e| format!("Failed to read 7z archive: {}", e))?;
+    let archive = Archive::read(&mut reader, &pwd).map_err(|e| {
+        format!(
+            "Failed to read 7z archive: {}",
+            crate::describe_7z_error(&e)
+        )
+    })?;
+    let Some(index) = archive.files.iter().position(|f| f.name() == entry_name) else {
+        return Err(format!("Entry '{}' not found in archive", entry_name));
+    };
+    let target = &archive.files[index];
 
     let out_path = std::path::Path::new(&output_path);
     if let Some(parent) = out_path.parent() {
@@ -338,40 +351,48 @@ pub async fn extract_7z_entry(
         .tempfile_in(parent)
         .map_err(|e| format!("Failed to create temp file: {}", e))?;
 
-    // Take the temp file out as a `&mut File` up front: `for_each_entries` borrows the
-    // closure (and its captures) only until it returns, so the borrow of `tmp` clears
-    // before we persist it below.
-    let mut found = false;
+    // The entry's uncompressed size is the honest denominator for the bar.
+    let declared = target.size();
+    let mut progress = ArchiveProgress::for_optional_app(app, phase::EXTRACTING, declared);
+    // Held to the declared size: sevenz-rust2 checks the CRC only once all of it
+    // is read, so a wrong password whose stream decodes to an early end left a
+    // short or empty file here and reported success. Read errors go back to
+    // sevenz-rust2 as they are, which reports them as MaybeBadPassword when a
+    // password is set; write errors carry a context (`sevenz_entry_error`), so a
+    // full disk does not read as a wrong password.
     let tmp_file = tmp.as_file_mut();
-    archive
-        .for_each_entries(|entry, reader| {
-            if entry.name() == entry_name {
-                found = true;
-                // The entry's uncompressed size is the honest denominator; create the
-                // emitter here where it is known, count bytes streamed to disk.
-                let mut progress =
-                    ArchiveProgress::for_app(app.clone(), phase::EXTRACTING, entry.size());
-                {
-                    let mut counted = ProgressReader::new(reader, &mut progress);
-                    std::io::copy(&mut counted, tmp_file)?;
-                }
-                progress.finish();
-                // Stop iterating once our entry is extracted: continuing would keep
-                // decoding the rest of the solid stream for nothing, and a later-entry
-                // error would surface as a failure AFTER the bar already hit 100%.
-                return Ok(false);
-            }
-            Ok(true)
-        })
-        .map_err(|e| format!("Failed to extract: {}", e))?;
-
-    if !found {
-        // Entry never matched: drop `tmp` (auto-removed) and report not found.
-        return Err(format!("Entry '{}' not found in archive", entry_name));
-    }
+    let mut copy_target = |stream: &mut dyn std::io::Read| -> Result<(), sevenz_rust2::Error> {
+        let mut counted = ProgressReader::new(stream, &mut progress);
+        crate::copy_7z_entry(&mut counted, &mut *tmp_file, declared)?;
+        Ok(())
+    };
+    let decoded = match archive.stream_map.file_block_index[index] {
+        // No data of its own (an empty file or a folder): nothing to decode.
+        None => copy_target(&mut std::io::empty()),
+        // Decode only the block that holds the entry. In a solid block (7-Zip's
+        // default) every entry continues one decoded stream, and sevenz-rust2
+        // hands each entry the next bytes of it without skipping what a caller
+        // leaves unread: the entries before the wanted one are read through, or
+        // it would start inside them and fail its CRC check.
+        Some(block) => {
+            let threads = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
+            BlockDecoder::new(threads, block, &archive, &pwd, &mut reader)
+                .for_each_entries(&mut |entry, stream| {
+                    if std::ptr::eq(entry, target) {
+                        copy_target(stream)?;
+                        return Ok(false);
+                    }
+                    std::io::copy(stream, &mut std::io::sink())?;
+                    Ok(true)
+                })
+                .map(|_| ())
+        }
+    };
+    decoded.map_err(|e| format!("Failed to extract: {}", crate::describe_7z_error(&e)))?;
 
     tmp.persist(out_path)
         .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
+    progress.finish();
 
     Ok(output_path)
 }
@@ -384,15 +405,18 @@ fn open_tar_reader(archive_path: &str) -> Result<Box<dyn std::io::Read>, String>
     let file = File::open(archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
     let ext = archive_path.to_lowercase();
 
-    if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
-        Ok(Box::new(flate2::read::GzDecoder::new(file)))
+    // Every member of a multi-member file (bgzip, pbzip2): see `whole_file_decoder`.
+    let codec = if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
+        "gz"
     } else if ext.ends_with(".tar.xz") || ext.ends_with(".txz") {
-        Ok(Box::new(xz2::read::XzDecoder::new(file)))
+        "xz"
     } else if ext.ends_with(".tar.bz2") || ext.ends_with(".tbz2") {
-        Ok(Box::new(bzip2::read::BzDecoder::new(file)))
+        "bz2"
     } else {
-        Ok(Box::new(file))
-    }
+        return Ok(Box::new(file));
+    };
+    crate::whole_file_decoder(codec, file)
+        .ok_or_else(|| format!("Unrecognized archive format: {}", archive_path))
 }
 
 #[tauri::command]
@@ -414,7 +438,9 @@ pub async fn list_tar(archive_path: String) -> Result<Vec<ArchiveEntry>, String>
             .to_string_lossy()
             .to_string();
         let is_dir = header.entry_type().is_dir();
-        let size = header.size().unwrap_or(0);
+        // The size the extractors hold the entry to (PAX size included), not the
+        // raw header field, so the listing and the extraction agree.
+        let size = entry.size();
         let modified = header.mtime().ok().map(|ts| {
             chrono::DateTime::from_timestamp(ts as i64, 0)
                 .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
@@ -440,6 +466,17 @@ pub async fn extract_tar_entry(
     entry_name: String,
     output_path: String,
     app: tauri::AppHandle,
+) -> Result<String, String> {
+    extract_tar_entry_impl(archive_path, entry_name, output_path, Some(app)).await
+}
+
+/// Implementation of `extract_tar_entry`; `app` is `None` for headless callers
+/// (tests), which get a silent progress emitter.
+pub(crate) async fn extract_tar_entry_impl(
+    archive_path: String,
+    entry_name: String,
+    output_path: String,
+    app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
     use std::fs;
 
@@ -476,8 +513,12 @@ pub async fn extract_tar_entry(
             // extension swapped) could collide with and clobber -- or, on the copy-error
             // path, delete -- a real user file of that name; a randomized temp name cannot,
             // and NamedTempFile auto-removes on error. (CLAUDE-AV-B1-09 parity)
-            let total = entry.header().size().unwrap_or(0);
-            let mut progress = ArchiveProgress::for_app(app, phase::EXTRACTING, total);
+            // `Entry::size` is what the tar crate streams (PAX size and GNU sparse
+            // real size included). Holding the copy to it fails an entry that a
+            // truncated archive cuts short: that read just reaches end of file,
+            // and the short file used to be persisted as a success.
+            let declared = entry.size();
+            let mut progress = ArchiveProgress::for_optional_app(app, phase::EXTRACTING, declared);
             let parent = out_path
                 .parent()
                 .unwrap_or_else(|| std::path::Path::new("."));
@@ -488,7 +529,7 @@ pub async fn extract_tar_entry(
                 .map_err(|e| format!("Failed to create temp file: {}", e))?;
             {
                 let mut counted = ProgressReader::new(&mut entry, &mut progress);
-                std::io::copy(&mut counted, tmp.as_file_mut())
+                crate::copy_entry_bounded(&mut counted, tmp.as_file_mut(), declared)
                     .map_err(|e| format!("Failed to extract: {}", e))?;
             }
             tmp.persist(out_path)
@@ -533,6 +574,18 @@ pub async fn extract_rar_entry(
     password: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
+    extract_rar_entry_impl(archive_path, entry_name, output_path, password, Some(app)).await
+}
+
+/// Implementation of `extract_rar_entry`; `app` is `None` for headless callers
+/// (tests), which get a silent progress emitter.
+pub(crate) async fn extract_rar_entry_impl(
+    archive_path: String,
+    entry_name: String,
+    output_path: String,
+    password: Option<String>,
+    app: Option<tauri::AppHandle>,
+) -> Result<String, String> {
     // M16: Validate entry name before extraction to prevent path traversal
     if !is_safe_archive_entry(&entry_name) {
         return Err(format!(
@@ -570,11 +623,31 @@ pub async fn extract_rar_entry(
             // RAR extracts in a single opaque call (no byte hook), so show an honest
             // indeterminate bar rather than a faked percentage (HANDOFF section 3.6).
             let total = header.entry().unpacked_size;
-            let mut progress =
-                ArchiveProgress::indeterminate_for_app(app, phase::EXTRACTING, total);
+            let mut progress = match app {
+                Some(app) => ArchiveProgress::indeterminate_for_app(app, phase::EXTRACTING, total),
+                None => {
+                    ArchiveProgress::new_indeterminate(phase::EXTRACTING, total, Box::new(|_| {}))
+                }
+            };
+            // UnRAR opens its output with overwrite-all and deletes it when the
+            // entry fails (a CRC error, which is also what a wrong password gives
+            // on a RAR 4 archive): extracting straight to `output_path` destroyed
+            // a file the user already had there. Extract into a fresh folder
+            // beside it and rename into place only on success.
+            let staging = tempfile::Builder::new()
+                .prefix(".aeroftp-extract-")
+                .tempdir_in(&out_dir)
+                .map_err(|e| format!("Failed to create temp folder: {}", e))?;
+            let staged = staging.path().join(
+                std::path::Path::new(&output_path)
+                    .file_name()
+                    .unwrap_or_else(|| std::ffi::OsStr::new("entry")),
+            );
             header
-                .extract_to(&output_path)
+                .extract_to(&staged)
                 .map_err(|e| format!("Failed to extract entry: {}", e))?;
+            std::fs::rename(&staged, &output_path)
+                .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
             progress.finish();
             return Ok(output_path);
         } else {

@@ -318,6 +318,14 @@ fn write_repeated_payload(path: &Path, byte: u8, kib: usize) {
     }
 }
 
+/// How long a test waits between a sync and an edit of the same size, so the
+/// edit reads as a change: longer than the 2 s window within which two
+/// modification times are the same instant (`sync_core::mtime`), plus the
+/// second the listed times are truncated to. An edit inside the window keeps
+/// the same size and the same instant, and a size-and-time sync leaves it,
+/// as rclone does within its `--modify-window`.
+const PAST_THE_MODIFY_WINDOW: Duration = Duration::from_secs(3);
+
 fn mutate_first_byte(path: &Path, byte: u8) {
     use std::io::{Seek, SeekFrom, Write};
 
@@ -434,7 +442,7 @@ async fn product_path_uses_delta_when_session_is_eligible() {
     );
     assert_eq!(first_report.uploaded, 1, "first apply should upload once");
 
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(PAST_THE_MODIFY_WINDOW);
     mutate_first_byte(&payload, b'X');
 
     let delta_opts = SyncOptions {
@@ -605,7 +613,7 @@ async fn product_path_native_delta_preserves_acl_and_xattr() {
     );
     assert_eq!(first_report.uploaded, 1, "first apply should upload once");
 
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(PAST_THE_MODIFY_WINDOW);
     mutate_first_byte(&payload, b'X');
     const XATTR_NAME: &str = "user.aeroftp.product";
     const XATTR_VALUE: &[u8] = b"prod\x00acl\xffok";
@@ -762,7 +770,7 @@ async fn product_path_uses_native_delta_for_password_sftp_with_pinned_host_key()
     );
     assert_eq!(first_report.uploaded, 1, "baseline should upload once");
 
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(PAST_THE_MODIFY_WINDOW);
     mutate_first_byte(&payload, b'X');
 
     let delta_opts = SyncOptions {
@@ -1348,7 +1356,7 @@ async fn z11_kpi_delta_savings_on_large_file() {
     );
 
     // Mutate ~5% of the file: change 1 byte every 20 to scatter modifications.
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(PAST_THE_MODIFY_WINDOW);
     {
         use std::io::{Seek, SeekFrom, Write};
         let mut f = std::fs::OpenOptions::new()
