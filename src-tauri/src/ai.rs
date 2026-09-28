@@ -58,6 +58,8 @@ pub fn sanitize_error_message(msg: &str) -> String {
             r"[?&]key=[^&\s\)]*",                    // Google key= query parameter
             r"sk-ant-[A-Za-z0-9_\-]{20,}", // Anthropic API keys (check before generic sk-)
             r"sk-[A-Za-z0-9_\-]{20,}",     // OpenAI API keys
+            r"nvapi-[A-Za-z0-9_\-]{20,}",  // NVIDIA API keys
+            r"xai-[A-Za-z0-9_\-]{20,}",    // xAI API keys
             r"(?i)Bearer\s+[A-Za-z0-9._\-/+=]{20,}", // Bearer tokens in error bodies
             r"(?i)x-api-key:\s*\S+",       // x-api-key header reflections
         ]
@@ -1938,6 +1940,20 @@ pub async fn deepseek_fim_complete(
 #[cfg(test)]
 mod api_key_tests {
     use super::*;
+
+    #[test]
+    fn bare_nvidia_and_xai_keys_are_redacted_from_error_text() {
+        for key in [
+            "nvapi-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z_-Ab3dEf6hIj9kLm2nOp5",
+            "xai-Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z",
+        ] {
+            let message = sanitize_error_message(&format!("401: invalid key {key} for this model"));
+            assert_eq!(message, "401: invalid key [REDACTED] for this model");
+        }
+        // Model names that merely start the same way are not keys.
+        let names = "model xai-grok-4.7 on nvapi-docs";
+        assert_eq!(sanitize_error_message(names), names);
+    }
 
     #[test]
     fn a_pasted_key_loses_the_whitespace_around_it() {
