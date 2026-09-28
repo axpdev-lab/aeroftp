@@ -99,11 +99,10 @@ pub(crate) async fn filen_statfs_query() -> Result<(u64, u64), ProviderError> {
 
 async fn run_statfs(resolved: &str, args: &[&str]) -> Result<String, ProviderError> {
     let mut cmd = Command::new(resolved);
-    // Quota refresh can be cancelled while the CLI is running. Do not leave
-    // the child alive (or allow an interactive login prompt) after drop.
-    cmd.args(args)
-        .kill_on_drop(true)
-        .stdin(std::process::Stdio::null());
+    // Quota refresh can be cancelled while the CLI is running: kill the child
+    // when its future is dropped. `output()` already gives it a null stdin, so
+    // an interactive login prompt reads EOF instead of waiting.
+    cmd.args(args).kill_on_drop(true);
     #[cfg(windows)]
     {
         cmd.creation_flags(CREATE_NO_WINDOW);
