@@ -55,4 +55,16 @@ describe('native foreground continuation', () => {
         expect(requiresNativeTurn({ provider_type: 'anthropic', model: 'claude-opus-5-5' })).toBe(true);
         expect(requiresNativeTurn({ provider_type: 'custom', model: 'custom' })).toBe(false);
     });
+    it('echoes a zero-argument call with an empty JSON object, never an empty string', () => {
+        const history: Array<Record<string, unknown>> = [];
+        appendAssistantTurn(history, '', [
+            { id: 'a', name: 'list', arguments: '' },
+            { id: 'b', name: 'list', arguments: '  ' },
+            { id: 'c', name: 'list', arguments: undefined },
+            { id: 'd', name: 'read', arguments: '{"path":"x"}' },
+            { id: 'e', name: 'read', arguments: { path: 'y' } },
+        ]);
+        const echo = history[0].tool_calls_echo as Array<{ arguments: string }>;
+        expect(echo.map(call => call.arguments)).toEqual(['{}', '{}', '{}', '{"path":"x"}', '{"path":"y"}']);
+    });
 });

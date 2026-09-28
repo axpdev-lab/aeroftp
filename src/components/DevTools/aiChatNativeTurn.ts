@@ -17,6 +17,14 @@ export interface NativeToolCall { id: string; name: string; arguments: unknown }
 type History = Array<Record<string, unknown>>;
 type Echo = { id: string; name: string; arguments: string };
 
+/** A zero-argument call can stream its arguments as "": echo it as "{}", which
+ *  providers accept on continuation, instead of an empty string. */
+function echoArguments(args: unknown): string {
+    if (args === undefined || args === null) return '{}';
+    if (typeof args === 'string') return args.trim() === '' ? '{}' : args;
+    return JSON.stringify(args);
+}
+
 export function appendAssistantTurn(history: History, content: string, calls: NativeToolCall[], native?: NativeTurn): void {
     const ids = new Set<string>();
     for (const call of calls) {
@@ -28,7 +36,7 @@ export function appendAssistantTurn(history: History, content: string, calls: Na
         ...(native ? { native_turn: native } : {}),
         tool_calls_echo: calls.map(call => ({
             id: call.id, name: call.name,
-            arguments: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments),
+            arguments: echoArguments(call.arguments),
         })),
     });
 }
