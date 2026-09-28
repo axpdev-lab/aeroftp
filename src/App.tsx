@@ -825,7 +825,12 @@ const App: React.FC = () => {
   const [storageQuota, setStorageQuota] = useState<{ used: number; total: number; free: number; files?: number } | null>(null);
   // Item 4b: state of the explicit "used storage" scan (null = idle).
   const [usedScanStatus, setUsedScanStatus] = useState<{ running: boolean; files: number; bytes: number } | null>(null);
-  const quotaVersionRef = useRef(0); // Guard against stale async quota responses
+  const quotaVersionRef = useRef(0); // Guard against stale async quota responses (display only)
+  // Bumped only on connect, disconnect and session switch. Every quota refresh
+  // bumps quotaVersionRef, the debounced one after an upload included, so that
+  // ref cannot tell whether a finished used-storage scan still describes the
+  // connection it measured: this one decides persistence and the cancel label.
+  const quotaConnectionRef = useRef(0);
   const scanInFlightRef = useRef(false); // Synchronous re-entry latch for scanUsedStorage
   const [remoteSearchQuery, setRemoteSearchQuery] = useState('');
   const [remoteSearchResults, setRemoteSearchResults] = useState<RemoteFile[] | null>(null);
@@ -3267,8 +3272,17 @@ const App: React.FC = () => {
     }
   };
 
-  const fetchStorageQuota = async (protocol?: string, freshSessionParams?: ConnectionParams) => {
+  const fetchStorageQuota = async (
+    protocol?: string,
+    freshSessionParams?: ConnectionParams,
+    lifecycle?: { newConnection?: boolean },
+  ) => {
     void fetchBucketEncryption(protocol, freshSessionParams);
+    // A caller that has just connected opens a new quota connection. The
+    // automatic scan below inherits `connection`, so it stays tied to the
+    // backend this fetch resolved its profile against.
+    if (lifecycle?.newConnection) quotaConnectionRef.current++;
+    const connection = quotaConnectionRef.current;
     const version = ++quotaVersionRef.current;
     // After profile I/O, discard the entire stale continuation, not just its UI
     // update: an automatic scan would increment this ref and become current
@@ -3366,6 +3380,7 @@ const App: React.FC = () => {
               automatic: true,
               connectionParams: liveCp,
               profileHint: prof,
+              connection,
             });
           }
           return;
@@ -3386,6 +3401,7 @@ const App: React.FC = () => {
             automatic: true,
             connectionParams: liveCp,
             profileHint: prof,
+            connection,
           });
         }
       } catch (e) {
@@ -3443,6 +3459,7 @@ const App: React.FC = () => {
               automatic: true,
               connectionParams: liveCp,
               profileHint: prof,
+              connection,
             });
             seeded = true;
           } else if (manualTotal && manualTotal > 0 && !q) {
@@ -3471,18 +3488,24 @@ const App: React.FC = () => {
     automatic?: boolean;
     connectionParams?: ConnectionParams;
     profileHint?: ServerProfile;
+    /** quotaConnectionRef value the caller resolved `profileHint` against. */
+    connection?: number;
   }) => {
     // Synchronous re-entry latch: usedScanStatus?.running is React state
     // captured from the render closure, so a fast double-click / Enter
     // repeat in the same frame passes the guard twice, registering two
     // listeners and two concurrent provider_scan_used invocations. The ref
-    // flips synchronously before any await. Capture a quota version so a
-    // session switch mid-scan discards the stale result (consistent with
-    // fetchStorageQuota).
+    // flips synchronously before any await.
     if (scanInFlightRef.current || usedScanStatus?.running) return;
     scanInFlightRef.current = true;
-    const quotaBeforeScan = storageQuota;
+    // Two guards with two jobs. `version` guards the display: any newer quota
+    // refresh owns the StatusBar. `connection` guards the result: only a
+    // connect, disconnect or session switch makes the figure describe another
+    // backend, so an ordinary refresh (the debounced one after an upload) must
+    // neither discard a finished scan nor label it cancelled.
     const version = ++quotaVersionRef.current;
+    const connection = scanOptions?.connection ?? quotaConnectionRef.current;
+    const connectionChanged = () => connection !== quotaConnectionRef.current;
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const cp = scanOptions?.connectionParams || activeSession?.connectionParams || connectionParams;
     const opts = cp.options || connectionParams.options;
@@ -3522,20 +3545,31 @@ const App: React.FC = () => {
       quotaProfile?.providerId ?? cp.providerId,
       quotaProfile?.host ?? cp.server,
     );
+    // The figure the StatusBar showed before this scan first replaced it.
+    // Captured inside the functional update, so it is what was on screen at
+    // that moment and not what this render closure saw: an automatic scan
+    // starts right after fetchStorageQuota has set a fresher value.
+    let beforeScan: { quota: typeof storageQuota } | undefined;
     const provisional = (used: number) => {
       // Show the cap live while scanning so the StatusBar/card are not
       // blank: the bar fills against the manual total as `used` grows.
-      // Drop the update if the session was switched mid-scan.
+      // Drop the update once a newer refresh owns the display.
       if (version !== quotaVersionRef.current) return;
-      if (manualTotal && manualTotal > 0) {
-        setStorageQuota({
-          used,
-          total: manualTotal,
-          free: manualTotal > used ? manualTotal - used : 0,
+      const total = manualTotal;
+      if (total && total > 0) {
+        setStorageQuota(prev => {
+          if (!beforeScan) beforeScan = { quota: prev };
+          return { used, total, free: total > used ? total - used : 0 };
         });
       }
     };
-    if (version !== quotaVersionRef.current) {
+    // A cancelled or failed scan has no figure of its own: put back what it
+    // replaced, and leave the display alone when it replaced nothing.
+    const restoreQuotaBeforeScan = () => {
+      if (version !== quotaVersionRef.current) return;
+      setStorageQuota(prev => (beforeScan ? beforeScan.quota : prev));
+    };
+    if (connectionChanged()) {
       scanInFlightRef.current = false;
       return;
     }
@@ -3598,21 +3632,29 @@ const App: React.FC = () => {
       unlisten = await listen<{ used: number; file_count: number; scanning: boolean }>(
         'used-scan-progress',
         (event) => {
-          if (version !== quotaVersionRef.current) return;
+          if (connectionChanged()) return;
           const p = event.payload;
           setUsedScanStatus({ running: p.scanning, files: p.file_count, bytes: p.used });
           provisional(p.used);
         },
       );
-      if (version !== quotaVersionRef.current) return;
+      if (connectionChanged()) {
+        // The entry was opened above: close it, or it reads "running" forever.
+        activityLog.updateEntry(scanLogId, {
+          status: 'success',
+          message: t('transfer.cancelled'),
+        });
+        return;
+      }
       const res = await invoke<{
         used: number; file_count: number; dir_count: number;
         truncated: boolean; cancelled?: boolean; unreadable_dirs?: number; hit_cap?: boolean; method: string;
       }>('provider_scan_used', { path: scanRoot });
       // A cancelled request has no complete figure; preserve the previous quota.
-      // Also discard events/results after a session switch.
-      if (res.cancelled || version !== quotaVersionRef.current) {
-        if (version === quotaVersionRef.current) setStorageQuota(quotaBeforeScan);
+      // A result from before a connect, disconnect or session switch describes
+      // a backend that is no longer this one: discard it the same way.
+      if (res.cancelled || connectionChanged()) {
+        restoreQuotaBeforeScan();
         activityLog.updateEntry(scanLogId, {
           status: 'success',
           message: t('transfer.cancelled'),
@@ -3680,7 +3722,7 @@ const App: React.FC = () => {
         });
       }
     } catch (err) {
-      if (version === quotaVersionRef.current) setStorageQuota(quotaBeforeScan);
+      restoreQuotaBeforeScan();
       notify.error(t('statusBar.usedScanFailed'), String(err));
       activityLog.updateEntry(scanLogId, {
         status: 'error',
@@ -7580,7 +7622,7 @@ const App: React.FC = () => {
       }
       // Pass effectiveParams so persistQuotaToProfile receives the saved server id
       // (connectionParams state is async, may still be stale when this runs).
-      fetchStorageQuota(protocol, effectiveParams);
+      fetchStorageQuota(protocol, effectiveParams, { newConnection: true });
       return;
     }
 
@@ -7649,7 +7691,7 @@ const App: React.FC = () => {
               setLocalFiles(localFilesData);
             } catch { /* keep the current local pane on failure */ }
             setCurrentLocalPath(reusable.localPath);
-            fetchStorageQuota(protocol, reusable.connectionParams);
+            fetchStorageQuota(protocol, reusable.connectionParams, { newConnection: true });
             return;
           }
         }
@@ -7852,7 +7894,7 @@ const App: React.FC = () => {
         if (overlaySavedId && (overlayHint || await getEnabledProfileOverlay(overlaySavedId))) {
           setPendingOverlayUnlock(overlaySavedId);
         }
-        fetchStorageQuota(protocol, sessionParams);
+        fetchStorageQuota(protocol, sessionParams, { newConnection: true });
       } catch (error) {
         // W3.1: a user-initiated cancel is not a failure. runConnect already
         // showed the calm "cancelled" toast; skip the error path and the
@@ -7989,6 +8031,7 @@ const App: React.FC = () => {
 
   const disconnectFromFtp = async (reason?: 'button' | 'tab-close' | 'close-all') => {
     quotaVersionRef.current++;
+    quotaConnectionRef.current++;
     setStorageQuota(null);
     const logId = humanLog.logStart('DISCONNECT', { server: connectionParams.server });
     // The AeroSync dialog holds a Compare scan of THIS remote, so it stops
@@ -8178,6 +8221,7 @@ const App: React.FC = () => {
     setActiveSessionId(sessionId);
     setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
     quotaVersionRef.current++; // Invalidate any in-flight quota response
+    quotaConnectionRef.current++; // ...and any scan of the session left behind
     setStorageQuota(null); // Clear stale quota while reconnecting
 
     // Load cached data immediately (zero latency UX)
@@ -8533,7 +8577,7 @@ const App: React.FC = () => {
       ));
 
       // Fetch storage quota after successful reconnection
-      fetchStorageQuota(protocol, targetSession.connectionParams);
+      fetchStorageQuota(protocol, targetSession.connectionParams, { newConnection: true });
 
       // Also refresh local files for this session's local path
       const localFilesData: LocalFile[] = await invoke('get_local_files', {
@@ -17249,7 +17293,7 @@ const App: React.FC = () => {
                   // Pass normalizedParams so persistQuotaToProfile picks up
                   // savedServerId from the saved profile (connectionParams state
                   // is intentionally not mutated during onSavedServerConnect).
-                  fetchStorageQuota(normalizedParams.protocol, normalizedParams);
+                  fetchStorageQuota(normalizedParams.protocol, normalizedParams, { newConnection: true });
                   // Reset form for next "Add New Server"
                   setConnectionParams({ server: '', username: '', password: '' });
                   setQuickConnectDirs({ remoteDir: '', localDir: '' });
@@ -17412,7 +17456,7 @@ const App: React.FC = () => {
                     // reload hit "Not connected"; the effect runs once the connection
                     // state has settled, exactly like the manual Refresh that works.
                     if (overlaySavedId) setPendingOverlayUnlock(overlaySavedId);
-                    fetchStorageQuota(connectedParams.protocol, connectedParams);
+                    fetchStorageQuota(connectedParams.protocol, connectedParams, { newConnection: true });
                     // Clear the standalone connect-failure marker (#180 /
                     // 4486730822). Separate signal from health.
                     {
@@ -19346,7 +19390,7 @@ const App: React.FC = () => {
             debugMode={debugMode}
             onToggleDebug={() => { setShowDebugPanel(!showDebugPanel); }}
             storageQuota={storageQuota}
-            onScanUsed={scanUsedStorage}
+            onScanUsed={() => { void scanUsedStorage(); }}
             onCancelUsedScan={cancelUsedStorageScan}
             usedScanStatus={usedScanStatus}
           />
