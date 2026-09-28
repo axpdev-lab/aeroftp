@@ -792,3 +792,35 @@ async fn text_stream_that_ends_after_its_finish_reason_completes_without_done() 
         "All done."
     );
 }
+
+#[tokio::test]
+async fn openrouter_native_requests_carry_attribution_headers() {
+    let client = reqwest::Client::new();
+    let mut req = request("openrouter", "qwen/qwen3.8-27b:free");
+    let last =
+        json!({"choices":[{"delta":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]});
+    let (base, server) = one_shot_server(
+        "200 OK",
+        "text/event-stream",
+        format!("data: {last}\n\ndata: [DONE]\n\n"),
+    )
+    .await;
+    req.base_url = base;
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    stream(&client, &req, &Sink::default(), "openrouter", &cancel)
+        .await
+        .unwrap();
+    let (head, _) = server.await.unwrap();
+    assert!(head.contains("http-referer: https://aeroftp.app"), "{head}");
+    assert!(head.contains("x-title: aeroftp"), "{head}");
+
+    let reply =
+        json!({"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]})
+            .to_string();
+    let (base, server) = one_shot_server("200 OK", "application/json", reply).await;
+    req.base_url = base;
+    assert_eq!(call(&client, &req).await.unwrap().content, "hi");
+    let (head, _) = server.await.unwrap();
+    assert!(head.contains("http-referer: https://aeroftp.app"), "{head}");
+    assert!(head.contains("x-title: aeroftp"), "{head}");
+}

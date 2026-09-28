@@ -602,6 +602,12 @@ fn post(
     } else if let Some(key) = &request.api_key {
         builder = builder.bearer_auth(key);
     }
+    if request.provider_type == AIProviderType::OpenRouter {
+        // App attribution OpenRouter asks for, as the legacy adapter sends.
+        builder = builder
+            .header("HTTP-Referer", "https://aeroftp.app")
+            .header("X-Title", "AeroFTP");
+    }
     Ok(builder.json(body))
 }
 
