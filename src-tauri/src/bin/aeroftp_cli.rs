@@ -10737,6 +10737,28 @@ fn report_interrupted(format: OutputFormat, what: &str) -> i32 {
     130
 }
 
+/// A transfer was dropped from the TUI queue: remove its download sidecars
+/// so a cleared cancel leaves no orphan. The final file (if the transfer
+/// completed) is never touched. Silent best-effort: the UI already removed
+/// the row. The resumable part and the segmented temporary are removed only
+/// when no live transfer holds them (CodeRabbit on 487373b2): a transfer of
+/// the same file still running, or started since, keeps its own.
+async fn discard_partial_sidecars(local_path: &str) {
+    let local = std::path::Path::new(local_path);
+    for temp in [
+        ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for(local),
+        ftp_client_gui_lib::providers::multi_thread::segmented_temp_path_for(local),
+    ] {
+        let _ = tokio::task::spawn_blocking(move || {
+            ftp_client_gui_lib::providers::atomic_write::remove_temp_unless_live(&temp)
+        })
+        .await;
+    }
+    let readahead_temp =
+        ftp_client_gui_lib::providers::atomic_write::readahead_temp_path_for(local);
+    let _ = tokio::fs::remove_file(&readahead_temp).await;
+}
+
 /// Run a `--delta` attempt until it ends or Ctrl-C stops it (`None`). The
 /// delta writer keeps its `<target>.aerotmp` when it is dropped (its
 /// abandon paths remove it by hand), and a temporary left there makes the
@@ -18852,25 +18874,7 @@ async fn run_cli_tui_worker(
                 }
             }
             WorkerCommand::DiscardPartial { local_path } => {
-                // A transfer was dropped from the queue: remove its resumable
-                // download sidecars so a cleared cancel leaves no orphan. The
-                // final file (if the transfer completed) is never touched. Silent
-                // best-effort: the UI already removed the row.
-                let temp = ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for(
-                    std::path::Path::new(&local_path),
-                );
-                let _ = tokio::fs::remove_file(&temp).await;
-                let _ = tokio::fs::remove_file(
-                    ftp_client_gui_lib::providers::multi_thread::segmented_temp_path_for(
-                        std::path::Path::new(&local_path),
-                    ),
-                )
-                .await;
-                let readahead_temp =
-                    ftp_client_gui_lib::providers::atomic_write::readahead_temp_path_for(
-                        std::path::Path::new(&local_path),
-                    );
-                let _ = tokio::fs::remove_file(&readahead_temp).await;
+                discard_partial_sidecars(&local_path).await;
             }
             // Phase 3: real local filesystem listing/stat for dual-pane.
             WorkerCommand::LocalList { path } => {
@@ -82036,6 +82040,34 @@ mod tests {
         let code = against_stalling(provider, |_| command(local_str, cli));
         assert_ne!(code, 0, "the download was meant to fail");
         std::fs::read(&local).ok()
+    }
+
+    /// CodeRabbit on 487373b2 (#951): the TUI's discard of a dropped transfer
+    /// removed the segmented temporary and the resumable part by name, and so
+    /// the file of a transfer of the same destination still running. A stale
+    /// one goes; a live one stays.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn the_tui_discard_leaves_a_live_transfers_temporary() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        let local_str = local.to_string_lossy().into_owned();
+        let segmented =
+            ftp_client_gui_lib::providers::multi_thread::segmented_temp_path_for(&local);
+        std::fs::write(&segmented, b"windows being written").unwrap();
+        let live =
+            ftp_client_gui_lib::providers::atomic_write::claim_temp_to_publish(&segmented).unwrap();
+        discard_partial_sidecars(&local_str).await;
+        assert!(
+            segmented.exists(),
+            "the discard removed a live transfer's segmented temporary"
+        );
+        drop(live);
+        discard_partial_sidecars(&local_str).await;
+        assert!(
+            !segmented.exists(),
+            "the discard kept a temporary no transfer holds"
+        );
     }
 
     /// m4 (review of #951): the transfer task of `get -r` and of a glob keeps
