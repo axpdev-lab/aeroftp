@@ -423,7 +423,40 @@ impl DrimeCloudProvider {
 
     // ─── Folder Resolution ───────────────────────────────────────────────
 
+    /// The id of the folder at `path`, for a read: each name matched
+    /// exactly first, and in another letter case as the fallback.
     async fn resolve_folder_id(&mut self, path: &str) -> Result<String, ProviderError> {
+        self.resolve_folder(path, true).await
+    }
+
+    /// The id of the folder at `path` with every name matched exactly, for a
+    /// step that changes or destroys what it finds under it: `rm /docs/x`
+    /// beside only `Docs` deleted `Docs/x`. The cache is trusted, because
+    /// only exact matches are ever written to it.
+    async fn resolve_folder_id_exact(&mut self, path: &str) -> Result<String, ProviderError> {
+        self.resolve_folder(path, false).await
+    }
+
+    /// Whether the folder at `resolved` is cached, that is, was resolved
+    /// with every name matched exactly: a folder under it may be cached
+    /// under its path. A listing or a mkdir under a path resolved through
+    /// the fallback caches nothing, or the path of another folder would
+    /// hold its children's ids.
+    fn is_cached_exactly(&self, resolved: &str) -> bool {
+        resolved == "/" || self.dir_cache.contains_key(resolved)
+    }
+
+    /// The walk behind [`Self::resolve_folder_id`] and
+    /// [`Self::resolve_folder_id_exact`]. Only exact matches are cached, and
+    /// nothing below a name matched in another case: a spelling the fallback
+    /// resolved (`cd /docs` beside only `Docs`) kept the id of `Docs` after
+    /// another client made a real `docs`, and a later `rm` under `/docs`
+    /// acted inside `Docs`.
+    async fn resolve_folder(
+        &mut self,
+        path: &str,
+        other_case: bool,
+    ) -> Result<String, ProviderError> {
         let normalized = Self::normalize_path(path);
 
         if normalized == "/" {
@@ -439,6 +472,7 @@ impl DrimeCloudProvider {
         let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
         let mut current_id = String::new(); // root
         let mut current_path = String::new();
+        let mut exact_so_far = true;
 
         for part in &parts {
             current_path = format!("{}/{}", current_path, part);
@@ -506,7 +540,7 @@ impl DrimeCloudProvider {
                                 exact = Some(id);
                                 break;
                             }
-                            if fallback.is_none() && name.eq_ignore_ascii_case(part) {
+                            if other_case && fallback.is_none() && name.eq_ignore_ascii_case(part) {
                                 fallback = Some(id);
                             }
                         }
@@ -519,13 +553,17 @@ impl DrimeCloudProvider {
                 page += 1;
             }
 
+            exact_so_far &= exact.is_some();
             let Some(id) = exact.or(fallback) else {
                 return Err(ProviderError::NotFound(format!(
                     "Folder '{}' not found in {}",
                     part, current_path
                 )));
             };
-            self.dir_cache_insert(current_path.clone(), DirInfo { id: id.clone() });
+            // Only an exact match, with every name above it exact too.
+            if exact_so_far {
+                self.dir_cache_insert(current_path.clone(), DirInfo { id: id.clone() });
+            }
             current_id = id;
         }
 
@@ -1231,6 +1269,7 @@ impl StorageProvider for DrimeCloudProvider {
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let resolved = self.resolve_path(path);
         let folder_id = self.resolve_folder_id(&resolved).await?;
+        let cache_children = self.is_cached_exactly(&resolved);
 
         let mut entries = Vec::new();
         let mut page = 1u32;
@@ -1294,7 +1333,9 @@ impl StorageProvider for DrimeCloudProvider {
                         } else {
                             format!("{}/{}", resolved, name)
                         };
-                        self.dir_cache_insert(dir_path, DirInfo { id });
+                        if cache_children {
+                            self.dir_cache_insert(dir_path, DirInfo { id });
+                        }
                     }
                 }
 
@@ -1446,7 +1487,7 @@ impl StorageProvider for DrimeCloudProvider {
 
         let resolved = self.resolve_path(remote_path);
         let (parent_path, filename) = Self::split_path(&resolved);
-        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let parent_id = self.resolve_folder_id_exact(parent_path).await?;
 
         // M9: Full file read into memory: no streaming upload API available for Drime Cloud.
         // This limits practical upload size to available RAM. For files >500MB, users should
@@ -1546,6 +1587,7 @@ impl StorageProvider for DrimeCloudProvider {
         let resolved = self.resolve_path(path);
         let (parent_path, dir_name) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
+        let cache_new = self.is_cached_exactly(parent_path);
 
         drime_log(&format!(
             "Creating directory '{}' in folder '{}'",
@@ -1592,7 +1634,7 @@ impl StorageProvider for DrimeCloudProvider {
 
         // Cache the new dir
         if let Ok(folder_resp) = resp.json::<DrimeFolderResponse>().await {
-            if let Some(id) = folder_resp.id_str() {
+            if let (true, Some(id)) = (cache_new, folder_resp.id_str()) {
                 self.dir_cache_insert(resolved, DirInfo { id });
             }
         }
@@ -1603,7 +1645,7 @@ impl StorageProvider for DrimeCloudProvider {
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
-        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let parent_id = self.resolve_folder_id_exact(parent_path).await?;
 
         let (file_id, _, _) = self
             .find_exact_in_folder(&parent_id, filename)
@@ -1770,7 +1812,7 @@ impl StorageProvider for DrimeCloudProvider {
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let (from, to) = (self.resolve_path(from), self.resolve_path(to));
         let (to_parent, to_name) = Self::split_path(&to);
-        let to_parent_id = self.resolve_folder_id(to_parent).await?;
+        let to_parent_id = self.resolve_folder_id_exact(to_parent).await?;
         if self
             .find_exact_in_folder(&to_parent_id, to_name)
             .await?
@@ -2224,7 +2266,7 @@ impl StorageProvider for DrimeCloudProvider {
     ) -> Result<ShareLinkResult, ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
-        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let parent_id = self.resolve_folder_id_exact(parent_path).await?;
 
         let (file_id, _, _) = self
             .find_exact_in_folder(&parent_id, filename)
@@ -2293,7 +2335,7 @@ impl StorageProvider for DrimeCloudProvider {
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
-        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let parent_id = self.resolve_folder_id_exact(parent_path).await?;
 
         let (file_id, _, _) = self
             .find_exact_in_folder(&parent_id, filename)
@@ -3461,6 +3503,70 @@ mod tests {
         let outcome = provider.delete("/faildir").await;
         assert!(outcome.is_err(), "{outcome:?}");
         assert!(!provider.dir_cache.contains_key("/faildir/sub"));
+    }
+
+    /// `cd /docs` beside only `Docs` resolved to `Docs` through the case
+    /// fallback and cached it as `/docs` (a listing there cached its
+    /// subfolders too). After another client made a real `docs`, `rm
+    /// /docs/x.txt` took the parent from the cache and deleted `Docs/x.txt`.
+    /// A fallback caches nothing now.
+    #[tokio::test]
+    async fn a_delete_after_a_fallback_cd_takes_the_folder_named() {
+        let (mut provider, store, changes) = provider_on_drime_entries(&[
+            (3, "Docs", "", "folder"),
+            (5, "sub", "3", "folder"),
+            (31, "x.txt", "3", "file"),
+        ])
+        .await;
+        provider.cd("/docs").await.expect("cd through the fallback");
+        provider
+            .list("/docs")
+            .await
+            .expect("ls through the fallback");
+        let spelled: Vec<&String> = provider
+            .dir_cache
+            .keys()
+            .filter(|k| k.starts_with("/docs"))
+            .collect();
+        assert!(
+            spelled.is_empty(),
+            "cached through the fallback: {spelled:?}"
+        );
+        store.lock().unwrap().extend([
+            (4, "docs".to_string(), String::new(), "folder".to_string()),
+            (41, "x.txt".to_string(), "4".to_string(), "file".to_string()),
+        ]);
+        provider.delete("/docs/x.txt").await.expect("rm");
+        assert_eq!(*changes.lock().unwrap(), ["delete 41"]);
+    }
+
+    /// With only `Docs` there, `rm /docs/x.txt` and `put /docs/x.txt`
+    /// resolved `/docs` to `Docs` through the fallback: the delete, and the
+    /// delete before the upload, deleted `Docs/x.txt`. A step that deletes
+    /// resolves every folder on the path exactly.
+    #[tokio::test]
+    async fn a_delete_under_a_folder_of_another_case_is_refused() {
+        let (mut provider, _, changes) =
+            provider_on_drime_entries(&[(3, "Docs", "", "folder"), (31, "x.txt", "3", "file")])
+                .await;
+        let outcome = provider.delete("/docs/x.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        let file = local_file();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/docs/x.txt", None)
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
     }
 
     /// With `A.txt` listed before `a.txt`, `stat /d/a.txt` took the first

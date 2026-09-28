@@ -587,7 +587,36 @@ impl KDriveProvider {
 
     // ─── Folder Resolution ───────────────────────────────────────────────
 
+    /// The id of the folder at `path`, for a read: each name matched
+    /// exactly first, and in another letter case as the fallback.
     async fn resolve_folder_id(&mut self, path: &str) -> Result<i64, ProviderError> {
+        self.resolve_folder(path, true).await
+    }
+
+    /// The id of the folder at `path` with every name matched exactly, for a
+    /// step that changes or destroys what it finds under it: `rm /docs/x`
+    /// beside only `Docs` deleted `Docs/x`. The cache is trusted, because
+    /// only exact matches are ever written to it.
+    async fn resolve_folder_id_exact(&mut self, path: &str) -> Result<i64, ProviderError> {
+        self.resolve_folder(path, false).await
+    }
+
+    /// Whether the folder at `resolved` is cached, that is, was resolved
+    /// with every name matched exactly: a folder under it may be cached
+    /// under its path. A listing or a mkdir under a path resolved through
+    /// the fallback caches nothing, or the path of another folder would
+    /// hold its children's ids.
+    fn is_cached_exactly(&self, resolved: &str) -> bool {
+        resolved == "/" || self.dir_cache.contains_key(resolved)
+    }
+
+    /// The walk behind [`Self::resolve_folder_id`] and
+    /// [`Self::resolve_folder_id_exact`]. Only exact matches are cached, and
+    /// nothing below a name matched in another case: a spelling the fallback
+    /// resolved (`cd /docs` beside only `Docs`) kept the id of `Docs` after
+    /// another client made a real `docs`, and a later `rm` under `/docs`
+    /// acted inside `Docs`.
+    async fn resolve_folder(&mut self, path: &str, other_case: bool) -> Result<i64, ProviderError> {
         let normalized = Self::normalize_path(path);
 
         if normalized == "/" {
@@ -603,6 +632,7 @@ impl KDriveProvider {
         let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
         let mut current_id = self.root_file_id;
         let mut current_path = String::new();
+        let mut exact_so_far = true;
 
         for part in &parts {
             current_path = format!("{}/{}", current_path, part);
@@ -616,6 +646,7 @@ impl KDriveProvider {
             let base_url = self.api_url_v3(&format!("/files/{}/files", current_id));
             let mut cursor: Option<String> = None;
             let mut found = false;
+            let mut case_insensitive_match: Option<i64> = None;
 
             'pagination: loop {
                 let url = match cursor {
@@ -650,21 +681,22 @@ impl KDriveProvider {
                 };
 
                 // KD-003: Try exact match first, then case-insensitive fallback
-                let mut case_insensitive_match: Option<i64> = None;
-
                 for file in &files {
                     if file.file_type.as_deref() == Some("dir") {
                         if let Some(ref name) = file.name {
                             if name == *part {
                                 // Exact match: use immediately
-                                self.dir_cache_insert(
-                                    current_path.clone(),
-                                    DirInfo { id: file.id },
-                                );
+                                if exact_so_far {
+                                    self.dir_cache_insert(
+                                        current_path.clone(),
+                                        DirInfo { id: file.id },
+                                    );
+                                }
                                 current_id = file.id;
                                 found = true;
                                 break 'pagination;
-                            } else if case_insensitive_match.is_none()
+                            } else if other_case
+                                && case_insensitive_match.is_none()
                                 && name.eq_ignore_ascii_case(part)
                             {
                                 case_insensitive_match = Some(file.id);
@@ -674,9 +706,10 @@ impl KDriveProvider {
                 }
 
                 if has_more != Some(true) || next_cursor.is_none() {
-                    // No more pages: use case-insensitive match if found
+                    // No more pages: use case-insensitive match if found,
+                    // and cache neither it nor anything below it.
                     if let Some(id) = case_insensitive_match {
-                        self.dir_cache_insert(current_path.clone(), DirInfo { id });
+                        exact_so_far = false;
                         current_id = id;
                         found = true;
                     }
@@ -705,27 +738,6 @@ impl KDriveProvider {
         filename: &str,
     ) -> Result<Option<(i64, bool)>, ProviderError> {
         self.find_in_folder(folder_id, filename, true).await
-    }
-
-    /// The id of the folder at `path`, every name on the way matched
-    /// exactly, walked from the root without the cache (which holds the
-    /// spellings the fallback resolved). For a step that must not take a
-    /// folder of another case for the one named: one listing per level.
-    async fn resolve_folder_id_exact(&self, path: &str) -> Result<i64, ProviderError> {
-        let normalized = Self::normalize_path(path);
-        let mut current = self.root_file_id;
-        for part in normalized.split('/').filter(|part| !part.is_empty()) {
-            current = match self.find_exact_in_folder(current, part).await? {
-                Some((id, true)) => id,
-                _ => {
-                    return Err(ProviderError::NotFound(format!(
-                        "Folder '{}' not found in {}",
-                        part, normalized
-                    )))
-                }
-            };
-        }
-        Ok(current)
     }
 
     /// [`Self::find_file_in_folder`] without the fallback to another letter
@@ -952,6 +964,7 @@ impl StorageProvider for KDriveProvider {
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let resolved = self.resolve_path(path);
         let folder_id = self.resolve_folder_id(&resolved).await?;
+        let cache_children = self.is_cached_exactly(&resolved);
 
         let mut entries = Vec::new();
         let mut cursor: Option<String> = None;
@@ -1008,7 +1021,9 @@ impl StorageProvider for KDriveProvider {
                     } else {
                         format!("{}/{}", resolved, name)
                     };
-                    self.dir_cache_insert(dir_path, DirInfo { id: file.id });
+                    if cache_children {
+                        self.dir_cache_insert(dir_path, DirInfo { id: file.id });
+                    }
                 }
 
                 let entry_path = if resolved == "/" {
@@ -1251,6 +1266,7 @@ impl StorageProvider for KDriveProvider {
         let resolved = self.resolve_path(path);
         let (parent_path, dir_name) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
+        let cache_new = self.is_cached_exactly(parent_path);
 
         kdrive_log(&format!(
             "Creating directory '{}' in folder {}",
@@ -1296,7 +1312,7 @@ impl StorageProvider for KDriveProvider {
             data: None,
             error: None,
         });
-        if let Some(file) = api_resp.data {
+        if let (true, Some(file)) = (cache_new, api_resp.data) {
             self.dir_cache_insert(resolved, DirInfo { id: file.id });
         }
 
@@ -1306,7 +1322,7 @@ impl StorageProvider for KDriveProvider {
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
-        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let parent_id = self.resolve_folder_id_exact(parent_path).await?;
 
         let (file_id, _) = self
             .find_exact_in_folder(parent_id, filename)
@@ -1411,7 +1427,7 @@ impl StorageProvider for KDriveProvider {
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let (from, to) = (self.resolve_path(from), self.resolve_path(to));
         let (to_parent, to_name) = Self::split_path(&to);
-        let to_parent_id = self.resolve_folder_id(to_parent).await?;
+        let to_parent_id = self.resolve_folder_id_exact(to_parent).await?;
         if self
             .find_exact_in_folder(to_parent_id, to_name)
             .await?
@@ -1760,7 +1776,7 @@ impl StorageProvider for KDriveProvider {
     ) -> Result<ShareLinkResult, ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
-        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let parent_id = self.resolve_folder_id_exact(parent_path).await?;
 
         let (file_id, _) = self
             .find_exact_in_folder(parent_id, filename)
@@ -1875,7 +1891,7 @@ impl StorageProvider for KDriveProvider {
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
-        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let parent_id = self.resolve_folder_id_exact(parent_path).await?;
 
         let (file_id, _) = self
             .find_exact_in_folder(parent_id, filename)
@@ -1997,7 +2013,7 @@ impl StorageProvider for KDriveProvider {
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
-        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let parent_id = self.resolve_folder_id_exact(parent_path).await?;
 
         let (file_id, _) = self
             .find_exact_in_folder(parent_id, filename)
@@ -2802,6 +2818,122 @@ mod tests {
             .await
             .expect("no folder of that case"));
         assert_eq!(purges.lock().unwrap().len(), 1);
+    }
+
+    /// One item of [`provider_on_kdrive_tree`]: id, name, parent id, `dir`
+    /// or `file`.
+    type KDriveDoubleItem = (i64, String, i64, String);
+
+    /// A kDrive double holding the tree `items` (the root is 1): folder
+    /// listings and a delete. Returns a provider on it, the items (which a
+    /// test may change as another client would) and every delete as
+    /// `delete ID`.
+    #[allow(clippy::type_complexity)]
+    async fn provider_on_kdrive_tree(
+        items: &[(i64, &str, i64, &str)],
+    ) -> (
+        KDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<KDriveDoubleItem>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let store: Arc<Mutex<Vec<KDriveDoubleItem>>> = Arc::new(Mutex::new(
+            items
+                .iter()
+                .map(|(id, name, parent, kind)| (*id, name.to_string(), *parent, kind.to_string()))
+                .collect(),
+        ));
+        let changes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (held, seen) = (Arc::clone(&store), Arc::clone(&changes));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (held, seen) = (Arc::clone(&held), Arc::clone(&seen));
+                async move {
+                    let path = req.uri().path().to_string();
+                    let mut items = held.lock().unwrap();
+                    let ok = |data: serde_json::Value| {
+                        axum::Json(serde_json::json!({ "result": "success", "data": data }))
+                            .into_response()
+                    };
+                    if req.method() == axum::http::Method::DELETE {
+                        let id: i64 = path.rsplit('/').next().unwrap().parse().unwrap();
+                        seen.lock().unwrap().push(format!("delete {id}"));
+                        items.retain(|i| i.0 != id);
+                        return ok(serde_json::json!({}));
+                    }
+                    let Some(folder) = path
+                        .strip_prefix("/3/drive/987654/files/")
+                        .and_then(|rest| rest.strip_suffix("/files"))
+                        .and_then(|id| id.parse::<i64>().ok())
+                    else {
+                        return ok(serde_json::json!({}));
+                    };
+                    ok(serde_json::json!(items
+                        .iter()
+                        .filter(|i| i.2 == folder)
+                        .map(|i| serde_json::json!({ "id": i.0, "name": i.1, "type": i.3 }))
+                        .collect::<Vec<_>>()))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.root_file_id = 1;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, store, changes)
+    }
+
+    /// `cd /docs` beside only `Docs` resolved to `Docs` through the case
+    /// fallback and cached it as `/docs` (a listing there cached its
+    /// subfolders too). After another client made a real `docs`, `rm
+    /// /docs/x.txt` took the parent from the cache and deleted `Docs/x.txt`.
+    /// A fallback caches nothing now.
+    #[tokio::test]
+    async fn a_delete_after_a_fallback_cd_takes_the_folder_named() {
+        let (mut provider, items, changes) = provider_on_kdrive_tree(&[
+            (21, "Docs", 1, "dir"),
+            (23, "sub", 21, "dir"),
+            (31, "x.txt", 21, "file"),
+        ])
+        .await;
+        provider.cd("/docs").await.expect("cd through the fallback");
+        provider
+            .list("/docs")
+            .await
+            .expect("ls through the fallback");
+        let spelled: Vec<&String> = provider
+            .dir_cache
+            .keys()
+            .filter(|k| k.starts_with("/docs"))
+            .collect();
+        assert!(
+            spelled.is_empty(),
+            "cached through the fallback: {spelled:?}"
+        );
+        items.lock().unwrap().extend([
+            (22, "docs".to_string(), 1, "dir".to_string()),
+            (32, "x.txt".to_string(), 22, "file".to_string()),
+        ]);
+        provider.delete("/docs/x.txt").await.expect("rm");
+        assert_eq!(*changes.lock().unwrap(), ["delete 32"]);
+    }
+
+    /// With only `Docs` there, `rm /docs/x.txt` resolved `/docs` to `Docs`
+    /// through the fallback and deleted `Docs/x.txt`. A step that deletes
+    /// resolves every folder on the path exactly.
+    #[tokio::test]
+    async fn a_delete_under_a_folder_of_another_case_is_refused() {
+        let (mut provider, _, changes) =
+            provider_on_kdrive_tree(&[(21, "Docs", 1, "dir"), (31, "x.txt", 21, "file")]).await;
+        let outcome = provider.delete("/docs/x.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(changes.lock().unwrap().is_empty());
     }
 
     /// kDrive keeps `A.txt` and `a.txt` as two files, and the lookup falls
