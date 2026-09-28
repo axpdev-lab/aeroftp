@@ -90,7 +90,9 @@ pub(crate) mod temp_claim {
     }
 
     /// Create the temporary of a download that starts over (a fresh resumable
-    /// part, a segmented run): a stale one is replaced, a live one refused.
+    /// part, a segmented run): a stale one is replaced, a live one refused;
+    /// where the locks are not used, one found there is discarded, as before
+    /// them.
     pub(crate) fn create_fresh(temp: &Path) -> Result<std::fs::File> {
         create_fresh_with(temp, try_lock, locks_usable)
     }
@@ -103,14 +105,20 @@ pub(crate) mod temp_claim {
         if usable(temp) {
             return create_with(temp, lock);
         }
-        match std::fs::OpenOptions::new()
+        // Where nothing can tell a live writer's part from a stale one, the
+        // part is discarded and created again, as before these locks: the one
+        // an interrupted resumable download keeps would otherwise fail every
+        // later fresh download of the file until removed by hand. A file open
+        // elsewhere on Windows cannot be removed, and the create then fails.
+        if let Err(e) = std::fs::remove_file(temp) {
+            if e.kind() != ErrorKind::NotFound {
+                tracing::debug!("could not discard {}: {e}", temp.display());
+            }
+        }
+        std::fs::OpenOptions::new()
             .create_new(true)
             .write(true)
             .open(temp)
-        {
-            Err(taken) if taken.kind() == ErrorKind::AlreadyExists => Err(cannot_tell(temp)),
-            created => created,
-        }
     }
 
     /// Remove the temporary at `temp` unless a live writer holds it: a stale
