@@ -80,13 +80,48 @@ pub fn sanitize_error_message(msg: &str) -> String {
 /// CLI default before) gets the `/v1` it needs. A base with any other path,
 /// such as a gateway prefix, is used as configured.
 pub(crate) fn anthropic_messages_url(base_url: &str) -> String {
-    let base = base_url.trim_end_matches('/');
-    let bare_host = reqwest::Url::parse(base)
-        .is_ok_and(|url| url.path() == "/" && url.query().is_none() && url.fragment().is_none());
-    if bare_host {
-        format!("{base}/v1/messages")
+    let base = base_url.trim().trim_end_matches('/');
+    let Ok(mut url) = reqwest::Url::parse(base) else {
+        return format!("{base}/messages");
+    };
+    // The endpoint goes on the path, so a query string (a gateway's region or
+    // key parameter) stays after it; a fragment is never sent and is dropped.
+    url.set_fragment(None);
+    let path = url.path().trim_end_matches('/');
+    let endpoint = if path.is_empty() {
+        "/v1/messages".to_string()
     } else {
-        format!("{base}/messages")
+        format!("{path}/messages")
+    };
+    url.set_path(&endpoint);
+    url.to_string()
+}
+
+#[cfg(test)]
+mod anthropic_messages_url_tests {
+    use super::anthropic_messages_url;
+
+    /// The endpoint is appended to the URL path, not to the raw string, so a
+    /// query string stays after it: `.../v1?region=eu` became
+    /// `.../v1?region=eu/messages`, which still targeted `/v1`.
+    #[test]
+    fn the_endpoint_goes_on_the_path_and_keeps_the_query() {
+        assert_eq!(
+            anthropic_messages_url("https://api.anthropic.com"),
+            "https://api.anthropic.com/v1/messages"
+        );
+        assert_eq!(
+            anthropic_messages_url("https://api.anthropic.com/v1/"),
+            "https://api.anthropic.com/v1/messages"
+        );
+        assert_eq!(
+            anthropic_messages_url("https://gateway.example/v1?region=eu"),
+            "https://gateway.example/v1/messages?region=eu"
+        );
+        assert_eq!(
+            anthropic_messages_url("https://gateway.example/proxy/anthropic#frag"),
+            "https://gateway.example/proxy/anthropic/messages"
+        );
     }
 }
 
