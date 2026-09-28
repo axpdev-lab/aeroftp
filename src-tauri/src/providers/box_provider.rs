@@ -2219,55 +2219,30 @@ impl StorageProvider for BoxProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
-        // Try file first
-        if let Ok(file_id) = self.resolve_file_id(path).await {
-            let token = self.get_token().await?;
-            let resp = self
-                .client
-                .get(format!(
-                    "{}/files/{}?fields=name,type,size,modified_at,sha1",
-                    self.api_base(),
-                    file_id
-                ))
-                .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-            let item: BoxItem = resp
-                .json()
-                .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-            let mut metadata = HashMap::new();
-            if let Some(ref s) = item.sha1 {
-                metadata.insert("sha1".to_string(), s.to_ascii_lowercase());
-            }
-            return Ok(RemoteEntry {
-                name: crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name),
-                path: Self::normalize_path(path),
-                is_dir: false,
-                size: item.size.unwrap_or(0),
-                modified: item.modified_at,
-                permissions: None,
-                owner: None,
-                group: None,
-                is_symlink: false,
-                link_target: None,
-                mime_type: None,
-                metadata,
-            });
-        }
-
-        // Try folder
-        let folder_id = self.resolve_folder_id(path).await?;
+        // By the item's own endpoint, as in `rename`: the file lookup matches
+        // the name alone, so for a folder it sent the folder's id to
+        // `/files`, whose 404 did not parse as an item (ParseError).
+        let normalized = Self::normalize_path(path);
+        let (item_id, item_type) = if normalized == "/" {
+            ("0".to_string(), "folder".to_string())
+        } else {
+            self.resolve_item_id_and_type(path).await?
+        };
+        let is_dir = item_type == "folder";
+        let (endpoint, fields) = if is_dir {
+            ("folders", "name,type,size,modified_at")
+        } else {
+            ("files", "name,type,size,modified_at,sha1")
+        };
         let token = self.get_token().await?;
         let resp = self
             .client
             .get(format!(
-                "{}/folders/{}?fields=name,type,size,modified_at",
+                "{}/{}/{}?fields={}",
                 self.api_base(),
-                folder_id
+                endpoint,
+                item_id,
+                fields
             ))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
@@ -2279,11 +2254,17 @@ impl StorageProvider for BoxProvider {
             .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
+        let mut metadata = HashMap::new();
+        if !is_dir {
+            if let Some(ref s) = item.sha1 {
+                metadata.insert("sha1".to_string(), s.to_ascii_lowercase());
+            }
+        }
         Ok(RemoteEntry {
             name: crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name),
-            path: Self::normalize_path(path),
-            is_dir: true,
-            size: 0,
+            path: normalized,
+            is_dir,
+            size: if is_dir { 0 } else { item.size.unwrap_or(0) },
             modified: item.modified_at,
             permissions: None,
             owner: None,
@@ -2291,7 +2272,7 @@ impl StorageProvider for BoxProvider {
             is_symlink: false,
             link_target: None,
             mime_type: None,
-            metadata: Default::default(),
+            metadata,
         })
     }
 
@@ -2518,39 +2499,22 @@ impl StorageProvider for BoxProvider {
         let to_name = crate::restricted_chars::encode_leaf(ProviderType::Box, to_name);
         let to_parent_id = self.resolve_folder_id(to_parent).await?;
 
-        // Try file copy first
-        if let Ok(file_id) = self.resolve_file_id(from).await {
-            let body = serde_json::json!({
-                "parent": {"id": to_parent_id},
-                "name": to_name
-            });
-            let resp = self
-                .client
-                .post(format!("{}/files/{}/copy", self.api_base(), file_id))
-                .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-            if !resp.status().is_success() {
-                return Err(ProviderError::Other(format!(
-                    "Copy failed: {}",
-                    resp.status()
-                )));
-            }
-            return Ok(());
-        }
-
-        // Try folder copy
-        let folder_id = self.resolve_folder_id(from).await?;
+        // By the item's own endpoint, as in `rename`: the file lookup matches
+        // the name alone, so a folder went to `/files/{id}/copy`, which Box
+        // answers 404, and a folder could not be copied.
+        let (item_id, item_type) = self.resolve_item_id_and_type(from).await?;
+        let endpoint = if item_type == "folder" {
+            "folders"
+        } else {
+            "files"
+        };
         let body = serde_json::json!({
             "parent": {"id": to_parent_id},
             "name": to_name
         });
         let resp = self
             .client
-            .post(format!("{}/folders/{}/copy", self.api_base(), folder_id))
+            .post(format!("{}/{}/{}/copy", self.api_base(), endpoint, item_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .json(&body)
             .send()
@@ -3311,15 +3275,19 @@ mod tests {
     type BoxDoubleItem = (String, String, String, String);
 
     /// A Box double keeping `items` (id, name, parent id, kind; the root is
-    /// `0`) in memory: folder listings, a folder create (`POST /folders`), a
-    /// rename or move (`PUT /folders/{id}` or `PUT /files/{id}`, 404 for an
-    /// id that is not of that kind), a delete (`DELETE /folders/{id}` takes
-    /// the folder and everything under it) and a small upload (`POST
-    /// /files/content`, 404 into a folder that is gone). Box names ignore
-    /// letter case, so a name taken in another case answers 409
-    /// `item_name_in_use`. Returns a provider pointed at it, the items, and
-    /// every change as `create NAME in PARENT as ID`, `put KIND ID NAME in
-    /// PARENT`, `delete KIND ID` or `upload NAME in PARENT`.
+    /// `0`, and the parent `trash:P` stands for an item trashed from the
+    /// folder `P`) in memory: folder listings, an item's own GET and copy
+    /// (`/files/{id}` or `/folders/{id}`, 404 for an id that is not of that
+    /// kind), a folder create (`POST /folders`), a rename or move (`PUT
+    /// /folders/{id}` or `PUT /files/{id}`, the same 404), a delete (`DELETE
+    /// /folders/{id}` takes the folder and everything under it), the trash
+    /// listing with each item's `parent`, a purge from the trash (`DELETE
+    /// /{kind}s/{id}/trash`) and a small upload (`POST /files/content`, 404
+    /// into a folder that is gone). Box names ignore letter case, so a name
+    /// taken in another case answers 409 `item_name_in_use`. Returns a
+    /// provider pointed at it, the items, and every change as `create NAME in
+    /// PARENT as ID`, `put KIND ID NAME in PARENT`, `copy KIND ID NAME in
+    /// PARENT`, `delete KIND ID`, `purge KIND ID` or `upload NAME in PARENT`.
     #[allow(clippy::type_complexity)]
     async fn provider_on_box(
         items: &[(&str, &str, &str, &str)],
@@ -3377,6 +3345,73 @@ mod tests {
                     };
                     let segments: Vec<&str> = path.trim_start_matches('/').split('/').collect();
                     match (method.as_str(), segments.as_slice()) {
+                        ("GET", ["folders", "trash", "items"]) => {
+                            let entries: Vec<serde_json::Value> = items
+                                .iter()
+                                .filter_map(|i| {
+                                    let from = i.2.strip_prefix("trash:")?;
+                                    Some(serde_json::json!({
+                                        "type": i.3, "id": i.0, "name": i.1,
+                                        "parent": { "type": "folder", "id": from },
+                                    }))
+                                })
+                                .collect();
+                            axum::Json(serde_json::json!({
+                                "total_count": entries.len(),
+                                "entries": entries,
+                                "offset": 0,
+                                "limit": 1000,
+                            }))
+                            .into_response()
+                        }
+                        ("DELETE", [endpoint @ ("folders" | "files"), id, "trash"]) => {
+                            let kind = endpoint.trim_end_matches('s');
+                            seen.lock().unwrap().push(format!("purge {kind} {id}"));
+                            items.retain(|i| i.0 != *id);
+                            StatusCode::NO_CONTENT.into_response()
+                        }
+                        ("GET", [endpoint @ ("folders" | "files"), id]) => {
+                            let kind = endpoint.trim_end_matches('s');
+                            let item = if *id == "0" && kind == "folder" {
+                                Some(("0", "All Files"))
+                            } else {
+                                items
+                                    .iter()
+                                    .find(|i| i.0 == *id && i.3 == kind)
+                                    .map(|i| (i.0.as_str(), i.1.as_str()))
+                            };
+                            match item {
+                                Some((id, name)) => axum::Json(serde_json::json!({
+                                    "type": kind, "id": id, "name": name, "size": 1,
+                                }))
+                                .into_response(),
+                                None => error(StatusCode::NOT_FOUND, "not_found"),
+                            }
+                        }
+                        ("POST", [endpoint @ ("folders" | "files"), id, "copy"]) => {
+                            let kind = endpoint.trim_end_matches('s');
+                            if !items.iter().any(|i| i.0 == *id && i.3 == kind) {
+                                return error(StatusCode::NOT_FOUND, "not_found");
+                            }
+                            let args: serde_json::Value = serde_json::from_str(&text).unwrap();
+                            let name = args["name"].as_str().unwrap().to_string();
+                            let parent = args["parent"]["id"].as_str().unwrap().to_string();
+                            if taken(&items, &parent, &name, "") {
+                                return error(StatusCode::CONFLICT, "item_name_in_use");
+                            }
+                            seen.lock()
+                                .unwrap()
+                                .push(format!("copy {kind} {id} {name} in {parent}"));
+                            let copy = next_id
+                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                                .to_string();
+                            items.push((copy.clone(), name, parent, kind.to_string()));
+                            (
+                                StatusCode::CREATED,
+                                axum::Json(serde_json::json!({ "type": kind, "id": copy })),
+                            )
+                                .into_response()
+                        }
                         ("GET", ["folders", id, "items"]) => {
                             if !is_folder(&items, id) {
                                 return error(StatusCode::NOT_FOUND, "not_found");
@@ -3507,6 +3542,38 @@ mod tests {
         assert_eq!(
             *changes.lock().unwrap(),
             ["put folder 1 C in 0", "put file 11 g.txt in 2"]
+        );
+    }
+
+    /// The file lookup found folders too, so `stat` of a folder asked
+    /// `/files/{folder id}`, whose 404 did not parse (ParseError). It goes by
+    /// the item's type now; a file and the root still stat.
+    #[tokio::test]
+    async fn stat_of_a_folder_uses_the_folders_endpoint() {
+        let (mut p, _, _) =
+            provider_on_box(&[("1", "A", "0", "folder"), ("11", "f.txt", "1", "file")]).await;
+        let folder = p.stat("/A").await.expect("stat folder");
+        assert!(folder.is_dir && folder.name == "A", "{folder:?}");
+        let file = p.stat("/A/f.txt").await.expect("stat file");
+        assert!(!file.is_dir && file.name == "f.txt", "{file:?}");
+        let root = p.stat("/").await.expect("stat root");
+        assert!(root.is_dir, "{root:?}");
+    }
+
+    /// A server-side copy of a folder went to `/files/{id}/copy`, which Box
+    /// answers 404: a folder could not be copied. It goes by the item's
+    /// type now, and a file still to `/files`.
+    #[tokio::test]
+    async fn a_folder_copy_uses_the_folders_endpoint() {
+        let (mut p, _, changes) =
+            provider_on_box(&[("1", "A", "0", "folder"), ("11", "f.txt", "1", "file")]).await;
+        p.server_side_copy("/A", "/B").await.expect("folder copy");
+        p.server_side_copy("/A/f.txt", "/g.txt")
+            .await
+            .expect("file copy");
+        assert_eq!(
+            *changes.lock().unwrap(),
+            ["copy folder 1 B in 0", "copy file 11 g.txt in 0"]
         );
     }
 
