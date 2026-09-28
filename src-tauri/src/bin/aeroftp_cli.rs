@@ -83270,11 +83270,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                     None,
                     None,
                     SyncPairRule {
-                        conflict_mode: if direction == "both" {
-                            "newer"
-                        } else {
-                            "source"
-                        },
+                        conflict_mode: "source",
                         skip_matching: false,
                         update: false,
                         modify_window: None,

@@ -641,6 +641,13 @@ impl CloudService {
             files: HashMap::new(),
             unverified_keys: Default::default(),
         });
+        // The prior index was migrated when it was loaded, and the keys the
+        // migration could not vouch for are not saved with it: written back
+        // they would be trusted, and a file never synced would read as synced
+        // (its local copy deleted the next cycle). Left out, they read as
+        // never synced, as the compare reads them now.
+        let unverified = std::mem::take(&mut idx.unverified_keys);
+        idx.files.retain(|path, _| !unverified.contains(path));
         for path in unsettled {
             let size = comparisons
                 .iter()
@@ -1135,7 +1142,7 @@ impl CloudService {
         // cycle read it as a conflict.
         for path in self.take_unsettled() {
             result.errors.push(format!(
-                "{path}: it kept changing while it uploaded; the next cycle reads it as a conflict"
+                "{path}: it kept changing while it uploaded; the next cycle reads it as a conflict, asked about under PreferNewer or PreferRemote until one cycle runs under PreferLocal (sends the local copy) or KeepBoth"
             ));
         }
 
@@ -2689,7 +2696,7 @@ mod baseline_tests {
                     assert_eq!(
                         result.errors,
                         vec![
-                            "f.txt: it kept changing while it uploaded; the next cycle reads it as a conflict"
+                            "f.txt: it kept changing while it uploaded; the next cycle reads it as a conflict, asked about under PreferNewer or PreferRemote until one cycle runs under PreferLocal (sends the local copy) or KeepBoth"
                                 .to_string()
                         ]
                     );
@@ -2793,13 +2800,6 @@ mod baseline_tests {
         }
     }
 
-    /// Major of the sixth verification: an overlay that reports the size on
-    /// the wire (AeroCompress, a legacy AeroCrypt: 13 bytes of header at
-    /// least) never gives back the size sent, and the check for another
-    /// client's write fired on every upload through it: no stamp, and the
-    /// remote read as changed the next cycle (a download, and a conflict for
-    /// an edit made meanwhile). The check is left to exact-size providers,
-    /// as the comparison leaves sizes to them.
     /// Nit of the verification of the final round, after #956: an FTP stat
     /// whose size could not be read reports 0 with a marker, and the check for
     /// another client's write read that 0 as a different size: no stamp, and a
@@ -3009,6 +3009,13 @@ mod baseline_tests {
         }
     }
 
+    /// Major of the sixth verification: an overlay that reports the size on
+    /// the wire (AeroCompress, a legacy AeroCrypt: 13 bytes of header at
+    /// least) never gives back the size sent, and the check for another
+    /// client's write fired on every upload through it: no stamp, and the
+    /// remote read as changed the next cycle (a download, and a conflict for
+    /// an edit made meanwhile). The check is left to exact-size providers,
+    /// as the comparison leaves sizes to them.
     #[tokio::test]
     async fn an_upload_through_an_overlay_that_reports_the_size_on_the_wire_is_in_sync() {
         let root = tempfile::tempdir().expect("local root");
