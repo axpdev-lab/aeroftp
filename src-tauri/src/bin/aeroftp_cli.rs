@@ -68203,16 +68203,7 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
                         eprint!("\r                                        \r");
                         eprintln!("  \x1b[32m✓\x1b[0m {} completed", tc.name);
                     }
-                    let s = val.to_string();
-                    if s.len() > 8192 {
-                        format!(
-                            "{}... [truncated, {} bytes total]",
-                            s.get(..8192).unwrap_or(&s),
-                            s.len()
-                        )
-                    } else {
-                        s
-                    }
+                    cap_tool_result(val.to_string())
                 }
                 Err(e) => {
                     if is_tty && !cancel.is_cancelled() {
@@ -68248,6 +68239,22 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
             eprint!("\n  \x1b[2m⠙ Thinking...\x1b[0m");
             io::stderr().flush().ok();
         }
+    }
+}
+
+/// Bound a tool result before it enters the model conversation. The cut falls
+/// on the nearest char boundary at or below the limit, so a multi-byte
+/// character there cannot let the whole result through.
+fn cap_tool_result(s: String) -> String {
+    const LIMIT: usize = 8192;
+    if s.len() > LIMIT {
+        format!(
+            "{}... [truncated, {} bytes total]",
+            &s[..s.floor_char_boundary(LIMIT)],
+            s.len()
+        )
+    } else {
+        s
     }
 }
 

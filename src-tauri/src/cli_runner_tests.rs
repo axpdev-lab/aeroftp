@@ -234,3 +234,14 @@ async fn cli_interrupted_run_prints_partial_text_and_exits_130() {
     .await
     .unwrap();
 }
+
+#[test]
+fn cli_tool_results_are_capped_at_a_char_boundary() {
+    // A two-byte character straddles byte 8192.
+    let result = format!("{}é{}", "a".repeat(8191), "b".repeat(20_000));
+    let capped = cap_tool_result(result.clone());
+    assert!(capped.len() < 8300, "not capped: {} bytes", capped.len());
+    assert!(capped.starts_with(&"a".repeat(8191)));
+    assert!(capped.ends_with(&format!("... [truncated, {} bytes total]", result.len())));
+    assert_eq!(cap_tool_result("short é".into()), "short é");
+}
