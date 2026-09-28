@@ -99,6 +99,13 @@ fn read_size(token: &str) -> (u64, bool) {
 /// itself; until it can, this is where the fact lives instead of nowhere.
 pub(crate) const SIZE_UNREADABLE: &str = "ftp.size_unreadable";
 
+/// Whether `entry` carries [`SIZE_UNREADABLE`]: its size is a 0 that stands
+/// for "unknown", not the size of the file. For the consumers outside this
+/// crate (the CLI), which cannot name the marker itself.
+pub fn size_is_unreadable(entry: &RemoteEntry) -> bool {
+    entry.metadata.contains_key(SIZE_UNREADABLE)
+}
+
 fn mark_size_unreadable(entry: &mut RemoteEntry, size_read: bool) {
     if !size_read {
         entry
@@ -436,7 +443,9 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
     let mut is_dir = false;
     let mut is_symlink = false;
     let mut size: u64 = 0;
-    let mut size_read = true;
+    // A file whose facts carry no size says nothing about it (RFC 3659 makes
+    // every fact optional): the 0 is unknown, not empty.
+    let mut size_read = false;
     let mut modified: Option<String> = None;
     let mut permissions: Option<String> = None;
     let mut owner: Option<String> = None;
@@ -508,7 +517,7 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
         mime_type: None,
         metadata: Default::default(),
     };
-    mark_size_unreadable(&mut entry, size_read);
+    mark_size_unreadable(&mut entry, size_read || is_dir);
     Some(entry)
 }
 
@@ -726,6 +735,27 @@ mod tests {
         let good = parse_listing("01-23-24  10:30AM  12345  file.txt", "/").expect("a DOS row");
         assert_eq!(good.size, 12345);
         assert!(!good.metadata.contains_key(SIZE_UNREADABLE));
+    }
+
+    /// An MLST or MLSD line for a file with no `size` fact says nothing about
+    /// its size, and the 0 it leaves is marked like an unreadable one: the
+    /// CLI's `--immutable` trusted it as exact and refused every complete file
+    /// on such a server as a partial. A directory needs no size.
+    #[test]
+    fn an_mlsd_file_without_a_size_fact_is_marked() {
+        let file = parse_mlsd_entry("type=file;modify=20240101000000; a.txt", "/").expect("a file");
+        assert_eq!(file.size, 0);
+        assert!(
+            file.metadata.contains_key(SIZE_UNREADABLE),
+            "no size fact: {file:?}"
+        );
+        assert!(size_is_unreadable(&file), "what the CLI reads");
+        let dir = parse_mlsd_entry("type=dir;modify=20240101000000; d", "/").expect("a dir");
+        assert!(!dir.metadata.contains_key(SIZE_UNREADABLE), "{dir:?}");
+        let sized =
+            parse_mlsd_entry("type=file;size=3;modify=20240101000000; b.txt", "/").expect("a file");
+        assert_eq!(sized.size, 3);
+        assert!(!sized.metadata.contains_key(SIZE_UNREADABLE), "{sized:?}");
     }
 
     /// And the listing counts them, so the zeros are visible without anyone

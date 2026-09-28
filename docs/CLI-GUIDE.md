@@ -488,6 +488,8 @@ aeroftp-cli put opendrive://user@host ./secret.pdf /docs/ --access private
 
 > **`--delta` on S3**: uploading a file larger than 200 MiB over an object this client uploaded before sends only the parts that changed. The client keeps a local record of per-part digests of what it uploaded (`s3_delta_baselines.db` in the AeroFTP data directory, `~/.config/aeroftp/` on Linux, at most 10,000 objects), compares the local file against it without reading the object back, and rebuilds the object with a multipart upload in which the unchanged parts are server-side copies pinned to the object's ETag. It falls back to a normal upload when the file is 200 MiB or smaller, when there is no record for the object, when the object changed since it was recorded (ETag or size) or no part still matches, when the object is in an archive storage class, when the endpoint does not support multipart upload or ranged copy (a refusal is remembered for 5 minutes by the running process), and on a profile with a crypt overlay. An authentication or permission refusal is reported as an error (exit 4) rather than a fallback. Downloads with `--delta` stay SFTP only.
 
+> **`-n, --no-clobber`**: leave an existing remote file alone. Honoured by the single-file `put`, by `put -r` and by `put` with a glob, which run on one connection per worker for it (the pooled uploader has no existence check). A skip ends the run with exit 0, or 9 when every file was skipped. A file whose existence check loses the connection is not written, since the upload would reconnect and overwrite it: in a batch it is tried once more on a new connection, which checks again: a file that is there is skipped, and one that is not is uploaded, and a single `put` exits with the provider's code (1, which `--retries` retries). Any other failure of the check (a timeout on a live connection, a permission error, a server without `stat`) lets the upload go on, as it always has. A file that an earlier attempt of the same command (`--retries`) failed on is reported as an error instead of skipped, since it may be that attempt's partial. That record lives only as long as the command: a manual rerun, or a script or agent that invokes the command again (`--json` runs one attempt), does not know about it and skips the partial. `--immutable` catches it on any run when its size differs from the local file's and the provider's size can be trusted; a partial that already has the local file's size is skipped like a complete one, since a size check cannot tell the two apart.
+
 > **`--access <private|public|hidden>`** (issue #252): on providers that model a three-level access scheme (OpenDrive today), sets the uploaded file's privacy. When omitted on an OpenDrive target the upload defaults to **private** (max-privacy, opt out with `--access public`), mirroring rclone's `--opendrive-access`. Applies to single-file uploads; for recursive/glob uploads set the destination folder privacy with `mkdir --access`, which cascades to children. Ignored, with a note, on providers that do not model access.
 
 ### mkdir - Create Directory
@@ -525,6 +527,8 @@ aeroftp-cli rm sftp://user@host /var/www/old-file.txt
 # Delete a directory recursively
 aeroftp-cli rm sftp://user@host /var/www/old-folder/ -rf
 ```
+
+Without `-r`, `rm` removes a file, a link, or an empty directory. A directory that still holds anything (dotfiles included) is refused with exit code 9 and nothing is removed: on S3, Azure, Google Drive, OneDrive, Dropbox, pCloud, Box, MEGA, Filen, kDrive, Koofr, Jottacloud and WebDAV the provider's own delete of a folder takes its content along, so `-r` is the only way to ask for that. The served FTP `RMD`, SFTP `RMDIR`, the mount's `rmdir`, and the MCP and AeroAgent deletes without `recursive` follow the same rule.
 
 ### rmdir - Remove an Empty Directory
 
@@ -589,6 +593,8 @@ aeroftp-cli edit --profile "server" /var/www/index.html "Old Title" "New Title" 
 ```
 
 This is a scripted remote text edit flow, not an interactive `$EDITOR` session. The CLI downloads the remote UTF-8 file, applies a deterministic find/replace, then uploads the modified content.
+
+On a server that cannot put one file over another in a single step, `edit` refuses and writes nothing. Where that server's replace sets the previous file aside (MEGA through the native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive), `--allow-non-atomic` is the opt-in: the previous file is set aside, the new one is moved into its place, and the old one is then deleted. There is a short moment with no file, and the old one is not lost. On any other such server (for example Box, Internxt, 4shared, WorkDrive, MEGAcmd, Jottacloud, or SFTP without `posix-rename@openssh.com`) the opt-in is refused as well, before anything is written. The same switch is `allow_non_atomic` on the MCP `aeroftp_edit` tool and on AeroAgent `remote_edit`.
 
 ### cat - Print File Content
 
@@ -751,7 +757,12 @@ aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --password "secret"
 
 # JSON output with details
 aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --json
+
+# Password typed as it is, salt copied from rclone.conf (obscured)
+aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --password "secret" --password2 "<obscured>" --password-form clear --salt-form obscured
 ```
+
+`--password-form` and `--salt-form` say how `--password` and `--password2` (or `AEROFTP_RCLONE_CRYPT_PASSWORD` / `AEROFTP_RCLONE_CRYPT_PASSWORD2`) are written: `clear` as typed, `obscured` as rclone.conf keeps them. The default, `auto`, reads an rclone-obscured value as such, and refuses a value of 22 characters or more whose reading would be 2 characters or fewer, since that reading is as likely wrong as right (a salt rclone generates reveals to nothing): pass `clear` or `obscured` for it.
 
 Verifies the integrity of files stored on a remote encrypted with `rclone crypt`. Stream-decrypts the remote files (without saving to disk) and computes their hash to compare against local cleartext files. Supports `sha256` and `md5`. Reports: matches, differences, files missing on either side, and files that could not be compared. The result is `partial` when a file could not be compared, when either scan could not read its whole tree, or when either scan left out a path it can name, with the same `local_scan_*`, `remote_scan_*` and `*_scan_boundaries` JSON fields as `check`, the same 20 path cap on the stderr list, and the same refusal for a gap the scan cannot name. Exit codes: `0` (success), `4` (differences found, the result is partial, or the run was refused for a gap with no name), `5` (invalid usage).
 
@@ -1261,13 +1272,23 @@ compressed bytes and ratio). It surfaces in the optional, default-hidden
 
 ```bash
 # Encrypt + upload a file using the rclone crypt format (Standard mode)
-AEROFTP_CRYPT_PASSWORD=MySecret \
+AEROFTP_RCLONE_CRYPT_PASSWORD=MySecret \
     aeroftp-cli --profile "S3" rclone-crypt put ./report.pdf /backups/report.pdf
 
 # Obfuscate filename mode (for providers with case-folding issues)
-AEROFTP_CRYPT_PASSWORD=MySecret AEROFTP_CRYPT_PASSWORD2=Salt \
+AEROFTP_RCLONE_CRYPT_PASSWORD=MySecret AEROFTP_RCLONE_CRYPT_SALT=Salt \
     aeroftp-cli --profile "S3" rclone-crypt put ./report.pdf /backups/report.pdf --filename-encryption obfuscate
 ```
+
+`--password-form` / `--salt-form` (`clear`, `obscured` or `auto`) say how the password and salt are written, as for `cryptcheck` above.
+
+A saved profile with an rclone-crypt overlay records how its stored password and salt are written. Profiles saved before AeroFTP recorded it are read automatically (a crypt remote AeroFTP imported from rclone.conf was stored as typed, so as `clear`), and one whose values could mean two things is refused with a message. Record the form once, for both secrets: the command refuses to leave one recorded and the other not.
+
+```bash
+aeroftp-cli --profile "S3" crypt set-form --password-form clear --salt-form obscured
+```
+
+A crypt secret taken from `AEROFTP_CRYPT_OVERLAY_PASSWORD` / `AEROFTP_CRYPT_OVERLAY_SALT` states its form in `AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM` / `AEROFTP_CRYPT_OVERLAY_SALT_FORM` (`clear` or `obscured`).
 
 Drop-in compatible with the format produced by [`rclone crypt`](https://rclone.org/crypt/), so a file uploaded here can be read back with `rclone` and vice versa. Separate from the `crypt` subcommand above (which is the AeroFTP-native overlay): use `rclone-crypt` when the bucket must remain interoperable with the rclone toolchain, use `crypt` for AeroFTP-only flows.
 
@@ -1643,7 +1664,7 @@ aeroftp-cli export s3cmd  --output ./.s3cfg
 
 OAuth profiles **are** exported to rclone for every provider that has a matching rclone backend: Google Drive, Dropbox, OneDrive, Box, pCloud Drive, Yandex Disk, Zoho WorkDrive and Jottacloud. Each remote is written with the profile's `token` and the `client_id` and `client_secret` configured in AeroFTP for that provider, so it is usable and refreshable without re-authorising. This requires all three to be in the vault, which is the case for a profile you authorised in AeroFTP with your own OAuth app, and rclone can refresh the token only while that app is still the one configured: after switching to another app, authorise the profile again before exporting. When any of the three is missing, the remote is still written and a comment tells you to run `rclone config reconnect "<remote>:"` before use, rather than emitting a silently broken half-remote. Zoho WorkDrive also carries `region` (mapped to rclone's TLD slug, so AeroFTP `us` becomes rclone `com`) and `root_folder_id` when the profile is pinned to a workspace or team folder.
 
-A profile with an rclone-crypt overlay exports as two remotes: the base server, then a sibling `type = crypt` remote whose `remote = <base>:<path>` is the Overlays Path (always at or below the server's remote path). The crypt password and salt are rclone-obscured. Native AeroCrypt overlays are not rclone `crypt` remotes and are not emitted this way.
+A profile with an rclone-crypt overlay exports as two remotes: the base server, then a sibling `type = crypt` remote whose `remote = <base>:<path>` is the Overlays Path (always at or below the server's remote path). The crypt password and salt are read the way the profile records them (typed, or pasted from rclone.conf) and rclone-obscured once. When a stored password or salt was saved before AeroFTP recorded that and could be read two ways, the crypt remote is not written: the base server still is, the file carries a comment with the reason, and the command lists the profile among the skipped ones with the same reason; record the form with `crypt set-form` (see above) and export again. Native AeroCrypt overlays are not rclone `crypt` remotes and are not emitted this way.
 
 Keep in mind that AeroFTP and rclone use different redirect URIs. Register both under the same app in the provider's developer console so the one `client_id` / `client_secret` pair works in both tools.
 
@@ -1703,6 +1724,22 @@ AEROFTP_KEYSTORE_PASSWORD=MyBackupPassword \
 **Merge strategies on import**: `skip` (default, never overwrite existing vault entries), `overwrite` (force replace), `keep-newer` (compare timestamps). The `--skip-*` flags let you opt out of an entire section per import (vault, sqlite, files, local-storage).
 
 After a successful import that touched SQLite or files, the CLI prints `requires_restart=true` on stdout and exits 0. The AeroFTP GUI must be restarted before the restored databases become visible.
+
+### flatpak-import - Import a Native Configuration into the Flatpak Sandbox
+
+A Flatpak install keeps its own data root inside the sandbox, so it does not see the saved servers and encrypted vault of a native (`.deb`, `.rpm`, AppImage) install in `~/.config/aeroftp`. Run inside the Flatpak sandbox, `flatpak-import` copies that configuration into the sandbox. It copies only the files the sandbox does not have yet: an existing file is never overwritten, and SQLite sidecars and symbolic links inside the folder are never copied (a `~/.config/aeroftp` that is itself a link, as a dotfiles manager creates, is followed). The GUI offers the same import once, at its first start.
+
+```bash
+# Is an import available? Copies nothing.
+aeroftp-cli flatpak-import --status
+
+# Import, then restart AeroFTP to load what was copied
+aeroftp-cli flatpak-import --json
+```
+
+The host vault and the saved servers encrypted under it come in only when the sandbox has no vault of its own. The GUI creates one at its first start, so after a first start they stay behind, and the output says so. The JSON result carries `imported` and `requires_restart` (both true only when files were copied), `copied` (the number of files), `vault_imported`, `vault_skipped` (the host has a vault and the sandbox already had its own), `nothing_importable` (no file was copied because the host configuration holds none the import copies), `source` and `target`.
+
+Exit codes: `0` when files were imported, when no file was copied (each file the import would copy already has a file with the same name in the sandbox, or the host configuration holds nothing the import copies), with `--status`, and outside a Flatpak, where the command does nothing; `1` when there is no host configuration at `~/.config/aeroftp`, or when the copy failed (files copied before the error stay in the sandbox, and nothing is overwritten).
 
 ### completions - Generate Shell Completion Scripts
 
@@ -1972,7 +2009,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--max-backlog <n>` | Max queued transfer tasks for parallel operations (default: 10000) |
 | `--files-from <file>` | Transfer only files listed in file (one per line, `#` comments). Works with get -r, put -r, sync |
 | `--files-from-raw <file>` | Like `--files-from` but preserves whitespace and empty lines |
-| `--immutable` | Skip a destination the pre-write check finds already there (append-only mode, best effort). Honoured by `put`, `cp`, `mv`, `get` and `sync`: an existing target is skipped with exit 9 and left untouched, and a target whose existence cannot be checked (timeout, permission error, unsupported `stat`) is refused with the provider's error code rather than written. The check is a stat before the write, not a server-side precondition, so two writers racing for the same target can still both pass it |
+| `--immutable` | Skip a destination the pre-write check finds already there (append-only mode, best effort). Honoured by `put`, `cp`, `mv`, `get` and `sync`: an existing target is skipped with exit 9 and left untouched, and a target whose existence cannot be checked (timeout, permission error, unsupported `stat`) is refused with the provider's error code rather than written. On `put` (single file, `-r` and glob) an existing file whose size differs from the local one is not skipped but refused as an error (exit 4; `--retries` does not repeat a run whose only failures are such refusals): it is most often the partial an interrupted upload left, and a skip would report it as uploaded. A file of 0 bytes counts, since it is what an upload cut right after its create leaves. The same goes for a file an earlier attempt of the same command failed on. The size is not compared where it cannot be trusted: the AeroCrypt v1/v2 and compress overlays, Proton Drive (a file without a `claimedSize` reports its encrypted size), a size an FTP server did not give (an MLST without a size fact and a SIZE it refuses, a LIST row without a readable size), a 0 on WebDAV and Google Drive (a server that sends no length, a native Google Doc), and `cp` and `mv`, whose source is remote. `sync` decides at plan time and does not compare sizes for this. In a batch, a target whose existence cannot be checked is a failed file (the run exits 4), after one more try on a new connection when the check lost the connection; a single `put` exits with the provider's code. The check is a stat before the write, not a server-side precondition, so two writers racing for the same target can still both pass it |
 | `--skip-restricted` | Recursive `put`: skip files or folders whose name the destination forbids, upload the rest, report each skip; the run ends `partial` (exit 4) like rclone does with failed items. Default refuses the whole batch before uploading anything |
 | `--no-check-dest` | Skip remote directory listing during sync (assume destination is empty) |
 | `--max-depth <n>` | Maximum recursion depth for ls -R, find, sync, get -r, put -r |

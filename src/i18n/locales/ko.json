@@ -1193,7 +1193,8 @@
             "uiTokensReload": "다시 로드",
             "uiTokensReset": "재정의 지우기",
             "uiTokensApplied": "적용된 재정의: {count}",
-            "uiTokensRejected": "거부된 항목: {count}"
+            "uiTokensRejected": "거부된 항목: {count}",
+            "keystorePreferencesFailed": "가져오기는 완료되었지만 앱 환경설정을 복원하지 못했습니다: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "모든 도구 호출 거부",
                 "rejectExecution": "도구 실행 거부",
                 "toggleDetails": "상세 정보 전환",
-                "allowSession": "이 세션 동안 허용"
+                "allowSession": "이 세션 동안 허용",
+                "nonAtomicReplace": "비원자적 교체: 파일이 잠시 사라집니다"
             },
             "settings": {
                 "title": "AI 설정",
@@ -5604,7 +5606,12 @@
             "defaultSaltNeedsStronger": "기본 솔트를 켜려면 강력하게 생성된 비밀번호를 입력하세요.",
             "defaultSaltOneSaltNote": "솔트는 하나뿐입니다. 32바이트이며 공개되어 있고, 기본 솔트를 사용하는 모든 보관소에서 동일합니다.",
             "defaultSaltValueLabel": "공개 기본 솔트 (AeroCrypt v3), 다음 문자열의 SHA-256",
-            "defaultSaltTierMeaning": "기본 솔트는 비밀번호만으로 보관함이 열린다는 뜻입니다. 따로 지녀야 할 것도, 따로 보호해 주는 것도 없습니다."
+            "defaultSaltTierMeaning": "기본 솔트는 비밀번호만으로 보관함이 열린다는 뜻입니다. 따로 지녀야 할 것도, 따로 보호해 주는 것도 없습니다.",
+            "pastedObscured": "rclone.conf에서 붙여넣음(난독화됨)",
+            "pastedObscuredHint": "이 값을 rclone.conf 파일에서 복사한 경우에만 \"rclone.conf에서 붙여넣음\"을 선택하세요. rclone은 이 파일에 값을 난독화하여 보관합니다.",
+            "formNotRecorded": "기록되지 않음: 이 값은 AeroFTP가 묻기 전에 저장되었습니다. 입력 방식을 선택하세요. AeroFTP가 rclone.conf에서 가져온 값은 '직접 입력'으로 저장되었습니다.",
+            "secretFormTyped": "직접 입력",
+            "secretFormChangeConfirm": "저장된 값을 읽는 방식이 바뀌며, 따라서 파일을 여는 키도 바뀝니다. 올바른 선택만 파일을 열 수 있습니다. 이 선택을 변경하시겠습니까?"
         },
         "modalGuard": {
             "busyTitle": "작업 진행 중",
@@ -5869,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP가 홈 폴더에서 기존 구성을 발견했습니다. 이 Flatpak 설치는 자체의 별도 저장소를 사용하므로 저장된 서버와 암호화된 보관소가 아직 여기에 표시되지 않습니다. 지금 가져올까요? 파일은 복사만 되며 아무것도 덮어쓰지 않고, 그리고 보관소는 여기서도 지금과 같은 방식으로 잠금 해제됩니다.",
+            "importBody": "AeroFTP가 홈 폴더에서 기존 구성을 발견했습니다. 이 Flatpak 설치는 자체의 별도 저장소를 사용하므로 저장된 서버와 암호화된 보관소가 아직 여기에 표시되지 않습니다. 지금 구성을 가져올까요? 파일은 복사만 되며, 이 Flatpak 설치에 이미 있는 파일은 절대 덮어쓰지 않습니다.",
             "importAccept": "가져오기",
             "importedBody": "구성을 가져왔습니다. 서버와 보관소를 불러오려면 AeroFTP를 다시 시작하세요.",
-            "restartNow": "지금 다시 시작"
+            "restartNow": "지금 다시 시작",
+            "importNothingBody": "복사된 파일이 없습니다: 가져오기가 복사할 모든 파일에 대해 이 Flatpak 설치에 같은 이름의 파일이 이미 있으며, 기존 파일은 절대 덮어쓰지 않습니다.",
+            "importFailedBody": "가져오기가 오류로 중단되었습니다: {error}. 이 Flatpak 설치에 이미 복사된 파일은 그대로 남아 있으며, 덮어쓴 항목은 없습니다. AeroFTP는 다음 시작 시 가져오기를 다시 제안합니다.",
+            "importedNoVaultBody": "구성을 가져왔지만, 해당 구성에는 가져오기로 복사할 수 있는 저장된 서버나 보관소가 없었습니다. 가져온 항목을 불러오려면 AeroFTP를 다시 시작하세요.",
+            "importedVaultSkippedBody": "구성의 일부를 가져왔지만 저장된 서버와 보관소는 가져오지 않았습니다: 이 Flatpak 설치에는 이미 자체 보관소가 있으며, 기존 파일은 절대 덮어쓰지 않습니다. 가져온 항목을 불러오려면 AeroFTP를 다시 시작하세요.",
+            "importNothingVaultSkippedBody": "복사된 파일이 없으므로 저장된 서버와 보관소를 가져오지 않았습니다: 이 Flatpak 설치에는 이미 자체 보관소가 있고, 가져오기가 복사할 모든 파일에 대해 여기에 같은 이름의 파일이 이미 있으며, 기존 파일은 절대 덮어쓰지 않습니다.",
+            "importUnreadableResult": "AeroFTP가 가져오기 결과를 읽을 수 없었습니다",
+            "importNothingToImportBody": "복사된 파일이 없습니다: 기존 구성에는 가져오기가 복사하는 파일이 없습니다(심볼릭 링크와 SQLite 임시 파일은 절대 복사되지 않습니다)."
         },
         "picker": {
             "unavailable": {

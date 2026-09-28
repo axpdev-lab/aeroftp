@@ -1193,7 +1193,8 @@
             "uiTokensReload": "I-reload",
             "uiTokensReset": "I-clear ang mga override",
             "uiTokensApplied": "Mga na-apply na override: {count}",
-            "uiTokensRejected": "Mga tinanggihang entry: {count}"
+            "uiTokensRejected": "Mga tinanggihang entry: {count}",
+            "keystorePreferencesFailed": "Tapos na ang pag-import, pero hindi naibalik ang mga kagustuhan mo sa app: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "Tanggihan lahat ng tool calls",
                 "rejectExecution": "Tanggihan ang tool execution",
                 "toggleDetails": "I-toggle ang mga detalye",
-                "allowSession": "Payagan para sa session na ito"
+                "allowSession": "Payagan para sa session na ito",
+                "nonAtomicReplace": "Hindi atomikong pagpapalit: pansamantalang nawawala ang file"
             },
             "settings": {
                 "title": "AI Settings",
@@ -5623,7 +5625,12 @@
             "defaultSaltNeedsStronger": "Maglagay ng malakas na binuong password para i-on ang default na salt.",
             "defaultSaltOneSaltNote": "Iisa lang ang salt: 32 byte, pampubliko, pareho para sa bawat vault na gumagamit ng default na salt.",
             "defaultSaltValueLabel": "Pampublikong default na salt (AeroCrypt v3), SHA-256 ng",
-            "defaultSaltTierMeaning": "Ang default na salt ay nangangahulugang ang password lamang ang nagbubukas ng vault: wala nang iba pang dapat dalhin, at wala nang iba pang nagpoprotekta rito."
+            "defaultSaltTierMeaning": "Ang default na salt ay nangangahulugang ang password lamang ang nagbubukas ng vault: wala nang iba pang dapat dalhin, at wala nang iba pang nagpoprotekta rito.",
+            "pastedObscured": "Na-paste mula sa rclone.conf (nakakubli)",
+            "pastedObscuredHint": "Piliin lamang ang \"Na-paste mula sa rclone.conf\" kung kinopya mo ang value na ito mula sa isang rclone.conf file, kung saan ito itinatago ng rclone nang nakakubli.",
+            "formNotRecorded": "Hindi naitala: na-save ang value na ito bago nagtanong ang AeroFTP. Piliin kung paano ito inilagay; ang value na in-import ng AeroFTP mula sa rclone.conf ay na-save bilang na-type.",
+            "secretFormTyped": "Na-type",
+            "secretFormChangeConfirm": "Binabago nito kung paano binabasa ang naka-save na value, at kaya pati ang key na nagbubukas sa mga file: tanging ang tamang pagpili ang magbubukas sa mga ito. Baguhin ang pagpiling ito?"
         },
         "modalGuard": {
             "busyTitle": "May isinasagawang operasyon",
@@ -5888,10 +5895,17 @@
             }
         },
         "flatpak": {
-            "importBody": "May natagpuang umiiral na configuration ang AeroFTP sa iyong home folder. Ang Flatpak install na ito ay gumagamit ng sarili nitong hiwalay na storage, kaya hindi pa nakikita rito ang iyong mga na-save na server at naka-encrypt na vault. Iimport ba ang mga ito ngayon? Kinokopya lang ang mga file, walang na-o-overwrite, at na-a-unlock ang iyong vault dito sa parehong paraan tulad ngayon.",
+            "importBody": "May natagpuang umiiral na configuration ang AeroFTP sa iyong home folder. Ang Flatpak install na ito ay gumagamit ng sarili nitong hiwalay na storage, kaya hindi pa nakikita rito ang iyong mga na-save na server at naka-encrypt na vault. I-import ba ang iyong configuration ngayon? Kinokopya lang ang mga file, at hindi kailanman na-o-overwrite ang file na mayroon na ang Flatpak install na ito.",
             "importAccept": "Import",
             "importedBody": "Na-import ang iyong configuration. I-restart ang AeroFTP para i-load ang iyong mga server at vault.",
-            "restartNow": "I-restart ngayon"
+            "restartNow": "I-restart ngayon",
+            "importNothingBody": "Walang file na nakopya: mayroon nang file na may parehong pangalan ang Flatpak install na ito para sa bawat file na kokopyahin sana ng pag-import, at hindi kailanman na-o-overwrite ang mga umiiral na file.",
+            "importFailedBody": "Huminto ang pag-import dahil sa error: {error}. Ang mga file na na-kopya na sa Flatpak install na ito ay nananatili roon, at walang na-overwrite. Muling iaalok ng AeroFTP ang pag-import sa susunod na pagsisimula.",
+            "importedNoVaultBody": "Na-import ang iyong configuration, pero wala itong na-save na server o vault na maaaring kopyahin ng pag-import. I-restart ang AeroFTP para i-load ang na-import.",
+            "importedVaultSkippedBody": "Na-import ang bahagi ng iyong configuration, pero hindi ang iyong mga na-save na server at vault: may sarili nang vault ang Flatpak install na ito, at hindi kailanman na-o-overwrite ang mga umiiral na file. I-restart ang AeroFTP para i-load ang na-import.",
+            "importNothingVaultSkippedBody": "Walang file na nakopya, kaya hindi na-import ang iyong mga na-save na server at vault: may sarili nang vault ang Flatpak install na ito at mayroon na rin itong file na may parehong pangalan para sa bawat file na kokopyahin sana ng pag-import, at hindi kailanman na-o-overwrite ang mga umiiral na file.",
+            "importUnreadableResult": "hindi nagawang basahin ng AeroFTP ang resulta ng pag-import",
+            "importNothingToImportBody": "Walang file na nakopya: walang file sa iyong umiiral na configuration na kinokopya ng pag-import (hindi kailanman kinokopya ang mga simbolikong link at pansamantalang file ng SQLite)."
         },
         "picker": {
             "unavailable": {

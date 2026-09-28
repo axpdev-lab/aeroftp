@@ -489,21 +489,26 @@ impl RemoteBackend for TauriRemoteBackend {
     }
 
     async fn delete(&self, path: &str) -> Result<(), String> {
+        // Without `recursive` a directory goes only when it is empty: a
+        // provider's `delete` or `rmdir` of a folder takes its content along
+        // on several backends (see `providers::remove_empty_directory`).
         match self {
             TauriRemoteBackend::Active { app } => {
                 if let Some(ref mut p) = *Self::active_provider(app).lock().await {
-                    return p.delete(path).await.map_err(|e| e.to_string());
+                    return crate::providers::delete_non_recursive(p.as_mut(), path)
+                        .await
+                        .map_err(|e| e.to_string());
                 }
                 let app_state = app.state::<AppState>();
                 let mut mgr = app_state.ftp_manager.lock().await;
                 mgr.remove(path).await.map_err(|e| e.to_string())
             }
-            TauriRemoteBackend::Temp { provider } => provider
-                .lock()
-                .await
-                .delete(path)
-                .await
-                .map_err(|e| e.to_string()),
+            TauriRemoteBackend::Temp { provider } => {
+                let mut guard = provider.lock().await;
+                crate::providers::delete_non_recursive(guard.as_mut(), path)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
         }
     }
 
@@ -612,6 +617,52 @@ impl RemoteBackend for TauriRemoteBackend {
                 .lock()
                 .await
                 .supports_atomic_replace()
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    async fn replace_sets_aside(&self) -> Result<bool, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref p) = *Self::active_provider(app).lock().await {
+                    return Ok(p.replace_sets_aside());
+                }
+                // Plain FTP: `RNFR`/`RNTO` replaces in one step where the
+                // server allows it (see `supports_atomic_replace` above) and
+                // sets nothing aside.
+                Ok(false)
+            }
+            TauriRemoteBackend::Temp { provider } => Ok(provider.lock().await.replace_sets_aside()),
+        }
+    }
+
+    async fn supports_chmod(&self) -> Result<bool, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref p) = *Self::active_provider(app).lock().await {
+                    return Ok(p.supports_chmod());
+                }
+                // Plain FTP: `stat` is not available on this fallback, so no
+                // mode is ever read here to be set again.
+                Ok(false)
+            }
+            TauriRemoteBackend::Temp { provider } => Ok(provider.lock().await.supports_chmod()),
+        }
+    }
+
+    async fn chmod(&self, path: &str, mode: u32) -> Result<(), String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.chmod(path, mode).await.map_err(|e| e.to_string());
+                }
+                Err("chmod is not supported on the FTP fallback".to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .chmod(path, mode)
                 .await
                 .map_err(|e| e.to_string()),
         }

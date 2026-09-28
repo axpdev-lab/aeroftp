@@ -1614,7 +1614,8 @@
             "uiTokensReload": "Ricarica",
             "uiTokensReset": "Cancella override",
             "uiTokensApplied": "Sostituzioni applicate: {count}",
-            "uiTokensRejected": "Voci rifiutate: {count}"
+            "uiTokensRejected": "Voci rifiutate: {count}",
+            "keystorePreferencesFailed": "L'importazione è terminata, ma le tue preferenze dell'app non sono state ripristinate: {error}"
         },
         "appearance": {
             "patternCross": "Croce",
@@ -2635,7 +2636,8 @@
                 "pendingApproval": "in attesa di approvazione",
                 "allowAllCalls": "Consenti tutte le chiamate",
                 "rejectAllCalls": "Rifiuta tutte le chiamate",
-                "allowSession": "Consenti per questa sessione"
+                "allowSession": "Consenti per questa sessione",
+                "nonAtomicReplace": "Sostituzione non atomica: il file manca per un istante"
             },
             "settings": {
                 "title": "Impostazioni AI",
@@ -5612,7 +5614,12 @@
             "defaultSaltNeedsStronger": "Inserisci una password generata robusta per attivare il salt predefinito.",
             "defaultSaltOneSaltNote": "Esiste un solo salt: 32 byte, pubblico, identico per ogni vault in modalità salt predefinito.",
             "defaultSaltValueLabel": "Salt predefinito pubblico (AeroCrypt v3), SHA-256 di",
-            "defaultSaltTierMeaning": "Il sale predefinito significa che la password da sola apre la cassaforte: non c'è altro da portare con sé, e non c'è altro che la protegga."
+            "defaultSaltTierMeaning": "Il sale predefinito significa che la password da sola apre la cassaforte: non c'è altro da portare con sé, e non c'è altro che la protegga.",
+            "pastedObscured": "Incollato da rclone.conf (offuscato)",
+            "pastedObscuredHint": "Scegli \"Incollato da rclone.conf\" solo se hai copiato questo valore da un file rclone.conf, dove rclone lo tiene offuscato.",
+            "formNotRecorded": "Non registrato: questo valore è stato salvato prima che AeroFTP lo chiedesse. Scegli come è stato inserito; un valore che AeroFTP ha importato da rclone.conf è stato salvato come digitato.",
+            "secretFormTyped": "Digitato",
+            "secretFormChangeConfirm": "Questo cambia come viene letto il valore salvato, e quindi la chiave con cui si aprono i file: solo la scelta giusta li apre. Vuoi cambiare questa scelta?"
         },
         "modalGuard": {
             "busyTitle": "Operazione in corso",
@@ -5869,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP ha trovato una configurazione esistente nella tua cartella home. Questa installazione Flatpak usa un proprio spazio di archiviazione separato, quindi i server salvati e la cassaforte cifrata non sono ancora visibili qui. Importarli ora? I file vengono solo copiati, nulla viene sovrascritto e la cassaforte si sblocca qui nello stesso modo in cui si sblocca ora.",
+            "importBody": "AeroFTP ha trovato una configurazione esistente nella tua cartella home. Questa installazione Flatpak usa un proprio spazio di archiviazione separato, quindi i server salvati e la cassaforte cifrata non sono ancora visibili qui. Importare ora la tua configurazione? I file vengono solo copiati, e un file che questa installazione Flatpak ha già non viene mai sovrascritto.",
             "importAccept": "Importa",
             "importedBody": "La tua configurazione è stata importata. Riavvia AeroFTP per caricare i tuoi server e la cassaforte.",
-            "restartNow": "Riavvia ora"
+            "restartNow": "Riavvia ora",
+            "importNothingBody": "Nessun file è stato copiato: questa installazione Flatpak ha già un file con lo stesso nome per ogni file che l'importazione copierebbe, e i file esistenti non vengono mai sovrascritti.",
+            "importFailedBody": "L'importazione si è interrotta con un errore: {error}. I file già copiati in questa installazione Flatpak restano lì, e nulla è stato sovrascritto. AeroFTP proporrà di nuovo l'importazione al prossimo avvio.",
+            "importedNoVaultBody": "La tua configurazione è stata importata, ma non conteneva server salvati né una cassaforte che l'importazione potesse copiare. Riavvia AeroFTP per caricare ciò che è stato importato.",
+            "importedVaultSkippedBody": "Una parte della tua configurazione è stata importata, ma non i server salvati e la cassaforte: questa installazione Flatpak ha già una propria cassaforte, e i file esistenti non vengono mai sovrascritti. Riavvia AeroFTP per caricare ciò che è stato importato.",
+            "importNothingVaultSkippedBody": "Nessun file è stato copiato, quindi i server salvati e la cassaforte non sono stati importati: questa installazione Flatpak ha già una propria cassaforte e un file con lo stesso nome per ogni file che l'importazione copierebbe, e i file esistenti non vengono mai sovrascritti.",
+            "importUnreadableResult": "AeroFTP non è riuscito a leggere il risultato dell'importazione",
+            "importNothingToImportBody": "Nessun file è stato copiato: la tua configurazione esistente non contiene alcun file che l'importazione possa copiare (i collegamenti simbolici e i file temporanei di SQLite non vengono mai copiati)."
         },
         "picker": {
             "unavailable": {

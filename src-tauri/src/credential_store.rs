@@ -36,8 +36,8 @@ static VAULT_CACHE: Mutex<Option<(PathBuf, [u8; 32])>> = Mutex::new(None);
 // Serializes all vault write operations to prevent concurrent read-modify-write races
 static VAULT_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
-const VAULT_FILENAME: &str = "vault.db";
-const VAULTKEY_FILENAME: &str = "vault.key";
+pub(crate) const VAULT_FILENAME: &str = "vault.db";
+pub(crate) const VAULTKEY_FILENAME: &str = "vault.key";
 
 // vault.key binary format constants
 const VAULTKEY_MAGIC: &[u8; 8] = b"AEROVKEY";

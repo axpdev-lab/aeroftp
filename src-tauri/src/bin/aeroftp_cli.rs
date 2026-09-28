@@ -10,7 +10,7 @@
 //!   aeroftp mv <url> <from> <to>              Rename/move
 //!   aeroftp cp <url> <from> <to>              Server-side copy when supported
 //!   aeroftp link <url> <path>                 Create a share link when supported
-//!   aeroftp edit <url> <path> <find> <replace> Replace text in a remote UTF-8 file
+//!   aeroftp edit <url> <path> <find> <replace> [--allow-non-atomic] Replace text in a remote UTF-8 file
 //!   aeroftp cat <url> <path>                  Print to stdout
 //!   aeroftp head <url> <path> [-n 20]         Print first N lines
 //!   aeroftp tail <url> <path> [-n 20]         Print last N lines
@@ -1445,6 +1445,51 @@ enum RcloneFilenameEncryption {
     Off,
 }
 
+/// How an rclone crypt password and salt given on the command line are
+/// written. `auto` reads an rclone-obscured value as such and refuses one that
+/// reads two ways (a 22+ character value that would reveal to 2 characters or
+/// fewer); `clear` takes them as typed; `obscured` as rclone.conf keeps them.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq, Default)]
+enum SecretFormArg {
+    #[default]
+    Auto,
+    Clear,
+    Obscured,
+}
+
+/// The form `crypt set-form` records: never a guess.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
+enum RecordedFormArg {
+    Clear,
+    Obscured,
+}
+
+impl RecordedFormArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Clear => "clear",
+            Self::Obscured => "obscured",
+        }
+    }
+}
+
+/// The forms of a password and a salt given on the command line.
+type CryptSecretForms = (
+    Option<ftp_client_gui_lib::rclone_crypt::CryptSecretForm>,
+    Option<ftp_client_gui_lib::rclone_crypt::CryptSecretForm>,
+);
+
+impl SecretFormArg {
+    fn form(self) -> Option<ftp_client_gui_lib::rclone_crypt::CryptSecretForm> {
+        use ftp_client_gui_lib::rclone_crypt::CryptSecretForm;
+        match self {
+            Self::Auto => None,
+            Self::Clear => Some(CryptSecretForm::Clear),
+            Self::Obscured => Some(CryptSecretForm::Obscured),
+        }
+    }
+}
+
 /// Issue #252: per-create privacy level for providers that expose a
 /// three-level access model (OpenDrive today). Mirrors rclone's
 /// `--opendrive-access`. Defaults to `private` (max-privacy, opt-out)
@@ -1691,6 +1736,15 @@ enum Commands {
     /// Run inside a Flatpak with a native `~/.config/aeroftp` present, this
     /// copies it into the sandbox (copy-only, never overwriting). Outside a
     /// Flatpak it is a no-op. Restart AeroFTP afterwards to load the import.
+    /// The host vault and saved servers come in only when the sandbox has no
+    /// vault of its own, and the output says whether they did.
+    ///
+    /// Exit codes: 0 when files were imported, when no file was copied (each
+    /// file the import would copy already has a file with the same name in the
+    /// sandbox, or the host config holds nothing the import copies), with
+    /// --status, and outside a Flatpak;
+    /// 1 when there is no host config, or when the copy failed (files copied
+    /// before the error stay in the sandbox).
     FlatpakImport {
         /// Only report whether an import is available; do not apply it.
         #[arg(long)]
@@ -1926,6 +1980,14 @@ enum Commands {
         /// Replace only the first occurrence
         #[arg(long)]
         first: bool,
+        /// On a server whose replace sets the previous file aside (MEGA
+        /// native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive): set it aside, move
+        /// the new one into its place, then delete the old one. There is a
+        /// short moment with no file. Without this flag such a server refuses
+        /// the edit and nothing is written; any other server that cannot
+        /// replace in one step refuses it with the flag too.
+        #[arg(long)]
+        allow_non_atomic: bool,
     },
     /// Print remote file to stdout (for piping)
     Cat {
@@ -2057,10 +2119,10 @@ enum Commands {
         #[arg(default_value = "/")]
         remote: String,
         /// Password for rclone crypt (can also be passed via AEROFTP_RCLONE_CRYPT_PASSWORD)
-        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD")]
+        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
         /// Salt for rclone crypt (can also be passed via AEROFTP_RCLONE_CRYPT_PASSWORD2)
-        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD2")]
+        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD2", hide_env_values = true)]
         password2: Option<String>,
         /// Filename encryption mode
         #[arg(long, default_value = "standard")]
@@ -2078,6 +2140,13 @@ enum Commands {
         /// Hash algorithm to use (sha256 or md5)
         #[arg(long, short = 'a', default_value = "sha256")]
         algorithm: String,
+        /// How --password is written: auto, clear (as typed) or obscured (as
+        /// in rclone.conf)
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        password_form: SecretFormArg,
+        /// How --password2 is written: auto, clear or obscured
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        salt_form: SecretFormArg,
     },
     /// Reconcile local and remote trees with categorized diff output
     Reconcile {
@@ -5395,6 +5464,17 @@ enum CryptCommands {
         #[arg(long)]
         keyfile: Option<String>,
     },
+    /// Record how an rclone-crypt profile's stored password and salt are
+    /// written, as typed (clear) or as rclone.conf keeps them (obscured), so
+    /// they are read that way instead of guessed. Needs --profile.
+    SetForm {
+        /// How the stored password is written
+        #[arg(long, value_enum)]
+        password_form: Option<RecordedFormArg>,
+        /// How the stored salt (password2) is written
+        #[arg(long, value_enum)]
+        salt_form: Option<RecordedFormArg>,
+    },
     /// Convert a headerless vault to a portable remote marker
     ToHeaded {
         /// Server URL (omit when using --profile)
@@ -5633,6 +5713,13 @@ enum RcloneCryptCommands {
         /// Optional rclone password2/salt (empty by default)
         #[arg(long, env = "AEROFTP_RCLONE_CRYPT_SALT", hide_env_values = true)]
         salt: Option<String>,
+        /// How --password is written: auto, clear (as typed) or obscured (as
+        /// in rclone.conf)
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        password_form: SecretFormArg,
+        /// How --salt is written: auto, clear or obscured
+        #[arg(long, value_enum, default_value_t = SecretFormArg::Auto)]
+        salt_form: SecretFormArg,
         /// Filename encryption mode
         #[arg(long, value_enum, default_value_t = RcloneFilenameEncryption::Standard)]
         filename_encryption: RcloneFilenameEncryption,
@@ -7430,6 +7517,74 @@ async fn reject_restricted_target(
     None
 }
 
+/// How a refused upload reports itself: a refusal another attempt would meet
+/// again, which the retries tell from other failures by this prefix.
+const UPLOAD_REFUSED_PREFIX: &str = "refused: ";
+
+/// The refusal of a remote file that an earlier attempt of this command
+/// reached and then failed on: it may be that attempt's partial, and a skip
+/// would report it as uploaded.
+fn left_incomplete_refusal(target: &str) -> String {
+    format!(
+        "{UPLOAD_REFUSED_PREFIX}{} is what a failed upload of this command left behind: not skipped as already there",
+        target
+    )
+}
+
+/// How an upload that `--immutable` or `--no-clobber` leaves alone reports
+/// itself. The batches count a result as skipped by this prefix, which only
+/// the skip writes, and not by a flag name a path can also contain.
+const UPLOAD_SKIP_PREFIX: &str = "skipped (already exists, ";
+
+/// Under `--immutable`, a remote file whose size differs from the source is
+/// not the file being uploaded: most often the partial a lost connection left
+/// (SFTP opens the file at its final path, then writes). Skipping it would
+/// report a truncated file as uploaded, on this run and on every later one, so
+/// it is an error. `--no-clobber` keeps skipping whatever is there.
+///
+/// It leans toward skipping when the size cannot be trusted
+/// ([`remote_size_is_exact`]), so that a sound file is never refused, and a
+/// source of unknown size (a remote one, for `mv` and `cp`) is not compared.
+/// A partial there goes undetected, as before, unless this very command left
+/// it (`put_run_left_incomplete`).
+fn immutable_size_mismatch(
+    cli: &Cli,
+    target: &str,
+    existing: &RemoteEntry,
+    source_size: Option<u64>,
+    exact: bool,
+) -> Option<String> {
+    let source_size = source_size?;
+    (cli.immutable && exact && !existing.is_dir && existing.size != source_size).then(|| {
+        format!(
+            "{UPLOAD_REFUSED_PREFIX}{} exists with {} bytes and the source has {}: --immutable neither overwrites it nor counts it as done",
+            target, existing.size, source_size
+        )
+    })
+}
+
+/// Whether the size `provider` reports for `entry` is the file's exact size.
+/// Not when the provider says its sizes are not (`reports_exact_size`: the
+/// AeroCrypt v1/v2 and compress overlays), not on Proton Drive (a file
+/// without a `claimedSize` reports its encrypted size), not a size FTP could
+/// not read (an MLST without a size fact and a SIZE the server refuses, a
+/// LIST row without a readable one: it reads 0), and not a 0 on WebDAV or
+/// Google Drive, which is what they report when the server sends no length
+/// or the object has none (a native Google Doc). Elsewhere a 0 is exact, and
+/// it is what an upload cut between its create and its first write leaves.
+fn remote_size_is_exact(provider: &dyn StorageProvider, entry: &RemoteEntry) -> bool {
+    if !provider.reports_exact_size()
+        || ftp_client_gui_lib::providers::ftp_listing::size_is_unreadable(entry)
+    {
+        return false;
+    }
+    match provider.provider_type() {
+        ProviderType::Proton => false,
+        ProviderType::WebDav | ProviderType::GoogleDrive => entry.size != 0,
+        _ => true,
+    }
+}
+
 /// `--immutable` / `--no-clobber`: refuse to write over an existing
 /// destination. Prints the skip and returns `Some(9)`, the exit code `put`
 /// has always used for "already exists"; returns `None` when the write may
@@ -7453,19 +7608,37 @@ async fn reject_restricted_target(
 /// permission error or an unsupported `stat` would otherwise turn that
 /// promise into an overwrite, silently, exactly on the unattended runs the
 /// flag exists for. The error is reported and the provider's own exit code
-/// returned. `--no-clobber` keeps its historical fail-open reading, since it
-/// was documented as a convenience and scripts rely on it proceeding.
+/// returned. `--no-clobber` keeps its historical fail-open reading for those
+/// (a timeout on a live connection, a permission error, an unsupported
+/// `stat`), since it was documented as a convenience and scripts rely on it
+/// proceeding, but not for a `stat` that lost the connection
+/// ([`connection_lost_reading`]): the write that would follow dials again by
+/// itself (SFTP's `ensure_connected`) and overwrites the file the flag
+/// protects, so it fails closed as `--immutable` does.
 async fn skip_if_destination_exists(
     provider: &mut dyn StorageProvider,
     target: &str,
     flag_name: &str,
+    source_size: Option<u64>,
     cli: &Cli,
     format: OutputFormat,
 ) -> Option<i32> {
     match provider.stat(target).await {
-        Ok(_) => {}
+        Ok(entry) => {
+            let refusal = if put_run_left_incomplete(target) {
+                Some(left_incomplete_refusal(target))
+            } else {
+                let exact = remote_size_is_exact(&*provider, &entry);
+                immutable_size_mismatch(cli, target, &entry, source_size, exact)
+            };
+            if let Some(message) = refusal {
+                put_run_note_refused();
+                print_error(format, &message, 4);
+                return Some(4);
+            }
+        }
         Err(ProviderError::NotFound(_)) => return None,
-        Err(e) if cli.immutable => {
+        Err(e) if cli.immutable || connection_lost_reading(&*provider, &e, &[target]) => {
             let code = provider_error_to_exit_code(&e);
             print_error(
                 format,
@@ -10144,19 +10317,52 @@ fn create_overall_progress_bar(total_files: usize, total_bytes: u64) -> Progress
 fn make_aggregate_progress_cb(
     aggregate: Arc<AtomicU64>,
     overall_pb: Option<ProgressBar>,
-) -> Box<dyn Fn(u64, u64) + Send> {
+) -> (Box<dyn Fn(u64, u64) + Send>, AttemptProgress) {
     let last_seen = Arc::new(AtomicU64::new(0));
-    Box::new(move |transferred, _total| {
+    let attempt = AttemptProgress {
+        added: Arc::new(AtomicU64::new(0)),
+        aggregate: aggregate.clone(),
+        overall_pb: overall_pb.clone(),
+    };
+    let added = attempt.added.clone();
+    let callback = Box::new(move |transferred, _total| {
         let previous = last_seen.swap(transferred, Ordering::Relaxed);
         let delta = transferred.saturating_sub(previous);
         if delta == 0 {
             return;
         }
+        added.fetch_add(delta, Ordering::Relaxed);
         let current = aggregate.fetch_add(delta, Ordering::Relaxed) + delta;
         if let Some(ref pb) = overall_pb {
             pb.set_position(current);
         }
-    })
+    });
+    (callback, attempt)
+}
+
+/// What one transfer attempt added to the batch's progress, so that a failed
+/// attempt takes it back: a job that goes back to the queue starts again from
+/// zero, and its first attempt's bytes were counted twice.
+struct AttemptProgress {
+    added: Arc<AtomicU64>,
+    aggregate: Arc<AtomicU64>,
+    overall_pb: Option<ProgressBar>,
+}
+
+impl AttemptProgress {
+    fn take_back(&self) {
+        let added = self.added.swap(0, Ordering::Relaxed);
+        if added == 0 {
+            return;
+        }
+        let current = self
+            .aggregate
+            .fetch_sub(added, Ordering::Relaxed)
+            .saturating_sub(added);
+        if let Some(ref pb) = self.overall_pb {
+            pb.set_position(current);
+        }
+    }
 }
 
 /// What `--partial` should do with `local_bytes` already on disk.
@@ -10614,39 +10820,126 @@ async fn cli_run_single_file_dag(
     (provider, result)
 }
 
+/// Why a single-file transfer on a held connection did not complete.
+struct TransferOnError {
+    message: String,
+    /// The session is gone or cannot be trusted: the provider says the peer
+    /// tore it down or the network failed ([`ProviderError::is_recoverable`]),
+    /// the message is one of `SESSION_CLOSED_NEEDLES`, or the provider no
+    /// longer reports itself connected. Anything else (a missing file, a
+    /// permission, a quota, a local I/O error, an API refusal) is about the
+    /// file, and the connection stays usable. A skip decided before the
+    /// transfer (`--max-transfer` spent, an existing file under `--immutable`)
+    /// says nothing about the session either.
+    session_lost: bool,
+    /// See [`WorkerJobDone::retry_safe`].
+    retry_safe: bool,
+    /// See [`WorkerJobDone::untouched`].
+    untouched: bool,
+}
+
+impl TransferOnError {
+    fn skipped(message: String) -> Self {
+        Self {
+            message,
+            session_lost: false,
+            retry_safe: true,
+            untouched: false,
+        }
+    }
+
+    /// Classify a transfer failure. No probe goes on the wire: FTP already
+    /// redials a session with a reply pending at the next command
+    /// (`redial_if_a_reply_is_pending`), and a probe would cost a token refresh
+    /// per failed file on Internxt.
+    ///
+    /// The message is read without the job's own `paths`, so that a missing
+    /// file called `connection reset.txt` stays a file error. A timeout counts
+    /// as a lost session: the session stopped answering, and neither
+    /// russh-sftp's request timeout ("Timeout") nor a TCP one ("Connection
+    /// timed out") is in `SESSION_CLOSED_NEEDLES`, whose other callers this
+    /// leaves alone.
+    fn from_provider(provider: &dyn StorageProvider, err: ProviderError, paths: &[&str]) -> Self {
+        let message = err.to_string();
+        let words = message_without_paths(&message, paths);
+        let session_lost = connection_lost_reading(provider, &err, paths)
+            || matches!(err, ProviderError::Timeout)
+            || words.contains("timeout")
+            || words.contains("timed out");
+        Self {
+            message,
+            session_lost,
+            retry_safe: true,
+            untouched: false,
+        }
+    }
+}
+
+/// `message` in lower case without `paths`, so that a file called
+/// `connection reset.txt` is not read as a sign of anything.
+fn message_without_paths(message: &str, paths: &[&str]) -> String {
+    let mut words = message.to_lowercase();
+    for path in paths.iter().filter(|path| !path.is_empty()) {
+        words = words.replace(&path.to_lowercase(), "");
+    }
+    words
+}
+
+/// Whether `err` ended the connection it came from: the error is a lost or
+/// absent connection or a network failure, its message (without `paths`) is
+/// one of `SESSION_CLOSED_NEEDLES`, or the provider no longer reports itself
+/// connected. A timeout on a connection still up is not one: the server was
+/// slow, and the session is still there. [`TransferOnError::from_provider`]
+/// adds the timeouts, since a batch job that timed out is not retried on the
+/// same session.
+fn connection_lost_reading(
+    provider: &dyn StorageProvider,
+    err: &ProviderError,
+    paths: &[&str],
+) -> bool {
+    matches!(
+        err,
+        ProviderError::ConnectionLost(_)
+            | ProviderError::NotConnected
+            | ProviderError::NetworkError(_)
+    ) || ftp_client_gui_lib::providers::types::is_session_closed_error_message(
+        &message_without_paths(&err.to_string(), paths),
+    ) || !provider.is_connected()
+}
+
+/// One download on a connection the caller holds: it neither opens nor
+/// closes it (see [`run_on_worker_connections`]).
 #[allow(clippy::too_many_arguments)]
-async fn download_transfer_task(
-    url: &str,
+async fn download_transfer_on(
+    provider: &mut dyn StorageProvider,
     remote_path: String,
     local_path: String,
     remote_modified: Option<String>,
     cli: &Cli,
-    format: OutputFormat,
     aggregate: Option<Arc<AtomicU64>>,
     overall_pb: Option<ProgressBar>,
     max_transfer_limit: Option<u64>,
-) -> Result<(), String> {
+) -> Result<(), TransferOnError> {
     // --max-transfer: skip if session limit already exceeded
     if session_transfer_exceeded(max_transfer_limit) {
-        return Err("max-transfer limit reached".to_string());
+        return Err(TransferOnError::skipped(
+            "max-transfer limit reached".to_string(),
+        ));
     }
 
-    let (mut provider, _) = create_and_connect(url, cli, format)
-        .await
-        .map_err(|code| format!("connection failed with exit code {}", code))?;
-
-    let progress_cb = aggregate.map(|aggregate| make_aggregate_progress_cb(aggregate, overall_pb));
+    let (progress_cb, attempt) = match aggregate {
+        Some(aggregate) => {
+            let (callback, attempt) = make_aggregate_progress_cb(aggregate, overall_pb);
+            (Some(callback), Some(attempt))
+        }
+        None => (None, None),
+    };
     let before = local_file_state(&local_path);
-    let result = download_with_resume(
-        &mut *provider,
-        &remote_path,
-        &local_path,
-        None,
-        cli,
-        progress_cb,
-    )
-    .await
-    .map_err(|e| e.to_string());
+    let result =
+        download_with_resume(provider, &remote_path, &local_path, None, cli, progress_cb).await;
+    if let (Err(_), Some(attempt)) = (&result, &attempt) {
+        attempt.take_back();
+    }
 
     // In --inplace mode the download writes directly to the final path, so a failed
     // transfer can leave a truncated file behind. When --partial is disabled, match
@@ -10663,56 +10956,550 @@ async fn download_transfer_task(
         session_transfer_add(bytes);
     }
 
-    let _ = provider.disconnect().await;
     result
+        .map_err(|err| TransferOnError::from_provider(provider, err, &[&remote_path, &local_path]))
 }
 
+/// One upload on a connection the caller holds: it neither opens nor closes
+/// it (see [`run_on_worker_connections`]). With `create_parent` it creates the
+/// remote parent first; a caller that created every parent before its
+/// workers started passes false, since workers creating the same folder at
+/// once make two of it on Google Drive, which allows two folders of one name.
 #[allow(clippy::too_many_arguments)]
-async fn upload_transfer_task(
-    url: &str,
+async fn upload_transfer_on(
+    provider: &mut dyn StorageProvider,
     local_path: String,
     remote_path: String,
     cli: &Cli,
-    format: OutputFormat,
+    no_clobber: bool,
+    create_parent: bool,
     aggregate: Option<Arc<AtomicU64>>,
     overall_pb: Option<ProgressBar>,
     max_transfer_limit: Option<u64>,
-) -> Result<(), String> {
+) -> Result<(), TransferOnError> {
     // --max-transfer: skip if session limit already exceeded
     if session_transfer_exceeded(max_transfer_limit) {
-        return Err("max-transfer limit reached".to_string());
-    }
-
-    let (mut provider, _) = create_and_connect(url, cli, format)
-        .await
-        .map_err(|code| format!("connection failed with exit code {}", code))?;
-
-    // --immutable: skip if remote file already exists (never overwrite)
-    if cli.immutable && provider.stat(&remote_path).await.is_ok() {
-        let _ = provider.disconnect().await;
-        return Err(format!(
-            "skipped (already exists, --immutable): {}",
-            remote_path
+        return Err(TransferOnError::skipped(
+            "max-transfer limit reached".to_string(),
         ));
     }
 
-    if let Some(parent) = Path::new(&remote_path).parent() {
-        let _ = provider.mkdir(&parent.to_string_lossy()).await;
+    // --immutable / --no-clobber: never overwrite a remote file.
+    if cli.immutable || no_clobber {
+        match provider.stat(&remote_path).await {
+            Ok(entry) => {
+                let local_size = std::fs::metadata(&local_path).map(|m| m.len()).ok();
+                let refusal = if put_run_left_incomplete(&remote_path) {
+                    Some(left_incomplete_refusal(&remote_path))
+                } else {
+                    let exact = remote_size_is_exact(&*provider, &entry);
+                    immutable_size_mismatch(cli, &remote_path, &entry, local_size, exact)
+                };
+                if let Some(message) = refusal {
+                    put_run_note_refused();
+                    return Err(TransferOnError {
+                        message,
+                        session_lost: false,
+                        retry_safe: true,
+                        untouched: false,
+                    });
+                }
+                let flag = if cli.immutable {
+                    "--immutable"
+                } else {
+                    "--no-clobber"
+                };
+                return Err(TransferOnError::skipped(format!(
+                    "{UPLOAD_SKIP_PREFIX}{flag}): {remote_path}"
+                )));
+            }
+            Err(ProviderError::NotFound(_)) => {}
+            // As a single `put` does: under `--immutable` a `stat` that fails
+            // for another reason fails closed, and `--no-clobber` proceeds,
+            // unless the check lost the session. A worker's connection can end
+            // between two jobs, and its `stat` then fails at once (SFTP's does
+            // not dial again) while the upload dials again by itself and would
+            // truncate the very file `--no-clobber` protects. Nothing is
+            // written yet, so the job runs again on a new connection instead
+            // (`untouched`), which sees the file.
+            Err(e) => {
+                let mut err =
+                    TransferOnError::from_provider(provider, e, &[&local_path, &remote_path]);
+                err.untouched = err.session_lost;
+                if cli.immutable {
+                    err.message = format!(
+                        "--immutable: cannot verify that {} does not exist ({}); refusing to write rather than risk an overwrite",
+                        remote_path, err.message
+                    );
+                    return Err(err);
+                }
+                if err.session_lost {
+                    err.message = format!(
+                        "--no-clobber: cannot verify that {} does not exist ({}); not written",
+                        remote_path, err.message
+                    );
+                    return Err(err);
+                }
+            }
+        }
+    }
+
+    if create_parent {
+        if let Some(parent) = Path::new(&remote_path).parent() {
+            let _ = provider.mkdir(&parent.to_string_lossy()).await;
+        }
     }
 
     let file_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
-    let progress_cb = aggregate.map(|aggregate| make_aggregate_progress_cb(aggregate, overall_pb));
-    let result = upload_with_resume(&mut *provider, &local_path, &remote_path, cli, progress_cb)
-        .await
-        .map_err(|e| e.to_string());
+    let (progress_cb, attempt) = match aggregate {
+        Some(aggregate) => {
+            let (callback, attempt) = make_aggregate_progress_cb(aggregate, overall_pb);
+            (Some(callback), Some(attempt))
+        }
+        None => (None, None),
+    };
+    let result = upload_with_resume(provider, &local_path, &remote_path, cli, progress_cb).await;
+    if let (Err(_), Some(attempt)) = (&result, &attempt) {
+        attempt.take_back();
+    }
 
     // Account transferred bytes
     if result.is_ok() {
         session_transfer_add(file_size);
     }
 
-    let _ = provider.disconnect().await;
-    result
+    result.map_err(|err| {
+        put_run_note_incomplete(&remote_path);
+        let mut err = TransferOnError::from_provider(provider, err, &[&local_path, &remote_path]);
+        // Past the existence check the upload may have created the remote
+        // file (SFTP opens it at its final path, then writes). Under
+        // `--immutable` or `--no-clobber` a second attempt would find that
+        // partial and skip it as already there, reporting a truncated file as
+        // success.
+        err.retry_safe = !(cli.immutable || no_clobber);
+        err
+    })
+}
+
+/// The byte figure of a batch summary: what arrived, with the total only
+/// when not all of it did. It printed the planned total alone, so a run that
+/// moved 4 files of 40 read "Downloaded 4/40 files (320.0 MB)".
+fn batch_bytes_summary(done: u64, total: u64) -> String {
+    if done >= total {
+        format_size(total)
+    } else {
+        format!("{} of {}", format_size(done), format_size(total))
+    }
+}
+
+/// What a batch on the shared executor moved: the planned total when every
+/// file arrived, else the engine's count of the bytes it transferred.
+fn shared_batch_bytes(
+    all_arrived: bool,
+    total: u64,
+    stats: Option<&ftp_client_gui_lib::transfer_dag::EngineTransferStats>,
+) -> u64 {
+    if all_arrived {
+        total
+    } else {
+        stats.map_or(0, |stats| stats.metrics.bytes_transferred)
+    }
+}
+
+/// What a job hands back to the worker that ran it.
+struct WorkerJobDone<R> {
+    /// The connection the job was given, or `None` if it had none.
+    conn: Option<Box<dyn StorageProvider>>,
+    result: Result<R, String>,
+    /// See [`TransferOnError::session_lost`].
+    session_lost: bool,
+    /// The job may run again after losing a fresh connection without hiding
+    /// that loss (see [`run_on_worker_connections`]).
+    retry_safe: bool,
+    /// The job lost its session before it wrote anything (the existence
+    /// check of `--immutable` or `--no-clobber`): on a connection of its own
+    /// it would have run on a fresh dial, so it goes back to the queue once
+    /// whatever the connection had completed before.
+    untouched: bool,
+}
+
+impl<R> WorkerJobDone<R> {
+    /// The outcome of a `*_transfer_on` call, mapped to the caller's result
+    /// and error message.
+    fn from_transfer(
+        conn: Box<dyn StorageProvider>,
+        outcome: Result<(), TransferOnError>,
+        ok: impl FnOnce() -> R,
+        describe: impl FnOnce(String) -> String,
+    ) -> Self {
+        match outcome {
+            Ok(()) => Self {
+                conn: Some(conn),
+                result: Ok(ok()),
+                session_lost: false,
+                retry_safe: true,
+                untouched: false,
+            },
+            Err(err) => Self {
+                conn: Some(conn),
+                result: Err(describe(err.message)),
+                session_lost: err.session_lost,
+                retry_safe: err.retry_safe,
+                untouched: err.untouched,
+            },
+        }
+    }
+
+    /// A job that ends without using a connection (no connection, or
+    /// cancelled): it gives back what it was given.
+    fn without_transfer(conn: Option<Box<dyn StorageProvider>>, message: String) -> Self {
+        Self {
+            conn,
+            result: Err(message),
+            session_lost: false,
+            retry_safe: true,
+            untouched: false,
+        }
+    }
+}
+
+/// Opens one connection for a worker of [`run_on_worker_connections`], with
+/// the error text the per-file paths have always reported.
+async fn connect_transfer_worker(
+    url: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<Box<dyn StorageProvider>, String> {
+    create_and_connect(url, cli, format)
+        .await
+        .map(|(provider, _)| provider)
+        .map_err(|code| format!("connection failed with exit code {}", code))
+}
+
+/// Jobs one worker connection carries before it is closed and the next job
+/// dials afresh: the pooled executor's `WARM_WORKER_MAX_FILES`, for the reason
+/// given there (an SFTP session reused across 5000 files ran out of handles on
+/// 4 of them).
+const WORKER_CONNECTION_MAX_JOBS: u32 = 128;
+
+/// Failed dials, or jobs lost on connections that had not completed one, that
+/// a worker accepts since its last job that kept its session; at this count
+/// it stops.
+const WORKER_MAX_STRIKES: u32 = 2;
+
+/// Pause before a worker dials again after a failed dial, so that a short
+/// outage (a server restart, a network blip) is ridden out rather than burning
+/// both of a worker's attempts in the same instant. It also spaces the login
+/// attempts a rate limiter sees.
+const WORKER_REDIAL_PAUSE: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Bound on closing a worker connection: a peer that stopped answering must
+/// not hold the batch at its end.
+const WORKER_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+async fn close_worker_connection(mut conn: Box<dyn StorageProvider>) {
+    let _ = tokio::time::timeout(WORKER_CLOSE_TIMEOUT, conn.disconnect()).await;
+}
+
+/// A connection a worker holds.
+struct HeldConnection {
+    conn: Box<dyn StorageProvider>,
+    /// It has completed a job.
+    proven: bool,
+    /// Jobs it has carried, toward [`WORKER_CONNECTION_MAX_JOBS`].
+    jobs: u32,
+}
+
+/// The jobs of [`run_on_worker_connections`] that have not finished.
+struct WorkerQueue<J> {
+    /// Waiting for a worker; each carries whether it has already lost a
+    /// fresh connection.
+    waiting: std::collections::VecDeque<(J, bool)>,
+    /// Taken by a worker and not finished: each may still come back.
+    in_hand: usize,
+}
+
+/// Single-file transfer jobs on one connection per worker, not one per file.
+///
+/// The paths that cannot use the pooled executor (providers without a
+/// transfer pool, `--immutable` uploads, sync with error correction) used to
+/// dial, and on the cloud APIs sign in, once per file: a 60-file `put -r` to
+/// Internxt made 60 logins, and the gateway answered 429 from about the
+/// twelfth on (live, 2026-09-27). Here `workers` workers take jobs from one
+/// queue, each with a connection of its own that it opens when it takes its
+/// first job and keeps for the next ones. The number of workers is the
+/// caller's, unchanged.
+///
+/// The rules, each pinned by a test:
+/// - A job that fails because of its file (see [`TransferOnError::session_lost`])
+///   keeps the connection; so does a skip decided before the transfer.
+/// - A job that loses a session which had already completed a job fails, as it
+///   would have on a connection of its own, and the next job dials afresh.
+/// - A job that loses a fresh connection, one that has completed nothing yet,
+///   goes back to the queue once, unless running it again could hide the loss
+///   ([`WorkerJobDone::retry_safe`]). If it loses a second fresh connection, or
+///   may not run again, it fails on its own: one bad file does not stop the
+///   batch.
+/// - A job that loses its session before it wrote anything
+///   ([`WorkerJobDone::untouched`]) goes back to the queue once whatever the
+///   connection had completed: a connection can end between two jobs, and on
+///   a connection of its own the job would have dialled afresh.
+/// - A failed dial puts its job back in the queue, and the worker waits
+///   [`WORKER_REDIAL_PAUSE`] before its next dial. Its exit code is not read:
+///   every command has connected once before its batch (its scan, its
+///   probe), so a refusal now is more often a passing one than wrong
+///   credentials (Internxt reports a 429 or a 5xx at login as a failed
+///   authentication, Jottacloud a network error in its OIDC discovery, FTP
+///   any login reply, 421 and 530 "too many connections" included).
+/// - A worker stops at its second failed dial, or its second job failed by
+///   losing fresh connections, since its last job that kept its session (an
+///   upload, a skip, an error of the file's own): past that the endpoint, not
+///   a file, is the problem, and dialling on would be the login storm this
+///   replaces. So a failure streak costs a worker at most five dials: four
+///   accepted and one refused, or three and two.
+/// - A worker that finds the queue empty while other workers still hold jobs
+///   waits for them: a job that comes back runs on its connection instead of
+///   failing for want of one. A connection that waited no longer counts as
+///   proven, since the server may have dropped it in the meantime.
+/// - A connection is closed after [`WORKER_CONNECTION_MAX_JOBS`] jobs.
+/// - `seed` is a connection the caller already holds (the scan connection it
+///   used to close before the batch); it serves the first worker that needs
+///   one, counts as proven, and is closed here if no job takes it.
+/// - Nothing is dialled once `cancelled` is set or the `max_transfer` budget is
+///   spent; those jobs get the reason instead.
+/// - When every worker has stopped, each job still queued reports that it was
+///   not transferred for want of a connection, with the last dial error if
+///   there was one: no job is dropped, and none carries another file's error.
+///
+/// `run` receives the connection, or why there is none, and hands it back in
+/// its [`WorkerJobDone`]. Results come back grouped by worker, in no set order,
+/// like the `buffer_unordered` batches this replaces.
+#[allow(clippy::too_many_arguments)]
+async fn run_on_worker_connections<J, R, C, CFut, F, Fut>(
+    seed: Option<Box<dyn StorageProvider>>,
+    workers: usize,
+    jobs: Vec<J>,
+    cancelled: &AtomicBool,
+    max_transfer: Option<u64>,
+    connect: C,
+    run: F,
+) -> Vec<Result<R, String>>
+where
+    J: Clone,
+    C: Fn() -> CFut,
+    CFut: std::future::Future<Output = Result<Box<dyn StorageProvider>, String>>,
+    F: Fn(Result<Box<dyn StorageProvider>, String>, J) -> Fut,
+    Fut: std::future::Future<Output = WorkerJobDone<R>>,
+{
+    use std::sync::Mutex as StdMutex;
+
+    fn lock<T>(mutex: &StdMutex<T>) -> std::sync::MutexGuard<'_, T> {
+        mutex
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    // Every worker runs on the caller's task, so no guard of these mutexes may
+    // live across an `.await`: take what is needed in a statement of its own.
+    let queue = StdMutex::new(WorkerQueue {
+        waiting: jobs.into_iter().map(|job| (job, false)).collect(),
+        in_hand: 0,
+    });
+    // Woken whenever a job finishes or comes back.
+    let changed = tokio::sync::Notify::new();
+    let seed = StdMutex::new(seed);
+    let last_dial_error: StdMutex<Option<String>> = StdMutex::new(None);
+
+    // The next job and whether the worker had to wait for it, or `None` once
+    // the queue is empty and no job is in hand.
+    let take_job = || async {
+        let mut waited = false;
+        loop {
+            // Registered before the queue is read, so a change made between
+            // the read and the wait still wakes this worker.
+            let notified = changed.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            {
+                let mut queue = lock(&queue);
+                if let Some((job, lost_once)) = queue.waiting.pop_front() {
+                    queue.in_hand += 1;
+                    return Some((job, lost_once, waited));
+                }
+                if queue.in_hand == 0 {
+                    return None;
+                }
+            }
+            notified.await;
+            waited = true;
+        }
+    };
+    let finish = || {
+        lock(&queue).in_hand -= 1;
+        changed.notify_waiters();
+    };
+    let put_back = |job: J, lost_once: bool| {
+        {
+            let mut queue = lock(&queue);
+            queue.waiting.push_front((job, lost_once));
+            queue.in_hand -= 1;
+        }
+        changed.notify_waiters();
+    };
+
+    let worker = || async {
+        let mut results = Vec::new();
+        let mut held: Option<HeldConnection> = None;
+        let mut failed_dials = 0u32;
+        let mut lost_jobs = 0u32;
+        while let Some((job, lost_once, waited)) = take_job().await {
+            if waited {
+                if let Some(current) = held.as_mut() {
+                    current.proven = false;
+                }
+            }
+            // Decided before any dial.
+            let skip = if cancelled.load(Ordering::Relaxed) {
+                Some("cancelled")
+            } else if held.is_none() && session_transfer_exceeded(max_transfer) {
+                Some("max-transfer limit reached")
+            } else {
+                None
+            };
+            if let Some(reason) = skip {
+                let done = run(Err(reason.to_string()), job).await;
+                if let Some(conn) = done.conn {
+                    close_worker_connection(conn).await;
+                }
+                results.push(done.result);
+                finish();
+                continue;
+            }
+
+            let current = match held.take() {
+                Some(current) => current,
+                None => {
+                    // Its own statement: the guard of a `match lock(..)`
+                    // scrutinee lives to the end of the match, across the dial
+                    // below, and a second worker locking the same mutex then
+                    // blocks the one thread every worker runs on (a live
+                    // `put -r --immutable` over SFTP hung this way).
+                    let seeded = lock(&seed).take();
+                    match seeded {
+                        Some(conn) => HeldConnection {
+                            conn,
+                            proven: true,
+                            jobs: 0,
+                        },
+                        None => match connect().await {
+                            Ok(conn) => HeldConnection {
+                                conn,
+                                proven: false,
+                                jobs: 0,
+                            },
+                            Err(message) => {
+                                *lock(&last_dial_error) = Some(message);
+                                put_back(job, lost_once);
+                                failed_dials += 1;
+                                if failed_dials >= WORKER_MAX_STRIKES {
+                                    break;
+                                }
+                                tokio::time::sleep(WORKER_REDIAL_PAUSE).await;
+                                continue;
+                            }
+                        },
+                    }
+                }
+            };
+
+            let HeldConnection { conn, proven, jobs } = current;
+            let retry = job.clone();
+            let done = run(Ok(conn), job).await;
+            let Some(conn) = done.conn else {
+                results.push(done.result);
+                finish();
+                continue;
+            };
+            let jobs = jobs + 1;
+            if !done.session_lost {
+                // The session answered, whatever the file's outcome (an
+                // upload, a skip, an error of the file's own): the endpoint
+                // works, and the strikes start over. Reset on uploads alone, a
+                // rerun that skips every file never reset them, and two
+                // refused logins across a whole batch stopped the worker.
+                failed_dials = 0;
+                lost_jobs = 0;
+            }
+            if done.result.is_ok() {
+                held = Some(HeldConnection {
+                    conn,
+                    proven: true,
+                    jobs,
+                });
+                results.push(done.result);
+                finish();
+            } else if !done.session_lost {
+                held = Some(HeldConnection { conn, proven, jobs });
+                results.push(done.result);
+                finish();
+            } else {
+                close_worker_connection(conn).await;
+                if !lost_once && done.retry_safe && (!proven || done.untouched) {
+                    put_back(retry, true);
+                } else {
+                    results.push(done.result);
+                    finish();
+                    if !proven {
+                        lost_jobs += 1;
+                        if lost_jobs >= WORKER_MAX_STRIKES {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if let Some(current) = held.take() {
+                if current.jobs >= WORKER_CONNECTION_MAX_JOBS {
+                    close_worker_connection(current.conn).await;
+                } else {
+                    held = Some(current);
+                }
+            }
+        }
+        if let Some(current) = held {
+            close_worker_connection(current.conn).await;
+        }
+        results
+    };
+
+    let mut results: Vec<Result<R, String>> =
+        futures_util::future::join_all((0..workers.max(1)).map(|_| worker()))
+            .await
+            .into_iter()
+            .flatten()
+            .collect();
+
+    // Every worker has stopped: the jobs nobody could run still report.
+    let error = match lock(&last_dial_error).clone() {
+        Some(dial) => format!("not transferred: no connection left ({dial})"),
+        None => "not transferred: no connection left".to_string(),
+    };
+    let left: Vec<J> = std::mem::take(&mut lock(&queue).waiting)
+        .into_iter()
+        .map(|(job, _)| job)
+        .collect();
+    for job in left {
+        let done = run(Err(error.clone()), job).await;
+        if let Some(conn) = done.conn {
+            close_worker_connection(conn).await;
+        }
+        results.push(done.result);
+    }
+    let unused_seed = lock(&seed).take();
+    if let Some(conn) = unused_seed {
+        close_worker_connection(conn).await;
+    }
+    results
 }
 
 // ── PD-CLI-CONV-B: shared provider executor convergence ────────────
@@ -10803,8 +11590,9 @@ impl ftp_client_gui_lib::transfer_event_sink::TransferEventSink for CliBatchSink
 /// back un-consumed via `Err(base)` so the caller keeps the legacy
 /// independent-connection path: honest fallback, no overclaim.
 ///
-/// Non-regression: the legacy CLI path opens N independent connections via
-/// `buffer_unordered(workers)`. The shared SFTP/FTP path opens N independent
+/// Non-regression: the legacy CLI path runs `workers` independent connections,
+/// one per worker, each reused for the files its worker takes
+/// (`run_on_worker_connections`). The shared SFTP/FTP path opens N independent
 /// SSH/FTP connections too (`clone_for_transfer` re-dial, PD-SFTP-1 /
 /// PD-FTP-1), bounded by `min(workers, provider session cap)`. Parallelism
 /// is preserved up to the provider's advertised safe cap; beyond it the
@@ -10871,7 +11659,6 @@ async fn run_shared_provider_download_batch(
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
             | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
-    note_parallel_ceiling(cli, &runtime_settings);
     if !is_pool_backed {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.
@@ -10882,6 +11669,9 @@ async fn run_shared_provider_download_batch(
             .expect("base provider must still be present");
         return Err(base);
     }
+    // The ceiling is the shared executor's: the legacy fallback above opens
+    // its own connections, `--parallel` of them, and does not reach it.
+    note_parallel_ceiling(cli, &runtime_settings);
 
     if !cli.quiet && !cli.json && !cli.machine {
         use ftp_client_gui_lib::transfer_dag::Capability;
@@ -11076,7 +11866,7 @@ struct SharedUploadOutcome {
 /// `commit_message` is `None`: the only provider that consumes it is
 /// GitHub, which is single-connection (never pool-backed) and therefore
 /// never reaches this shared path; it always takes the `Err(base)`
-/// legacy fallback where `upload_transfer_task` handles it.
+/// legacy fallback where `upload_transfer_on` handles it.
 ///
 /// `--immutable` is NOT honoured here (the shared upload executor has no
 /// remote-stat skip, and unlike `get -r` the put scan does not
@@ -11089,8 +11879,9 @@ struct SharedUploadOutcome {
 /// Remote parent directories must be pre-created by the caller while the
 /// scan provider is connected (the shared executor does not mkdir).
 ///
-/// Non-regression: the legacy CLI path opens N independent connections
-/// via `buffer_unordered(workers)`. The shared SFTP/FTP path opens N
+/// Non-regression: the legacy CLI path runs `workers` independent
+/// connections, one per worker, each reused for the files its worker takes
+/// (`run_on_worker_connections`). The shared SFTP/FTP path opens N
 /// independent SSH/FTP connections too (`clone_for_transfer` re-dial,
 /// PD-SFTP-1 / PD-FTP-1), bounded by `min(workers, provider session cap)`.
 /// Parallelism is preserved up to the provider's advertised safe cap;
@@ -11140,7 +11931,6 @@ async fn run_shared_provider_upload_batch(
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
             | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
-    note_parallel_ceiling(cli, &runtime_settings);
     if !is_pool_backed {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.
@@ -11151,6 +11941,9 @@ async fn run_shared_provider_upload_batch(
             .expect("base provider must still be present");
         return Err(base);
     }
+    // The ceiling is the shared executor's: the legacy fallback above opens
+    // its own connections, `--parallel` of them, and does not reach it.
+    note_parallel_ceiling(cli, &runtime_settings);
 
     // --max-transfer: pre-flight truncate to the remaining session budget
     // (file-granular, the legacy `session_transfer_exceeded` semantics) so
@@ -12020,7 +12813,41 @@ fn load_active_user_profiles(
         None => return Err("NO_ACTIVE_USER".to_string()),
     };
     match user_partitions::cli_list_server_profiles_for_user(store, target.id) {
-        Ok(profiles) => Ok(profiles),
+        Ok(mut profiles) => {
+            // rclone-crypt secrets that `import rclone --apply` used to leave in
+            // a profile's options move to the vault and a binding, once; the list
+            // is re-read, merged and written in one transaction, and only when a
+            // move applied.
+            let uid = scoped_credential_user_id(cli, store);
+            let notes = ftp_client_gui_lib::bridge_commands::migrate_legacy_rclone_crypt_on_load(
+                &mut profiles,
+                |key, secret| dual_store_server_cred_checked(store, uid, key, secret),
+                |key| read_server_cred(store, uid, key),
+                |apply| {
+                    let (stored, written) = user_partitions::cli_update_server_profiles_for_user(
+                        store, target.id, apply,
+                    )?;
+                    if written {
+                        mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
+                    }
+                    Ok((stored, written))
+                },
+            );
+            // A profile left unmoved keeps its secrets in its options and opens
+            // without its overlay: say so on every run until it is fixed, once
+            // per run (a command can load the list more than once).
+            static NOTES_SHOWN: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            if !cli.quiet
+                && !notes.is_empty()
+                && !NOTES_SHOWN.swap(true, std::sync::atomic::Ordering::Relaxed)
+            {
+                for note in &notes {
+                    eprintln!("Warning: {note}");
+                }
+            }
+            Ok(profiles)
+        }
         Err(e) if e == "USER_LOCKED" => Err(e),
         Err(e) if e == "NO_ACTIVE_USER" => Err(e),
         Err(_) => {
@@ -12046,6 +12873,34 @@ fn load_active_user_profiles(
 /// the persistent active user). The legacy `config_server_profiles` blob is
 /// mirrored ONLY when writing to the persistent active user, so downgrade
 /// to a single-user CLI does not silently surface someone else's profiles.
+/// Whether `user_id` is the persistent active user (not a `--user` override).
+fn is_active_user(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
+) -> bool {
+    ftp_client_gui_lib::user_partitions::cli_get_active_user(store)
+        .ok()
+        .flatten()
+        .map(|u| u.id)
+        == Some(user_id)
+}
+
+/// Mirror a written profile list to the legacy blob, only when the write
+/// targets the persistent active user. Mirroring a `--user other` write would
+/// leak `other`'s profile names into the legacy blob, which is exactly the
+/// cross-partition leak R3 forbids.
+fn mirror_profiles_to_legacy_blob_if_active(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
+    profiles: &[serde_json::Value],
+) {
+    if is_active_user(store, user_id) {
+        if let Ok(serialized) = serde_json::to_string(profiles) {
+            let _ = store.store("config_server_profiles", &serialized);
+        }
+    }
+}
+
 fn save_active_user_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
@@ -12056,23 +12911,11 @@ fn save_active_user_profiles(
         Some(t) => t,
         None => return Err("NO_ACTIVE_USER".to_string()),
     };
-    let active_id = user_partitions::cli_get_active_user(store)
-        .ok()
-        .flatten()
-        .map(|u| u.id);
-    let writing_to_active = active_id == Some(target.id);
+    let writing_to_active = is_active_user(store, target.id);
 
     match user_partitions::cli_replace_server_profiles_for_user(store, target.id, profiles) {
         Ok(()) => {
-            // Only mirror to the legacy blob when the write targets the
-            // persistent active user. Mirroring a `--user other` write would
-            // leak `other`'s profile names into the legacy blob, which is
-            // exactly the cross-partition leak R3 forbids.
-            if writing_to_active {
-                if let Ok(serialized) = serde_json::to_string(profiles) {
-                    let _ = store.store("config_server_profiles", &serialized);
-                }
-            }
+            mirror_profiles_to_legacy_blob_if_active(store, target.id, profiles);
             Ok(())
         }
         Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => Err(e),
@@ -16896,7 +17739,7 @@ async fn remove_tui_session_via_cli_handler(
     let result = if recursive {
         provider.rmdir_recursive(&resolved).await
     } else {
-        delete_file_or_empty_dir(provider, &resolved).await
+        ftp_client_gui_lib::providers::delete_non_recursive(provider, &resolved).await
     };
     result
         .map(|_| resolved)
@@ -26646,7 +27489,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
                 {"name": "mv", "syntax": "aeroftp-cli mv --profile NAME /old /new", "description": "Move/rename"},
                 {"name": "cp", "syntax": "aeroftp-cli cp --profile NAME /old /new", "description": "Server-side copy when supported"},
                 {"name": "link", "syntax": "aeroftp-cli link --profile NAME /path/file", "description": "Create share link when supported"},
-                {"name": "edit", "syntax": "aeroftp-cli edit --profile NAME /path/file \"find\" \"replace\" [--first]", "description": "Replace text in a remote UTF-8 file"},
+                {"name": "edit", "syntax": "aeroftp-cli edit --profile NAME /path/file \"find\" \"replace\" [--first] [--allow-non-atomic]", "description": "Replace text in a remote UTF-8 file"},
                 {"name": "sync", "syntax": "aeroftp-cli sync --profile NAME ./local/ /remote/ [--dry-run]", "description": "Sync directories"},
                 {"name": "transfer", "syntax": "aeroftp-cli transfer \"SRC_PROFILE\" \"DST_PROFILE\" /src/path /dst/path [-r] [--dry-run] [--skip-existing]", "description": "Copy files between two saved profiles (cross-profile, no local hop on disk)"},
             ],
@@ -28685,7 +29528,10 @@ async fn cli_apply_crypt_overlay(
             }
         },
     };
-    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
+    let stored_password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id));
+    // A secret from the environment carries no recorded form.
+    let password_from_env = stored_password.is_none();
+    let password = stored_password
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
         .unwrap_or_default();
     // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
@@ -28697,9 +29543,12 @@ async fn cli_apply_crypt_overlay(
         );
         return Err(5);
     }
-    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
+    let stored_salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id));
+    let salt_from_env = stored_salt.is_none();
+    let salt = stored_salt
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
+    let (password_form, salt_form) = ftp_client_gui_lib::rclone_crypt::crypt_secret_forms(profile);
     let local_config_json =
         read_server_cred(&store, uid, &format!("aerocrypt_overlay_config_{}", id))
             .filter(|s| !s.is_empty());
@@ -28722,6 +29571,16 @@ async fn cli_apply_crypt_overlay(
             Some(salt.clone())
         },
         with_header,
+        password_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            password_form,
+            password_from_env,
+            "AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM",
+        ),
+        salt_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            salt_form,
+            salt_from_env,
+            "AEROFTP_CRYPT_OVERLAY_SALT_FORM",
+        ),
     };
     match ftp_client_gui_lib::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
         provider,
@@ -30333,8 +31192,8 @@ fn webdav_move_may_overwrite(headers: &HeaderMap) -> bool {
 /// `x/`), and an ambiguous path (Cloudinary: an asset and a folder sharing a
 /// name) emptied the folder. The escalation now happens only for a path `stat`
 /// calls a directory (not a link to one), or one it cannot describe (see
-/// [`stat_cannot_describe`]) that the provider can list: on S3 the served
-/// collection `x` is the prefix `x/`, which no key names.
+/// `providers::stat_cannot_describe`) that the provider can list: on S3 the
+/// served collection `x` is the prefix `x/`, which no key names.
 async fn served_webdav_delete(
     provider: &mut dyn StorageProvider,
     path: &str,
@@ -30349,7 +31208,7 @@ async fn served_webdav_delete(
         // An object store sees no key `x` behind the collection `x/`: only a
         // path the provider can list is a collection. A key that is simply
         // gone keeps the delete error.
-        Err(e) if stat_cannot_describe(&e) => {
+        Err(e) if ftp_client_gui_lib::providers::stat_cannot_describe(&e) => {
             if provider.list(path).await.is_err() {
                 return Err(refused);
             }
@@ -30383,6 +31242,16 @@ async fn webdav_dispatch(
         Err(status) => return serve_error_response(status, "Invalid path"),
     };
     let remote_path = build_served_remote_path(&state.base_path, &relative_path);
+
+    // The served root is the share itself: a DELETE of it recursed into the
+    // whole base path, and a MOVE of it took the share away from under the
+    // server. A client removes or moves what is inside it.
+    if relative_path.is_empty() && matches!(method.as_str(), "DELETE" | "MOVE") {
+        return serve_error_response(
+            StatusCode::FORBIDDEN,
+            "The served root cannot be deleted or moved",
+        );
+    }
 
     match method.as_str() {
         "OPTIONS" => {
@@ -30862,7 +31731,9 @@ mod serve_ftp_backend {
 
         fn provider_err_to_ftp(e: ProviderError) -> FtpError {
             let kind = match &e {
-                ProviderError::NotFound(_) => FtpErrorKind::PermanentFileNotAvailable,
+                ProviderError::NotFound(_) | ProviderError::DirectoryNotEmpty(_) => {
+                    FtpErrorKind::PermanentFileNotAvailable
+                }
                 ProviderError::PermissionDenied(_) => FtpErrorKind::PermissionDenied,
                 _ => FtpErrorKind::LocalError,
             };
@@ -30999,7 +31870,16 @@ mod serve_ftp_backend {
         ) -> FtpResult<()> {
             let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
-            p.delete(&remote).await.map_err(Self::provider_err_to_ftp)
+            // DELE removes a file; RMD is the directory verb. A directory is
+            // refused with 550, as a server with a file system answers.
+            ftp_client_gui_lib::providers::delete_file_only(p.as_mut(), &remote)
+                .await
+                .map_err(|e| match e {
+                    ProviderError::InvalidPath(_) => {
+                        FtpError::new(FtpErrorKind::PermanentFileNotAvailable, e)
+                    }
+                    e => Self::provider_err_to_ftp(e),
+                })
         }
 
         async fn mkd<P: AsRef<Path> + Send + Debug>(
@@ -31033,7 +31913,9 @@ mod serve_ftp_backend {
         ) -> FtpResult<()> {
             let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
-            p.rmdir(&remote).await.map_err(Self::provider_err_to_ftp)
+            ftp_client_gui_lib::providers::remove_empty_directory(p.as_mut(), &remote)
+                .await
+                .map_err(Self::provider_err_to_ftp)
         }
 
         async fn cwd<P: AsRef<Path> + Send + Debug>(
@@ -31335,6 +32217,31 @@ mod serve_sftp {
         rt: Arc<tokio::runtime::Runtime>,
     }
 
+    #[cfg(test)]
+    impl AeroSftpHandler {
+        /// A handler on `provider` serving `/`, without authentication.
+        pub(crate) fn for_tests(
+            provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+            rt: Arc<tokio::runtime::Runtime>,
+        ) -> Self {
+            Self {
+                provider,
+                base_path: "/".to_string(),
+                auth_credentials: None,
+                handles: HashMap::new(),
+                next_handle: 0,
+                dir_read: std::collections::HashSet::new(),
+                sftp_buf: Vec::new(),
+                rt,
+            }
+        }
+
+        /// The reply to one SFTP packet (type byte first, no length).
+        pub(crate) fn answer(&mut self, packet: &[u8]) -> Vec<u8> {
+            self.process_sftp(packet)
+        }
+    }
+
     impl AeroSftpHandler {
         fn resolve_path(&self, path: &str) -> Result<String, &'static str> {
             resolve_served_backend_path(&self.base_path, path)
@@ -31608,8 +32515,17 @@ mod serve_sftp {
                         }
                     };
                     let r = remote.clone();
-                    match prov!(provider, rt, async |p| p.delete(&r).await) {
+                    // REMOVE removes a file; RMDIR is the directory verb.
+                    // Protocol 3 has no "is a directory" status: it is
+                    // SSH_FX_FAILURE, as OpenSSH's sftp-server answers for
+                    // EISDIR, with a message that says why.
+                    match prov!(provider, rt, async |p| {
+                        ftp_client_gui_lib::providers::delete_file_only(p, &r).await
+                    }) {
                         Ok(()) => make_status(id, SSH_FX_OK, ""),
+                        Err(ProviderError::InvalidPath(_)) => {
+                            make_status(id, SSH_FX_FAILURE, "is a directory")
+                        }
                         Err(_) => make_status(id, SSH_FX_FAILURE, "delete failed"),
                     }
                 }
@@ -31646,7 +32562,9 @@ mod serve_sftp {
                         }
                     };
                     let r = remote.clone();
-                    match prov!(provider, rt, async |p| p.rmdir(&r).await) {
+                    match prov!(provider, rt, async |p| {
+                        ftp_client_gui_lib::providers::remove_empty_directory(p, &r).await
+                    }) {
                         Ok(()) => make_status(id, SSH_FX_OK, ""),
                         Err(_) => make_status(id, SSH_FX_FAILURE, "rmdir failed"),
                     }
@@ -33518,6 +34436,8 @@ async fn cmd_get_recursive(
     };
 
     let mut downloaded: u32 = 0;
+    // What arrived, for the summary (see `batch_bytes_summary`).
+    let mut done_bytes: u64 = 0;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
     let mut errors: Vec<String> = listing_errors;
@@ -33545,6 +34465,11 @@ async fn cmd_get_recursive(
     {
         Ok(outcome) => {
             downloaded = outcome.downloaded;
+            done_bytes = shared_batch_bytes(
+                downloaded as usize == total_files,
+                total_bytes,
+                outcome.engine_stats.as_ref(),
+            );
             over_budget = outcome.over_budget;
             // G108, and the reason this is `extend` and not `=`: `errors`
             // starts as `listing_errors`, the directories the scan could not
@@ -33556,44 +34481,58 @@ async fn cmd_get_recursive(
             engine_stats = outcome.engine_stats;
             download_segments = Some(outcome.download_segments);
         }
-        Err(mut base) => {
-            let _ = base.disconnect().await;
-            let results = futures_util::stream::iter(files.into_iter().map(
-                |(remote_path, local_path, _size)| {
+        Err(base) => {
+            // One connection per worker, starting with the scan connection,
+            // instead of one per file (see `run_on_worker_connections`).
+            let results = run_on_worker_connections(
+                Some(base),
+                effective_parallel_workers(cli),
+                files,
+                &cancelled,
+                resolve_max_transfer(cli),
+                || connect_transfer_worker(url, cli, format),
+                |conn, (remote_path, local_path, size)| {
                     let cancelled = cancelled.clone();
                     let aggregate = aggregate.clone();
                     let overall_pb = overall_pb.clone();
                     let remote_modified = remote_mtimes.get(&remote_path).cloned();
                     async move {
                         if cancelled.load(Ordering::Relaxed) {
-                            return Err("Cancelled by user".to_string());
+                            return WorkerJobDone::without_transfer(
+                                conn.ok(),
+                                "Cancelled by user".to_string(),
+                            );
                         }
+                        let mut conn = match conn {
+                            Ok(conn) => conn,
+                            Err(err) => return WorkerJobDone::without_transfer(None, err),
+                        };
                         if let Some(parent) = Path::new(&local_path).parent() {
                             let _ = std::fs::create_dir_all(parent);
                         }
-                        let result = download_transfer_task(
-                            url,
+                        let outcome = download_transfer_on(
+                            &mut *conn,
                             remote_path.clone(),
                             local_path,
                             remote_modified,
                             cli,
-                            format,
                             Some(aggregate),
                             overall_pb,
                             resolve_max_transfer(cli),
                         )
                         .await;
-                        result.map(|_| remote_path)
+                        WorkerJobDone::from_transfer(conn, outcome, || size, |err| err)
                     }
                 },
-            ))
-            .buffer_unordered(effective_parallel_workers(cli))
-            .collect::<Vec<_>>()
+            )
             .await;
 
             for result in results {
                 match result {
-                    Ok(_) => downloaded += 1,
+                    Ok(bytes) => {
+                        downloaded += 1;
+                        done_bytes += bytes;
+                    }
                     Err(err) => errors.push(err),
                 }
             }
@@ -33612,7 +34551,7 @@ async fn cmd_get_recursive(
                     "Downloaded {}/{} files ({}) in {:.1}s",
                     downloaded,
                     total_files,
-                    format_size(total_bytes),
+                    batch_bytes_summary(done_bytes, total_bytes),
                     elapsed.as_secs_f64()
                 );
                 for err in &errors {
@@ -33768,7 +34707,7 @@ async fn cmd_get_glob(
     // by construction. Coherent with `get -r` (scan pre-filter) and `sync`
     // (plan strip); without this `get --glob` would silently ignore
     // --immutable on both paths (neither the shared executor nor
-    // `download_transfer_task` has a skip-if-exists check). The skipped
+    // `download_transfer_on` has a skip-if-exists check). The skipped
     // count is intentional (not a failure): it is added back to the exit
     // accounting below so an immutable run is exit 0, like `get -r`.
     let mut immutable_skipped: u32 = 0;
@@ -33814,39 +34753,50 @@ async fn cmd_get_glob(
             engine_stats = outcome.engine_stats;
             download_segments = Some(outcome.download_segments);
         }
-        Err(mut base) => {
-            let _ = base.disconnect().await;
-            let results = futures_util::stream::iter(files.into_iter().map(
-                |(remote_path, local_path, _size)| {
+        Err(base) => {
+            // One connection per worker, starting with the scan connection,
+            // instead of one per file (see `run_on_worker_connections`).
+            let results = run_on_worker_connections(
+                Some(base),
+                effective_parallel_workers(cli),
+                files,
+                &cancelled,
+                resolve_max_transfer(cli),
+                || connect_transfer_worker(url, cli, format),
+                |conn, (remote_path, local_path, _size)| {
                     let cancelled = cancelled.clone();
                     let aggregate = aggregate.clone();
                     let overall_pb = overall_pb.clone();
                     let remote_modified = remote_mtimes.get(&remote_path).cloned();
                     async move {
                         if cancelled.load(Ordering::Relaxed) {
-                            return Err("Cancelled by user".to_string());
+                            return WorkerJobDone::without_transfer(
+                                conn.ok(),
+                                "Cancelled by user".to_string(),
+                            );
                         }
+                        let mut conn = match conn {
+                            Ok(conn) => conn,
+                            Err(err) => return WorkerJobDone::without_transfer(None, err),
+                        };
                         if let Some(parent) = Path::new(&local_path).parent() {
                             let _ = std::fs::create_dir_all(parent);
                         }
-                        download_transfer_task(
-                            url,
+                        let outcome = download_transfer_on(
+                            &mut *conn,
                             remote_path.clone(),
                             local_path,
                             remote_modified,
                             cli,
-                            format,
                             Some(aggregate),
                             overall_pb,
                             resolve_max_transfer(cli),
                         )
-                        .await
-                        .map(|_| remote_path)
+                        .await;
+                        WorkerJobDone::from_transfer(conn, outcome, || remote_path, |err| err)
                     }
                 },
-            ))
-            .buffer_unordered(effective_parallel_workers(cli))
-            .collect::<Vec<_>>()
+            )
             .await;
 
             for result in results {
@@ -33914,6 +34864,119 @@ async fn cmd_get_glob(
     }
 }
 
+/// What one `put` command learns across its attempts (the text mode's
+/// `--retries` reruns it): the remote paths an upload reached and then failed
+/// on, which may hold its partial, and whether an upload was refused for a
+/// reason another attempt cannot change. `put_with_retries` scopes it to the
+/// command; outside that scope (`sync`, the tests of the pieces) nothing is
+/// kept.
+#[derive(Default)]
+struct PutRun {
+    left_incomplete: std::sync::Mutex<std::collections::HashSet<String>>,
+    /// This attempt refused an upload for a reason the next would meet again.
+    refused: AtomicBool,
+    /// This attempt failed some other way, which the next may not meet.
+    other_failure: AtomicBool,
+}
+
+tokio::task_local! {
+    static PUT_RUN: Arc<PutRun>;
+}
+
+/// An upload to `remote` failed after its existence check: it may have left
+/// a partial there.
+fn put_run_note_incomplete(remote: &str) {
+    let _ = PUT_RUN.try_with(|run| {
+        run.left_incomplete
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(remote.to_string());
+    });
+}
+
+/// An earlier attempt of this command left `remote` incomplete.
+fn put_run_left_incomplete(remote: &str) -> bool {
+    PUT_RUN
+        .try_with(|run| {
+            run.left_incomplete
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .contains(remote)
+        })
+        .unwrap_or(false)
+}
+
+/// An upload was refused for a reason another attempt cannot change.
+fn put_run_note_refused() {
+    let _ = PUT_RUN.try_with(|run| run.refused.store(true, Ordering::Relaxed));
+}
+
+/// A batch ends: any failure among `errors` that is not a refusal (see
+/// `UPLOAD_REFUSED_PREFIX`) may pass on another attempt.
+fn put_run_note_failures(errors: &[String]) {
+    if errors
+        .iter()
+        .any(|error| !error.starts_with(UPLOAD_REFUSED_PREFIX))
+    {
+        let _ = PUT_RUN.try_with(|run| run.other_failure.store(true, Ordering::Relaxed));
+    }
+}
+
+/// `put` with the text mode's retries. An attempt that exits with a
+/// retryable code runs again, unless every failure in it was a refusal the
+/// next attempt would meet again (a remote file of another size under
+/// `--immutable`, a partial an earlier attempt left): repeating those would
+/// only print them again. An attempt that also failed some other way (a
+/// 503, a lost connection) runs again, and its refusals are reported again.
+/// Ctrl-C ends the retries as in [`retry_transfer_command`].
+#[allow(clippy::too_many_arguments)]
+async fn put_with_retries(
+    url: &str,
+    local: &str,
+    remote: Option<&str>,
+    recursive: bool,
+    no_clobber: bool,
+    delta: bool,
+    access: Option<CliAccessLevel>,
+    cli: &Cli,
+    format: OutputFormat,
+    cancelled: Arc<AtomicBool>,
+) -> i32 {
+    let run = Arc::new(PutRun::default());
+    PUT_RUN
+        .scope(run.clone(), async {
+            retry_transfer_command_until(
+                cli,
+                effective_max_attempts(cli, format),
+                parse_retry_sleep(&cli.retries_sleep),
+                resolve_max_transfer(cli),
+                &cancelled,
+                || {
+                    run.refused.store(false, Ordering::Relaxed);
+                    run.other_failure.store(false, Ordering::Relaxed);
+                    cmd_put(
+                        url,
+                        local,
+                        remote,
+                        recursive,
+                        no_clobber,
+                        delta,
+                        access,
+                        cli,
+                        format,
+                        cancelled.clone(),
+                    )
+                },
+                || {
+                    run.refused.load(Ordering::Relaxed)
+                        && !run.other_failure.load(Ordering::Relaxed)
+                },
+            )
+            .await
+        })
+        .await
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_put(
     url: &str,
@@ -33943,7 +35006,7 @@ async fn cmd_put(
                 "Note: --access is not applied per-file on recursive uploads in this release; set the destination folder privacy with `aeroftp mkdir --access` (it cascades to children)"
             );
         }
-        return cmd_put_recursive(url, local, remote, cli, format, cancelled).await;
+        return cmd_put_recursive(url, local, remote, no_clobber, cli, format, cancelled).await;
     }
 
     // Check for glob patterns in local path
@@ -33958,7 +35021,7 @@ async fn cmd_put(
                 "Note: --access is not applied per-file on glob uploads in this release; set the destination folder privacy with `aeroftp mkdir --access` (it cascades to children)"
             );
         }
-        return cmd_put_glob(url, local, remote, cli, format, cancelled).await;
+        return cmd_put_glob(url, local, remote, no_clobber, cli, format, cancelled).await;
     }
 
     const NOT_STARTED: &str = "the upload did not start";
@@ -34039,9 +35102,15 @@ async fn cmd_put(
             } else {
                 "--no-clobber"
             };
-            if let Some(code) =
-                skip_if_destination_exists(provider.as_mut(), remote_path, flag_name, cli, format)
-                    .await
+            if let Some(code) = skip_if_destination_exists(
+                provider.as_mut(),
+                remote_path,
+                flag_name,
+                std::fs::metadata(local).map(|m| m.len()).ok(),
+                cli,
+                format,
+            )
+            .await
             {
                 let _ = provider.disconnect().await;
                 return Some(code);
@@ -34268,6 +35337,9 @@ async fn cmd_put(
             0
         }
         Err(e) => {
+            // It may have left a partial at the target: a later attempt of
+            // this command must not skip it as already there.
+            put_run_note_incomplete(remote_path);
             if let Some(pb) = pb {
                 pb.finish_and_clear();
             }
@@ -34286,6 +35358,7 @@ async fn cmd_put_recursive(
     url: &str,
     local_dir: &str,
     remote_base: Option<&str>,
+    no_clobber: bool,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
@@ -34468,6 +35541,8 @@ async fn cmd_put_recursive(
     };
 
     let mut uploaded: u32 = 0;
+    // What arrived, for the summary (see `batch_bytes_summary`).
+    let mut done_bytes: u64 = 0;
     let mut skipped: u32 = 0;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
@@ -34490,14 +35565,21 @@ async fn cmd_put_recursive(
     // pre-filter existing remote files. Non-pool-backed providers
     // (single-conn APIs) fall back to the legacy independent-connection
     // batch below: honest fallback, no overclaim.
-    let use_legacy = if cli.immutable {
+    // The connection the legacy batch starts from, instead of closing it.
+    let mut legacy_seed: Option<Box<dyn StorageProvider>> = None;
+    let use_legacy = if cli.immutable || no_clobber {
         if !cli.quiet {
             eprintln!(
-                "Note: --immutable uses the single-stream upload path \
-                 (the pooled uploader has no remote-existence check)"
+                "Note: {} uses the single-stream upload path \
+                 (the pooled uploader has no remote-existence check)",
+                if cli.immutable {
+                    "--immutable"
+                } else {
+                    "--no-clobber"
+                }
             );
         }
-        let _ = provider.disconnect().await;
+        legacy_seed = Some(provider);
         true
     } else {
         match run_shared_provider_upload_batch(
@@ -34511,6 +35593,11 @@ async fn cmd_put_recursive(
         {
             Ok(outcome) => {
                 uploaded = outcome.uploaded;
+                done_bytes = shared_batch_bytes(
+                    uploaded as usize == total_files,
+                    total_bytes,
+                    outcome.engine_stats.as_ref(),
+                );
                 over_budget = outcome.over_budget;
                 // Same shape as the one CodeRabbit raised on the download
                 // twin, and found by asking whether that one was alone: here
@@ -34522,46 +35609,64 @@ async fn cmd_put_recursive(
                 engine_stats = outcome.engine_stats;
                 false
             }
-            Err(mut base) => {
-                let _ = base.disconnect().await;
+            Err(base) => {
+                legacy_seed = Some(base);
                 true
             }
         }
     };
 
     if use_legacy {
-        let results = futures_util::stream::iter(files.into_iter().map(
-            |(local_path, remote_path, _size)| {
+        // One connection per worker, starting with the scan connection,
+        // instead of one per file (see `run_on_worker_connections`).
+        let results = run_on_worker_connections(
+            legacy_seed.take(),
+            effective_parallel_workers(cli),
+            files,
+            &cancelled,
+            resolve_max_transfer(cli),
+            || connect_transfer_worker(url, cli, format),
+            |conn, (local_path, remote_path, size)| {
                 let cancelled = cancelled.clone();
                 let aggregate = aggregate.clone();
                 let overall_pb = overall_pb.clone();
                 async move {
                     if cancelled.load(Ordering::Relaxed) {
-                        return Err("Cancelled by user".to_string());
+                        return WorkerJobDone::without_transfer(
+                            conn.ok(),
+                            "Cancelled by user".to_string(),
+                        );
                     }
-                    upload_transfer_task(
-                        url,
+                    let mut conn = match conn {
+                        Ok(conn) => conn,
+                        Err(err) => return WorkerJobDone::without_transfer(None, err),
+                    };
+                    let outcome = upload_transfer_on(
+                        &mut *conn,
                         local_path.clone(),
-                        remote_path.clone(),
+                        remote_path,
                         cli,
-                        format,
+                        no_clobber,
+                        // Every folder was created before the workers started.
+                        false,
                         Some(aggregate),
                         overall_pb,
                         resolve_max_transfer(cli),
                     )
-                    .await
-                    .map(|_| local_path)
+                    .await;
+                    WorkerJobDone::from_transfer(conn, outcome, || size, |err| err)
                 }
             },
-        ))
-        .buffer_unordered(effective_parallel_workers(cli))
-        .collect::<Vec<_>>()
+        )
         .await;
 
         for result in results {
             match result {
-                Ok(_) => uploaded += 1,
-                Err(ref err) if err.contains("--immutable") => {
+                Ok(bytes) => {
+                    uploaded += 1;
+                    done_bytes += bytes;
+                }
+                Err(ref err) if err.starts_with(UPLOAD_SKIP_PREFIX) => {
                     skipped += 1;
                 }
                 Err(err) => errors.push(err),
@@ -34573,6 +35678,8 @@ async fn cmd_put_recursive(
         pb.finish_and_clear();
     }
 
+    put_run_note_failures(&errors);
+
     let elapsed = start.elapsed();
 
     match format {
@@ -34582,10 +35689,18 @@ async fn cmd_put_recursive(
                     "\nUploaded {}/{} files ({}) in {:.1}s{}",
                     uploaded,
                     total_files,
-                    format_size(total_bytes),
+                    batch_bytes_summary(done_bytes, total_bytes),
                     elapsed.as_secs_f64(),
                     if skipped > 0 {
-                        format!(" ({} skipped, --immutable)", skipped)
+                        format!(
+                            " ({} skipped, {})",
+                            skipped,
+                            if cli.immutable {
+                                "--immutable"
+                            } else {
+                                "--no-clobber"
+                            }
+                        )
                     } else {
                         String::new()
                     }
@@ -35321,47 +36436,6 @@ async fn run_rm_dry_run(
     0
 }
 
-/// Delete `path` as a file, or as an empty directory when it is one.
-///
-/// `rm` and the TUI used to fall back to `rmdir` after ANY `delete` failure. A
-/// path the provider cannot resolve to one item (Cloudinary answers
-/// `InvalidPath` for a name an asset and a folder share) then removed the
-/// folder, and a file `delete` refused for another reason was sent to `rmdir`.
-/// The fallback now asks `stat`: a directory (not a link to one) goes to
-/// `rmdir`, and so does a path `stat` cannot describe (see
-/// [`stat_cannot_describe`]), so `rm` of an empty directory still works
-/// where it did. A file, an ambiguous path, a link and a failed `stat` keep
-/// the `delete` error.
-async fn delete_file_or_empty_dir(
-    provider: &mut dyn StorageProvider,
-    path: &str,
-) -> Result<(), ProviderError> {
-    let refused = match provider.delete(path).await {
-        Ok(()) => return Ok(()),
-        Err(ProviderError::Cancelled) => return Err(ProviderError::Cancelled),
-        Err(e) => e,
-    };
-    match provider.stat(path).await {
-        Ok(entry) if entry.is_dir && !entry.is_symlink => provider.rmdir(path).await,
-        Err(e) if stat_cannot_describe(&e) => provider.rmdir(path).await,
-        _ => Err(refused),
-    }
-}
-
-/// A `stat` answer that says the provider cannot describe the path, as
-/// opposed to one that failed. S3, Azure, Swift and B2 see no directory
-/// behind a path without its trailing slash (NotFound); Box and GitHub fail
-/// to parse the answer for a folder (ParseError). A transient failure
-/// (network, server, timeout) says nothing about the path, and escalating on
-/// it reached the directory of the same name: on S3 and Azure `rmdir` is
-/// recursive.
-fn stat_cannot_describe(error: &ProviderError) -> bool {
-    matches!(
-        error,
-        ProviderError::NotFound(_) | ProviderError::NotSupported(_) | ProviderError::ParseError(_)
-    )
-}
-
 /// The real `rm`/`purge` when the global filter flags narrow the delete.
 ///
 /// It runs the same walk `--dry-run` prints and then deletes exactly that plan,
@@ -35574,7 +36648,7 @@ async fn cmd_rm(
     let result = if recursive {
         provider.rmdir_recursive(path).await
     } else {
-        delete_file_or_empty_dir(provider.as_mut(), path).await
+        ftp_client_gui_lib::providers::delete_non_recursive(provider.as_mut(), path).await
     };
 
     match result {
@@ -35637,7 +36711,8 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
     // provider that allows it, which is exactly the overwrite the flag forbids.
     if cli.immutable {
         if let Some(code) =
-            skip_if_destination_exists(provider.as_mut(), to, "--immutable", cli, format).await
+            skip_if_destination_exists(provider.as_mut(), to, "--immutable", None, cli, format)
+                .await
         {
             let _ = provider.disconnect().await;
             return code;
@@ -35691,7 +36766,7 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
     if cli.immutable {
         let mut guard = provider.lock().await;
         if let Some(code) =
-            skip_if_destination_exists(guard.as_mut(), to, "--immutable", cli, format).await
+            skip_if_destination_exists(guard.as_mut(), to, "--immutable", None, cli, format).await
         {
             let _ = guard.disconnect().await;
             return code;
@@ -35947,12 +37022,26 @@ async fn publish_cli_edit_via_temp_rename(
     provider: &mut dyn StorageProvider,
     local_temp_path: &str,
     remote_path: &str,
+    allow_non_atomic: bool,
 ) -> Result<(), ProviderError> {
     // Asked before the temporary exists, not after. A backend that cannot put
     // one file over another refuses here, while the server is still untouched,
     // so the refusal can say that nothing was written and be telling the truth
-    // (G119).
-    ftp_client_gui_lib::providers::ensure_atomic_replace(provider, remote_path).await?;
+    // (G119). `--allow-non-atomic` is the explicit opt-in to the set-aside
+    // replace some of those backends implement (a short moment with no file,
+    // and the previous one is not lost); on the others it is refused here too.
+    ftp_client_gui_lib::providers::ensure_edit_can_replace(
+        provider,
+        remote_path,
+        allow_non_atomic,
+        "`--allow-non-atomic`",
+    )
+    .await?;
+    // The replace puts a new file in the target's place: a link is refused
+    // here, while nothing is written, and the mode of the file is read to
+    // be set on the temporary (M-A of the 4.2.1 closeout).
+    let original =
+        ftp_client_gui_lib::providers::inspect_edit_target(provider, remote_path).await?;
 
     let remote_temp_path = cli_edit_temp_path(remote_path);
     if let Err(e) = provider
@@ -35962,6 +37051,13 @@ async fn publish_cli_edit_via_temp_rename(
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
     }
+    let not_kept = ftp_client_gui_lib::providers::keep_edit_original(
+        provider,
+        &remote_temp_path,
+        remote_path,
+        &original,
+    )
+    .await;
     // `replace` and not `rename`: the destination exists by definition here,
     // and `rename` deliberately keeps refusing that case so an ordinary `mv`
     // cannot destroy a file the user did not mean to lose.
@@ -35969,7 +37065,16 @@ async fn publish_cli_edit_via_temp_rename(
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
     }
+    if let Some(warning) = not_kept {
+        tracing::warn!("{warning}");
+        ftp_client_gui_lib::providers::report_warning(warning);
+    }
     Ok(())
+}
+
+struct CliEditOptions {
+    replace_all: bool,
+    allow_non_atomic: bool,
 }
 
 async fn cmd_edit(
@@ -35977,7 +37082,7 @@ async fn cmd_edit(
     path: &str,
     find: &str,
     replace: &str,
-    replace_all: bool,
+    options: CliEditOptions,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -36075,12 +37180,12 @@ async fn cmd_edit(
         return 0;
     }
 
-    let new_content = if replace_all {
+    let new_content = if options.replace_all {
         content.replace(find, replace)
     } else {
         content.replacen(find, replace, 1)
     };
-    let replaced = if replace_all { occurrences } else { 1 };
+    let replaced = if options.replace_all { occurrences } else { 1 };
 
     let mut temp_file = match NamedTempFile::new() {
         Ok(file) => file,
@@ -36106,7 +37211,14 @@ async fn cmd_edit(
     }
 
     let temp_path = temp_file.path().to_string_lossy().to_string();
-    match publish_cli_edit_via_temp_rename(provider.as_mut(), &temp_path, path).await {
+    match publish_cli_edit_via_temp_rename(
+        provider.as_mut(),
+        &temp_path,
+        path,
+        options.allow_non_atomic,
+    )
+    .await
+    {
         Ok(()) => {
             match format {
                 OutputFormat::Text => {
@@ -37098,6 +38210,34 @@ fn cli_oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static str> {
 /// blobs into the AeroFTP vault, then append the new profiles to
 /// `config_server_profiles` so the GUI lists them on next launch. Mirrors
 /// the `import_rclone_config` Tauri command in `lib.rs`. Issue #214.
+/// The profile `import rclone --apply` saves for one imported server. An
+/// rclone crypt remote becomes the same overlay binding the GUI import makes,
+/// its password and salt written with `store_secret` and recorded clear. Saved
+/// in the options instead, they sat there in clear and no overlay was bound.
+fn imported_server_profile(
+    server: &ftp_client_gui_lib::rclone_import::ServerProfileExport,
+    store_secret: impl FnMut(&str, &str) -> Result<(), String>,
+) -> Result<serde_json::Value, String> {
+    let mut profile = serde_json::json!({
+        "id": server.id,
+        "name": server.name,
+        "host": server.host,
+        "port": server.port,
+        "username": server.username,
+        "protocol": server.protocol,
+        "initialPath": server.initial_path,
+        "color": server.color,
+        "lastConnected": server.last_connected,
+        "options": server.options,
+        "providerId": server.provider_id,
+    });
+    ftp_client_gui_lib::bridge_commands::materialize_imported_crypt_overlay(
+        &mut profile,
+        store_secret,
+    )?;
+    Ok(profile)
+}
+
 async fn apply_rclone_import_to_vault(
     cli: &Cli,
     result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
@@ -37183,19 +38323,11 @@ async fn apply_rclone_import_to_vault(
         if existing_ids.contains(&server.id) {
             continue;
         }
-        profiles.push(serde_json::json!({
-            "id": server.id,
-            "name": server.name,
-            "host": server.host,
-            "port": server.port,
-            "username": server.username,
-            "protocol": server.protocol,
-            "initialPath": server.initial_path,
-            "color": server.color,
-            "lastConnected": server.last_connected,
-            "options": server.options,
-            "providerId": server.provider_id,
-        }));
+        let profile = imported_server_profile(server, |key, secret| {
+            dual_store_server_cred_checked(&store, scoped_uid, key, secret)
+        })
+        .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+        profiles.push(profile);
         profiles_appended += 1;
     }
     save_active_user_profiles(cli, &store, &profiles)
@@ -38995,9 +40127,9 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
             ),
             OutputFormat::Text => match (st.available, st.source) {
                 (true, Some(src)) => println!("Import available from {}", src.display()),
-                _ => {
-                    println!("No host configuration to import (none present, or already decided).")
-                }
+                _ => println!(
+                    "No host configuration to import (none present, nothing in it to import, or already decided)."
+                ),
             },
         }
         return 0;
@@ -39005,25 +40137,15 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
 
     match portable::flatpak_host_import_apply(true) {
         Ok(report) => {
+            let imported = report.imported();
             match format {
-                OutputFormat::Json => println!(
-                    "{}",
-                    serde_json::json!({
-                        "imported": report.imported,
-                        "source": path_str(report.source),
-                        "target": path_str(report.target),
-                        "requires_restart": report.imported,
-                    })
-                ),
-                OutputFormat::Text => {
-                    if report.imported {
-                        println!(
-                            "Imported host configuration into the sandbox. Restart AeroFTP to load it."
-                        );
-                    } else {
-                        println!("Nothing to import.");
-                    }
+                OutputFormat::Json => {
+                    // The GUI command's fields, plus the restart flag of the CLI.
+                    let mut json = report.to_json();
+                    json["requires_restart"] = serde_json::Value::Bool(imported);
+                    println!("{json}");
                 }
+                OutputFormat::Text => println!("{}", flatpak_import_summary(&report)),
             }
             0
         }
@@ -39031,6 +40153,126 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
             print_error(format, &format!("flatpak-import failed: {e}"), 1);
             1
         }
+    }
+}
+
+/// The text `flatpak-import` prints after an accepted import: how many files it
+/// copied, and what happened to the host vault and saved servers.
+fn flatpak_import_summary(report: &ftp_client_gui_lib::portable::FlatpakImportReport) -> String {
+    use ftp_client_gui_lib::portable::HostVault;
+
+    let source = report
+        .source
+        .as_ref()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    if report.imported() {
+        let files = format!(
+            "Imported {} {} from {} into the sandbox",
+            report.copied,
+            if report.copied == 1 { "file" } else { "files" },
+            source
+        );
+        match report.vault {
+            HostVault::Imported => format!(
+                "{files}, including your saved servers and vault. Restart AeroFTP to load them."
+            ),
+            HostVault::Skipped => format!(
+                "{files}, but not your saved servers and vault: this Flatpak install already has its own vault, and existing files are never overwritten. Restart AeroFTP to load what was imported."
+            ),
+            HostVault::Absent => format!(
+                "{files}, but your existing configuration held no saved servers or vault the import could copy. Restart AeroFTP to load what was imported."
+            ),
+        }
+    } else if report.vault == HostVault::Skipped {
+        format!(
+            "No file was copied from {source}, so your saved servers and vault were not imported: this Flatpak install already has its own vault and a file with the same name for each file the import would copy, and existing files are never overwritten."
+        )
+    } else if report.nothing_importable {
+        format!(
+            "Nothing to import: {source} holds no file the import copies (it copies files only, never SQLite sidecar files or symbolic links)."
+        )
+    } else {
+        // The copy skips a file by name, never by content, so this says what it
+        // saw: a file with the same name, not the same file. And it never copies
+        // symbolic links or SQLite sidecars, so the claim covers only the files
+        // it would copy: a linked file on the host is not "already here".
+        format!(
+            "No file was copied: this Flatpak install already has a file with the same name for each file the import would copy from {source}, and existing files are never overwritten."
+        )
+    }
+}
+
+#[cfg(test)]
+mod flatpak_import_summary_tests {
+    use super::flatpak_import_summary;
+    use ftp_client_gui_lib::portable::{FlatpakImportReport, HostVault};
+    use std::path::PathBuf;
+
+    fn report(copied: usize, vault: HostVault) -> FlatpakImportReport {
+        FlatpakImportReport {
+            copied,
+            vault,
+            nothing_importable: false,
+            source: Some(PathBuf::from("/home/u/.config/aeroftp")),
+            target: Some(PathBuf::from(
+                "/home/u/.var/app/app.aeroftp.AeroFTP/config/aeroftp",
+            )),
+        }
+    }
+
+    #[test]
+    fn flatpak_import_says_the_vault_stayed_behind() {
+        let text = flatpak_import_summary(&report(2, HostVault::Skipped));
+        assert!(
+            text.starts_with("Imported 2 files from /home/u/.config/aeroftp"),
+            "{text}"
+        );
+        assert!(
+            text.contains("but not your saved servers and vault: this Flatpak install already has its own vault"),
+            "{text}"
+        );
+
+        // The claim covers the files the import copies, not every host file:
+        // symbolic links and SQLite sidecars are never copied.
+        assert_eq!(
+            flatpak_import_summary(&report(0, HostVault::Skipped)),
+            "No file was copied from /home/u/.config/aeroftp, so your saved servers and vault were not imported: this Flatpak install already has its own vault and a file with the same name for each file the import would copy, and existing files are never overwritten."
+        );
+    }
+
+    #[test]
+    fn flatpak_import_says_no_file_was_copied_not_that_none_was_needed() {
+        // The copy skips by name, never by content, and never copies symbolic
+        // links or SQLite sidecars: the claim is about the files it would copy.
+        assert_eq!(
+            flatpak_import_summary(&report(0, HostVault::Absent)),
+            "No file was copied: this Flatpak install already has a file with the same name for each file the import would copy from /home/u/.config/aeroftp, and existing files are never overwritten."
+        );
+    }
+
+    #[test]
+    fn flatpak_import_of_a_config_with_nothing_to_copy_says_nothing_to_import() {
+        let mut empty = report(0, HostVault::Absent);
+        empty.nothing_importable = true;
+        assert_eq!(
+            flatpak_import_summary(&empty),
+            "Nothing to import: /home/u/.config/aeroftp holds no file the import copies (it copies files only, never SQLite sidecar files or symbolic links)."
+        );
+    }
+
+    #[test]
+    fn flatpak_import_says_whether_the_servers_and_vault_came() {
+        let text = flatpak_import_summary(&report(3, HostVault::Imported));
+        assert!(
+            text.contains("including your saved servers and vault"),
+            "{text}"
+        );
+        // A user who expects the servers after the restart is told none came.
+        assert_eq!(
+            flatpak_import_summary(&report(1, HostVault::Absent)),
+            "Imported 1 file from /home/u/.config/aeroftp into the sandbox, but your existing configuration held no saved servers or vault the import could copy. Restart AeroFTP to load what was imported."
+        );
     }
 }
 
@@ -49675,6 +50917,8 @@ async fn cmd_sync(
         // non-pool-backed providers (FTP, single-conn APIs) fall back to
         // the legacy independent-connection batch: honest fallback, no
         // overclaim.
+        // The connection the legacy batch starts from, instead of closing it.
+        let mut legacy_upload_seed: Option<Box<dyn StorageProvider>> = None;
         let use_legacy_upload = if error_correction_enabled {
             // EC sidecars must be generated only for uploads that are known
             // to have succeeded. The shared batch reports aggregate counters,
@@ -49705,48 +50949,70 @@ async fn cmd_sync(
                         absorb_engine_stats(&mut engine_stats, outcome.engine_stats);
                         false
                     }
-                    Err(mut base) => {
-                        let _ = base.disconnect().await;
+                    Err(base) => {
+                        legacy_upload_seed = Some(base);
                         true
                     }
                 },
                 // Could not open the shared base (transient): degrade to the
-                // legacy per-file path rather than dropping the uploads.
+                // legacy batch rather than dropping the uploads.
                 Err(_) => true,
             }
         };
 
         if use_legacy_upload {
-            let upload_results = futures_util::stream::iter(leftover_upload_jobs.into_iter().map(
-                |(path, local_path, remote_path, _size)| {
+            // One connection per worker instead of one per file (see
+            // `run_on_worker_connections`).
+            let upload_results = run_on_worker_connections(
+                legacy_upload_seed.take(),
+                effective_parallel_workers(cli),
+                leftover_upload_jobs,
+                &cancelled,
+                resolve_max_transfer(cli),
+                || connect_transfer_worker(url, cli, format),
+                |conn, (path, local_path, remote_path, _size)| {
                     let cancelled = cancelled.clone();
                     let aggregate = aggregate.clone();
                     let overall_pb = overall_pb.clone();
                     async move {
                         if cancelled.load(Ordering::Relaxed) {
-                            return Err(format!("upload {}: cancelled", path));
+                            return WorkerJobDone::without_transfer(
+                                conn.ok(),
+                                format!("upload {}: cancelled", path),
+                            );
                         }
-                        let display_path = path.clone();
-                        match upload_transfer_task(
-                            url,
+                        let mut conn = match conn {
+                            Ok(conn) => conn,
+                            Err(err) => {
+                                return WorkerJobDone::without_transfer(
+                                    None,
+                                    format!("upload {}: {}", path, err),
+                                )
+                            }
+                        };
+                        let outcome = upload_transfer_on(
+                            &mut *conn,
                             local_path.clone(),
                             remote_path.clone(),
                             cli,
-                            format,
+                            false,
+                            // The folders were created before the workers started.
+                            false,
                             Some(aggregate),
                             overall_pb,
                             resolve_max_transfer(cli),
                         )
-                        .await
-                        {
-                            Ok(()) => Ok((path, local_path, remote_path)),
-                            Err(err) => Err(format!("upload {}: {}", display_path, err)),
-                        }
+                        .await;
+                        let display_path = path.clone();
+                        WorkerJobDone::from_transfer(
+                            conn,
+                            outcome,
+                            || (path, local_path, remote_path),
+                            |err| format!("upload {}: {}", display_path, err),
+                        )
                     }
                 },
-            ))
-            .buffer_unordered(effective_parallel_workers(cli))
-            .collect::<Vec<_>>()
+            )
             .await;
 
             for result in upload_results {
@@ -49780,37 +51046,80 @@ async fn cmd_sync(
     let mut conflict_uploaded = 0u32;
     let mut preserved_conflict_downloads: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-    for (orig_path, conflict_path) in &to_conflict_upload {
-        if cancelled.load(Ordering::Relaxed) {
-            break;
-        }
-        let local_path = Path::new(local)
-            .join(orig_path)
-            .to_string_lossy()
-            .to_string();
-        let remote_conflict = format!("{}/{}", remote.trim_end_matches('/'), conflict_path);
-        let local_path_for_ec = local_path.clone();
-        let remote_conflict_for_ec = remote_conflict.clone();
-        match upload_transfer_task(
-            url,
-            local_path,
-            remote_conflict,
-            cli,
-            format,
-            None,
-            None,
-            resolve_max_transfer(cli),
-        )
-        .await
-        {
-            Ok(()) => {
+    // One connection for the conflict uploads instead of one each (see
+    // `run_on_worker_connections`). A single worker keeps them in order, and a
+    // cancelled run leaves the remaining ones alone without an error, as the
+    // loop this replaces did.
+    let conflict_jobs: Vec<(String, String)> = to_conflict_upload
+        .iter()
+        .map(|(orig_path, conflict_path)| (orig_path.clone(), conflict_path.clone()))
+        .collect();
+    let conflict_results = run_on_worker_connections(
+        None,
+        1,
+        conflict_jobs,
+        &cancelled,
+        resolve_max_transfer(cli),
+        || connect_transfer_worker(url, cli, format),
+        |conn, (orig_path, conflict_path)| {
+            let cancelled = cancelled.clone();
+            async move {
+                if cancelled.load(Ordering::Relaxed) {
+                    return WorkerJobDone {
+                        conn: conn.ok(),
+                        result: Ok(None),
+                        session_lost: false,
+                        retry_safe: true,
+                        untouched: false,
+                    };
+                }
+                let local_path = Path::new(local)
+                    .join(&orig_path)
+                    .to_string_lossy()
+                    .to_string();
+                let remote_conflict = format!("{}/{}", remote.trim_end_matches('/'), conflict_path);
+                let mut conn = match conn {
+                    Ok(conn) => conn,
+                    Err(err) => {
+                        return WorkerJobDone::without_transfer(
+                            None,
+                            format!("conflict-rename {}: {}", orig_path, err),
+                        )
+                    }
+                };
+                let outcome = upload_transfer_on(
+                    &mut *conn,
+                    local_path.clone(),
+                    remote_conflict.clone(),
+                    cli,
+                    false,
+                    true,
+                    None,
+                    None,
+                    resolve_max_transfer(cli),
+                )
+                .await;
+                let display_path = orig_path.clone();
+                WorkerJobDone::from_transfer(
+                    conn,
+                    outcome,
+                    || Some((orig_path, conflict_path, local_path, remote_conflict)),
+                    |err| format!("conflict-rename {}: {}", display_path, err),
+                )
+            }
+        },
+    )
+    .await;
+    for result in conflict_results {
+        match result {
+            Ok(Some((orig_path, conflict_path, local_path, remote_conflict))) => {
                 conflict_uploaded += 1;
                 preserved_conflict_downloads.insert(orig_path.clone());
                 record_sync_ec_after_successful_upload(
                     provider.as_mut(),
-                    conflict_path,
-                    &local_path_for_ec,
-                    &remote_conflict_for_ec,
+                    &conflict_path,
+                    &local_path,
+                    &remote_conflict,
                     error_correction_pct,
                     error_correction_max_overhead_pct,
                     &mut ec_counters,
@@ -49821,7 +51130,9 @@ async fn cmd_sync(
                     eprintln!("  CONFLICT-RENAME  {} -> {}", orig_path, conflict_path);
                 }
             }
-            Err(e) => errors.push(format!("conflict-rename {}: {}", orig_path, e)),
+            // Cancelled before it started: not attempted, not an error.
+            Ok(None) => {}
+            Err(e) => errors.push(e),
         }
     }
 
@@ -50020,6 +51331,8 @@ async fn cmd_sync(
         })
         .collect();
 
+    // The connection the legacy batch starts from, instead of closing it.
+    let mut legacy_download_seed: Option<Box<dyn StorageProvider>> = None;
     let use_legacy_download = if download_files.is_empty() {
         false
     } else {
@@ -50042,52 +51355,72 @@ async fn cmd_sync(
                     download_segments = Some(outcome.download_segments);
                     false
                 }
-                Err(mut base) => {
-                    let _ = base.disconnect().await;
+                Err(base) => {
+                    legacy_download_seed = Some(base);
                     true
                 }
             },
             // Could not open the shared base (transient): degrade to the
-            // legacy per-file path rather than dropping the downloads.
+            // legacy batch rather than dropping the downloads.
             Err(_) => true,
         }
     };
 
     if use_legacy_download {
-        let download_results = futures_util::stream::iter(download_jobs.into_iter().map(
-            |(path, local_path, remote_path, _size)| {
+        // One connection per worker instead of one per file (see
+        // `run_on_worker_connections`).
+        let download_results = run_on_worker_connections(
+            legacy_download_seed.take(),
+            effective_parallel_workers(cli),
+            download_jobs,
+            &cancelled,
+            resolve_max_transfer(cli),
+            || connect_transfer_worker(url, cli, format),
+            |conn, (path, local_path, remote_path, _size)| {
                 let cancelled = cancelled.clone();
                 let aggregate = aggregate.clone();
                 let overall_pb = overall_pb.clone();
                 let remote_modified = remote_mtimes.get(&remote_path).cloned();
                 async move {
                     if cancelled.load(Ordering::Relaxed) {
-                        return Err(format!("download {}: cancelled", path));
+                        return WorkerJobDone::without_transfer(
+                            conn.ok(),
+                            format!("download {}: cancelled", path),
+                        );
                     }
+                    let mut conn = match conn {
+                        Ok(conn) => conn,
+                        Err(err) => {
+                            return WorkerJobDone::without_transfer(
+                                None,
+                                format!("download {}: {}", path, err),
+                            )
+                        }
+                    };
                     if let Some(parent) = Path::new(&local_path).parent() {
                         let _ = std::fs::create_dir_all(parent);
                     }
-                    match download_transfer_task(
-                        url,
+                    let outcome = download_transfer_on(
+                        &mut *conn,
                         remote_path,
                         local_path,
                         remote_modified,
                         cli,
-                        format,
                         Some(aggregate),
                         overall_pb,
                         resolve_max_transfer(cli),
                     )
-                    .await
-                    {
-                        Ok(()) => Ok(path),
-                        Err(err) => Err(format!("download {}: {}", path, err)),
-                    }
+                    .await;
+                    let display_path = path.clone();
+                    WorkerJobDone::from_transfer(
+                        conn,
+                        outcome,
+                        || path,
+                        |err| format!("download {}: {}", display_path, err),
+                    )
                 }
             },
-        ))
-        .buffer_unordered(effective_parallel_workers(cli))
-        .collect::<Vec<_>>()
+        )
         .await;
 
         for result in download_results {
@@ -51969,7 +53302,7 @@ mod fuse_mount {
             let p = child_path.clone();
             let result = self.rt.block_on(async {
                 let mut prov = provider.lock().await;
-                prov.rmdir(&p).await
+                ftp_client_gui_lib::providers::remove_empty_directory(prov.as_mut(), &p).await
             });
 
             match result {
@@ -51981,6 +53314,7 @@ mod fuse_mount {
                     }
                     reply.ok();
                 }
+                Err(ProviderError::DirectoryNotEmpty(_)) => reply.error(Errno::ENOTEMPTY),
                 Err(_) => reply.error(Errno::EIO),
             }
         }
@@ -54986,6 +56320,126 @@ fn bind_after_init(
     }
 }
 
+/// What `crypt set-form` writes: `overlay` with the given forms recorded and
+/// every other field as it was. Refused when it is not an enabled rclone-crypt
+/// binding, and when it would leave one form recorded and the other not: the
+/// unrecorded secret would stay on the reading a refusal was about, which is
+/// why the GUI asks for both before Save.
+fn binding_with_recorded_forms(
+    overlay: &serde_json::Value,
+    password_form: Option<RecordedFormArg>,
+    salt_form: Option<RecordedFormArg>,
+) -> Result<serde_json::Value, String> {
+    let rclone_crypt = overlay.get("enabled").and_then(|v| v.as_bool()) == Some(true)
+        && overlay.get("kind").and_then(|v| v.as_str()) == Some("rclone-crypt");
+    let mut overlay = overlay.clone();
+    let obj = overlay
+        .as_object_mut()
+        .filter(|_| rclone_crypt)
+        .ok_or("This profile has no rclone-crypt overlay.")?;
+    if let Some(form) = password_form {
+        obj.insert("passwordForm".into(), serde_json::json!(form.as_str()));
+    }
+    if let Some(form) = salt_form {
+        obj.insert("saltForm".into(), serde_json::json!(form.as_str()));
+    }
+    match (
+        obj.contains_key("passwordForm"),
+        obj.contains_key("saltForm"),
+    ) {
+        (true, false) => Err("Record the salt's form too: pass --salt-form clear|obscured.".into()),
+        (false, true) => {
+            Err("Record the password's form too: pass --password-form clear|obscured.".into())
+        }
+        _ => Ok(overlay),
+    }
+}
+
+/// `crypt set-form`: record on the `--profile`'s rclone-crypt binding how its
+/// stored password and salt are written, the answer to a "reads two ways"
+/// refusal. Only the binding changes; the secrets stay as they are.
+fn cmd_crypt_set_form(
+    password_form: Option<RecordedFormArg>,
+    salt_form: Option<RecordedFormArg>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    if password_form.is_none() && salt_form.is_none() {
+        print_error(
+            format,
+            "Pass --password-form and/or --salt-form (clear or obscured).",
+            5,
+        );
+        return 5;
+    }
+    let Some(profile_query) = cli.profile.as_deref() else {
+        print_error(format, "crypt set-form needs --profile <name-or-index>.", 5);
+        return 5;
+    };
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let profile_id = match resolve_profile_id_for_query(cli, &store, profile_query, format) {
+        Ok(id) => id,
+        Err(code) => return code,
+    };
+    let profiles = match load_active_user_profiles(cli, &store) {
+        Ok(profiles) => profiles,
+        Err(e) => {
+            print_error(format, &format!("Could not load the profiles: {e}"), 5);
+            return 5;
+        }
+    };
+    let current = profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id.as_str()))
+        .and_then(|p| p.get("aeroCryptOverlay"))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let overlay = match binding_with_recorded_forms(&current, password_form, salt_form) {
+        Ok(overlay) => overlay,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let recorded = (
+        overlay
+            .get("passwordForm")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+        overlay
+            .get("saltForm")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    );
+    if let Err(e) =
+        update_profile_field_in_vault(cli, &store, &profile_id, "aeroCryptOverlay", overlay)
+    {
+        print_error(format, &format!("Could not save the profile: {e}"), 4);
+        return 4;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": "ok",
+            "profile": profile_query,
+            "passwordForm": recorded.0,
+            "saltForm": recorded.1,
+        }));
+    } else {
+        println!(
+            "Recorded for {profile_query}: password {}, salt {}",
+            recorded.0.as_str().unwrap_or("not recorded"),
+            recorded.1.as_str().unwrap_or("not recorded"),
+        );
+    }
+    0
+}
+
 /// Set or clear `aeroCryptOverlay.withHeader` on a saved profile without
 /// touching secrets. Used by `crypt to-headed` / `to-headerless` so connect-time
 /// heal knows the vault's headed intent (tracker #421 item #7).
@@ -56966,6 +58420,7 @@ async fn cmd_rclone_crypt_put(
     remote_path: &str,
     password: &str,
     salt: &str,
+    secret_forms: CryptSecretForms,
     filename_encryption: RcloneFilenameEncryption,
     dir_iv_base64: Option<&str>,
     remote_name: Option<&str>,
@@ -56981,7 +58436,12 @@ async fn cmd_rclone_crypt_put(
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, remote_path));
 
     let (name_key, data_key, name_tweak) =
-        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak(password, salt) {
+        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_forms(
+            password,
+            secret_forms.0,
+            salt,
+            secret_forms.1,
+        ) {
             Ok(keys) => keys,
             Err(e) => {
                 print_error(format, &format!("rclone key derivation failed: {}", e), 5);
@@ -57158,19 +58618,21 @@ async fn cmd_put_glob(
     url: &str,
     local_pattern: &str,
     remote_base: Option<&str>,
+    no_clobber: bool,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
     let raw_remote_base = remote_base.unwrap_or("/");
 
-    // Resolve remote_base against profile's initial_path
+    // Resolve remote_base against profile's initial_path. The connection
+    // stays open: it creates `remote_base` below, and serves the first
+    // worker of an `--immutable` or `--no-clobber` batch.
     let (mut probe_provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
     let glob_provider_type = probe_provider.provider_type();
-    let _ = probe_provider.disconnect().await;
     let remote_base = resolve_cli_remote_path(&initial_path, raw_remote_base);
     let remote_base = remote_base.as_str();
 
@@ -57198,6 +58660,7 @@ async fn cmd_put_glob(
         Ok(g) => g.compile_matcher(),
         Err(e) => {
             print_error(format, &format!("Invalid glob pattern: {}", e), 5);
+            let _ = probe_provider.disconnect().await;
             return 5;
         }
     };
@@ -57211,6 +58674,7 @@ async fn cmd_put_glob(
                 &format!("Cannot read directory '{}': {}", dir, e),
                 2,
             );
+            let _ = probe_provider.disconnect().await;
             return 2;
         }
     };
@@ -57239,6 +58703,7 @@ async fn cmd_put_glob(
                 2,
             ),
         }
+        let _ = probe_provider.disconnect().await;
         return 2;
     }
 
@@ -57270,11 +58735,21 @@ async fn cmd_put_glob(
         {
             let code = provider_error_to_exit_code(&e);
             print_error(format, &format!("put failed: {}", e), code);
+            let _ = probe_provider.disconnect().await;
             return code;
         }
     }
 
+    // The one remote parent of every file, created once and before any
+    // upload: the shared executor does not create it, and workers each
+    // creating it at once made two `remote_base` folders on Google Drive,
+    // which allows two folders of one name.
+    let _ = probe_provider.mkdir(remote_base).await;
+
     let mut uploaded: u32 = 0;
+    // Left alone by `--immutable` or `--no-clobber`: done, not failed, as
+    // `put -r` counts them.
+    let mut skipped: u32 = 0;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
@@ -57285,25 +58760,32 @@ async fn cmd_put_glob(
 
     // PD-CLI-CONV-C: converge the glob upload batch on the SAME shared
     // provider executor + orchestrator (PD-CLI-CONV-B), sink-agnostic.
-    // The probe connection was only used to resolve `initial_path`; the
-    // shared engine needs a live base whose connection spec backs the
-    // clone-pool workers, so a base provider is (re)connected here. The
-    // single remote parent (`remote_base`) is pre-created idempotently
-    // because the shared executor does not mkdir. `--immutable` and
-    // non-pool-backed providers (FTP, single-conn APIs) stay on the
-    // legacy independent-connection batch: honest fallback, no overclaim.
-    let use_legacy = if cli.immutable {
+    // The shared engine needs a live base whose connection spec backs the
+    // clone-pool workers, so a base provider is (re)connected here.
+    // `--immutable`, `--no-clobber` and non-pool-backed providers (FTP,
+    // single-conn APIs) stay on the legacy batch: honest fallback, no
+    // overclaim. The connection the legacy batch starts from: the probe
+    // for `--immutable` and `--no-clobber`, the base the shared executor
+    // hands back otherwise.
+    let mut legacy_seed: Option<Box<dyn StorageProvider>> = None;
+    let use_legacy = if cli.immutable || no_clobber {
         if !cli.quiet {
             eprintln!(
-                "Note: --immutable uses the single-stream upload path \
-                 (the pooled uploader has no remote-existence check)"
+                "Note: {} uses the single-stream upload path \
+                 (the pooled uploader has no remote-existence check)",
+                if cli.immutable {
+                    "--immutable"
+                } else {
+                    "--no-clobber"
+                }
             );
         }
+        legacy_seed = Some(probe_provider);
         true
     } else {
+        let _ = probe_provider.disconnect().await;
         match create_and_connect(url, cli, format).await {
-            Ok((mut provider, _)) => {
-                let _ = provider.mkdir(remote_base).await;
+            Ok((provider, _)) => {
                 match run_shared_provider_upload_batch(
                     provider,
                     &files,
@@ -57320,8 +58802,8 @@ async fn cmd_put_glob(
                         engine_stats = outcome.engine_stats;
                         false
                     }
-                    Err(mut base) => {
-                        let _ = base.disconnect().await;
+                    Err(base) => {
+                        legacy_seed = Some(base);
                         true
                     }
                 }
@@ -57331,37 +58813,53 @@ async fn cmd_put_glob(
     };
 
     if use_legacy {
-        let results = futures_util::stream::iter(files.into_iter().map(
-            |(local_path, remote_path, _size)| {
+        // One connection per worker, starting with the scan connection,
+        // instead of one per file (see `run_on_worker_connections`).
+        let results = run_on_worker_connections(
+            legacy_seed.take(),
+            effective_parallel_workers(cli),
+            files,
+            &cancelled,
+            resolve_max_transfer(cli),
+            || connect_transfer_worker(url, cli, format),
+            |conn, (local_path, remote_path, _size)| {
                 let cancelled = cancelled.clone();
                 let aggregate = aggregate.clone();
                 let overall_pb = overall_pb.clone();
                 async move {
                     if cancelled.load(Ordering::Relaxed) {
-                        return Err("Cancelled by user".to_string());
+                        return WorkerJobDone::without_transfer(
+                            conn.ok(),
+                            "Cancelled by user".to_string(),
+                        );
                     }
-                    upload_transfer_task(
-                        url,
+                    let mut conn = match conn {
+                        Ok(conn) => conn,
+                        Err(err) => return WorkerJobDone::without_transfer(None, err),
+                    };
+                    // `remote_base`, the parent of every file, exists already.
+                    let outcome = upload_transfer_on(
+                        &mut *conn,
                         local_path.clone(),
                         remote_path,
                         cli,
-                        format,
+                        no_clobber,
+                        false,
                         Some(aggregate),
                         overall_pb,
                         resolve_max_transfer(cli),
                     )
-                    .await
-                    .map(|_| local_path)
+                    .await;
+                    WorkerJobDone::from_transfer(conn, outcome, || local_path, |err| err)
                 }
             },
-        ))
-        .buffer_unordered(effective_parallel_workers(cli))
-        .collect::<Vec<_>>()
+        )
         .await;
 
         for result in results {
             match result {
                 Ok(_) => uploaded += 1,
+                Err(ref err) if err.starts_with(UPLOAD_SKIP_PREFIX) => skipped += 1,
                 Err(err) => errors.push(err),
             }
         }
@@ -57371,17 +58869,37 @@ async fn cmd_put_glob(
         pb.finish_and_clear();
     }
 
+    put_run_note_failures(&errors);
+
     let elapsed = start.elapsed();
 
     match format {
         OutputFormat::Text => {
             if !cli.quiet {
                 println!(
-                    "\n{}/{} files uploaded in {:.1}s",
+                    "\n{}/{} files uploaded in {:.1}s{}",
                     uploaded,
                     total,
-                    elapsed.as_secs_f64()
+                    elapsed.as_secs_f64(),
+                    if skipped > 0 {
+                        format!(
+                            " ({} skipped, {})",
+                            skipped,
+                            if cli.immutable {
+                                "--immutable"
+                            } else {
+                                "--no-clobber"
+                            }
+                        )
+                    } else {
+                        String::new()
+                    }
                 );
+                // As `put -r` does: without them a refusal showed only as
+                // exit 4, and only `--json` said why.
+                for err in &errors {
+                    eprintln!("  Error: {}", err);
+                }
             }
         }
         OutputFormat::Json => {
@@ -57390,7 +58908,7 @@ async fn cmd_put_glob(
                 uploaded,
                 downloaded: 0,
                 deleted: 0,
-                skipped: 0,
+                skipped,
                 over_budget,
                 ec_generated: None,
                 ec_skipped_too_large: None,
@@ -57408,8 +58926,12 @@ async fn cmd_put_glob(
             });
         }
     }
-    if uploaded == total as u32 {
-        0
+    if uploaded + skipped == total as u32 {
+        if skipped > 0 && uploaded == 0 {
+            9
+        } else {
+            0
+        }
     } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
         // Intentional --max-transfer cap (honest note already emitted),
         // not a transfer failure: the dedicated exit code, consistent
@@ -59107,6 +60629,174 @@ mod hashsum_digest_tests {
         assert_ne!(CONTENT_MD5, SERVER_MD5);
     }
 
+    /// `import rclone --apply` turns an rclone crypt remote into the overlay
+    /// binding the GUI import makes: secrets in the vault, recorded clear,
+    /// none left in the profile's options. The values are obscured by rclone
+    /// v1.75.1; the salt is one rclone generates, which a second reveal empties.
+    #[test]
+    fn rclone_apply_binds_a_crypt_remote_with_its_secrets_in_the_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "[base]\ntype = sftp\nhost = sftp.example.invalid\nuser = smoke\n\n\
+             [vault]\ntype = crypt\nremote = base:\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\
+             password2 = V98yILELzRn3G-7rg4ymQ3B0X0zgFAbWo74vIapw-YnWja9Jn3k\n",
+        )
+        .unwrap();
+        let result = ftp_client_gui_lib::rclone_import::import_rclone(&conf).unwrap();
+        let server = result
+            .servers
+            .iter()
+            .find(|s| s.name == "vault")
+            .expect("the crypt remote is imported");
+        let mut vault = std::collections::HashMap::new();
+        let profile = imported_server_profile(server, |k, v| {
+            vault.insert(k.to_string(), v.to_string());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(profile["aeroCryptOverlay"]["kind"], "rclone-crypt");
+        assert_eq!(profile["aeroCryptOverlay"]["passwordForm"], "clear");
+        assert_eq!(profile["aeroCryptOverlay"]["saltForm"], "clear");
+        assert!(profile.pointer("/options/rcloneCryptPassword").is_none());
+        assert!(profile.pointer("/options/rcloneCryptPassword2").is_none());
+        assert_eq!(
+            vault[&format!("aerocrypt_overlay_pw_{}", server.id)],
+            "crypt-pass-954"
+        );
+        assert_eq!(
+            vault[&format!("aerocrypt_overlay_salt_{}", server.id)],
+            "hD1lB5uyIChoDFqhaHOsUg"
+        );
+    }
+
+    /// What `crypt set-form` writes: the forms given, recorded on an enabled
+    /// rclone-crypt binding, every other field (and a form not given) kept;
+    /// nothing for an AeroCrypt or disabled binding.
+    #[test]
+    fn crypt_set_form_writes_only_the_forms_given() {
+        let bound = serde_json::json!({
+            "enabled": true, "kind": "rclone-crypt", "remoteScope": "/enc",
+            "filenameEncryption": "standard", "passwordForm": "obscured"
+        });
+        let written =
+            binding_with_recorded_forms(&bound, None, Some(RecordedFormArg::Clear)).unwrap();
+        assert_eq!(written["passwordForm"], "obscured");
+        assert_eq!(written["saltForm"], "clear");
+        assert_eq!(written["remoteScope"], "/enc");
+        assert_eq!(written["filenameEncryption"], "standard");
+        let written = binding_with_recorded_forms(
+            &bound,
+            Some(RecordedFormArg::Clear),
+            Some(RecordedFormArg::Clear),
+        )
+        .unwrap();
+        assert_eq!(written["passwordForm"], "clear");
+        assert_eq!(written["saltForm"], "clear");
+
+        // One form recorded and not the other is what the GUI will not save.
+        let unrecorded = serde_json::json!({"enabled": true, "kind": "rclone-crypt"});
+        let e = binding_with_recorded_forms(&unrecorded, Some(RecordedFormArg::Clear), None)
+            .unwrap_err();
+        assert!(e.contains("--salt-form"), "{e}");
+        let e = binding_with_recorded_forms(&bound, Some(RecordedFormArg::Clear), None);
+        assert!(e.unwrap_err().contains("--salt-form"));
+
+        let aerocrypt = serde_json::json!({"enabled": true, "kind": "aerocrypt"});
+        assert!(
+            binding_with_recorded_forms(&aerocrypt, Some(RecordedFormArg::Clear), None)
+                .unwrap_err()
+                .contains("no rclone-crypt overlay")
+        );
+        let disabled = serde_json::json!({"enabled": false, "kind": "rclone-crypt"});
+        assert!(
+            binding_with_recorded_forms(&disabled, Some(RecordedFormArg::Clear), None).is_err()
+        );
+    }
+
+    /// A password and a salt can be given in different forms, and `crypt
+    /// set-form` records one form per secret; a form is never a guess (`auto`
+    /// is not accepted there).
+    #[test]
+    fn crypt_secret_form_flags_parse() {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let put = Cli::try_parse_from([
+                    "aeroftp",
+                    "rclone-crypt",
+                    "put",
+                    "./f.txt",
+                    "sftp://example",
+                    "/r",
+                    "--password",
+                    "p",
+                    "--password-form",
+                    "clear",
+                    "--salt-form",
+                    "obscured",
+                ])
+                .expect("put with forms parses");
+                match put.command {
+                    Commands::RcloneCrypt {
+                        command:
+                            RcloneCryptCommands::Put {
+                                password_form,
+                                salt_form,
+                                ..
+                            },
+                    } => {
+                        assert_eq!(password_form, SecretFormArg::Clear);
+                        assert_eq!(salt_form, SecretFormArg::Obscured);
+                        assert_eq!(
+                            salt_form.form(),
+                            Some(ftp_client_gui_lib::rclone_crypt::CryptSecretForm::Obscured)
+                        );
+                        assert_eq!(SecretFormArg::Auto.form(), None);
+                    }
+                    _ => panic!("expected rclone-crypt put"),
+                }
+                let set = Cli::try_parse_from([
+                    "aeroftp",
+                    "--profile",
+                    "vault",
+                    "crypt",
+                    "set-form",
+                    "--password-form",
+                    "clear",
+                    "--salt-form",
+                    "obscured",
+                ])
+                .expect("crypt set-form parses");
+                match set.command {
+                    Commands::Crypt {
+                        command:
+                            CryptCommands::SetForm {
+                                password_form,
+                                salt_form,
+                            },
+                    } => {
+                        assert_eq!(password_form.map(RecordedFormArg::as_str), Some("clear"));
+                        assert_eq!(salt_form.map(RecordedFormArg::as_str), Some("obscured"));
+                    }
+                    _ => panic!("expected crypt set-form"),
+                }
+                assert!(Cli::try_parse_from([
+                    "aeroftp",
+                    "crypt",
+                    "set-form",
+                    "--password-form",
+                    "auto",
+                ])
+                .is_err());
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     #[test]
     fn hashsum_download_flag_parses() {
         std::thread::Builder::new()
@@ -59318,7 +61008,10 @@ async fn cli_unlock_crypt_compare_keys(
             }
         },
     };
-    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
+    let stored_password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id));
+    // A secret from the environment carries no recorded form.
+    let password_from_env = stored_password.is_none();
+    let password = stored_password
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
         .unwrap_or_default();
     // Keyfiles do not apply to rclone-crypt, which keeps requiring a password.
@@ -59330,9 +61023,12 @@ async fn cli_unlock_crypt_compare_keys(
         );
         return Err(5);
     }
-    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
+    let stored_salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id));
+    let salt_from_env = stored_salt.is_none();
+    let salt = stored_salt
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
+    let (password_form, salt_form) = ftp_client_gui_lib::rclone_crypt::crypt_secret_forms(profile);
     let local_config_json =
         read_server_cred(&store, uid, &format!("aerocrypt_overlay_config_{}", id))
             .filter(|s| !s.is_empty());
@@ -59351,6 +61047,16 @@ async fn cli_unlock_crypt_compare_keys(
             Some(salt.clone())
         },
         with_header: false,
+        password_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            password_form,
+            password_from_env,
+            "AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM",
+        ),
+        salt_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
+            salt_form,
+            salt_from_env,
+            "AEROFTP_CRYPT_OVERLAY_SALT_FORM",
+        ),
     };
     match ftp_client_gui_lib::crypt_compare::unlock_overlay_keys(
         provider,
@@ -59668,6 +61374,7 @@ async fn cmd_cryptcheck(
     remote_path: &str,
     password: Option<String>,
     password2: Option<String>,
+    secret_forms: CryptSecretForms,
     filename_encryption: &str,
     suffix: Option<&str>,
     one_way: bool,
@@ -59682,6 +61389,7 @@ async fn cmd_cryptcheck(
         remote_path,
         password,
         password2,
+        secret_forms,
         filename_encryption,
         suffix,
         one_way,
@@ -59740,6 +61448,7 @@ async fn cryptcheck_report(
     remote_path: &str,
     password: Option<String>,
     password2: Option<String>,
+    secret_forms: CryptSecretForms,
     filename_encryption: &str,
     suffix: Option<&str>,
     one_way: bool,
@@ -59776,7 +61485,12 @@ async fn cryptcheck_report(
         .unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD2").unwrap_or_default());
 
     let (name_key, data_key, name_tweak) =
-        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak(&pwd, &salt) {
+        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_forms(
+            &pwd,
+            secret_forms.0,
+            &salt,
+            secret_forms.1,
+        ) {
             Ok(keys) => keys,
             Err(e) => {
                 print_error(format, &format!("Key derivation failed: {}", e), 5);
@@ -66956,26 +68670,17 @@ async fn main() {
             } else {
                 (url.as_str(), local.as_str(), remote.as_deref())
             };
-            retry_transfer_command(
+            put_with_retries(
+                u,
+                l,
+                r,
+                *recursive,
+                *no_clobber,
+                *delta,
+                *access,
                 &cli,
-                effective_max_attempts(&cli, format),
-                parse_retry_sleep(&cli.retries_sleep),
-                resolve_max_transfer(&cli),
-                &cancelled,
-                || {
-                    cmd_put(
-                        u,
-                        l,
-                        r,
-                        *recursive,
-                        *no_clobber,
-                        *delta,
-                        *access,
-                        &cli,
-                        format,
-                        cancelled.clone(),
-                    )
-                },
+                format,
+                cancelled.clone(),
             )
             .await
         }
@@ -67066,6 +68771,8 @@ async fn main() {
             one_way,
             checkfile,
             algorithm,
+            password_form,
+            salt_form,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), local.as_str())
@@ -67078,6 +68785,7 @@ async fn main() {
                 r,
                 password.clone(),
                 password2.clone(),
+                (password_form.form(), salt_form.form()),
                 filename_encryption,
                 suffix.as_deref(),
                 *one_way,
@@ -67094,13 +68802,26 @@ async fn main() {
             find,
             replace,
             first,
+            allow_non_atomic,
         } => {
             let (u, p, f, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), path.as_str(), find.as_str())
             } else {
                 (url.as_str(), path.as_str(), find.as_str(), replace.as_str())
             };
-            cmd_edit(u, p, f, r, !first, &cli, format).await
+            cmd_edit(
+                u,
+                p,
+                f,
+                r,
+                CliEditOptions {
+                    replace_all: !first,
+                    allow_non_atomic: *allow_non_atomic,
+                },
+                &cli,
+                format,
+            )
+            .await
         }
         Commands::Cat { url, path } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -69718,6 +71439,10 @@ async fn main() {
                         }
                     }
                 },
+                CryptCommands::SetForm {
+                    password_form,
+                    salt_form,
+                } => cmd_crypt_set_form(*password_form, *salt_form, &cli, format),
                 CryptCommands::ToHeaded {
                     url,
                     path,
@@ -70082,6 +71807,8 @@ async fn main() {
                     remote,
                     password,
                     salt,
+                    password_form,
+                    salt_form,
                     filename_encryption,
                     dir_iv_base64,
                     remote_name,
@@ -70103,6 +71830,7 @@ async fn main() {
                             remote,
                             &pw,
                             salt.as_deref().unwrap_or(""),
+                            (password_form.form(), salt_form.form()),
                             *filename_encryption,
                             dir_iv_base64.as_deref(),
                             remote_name.as_deref(),
@@ -70586,7 +72314,35 @@ async fn retry_transfer_command<Attempt, Run>(
     sleep_dur: std::time::Duration,
     max_transfer_limit: Option<u64>,
     cancelled: &AtomicBool,
+    attempt_once: Attempt,
+) -> i32
+where
+    Attempt: FnMut() -> Run,
+    Run: std::future::Future<Output = i32>,
+{
+    retry_transfer_command_until(
+        cli,
+        max_attempts,
+        sleep_dur,
+        max_transfer_limit,
+        cancelled,
+        attempt_once,
+        || false,
+    )
+    .await
+}
+
+/// [`retry_transfer_command`], which also stops when `settled` says the
+/// failed attempt's outcome is final (`put`: every upload it tried was
+/// refused for a reason the next attempt would meet again).
+async fn retry_transfer_command_until<Attempt, Run>(
+    cli: &Cli,
+    max_attempts: u32,
+    sleep_dur: std::time::Duration,
+    max_transfer_limit: Option<u64>,
+    cancelled: &AtomicBool,
     mut attempt_once: Attempt,
+    settled: impl Fn() -> bool,
 ) -> i32
 where
     Attempt: FnMut() -> Run,
@@ -70596,6 +72352,7 @@ where
     for attempt in 1..=max_attempts {
         last_code = attempt_once().await;
         if !is_retryable_exit(last_code)
+            || settled()
             || session_transfer_exceeded(max_transfer_limit)
             || attempt == max_attempts
         {
@@ -78519,13 +80276,16 @@ mod tests {
             ),
         ] {
             let kept = inplace_over_an_existing_file(provider, |local, cli| async move {
-                let result = download_transfer_task(
-                    "memory://",
+                // The transfer runs on a connection its worker holds (#956).
+                let (mut provider, _) = create_and_connect("memory://", &cli, OutputFormat::Json)
+                    .await
+                    .expect("the stalling provider connects");
+                let result = download_transfer_on(
+                    &mut *provider,
                     "/f.bin".to_string(),
                     local,
                     None,
                     &cli,
-                    OutputFormat::Json,
                     None,
                     None,
                     None,
@@ -78700,8 +80460,8 @@ mod tests {
         assert!(!is_retryable_exit(130));
     }
 
-    /// Scripted answers for the delete fallbacks of `rm`, the TUI and the
-    /// served WebDAV DELETE; every call is recorded by name.
+    /// Scripted answers for the delete fallback of the served WebDAV
+    /// DELETE; every call is recorded by name.
     struct DeleteFallbackProvider {
         delete: fn() -> Result<(), ProviderError>,
         stat: fn() -> Result<RemoteEntry, ProviderError>,
@@ -78820,74 +80580,6 @@ mod tests {
         ProviderError::InvalidPath("'/photos' names an asset and a folder".to_string())
     }
 
-    /// Scenario C of the #944 review: Cloudinary refuses `rm /photos` because
-    /// an image and a folder share the name, and `rm` used to answer the
-    /// refusal with `rmdir`, removing the folder.
-    #[tokio::test]
-    async fn rm_does_not_turn_an_ambiguous_path_into_rmdir() {
-        let mut p = DeleteFallbackProvider::new(|| Err(ambiguous()), || Err(ambiguous()));
-        let result = delete_file_or_empty_dir(&mut p, "/photos").await;
-        assert!(
-            matches!(result, Err(ProviderError::InvalidPath(_))),
-            "{result:?}"
-        );
-        assert_eq!(p.calls, ["delete", "stat"]);
-    }
-
-    /// A file `delete` refused keeps its own error instead of the `rmdir` one.
-    #[tokio::test]
-    async fn rm_returns_the_delete_error_for_a_file() {
-        let mut p = DeleteFallbackProvider::new(
-            || Err(ProviderError::ServerError("503".to_string())),
-            || Ok(RemoteEntry::file("a".to_string(), "/a".to_string(), 1)),
-        );
-        let result = delete_file_or_empty_dir(&mut p, "/a").await;
-        assert!(
-            matches!(result, Err(ProviderError::ServerError(_))),
-            "{result:?}"
-        );
-        assert_eq!(p.calls, ["delete", "stat"]);
-    }
-
-    /// A cancelled `delete` stops there.
-    #[tokio::test]
-    async fn rm_stops_on_a_cancelled_delete() {
-        let mut p = DeleteFallbackProvider::new(
-            || Err(ProviderError::Cancelled),
-            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
-        );
-        let result = delete_file_or_empty_dir(&mut p, "/d").await;
-        assert!(
-            matches!(result, Err(ProviderError::Cancelled)),
-            "{result:?}"
-        );
-        assert_eq!(p.calls, ["delete"]);
-    }
-
-    /// The fallback still serves what it exists for: a directory `delete`
-    /// refuses (MTP answers InvalidPath "is a directory"), and a directory
-    /// `stat` cannot see (S3 without the trailing slash).
-    #[tokio::test]
-    async fn rm_still_removes_an_empty_directory() {
-        let mut dir = DeleteFallbackProvider::new(
-            || {
-                Err(ProviderError::InvalidPath(
-                    "/d is a directory; use rmdir".to_string(),
-                ))
-            },
-            || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
-        );
-        assert!(delete_file_or_empty_dir(&mut dir, "/d").await.is_ok());
-        assert_eq!(dir.calls, ["delete", "stat", "rmdir"]);
-
-        let mut unseen = DeleteFallbackProvider::new(
-            || Err(ProviderError::NotFound("/d".to_string())),
-            || Err(ProviderError::NotFound("/d".to_string())),
-        );
-        assert!(delete_file_or_empty_dir(&mut unseen, "/d").await.is_ok());
-        assert_eq!(unseen.calls, ["delete", "stat", "rmdir"]);
-    }
-
     /// The served DELETE used to escalate to `rmdir_recursive` after any
     /// failure: an ambiguous path emptied the folder, and a file refused for a
     /// transient reason erased the directory of the same name.
@@ -78962,17 +80654,6 @@ mod tests {
             || Err(ProviderError::Timeout),
             || Err(ProviderError::Cancelled),
         ] {
-            let mut rm = DeleteFallbackProvider::new(
-                || Err(ProviderError::ServerError("503".to_string())),
-                stat,
-            );
-            let result = delete_file_or_empty_dir(&mut rm, "/x").await;
-            assert!(
-                matches!(result, Err(ProviderError::ServerError(_))),
-                "{result:?}"
-            );
-            assert_eq!(rm.calls, ["delete", "stat"]);
-
             let mut served = DeleteFallbackProvider::new(
                 || Err(ProviderError::ServerError("503".to_string())),
                 stat,
@@ -78984,13 +80665,6 @@ mod tests {
             );
             assert_eq!(served.calls, ["delete", "stat"]);
         }
-
-        let mut parse = DeleteFallbackProvider::new(
-            || Err(ProviderError::ServerError("a folder".to_string())),
-            || Err(ProviderError::ParseError("an array".to_string())),
-        );
-        assert!(delete_file_or_empty_dir(&mut parse, "/d").await.is_ok());
-        assert_eq!(parse.calls, ["delete", "stat", "rmdir"]);
     }
 
     /// A link to a directory is not the directory: the served DELETE listed
@@ -79002,17 +80676,6 @@ mod tests {
             entry.is_symlink = true;
             Ok(entry)
         };
-        let mut rm = DeleteFallbackProvider::new(
-            || Err(ProviderError::PermissionDenied("/l".to_string())),
-            link,
-        );
-        let result = delete_file_or_empty_dir(&mut rm, "/l").await;
-        assert!(
-            matches!(result, Err(ProviderError::PermissionDenied(_))),
-            "{result:?}"
-        );
-        assert_eq!(rm.calls, ["delete", "stat"]);
-
         let mut served = DeleteFallbackProvider::new(
             || Err(ProviderError::PermissionDenied("/l".to_string())),
             link,
@@ -79249,6 +80912,2157 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         .await
         .unwrap();
         assert_eq!(*offsets.lock().unwrap(), vec![50]);
+    }
+
+    /// What every `WorkerFake` a test hands out did, and how the fake should
+    /// misbehave.
+    #[derive(Default)]
+    struct WorkerFakeState {
+        files: HashMap<String, Vec<u8>>,
+        next_id: usize,
+        /// Connections handed out by `WorkerFake::dial`, and dials attempted.
+        dials: usize,
+        dial_attempts: usize,
+        disconnects: usize,
+        /// `(connection id, remote path)` for every transfer attempted.
+        served: Vec<(usize, String)>,
+        /// Paths whose transfer fails because of the file (`NotFound`).
+        file_errors: std::collections::HashSet<String>,
+        /// Paths whose transfer takes the session down, and how many times.
+        session_kills: HashMap<String, u32>,
+        /// Dials still to refuse.
+        refuse_dials: u32,
+        /// Refuse every other dial, starting with the first.
+        refuse_alternate: bool,
+        /// A connection's `disconnect` never returns.
+        hang_disconnect: bool,
+        /// The first transfer on this connection takes the session down.
+        kill_first_on: Option<usize>,
+        /// An upload that takes the session down leaves half the file at the
+        /// remote path, as SFTP does (it opens the file there, then writes).
+        partial_on_kill: bool,
+        /// Offer a transfer pool, so that batches take the pooled executor.
+        pooled: bool,
+        /// Paths whose `stat` fails with something other than "not found".
+        stat_errors: std::collections::HashSet<String>,
+        /// The provider type the fake reports (SFTP when unset).
+        kind: Option<ProviderType>,
+        /// `reports_exact_size` says no, as the size-changing overlays do.
+        inexact_sizes: bool,
+        /// Paths whose `stat` loses the session, and how many times. The
+        /// upload that may follow still goes through, as an SFTP upload does:
+        /// it dials again by itself (`ensure_connected`).
+        stat_session_lost: HashMap<String, u32>,
+        /// `stat` cannot read sizes: it reports 0 and the FTP marker, as for
+        /// an MLST without a size fact.
+        unreadable_sizes: bool,
+        /// `(connection id, path, transfers served before it)` for every
+        /// `mkdir`.
+        mkdirs: Vec<(usize, String, usize)>,
+    }
+
+    /// A provider without a transfer pool (SFTP type, no `clone_for_transfer`),
+    /// so every batch command takes the legacy per-worker path. Its transfers
+    /// yield first, as real ones do on their I/O, so workers interleave.
+    struct WorkerFake {
+        id: usize,
+        alive: bool,
+        state: Arc<Mutex<WorkerFakeState>>,
+    }
+
+    type FakeDial = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Box<dyn StorageProvider>, String>>>,
+    >;
+
+    impl WorkerFake {
+        fn state() -> Arc<Mutex<WorkerFakeState>> {
+            Arc::default()
+        }
+
+        /// A connection the caller already holds, like a command's scan
+        /// connection: not counted as a dial.
+        fn held(state: &Arc<Mutex<WorkerFakeState>>) -> Box<dyn StorageProvider> {
+            let mut st = state.lock().unwrap();
+            st.next_id += 1;
+            Box::new(Self {
+                id: st.next_id,
+                alive: true,
+                state: state.clone(),
+            })
+        }
+
+        /// A connector for `run_on_worker_connections`: it suspends, as a real
+        /// dial does, and refuses while `refuse_dials` lasts.
+        fn dial(state: &Arc<Mutex<WorkerFakeState>>) -> impl Fn() -> FakeDial {
+            let state = state.clone();
+            move || {
+                let state = state.clone();
+                Box::pin(async move {
+                    tokio::task::yield_now().await;
+                    {
+                        let mut st = state.lock().unwrap();
+                        st.dial_attempts += 1;
+                        if st.refuse_alternate && st.dial_attempts % 2 == 1 {
+                            return Err("dial refused".to_string());
+                        }
+                        if st.refuse_dials > 0 {
+                            st.refuse_dials -= 1;
+                            return Err("dial refused".to_string());
+                        }
+                        st.dials += 1;
+                    }
+                    Ok(Self::held(&state))
+                })
+            }
+        }
+
+        fn record(&mut self, remote_path: &str) -> Result<(), ProviderError> {
+            if !self.alive {
+                return Err(ProviderError::NotConnected);
+            }
+            let mut st = self.state.lock().unwrap();
+            let first_here = !st.served.iter().any(|(id, _)| *id == self.id);
+            st.served.push((self.id, remote_path.to_string()));
+            if first_here && st.kill_first_on == Some(self.id) {
+                st.kill_first_on = None;
+                self.alive = false;
+                return Err(ProviderError::ConnectionLost(format!(
+                    "session lost during {remote_path}"
+                )));
+            }
+            if let Some(left) = st.session_kills.get_mut(remote_path) {
+                if *left > 0 {
+                    *left -= 1;
+                    self.alive = false;
+                    return Err(ProviderError::ConnectionLost(format!(
+                        "session lost during {remote_path}"
+                    )));
+                }
+            }
+            if st.file_errors.contains(remote_path) {
+                return Err(ProviderError::NotFound(remote_path.to_string()));
+            }
+            Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for WorkerFake {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            self.state
+                .lock()
+                .unwrap()
+                .kind
+                .unwrap_or(ProviderType::Sftp)
+        }
+        fn display_name(&self) -> String {
+            "worker-fake".to_string()
+        }
+        fn reports_exact_size(&self) -> bool {
+            !self.state.lock().unwrap().inexact_sizes
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.alive = false;
+            let hang = {
+                let mut st = self.state.lock().unwrap();
+                st.disconnects += 1;
+                st.hang_disconnect
+            };
+            if hang {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            self.alive
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            let st = self.state.lock().unwrap();
+            let prefix = format!("{}/", path.trim_end_matches('/'));
+            let mut entries: Vec<RemoteEntry> = st
+                .files
+                .iter()
+                .filter_map(|(full, bytes)| {
+                    let name = full.strip_prefix(&prefix)?;
+                    (!name.contains('/')).then(|| {
+                        let mut entry =
+                            RemoteEntry::file(name.to_string(), full.clone(), bytes.len() as u64);
+                        entry.modified = Some(FIXTURE_MTIME.to_string());
+                        entry
+                    })
+                })
+                .collect();
+            entries.sort_by(|a, b| a.path.cmp(&b.path));
+            Ok(entries)
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            remote_path: &str,
+            local_path: &str,
+            progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            tokio::task::yield_now().await;
+            // A first chunk arrived before anything could fail.
+            if let Some(progress) = &progress {
+                progress(1, 2);
+            }
+            self.record(remote_path)?;
+            let bytes = self
+                .state
+                .lock()
+                .unwrap()
+                .files
+                .get(remote_path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+            std::fs::write(local_path, bytes).map_err(|e| ProviderError::Other(e.to_string()))
+        }
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotFound(remote_path.to_string()))
+        }
+        async fn upload(
+            &mut self,
+            local_path: &str,
+            remote_path: &str,
+            progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            tokio::task::yield_now().await;
+            let bytes =
+                std::fs::read(local_path).map_err(|e| ProviderError::Other(e.to_string()))?;
+            // Half of it went out before anything could fail.
+            if let Some(progress) = &progress {
+                progress(bytes.len() as u64 / 2, bytes.len() as u64);
+            }
+            if let Err(err) = self.record(remote_path) {
+                let mut st = self.state.lock().unwrap();
+                if st.partial_on_kill && err.is_connection_lost() {
+                    let half = bytes[..bytes.len() / 2].to_vec();
+                    st.files.insert(remote_path.to_string(), half);
+                }
+                return Err(err);
+            }
+            self.state
+                .lock()
+                .unwrap()
+                .files
+                .insert(remote_path.to_string(), bytes);
+            Ok(())
+        }
+        async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            let mut st = self.state.lock().unwrap();
+            let served = st.served.len();
+            st.mkdirs.push((self.id, path.to_string(), served));
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            let mut st = self.state.lock().unwrap();
+            if let Some(left) = st.stat_session_lost.get_mut(path) {
+                if *left > 0 {
+                    *left -= 1;
+                    return Err(ProviderError::ConnectionLost(
+                        "the connection to the server ended".to_string(),
+                    ));
+                }
+            }
+            if st.stat_errors.contains(path) {
+                return Err(ProviderError::PermissionDenied(path.to_string()));
+            }
+            let bytes = st
+                .files
+                .get(path)
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            let name = path.rsplit('/').next().unwrap_or(path).to_string();
+            let mut entry = RemoteEntry::file(name, path.to_string(), bytes.len() as u64);
+            entry.modified = Some(FIXTURE_MTIME.to_string());
+            if st.unreadable_sizes {
+                entry.size = 0;
+                entry
+                    .metadata
+                    .insert("ftp.size_unreadable".to_string(), "1".to_string());
+            }
+            Ok(entry)
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Ok(self.stat(path).await?.size)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(self.state.lock().unwrap().files.contains_key(path))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("worker-fake".to_string())
+        }
+        fn transfer_executor_kind(
+            &self,
+        ) -> ftp_client_gui_lib::providers::ProviderTransferExecutorKind {
+            use ftp_client_gui_lib::providers::ProviderTransferExecutorKind;
+            if self.state.lock().unwrap().pooled {
+                ProviderTransferExecutorKind::SftpConnectionPool
+            } else {
+                ProviderTransferExecutorKind::LockedSingle
+            }
+        }
+        fn transfer_executor_max_sessions(&self) -> u16 {
+            if self.state.lock().unwrap().pooled {
+                4
+            } else {
+                1
+            }
+        }
+        fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            if self.state.lock().unwrap().pooled {
+                Ok(Self::held(&self.state))
+            } else {
+                Err(ProviderError::NotSupported(
+                    "clone_for_transfer".to_string(),
+                ))
+            }
+        }
+    }
+
+    /// A job that uploads nothing: it records `path` on the connection it was
+    /// given, and classifies a failure with the production classifier.
+    async fn record_on(
+        conn: Result<Box<dyn StorageProvider>, String>,
+        path: String,
+    ) -> WorkerJobDone<String> {
+        let mut conn = match conn {
+            Ok(conn) => conn,
+            Err(err) => return WorkerJobDone::without_transfer(None, err),
+        };
+        tokio::task::yield_now().await;
+        let outcome = conn
+            .as_any_mut()
+            .downcast_mut::<WorkerFake>()
+            .expect("a WorkerFake")
+            .record(&path);
+        let outcome =
+            outcome.map_err(|err| TransferOnError::from_provider(conn.as_ref(), err, &[&path]));
+        WorkerJobDone::from_transfer(conn, outcome, || path, |err| err)
+    }
+
+    fn job_paths(n: usize) -> Vec<String> {
+        (1..=n).map(|i| format!("/root/f{i:02}")).collect()
+    }
+
+    /// Runs the helper as the commands do, with nothing cancelled and no
+    /// `--max-transfer` budget.
+    async fn run_jobs(
+        state: &Arc<Mutex<WorkerFakeState>>,
+        seed: Option<Box<dyn StorageProvider>>,
+        workers: usize,
+        jobs: Vec<String>,
+    ) -> Vec<Result<String, String>> {
+        run_on_worker_connections(
+            seed,
+            workers,
+            jobs,
+            &AtomicBool::new(false),
+            None,
+            WorkerFake::dial(state),
+            record_on,
+        )
+        .await
+    }
+
+    fn errors(results: &[Result<String, String>]) -> usize {
+        results.iter().filter(|r| r.is_err()).count()
+    }
+
+    /// The defect: the legacy batch dialled once per file. N files on W
+    /// workers now cost W connections, each closed once at the end.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_dial_once_per_worker_not_per_file() {
+        let state = WorkerFake::state();
+        let results = run_jobs(&state, None, 3, job_paths(10)).await;
+        assert_eq!((results.len(), errors(&results)), (10, 0), "{results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!(st.dials, 3, "one dial per worker");
+        assert_eq!(st.disconnects, 3, "each connection closed once");
+    }
+
+    /// Workers dial when they take their first job: fewer jobs than workers
+    /// open no idle connections.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_dial_no_more_than_the_jobs_need() {
+        let state = WorkerFake::state();
+        let results = run_jobs(&state, None, 8, job_paths(2)).await;
+        assert_eq!(results.len(), 2);
+        assert_eq!(state.lock().unwrap().dials, 2);
+    }
+
+    /// A connection the caller already holds serves the first worker, and
+    /// with one worker nothing else is dialled; a seed no job needed is
+    /// closed rather than leaked.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_start_from_the_held_connection() {
+        let state = WorkerFake::state();
+        let seed = WorkerFake::held(&state);
+        let results = run_jobs(&state, Some(seed), 1, job_paths(5)).await;
+        assert_eq!(errors(&results), 0, "{results:?}");
+        {
+            let st = state.lock().unwrap();
+            assert_eq!(st.dial_attempts, 0, "the held connection was enough");
+            assert!(st.served.iter().all(|(id, _)| *id == 1), "all on the seed");
+            assert_eq!(st.disconnects, 1);
+        }
+
+        let state = WorkerFake::state();
+        let seed = WorkerFake::held(&state);
+        let results = run_jobs(&state, Some(seed), 4, Vec::new()).await;
+        assert!(results.is_empty());
+        let st = state.lock().unwrap();
+        assert_eq!(
+            (st.dial_attempts, st.disconnects),
+            (0, 1),
+            "unused seed closed"
+        );
+    }
+
+    /// A failure of the file (here `NotFound`) keeps the connection, on a
+    /// fresh connection and on a proven one alike: a batch with scattered bad
+    /// files must not sign in again for each of them (Internxt answers 429).
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_keep_the_session_on_a_file_error() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().file_errors = ["/root/f01", "/root/f03", "/root/f05"]
+            .map(String::from)
+            .into();
+        let results = run_jobs(&state, None, 1, job_paths(6)).await;
+        assert_eq!(errors(&results), 3, "{results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!(st.dials, 1, "one connection for the whole batch");
+        assert_eq!(st.disconnects, 1);
+    }
+
+    /// A session that had completed a job and then breaks fails that job, as
+    /// its own connection would have on main, and the next job gets a fresh
+    /// connection: one broken session costs one file and one dial.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_redial_after_a_proven_session_breaks() {
+        let state = WorkerFake::state();
+        state
+            .lock()
+            .unwrap()
+            .session_kills
+            .insert("/root/f02".to_string(), 1);
+        let results = run_jobs(&state, None, 1, job_paths(3)).await;
+        assert_eq!(errors(&results), 1, "only f02 fails: {results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!(st.dials, 2, "the broken session is replaced once");
+        assert_eq!(st.disconnects, 2, "the broken one and the last one");
+        let ids: Vec<usize> = st.served.iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, vec![1, 1, 2], "f03 runs on the fresh connection");
+    }
+
+    /// A blip on the first file with one worker (the Internxt case): the
+    /// connection is lost before it completed anything, so the job goes back
+    /// to the queue once, and a new connection carries the whole batch.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_retry_the_first_file_after_a_blip() {
+        let state = WorkerFake::state();
+        state
+            .lock()
+            .unwrap()
+            .session_kills
+            .insert("/root/f01".to_string(), 1);
+        let results = run_jobs(&state, None, 1, job_paths(4)).await;
+        assert_eq!((results.len(), errors(&results)), (4, 0), "{results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!(st.dials, 2, "one extra dial for the blip");
+        let f01: Vec<usize> = st
+            .served
+            .iter()
+            .filter(|(_, p)| p == "/root/f01")
+            .map(|(id, _)| *id)
+            .collect();
+        assert_eq!(f01, vec![1, 2], "f01 tried on two connections");
+    }
+
+    /// A file that takes down every connection it touches fails on its own and
+    /// every other file goes through: one bad file does not stop the batch.
+    /// With one worker it meets two fresh connections (the rule for a job lost
+    /// twice); with several it may meet a proven one (the rule for a broken
+    /// proven session). Either way, one failure.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_fail_a_poisoned_file_alone() {
+        for (workers, max_dials) in [(1, 3), (3, 3 + 2)] {
+            let state = WorkerFake::state();
+            state
+                .lock()
+                .unwrap()
+                .session_kills
+                .insert("/root/f01".to_string(), u32::MAX);
+            let results = run_jobs(&state, None, workers, job_paths(9)).await;
+            assert_eq!(results.len(), 9, "{workers} workers: no job dropped");
+            assert_eq!(errors(&results), 1, "{workers} workers: {results:?}");
+            assert!(results
+                .iter()
+                .filter_map(|r| r.as_ref().err())
+                .all(|e| e.contains("/root/f01")));
+            let st = state.lock().unwrap();
+            assert!(
+                st.dials <= max_dials,
+                "{workers} workers: bounded dials, {}",
+                st.dials
+            );
+            if workers == 1 {
+                let f01: Vec<usize> = st
+                    .served
+                    .iter()
+                    .filter(|(_, p)| p == "/root/f01")
+                    .map(|(id, _)| *id)
+                    .collect();
+                assert_eq!(f01, vec![1, 2], "tried on two fresh connections, then left");
+            }
+        }
+    }
+
+    /// Each of the three signs of a lost session counts on its own, and a
+    /// failure of the file alone keeps the session.
+    #[test]
+    fn transfer_error_classification_reads_each_sign_of_a_lost_session() {
+        let state = WorkerFake::state();
+        let connected = WorkerFake::held(&state);
+        let mut gone = WorkerFake::held(&state);
+        gone.as_any_mut()
+            .downcast_mut::<WorkerFake>()
+            .unwrap()
+            .alive = false;
+        let lost = |provider: &dyn StorageProvider, err: ProviderError| {
+            TransferOnError::from_provider(provider, err, &[]).session_lost
+        };
+        // The error kind alone.
+        assert!(lost(
+            connected.as_ref(),
+            ProviderError::ConnectionLost("peer went away".into())
+        ));
+        assert!(lost(connected.as_ref(), ProviderError::Timeout));
+        // The message alone.
+        assert!(lost(
+            connected.as_ref(),
+            ProviderError::Other("write failed: broken pipe".into())
+        ));
+        // The provider alone.
+        assert!(lost(gone.as_ref(), ProviderError::NotFound("/x".into())));
+        // None of them: the file's failure, the session stays.
+        assert!(!lost(
+            connected.as_ref(),
+            ProviderError::NotFound("/x".into())
+        ));
+        assert!(!lost(
+            connected.as_ref(),
+            ProviderError::PermissionDenied("/x".into())
+        ));
+        // A timeout: the session stopped answering. russh-sftp's request
+        // timeout and a TCP one, neither of them in SESSION_CLOSED_NEEDLES.
+        assert!(lost(
+            connected.as_ref(),
+            ProviderError::TransferFailed("Read error: Timeout".into())
+        ));
+        assert!(lost(
+            connected.as_ref(),
+            ProviderError::TransferFailed("Remote write error: Connection timed out".into())
+        ));
+        // What SFTP reports for a request timeout on a remote file it writes
+        // (#963): a failed transfer, and still a session that stopped
+        // answering.
+        assert!(lost(
+            connected.as_ref(),
+            ProviderError::TransferFailed(
+                "Failed to create remote file: the server did not answer in time (timeout); the remote file may be incomplete"
+                    .into()
+            )
+        ));
+        // The job's own path is not read as a sign: a missing file called
+        // "connection reset.txt" is the file's failure.
+        let path = "/root/connection reset.txt";
+        let missing = || ProviderError::NotFound(format!("Failed to open {path}"));
+        assert!(
+            !TransferOnError::from_provider(connected.as_ref(), missing(), &[path]).session_lost
+        );
+        assert!(
+            lost(connected.as_ref(), missing()),
+            "the path is what matched"
+        );
+    }
+
+    /// An endpoint that drops every session it accepts: a worker gives each of
+    /// two jobs two connections, then stops, and the jobs left report the
+    /// error. Four dials, not one per file.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_stop_when_every_fresh_session_is_lost() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().session_kills =
+            job_paths(5).into_iter().map(|p| (p, u32::MAX)).collect();
+        let results = run_jobs(&state, None, 1, job_paths(5)).await;
+        assert_eq!((results.len(), errors(&results)), (5, 5), "{results:?}");
+        let with = |needle: &str| {
+            results
+                .iter()
+                .filter(|r| r.as_ref().err().is_some_and(|e| e.contains(needle)))
+                .count()
+        };
+        // The two jobs tried report their loss; the three left say what
+        // happened to them, not another file's error.
+        assert_eq!(with("session lost"), 2, "{results:?}");
+        assert_eq!(
+            with("not transferred: no connection left"),
+            3,
+            "{results:?}"
+        );
+        assert_eq!(state.lock().unwrap().dials, 4);
+    }
+
+    /// A dial that fails puts its job back: the next dial carries it.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_requeue_the_job_of_a_failed_dial() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().refuse_dials = 1;
+        let results = run_jobs(&state, None, 1, job_paths(3)).await;
+        assert_eq!((results.len(), errors(&results)), (3, 0), "{results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!((st.dial_attempts, st.dials), (2, 1));
+    }
+
+    /// No connection opens at all: each worker tries twice and stops, and no
+    /// job is dropped. A gateway answering 429 sees 4 attempts here, not 5.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_report_every_job_when_no_connection_opens() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().refuse_dials = u32::MAX;
+        let results = run_jobs(&state, None, 2, job_paths(5)).await;
+        assert_eq!((results.len(), errors(&results)), (5, 5));
+        assert!(results
+            .iter()
+            .all(|r| r.as_ref().err().is_some_and(|e| e.contains("dial refused"))));
+        assert_eq!(state.lock().unwrap().dial_attempts, 4);
+    }
+
+    /// A connection is closed after `WORKER_CONNECTION_MAX_JOBS` jobs, as the
+    /// pooled executor retires its warm workers.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_retire_a_connection_after_its_quota() {
+        let state = WorkerFake::state();
+        let total = WORKER_CONNECTION_MAX_JOBS as usize + 2;
+        let results = run_jobs(&state, None, 1, job_paths(total)).await;
+        assert_eq!(errors(&results), 0);
+        let st = state.lock().unwrap();
+        assert_eq!((st.dials, st.disconnects), (2, 2));
+        let first = st.served.iter().filter(|(id, _)| *id == 1).count();
+        assert_eq!(first, WORKER_CONNECTION_MAX_JOBS as usize);
+    }
+
+    /// Nothing is dialled for a job the `--max-transfer` budget already rules
+    /// out, nor once the run is cancelled.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_do_not_dial_for_a_job_that_cannot_run() {
+        let state = WorkerFake::state();
+        let results = run_on_worker_connections(
+            None,
+            3,
+            job_paths(4),
+            &AtomicBool::new(false),
+            Some(0),
+            WorkerFake::dial(&state),
+            record_on,
+        )
+        .await;
+        assert_eq!((results.len(), errors(&results)), (4, 4));
+        assert!(results
+            .iter()
+            .all(|r| r.as_ref().err().is_some_and(|e| e.contains("max-transfer"))));
+        assert_eq!(state.lock().unwrap().dial_attempts, 0);
+
+        let state = WorkerFake::state();
+        let results = run_on_worker_connections(
+            None,
+            3,
+            job_paths(4),
+            &AtomicBool::new(true),
+            None,
+            WorkerFake::dial(&state),
+            record_on,
+        )
+        .await;
+        assert_eq!((results.len(), errors(&results)), (4, 4));
+        assert_eq!(state.lock().unwrap().dial_attempts, 0);
+    }
+
+    /// A dial that suspends, as a real one does. The seed's lock guard used to
+    /// stay alive across the dial, a second worker locking it blocked the one
+    /// thread the workers share, and the batch hung (live, `put -r
+    /// --immutable` over SFTP). Run on its own thread so a hang fails the test
+    /// instead of stalling the suite.
+    #[test]
+    fn worker_connections_do_not_hold_a_lock_across_a_dial() {
+        let state = WorkerFake::state();
+        let batch_state = state.clone();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let state = batch_state;
+            let results = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("test runtime")
+                .block_on(async {
+                    let seed = WorkerFake::held(&state);
+                    run_jobs(&state, Some(seed), 4, job_paths(12)).await
+                });
+            let _ = done_tx.send(results);
+        });
+        let results = done_rx
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("the batch hung");
+        assert_eq!((results.len(), errors(&results)), (12, 0));
+        assert_eq!(state.lock().unwrap().dials, 3, "the seed plus three dials");
+    }
+
+    /// A failed transfer on a held connection takes back the bytes it put on
+    /// the batch's progress: both call sites wire the take-back, not only the
+    /// type that makes it.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_failed_transfer_on_a_held_connection_takes_back_its_progress() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let local = dir.path().join("up.bin");
+        std::fs::write(&local, vec![7u8; 1000]).unwrap();
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.session_kills = HashMap::from([
+                ("/root/up.bin".to_string(), 1),
+                ("/root/down.bin".to_string(), 1),
+            ]);
+            st.files.insert("/root/down.bin".to_string(), vec![1u8; 10]);
+        }
+        let cli = test_cli();
+        let aggregate = Arc::new(AtomicU64::new(0));
+        let mut conn = WorkerFake::held(&state);
+        let up = upload_transfer_on(
+            conn.as_mut(),
+            local.to_string_lossy().into_owned(),
+            "/root/up.bin".to_string(),
+            &cli,
+            false,
+            true,
+            Some(aggregate.clone()),
+            None,
+            None,
+        )
+        .await;
+        assert!(up.is_err());
+        assert_eq!(aggregate.load(Ordering::Relaxed), 0, "upload");
+        let mut conn = WorkerFake::held(&state);
+        let down = download_transfer_on(
+            conn.as_mut(),
+            "/root/down.bin".to_string(),
+            dir.path().join("down.bin").to_string_lossy().into_owned(),
+            None,
+            &cli,
+            Some(aggregate.clone()),
+            None,
+            None,
+        )
+        .await;
+        assert!(down.is_err());
+        assert_eq!(aggregate.load(Ordering::Relaxed), 0, "download");
+    }
+
+    /// A file error whose path reads like a lost session keeps the session:
+    /// both call sites hand their paths to the classifier.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_file_named_like_a_lost_session_keeps_the_connection() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let local = dir.path().join("connection reset.txt");
+        std::fs::write(&local, b"x").unwrap();
+        let remote = "/root/connection reset.txt".to_string();
+        let state = WorkerFake::state();
+        state.lock().unwrap().file_errors.insert(remote.clone());
+        let cli = test_cli();
+        let mut conn = WorkerFake::held(&state);
+        let up = upload_transfer_on(
+            conn.as_mut(),
+            local.to_string_lossy().into_owned(),
+            remote.clone(),
+            &cli,
+            false,
+            true,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(!up.expect_err("the file error").session_lost, "upload");
+        let down = download_transfer_on(
+            conn.as_mut(),
+            remote.clone(),
+            dir.path().join("out.txt").to_string_lossy().into_owned(),
+            None,
+            &cli,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(!down.expect_err("the file error").session_lost, "download");
+    }
+
+    /// The `--immutable` size check compares only a size it can trust: not
+    /// on a provider that says its sizes are not exact (the size-changing
+    /// overlays), not on Proton Drive, and not a 0 on WebDAV or Google Drive
+    /// (no length sent, a native Doc). Elsewhere a 0 is exact, and it is what
+    /// an upload cut between its create and its first write leaves.
+    #[test]
+    fn the_immutable_size_check_compares_only_sizes_it_can_trust() {
+        let cli = Cli {
+            immutable: true,
+            ..test_cli()
+        };
+        let there = |size| RemoteEntry::file("f".into(), "/f".into(), size);
+        assert!(immutable_size_mismatch(&cli, "/f", &there(3), Some(6), true).is_some());
+        assert!(immutable_size_mismatch(&cli, "/f", &there(6), Some(6), true).is_none());
+        assert!(immutable_size_mismatch(&cli, "/f", &there(3), Some(6), false).is_none());
+        assert!(immutable_size_mismatch(&cli, "/f", &there(3), None, true).is_none());
+        let no_clobber = test_cli();
+        assert!(immutable_size_mismatch(&no_clobber, "/f", &there(3), Some(6), true).is_none());
+
+        let exact = |kind: ProviderType, inexact: bool, size: u64| {
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                st.kind = Some(kind);
+                st.inexact_sizes = inexact;
+            }
+            remote_size_is_exact(WorkerFake::held(&state).as_ref(), &there(size))
+        };
+        assert!(exact(ProviderType::Sftp, false, 0), "a 0 on SFTP is exact");
+        assert!(exact(ProviderType::Sftp, false, 5));
+        assert!(!exact(ProviderType::Sftp, true, 5), "the provider says no");
+        assert!(!exact(ProviderType::WebDav, false, 0), "no length sent");
+        assert!(exact(ProviderType::WebDav, false, 5));
+        assert!(!exact(ProviderType::GoogleDrive, false, 0), "a native Doc");
+        assert!(
+            !exact(ProviderType::Proton, false, 5),
+            "maybe the encrypted size"
+        );
+        // FTP marks a size it could not read (an MLST without a size fact, a
+        // LIST row without a readable one): the 0 it reads is not a size.
+        assert!(exact(ProviderType::Ftp, false, 0), "a 0 FTP read is exact");
+        let state = WorkerFake::state();
+        state.lock().unwrap().kind = Some(ProviderType::Ftp);
+        let mut unread = there(0);
+        unread
+            .metadata
+            .insert("ftp.size_unreadable".to_string(), "1".to_string());
+        assert!(
+            !remote_size_is_exact(WorkerFake::held(&state).as_ref(), &unread),
+            "a size FTP could not read"
+        );
+    }
+
+    /// A batch summary names what arrived, and the total only when not all
+    /// of it did.
+    #[test]
+    fn batch_summaries_say_what_arrived() {
+        assert_eq!(batch_bytes_summary(1024, 1024), format_size(1024));
+        assert_eq!(
+            batch_bytes_summary(512, 4096),
+            format!("{} of {}", format_size(512), format_size(4096))
+        );
+        assert_eq!(shared_batch_bytes(true, 4096, None), 4096);
+        assert_eq!(shared_batch_bytes(false, 4096, None), 0);
+    }
+
+    /// A failed attempt takes back the bytes it added to the batch's
+    /// progress: a job that goes back to the queue starts again from zero,
+    /// and its first attempt used to be counted twice.
+    #[test]
+    fn a_failed_attempt_takes_back_its_progress() {
+        let aggregate = Arc::new(AtomicU64::new(500));
+        let (first, attempt) = make_aggregate_progress_cb(aggregate.clone(), None);
+        first(100, 300);
+        first(250, 300);
+        assert_eq!(aggregate.load(Ordering::Relaxed), 750);
+        attempt.take_back();
+        assert_eq!(aggregate.load(Ordering::Relaxed), 500);
+        let (second, _) = make_aggregate_progress_cb(aggregate.clone(), None);
+        second(300, 300);
+        assert_eq!(aggregate.load(Ordering::Relaxed), 800, "counted once");
+    }
+
+    /// A job that may not run again (an `--immutable` upload that reached the
+    /// remote file) fails when it loses a fresh connection instead of going
+    /// back to the queue.
+    #[tokio::test(flavor = "current_thread")]
+    async fn worker_connections_do_not_requeue_a_job_that_may_not_run_again() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().session_kills = HashMap::from([("/root/f01".to_string(), 1)]);
+        let results = run_on_worker_connections(
+            None,
+            1,
+            job_paths(2),
+            &AtomicBool::new(false),
+            None,
+            WorkerFake::dial(&state),
+            |conn, path| async move {
+                let mut done = record_on(conn, path).await;
+                done.retry_safe = false;
+                done
+            },
+        )
+        .await;
+        assert_eq!((results.len(), errors(&results)), (2, 1), "{results:?}");
+        let st = state.lock().unwrap();
+        let tries = st.served.iter().filter(|(_, p)| p == "/root/f01").count();
+        assert_eq!(tries, 1, "tried once, not requeued");
+    }
+
+    /// A connection that waited for a job no longer counts as proven: the
+    /// server may have dropped it while it sat idle. Its loss then puts the
+    /// job back for a fresh connection, where it used to fail the job.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_a_connection_that_waited_is_not_proven() {
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.refuse_dials = 1;
+            st.session_kills = HashMap::from([("/root/f02".to_string(), 1)]);
+        }
+        let seed = WorkerFake::held(&state);
+        let results = run_jobs(&state, Some(seed), 2, job_paths(2)).await;
+        assert_eq!((results.len(), errors(&results)), (2, 0), "{results:?}");
+    }
+
+    /// Only a job that kept its session resets a worker's counts. An endpoint
+    /// that refuses every other dial and drops every session it accepts stops
+    /// the worker at its second failed dial: three attempts, where resetting
+    /// the count on each accepted dial let it go on to eight.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_count_a_failure_streak_until_a_job_completes() {
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.refuse_alternate = true;
+            st.session_kills = job_paths(3).into_iter().map(|p| (p, u32::MAX)).collect();
+        }
+        let results = run_jobs(&state, None, 1, job_paths(3)).await;
+        assert_eq!((results.len(), errors(&results)), (3, 3), "{results:?}");
+        assert_eq!(state.lock().unwrap().dial_attempts, 3);
+    }
+
+    /// A worker with nothing left to take waits while another still holds a
+    /// job: the job a failed dial puts back runs on the waiting worker's live
+    /// connection, where it used to fail for want of one after the second
+    /// failed dial.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_idle_worker_takes_a_job_that_comes_back() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().refuse_dials = u32::MAX;
+        let seed = WorkerFake::held(&state);
+        let results = run_jobs(&state, Some(seed), 2, job_paths(2)).await;
+        assert_eq!((results.len(), errors(&results)), (2, 0), "{results:?}");
+        let st = state.lock().unwrap();
+        assert_eq!(st.dial_attempts, 1);
+        assert!(
+            st.served.iter().all(|(id, _)| *id == 1),
+            "both on the seed: {:?}",
+            st.served
+        );
+    }
+
+    /// A failed dial is followed by a pause before the next one, so a short
+    /// outage is ridden out instead of spending both attempts at once.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_pause_before_dialling_again() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().refuse_dials = 1;
+        let started = tokio::time::Instant::now();
+        let results = run_jobs(&state, None, 1, job_paths(1)).await;
+        assert_eq!(errors(&results), 0);
+        assert_eq!(state.lock().unwrap().dial_attempts, 2);
+        assert_eq!(started.elapsed(), WORKER_REDIAL_PAUSE);
+    }
+
+    /// Closing a connection whose peer stopped answering is bounded: the
+    /// batch ends instead of waiting on the close.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_connections_bound_the_close_of_a_silent_peer() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().hang_disconnect = true;
+        let started = tokio::time::Instant::now();
+        let results = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            run_jobs(&state, None, 1, job_paths(2)),
+        )
+        .await
+        .expect("the batch waited on a close that never returns");
+        assert_eq!(errors(&results), 0);
+        assert_eq!(state.lock().unwrap().disconnects, 1);
+        assert_eq!(started.elapsed(), WORKER_CLOSE_TIMEOUT);
+    }
+
+    /// Runs `command` against the fake: the first `create_and_connect` gets
+    /// `seed`, every later one a new connection from the factory, counted as
+    /// a dial. So a command that dials per file shows it in `dials`.
+    fn run_on_fake<T: Send, F: std::future::Future<Output = T>>(
+        state: &Arc<Mutex<WorkerFakeState>>,
+        command: impl FnOnce() -> F + Send,
+    ) -> T {
+        let state = state.clone();
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .name("worker-connection-command".to_string())
+                .stack_size(64 * 1024 * 1024)
+                .spawn_scoped(scope, move || {
+                    let seed = WorkerFake::held(&state);
+                    TEST_CONNECTED_PROVIDER.with(|slot| *slot.borrow_mut() = Some(seed));
+                    let factory_state = state.clone();
+                    TEST_PROVIDER_FACTORY.with(|slot| {
+                        *slot.borrow_mut() = Some(std::rc::Rc::new(move || {
+                            let mut st = factory_state.lock().unwrap();
+                            st.dials += 1;
+                            st.dial_attempts += 1;
+                            drop(st);
+                            WorkerFake::held(&factory_state)
+                        }))
+                    });
+                    let out = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("test runtime")
+                        .block_on(command());
+                    TEST_PROVIDER_FACTORY.with(|slot| *slot.borrow_mut() = None);
+                    out
+                })
+                .expect("spawn the command thread")
+                .join()
+                .expect("the command thread panicked")
+        })
+    }
+
+    /// Five local files under `dir/up`, and a CLI with `workers` workers.
+    fn local_batch(dir: &tempfile::TempDir, workers: usize) -> (String, Cli) {
+        let local = dir.path().join("up");
+        std::fs::create_dir(&local).expect("local dir");
+        for i in 1..=5 {
+            std::fs::write(local.join(format!("f{i}.txt")), format!("file {i}")).unwrap();
+        }
+        let cli = Cli {
+            quiet: true,
+            parallel: workers,
+            ..test_cli()
+        };
+        (local.to_string_lossy().into_owned(), cli)
+    }
+
+    fn remote_batch(state: &Arc<Mutex<WorkerFakeState>>) {
+        let mut st = state.lock().unwrap();
+        for i in 1..=5 {
+            st.files
+                .insert(format!("/root/f{i}.txt"), format!("file {i}").into_bytes());
+        }
+    }
+
+    fn local_files(dir: &std::path::Path) -> usize {
+        walkdir::WalkDir::new(dir)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
+            .count()
+    }
+
+    /// `put -r` to a provider without a transfer pool (Internxt, MEGA, Filen
+    /// and the other single-session APIs) closed its scan connection and
+    /// dialled once per file: 60 files to Internxt were 60 logins. With one
+    /// worker it now uploads every file on the scan connection, dialling
+    /// nothing, and with four it dials three more, not five.
+    #[test]
+    fn put_recursive_on_a_poolless_provider_dials_once_per_worker() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for (workers, dials) in [(1, 0), (4, 3)] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, cli) = local_batch(&dir, workers);
+            let state = WorkerFake::state();
+            let code = run_on_fake(&state, || async {
+                cmd_put_recursive(
+                    "memory://",
+                    &local_dir,
+                    Some("/root"),
+                    false,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            assert_eq!(code, 0, "{workers} workers: {:?}", st.served);
+            assert_eq!(st.files.len(), 5, "{workers} workers: every file uploaded");
+            assert_eq!(st.dials, dials, "{workers} workers");
+            assert_eq!(
+                st.disconnects,
+                dials + 1,
+                "{workers} workers: each closed once"
+            );
+        }
+    }
+
+    /// The download twin: `get -r` from a provider without a transfer pool.
+    #[test]
+    fn get_recursive_on_a_poolless_provider_dials_once_per_worker() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for (workers, dials) in [(1, 0), (4, 3)] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let state = WorkerFake::state();
+            remote_batch(&state);
+            let cli = Cli {
+                quiet: true,
+                parallel: workers,
+                ..test_cli()
+            };
+            let local_base = dir.path().join("down").to_string_lossy().into_owned();
+            let code = run_on_fake(&state, || async {
+                cmd_get_recursive(
+                    "memory://",
+                    "/root",
+                    Some(&local_base),
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            assert_eq!(code, 0, "{workers} workers: {:?}", st.served);
+            assert_eq!(st.served.len(), 5, "{workers} workers");
+            assert_eq!(st.dials, dials, "{workers} workers");
+            assert_eq!(local_files(&dir.path().join("down")), 5);
+        }
+    }
+
+    /// `--immutable` skips the files already there without dropping the
+    /// connection: the skip says nothing about the session.
+    #[test]
+    fn put_recursive_immutable_skips_keep_the_connection() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        cli.immutable = true;
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            // The size of the local files ("file N"), so each is a skip.
+            for name in ["f1.txt", "f3.txt"] {
+                st.files.insert(format!("/root/{name}"), b"there!".to_vec());
+            }
+        }
+        run_on_fake(&state, || async {
+            cmd_put_recursive(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(
+            st.served.len(),
+            3,
+            "three uploads, two skips: {:?}",
+            st.served
+        );
+        assert_eq!(st.files["/root/f1.txt"], b"there!", "not overwritten");
+        assert_eq!(st.dials, 0, "one connection throughout");
+        assert_eq!(st.disconnects, 1);
+    }
+
+    /// `--immutable` and a fresh connection lost in the middle of an upload:
+    /// the upload had already created the remote file, and a second attempt
+    /// found that partial, skipped it as already there and exited 0 on a
+    /// truncated file. The loss is reported instead.
+    #[test]
+    fn put_recursive_immutable_reports_an_upload_cut_by_a_lost_connection() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        // `--no-clobber` skips an existing file the same way, so the same
+        // requeue would hide the same partial.
+        for no_clobber in [false, true] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 2);
+            cli.immutable = !no_clobber;
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                // Connection 1 is the scan connection, 2 the first one dialled.
+                st.kill_first_on = Some(2);
+                st.partial_on_kill = true;
+            }
+            let code = run_on_fake(&state, || async {
+                cmd_put_recursive(
+                    "memory://",
+                    &local_dir,
+                    Some("/root"),
+                    no_clobber,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            let (_, cut) = st
+                .served
+                .iter()
+                .find(|(id, _)| *id == 2)
+                .expect("connection 2 took a job");
+            assert!(st.files[cut].len() < 6, "the fake left a partial at {cut}");
+            assert_eq!(
+                code, 4,
+                "no_clobber {no_clobber}: the cut upload is a failure: {:?}",
+                st.served
+            );
+        }
+    }
+
+    /// `--immutable` and a remote file of another size, most often the
+    /// partial a lost connection left: an error, not a skip. It was counted
+    /// as skipped, and the run reported the truncated file as done, then and
+    /// on every later run.
+    #[test]
+    fn put_recursive_immutable_refuses_a_remote_file_of_another_size() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        cli.immutable = true;
+        let state = WorkerFake::state();
+        state
+            .lock()
+            .unwrap()
+            .files
+            .insert("/root/f2.txt".to_string(), b"fil".to_vec());
+        let code = run_on_fake(&state, || async {
+            cmd_put_recursive(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 4, "{:?}", st.served);
+        assert_eq!(st.files["/root/f2.txt"], b"fil", "not overwritten");
+        assert_eq!(st.files.len(), 5, "the other four uploaded");
+    }
+
+    /// The same for a single `put`: a remote file of another size is refused
+    /// with exit 4, one of the same size is still the skip it was (exit 9).
+    #[test]
+    fn put_immutable_refuses_a_remote_file_of_another_size() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let local = dir.path().join("one.txt");
+        std::fs::write(&local, b"123456").unwrap();
+        let local = local.to_string_lossy().into_owned();
+        let cli = Cli {
+            quiet: true,
+            immutable: true,
+            ..test_cli()
+        };
+        for (there, expected) in [(&b"123"[..], 4), (&b"abcdef"[..], 9)] {
+            let state = WorkerFake::state();
+            state
+                .lock()
+                .unwrap()
+                .files
+                .insert("/root/one.txt".to_string(), there.to_vec());
+            let code = run_on_fake(&state, || {
+                cmd_put(
+                    "memory://",
+                    &local,
+                    Some("/root/one.txt"),
+                    false,
+                    false,
+                    false,
+                    None,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+            });
+            assert_eq!(code, expected, "remote of {} bytes", there.len());
+            let st = state.lock().unwrap();
+            assert_eq!(st.files["/root/one.txt"], there, "never overwritten");
+        }
+    }
+
+    /// A single `put -n` whose existence check lost the connection went on as
+    /// if the file were absent, and the upload, which dials again by itself
+    /// (SFTP since #963), overwrote the very file `-n` protects. The write is
+    /// refused with the provider's code instead (1, retried by `--retries`,
+    /// whose next attempt connects afresh, finds the file and skips it).
+    #[test]
+    fn put_no_clobber_refuses_when_its_existence_check_lost_the_connection() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let local = dir.path().join("one.txt");
+        std::fs::write(&local, b"new bytes").unwrap();
+        let local = local.to_string_lossy().into_owned();
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.files
+                .insert("/root/one.txt".to_string(), b"old".to_vec());
+            st.stat_session_lost.insert("/root/one.txt".to_string(), 1);
+        }
+        let code = run_on_fake(&state, || {
+            cmd_put(
+                "memory://",
+                &local,
+                Some("/root/one.txt"),
+                false,
+                true,
+                false,
+                None,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+        });
+        let st = state.lock().unwrap();
+        assert!(st.served.is_empty(), "nothing written: {:?}", st.served);
+        assert_eq!(st.files["/root/one.txt"], b"old", "not overwritten");
+        assert_eq!(code, 1, "the provider's code for a lost connection");
+    }
+
+    /// `put -r -n` and `put -n` with a glob honoured `--no-clobber` only on
+    /// the single-file path: the batches overwrote an existing remote file
+    /// without a word. Both skip it now, on a provider with a transfer pool
+    /// too (the pooled uploader has no existence check, so `-n` stays off it).
+    #[test]
+    fn put_batches_honour_no_clobber() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for pooled in [false, true] {
+            for glob in [false, true] {
+                let dir = tempfile::tempdir().expect("temp dir");
+                let (local_dir, cli) = local_batch(&dir, 2);
+                let state = WorkerFake::state();
+                {
+                    let mut st = state.lock().unwrap();
+                    st.pooled = pooled;
+                    st.files.insert("/root/f1.txt".to_string(), b"old".to_vec());
+                }
+                let pattern = format!("{local_dir}/*.txt");
+                let code = run_on_fake(&state, || async {
+                    if glob {
+                        cmd_put_glob(
+                            "memory://",
+                            &pattern,
+                            Some("/root"),
+                            true,
+                            &cli,
+                            OutputFormat::Text,
+                            Arc::new(AtomicBool::new(false)),
+                        )
+                        .await
+                    } else {
+                        cmd_put_recursive(
+                            "memory://",
+                            &local_dir,
+                            Some("/root"),
+                            true,
+                            &cli,
+                            OutputFormat::Text,
+                            Arc::new(AtomicBool::new(false)),
+                        )
+                        .await
+                    }
+                });
+                let st = state.lock().unwrap();
+                let case = format!("glob {glob}, pooled {pooled}");
+                assert_eq!(st.files["/root/f1.txt"], b"old", "{case}: not overwritten");
+                assert_eq!(st.files.len(), 5, "{case}: the rest uploaded");
+                assert_eq!(code, 0, "{case}");
+            }
+        }
+    }
+
+    /// The text mode's `--retries` reruns a failed `put`. A rerun of `put -r
+    /// -n` or `put -n` used to find the partial the failed attempt left and
+    /// skip it as already there, ending with exit 9 or 0 on a truncated file
+    /// (a cron `put -r -n dir/ /backup` over a flaky link kept it truncated
+    /// for good). The rerun now reports it as an error, and since no later
+    /// attempt can change that, it is the last attempt.
+    #[test]
+    fn put_retries_report_the_partial_an_earlier_attempt_left() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for recursive in [true, false] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 2);
+            cli.retries = 3;
+            cli.retries_sleep = "0".to_string();
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                // `put -r`: connection 2 is its first dialled worker. A
+                // single `put` uploads on the first connection it opens.
+                st.kill_first_on = Some(if recursive { 2 } else { 1 });
+                st.partial_on_kill = true;
+            }
+            let local = if recursive {
+                local_dir.clone()
+            } else {
+                format!("{local_dir}/f1.txt")
+            };
+            let remote = if recursive { "/root" } else { "/root/f1.txt" };
+            let code = run_on_fake(&state, || {
+                put_with_retries(
+                    "memory://",
+                    &local,
+                    Some(remote),
+                    recursive,
+                    true,
+                    false,
+                    None,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+            });
+            let st = state.lock().unwrap();
+            let case = format!("recursive {recursive}");
+            let (_, cut) = st
+                .served
+                .iter()
+                .find(|(id, _)| *id == if recursive { 2 } else { 1 })
+                .expect("the cut connection took a job");
+            assert!(
+                st.files[cut].len() < 6,
+                "{case}: the fake left a partial at {cut}"
+            );
+            assert_eq!(code, 4, "{case}: the partial is a failure: {:?}", st.served);
+            let attempts_on_cut = st.served.iter().filter(|(_, p)| p == cut).count();
+            assert_eq!(
+                attempts_on_cut, 1,
+                "{case}: never uploaded again, only refused"
+            );
+            if !recursive {
+                // Attempt 1 ran on the first connection, attempt 2 dialled
+                // one and refused; a refusal ends the retries, so no third.
+                assert_eq!(st.dials, 1, "{case}: two attempts, not three");
+            }
+        }
+    }
+
+    /// A refusal ends the retries only when it is all that failed. Here one
+    /// file is refused (another size under `--immutable`) and another loses
+    /// its session: the second attempt runs, uploads that file, meets the
+    /// refusal again and stops there. A refusal used to switch the retries
+    /// off for the whole batch, and the other file never went up.
+    #[test]
+    fn put_retries_go_on_past_a_refusal_when_something_else_failed() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        cli.immutable = true;
+        cli.retries = 3;
+        cli.retries_sleep = "0".to_string();
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.files.insert("/root/f1.txt".to_string(), b"fil".to_vec());
+            st.session_kills = HashMap::from([("/root/f2.txt".to_string(), 1)]);
+        }
+        let code = run_on_fake(&state, || {
+            put_with_retries(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                true,
+                false,
+                false,
+                None,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 4, "the refusal stays a failure: {:?}", st.served);
+        assert_eq!(
+            st.files["/root/f2.txt"], b"file 2",
+            "uploaded on the second attempt"
+        );
+        assert_eq!(st.files["/root/f1.txt"], b"fil", "never overwritten");
+        // Attempt 1 dialled a successor after the lost session, attempt 2
+        // its scan connection; a third attempt would dial once more.
+        assert_eq!(st.dials, 2, "two attempts: {:?}", st.served);
+    }
+
+    /// Under `--immutable` a remote file of 0 bytes on a provider whose sizes
+    /// are exact (here SFTP) is refused like any other size: it is what an
+    /// upload cut between its create and its first write leaves. On a
+    /// provider whose sizes are not exact the file is skipped, as before.
+    #[test]
+    fn put_recursive_immutable_trusts_only_exact_sizes() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for inexact in [false, true] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 1);
+            cli.immutable = true;
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                st.inexact_sizes = inexact;
+                st.files.insert("/root/f2.txt".to_string(), Vec::new());
+            }
+            let code = run_on_fake(&state, || async {
+                cmd_put_recursive(
+                    "memory://",
+                    &local_dir,
+                    Some("/root"),
+                    false,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            assert_eq!(code, if inexact { 0 } else { 4 }, "inexact {inexact}");
+            assert!(st.files["/root/f2.txt"].is_empty(), "never overwritten");
+        }
+    }
+
+    /// Under `--immutable` the batches refuse to write a file whose absence
+    /// they cannot verify, as a single `put` does; they used to go ahead.
+    #[test]
+    fn put_recursive_immutable_refuses_what_it_cannot_stat() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        cli.immutable = true;
+        let state = WorkerFake::state();
+        state
+            .lock()
+            .unwrap()
+            .stat_errors
+            .insert("/root/f2.txt".to_string());
+        let code = run_on_fake(&state, || async {
+            cmd_put_recursive(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 4, "{:?}", st.served);
+        assert!(!st.files.contains_key("/root/f2.txt"), "not written");
+        assert_eq!(st.files.len(), 4, "the others uploaded");
+    }
+
+    /// `put` with a glob that skips every file ends with exit 9, as `put -r`
+    /// does, and leaves them all alone.
+    #[test]
+    fn put_glob_that_skips_everything_exits_9() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 2);
+        cli.immutable = true;
+        let state = WorkerFake::state();
+        remote_batch(&state);
+        let pattern = format!("{local_dir}/*.txt");
+        let code = run_on_fake(&state, || async {
+            cmd_put_glob(
+                "memory://",
+                &pattern,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 9, "{:?}", st.served);
+        assert!(st.served.is_empty(), "nothing uploaded: {:?}", st.served);
+    }
+
+    /// `put` and `get` with a glob take the same helper.
+    #[test]
+    fn globs_on_a_poolless_provider_dial_once_per_worker() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, cli) = local_batch(&dir, 2);
+        let state = WorkerFake::state();
+        let pattern = format!("{local_dir}/*.txt");
+        let code = run_on_fake(&state, || async {
+            cmd_put_glob(
+                "memory://",
+                &pattern,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        {
+            let st = state.lock().unwrap();
+            assert_eq!(code, 0, "put glob: {:?}", st.served);
+            assert_eq!(st.files.len(), 5);
+            assert!(st.dials <= 2, "put glob dials: {}", st.dials);
+        }
+
+        let state = WorkerFake::state();
+        remote_batch(&state);
+        let local_base = dir.path().join("globbed").to_string_lossy().into_owned();
+        let code = run_on_fake(&state, || async {
+            cmd_get_glob(
+                "memory://",
+                "/root/*.txt",
+                Some(&local_base),
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 0, "get glob: {:?}", st.served);
+        assert_eq!(st.served.len(), 5);
+        assert!(st.dials <= 2, "get glob dials: {}", st.dials);
+        assert_eq!(local_files(&dir.path().join("globbed")), 5);
+    }
+
+    /// `-n` or `--immutable` on a held connection whose session ended between
+    /// two jobs: the next job's existence check lost the session at once (an
+    /// SFTP stat does not dial again), `-n` went on as if nothing were there,
+    /// and the upload, which does dial again (#963), truncated the very file
+    /// `-n` protects; `--immutable` failed the job (exit 4). Nothing was
+    /// written, so the job goes back to the queue whatever the connection had
+    /// completed, and the new connection sees the file and skips it.
+    #[test]
+    fn a_lost_existence_check_requeues_the_upload_instead_of_writing() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let mut wrong = Vec::new();
+        for no_clobber in [true, false] {
+            let flag = if no_clobber { "-n" } else { "--immutable" };
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 1);
+            cli.immutable = !no_clobber;
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                // The local file's size, so a skip under either flag.
+                st.files
+                    .insert("/root/f2.txt".to_string(), b"old!!!".to_vec());
+                st.stat_session_lost.insert("/root/f2.txt".to_string(), 1);
+            }
+            let code = run_on_fake(&state, || async {
+                cmd_put_recursive(
+                    "memory://",
+                    &local_dir,
+                    Some("/root"),
+                    no_clobber,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            let written = st.served.iter().any(|(_, path)| path == "/root/f2.txt");
+            if written || st.files["/root/f2.txt"] != b"old!!!" {
+                wrong.push(format!("{flag}: f2 written: {:?}", st.served));
+            }
+            if code != 0 {
+                wrong.push(format!("{flag}: exit {code}"));
+            }
+            if st.files.len() != 5 || st.dials != 1 {
+                wrong.push(format!(
+                    "{flag}: {} files, {} dials (the other four uploaded, one new connection)",
+                    st.files.len(),
+                    st.dials
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// `put -r --immutable` to an FTP server whose MLST sends no size fact:
+    /// every size reads 0, which was trusted as exact, so every complete file
+    /// was refused as a partial (exit 4, and the retries stopped there). A
+    /// size FTP could not read is not compared, and the files are skipped.
+    #[test]
+    fn put_recursive_immutable_skips_files_whose_size_ftp_could_not_read() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        cli.immutable = true;
+        let state = WorkerFake::state();
+        // Every file is there already, complete.
+        remote_batch(&state);
+        {
+            let mut st = state.lock().unwrap();
+            st.kind = Some(ProviderType::Ftp);
+            st.unreadable_sizes = true;
+        }
+        let code = run_on_fake(&state, || async {
+            cmd_put_recursive(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 9, "every file skipped: {:?}", st.served);
+        assert!(st.served.is_empty(), "nothing uploaded: {:?}", st.served);
+    }
+
+    /// `put` with a glob under `-n` or `--immutable` created the remote base
+    /// once per file, on the connection of the worker that ran it: on Google
+    /// Drive, which allows two folders of one name, two workers could each
+    /// create `/newdir`. It is created once, on the command's own connection,
+    /// before any upload.
+    #[test]
+    fn put_glob_creates_the_remote_base_once_before_the_workers() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let mut wrong = Vec::new();
+        for no_clobber in [true, false] {
+            let flag = if no_clobber { "-n" } else { "--immutable" };
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 2);
+            cli.immutable = !no_clobber;
+            let state = WorkerFake::state();
+            let pattern = format!("{local_dir}/*.txt");
+            let code = run_on_fake(&state, || async {
+                cmd_put_glob(
+                    "memory://",
+                    &pattern,
+                    Some("/root"),
+                    no_clobber,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            let st = state.lock().unwrap();
+            if code != 0 || st.files.len() != 5 {
+                wrong.push(format!("{flag}: exit {code}, {} files", st.files.len()));
+            }
+            // Connection 1 is the command's own.
+            if st.mkdirs != [(1, "/root".to_string(), 0)] {
+                wrong.push(format!("{flag}: mkdirs {:?}", st.mkdirs));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// `put -r` and the upload phase of `sync` create every remote folder
+    /// before their workers start, so a worker must not create its file's
+    /// parent again: on Google Drive, which allows two folders of one name, two
+    /// workers doing it at once could make two `/root`. Each folder is created
+    /// only on the command's own connection, before any upload.
+    #[test]
+    fn put_recursive_and_sync_create_each_folder_once() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let mut wrong = Vec::new();
+        for verb in ["put -r -n", "sync"] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, cli) = local_batch(&dir, 2);
+            let state = WorkerFake::state();
+            let moved = if verb == "sync" {
+                let stats = run_on_fake(&state, || {
+                    cmd_sync(
+                        "memory://",
+                        &local_dir,
+                        "/root",
+                        "upload",
+                        false,
+                        false,
+                        &[],
+                        None,
+                        0,
+                        false,
+                        None,
+                        None,
+                        "",
+                        false,
+                        None,
+                        None,
+                        None,
+                        "newer",
+                        false,
+                        false,
+                        &cli,
+                        OutputFormat::Json,
+                        Arc::new(AtomicBool::new(false)),
+                        None,
+                        false,
+                    )
+                });
+                stats.uploaded as usize
+            } else {
+                let code = run_on_fake(&state, || {
+                    put_with_retries(
+                        "memory://",
+                        &local_dir,
+                        Some("/root"),
+                        true,
+                        true,
+                        false,
+                        None,
+                        &cli,
+                        OutputFormat::Text,
+                        Arc::new(AtomicBool::new(false)),
+                    )
+                });
+                if code != 0 {
+                    wrong.push(format!("{verb}: exit {code}"));
+                }
+                state.lock().unwrap().files.len()
+            };
+            let st = state.lock().unwrap();
+            if moved != 5 {
+                wrong.push(format!("{verb}: {moved} files"));
+            }
+            // Connection 1 is the command's own, where the folders are made
+            // before any upload; a worker makes none.
+            if st
+                .mkdirs
+                .iter()
+                .any(|(id, _, served)| *id != 1 || *served != 0)
+            {
+                wrong.push(format!(
+                    "{verb}: a worker created a folder: {:?}",
+                    st.mkdirs
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// A worker's strikes count the failures since its last job that kept its
+    /// session, not since its last upload. A rerun that skips every file
+    /// completed nothing, so with the connection closed every
+    /// `WORKER_CONNECTION_MAX_JOBS` jobs, two refused logins spread over the
+    /// whole batch stopped the worker, and the files left reported that no
+    /// connection was left for them (exit 4).
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn worker_strikes_reset_on_a_job_that_kept_its_session() {
+        let state = WorkerFake::state();
+        state.lock().unwrap().refuse_alternate = true;
+        let total = 2 * WORKER_CONNECTION_MAX_JOBS as usize + 10;
+        let results = run_on_worker_connections(
+            None,
+            1,
+            job_paths(total),
+            &AtomicBool::new(false),
+            None,
+            WorkerFake::dial(&state),
+            |conn, path| async move {
+                let conn = match conn {
+                    Ok(conn) => conn,
+                    Err(err) => return WorkerJobDone::without_transfer(None, err),
+                };
+                let skip = format!("{UPLOAD_SKIP_PREFIX}--no-clobber): {path}");
+                WorkerJobDone::from_transfer(
+                    conn,
+                    Err(TransferOnError::skipped(skip)),
+                    || path,
+                    |err| err,
+                )
+            },
+        )
+        .await;
+        let count = |needle: &str| {
+            results
+                .iter()
+                .filter(|r| r.as_ref().err().is_some_and(|e| e.contains(needle)))
+                .count()
+        };
+        assert_eq!(
+            (count(UPLOAD_SKIP_PREFIX), count("no connection left")),
+            (total, 0),
+            "every file skipped, none left without a connection"
+        );
+    }
+
+    /// `put` with a glob printed nothing in text mode about the files it
+    /// failed on: a refusal showed only as exit 4, and only `--json` said
+    /// why. It prints them after its summary, as `put -r` does. The command
+    /// runs in a child process of this test binary whose stderr the test
+    /// reads, since libtest captures what the test's own threads print.
+    #[test]
+    fn put_glob_prints_its_errors_in_text_mode() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_PUT_GLOB_ERRORS_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, mut cli) = local_batch(&dir, 1);
+            cli.quiet = false;
+            cli.immutable = true;
+            let state = WorkerFake::state();
+            state
+                .lock()
+                .unwrap()
+                .files
+                .insert("/root/f2.txt".to_string(), b"fil".to_vec());
+            let pattern = format!("{local_dir}/*.txt");
+            let code = run_on_fake(&state, || async {
+                cmd_put_glob(
+                    "memory://",
+                    &pattern,
+                    Some("/root"),
+                    false,
+                    &cli,
+                    OutputFormat::Text,
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+            });
+            assert_eq!(code, 4, "a refusal is a failed file");
+            return;
+        }
+        let output = std::process::Command::new(std::env::current_exe().expect("the test binary"))
+            .args([
+                "--exact",
+                "tests::put_glob_prints_its_errors_in_text_mode",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("run the child");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success() && stdout.contains("1 passed"),
+            "the child: {stdout}\n{stderr}"
+        );
+        assert!(
+            stderr
+                .lines()
+                .any(|line| line.trim_start().starts_with("Error: ")
+                    && line.contains("/root/f2.txt exists with 3 bytes")),
+            "the refusal is printed: {stderr}"
+        );
+    }
+
+    /// `sync` opens a base connection for its transfer batch, which a
+    /// provider without a pool hands back: the uploads and the downloads then
+    /// run on it, one worker, no dial per file.
+    #[test]
+    fn sync_on_a_poolless_provider_dials_once_per_batch() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for direction in ["upload", "download"] {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let (local_dir, cli) = local_batch(&dir, 1);
+            let state = WorkerFake::state();
+            if direction == "download" {
+                std::fs::remove_dir_all(&local_dir).unwrap();
+                std::fs::create_dir(&local_dir).unwrap();
+                remote_batch(&state);
+            }
+            let stats = run_on_fake(&state, || {
+                cmd_sync(
+                    "memory://",
+                    &local_dir,
+                    "/root",
+                    direction,
+                    false,
+                    false,
+                    &[],
+                    None,
+                    0,
+                    false,
+                    None,
+                    None,
+                    "",
+                    false,
+                    None,
+                    None,
+                    None,
+                    "newer",
+                    false,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                    Arc::new(AtomicBool::new(false)),
+                    None,
+                    false,
+                )
+            });
+            let st = state.lock().unwrap();
+            let moved = stats.uploaded + stats.downloaded;
+            assert_eq!(moved, 5, "{direction}: {:?}", st.served);
+            assert_eq!(st.served.len(), 5, "{direction}");
+            assert_eq!(st.dials, 1, "{direction}: the batch's base connection only");
+            let ids: std::collections::HashSet<usize> =
+                st.served.iter().map(|(id, _)| *id).collect();
+            assert_eq!(ids.len(), 1, "{direction}: every file on one connection");
+        }
+    }
+
+    /// `sync` up with error correction keeps the per-file result path (its
+    /// sidecars follow only the uploads that succeeded) and opens no base
+    /// connection: its uploads run on one connection per worker, where they
+    /// dialled once per file.
+    #[test]
+    fn sync_with_error_correction_dials_once_per_worker() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, cli) = local_batch(&dir, 2);
+        let state = WorkerFake::state();
+        let stats = run_on_fake(&state, || {
+            cmd_sync(
+                "memory://",
+                &local_dir,
+                "/root",
+                "upload",
+                false,
+                false,
+                &[],
+                Some(10),
+                0,
+                false,
+                None,
+                None,
+                "",
+                false,
+                None,
+                None,
+                None,
+                "newer",
+                false,
+                false,
+                &cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+                None,
+                false,
+            )
+        });
+        let st = state.lock().unwrap();
+        let data: Vec<&(usize, String)> = st
+            .served
+            .iter()
+            .filter(|(_, p)| p.ends_with(".txt"))
+            .collect();
+        assert_eq!(stats.uploaded, 5, "{:?}", st.served);
+        assert_eq!(data.len(), 5, "{:?}", st.served);
+        assert!(st.dials <= 2, "one per worker at most: {} dials", st.dials);
+    }
+
+    /// `sync` both ways keeping both sides of a conflict: the local copies go
+    /// up under their conflict names on one connection, not one each.
+    #[test]
+    fn sync_conflict_uploads_share_one_connection() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, cli) = local_batch(&dir, 4);
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            for i in 1..=5 {
+                st.files.insert(
+                    format!("/root/f{i}.txt"),
+                    format!("remote copy {i}").into_bytes(),
+                );
+            }
+        }
+        run_on_fake(&state, || {
+            cmd_sync(
+                "memory://",
+                &local_dir,
+                "/root",
+                "both",
+                false,
+                false,
+                &[],
+                None,
+                0,
+                false,
+                None,
+                None,
+                "",
+                false,
+                None,
+                None,
+                None,
+                "rename",
+                false,
+                false,
+                &cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+                None,
+                false,
+            )
+        });
+        let st = state.lock().unwrap();
+        let conflicts: Vec<usize> = st
+            .served
+            .iter()
+            .filter(|(_, p)| p.contains(".conflict-"))
+            .map(|(id, _)| *id)
+            .collect();
+        assert_eq!(conflicts.len(), 5, "{:?}", st.served);
+        let ids: std::collections::HashSet<usize> = conflicts.into_iter().collect();
+        assert_eq!(ids.len(), 1, "one connection for them all: {:?}", st.served);
     }
 
     static SESSION_TRANSFER_TEST_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
@@ -81492,6 +85306,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 "/root",
                 Some("crypt password".to_string()),
                 Some(String::new()),
+                (None, None),
                 "off",
                 None,
                 one_way,
@@ -82309,11 +86124,27 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         replace_refuses_as_existing: bool,
         /// What this fake answers to `supports_atomic_replace`.
         atomic_replace: bool,
+        /// What this fake answers to `replace_sets_aside`.
+        sets_aside: bool,
         /// When set, `stat` fails with this instead of answering.
         stat_fails_with: Option<String>,
         /// When set, a replace that succeeds leaves this warning, as a
         /// set-aside replace does when it cannot delete the old copy.
         replace_leaves_warning: Option<String>,
+        /// Unix mode per path, reported by `stat` as `-rw-r--r--`, the way
+        /// SFTP reports it. A new path gets 0644, the server default, and a
+        /// replace moves the mode of the file it moves, as posix-rename does.
+        modes: HashMap<String, u32>,
+        /// Symbolic links: path to the target `stat` reports.
+        links: HashMap<String, String>,
+        /// What `supports_chmod` answers.
+        chmod_supported: bool,
+        /// When set, `chmod` fails with this.
+        chmod_fails_with: Option<String>,
+        /// Empty directories: `stat` reports them as such, and both `rmdir`
+        /// and `delete` remove them, as on a backend whose delete of a
+        /// folder takes it along.
+        dirs: std::collections::HashSet<String>,
     }
 
     impl CliEditFakeProvider {
@@ -82328,8 +86159,14 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 replace_fails_with: None,
                 replace_refuses_as_existing: false,
                 atomic_replace: true,
+                sets_aside: false,
                 stat_fails_with: None,
                 replace_leaves_warning: None,
+                modes: HashMap::new(),
+                links: HashMap::new(),
+                chmod_supported: false,
+                chmod_fails_with: None,
+                dirs: std::collections::HashSet::new(),
             }
         }
     }
@@ -82404,6 +86241,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         ) -> Result<(), ProviderError> {
             let data = std::fs::read(local_path).map_err(ProviderError::IoError)?;
             self.uploads.push((remote_path.to_string(), data.clone()));
+            self.modes.entry(remote_path.to_string()).or_insert(0o644);
             self.remote_files.insert(remote_path.to_string(), data);
             Ok(())
         }
@@ -82414,11 +86252,13 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
 
         async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
             self.remote_files.remove(path);
+            self.dirs.remove(path);
             self.deleted.push(path.to_string());
             Ok(())
         }
 
-        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.dirs.remove(path);
             Ok(())
         }
 
@@ -82459,6 +86299,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 .remove(from)
                 .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
             self.remote_files.insert(to.to_string(), data);
+            if let Some(mode) = self.modes.remove(from) {
+                self.modes.insert(to.to_string(), mode);
+            }
+            self.links.remove(to);
             self.replaces.push((from.to_string(), to.to_string()));
             if let Some(warning) = &self.replace_leaves_warning {
                 ftp_client_gui_lib::providers::report_warning(warning.clone());
@@ -82470,16 +86314,57 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             Ok(self.atomic_replace)
         }
 
+        fn replace_sets_aside(&self) -> bool {
+            self.sets_aside
+        }
+
+        fn supports_chmod(&self) -> bool {
+            self.chmod_supported
+        }
+
+        async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
+            if let Some(message) = &self.chmod_fails_with {
+                return Err(ProviderError::ServerError(message.clone()));
+            }
+            self.modes.insert(path.to_string(), mode);
+            Ok(())
+        }
+
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
             if let Some(msg) = &self.stat_fails_with {
                 return Err(ProviderError::ConnectionFailed(msg.clone()));
             }
-            self.remote_files
+            if self.dirs.contains(path) {
+                let name = path.rsplit('/').next().unwrap_or(path).to_string();
+                return Ok(RemoteEntry::directory(name, path.to_string()));
+            }
+            let mut entry = self
+                .remote_files
                 .get(path)
                 .map(|data| {
                     RemoteEntry::file(path.to_string(), path.to_string(), data.len() as u64)
                 })
-                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            entry.link_target = self.links.get(path).cloned();
+            entry.is_symlink = entry.link_target.is_some();
+            entry.permissions = self.modes.get(path).map(|mode| {
+                let bit = |mask: u32, letter: char| if mode & mask != 0 { letter } else { '-' };
+                [
+                    '-',
+                    bit(0o400, 'r'),
+                    bit(0o200, 'w'),
+                    bit(0o100, 'x'),
+                    bit(0o040, 'r'),
+                    bit(0o020, 'w'),
+                    bit(0o010, 'x'),
+                    bit(0o004, 'r'),
+                    bit(0o002, 'w'),
+                    bit(0o001, 'x'),
+                ]
+                .iter()
+                .collect()
+            });
+            Ok(entry)
         }
 
         async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -82533,7 +86418,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .remote_files
             .insert("/target.txt".to_string(), b"old text".to_vec());
 
-        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
+        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
             .await
             .expect("publish should succeed");
 
@@ -82628,6 +86513,45 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .expect("the fake");
         let fake = std::mem::replace(fake, CliEditFakeProvider::new());
         (response.status(), fake)
+    }
+
+    /// A DELETE of the served root recursed into the whole base path, and a
+    /// MOVE of it took the share away: both are 403 and nothing is touched.
+    #[tokio::test]
+    async fn the_served_root_cannot_be_deleted_or_moved() {
+        for method in ["DELETE", "MOVE"] {
+            let mut fake = CliEditFakeProvider::new();
+            fake.remote_files
+                .insert("/a.txt".to_string(), b"kept".to_vec());
+            let provider: Box<dyn StorageProvider> = Box::new(fake);
+            let state = ServeHttpState {
+                provider: Arc::new(AsyncMutex::new(provider)),
+                provider_label: "fake".to_string(),
+                base_path: "/".to_string(),
+                auth_token: None,
+                warnings: ServedWarnings::stderr(OutputFormat::Text),
+            };
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                "Destination",
+                HeaderValue::from_static("http://127.0.0.1:8080/moved"),
+            );
+            let response = webdav_dispatch(
+                state.clone(),
+                Method::from_bytes(method.as_bytes()).unwrap(),
+                String::new(),
+                headers,
+                Bytes::new(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{method}");
+            let mut guard = state.provider.lock().await;
+            let fake = guard
+                .as_any_mut()
+                .downcast_mut::<CliEditFakeProvider>()
+                .expect("the fake");
+            assert!(fake.remote_files.contains_key("/a.txt"), "{method}");
+        }
     }
 
     /// Office and most WebDAV editors save by writing a temporary and
@@ -82822,9 +86746,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .insert("/target.txt".to_string(), b"old text".to_vec());
         provider.replace_fails_with = Some("replace failed".to_string());
 
-        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
-            .await
-            .unwrap_err();
+        let err =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await
+                .unwrap_err();
         assert!(err.to_string().contains("replace failed"), "got: {err}");
 
         let temp_path = provider.uploads[0].0.clone();
@@ -82853,9 +86778,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             .insert("/target.txt".to_string(), b"old text".to_vec());
         provider.atomic_replace = false;
 
-        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
-            .await
-            .unwrap_err();
+        let err =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await
+                .unwrap_err();
 
         assert!(
             provider.uploads.is_empty(),
@@ -82877,6 +86803,288 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             text.contains("put"),
             "the error must name the explicit alternative, got: {text}"
         );
+        assert!(
+            !text.contains("allow-non-atomic"),
+            "a backend whose replace cannot set the file aside must not be offered \
+             the opt-in, got: {text}"
+        );
+
+        // A set-aside backend is refused the same way, and there the opt-in
+        // that would work is named.
+        provider.sets_aside = true;
+        let text =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await
+                .unwrap_err()
+                .to_string();
+        assert!(
+            provider.uploads.is_empty(),
+            "uploads: {:?}",
+            provider.uploads
+        );
+        assert!(
+            text.contains("--allow-non-atomic"),
+            "the error must name the edit opt-in, got: {text}"
+        );
+    }
+
+    /// M1 of the 4.2.1 closeout: on a backend whose replace is its rename
+    /// (Box, 4shared, Internxt, WorkDrive, GitHub, SFTP without
+    /// posix-rename...) `--allow-non-atomic` uploaded the temporary before
+    /// the replace refused the taken name. It is now refused first.
+    #[tokio::test]
+    async fn cli_edit_publish_allow_non_atomic_refuses_a_rename_only_backend_before_it_uploads() {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.atomic_replace = false;
+
+        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", true)
+            .await
+            .unwrap_err();
+
+        assert!(
+            provider.uploads.is_empty(),
+            "the opt-in must be refused before anything is staged; uploads: {:?}",
+            provider.uploads
+        );
+        assert!(provider.replaces.is_empty() && provider.renames.is_empty());
+        assert!(
+            provider.deleted.is_empty(),
+            "deleted: {:?}",
+            provider.deleted
+        );
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"old text".as_slice())
+        );
+        let text = err.to_string();
+        assert!(
+            text.contains("Nothing was written") && text.contains("--allow-non-atomic"),
+            "the refusal must name the opt-in it refuses and say the server is untouched, \
+             got: {text}"
+        );
+    }
+
+    /// `--allow-non-atomic` is the opt-in those backends were refused for.
+    /// The publish still goes through `replace` (set the old file aside, move
+    /// the new one in, delete the old), and it still happens only after the
+    /// caller asked.
+    #[tokio::test]
+    async fn cli_edit_publish_allow_non_atomic_replaces_without_an_atomic_backend() {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.atomic_replace = false;
+        provider.sets_aside = true;
+
+        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", true)
+            .await
+            .expect("opted-in publish should use replace");
+
+        assert_eq!(provider.uploads.len(), 1);
+        let temp_path = provider.uploads[0].0.clone();
+        assert_eq!(
+            provider.replaces,
+            vec![(temp_path, "/target.txt".to_string())]
+        );
+        assert!(provider.renames.is_empty());
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+    }
+
+    /// An SFTP-like target of mode 0600 and a local replacement to publish.
+    fn cli_edit_on_a_0600_target() -> (NamedTempFile, String, CliEditFakeProvider) {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.modes.insert("/target.txt".to_string(), 0o600);
+        provider.chmod_supported = true;
+        (local, local_path, provider)
+    }
+
+    /// M-A of the 4.2.1 closeout: the replace puts a NEW file over the
+    /// target, which on SFTP came back with the server default, so a 0600
+    /// `.env` became 0644. The mode is copied onto the temporary before the
+    /// replace.
+    #[tokio::test]
+    async fn cli_edit_publish_keeps_the_mode_of_the_file_it_replaces() {
+        let (_local, local_path, mut provider) = cli_edit_on_a_0600_target();
+
+        publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+            .await
+            .expect("publish");
+
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+        assert_eq!(
+            provider.modes.get("/target.txt").copied(),
+            Some(0o600),
+            "the edited file must keep its mode, not the server default"
+        );
+    }
+
+    /// A chmod the server refuses leaves the edit done, and the warning says
+    /// which mode was not kept.
+    #[tokio::test]
+    async fn cli_edit_publish_says_which_permissions_it_could_not_keep() {
+        let (_local, local_path, mut provider) = cli_edit_on_a_0600_target();
+        provider.chmod_fails_with = Some("SITE CHMOD not understood".to_string());
+
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        warnings
+            .scope(publish_cli_edit_via_temp_rename(
+                &mut provider,
+                &local_path,
+                "/target.txt",
+                false,
+            ))
+            .await
+            .expect("the edit itself is done");
+
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"new text".as_slice())
+        );
+        let taken = warnings.take();
+        assert!(
+            taken
+                .iter()
+                .any(|w| w.contains("0600") && w.contains("SITE CHMOD not understood")),
+            "the warning must name the mode that was not kept and why: {taken:?}"
+        );
+    }
+
+    /// The replace would put a regular file in the link's place and leave the
+    /// file it points to unchanged: a link is refused before anything is
+    /// staged.
+    #[tokio::test]
+    async fn cli_edit_publish_refuses_a_symlink_before_it_uploads() {
+        let (_local, local_path, mut provider) = cli_edit_on_a_0600_target();
+        provider
+            .links
+            .insert("/target.txt".to_string(), "/srv/real.txt".to_string());
+
+        let outcome =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await;
+
+        assert!(
+            provider.uploads.is_empty() && provider.replaces.is_empty(),
+            "nothing may be staged over a link: {outcome:?}"
+        );
+        let text = outcome.unwrap_err().to_string();
+        assert!(
+            text.contains("symbolic link") && text.contains("/srv/real.txt"),
+            "{text}"
+        );
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"old text".as_slice())
+        );
+    }
+
+    /// A served provider holding the empty directory `/d`.
+    fn served_provider_with_an_empty_directory() -> Arc<AsyncMutex<Box<dyn StorageProvider>>> {
+        let mut fake = CliEditFakeProvider::new();
+        fake.dirs.insert("/d".to_string());
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        Arc::new(AsyncMutex::new(provider))
+    }
+
+    async fn served_directory_is_there(
+        provider: &Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+    ) -> bool {
+        let mut guard = provider.lock().await;
+        guard
+            .as_any_mut()
+            .downcast_mut::<CliEditFakeProvider>()
+            .expect("the fake")
+            .dirs
+            .contains("/d")
+    }
+
+    /// DELE (RFC 959) deletes a file and RMD a directory. The served DELE
+    /// went through the non-recursive delete, which removes an empty
+    /// directory too: it now answers 550 and the directory stays, and RMD
+    /// still removes it.
+    #[tokio::test]
+    async fn served_ftp_dele_refuses_a_directory_and_rmd_removes_it() {
+        use unftp_core::storage::StorageBackend;
+        let provider = served_provider_with_an_empty_directory();
+        let backend = serve_ftp_backend::AeroFtpBackend::new(provider.clone(), "/".to_string());
+        let user = unftp_core::auth::DefaultUser;
+
+        let outcome = backend.del(&user, "/d").await;
+        assert!(
+            served_directory_is_there(&provider).await,
+            "DELE must not remove a directory: {outcome:?}"
+        );
+        let error = outcome.expect_err("DELE of a directory");
+        assert_eq!(
+            error.kind(),
+            unftp_core::storage::ErrorKind::PermanentFileNotAvailable,
+            "{error:?}"
+        );
+
+        backend
+            .rmd(&user, "/d")
+            .await
+            .expect("RMD of an empty directory");
+        assert!(!served_directory_is_there(&provider).await);
+    }
+
+    /// SSH_FXP_REMOVE is the file verb and SSH_FXP_RMDIR the directory one.
+    /// The served REMOVE removed an empty directory; it is now a failure and
+    /// the directory stays, and RMDIR still removes it.
+    #[test]
+    fn served_sftp_remove_refuses_a_directory_and_rmdir_removes_it() {
+        let rt = Arc::new(
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .expect("runtime"),
+        );
+        let provider = served_provider_with_an_empty_directory();
+        let mut handler = serve_sftp::AeroSftpHandler::for_tests(provider.clone(), rt.clone());
+        // SSH_FXP_REMOVE (13) or SSH_FXP_RMDIR (15), id 7, path `/d`.
+        let packet = |kind: u8| {
+            let mut packet = vec![kind];
+            packet.extend_from_slice(&7u32.to_be_bytes());
+            packet.extend_from_slice(&2u32.to_be_bytes());
+            packet.extend_from_slice(b"/d");
+            packet
+        };
+        // SSH_FXP_STATUS: type, id, then the status code.
+        let status = |reply: &[u8]| u32::from_be_bytes(reply[5..9].try_into().expect("code"));
+
+        let reply = handler.answer(&packet(13));
+        assert!(
+            rt.block_on(served_directory_is_there(&provider)),
+            "REMOVE must not remove a directory"
+        );
+        assert_eq!(status(&reply), 4, "SSH_FX_FAILURE");
+
+        let reply = handler.answer(&packet(15));
+        assert_eq!(status(&reply), 0, "SSH_FX_OK");
+        assert!(!rt.block_on(served_directory_is_there(&provider)));
     }
 
     #[test]
@@ -82981,6 +87189,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             &mut p,
             "/dest.txt",
             "--immutable",
+            None,
             &cli,
             OutputFormat::Text,
         )
@@ -82995,6 +87204,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             &mut p,
             "/fresh.txt",
             "--immutable",
+            None,
             &cli,
             OutputFormat::Json,
         )
@@ -83018,6 +87228,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             &mut p,
             "/dest.txt",
             "--immutable",
+            None,
             &cli,
             OutputFormat::Text,
         )
@@ -83032,6 +87243,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             &mut p,
             "/dest.txt",
             "--no-clobber",
+            None,
             &cli,
             OutputFormat::Text,
         )

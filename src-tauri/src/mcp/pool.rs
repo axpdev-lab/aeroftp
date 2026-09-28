@@ -442,15 +442,20 @@ pub fn resolve_overlay_secrets(
     // Tier 1 keyfile second factor: resolve the stored keyfile path to its
     // digest BEFORE the password guard, fail-closed on an unreadable keyfile.
     let keyfile_digest = crate::crypt_overlay_provider::resolve_profile_keyfile_digest(&store, id)?;
-    let password = crate::user_partitions::resolve_active_credential(
+    let stored_password = crate::user_partitions::resolve_active_credential(
         &store,
         &format!("aerocrypt_overlay_pw_{}", id),
     )
     .ok()
     .flatten()
     .map(|s| s.to_string())
-    .filter(|s| !s.is_empty())
-    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok());
+    .filter(|s| !s.is_empty());
+    // A secret from the environment carries no recorded form.
+    let password_from_env = stored_password.is_none();
+    let password = stored_password
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
+        // Set but empty is no password: never rclone's all-zero key.
+        .filter(|s| !s.is_empty());
     // A keyfile-only AeroCrypt vault legally has an empty password; keyfiles do
     // not apply to rclone-crypt, which keeps requiring a password.
     let password = match password {
@@ -461,15 +466,18 @@ pub fn resolve_overlay_secrets(
                 .to_string(),
         ),
     };
-    let salt = crate::user_partitions::resolve_active_credential(
+    let stored_salt = crate::user_partitions::resolve_active_credential(
         &store,
         &format!("aerocrypt_overlay_salt_{}", id),
     )
     .ok()
     .flatten()
-    .map(|s| s.to_string())
-    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
-    .unwrap_or_default();
+    .map(|s| s.to_string());
+    let salt_from_env = stored_salt.is_none();
+    let salt = stored_salt
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
+        .unwrap_or_default();
+    let (password_form, salt_form) = crate::rclone_crypt::crypt_secret_forms(profile);
     let local_config_json = crate::user_partitions::resolve_active_credential(
         &store,
         &format!("aerocrypt_overlay_config_{}", id),
@@ -497,6 +505,16 @@ pub fn resolve_overlay_secrets(
             Some(salt.clone())
         },
         with_header,
+        password_form: crate::rclone_crypt::secret_form_for_source(
+            password_form,
+            password_from_env,
+            "AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM",
+        ),
+        salt_form: crate::rclone_crypt::secret_form_for_source(
+            salt_form,
+            salt_from_env,
+            "AEROFTP_CRYPT_OVERLAY_SALT_FORM",
+        ),
     };
     Ok(Some((params, password, salt, keyfile_digest)))
 }

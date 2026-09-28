@@ -284,17 +284,10 @@ impl RemoteBackend for McpRemoteBackend {
         self.with_provider(move |p| {
             let path = path.clone();
             Box::pin(async move {
-                let entry = p.stat(&path).await?;
-                if entry.is_dir {
-                    // `rmdir`, NOT `rmdir_recursive`: this used to recurse
-                    // unconditionally, so an `aeroftp_delete` on a directory
-                    // wiped the whole subtree even though the caller never
-                    // passed `recursive`. Recursion is now opt-in and lands
-                    // in `delete_recursive`.
-                    p.rmdir(&path).await
-                } else {
-                    p.delete(&path).await
-                }
+                // Recursion is opt-in and lands in `delete_recursive`: a
+                // directory is removed here only when it is empty, since
+                // `rmdir` itself recurses on several backends.
+                crate::providers::delete_non_recursive(p.as_mut(), &path).await
             })
         })
         .await
@@ -331,6 +324,22 @@ impl RemoteBackend for McpRemoteBackend {
 
     async fn supports_atomic_replace(&self) -> Result<bool, String> {
         self.with_provider(move |p| Box::pin(async move { p.supports_atomic_replace().await }))
+            .await
+    }
+
+    async fn replace_sets_aside(&self) -> Result<bool, String> {
+        self.with_provider(move |p| Box::pin(async move { Ok(p.replace_sets_aside()) }))
+            .await
+    }
+
+    async fn supports_chmod(&self) -> Result<bool, String> {
+        self.with_provider(move |p| Box::pin(async move { Ok(p.supports_chmod()) }))
+            .await
+    }
+
+    async fn chmod(&self, path: &str, mode: u32) -> Result<(), String> {
+        let path = path.to_string();
+        self.with_provider(move |p| Box::pin(async move { p.chmod(&path, mode).await }))
             .await
     }
 

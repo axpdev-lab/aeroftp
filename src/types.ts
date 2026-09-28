@@ -572,6 +572,10 @@ export interface TransferEvent {
 // in the OS vault under aerocrypt_overlay_pw_<id> (mirrors hasStoredFilenApiKey),
 // flagged by ServerProfile.hasStoredAeroCryptPassword.
 // Spec: APPENDIX-AEROVAULT-STACK master plan §3.3/§3.6/§3.8.
+// rclone-crypt: how a password or salt is written, as typed ('clear') or as
+// rclone.conf keeps it ('obscured'). Recorded, never guessed from the value.
+export type CryptSecretForm = "clear" | "obscured";
+
 export interface AeroCryptOverlayBinding {
   enabled: boolean;
   kind: "aerocrypt" | "rclone-crypt"; // native (recommended) or interop (opens pre-existing rclone-crypt folders)
@@ -582,6 +586,8 @@ export interface AeroCryptOverlayBinding {
   useDefaultSalt?: boolean; // opt-in public constant salt (D1); password alone opens headerless vaults (rclone parity). Entropy gate + attestation required in UI.
   filenameEncryption?: "standard" | "obfuscate" | "off"; // default "standard"
   directoryNameEncryption?: boolean; // rclone-crypt only (P3.3b): default true; native ignores it
+  passwordForm?: CryptSecretForm; // rclone-crypt only: how the vault holds the password; undefined = not recorded (read automatically)
+  saltForm?: CryptSecretForm; // rclone-crypt only: same, for the salt (password2)
   aead?: "auto" | "aes-256-gcm-siv" | "xchacha20-poly1305"; // native only; see master plan §5
 }
 

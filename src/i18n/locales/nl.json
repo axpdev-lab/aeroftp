@@ -1193,7 +1193,8 @@
             "uiTokensReload": "Herladen",
             "uiTokensReset": "Overschrijvingen wissen",
             "uiTokensApplied": "Toegepaste overschrijvingen: {count}",
-            "uiTokensRejected": "Afgewezen vermeldingen: {count}"
+            "uiTokensRejected": "Afgewezen vermeldingen: {count}",
+            "keystorePreferencesFailed": "De import is voltooid, maar je app-voorkeuren konden niet worden hersteld: {error}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2433,7 +2434,8 @@
                 "rejectAllCalls": "Alle tooloproepen afwijzen",
                 "rejectExecution": "Tooluitvoering afwijzen",
                 "toggleDetails": "Details in-/uitschakelen",
-                "allowSession": "Toestaan voor deze sessie"
+                "allowSession": "Toestaan voor deze sessie",
+                "nonAtomicReplace": "Niet-atomaire vervanging: het bestand is even afwezig"
             },
             "settings": {
                 "title": "AI-instellingen",
@@ -5604,7 +5606,12 @@
             "defaultSaltNeedsStronger": "Voer een sterk gegenereerd wachtwoord in om de standaard-salt in te schakelen.",
             "defaultSaltOneSaltNote": "Er is één enkel salt: 32 bytes, openbaar, identiek voor elke kluis met standaardsalt.",
             "defaultSaltValueLabel": "Openbare standaardsalt (AeroCrypt v3), SHA-256 van",
-            "defaultSaltTierMeaning": "Standaardsalt betekent dat het wachtwoord alleen de kluis opent: er hoeft niets anders meegedragen te worden, en niets anders beschermt hem."
+            "defaultSaltTierMeaning": "Standaardsalt betekent dat het wachtwoord alleen de kluis opent: er hoeft niets anders meegedragen te worden, en niets anders beschermt hem.",
+            "pastedObscured": "Geplakt uit rclone.conf (versluierd)",
+            "pastedObscuredHint": "Kies \"Geplakt uit rclone.conf\" alleen als u deze waarde uit een rclone.conf-bestand hebt gekopieerd, waarin rclone de waarde versluierd bewaart.",
+            "formNotRecorded": "Niet vastgelegd: deze waarde is opgeslagen voordat AeroFTP ernaar vroeg. Kies hoe ze is ingevoerd; een waarde die AeroFTP uit rclone.conf heeft geïmporteerd, is als getypt opgeslagen.",
+            "secretFormTyped": "Getypt",
+            "secretFormChangeConfirm": "Dit verandert hoe de opgeslagen waarde wordt gelezen, en dus de sleutel waarmee de bestanden opengaan: alleen de juiste keuze opent ze. Deze keuze wijzigen?"
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",
@@ -5869,10 +5876,17 @@
             }
         },
         "flatpak": {
-            "importBody": "AeroFTP heeft een bestaande configuratie in uw persoonlijke map gevonden. Deze Flatpak-installatie gebruikt zijn eigen aparte opslag, dus uw opgeslagen servers en versleutelde kluis zijn hier nog niet zichtbaar. Nu importeren? Bestanden worden alleen gekopieerd, er wordt niets overschreven, en de kluis wordt hier op dezelfde manier ontgrendeld als nu.",
+            "importBody": "AeroFTP heeft een bestaande configuratie in uw persoonlijke map gevonden. Deze Flatpak-installatie gebruikt zijn eigen aparte opslag, dus uw opgeslagen servers en versleutelde kluis zijn hier nog niet zichtbaar. Uw configuratie nu importeren? Bestanden worden alleen gekopieerd, en een bestand dat deze Flatpak-installatie al heeft, wordt nooit overschreven.",
             "importAccept": "Importeren",
             "importedBody": "Uw configuratie is geïmporteerd. Start AeroFTP opnieuw op om uw servers en kluis te laden.",
-            "restartNow": "Nu opnieuw opstarten"
+            "restartNow": "Nu opnieuw opstarten",
+            "importNothingBody": "Er is geen bestand gekopieerd: voor elk bestand dat de import zou kopiëren, staat in deze Flatpak-installatie al een bestand met dezelfde naam, en bestaande bestanden worden nooit overschreven.",
+            "importFailedBody": "Het importeren is gestopt met een fout: {error}. Bestanden die al naar deze Flatpak-installatie zijn gekopieerd, blijven daar staan, en er is niets overschreven. AeroFTP zal het importeren bij de volgende start opnieuw aanbieden.",
+            "importedNoVaultBody": "Uw configuratie is geïmporteerd, maar deze bevatte geen opgeslagen servers of kluis die de import kon kopiëren. Start AeroFTP opnieuw op om te laden wat is geïmporteerd.",
+            "importedVaultSkippedBody": "Een deel van uw configuratie is geïmporteerd, maar niet uw opgeslagen servers en kluis: deze Flatpak-installatie heeft al een eigen kluis, en bestaande bestanden worden nooit overschreven. Start AeroFTP opnieuw op om te laden wat is geïmporteerd.",
+            "importNothingVaultSkippedBody": "Er is geen bestand gekopieerd, dus uw opgeslagen servers en kluis zijn niet geïmporteerd: deze Flatpak-installatie heeft al een eigen kluis en een bestand met dezelfde naam voor elk bestand dat de import zou kopiëren, en bestaande bestanden worden nooit overschreven.",
+            "importUnreadableResult": "AeroFTP kon het resultaat van het importeren niet lezen",
+            "importNothingToImportBody": "Er is geen bestand gekopieerd: uw bestaande configuratie bevat geen bestand dat de import kopieert (symbolische koppelingen en tijdelijke SQLite-bestanden worden nooit gekopieerd)."
         },
         "picker": {
             "unavailable": {

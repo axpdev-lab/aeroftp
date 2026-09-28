@@ -2821,6 +2821,7 @@ mod tests {
     async fn internxt_does_not_claim_an_atomic_replace() {
         let mut p = test_provider();
         assert!(!p.supports_atomic_replace().await.unwrap());
+        assert!(!p.replace_sets_aside());
     }
 
     /// Internxt refuses a move or rename onto a taken name with 409, which

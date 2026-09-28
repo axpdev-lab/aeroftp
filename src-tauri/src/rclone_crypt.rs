@@ -179,9 +179,13 @@ pub fn derive_keys(password: &str, salt: &str) -> Result<([u8; 32], [u8; 32]), S
 /// difference decides one ambiguous case, so the caller has to say.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum RcloneSecret {
-    /// `password` in rclone terms. rclone has no concept of an empty crypt
-    /// password: `rclone obscure ""` is accepted for a salt and meaningless
-    /// here, so an empty reveal is PROOF the input was a literal password.
+    /// `password` in rclone terms. An empty reveal here would be rclone's
+    /// empty crypt password, which rclone accepts and turns into an all-zero
+    /// key (rclone v1.75.1 `backend/crypt/cipher.go`, `Key`). The guess for a
+    /// secret whose form is not recorded never reads a password that way: it
+    /// keeps the input, a literal password that happened to look like base64.
+    /// A password recorded obscured that reveals to nothing does reach that
+    /// case, and [`resolve_crypt_password`] refuses it.
     Password,
     /// `password2`, the salt. Here `obscure("")` is documented and means
     /// "no salt", which selects rclone's built-in default salt, so an empty
@@ -212,12 +216,12 @@ enum RcloneSecret {
 /// and encrypt with it, silently, which is the worst available outcome: the
 /// data is written, no error is raised, and rclone cannot open it.
 ///
-/// The ambiguity is only resolvable per field, and it resolves completely:
-/// for a PASSWORD an empty result cannot be what the user meant, because
-/// rclone has no empty crypt password, so the input must have been a literal
-/// that happened to look like base64. For a SALT it is exactly what
-/// `password2 = obscure("")` means. Same bytes, opposite reading, and the
-/// field is the only thing that tells them apart.
+/// The field decides. For a PASSWORD an empty result would mean rclone's
+/// empty password, which rclone does accept (with an all-zero key), but the
+/// overlay requires a password while a 22-character password drawn from that
+/// alphabet is ordinary, so the input is kept as the literal. For a SALT it is
+/// exactly what `password2 = obscure("")` means, which `rclone config create`
+/// writes for an empty salt. Same bytes, opposite reading.
 fn maybe_rclone_reveal(value: &str, secret: RcloneSecret) -> String {
     if value.is_empty() {
         return String::new();
@@ -235,15 +239,292 @@ fn maybe_rclone_reveal(value: &str, secret: RcloneSecret) -> String {
     }
 }
 
-/// Derive data_key (32 bytes), name_key (32 bytes), and name_tweak (16 bytes).
+/// How an rclone-crypt password or salt is held: as the user typed it, or
+/// rclone-obscured (the form rclone.conf keeps). The shape of a value cannot
+/// tell the two apart: a salt rclone generates (22 URL-safe base64 characters)
+/// is also what `rclone obscure ""` prints, and a 23 or 24 character
+/// alphanumeric password decodes to one or two characters about one time in
+/// six. So the binding records it (`passwordForm` / `saltForm`), and a secret
+/// whose form is not recorded is only guessed at when the guess is safe.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CryptSecretForm {
+    Clear,
+    Obscured,
+    /// Not recorded, on a binding the rclone importer wrote before forms were
+    /// recorded: the value is the one the importer revealed, unless an obscured
+    /// one was pasted over it later. Never parsed from, nor written to, a
+    /// binding ([`crypt_secret_forms`] alone produces it).
+    ImportedUnrecorded,
+}
+
+impl CryptSecretForm {
+    /// `"clear"` / `"obscured"`; anything else records no form.
+    pub fn parse(text: Option<&str>) -> Option<Self> {
+        match text {
+            Some("clear") => Some(Self::Clear),
+            Some("obscured") => Some(Self::Obscured),
+            _ => None,
+        }
+    }
+
+    /// The form a binding records under `field`, `None` when it records none.
+    pub fn from_binding(binding: &serde_json::Value, field: &str) -> Option<Self> {
+        Self::parse(binding.get(field).and_then(|v| v.as_str()))
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Clear => "clear",
+            Self::Obscured => "obscured",
+            Self::ImportedUnrecorded => "imported-unrecorded",
+        }
+    }
+}
+
+/// The forms a profile's rclone-crypt password and salt are held in: what the
+/// binding records, or, for a binding the rclone importer wrote before forms
+/// were recorded (its options keep `rcloneCryptOverlayName` /
+/// `rcloneCryptRemote`), [`CryptSecretForm::ImportedUnrecorded`].
+pub fn crypt_secret_forms(
+    profile: &serde_json::Value,
+) -> (Option<CryptSecretForm>, Option<CryptSecretForm>) {
+    let binding = profile
+        .get("aeroCryptOverlay")
+        .unwrap_or(&serde_json::Value::Null);
+    let recorded = (
+        CryptSecretForm::from_binding(binding, "passwordForm"),
+        CryptSecretForm::from_binding(binding, "saltForm"),
+    );
+    let imported = profile
+        .get("options")
+        .map(|o| o.get("rcloneCryptOverlayName").is_some() || o.get("rcloneCryptRemote").is_some())
+        .unwrap_or(false);
+    if imported {
+        (
+            recorded.0.or(Some(CryptSecretForm::ImportedUnrecorded)),
+            recorded.1.or(Some(CryptSecretForm::ImportedUnrecorded)),
+        )
+    } else {
+        recorded
+    }
+}
+
+/// The form of a secret that came from the vault (`recorded`, the binding's) or,
+/// when `from_env`, from an environment variable: then the one `form_var`
+/// states (`clear` / `obscured`), or none.
+pub fn secret_form_for_source(
+    recorded: Option<CryptSecretForm>,
+    from_env: bool,
+    form_var: &str,
+) -> Option<CryptSecretForm> {
+    if from_env {
+        CryptSecretForm::parse(std::env::var(form_var).ok().as_deref())
+    } else {
+        recorded
+    }
+}
+
+/// How to answer a refusal, in every place a form can be recorded. It names no
+/// GUI label: this text is English in every language, the labels are not.
+const RECORD_THE_FORM: &str = "Say how it was entered, typed as it is or pasted from \
+     rclone.conf (a value AeroFTP imported from rclone.conf was stored as typed): in \
+     AeroFTP, with the choice under the password and the salt in the profile's crypt \
+     settings; with the CLI, run `aeroftp-cli crypt set-form --profile \
+     <name> --password-form clear|obscured --salt-form clear|obscured`, pass \
+     `--password-form` / `--salt-form` to a command that takes the secret itself, or set \
+     AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM / AEROFTP_CRYPT_OVERLAY_SALT_FORM for a secret \
+     taken from the environment";
+
+/// 22 characters are the IV of an obscured value alone: from there a password
+/// or a salt rclone generated (128 bits, 22 URL-safe base64 characters) can
+/// decode to nothing or to a character or two.
+const SHORT_READING_MIN_INPUT: usize = 22;
+const SHORT_READING_MAX_CHARS: usize = 2;
+
+/// The length of the reading the unrecorded guess ([`maybe_rclone_reveal`])
+/// would use, when it is too short to trust: an input of 22 characters or more
+/// that the guess turns into 2 characters or fewer. A reading the guess does
+/// not use is not counted, because it is the guess's result that is measured:
+/// a password that reveals to nothing, or to control characters, was always
+/// kept as typed, and a value kept as typed is 22 characters or more. The
+/// input is measured in bytes, which for base64 (ASCII, the only input that
+/// decodes) is its length in characters; the reading can be any UTF-8, so it
+/// is measured in characters.
+fn short_guess(value: &str, secret: RcloneSecret) -> Option<usize> {
+    if value.len() < SHORT_READING_MIN_INPUT {
+        return None;
+    }
+    let chars = maybe_rclone_reveal(value, secret).chars().count();
+    (chars <= SHORT_READING_MAX_CHARS).then_some(chars)
+}
+
+/// The error for an unrecorded secret whose guessed reading is too short.
+fn ambiguous_secret_error(field: &str, revealed_chars: usize) -> String {
+    let other = if revealed_chars == 0 {
+        format!("an rclone-obscured empty {field}")
+    } else {
+        format!("an rclone-obscured value that gives a {revealed_chars}-character {field}")
+    };
+    format!(
+        "the crypt {field} reads two ways: as typed, or as {other}. AeroFTP does not \
+         guess. {RECORD_THE_FORM}"
+    )
+}
+
+/// Reveals `value` as rclone does for a field it knows to be obscured, with
+/// the importer's reveal (`rclone_import::reveal_rclone_password`): raw URL-safe
+/// base64, trailing bits ignored as rclone ignores them, no plaintext fallback.
+fn reveal_known_obscured(value: &str, field: &str) -> Result<String, String> {
+    crate::rclone_import::reveal_rclone_password(value).map_err(|why| {
+        format!(
+            "the crypt {field} is marked as pasted from rclone.conf but does not reveal \
+             ({why}). {RECORD_THE_FORM}"
+        )
+    })
+}
+
+/// A secret the rclone importer stored before forms were recorded. It is the
+/// revealed value, so clear, unless an obscured value was pasted over it later
+/// (#600): a value that also reveals to 3 or more printable characters could
+/// be either, and reading it as the other would change the key of an overlay
+/// that works, so it is refused rather than guessed. Only a value exactly as
+/// rclone writes one counts ([`crate::rclone_import::reveal_canonical_rclone`]):
+/// the lenient decoder also reads about one 26-character value in twenty that
+/// rclone could never have written, and those were always used as they are.
+/// The refusal names both secrets: they were stored by the same import, and a
+/// form recorded for one only leaves the other on this reading.
+fn resolve_imported_unrecorded(value: &str, field: &str) -> Result<String, String> {
+    match crate::rclone_import::reveal_canonical_rclone(value) {
+        Ok(revealed)
+            if revealed.chars().count() > SHORT_READING_MAX_CHARS
+                && !revealed.chars().any(char::is_control) =>
+        {
+            Err(format!(
+                "the crypt {field} was stored by the rclone import, but it also reads as \
+                 a value pasted from rclone.conf later. AeroFTP does not guess: record how \
+                 both the password and the salt were entered. {RECORD_THE_FORM}"
+            ))
+        }
+        _ => Ok(value.to_string()),
+    }
+}
+
+/// The crypt password a key is derived from, for `value` held in `form`. An
+/// empty value is no password in every form, and [`derive_keys_with_forms`]
+/// refuses to derive a key from it.
 ///
-/// Rclone derives 80 bytes in this order: data key, name key, then EME tweak.
+/// - `Clear`: as it is.
+/// - `Obscured`: revealed the way rclone reveals it, or an error. A reveal of
+///   2 characters or fewer is refused: rclone's generated passwords are 22
+///   characters, which is exactly an obscured empty value, so a password typed
+///   as it is and marked obscured by mistake lands there, on a key from nothing.
+/// - `ImportedUnrecorded`: [`resolve_imported_unrecorded`].
+/// - `None`: the reading used before forms were recorded ([`maybe_rclone_reveal`]),
+///   refused when the reading it would use is too short ([`short_guess`]).
+pub fn resolve_crypt_password(
+    value: &str,
+    form: Option<CryptSecretForm>,
+) -> Result<String, String> {
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    match form {
+        Some(CryptSecretForm::Clear) => Ok(value.to_string()),
+        Some(CryptSecretForm::Obscured) => {
+            let revealed = reveal_known_obscured(value, "password")?;
+            let chars = revealed.chars().count();
+            if chars <= SHORT_READING_MAX_CHARS {
+                return Err(format!(
+                    "the crypt password is marked as pasted from rclone.conf, but it reveals \
+                     to {chars} character(s); a password rclone generates, typed as it is, \
+                     looks exactly like that. {RECORD_THE_FORM}"
+                ));
+            }
+            Ok(revealed)
+        }
+        Some(CryptSecretForm::ImportedUnrecorded) => resolve_imported_unrecorded(value, "password"),
+        None => match short_guess(value, RcloneSecret::Password) {
+            Some(chars) => Err(ambiguous_secret_error("password", chars)),
+            None => Ok(maybe_rclone_reveal(value, RcloneSecret::Password)),
+        },
+    }
+}
+
+/// [`resolve_crypt_password`] for the salt (`password2`). Recorded obscured,
+/// an empty reveal is rclone's omitted salt (`rclone config create ...
+/// password2=` writes `obscure("")`) and selects the default one; unrecorded,
+/// the same short readings as the password's are refused, since a salt rclone
+/// generated reveals to nothing.
+pub fn resolve_crypt_salt(value: &str, form: Option<CryptSecretForm>) -> Result<String, String> {
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    match form {
+        Some(CryptSecretForm::Clear) => Ok(value.to_string()),
+        Some(CryptSecretForm::Obscured) => reveal_known_obscured(value, "salt"),
+        Some(CryptSecretForm::ImportedUnrecorded) => resolve_imported_unrecorded(value, "salt"),
+        None => match short_guess(value, RcloneSecret::Salt) {
+            Some(chars) => Err(ambiguous_secret_error("salt", chars)),
+            None => Ok(maybe_rclone_reveal(value, RcloneSecret::Salt)),
+        },
+    }
+}
+
+/// What the eye button of the profile form shows for a stored rclone-crypt
+/// password or salt: the secret itself when the value is recorded as
+/// obscured, the stored value as it is otherwise (recorded clear, or not
+/// recorded, which the form shows as saved). Async so it stays off the main
+/// thread, as every command does (`sync_command_audit`); the work is a reveal
+/// in memory and needs no blocking pool.
+#[tauri::command]
+pub async fn rclone_crypt_secret_for_display(
+    value: String,
+    form: Option<String>,
+    field: String,
+) -> Result<String, String> {
+    match CryptSecretForm::parse(form.as_deref()) {
+        Some(CryptSecretForm::Obscured) if field == "salt" => {
+            resolve_crypt_salt(&value, Some(CryptSecretForm::Obscured))
+        }
+        Some(CryptSecretForm::Obscured) => {
+            resolve_crypt_password(&value, Some(CryptSecretForm::Obscured))
+        }
+        _ => Ok(value),
+    }
+}
+
+/// Derive data_key (32 bytes), name_key (32 bytes), and name_tweak (16 bytes),
+/// reading the password and salt in the forms the caller knows them to be in
+/// ([`resolve_crypt_password`], [`resolve_crypt_salt`]).
+pub fn derive_keys_with_forms(
+    password: &str,
+    password_form: Option<CryptSecretForm>,
+    salt: &str,
+    salt_form: Option<CryptSecretForm>,
+) -> Result<RcloneCryptKeyMaterial, String> {
+    let password = zeroize::Zeroizing::new(resolve_crypt_password(password, password_form)?);
+    // The one place every rclone-crypt reader goes through (overlay, unlock and
+    // create-remote commands, compare, CLI, MCP): rclone would take an empty
+    // password and derive the all-zero key, which anyone can open.
+    if password.is_empty() {
+        return Err("an rclone-crypt password is required".to_string());
+    }
+    let salt = zeroize::Zeroizing::new(resolve_crypt_salt(salt, salt_form)?);
+    derive_keys_from_clear(&password, &salt)
+}
+
+/// [`derive_keys_with_forms`] for a caller that does not know the forms (a CLI
+/// flag, an environment variable, a value typed where no form is asked).
 pub fn derive_keys_with_tweak(
     password: &str,
     salt: &str,
 ) -> Result<RcloneCryptKeyMaterial, String> {
-    let password = maybe_rclone_reveal(password, RcloneSecret::Password);
-    let salt = maybe_rclone_reveal(salt, RcloneSecret::Salt);
+    derive_keys_with_forms(password, None, salt, None)
+}
+
+/// Rclone derives 80 bytes in this order: data key, name key, then EME tweak.
+/// An empty password gives an all-zero key, as in rclone.
+fn derive_keys_from_clear(password: &str, salt: &str) -> Result<RcloneCryptKeyMaterial, String> {
     // scrypt 0.11 limits Params::len to <=64 for password-hash metadata, but
     // the raw scrypt() function accepts rclone's 80-byte output buffer.
     let params = ScryptParams::new(SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P, SCRYPT_PARAMS_LEN)
@@ -785,6 +1066,7 @@ impl Default for RcloneCryptState {
 
 /// Unlock an rclone crypt remote by deriving keys from password (and optional salt).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn rclone_crypt_unlock(
     state: tauri::State<'_, RcloneCryptState>,
     password: String,
@@ -792,12 +1074,18 @@ pub async fn rclone_crypt_unlock(
     filename_encryption: Option<String>,
     suffix: Option<String>,
     directory_name_encryption: Option<bool>,
+    password_form: Option<String>,
+    salt_form: Option<String>,
 ) -> Result<RcloneCryptVaultInfo, String> {
     let secret_pwd = secrecy::SecretString::from(password);
     let salt_str = salt.unwrap_or_default();
 
-    let (name_key, data_key, name_tweak) =
-        derive_keys_with_tweak(secrecy::ExposeSecret::expose_secret(&secret_pwd), &salt_str)?;
+    let (name_key, data_key, name_tweak) = derive_keys_with_forms(
+        secrecy::ExposeSecret::expose_secret(&secret_pwd),
+        CryptSecretForm::parse(password_form.as_deref()),
+        &salt_str,
+        CryptSecretForm::parse(salt_form.as_deref()),
+    )?;
 
     let fe = match filename_encryption.as_deref() {
         Some("off") => FilenameEncryption::Off,
@@ -1587,6 +1875,7 @@ mod tests {
     /// any other constant.
     #[test]
     fn a_22_char_password_is_not_swallowed_by_the_reveal() {
+        use CryptSecretForm::Clear;
         let colliding = "Aa0-_Bb1cDd2eEf3gHh4iA";
         assert_eq!(colliding.len(), 22, "the collision needs exactly 22 chars");
         assert_eq!(
@@ -1595,45 +1884,281 @@ mod tests {
             "precondition: this input really does reveal as empty"
         );
 
-        let from_literal = derive_keys_with_tweak(colliding, "").unwrap();
-        let from_empty = derive_keys_with_tweak("", "").unwrap();
-        assert_ne!(
-            from_literal.0, from_empty.0,
-            "a 22-char password must not derive the same key as no password at all"
-        );
-
-        // And it must be the key of THAT password, not of some other value.
-        let control = derive_keys_with_tweak("Aa0-_Bb1cDd2eEf3gHh4iQ", "").unwrap();
+        // As typed: the key of THAT password, neither the empty one nor any
+        // other constant.
+        let from_literal = derive_keys_with_forms(colliding, Some(Clear), "", None).unwrap();
+        let from_empty = derive_keys_from_clear("", "").unwrap();
+        assert_ne!(from_literal.0, from_empty.0);
+        let control =
+            derive_keys_with_forms("Aa0-_Bb1cDd2eEf3gHh4iQ", Some(Clear), "", None).unwrap();
         assert_ne!(from_literal.0, control.0);
+
+        // Unrecorded, the guess always kept this one as typed: still does.
+        assert_eq!(
+            derive_keys_with_tweak(colliding, "").unwrap().0,
+            from_literal.0
+        );
+        // Marked obscured, it would be a key from nothing: refused.
+        let e = resolve_crypt_password(colliding, Some(CryptSecretForm::Obscured)).unwrap_err();
+        assert!(e.contains("reveals to 0 character"), "{e}");
     }
 
-    /// The other half of the same ambiguity, kept adjacent on purpose: for the
-    /// SALT an empty reveal is `password2 = obscure("")`, which is rclone
-    /// saying "no salt" and must still collapse to the built-in default. The
-    /// two tests fail in opposite directions if the field is ever ignored
-    /// again, which is what makes them a pair rather than a duplicate.
+    /// The same bytes as a salt: rclone's `obscure("")` (the default salt) or a
+    /// salt rclone generated, typed as it is. The recorded form decides; with
+    /// none recorded the salt is refused, never read as the default.
     #[test]
-    fn a_22_char_salt_still_reads_as_the_default_salt() {
+    fn a_22_char_salt_is_read_by_its_recorded_form() {
+        use CryptSecretForm::{Clear, Obscured};
         let colliding = "Aa0-_Bb1cDd2eEf3gHh4iA";
-        let with_colliding_salt = derive_keys_with_tweak("pw-600", colliding).unwrap();
-        let with_omitted_salt = derive_keys_with_tweak("pw-600", "").unwrap();
-        assert_eq!(
-            with_colliding_salt.0, with_omitted_salt.0,
-            "an empty reveal on the salt is rclone's omitted salt"
-        );
+        let default_salt = derive_keys_with_forms("pw-600", Some(Clear), "", None).unwrap();
+        let as_obscured =
+            derive_keys_with_forms("pw-600", Some(Clear), colliding, Some(Obscured)).unwrap();
+        let as_typed =
+            derive_keys_with_forms("pw-600", Some(Clear), colliding, Some(Clear)).unwrap();
+        assert_eq!(as_obscured.0, default_salt.0);
+        assert_ne!(as_typed.0, default_salt.0);
+        let refused = derive_keys_with_tweak("pw-600", colliding)
+            .map(|_| ())
+            .unwrap_err();
+        assert!(refused.contains("salt reads two ways"), "{refused}");
+        for way_out in [
+            "profile's crypt settings",
+            "crypt set-form --profile",
+            "--salt-form",
+            "AEROFTP_CRYPT_OVERLAY_SALT_FORM",
+        ] {
+            assert!(
+                refused.contains(way_out),
+                "the message names {way_out}: {refused}"
+            );
+        }
     }
 
     #[test]
     fn obscured_empty_password2_is_the_default_salt() {
-        // rclone.conf often still writes `password2 = obscure("")` when the
-        // user left salt blank. That must not become a 22-char fake salt.
+        // `rclone config create ... password2=` writes `obscure("")`. Marked
+        // as obscured it is the default salt.
         let obscured_empty = crate::rclone_import::obscure_password("").unwrap();
-        let with_blob = derive_keys_with_tweak("triage-password-600", &obscured_empty).unwrap();
+        let with_blob = derive_keys_with_forms(
+            "triage-password-600",
+            Some(CryptSecretForm::Clear),
+            &obscured_empty,
+            Some(CryptSecretForm::Obscured),
+        )
+        .unwrap();
         let omitted = derive_keys_with_tweak("triage-password-600", "").unwrap();
         assert_eq!(with_blob.0, omitted.0);
         assert_eq!(
             encrypt_name(&with_blob.0, &with_blob.2, "folder").unwrap(),
             "785v69hnpanb9p84bhrlki9lp0"
+        );
+    }
+
+    /// Unrecorded, only a reading the old guess actually used is refused, and
+    /// only when it is 2 characters or fewer: a salt that reveals to 0, 1 or 2
+    /// characters and a password that reveals to 1 or 2. A password that
+    /// reveals to nothing was always kept as typed, and still is. From 3
+    /// characters the guess is kept. The 24-character password is a real one
+    /// that decodes to 2 characters.
+    #[test]
+    fn unmarked_secrets_are_refused_only_on_a_short_reading_the_guess_used() {
+        let obscure = |s: &str| crate::rclone_import::obscure_password(s).unwrap();
+        for plain in ["", "a", "ab", "abc"] {
+            let value = obscure(plain);
+            assert!(value.len() >= 22, "{value}");
+            let password = resolve_crypt_password(&value, None);
+            let salt = resolve_crypt_salt(&value, None);
+            match plain {
+                "" => {
+                    assert_eq!(password.as_deref(), Ok(value.as_str()), "kept as typed");
+                    assert!(salt.unwrap_err().contains("salt reads two ways"));
+                }
+                "a" | "ab" => {
+                    assert!(password.unwrap_err().contains("password reads two ways"));
+                    assert!(salt.unwrap_err().contains("salt reads two ways"));
+                }
+                _ => {
+                    assert_eq!(password.as_deref(), Ok(plain));
+                    assert_eq!(salt.as_deref(), Ok(plain));
+                }
+            }
+        }
+
+        let real = "TxJvZRpvYFpHytjG6UP2WcIv";
+        let short = crate::rclone_import::reveal_obscured(real).unwrap();
+        assert!(short.chars().count() <= 2, "precondition: {short:?}");
+        assert!(resolve_crypt_password(real, None).is_err());
+        assert_eq!(
+            resolve_crypt_password(real, Some(CryptSecretForm::Clear)).as_deref(),
+            Ok(real)
+        );
+        // Below 22 characters nothing changes.
+        assert_eq!(
+            resolve_crypt_password("short-pass", None).as_deref(),
+            Ok("short-pass")
+        );
+    }
+
+    /// Marked obscured, a password that reveals to 2 characters or fewer is
+    /// refused (a key from almost nothing); a salt may reveal to anything,
+    /// nothing included (the default salt). An empty value is no secret in
+    /// every form, so a command given no salt still runs.
+    #[test]
+    fn obscured_passwords_that_reveal_short_are_refused_and_empty_values_pass() {
+        use CryptSecretForm::{Clear, ImportedUnrecorded, Obscured};
+        let obscure = |s: &str| crate::rclone_import::obscure_password(s).unwrap();
+        for plain in ["", "a", "ab"] {
+            assert!(
+                resolve_crypt_password(&obscure(plain), Some(Obscured)).is_err(),
+                "{plain:?}"
+            );
+            assert_eq!(
+                resolve_crypt_salt(&obscure(plain), Some(Obscured)).as_deref(),
+                Ok(plain)
+            );
+        }
+        assert_eq!(
+            resolve_crypt_password(&obscure("abc"), Some(Obscured)).as_deref(),
+            Ok("abc")
+        );
+        for form in [None, Some(Clear), Some(Obscured), Some(ImportedUnrecorded)] {
+            assert_eq!(
+                resolve_crypt_password("", form).as_deref(),
+                Ok(""),
+                "{form:?}"
+            );
+            assert_eq!(resolve_crypt_salt("", form).as_deref(), Ok(""), "{form:?}");
+        }
+    }
+
+    /// A secret the rclone importer stored before forms were recorded is the
+    /// revealed value, so it is used as it is, unless it also reveals to 3 or
+    /// more printable characters: then an obscured value may have been pasted
+    /// over it, and reading it either way could change the key of a working
+    /// overlay, so it is refused.
+    #[test]
+    fn imported_unrecorded_secrets_are_clear_unless_they_read_two_ways() {
+        use CryptSecretForm::ImportedUnrecorded;
+        let generated_salt = "hD1lB5uyIChoDFqhaHOsUg";
+        assert_eq!(
+            resolve_crypt_salt(generated_salt, Some(ImportedUnrecorded)).as_deref(),
+            Ok(generated_salt)
+        );
+        assert_eq!(
+            resolve_crypt_password("crypt-pass-954", Some(ImportedUnrecorded)).as_deref(),
+            Ok("crypt-pass-954")
+        );
+        let pasted = crate::rclone_import::obscure_password("crypt-pass-954").unwrap();
+        let e = resolve_crypt_password(&pasted, Some(ImportedUnrecorded)).unwrap_err();
+        assert!(e.contains("rclone import"), "{e}");
+        assert!(e.contains("both the password and the salt"), "{e}");
+        assert!(
+            e.contains("imported from rclone.conf was stored as typed"),
+            "{e}"
+        );
+    }
+
+    /// Only a value exactly as rclone writes it can be "pasted over" an imported
+    /// one: flip a discarded low bit of an obscured value and the lenient
+    /// decoder still reads it, but rclone could not have written it, so it
+    /// stays the value the import stored.
+    #[test]
+    fn imported_unrecorded_probe_counts_only_values_rclone_could_write() {
+        use CryptSecretForm::ImportedUnrecorded;
+        const URL_SAFE: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        // 16-byte IV + 4 bytes = 20 bytes: 27 symbols, the last carrying 2
+        // discarded bits.
+        let canonical = crate::rclone_import::obscure_password("abcd").unwrap();
+        assert_eq!(canonical.len(), 27, "{canonical}");
+        let last = URL_SAFE.find(canonical.chars().last().unwrap()).unwrap();
+        assert_eq!(last & 0b11, 0, "rclone leaves the discarded bits at zero");
+        let lenient_only = format!(
+            "{}{}",
+            &canonical[..26],
+            URL_SAFE.chars().nth(last | 1).unwrap()
+        );
+        assert_eq!(
+            crate::rclone_import::reveal_rclone_password(&lenient_only).as_deref(),
+            Ok("abcd"),
+            "precondition: the lenient decoder reads it"
+        );
+        assert_eq!(
+            resolve_crypt_password(&lenient_only, Some(ImportedUnrecorded)).as_deref(),
+            Ok(lenient_only.as_str())
+        );
+        assert!(resolve_crypt_password(&canonical, Some(ImportedUnrecorded)).is_err());
+    }
+
+    /// Lengths are counted in characters, not bytes: "€" is one character in
+    /// three bytes. Obscured, it is a key from almost nothing (refused, recorded
+    /// obscured or guessed); imported, a 1-character reading is not a paste.
+    #[test]
+    fn short_readings_are_counted_in_characters() {
+        use CryptSecretForm::{ImportedUnrecorded, Obscured};
+        let euro = crate::rclone_import::obscure_password("\u{20ac}").unwrap();
+        assert!(euro.len() >= SHORT_READING_MIN_INPUT, "{euro}");
+        assert!(resolve_crypt_password(&euro, Some(Obscured)).is_err());
+        assert!(resolve_crypt_password(&euro, None).is_err());
+        assert!(resolve_crypt_salt(&euro, None).is_err());
+        assert_eq!(
+            resolve_crypt_password(&euro, Some(ImportedUnrecorded)).as_deref(),
+            Ok(euro.as_str())
+        );
+    }
+
+    /// No reader derives a key from an empty password, whatever the form:
+    /// rclone would give the all-zero key.
+    #[test]
+    fn an_empty_password_derives_no_key() {
+        use CryptSecretForm::{Clear, ImportedUnrecorded, Obscured};
+        for form in [None, Some(Clear), Some(Obscured), Some(ImportedUnrecorded)] {
+            let e = derive_keys_with_forms("", form, "salt", None)
+                .map(|_| ())
+                .unwrap_err();
+            assert!(e.contains("password is required"), "{form:?}: {e}");
+        }
+        assert!(derive_keys_with_tweak("", "").is_err());
+        assert!(derive_keys_with_tweak("pw", "").is_ok());
+    }
+
+    /// A secret taken from the environment carries the form its companion
+    /// variable states, or none; one from the vault keeps the binding's.
+    #[test]
+    fn env_secrets_take_the_form_their_variable_states() {
+        let var = "AEROFTP_TEST_955_SECRET_FORM";
+        std::env::remove_var(var);
+        assert_eq!(
+            secret_form_for_source(Some(CryptSecretForm::Obscured), true, var),
+            None
+        );
+        std::env::set_var(var, "clear");
+        assert_eq!(
+            secret_form_for_source(Some(CryptSecretForm::Obscured), true, var),
+            Some(CryptSecretForm::Clear)
+        );
+        assert_eq!(
+            secret_form_for_source(Some(CryptSecretForm::Obscured), false, var),
+            Some(CryptSecretForm::Obscured)
+        );
+        std::env::remove_var(var);
+    }
+
+    /// A clear secret is used as it is, control characters included; unrecorded,
+    /// a value whose reveal has control characters was always kept as typed; an
+    /// obscured one that does not reveal is an error, never the literal.
+    #[test]
+    fn recorded_forms_are_taken_literally() {
+        let odd = "pa\tss word ";
+        assert_eq!(
+            resolve_crypt_password(odd, Some(CryptSecretForm::Clear)).as_deref(),
+            Ok(odd)
+        );
+        assert!(resolve_crypt_password("not-obscured!", Some(CryptSecretForm::Obscured)).is_err());
+        assert!(resolve_crypt_salt("abc", Some(CryptSecretForm::Obscured)).is_err());
+        let with_control = crate::rclone_import::obscure_password("x\u{1}yz").unwrap();
+        assert_eq!(
+            resolve_crypt_password(&with_control, None).as_deref(),
+            Ok(with_control.as_str())
         );
     }
 

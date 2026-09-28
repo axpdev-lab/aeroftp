@@ -259,6 +259,11 @@ pub struct OverlayUnlockParams {
     /// marker from the keystore and surfaces a one-shot safety warning
     /// (tracker #421 item #7). Default false = intentional headerless.
     pub with_header: bool,
+    /// rclone-crypt: the form the password and salt handed to the unlock are
+    /// in ([`crate::rclone_crypt::CryptSecretForm`]), `None` when the source
+    /// records none (an environment variable, a binding older than the field).
+    pub password_form: Option<crate::rclone_crypt::CryptSecretForm>,
+    pub salt_form: Option<crate::rclone_crypt::CryptSecretForm>,
 }
 
 /// AeroCrypt overlay config filename, written at the scope root by `crypt init`.
@@ -295,8 +300,12 @@ pub async fn unlock_overlay_keys(
                     "keyfiles are an AeroCrypt feature; this overlay is rclone-crypt".to_string(),
                 );
             }
-            let (name_key, data_key, name_tweak) =
-                crate::rclone_crypt::derive_keys_with_tweak(password, salt)?;
+            let (name_key, data_key, name_tweak) = crate::rclone_crypt::derive_keys_with_forms(
+                password,
+                params.password_form,
+                salt,
+                params.salt_form,
+            )?;
             let filename_encryption = match params.filename_encryption.as_str() {
                 "off" => crate::rclone_crypt::FilenameEncryption::Off,
                 "obfuscate" => crate::rclone_crypt::FilenameEncryption::Obfuscate,
@@ -755,6 +764,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         }
     }
 
@@ -840,6 +851,8 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            password_form: None,
+            salt_form: None,
         };
         let digest = crate::aerocrypt::keyfile_digest(b"kf");
         let err = unlock_err(

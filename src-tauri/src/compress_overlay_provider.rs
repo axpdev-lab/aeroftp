@@ -408,6 +408,10 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.supports_atomic_replace().await
     }
 
+    fn replace_sets_aside(&self) -> bool {
+        self.inner.replace_sets_aside()
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         // Return wire size (deferred semantics). Caller sees logical name.
         self.inner.stat(path).await
