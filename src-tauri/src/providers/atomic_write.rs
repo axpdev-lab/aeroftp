@@ -239,9 +239,14 @@ pub(crate) mod temp_claim {
         }
         // SAFETY: `statfs` returned 0, so it filled the buffer.
         let kind = unsafe { stat.assume_init() }.f_type;
-        #[allow(clippy::unnecessary_cast)]
-        let on_nfs = kind as i64 == libc::NFS_SUPER_MAGIC as i64;
-        !on_nfs
+        // A filesystem magic is 32 bits, whatever the width of `f_type`.
+        locks_usable_on(kind as u32)
+    }
+
+    /// Whether a filesystem of this `statfs` type takes the locks.
+    #[cfg(target_os = "linux")]
+    fn locks_usable_on(kind: u32) -> bool {
+        kind != libc::NFS_SUPER_MAGIC as u32
     }
 
     #[cfg(all(unix, not(target_os = "linux")))]
@@ -345,6 +350,27 @@ pub(crate) mod temp_claim {
                 Found::Live
             );
             assert_eq!(std::fs::read(&temp).unwrap(), b"second");
+        }
+
+        /// Verification of 15a1e76d (#951), Major: on a CIFS/SMB mount Linux
+        /// (5.5 and later) turns flock into a whole-file SMB lock, mandatory
+        /// on Windows servers and most NAS shares, and the segmented engine's
+        /// windows, which write through handles of their own, were refused
+        /// (EACCES). SMB and CIFS take no locks, as NFS takes none.
+        #[cfg(target_os = "linux")]
+        #[test]
+        fn smb_and_nfs_mounts_take_no_locks() {
+            for (kind, usable) in [
+                (0xFF53_4D42_u32, false),
+                (0xFE53_4D42, false),
+                (0x517B, false),
+                (0x6969, false),
+                (0xEF53, true),
+                (0x0102_1994, true),
+                (0x9123_683E, true),
+            ] {
+                assert_eq!(locks_usable_on(kind), usable, "{kind:#x}");
+            }
         }
 
         /// A live writer's temporary is refused by a resume, which would
