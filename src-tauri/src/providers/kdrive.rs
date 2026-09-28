@@ -729,10 +729,12 @@ impl KDriveProvider {
     }
 
     /// [`Self::find_file_in_folder`] without the fallback to another letter
-    /// case, for a step that destroys what it finds. kDrive is taken to keep
-    /// `A.txt` and `a.txt` as two items (as rclone lists it), so the fallback
-    /// can answer an item other than the one named: `rm /a.txt` beside only
-    /// `A.txt` trashed `A.txt`.
+    /// case, for a step that destroys, overwrites or publishes what it finds.
+    /// kDrive is taken to keep `A.txt` and `a.txt` as two items (as rclone
+    /// lists it), so the fallback can answer an item other than the one
+    /// named: `rm /a.txt` beside only `A.txt` trashed `A.txt`, a share link
+    /// asked for `a.txt` published `A.txt` or removed its link, and a version
+    /// restore rolled `A.txt` back.
     async fn find_exact_in_folder(
         &self,
         folder_id: i64,
@@ -1761,7 +1763,7 @@ impl StorageProvider for KDriveProvider {
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
         let (file_id, _) = self
-            .find_file_in_folder(parent_id, filename)
+            .find_exact_in_folder(parent_id, filename)
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
@@ -1876,7 +1878,7 @@ impl StorageProvider for KDriveProvider {
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
         let (file_id, _) = self
-            .find_file_in_folder(parent_id, filename)
+            .find_exact_in_folder(parent_id, filename)
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
@@ -1998,7 +2000,7 @@ impl StorageProvider for KDriveProvider {
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
         let (file_id, _) = self
-            .find_file_in_folder(parent_id, filename)
+            .find_exact_in_folder(parent_id, filename)
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
@@ -2556,8 +2558,10 @@ mod tests {
 
     /// A kDrive double whose root (id 1) holds the files `files` (id, name)
     /// and keeps them: a move renames (409 `conflict_error` onto a name taken
-    /// by another file) and a delete removes. Returns a provider on it, the
-    /// files, and every change as `move ID NAME` or `delete ID`.
+    /// by another file) and a delete removes; a share link or a version
+    /// restore is only recorded. Returns a provider on it, the files, and
+    /// every change as `move ID NAME`, `delete ID`, or the method and the
+    /// path after `files/` of a link or restore (`POST 10/link`).
     #[allow(clippy::type_complexity)]
     async fn provider_on_kdrive_files(
         files: &[(i64, &str)],
@@ -2605,6 +2609,13 @@ mod tests {
                             .iter()
                             .map(|(id, name)| file(*id, name))
                             .collect::<Vec<_>>()));
+                    }
+                    if path.ends_with("/link") || path.ends_with("/restore") {
+                        let id = path
+                            .trim_start_matches("/2/drive/987654/files/")
+                            .trim_start_matches("/3/drive/987654/files/");
+                        seen.lock().unwrap().push(format!("{method} {id}"));
+                        return ok(serde_json::json!({ "url": "https://kdrive.test/link" }));
                     }
                     if path.contains("/move/") {
                         let id = id_in(&path, "/3/drive/987654/files/");
@@ -2806,6 +2817,37 @@ mod tests {
         );
         assert!(changes.lock().unwrap().is_empty());
         assert_eq!(*store.lock().unwrap(), [(10, "A.txt".to_string())]);
+    }
+
+    /// Asked for `a.txt` beside only `A.txt`, the share link calls and the
+    /// version restore found `A.txt` ignoring the case: a link on `A.txt`
+    /// was created or removed (its URL cannot be made again) and `A.txt`
+    /// was rolled back. They take the exact name only.
+    #[tokio::test]
+    async fn links_and_restores_do_not_take_a_file_of_another_case() {
+        let (mut provider, _, changes) = provider_on_kdrive_files(&[(10, "A.txt")]).await;
+        let created = provider
+            .create_share_link("/a.txt", ShareLinkOptions::default())
+            .await;
+        assert!(
+            matches!(created, Err(ProviderError::NotFound(_))),
+            "{created:?}"
+        );
+        let removed = provider.remove_share_link("/a.txt").await;
+        assert!(
+            matches!(removed, Err(ProviderError::NotFound(_))),
+            "{removed:?}"
+        );
+        let restored = provider.restore_version("/a.txt", "7").await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotFound(_))),
+            "{restored:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
     }
 
     /// A replace onto `a.txt` beside only `A.txt` took `A.txt` for the file
