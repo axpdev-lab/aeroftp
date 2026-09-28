@@ -2533,12 +2533,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         throw streamError;
                     }
 
-                    if (autoStopRef.current || activeTurnRef.current !== turnScope) return;
-                    if (streamError !== null || (requiresNativeTurn(aiRequest) && !streamResult.nativeTurn)) return;
-                    if (streamResult.nativeTurn && !nativeTurnMatches(streamResult.nativeTurn, aiRequest)) throw new Error('Native turn scope mismatch');
-                    if (streamResult.nativeTurn && streamResult.toolCalls?.length) appendAssistantTurn(messageHistory, streamContent, streamResult.toolCalls, streamResult.nativeTurn);
-
-                    // Calculate cost
+                    // Calculate cost. The provider has billed these tokens whether or
+                    // not the turn goes on, so record them before any early return.
                     const tokenInfo = computeTokenInfo(streamResult.inputTokens, streamResult.outputTokens, undefined, modelDef, streamResult.cacheCreationTokens, streamResult.cacheReadTokens);
 
                     // Phase 4: Record spending for cost budget tracking
@@ -2548,6 +2544,17 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
                             .then(result => setBudgetCheck(result));
                     }
+
+                    if (autoStopRef.current || activeTurnRef.current !== turnScope) return;
+                    if (streamError !== null || (requiresNativeTurn(aiRequest) && !streamResult.nativeTurn)) {
+                        // An incomplete native answer (length, timeout) still shows what it used.
+                        if (streamError === null && tokenInfo) {
+                            setMessages(prev => prev.map(m => m.id === msgId ? { ...m, tokenInfo } : m));
+                        }
+                        return;
+                    }
+                    if (streamResult.nativeTurn && !nativeTurnMatches(streamResult.nativeTurn, aiRequest)) throw new Error('Native turn scope mismatch');
+                    if (streamResult.nativeTurn && streamResult.toolCalls?.length) appendAssistantTurn(messageHistory, streamContent, streamResult.toolCalls, streamResult.nativeTurn);
 
                     // Check for tool calls from streaming: process ALL (parallel support)
                     let allToolsParsed: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
@@ -2643,11 +2650,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         }>('ai_chat', { request: aiRequest })
                     );
 
-                    if (autoStopRef.current || activeTurnRef.current !== turnScope) return;
-                    if (requiresNativeTurn(aiRequest) && response.tool_calls?.length && !response.native_turn) throw new Error('Missing native tool state');
-                    if (response.native_turn && !nativeTurnMatches(response.native_turn, aiRequest)) throw new Error('Native turn scope mismatch');
-                    if (response.native_turn && response.tool_calls?.length) appendAssistantTurn(messageHistory, response.content, response.tool_calls, response.native_turn);
-
+                    // Billed tokens are recorded before any check that can end the turn.
                     const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, response.tokens_used, modelDef, response.cache_creation_input_tokens, response.cache_read_input_tokens);
 
                     // Phase 4: Record spending for cost budget tracking (non-streaming path)
@@ -2657,6 +2660,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
                             .then(result => setBudgetCheck(result));
                     }
+
+                    if (autoStopRef.current || activeTurnRef.current !== turnScope) return;
+                    if (requiresNativeTurn(aiRequest) && response.tool_calls?.length && !response.native_turn) throw new Error('Missing native tool state');
+                    if (response.native_turn && !nativeTurnMatches(response.native_turn, aiRequest)) throw new Error('Native turn scope mismatch');
+                    if (response.native_turn && response.tool_calls?.length) appendAssistantTurn(messageHistory, response.content, response.tool_calls, response.native_turn);
 
                     // Check if AI wants to use tools: process ALL (parallel support)
                     let allToolsParsedNS: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
