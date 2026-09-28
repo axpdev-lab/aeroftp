@@ -899,3 +899,42 @@ fn empty_tool_calls_in_a_text_stream_do_not_require_done() {
     assert_eq!(parsed.content, "All done.");
     assert!(parsed.tool_calls.is_none());
 }
+
+#[tokio::test]
+async fn anthropic_requests_reach_v1_messages_from_either_base_url_form() {
+    let reply = json!({"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}).to_string();
+    // claude-opus-5-5 takes the native transport, claude-sonnet-4-5 the legacy one.
+    for model in ["claude-opus-5-5", "claude-sonnet-4-5"] {
+        for (suffix, path) in [
+            ("", "/v1/messages"),
+            ("/", "/v1/messages"),
+            ("/v1", "/v1/messages"),
+            ("/v1/", "/v1/messages"),
+            // A gateway prefix is used as configured.
+            ("/gateway", "/gateway/messages"),
+        ] {
+            for stream in [false, true] {
+                let (base, server) = if stream {
+                    one_shot_server("200 OK", "text/event-stream", String::new()).await
+                } else {
+                    one_shot_server("200 OK", "application/json", reply.clone()).await
+                };
+                let mut req = request("anthropic", model);
+                req.api_key = Some("fixture".into());
+                req.base_url = format!("{}{suffix}", base.trim_end_matches("/v1"));
+                if stream {
+                    let sink = Sink::default();
+                    let _ = crate::ai_stream::ai_chat_stream_with_sink(&sink, req, "url").await;
+                } else {
+                    let _ = crate::ai::call_ai(req).await;
+                }
+                let (head, _) = server.await.unwrap();
+                let line = head.lines().next().unwrap_or_default().to_owned();
+                assert!(
+                    line.starts_with(&format!("post {path} ")),
+                    "{model} {suffix:?} stream={stream}: {line}"
+                );
+            }
+        }
+    }
+}

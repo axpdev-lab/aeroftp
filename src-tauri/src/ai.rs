@@ -75,6 +75,21 @@ pub fn sanitize_error_message(msg: &str) -> String {
     result
 }
 
+/// The Messages endpoint for an Anthropic base URL. The default base ends in
+/// `/v1`; a profile saved with the bare host (`https://api.anthropic.com`, the
+/// CLI default before) gets the `/v1` it needs. A base with any other path,
+/// such as a gateway prefix, is used as configured.
+pub(crate) fn anthropic_messages_url(base_url: &str) -> String {
+    let base = base_url.trim_end_matches('/');
+    let bare_host = reqwest::Url::parse(base)
+        .is_ok_and(|url| url.path() == "/" && url.query().is_none() && url.fragment().is_none());
+    if bare_host {
+        format!("{base}/v1/messages")
+    } else {
+        format!("{base}/messages")
+    }
+}
+
 // Provider types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -1114,7 +1129,7 @@ mod anthropic {
     pub async fn call(client: &Client, request: &AIRequest) -> Result<AIResponse, AIError> {
         let api_key = request.api_key.as_ref().ok_or(AIError::MissingApiKey)?;
 
-        let url = format!("{}/messages", request.base_url);
+        let url = crate::ai::anthropic_messages_url(&request.base_url);
 
         // Convert tool definitions for Anthropic format
         let tools = request.tools.as_ref().map(|defs| {

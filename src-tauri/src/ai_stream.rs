@@ -849,7 +849,7 @@ async fn stream_anthropic(
     cancel: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
-    let url = format!("{}/messages", request.base_url);
+    let url = crate::ai::anthropic_messages_url(&request.base_url);
 
     let tools: Option<Vec<serde_json::Value>> = request.tools.as_ref().map(|defs| {
         let len = defs.len();

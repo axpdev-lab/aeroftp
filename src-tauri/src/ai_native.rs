@@ -588,12 +588,15 @@ fn post(
     body: &Value,
 ) -> Result<reqwest::RequestBuilder, AIError> {
     let anthropic = modern_anthropic(request);
-    let path = if anthropic {
-        "messages"
+    let url = if anthropic {
+        crate::ai::anthropic_messages_url(&request.base_url)
     } else {
-        "chat/completions"
+        format!(
+            "{}/chat/completions",
+            request.base_url.trim_end_matches('/')
+        )
     };
-    let mut builder = client.post(format!("{}/{path}", request.base_url.trim_end_matches('/')));
+    let mut builder = client.post(url);
     if anthropic {
         builder = builder
             .header(
