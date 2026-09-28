@@ -334,6 +334,9 @@ pub struct BoxProvider {
     /// Test-only upload API base. `None` keeps production `UPLOAD_BASE`.
     #[cfg(test)]
     upload_base_override: Option<String>,
+    /// Test-only API base. `None` keeps production `API_BASE`.
+    #[cfg(test)]
+    api_base_override: Option<String>,
     /// Test-only bearer token for local HTTP fixtures (bypasses vault).
     #[cfg(test)]
     test_access_token: Option<String>,
@@ -362,6 +365,8 @@ impl BoxProvider {
             profile_id: String::new(),
             #[cfg(test)]
             upload_base_override: None,
+            #[cfg(test)]
+            api_base_override: None,
             #[cfg(test)]
             test_access_token: None,
         }
@@ -398,6 +403,8 @@ impl BoxProvider {
             #[cfg(test)]
             upload_base_override: self.upload_base_override.clone(),
             #[cfg(test)]
+            api_base_override: self.api_base_override.clone(),
+            #[cfg(test)]
             test_access_token: self.test_access_token.clone(),
         }
     }
@@ -407,6 +414,15 @@ impl BoxProvider {
     pub fn with_profile_id(mut self, profile_id: impl Into<String>) -> Self {
         self.profile_id = profile_id.into();
         self
+    }
+
+    /// `API_BASE`, pointed at a local double in tests.
+    fn api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(ref base) = self.api_base_override {
+            return base.as_str();
+        }
+        API_BASE
     }
 
     fn upload_api_base(&self) -> &str {
@@ -487,7 +503,8 @@ impl BoxProvider {
             let token = self.get_token().await?;
             let url = format!(
                 "{}/folders/{}/items?fields=name,type,id&limit=1000",
-                API_BASE, current_id
+                self.api_base(),
+                current_id
             );
             let resp = self
                 .client
@@ -541,7 +558,8 @@ impl BoxProvider {
 
         let url = format!(
             "{}/folders/{}/items?fields=name,type,id&limit=1000",
-            API_BASE, parent_id
+            self.api_base(),
+            parent_id
         );
         let resp = self
             .client
@@ -594,7 +612,8 @@ impl BoxProvider {
 
         let url = format!(
             "{}/folders/{}/items?fields=name,type,id&limit=1000",
-            API_BASE, parent_id
+            self.api_base(),
+            parent_id
         );
         let resp = self
             .client
@@ -634,7 +653,7 @@ impl BoxProvider {
             let token = self.get_token().await?;
             let url = format!(
                 "{}/folders/trash/items?fields=name,type,id,size,modified_at,trashed_at&limit={}&offset={}",
-                API_BASE, PAGE_LIMIT, offset
+                self.api_base(), PAGE_LIMIT, offset
             );
             let resp = self
                 .client
@@ -703,7 +722,7 @@ impl BoxProvider {
             } else {
                 "files"
             };
-            let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
+            let url = format!("{}/{}/{}", self.api_base(), endpoint, item_id);
 
             let resp = self
                 .client
@@ -737,7 +756,7 @@ impl BoxProvider {
         } else {
             "files"
         };
-        let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
+        let url = format!("{}/{}/{}", self.api_base(), endpoint, item_id);
 
         let resp = self
             .client
@@ -772,7 +791,7 @@ impl BoxProvider {
         } else {
             "files"
         };
-        let url = format!("{}/{}/{}/trash", API_BASE, endpoint, item_id);
+        let url = format!("{}/{}/{}/trash", self.api_base(), endpoint, item_id);
 
         let resp = self
             .client
@@ -811,7 +830,7 @@ impl BoxProvider {
         } else {
             "files"
         };
-        let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
+        let url = format!("{}/{}/{}", self.api_base(), endpoint, item_id);
 
         let resp = self
             .client
@@ -841,7 +860,8 @@ impl BoxProvider {
 
         let url = format!(
             "{}/files/{}/comments?fields=message,created_at,created_by&limit=100",
-            API_BASE, file_id
+            self.api_base(),
+            file_id
         );
         let resp = self
             .client
@@ -872,7 +892,7 @@ impl BoxProvider {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/comments", API_BASE);
+        let url = format!("{}/comments", self.api_base());
         let body = serde_json::json!({
             "item": { "id": file_id, "type": "file" },
             "message": message,
@@ -906,7 +926,7 @@ impl BoxProvider {
         }
 
         let token = self.get_token().await?;
-        let url = format!("{}/comments/{}", API_BASE, comment_id);
+        let url = format!("{}/comments/{}", self.api_base(), comment_id);
 
         let resp = self
             .client
@@ -944,7 +964,12 @@ impl BoxProvider {
         } else {
             "files"
         };
-        let url = format!("{}/{}/{}/collaborations", API_BASE, endpoint, item_id);
+        let url = format!(
+            "{}/{}/{}/collaborations",
+            self.api_base(),
+            endpoint,
+            item_id
+        );
 
         let resp = self
             .client
@@ -984,7 +1009,7 @@ impl BoxProvider {
         let (item_id, item_type) = self.resolve_item_id_and_type(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/collaborations", API_BASE);
+        let url = format!("{}/collaborations", self.api_base());
         let body = serde_json::json!({
             "item": { "id": item_id, "type": item_type },
             "accessible_by": { "type": "user", "login": email },
@@ -1019,7 +1044,7 @@ impl BoxProvider {
         }
 
         let token = self.get_token().await?;
-        let url = format!("{}/collaborations/{}", API_BASE, collab_id);
+        let url = format!("{}/collaborations/{}", self.api_base(), collab_id);
 
         let resp = self
             .client
@@ -1049,7 +1074,7 @@ impl BoxProvider {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/files/{}/watermark", API_BASE, file_id);
+        let url = format!("{}/files/{}/watermark", self.api_base(), file_id);
         let body = r#"{"watermark":{"imprint":"default"}}"#;
 
         let resp = self
@@ -1082,7 +1107,7 @@ impl BoxProvider {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/files/{}/watermark", API_BASE, file_id);
+        let url = format!("{}/files/{}/watermark", self.api_base(), file_id);
 
         let resp = self
             .client
@@ -1117,7 +1142,7 @@ impl BoxProvider {
         } else {
             "files"
         };
-        let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
+        let url = format!("{}/{}/{}", self.api_base(), endpoint, item_id);
         let body = serde_json::json!({ "tags": tags });
 
         let resp = self
@@ -1150,7 +1175,7 @@ impl BoxProvider {
         let folder_id = self.resolve_folder_id(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/folder_locks", API_BASE);
+        let url = format!("{}/folder_locks", self.api_base());
         let body = serde_json::json!({
             "folder": { "type": "folder", "id": folder_id },
             "locked_operations": { "move": true, "delete": true },
@@ -1184,7 +1209,7 @@ impl BoxProvider {
         }
 
         let token = self.get_token().await?;
-        let url = format!("{}/folder_locks/{}", API_BASE, lock_id);
+        let url = format!("{}/folder_locks/{}", self.api_base(), lock_id);
 
         let resp = self
             .client
@@ -1217,7 +1242,7 @@ impl BoxProvider {
         let folder_id = self.resolve_folder_id(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/folder_locks?folder_id={}", API_BASE, folder_id);
+        let url = format!("{}/folder_locks?folder_id={}", self.api_base(), folder_id);
 
         let resp = self
             .client
@@ -1406,7 +1431,13 @@ impl BoxProvider {
             .session_endpoints
             .as_ref()
             .and_then(|e| e.upload_part.clone())
-            .unwrap_or_else(|| format!("{}/files/upload_sessions/{}", UPLOAD_BASE, session.id));
+            .unwrap_or_else(|| {
+                format!(
+                    "{}/files/upload_sessions/{}",
+                    self.upload_api_base(),
+                    session.id
+                )
+            });
         let commit_url = session
             .session_endpoints
             .as_ref()
@@ -1414,7 +1445,8 @@ impl BoxProvider {
             .unwrap_or_else(|| {
                 format!(
                     "{}/files/upload_sessions/{}/commit",
-                    UPLOAD_BASE, session.id
+                    self.upload_api_base(),
+                    session.id
                 )
             });
 
@@ -1538,7 +1570,7 @@ impl StorageProvider for BoxProvider {
 
         let resp = self
             .client
-            .get(format!("{}/users/me", API_BASE))
+            .get(format!("{}/users/me", self.api_base()))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
@@ -1593,7 +1625,7 @@ impl StorageProvider for BoxProvider {
             let token = self.get_token().await?;
             let url = format!(
                 "{}/folders/{}/items?fields=name,type,id,size,modified_at,watermark_info,tags,sha1&limit={}&offset={}",
-                API_BASE, folder_id, PAGE_LIMIT, offset
+                self.api_base(), folder_id, PAGE_LIMIT, offset
             );
 
             let resp = self
@@ -1738,7 +1770,7 @@ impl StorageProvider for BoxProvider {
         let file_id = self.resolve_file_id(remote_path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/files/{}/content", API_BASE, file_id);
+        let url = format!("{}/files/{}/content", self.api_base(), file_id);
         let resp = self
             .client
             .get(&url)
@@ -1785,7 +1817,7 @@ impl StorageProvider for BoxProvider {
     ) -> Result<(), ProviderError> {
         let file_id = self.resolve_file_id(remote_path).await?;
         let token = self.get_token().await?;
-        let url = format!("{}/files/{}/content", API_BASE, file_id);
+        let url = format!("{}/files/{}/content", self.api_base(), file_id);
         let auth = Self::bearer_header(&token)?;
 
         super::http_resumable_download(
@@ -1806,7 +1838,7 @@ impl StorageProvider for BoxProvider {
         let file_id = self.resolve_file_id(remote_path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/files/{}/content", API_BASE, file_id);
+        let url = format!("{}/files/{}/content", self.api_base(), file_id);
         let resp = self
             .client
             .get(&url)
@@ -1862,7 +1894,7 @@ impl StorageProvider for BoxProvider {
                 "file_size": total_size
             });
 
-            let session_url = format!("{}/files/upload_sessions", UPLOAD_BASE);
+            let session_url = format!("{}/files/upload_sessions", self.upload_api_base());
             let session_resp = self
                 .client
                 .post(&session_url)
@@ -1880,7 +1912,11 @@ impl StorageProvider for BoxProvider {
                     let file_id = self.resolve_file_id(remote_path).await?;
                     let token2 = self.get_token().await?;
                     let ver_body = serde_json::json!({"file_size": total_size});
-                    let ver_url = format!("{}/files/{}/upload_sessions", UPLOAD_BASE, file_id);
+                    let ver_url = format!(
+                        "{}/files/{}/upload_sessions",
+                        self.upload_api_base(),
+                        file_id
+                    );
                     let ver_resp = self
                         .client
                         .post(&ver_url)
@@ -1931,7 +1967,7 @@ impl StorageProvider for BoxProvider {
                 reqwest::multipart::Part::bytes(data).file_name(file_name.to_string()),
             );
 
-        let url = format!("{}/files/content", UPLOAD_BASE);
+        let url = format!("{}/files/content", self.upload_api_base());
         let resp = self
             .client
             .post(&url)
@@ -1955,7 +1991,7 @@ impl StorageProvider for BoxProvider {
                     reqwest::multipart::Part::bytes(data2).file_name(file_name.to_string()),
                 );
 
-                let url2 = format!("{}/files/{}/content", UPLOAD_BASE, file_id);
+                let url2 = format!("{}/files/{}/content", self.upload_api_base(), file_id);
                 let resp2 = self
                     .client
                     .post(&url2)
@@ -2003,7 +2039,7 @@ impl StorageProvider for BoxProvider {
 
         let resp = self
             .client
-            .post(format!("{}/folders", API_BASE))
+            .post(format!("{}/folders", self.api_base()))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .json(&body)
@@ -2028,7 +2064,7 @@ impl StorageProvider for BoxProvider {
 
         let resp = self
             .client
-            .delete(format!("{}/files/{}", API_BASE, file_id))
+            .delete(format!("{}/files/{}", self.api_base(), file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
@@ -2050,7 +2086,11 @@ impl StorageProvider for BoxProvider {
 
         let resp = self
             .client
-            .delete(format!("{}/folders/{}?recursive=true", API_BASE, folder_id))
+            .delete(format!(
+                "{}/folders/{}?recursive=true",
+                self.api_base(),
+                folder_id
+            ))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
@@ -2123,53 +2163,37 @@ impl StorageProvider for BoxProvider {
 
         let cross_folder = from_parent != to_parent;
 
-        if let Ok(file_id) = self.resolve_file_id(from).await {
-            let mut body = serde_json::json!({"name": new_name});
-            if cross_folder {
-                let dest_folder_id = if to_parent.is_empty() || to_parent == "/" {
-                    "0".to_string()
-                } else {
-                    self.resolve_folder_id(&to_parent).await?
-                };
-                body["parent"] = serde_json::json!({"id": dest_folder_id});
-            }
-            let resp = self
-                .client
-                .put(format!("{}/files/{}", API_BASE, file_id))
-                .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-            if !resp.status().is_success() {
-                let text = resp.text().await.unwrap_or_default();
-                return Err(rename_refused(&text, to));
-            }
+        // By the item's own endpoint. The file lookup matches the name
+        // alone, so it found a folder too, and its id went to `/files`,
+        // where Box knows no file by that id: renaming or moving a folder
+        // failed.
+        let (item_id, item_type) = self.resolve_item_id_and_type(from).await?;
+        let endpoint = if item_type == "folder" {
+            "folders"
         } else {
-            let folder_id = self.resolve_folder_id(from).await?;
-            let mut body = serde_json::json!({"name": new_name});
-            if cross_folder {
-                let dest_folder_id = if to_parent.is_empty() || to_parent == "/" {
-                    "0".to_string()
-                } else {
-                    self.resolve_folder_id(&to_parent).await?
-                };
-                body["parent"] = serde_json::json!({"id": dest_folder_id});
-            }
-            let resp = self
-                .client
-                .put(format!("{}/folders/{}", API_BASE, folder_id))
-                .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            "files"
+        };
+        let mut body = serde_json::json!({"name": new_name});
+        if cross_folder {
+            let dest_folder_id = if to_parent.is_empty() || to_parent == "/" {
+                "0".to_string()
+            } else {
+                self.resolve_folder_id(&to_parent).await?
+            };
+            body["parent"] = serde_json::json!({"id": dest_folder_id});
+        }
+        let resp = self
+            .client
+            .put(format!("{}/{}/{}", self.api_base(), endpoint, item_id))
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-            if !resp.status().is_success() {
-                let text = resp.text().await.unwrap_or_default();
-                return Err(rename_refused(&text, to));
-            }
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(rename_refused(&text, to));
         }
 
         Ok(())
@@ -2190,7 +2214,8 @@ impl StorageProvider for BoxProvider {
                 .client
                 .get(format!(
                     "{}/files/{}?fields=name,type,size,modified_at,sha1",
-                    API_BASE, file_id
+                    self.api_base(),
+                    file_id
                 ))
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .send()
@@ -2229,7 +2254,8 @@ impl StorageProvider for BoxProvider {
             .client
             .get(format!(
                 "{}/folders/{}?fields=name,type,size,modified_at",
-                API_BASE, folder_id
+                self.api_base(),
+                folder_id
             ))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
@@ -2300,7 +2326,7 @@ impl StorageProvider for BoxProvider {
             .client
             .get(format!(
                 "{}/users/me?fields=space_amount,space_used",
-                API_BASE
+                self.api_base()
             ))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
@@ -2342,7 +2368,11 @@ impl StorageProvider for BoxProvider {
 
         let resp = self
             .client
-            .get(format!("{}/files/{}?fields=shared_link", API_BASE, file_id))
+            .get(format!(
+                "{}/files/{}?fields=shared_link",
+                self.api_base(),
+                file_id
+            ))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
@@ -2405,7 +2435,11 @@ impl StorageProvider for BoxProvider {
 
         let resp = self
             .client
-            .put(format!("{}/files/{}?fields=shared_link", API_BASE, file_id))
+            .put(format!(
+                "{}/files/{}?fields=shared_link",
+                self.api_base(),
+                file_id
+            ))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .json(&body)
             .send()
@@ -2436,7 +2470,7 @@ impl StorageProvider for BoxProvider {
         let body = serde_json::json!({"shared_link": null});
         let _resp = self
             .client
-            .put(format!("{}/files/{}", API_BASE, file_id))
+            .put(format!("{}/files/{}", self.api_base(), file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .json(&body)
             .send()
@@ -2480,7 +2514,7 @@ impl StorageProvider for BoxProvider {
             });
             let resp = self
                 .client
-                .post(format!("{}/files/{}/copy", API_BASE, file_id))
+                .post(format!("{}/files/{}/copy", self.api_base(), file_id))
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .json(&body)
                 .send()
@@ -2504,7 +2538,7 @@ impl StorageProvider for BoxProvider {
         });
         let resp = self
             .client
-            .post(format!("{}/folders/{}/copy", API_BASE, folder_id))
+            .post(format!("{}/folders/{}/copy", self.api_base(), folder_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .json(&body)
             .send()
@@ -2530,7 +2564,8 @@ impl StorageProvider for BoxProvider {
 
         let url = format!(
             "{}/files/{}/thumbnail.png?min_height=256&min_width=256",
-            API_BASE, file_id
+            self.api_base(),
+            file_id
         );
         let resp = self
             .client
@@ -2563,7 +2598,7 @@ impl StorageProvider for BoxProvider {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/files/{}/versions", API_BASE, file_id);
+        let url = format!("{}/files/{}/versions", self.api_base(), file_id);
         let resp = self
             .client
             .get(&url)
@@ -2607,7 +2642,9 @@ impl StorageProvider for BoxProvider {
 
         let url = format!(
             "{}/files/{}/content?version={}",
-            API_BASE, file_id, version_id
+            self.api_base(),
+            file_id,
+            version_id
         );
         let resp = self
             .client
@@ -2643,7 +2680,11 @@ impl StorageProvider for BoxProvider {
         let body = serde_json::json!({"id": version_id});
         let resp = self
             .client
-            .post(format!("{}/files/{}/versions/current", API_BASE, file_id))
+            .post(format!(
+                "{}/files/{}/versions/current",
+                self.api_base(),
+                file_id
+            ))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .json(&body)
             .send()
@@ -2685,7 +2726,7 @@ impl StorageProvider for BoxProvider {
 
         let url = format!(
             "{}/search?query={}&limit=200",
-            API_BASE,
+            self.api_base(),
             urlencoding::encode(&server_query)
         );
         let resp = self
@@ -3252,6 +3293,209 @@ mod tests {
         let mut p = BoxProvider::connected_for_test(demo_cfg());
         p.test_access_token = Some("fixture-token".to_string());
         p
+    }
+
+    /// One item of [`provider_on_box`]: id, name, parent id, `file` or `folder`.
+    type BoxDoubleItem = (String, String, String, String);
+
+    /// A Box double keeping `items` (id, name, parent id, kind; the root is
+    /// `0`) in memory: folder listings, a folder create (`POST /folders`), a
+    /// rename or move (`PUT /folders/{id}` or `PUT /files/{id}`, 404 for an
+    /// id that is not of that kind), a delete (`DELETE /folders/{id}` takes
+    /// the folder and everything under it) and a small upload (`POST
+    /// /files/content`, 404 into a folder that is gone). Box names ignore
+    /// letter case, so a name taken in another case answers 409
+    /// `item_name_in_use`. Returns a provider pointed at it, the items, and
+    /// every change as `create NAME in PARENT as ID`, `put KIND ID NAME in
+    /// PARENT`, `delete KIND ID` or `upload NAME in PARENT`.
+    #[allow(clippy::type_complexity)]
+    async fn provider_on_box(
+        items: &[(&str, &str, &str, &str)],
+    ) -> (
+        BoxProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<BoxDoubleItem>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::{http::StatusCode, response::IntoResponse};
+        use std::sync::{Arc, Mutex};
+        let store: Arc<Mutex<Vec<BoxDoubleItem>>> = Arc::new(Mutex::new(
+            items
+                .iter()
+                .map(|(id, name, parent, kind)| {
+                    (
+                        id.to_string(),
+                        name.to_string(),
+                        parent.to_string(),
+                        kind.to_string(),
+                    )
+                })
+                .collect(),
+        ));
+        let changes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let next_id = Arc::new(std::sync::atomic::AtomicUsize::new(100));
+        let (held, seen) = (Arc::clone(&store), Arc::clone(&changes));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (held, seen, next_id) =
+                    (Arc::clone(&held), Arc::clone(&seen), Arc::clone(&next_id));
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    let text = String::from_utf8_lossy(&body).to_string();
+                    let mut items = held.lock().unwrap();
+                    let error = |status: StatusCode, code: &str| {
+                        (
+                            status,
+                            axum::Json(serde_json::json!({
+                                "type": "error", "status": status.as_u16(), "code": code,
+                            })),
+                        )
+                            .into_response()
+                    };
+                    let is_folder = |items: &Vec<BoxDoubleItem>, id: &str| {
+                        id == "0" || items.iter().any(|i| i.0 == id && i.3 == "folder")
+                    };
+                    let taken = |items: &Vec<BoxDoubleItem>, parent: &str, name: &str, id: &str| {
+                        items
+                            .iter()
+                            .any(|i| i.2 == parent && i.1.eq_ignore_ascii_case(name) && i.0 != id)
+                    };
+                    let segments: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+                    match (method.as_str(), segments.as_slice()) {
+                        ("GET", ["folders", id, "items"]) => {
+                            if !is_folder(&items, id) {
+                                return error(StatusCode::NOT_FOUND, "not_found");
+                            }
+                            let entries: Vec<serde_json::Value> = items
+                                .iter()
+                                .filter(|i| i.2 == *id)
+                                .map(|i| serde_json::json!({ "type": i.3, "id": i.0, "name": i.1 }))
+                                .collect();
+                            axum::Json(serde_json::json!({
+                                "total_count": entries.len(),
+                                "entries": entries,
+                                "offset": 0,
+                                "limit": 1000,
+                            }))
+                            .into_response()
+                        }
+                        ("POST", ["folders"]) => {
+                            let args: serde_json::Value = serde_json::from_str(&text).unwrap();
+                            let name = args["name"].as_str().unwrap().to_string();
+                            let parent = args["parent"]["id"].as_str().unwrap().to_string();
+                            if !is_folder(&items, &parent) {
+                                return error(StatusCode::NOT_FOUND, "not_found");
+                            }
+                            if taken(&items, &parent, &name, "") {
+                                return error(StatusCode::CONFLICT, "item_name_in_use");
+                            }
+                            let id = next_id
+                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                                .to_string();
+                            seen.lock()
+                                .unwrap()
+                                .push(format!("create {name} in {parent} as {id}"));
+                            items.push((id.clone(), name, parent, "folder".to_string()));
+                            (
+                                StatusCode::CREATED,
+                                axum::Json(serde_json::json!({ "type": "folder", "id": id })),
+                            )
+                                .into_response()
+                        }
+                        ("PUT", [endpoint @ ("folders" | "files"), id]) => {
+                            let kind = endpoint.trim_end_matches('s');
+                            let Some(at) = items.iter().position(|i| i.0 == *id && i.3 == kind)
+                            else {
+                                return error(StatusCode::NOT_FOUND, "not_found");
+                            };
+                            let args: serde_json::Value = serde_json::from_str(&text).unwrap();
+                            let name = args["name"].as_str().unwrap().to_string();
+                            let parent = args["parent"]["id"]
+                                .as_str()
+                                .map(str::to_string)
+                                .unwrap_or_else(|| items[at].2.clone());
+                            if taken(&items, &parent, &name, id) {
+                                return error(StatusCode::CONFLICT, "item_name_in_use");
+                            }
+                            seen.lock()
+                                .unwrap()
+                                .push(format!("put {kind} {id} {name} in {parent}"));
+                            items[at].1 = name;
+                            items[at].2 = parent;
+                            axum::Json(serde_json::json!({ "type": kind, "id": id }))
+                                .into_response()
+                        }
+                        ("DELETE", [endpoint @ ("folders" | "files"), id]) => {
+                            let kind = endpoint.trim_end_matches('s');
+                            seen.lock().unwrap().push(format!("delete {kind} {id}"));
+                            let mut gone = vec![id.to_string()];
+                            while let Some(at) = items.iter().position(|i| gone.contains(&i.2)) {
+                                gone.push(items.remove(at).0);
+                            }
+                            items.retain(|i| i.0 != *id);
+                            StatusCode::NO_CONTENT.into_response()
+                        }
+                        ("POST", ["files", "content"]) => {
+                            // The `attributes` part is the one JSON line.
+                            let attributes: serde_json::Value = text
+                                .lines()
+                                .find_map(|line| serde_json::from_str(line).ok())
+                                .unwrap();
+                            let name = attributes["name"].as_str().unwrap().to_string();
+                            let parent = attributes["parent"]["id"].as_str().unwrap().to_string();
+                            if !is_folder(&items, &parent) {
+                                return error(StatusCode::NOT_FOUND, "not_found");
+                            }
+                            if taken(&items, &parent, &name, "") {
+                                return error(StatusCode::CONFLICT, "item_name_in_use");
+                            }
+                            let id = next_id
+                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                                .to_string();
+                            seen.lock()
+                                .unwrap()
+                                .push(format!("upload {name} in {parent}"));
+                            items.push((id.clone(), name, parent, "file".to_string()));
+                            (
+                                StatusCode::CREATED,
+                                axum::Json(serde_json::json!({ "entries": [{ "id": id }] })),
+                            )
+                                .into_response()
+                        }
+                        _ => (StatusCode::BAD_REQUEST, "unexpected").into_response(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.upload_base_override = Some(format!("http://{addr}"));
+        (provider, store, changes)
+    }
+
+    /// The file lookup matched the name alone, so for a folder it found the
+    /// folder and the rename went to `PUT /files/{folder id}`, which Box
+    /// answers 404: a folder could not be renamed or moved. It goes to
+    /// `/folders` now, and a file still to `/files`.
+    #[tokio::test]
+    async fn a_folder_is_renamed_through_the_folders_endpoint() {
+        let (mut p, _, changes) = provider_on_box(&[
+            ("1", "A", "0", "folder"),
+            ("2", "B", "0", "folder"),
+            ("11", "f.txt", "1", "file"),
+        ])
+        .await;
+        p.rename("/A", "/C").await.expect("folder rename");
+        p.rename("/C/f.txt", "/B/g.txt").await.expect("file move");
+        assert_eq!(
+            *changes.lock().unwrap(),
+            ["put folder 1 C in 0", "put file 11 g.txt in 2"]
+        );
     }
 
     #[test]
