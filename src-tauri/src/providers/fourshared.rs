@@ -643,6 +643,13 @@ impl FourSharedProvider {
         Ok(found)
     }
 
+    /// Drop the ids cached for `path` and for everything under it, from both
+    /// caches, the files' and the folders'.
+    fn forget_path(&mut self, path: &str) {
+        super::forget_cached_subtree(&mut self.file_cache, path);
+        super::forget_cached_subtree(&mut self.folder_cache, path);
+    }
+
     /// Refuse to undo a first step onto `name` in the folder `parent` when
     /// an item other than `id` took that name since: what 4shared does with
     /// a taken name is not documented. The look reads the folder afresh, as
@@ -655,8 +662,7 @@ impl FourSharedProvider {
         name: &str,
         path: &str,
     ) -> Result<(), ProviderError> {
-        super::forget_cached_subtree(&mut self.file_cache, path);
-        super::forget_cached_subtree(&mut self.folder_cache, path);
+        self.forget_path(path);
         let parent_id = self.resolve_folder_id(parent).await?;
         let holder = match self.find_child_folder(&parent_id, name, path).await? {
             Some(folder) => folder.id,
@@ -1507,8 +1513,11 @@ impl StorageProvider for FourSharedProvider {
         let normalized = self.resolve_path(path);
         let file_id = self.resolve_file_id(&normalized).await?;
         let url = format!("{}/files/{}", self.api_base(), file_id);
-        let resp = self.signed_delete(&url).await?;
-
+        let sent = self.signed_delete(&url).await;
+        // Whatever the answer, the ids cached for the path and everything
+        // under it, in both caches, may now point into the trash.
+        self.forget_path(&normalized);
+        let resp = sent?;
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
@@ -1517,7 +1526,6 @@ impl StorageProvider for FourSharedProvider {
                 status, body
             )));
         }
-        self.file_cache.remove(&normalized);
         Ok(())
     }
 
@@ -1525,8 +1533,12 @@ impl StorageProvider for FourSharedProvider {
         let normalized = self.resolve_path(path);
         let folder_id = self.resolve_folder_id(&normalized).await?;
         let url = format!("{}/folders/{}", self.api_base(), folder_id);
-        let resp = self.signed_delete(&url).await?;
-
+        let sent = self.signed_delete(&url).await;
+        // Whatever the answer, not only the folder's own id: the files and
+        // folders cached under it went with it (a later `put /dir/sub/x`
+        // resolved `/dir/sub` to a deleted folder).
+        self.forget_path(&normalized);
+        let resp = sent?;
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
@@ -1535,7 +1547,6 @@ impl StorageProvider for FourSharedProvider {
                 status, body
             )));
         }
-        self.folder_cache.remove(&normalized);
         Ok(())
     }
 
@@ -1650,8 +1661,7 @@ impl StorageProvider for FourSharedProvider {
         // Whatever happened, the ids cached for either path, and for
         // everything under them, may now point at moved items.
         for path in [&old_normalized, &new_normalized] {
-            super::forget_cached_subtree(&mut self.file_cache, path);
-            super::forget_cached_subtree(&mut self.folder_cache, path);
+            self.forget_path(path);
         }
         outcome
     }
@@ -2146,6 +2156,36 @@ mod tests {
         provider.root_folder_id = "R".to_string();
         provider.api_base_override = Some(format!("http://{addr}"));
         (provider, puts)
+    }
+
+    /// A deleted folder dropped only its own id from the folder cache: the
+    /// ids of the folders and files under it stayed, so a later `put
+    /// /src/sub/x` resolved `/src/sub` to a deleted folder. A delete dropped
+    /// only the file's own id. Both forget the path and everything under it
+    /// in both caches; a sibling sharing the prefix stays.
+    #[tokio::test]
+    async fn a_delete_or_rmdir_forgets_the_ids_cached_under_it() {
+        let (mut provider, _) = provider_on_fourshared(false).await;
+        for (path, id) in [("/src/a.txt", "FA"), ("/src/sub/b.txt", "FB2")] {
+            provider.file_cache.insert(path.into(), id.into());
+        }
+        // `/src/a.txt/old` stands for a folder cached under a path a file
+        // holds now.
+        for (path, id) in [
+            ("/src/sub", "SUB"),
+            ("/src/a.txt/old", "OLD"),
+            ("/srcx", "X"),
+        ] {
+            provider.folder_cache.insert(path.into(), id.into());
+        }
+        provider.delete("/src/a.txt").await.expect("delete");
+        assert!(!provider.folder_cache.contains_key("/src/a.txt/old"));
+        provider.rmdir("/src").await.expect("rmdir");
+        let files: Vec<&str> = provider.file_cache.keys().map(String::as_str).collect();
+        assert!(files.is_empty(), "{files:?}");
+        let mut folders: Vec<&str> = provider.folder_cache.keys().map(String::as_str).collect();
+        folders.sort();
+        assert_eq!(folders, ["/srcx"]);
     }
 
     /// What 4shared does with a taken name is not documented, and the move

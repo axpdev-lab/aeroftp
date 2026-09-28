@@ -1049,7 +1049,8 @@ impl FilenProvider {
     }
 
     /// Drop the cached uuid of `path` and of every folder below it, after
-    /// the folder was renamed or moved: the old paths no longer exist.
+    /// the folder was renamed, moved or trashed: the old paths no longer
+    /// exist.
     fn forget_dir_subtree(&mut self, path: &str) {
         let below = format!("{}/", path.trim_end_matches('/'));
         self.dir_cache
@@ -2500,7 +2501,8 @@ impl StorageProvider for FilenProvider {
             .get("uuid")
             .ok_or_else(|| ProviderError::Other("No UUID".to_string()))?;
 
-        let endpoint = if entry.is_dir {
+        let is_dir = entry.is_dir;
+        let endpoint = if is_dir {
             "v3/dir/trash"
         } else {
             "v3/file/trash"
@@ -2517,9 +2519,13 @@ impl StorageProvider for FilenProvider {
             .json(&serde_json::json!({"uuid": uuid}))
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        let resp: GenericResponse = self
-            .send_retry(request)
-            .await?
+        let sent = self.send_retry(request).await;
+        // Whatever the answer, a trashed folder takes the folders cached
+        // under it along: `/a/sub` still resolved to a folder in the trash.
+        if is_dir {
+            self.forget_dir_subtree(&normalized);
+        }
+        let resp: GenericResponse = sent?
             .json()
             .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -2547,9 +2553,11 @@ impl StorageProvider for FilenProvider {
             .json(&serde_json::json!({"uuid": folder_uuid}))
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        let resp: GenericResponse = self
-            .send_retry(request)
-            .await?
+        let sent = self.send_retry(request).await;
+        // Whatever the answer, not only the folder's own uuid: every folder
+        // cached under it went to the trash with it.
+        self.forget_dir_subtree(&Self::normalize_path(path));
+        let resp: GenericResponse = sent?
             .json()
             .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -2559,10 +2567,6 @@ impl StorageProvider for FilenProvider {
                 resp.message.unwrap_or_else(|| "rmdir failed".to_string()),
             ));
         }
-
-        // Clear from cache
-        let normalized = Self::normalize_path(path);
-        self.dir_cache.remove(&normalized);
 
         Ok(())
     }
@@ -3761,6 +3765,45 @@ mod tests {
         let mut provider = FilenProvider::connected_for_test(demo_cfg());
         provider.gateway_base_override = Some(format!("http://{addr}"));
         (provider, calls, server)
+    }
+
+    /// A trashed folder kept the uuids cached for the folders under it:
+    /// rmdir dropped only its own key, and delete of a folder none, so
+    /// `/a/sub` still resolved to a folder in the trash. Both forget the
+    /// subtree; a sibling sharing the prefix stays.
+    #[tokio::test]
+    async fn trashing_a_folder_forgets_the_uuids_cached_under_it() {
+        for by_delete in [false, true] {
+            let (mut provider, calls, server) = tree_gateway(&[], true).await;
+            for (path, uuid) in [
+                ("/a", "A"),
+                ("/a/sub", "SUB"),
+                ("/a/sub/deep", "DEEP"),
+                ("/ab", "AB"),
+            ] {
+                provider.dir_cache.insert(
+                    path.to_string(),
+                    DirInfo {
+                        uuid: uuid.to_string(),
+                        name: path.rsplit('/').next().unwrap().to_string(),
+                    },
+                );
+            }
+            if by_delete {
+                provider.delete("/a").await.expect("delete");
+            } else {
+                provider.rmdir("/a").await.expect("rmdir");
+            }
+            server.abort();
+            assert_eq!(endpoints(&calls), ["/v3/dir/trash"]);
+            let left: Vec<&String> = provider
+                .dir_cache
+                .keys()
+                .filter(|k| *k == "/a" || k.starts_with("/a/"))
+                .collect();
+            assert!(left.is_empty(), "by delete: {by_delete}, left {left:?}");
+            assert!(provider.dir_cache.contains_key("/ab"));
+        }
     }
 
     fn endpoints(calls: &GatewayCalls) -> Vec<String> {

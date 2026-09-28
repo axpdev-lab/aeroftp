@@ -517,9 +517,12 @@ impl StorageProvider for MtpProvider {
                 "cannot delete a storage root".to_string(),
             ));
         }
-        self.backend.delete_object(&id).await?;
-        self.path_cache.remove(&norm);
-        Ok(())
+        let deleted = self.backend.delete_object(&id).await;
+        // Whatever the answer, not only the object's own handle: a deleted
+        // folder takes the handles cached under it along, and a folder made
+        // again under that name resolved its old children to them.
+        crate::providers::forget_cached_subtree(&mut self.path_cache, &norm);
+        deleted
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -754,5 +757,36 @@ mod tests {
             .await
             .unwrap();
         p.disconnect().await.unwrap();
+    }
+
+    /// A deleted folder dropped only its own handle from the cache: the
+    /// folders under it kept theirs, so once `DCIM` was made again, a `put`
+    /// into `DCIM/Camera` (not made again) went to the handle of the deleted
+    /// `Camera` and reported success. The handles under a deleted object go
+    /// with it.
+    #[tokio::test]
+    async fn a_deleted_folder_takes_the_cached_handles_under_it() {
+        use crate::providers::mtp::backend::FakeMtpBackend;
+
+        let mut p = MtpProvider::new(Box::new(FakeMtpBackend::with_demo_tree()));
+        p.open_device("fake-phone").await.unwrap();
+        p.mkdir("/Internal shared storage/DCIM/Camera")
+            .await
+            .unwrap();
+        p.delete("/Internal shared storage/DCIM").await.unwrap();
+        p.mkdir("/Internal shared storage/DCIM").await.unwrap();
+        let src = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(src.path(), b"x").unwrap();
+        let outcome = p
+            .upload(
+                src.path().to_str().unwrap(),
+                "/Internal shared storage/DCIM/Camera/y.jpg",
+                None,
+            )
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
     }
 }
