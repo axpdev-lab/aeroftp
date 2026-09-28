@@ -2790,7 +2790,13 @@
                 "noProvider": "Varmista, että olet määrittänyt AI-palveluntarjoajan asetuksissa.",
                 "rateLimited": "Palveluntarjoaja rajoittaa nopeutta. Odota hetki ja yritä uudelleen.",
                 "toolsNotSupported": "Tämä malli ei tue työkalujen käyttöä. Poista \"Työkalut\" käytöstä tälle mallille AI-asetukset → Mallit.",
-                "noProjectContext": "Agentin muistille ei ole projektikontekstia saatavilla."
+                "noProjectContext": "Agentin muistille ei ole projektikontekstia saatavilla.",
+                "missingNativeToolState": "Malli pyysi työkaluja ilman jatkamiseen tarvittavaa tilaa. Yritä uudelleen.",
+                "nativeTurnScopeMismatch": "Vastaus kuuluu eri mallille, päätepisteelle tai vuorolle, ja se hylättiin.",
+                "unknownToolIdentity": "Tuntematon työkalu, tai se on muuttunut sen jälkeen, kun se tarjottiin mallille.",
+                "toolTurnExpired": "Vuoro, johon tämä työkalukutsu kuuluu, on päättynyt, joten sitä ei suoritettu.",
+                "toolIdentityChanged": "Työkalu muuttui hyväksynnän jälkeen, joten sitä ei suoritettu.",
+                "toolDiscoveryExpired": "Vuoro, johon tämä työkaluhaku kuuluu, on päättynyt."
             },
             "toolLabels": {
                 "agent_memory_write": "Muisti",

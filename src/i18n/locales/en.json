@@ -339,7 +339,13 @@
                 "operationFailed": "Operation failed",
                 "rateLimited": "Rate limited by the provider. Wait a moment and try again.",
                 "toolsNotSupported": "This model does not support tool use. Disable \"Tools\" for this model in AI Settings → Models.",
-                "noProjectContext": "No project context available for agent memory."
+                "noProjectContext": "No project context available for agent memory.",
+                "missingNativeToolState": "The model requested tools without the state needed to continue. Try again.",
+                "nativeTurnScopeMismatch": "The reply belongs to a different model, endpoint or turn and was discarded.",
+                "unknownToolIdentity": "Unknown tool, or it changed since it was offered to the model.",
+                "toolTurnExpired": "The turn this tool call belongs to has ended, so it was not run.",
+                "toolIdentityChanged": "The tool changed after approval, so it was not run.",
+                "toolDiscoveryExpired": "The turn this tool search belongs to has ended."
             },
             "errorAuth": "Authentication failed. Check your API key in AI Settings.",
             "errorDefault": "Make sure you have configured an AI provider in settings.",

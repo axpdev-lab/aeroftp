@@ -2790,7 +2790,13 @@
                 "noProvider": "Gakktu úr skugga um að þú hafir stillt AI-veitanda í stillingum.",
                 "rateLimited": "Takmarkað af veitanda. Bíddu augnablik og reyndu aftur.",
                 "toolsNotSupported": "Þetta líkan styður ekki verkfæri. Slökktu á \"Verkfærum\" fyrir þetta líkan í AI-stillingar → Líkön.",
-                "noProjectContext": "Ekkert verkefnasamhengi er tiltækt fyrir minni umboðsmannsins."
+                "noProjectContext": "Ekkert verkefnasamhengi er tiltækt fyrir minni umboðsmannsins.",
+                "missingNativeToolState": "Líkanið óskaði eftir verkfærum án þess ástands sem þarf til að halda áfram. Reyndu aftur.",
+                "nativeTurnScopeMismatch": "Svarið tilheyrir öðru líkani, endapunkti eða umferð og var hafnað.",
+                "unknownToolIdentity": "Óþekkt verkfæri, eða því var breytt eftir að það var boðið líkaninu.",
+                "toolTurnExpired": "Umferðin sem þessi verkfærakall tilheyrir er lokið, svo hún var ekki keyrð.",
+                "toolIdentityChanged": "Verkfærinu var breytt eftir samþykki, svo það var ekki keyrt.",
+                "toolDiscoveryExpired": "Umferðin sem þessi verkfæraleit tilheyrir er lokið."
             },
             "toolLabels": {
                 "agent_memory_write": "Minni",

@@ -2790,7 +2790,13 @@
                 "noProvider": "Győződjön meg róla, hogy beállított egy AI szolgáltatót a beállításokban.",
                 "rateLimited": "A szolgáltató korlátozta a sebességet. Várjon egy pillanatot, és próbálja újra.",
                 "toolsNotSupported": "Ez a modell nem támogatja az eszközhasználatot. Kapcsolja ki az \"Eszközök\" opciót ennél a modellnél az AI Beállítások → Modellek menüpontban.",
-                "noProjectContext": "Nem érhető el projektkörnyezet az ügynök memóriájához."
+                "noProjectContext": "Nem érhető el projektkörnyezet az ügynök memóriájához.",
+                "missingNativeToolState": "A modell eszközöket kért a folytatáshoz szükséges állapot nélkül. Próbáld újra.",
+                "nativeTurnScopeMismatch": "A válasz egy másik modellhez, végponthoz vagy körhöz tartozik, ezért elvetettük.",
+                "unknownToolIdentity": "Ismeretlen eszköz, vagy megváltozott, mióta felajánlották a modellnek.",
+                "toolTurnExpired": "A kör, amelyhez ez az eszközhívás tartozik, véget ért, ezért nem futott le.",
+                "toolIdentityChanged": "Az eszköz jóváhagyás után megváltozott, ezért nem futott le.",
+                "toolDiscoveryExpired": "A kör, amelyhez ez az eszközkeresés tartozik, véget ért."
             },
             "toolLabels": {
                 "agent_memory_write": "Memória",

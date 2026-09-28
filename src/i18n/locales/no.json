@@ -2790,7 +2790,13 @@
                 "noProvider": "Sørg for at du har konfigurert en AI-leverandør i innstillinger.",
                 "rateLimited": "Hastighetsbegrenset av leverandøren. Vent et øyeblikk og prøv igjen.",
                 "toolsNotSupported": "Denne modellen støtter ikke verktøybruk. Deaktiver \"Verktøy\" for denne modellen i AI-innstillinger → Modeller.",
-                "noProjectContext": "Ingen prosjektkontekst tilgjengelig for agentminnet."
+                "noProjectContext": "Ingen prosjektkontekst tilgjengelig for agentminnet.",
+                "missingNativeToolState": "Modellen ba om verktøy uten tilstanden som trengs for å fortsette. Prøv igjen.",
+                "nativeTurnScopeMismatch": "Svaret tilhører en annen modell, endepunkt eller tur og ble forkastet.",
+                "unknownToolIdentity": "Ukjent verktøy, eller det er endret siden det ble tilbudt til modellen.",
+                "toolTurnExpired": "Turen dette verktøykallet tilhører er avsluttet, så det ble ikke kjørt.",
+                "toolIdentityChanged": "Verktøyet ble endret etter godkjenning, så det ble ikke kjørt.",
+                "toolDiscoveryExpired": "Turen dette verktøysøket tilhører er avsluttet."
             },
             "toolLabels": {
                 "agent_memory_write": "Minne",
@@ -2865,13 +2871,13 @@
                 "title": "Agentmodus",
                 "description": "Styrer verktoyets godkjenningsatferd, trinngrenser og autonominiva.",
                 "safe": "Sikker",
-                "safeDesc": "Kun sikre verktoy kjores automatisk. Ingen sesjonsminne. Maks. 5 trinn.",
+                "safeDesc": "Kun sikre verktøy kjøres automatisk. Ingen sesjonsminne. Maks. 5 trinn.",
                 "normal": "Normal",
-                "normalDesc": "Sikre verktoy kjores automatisk. Middels verktoy godkjennes per sesjon. Maks. 10 trinn.",
+                "normalDesc": "Sikre verktøy kjøres automatisk. Middels verktøy godkjennes per sesjon. Maks. 10 trinn.",
                 "expert": "Ekspert",
-                "expertDesc": "Sikre og middels verktoy kjores automatisk. Hoyrisiko godkjennes per sesjon. Maks. 25 trinn.",
+                "expertDesc": "Sikre og middels verktøy kjøres automatisk. Høyrisiko godkjennes per sesjon. Maks. 25 trinn.",
                 "extreme": "Ekstrem",
-                "extremeDesc": "Alle verktoy kjores automatisk. Ingen bekreftelser. Maks. 50 trinn. Kun Cyber."
+                "extremeDesc": "Alle verktøy kjøres automatisk. Ingen bekreftelser. Maks. 50 trinn. Kun Cyber."
             },
             "welcomeSubtitle": "44 verktøy for filbehandling, koderedigering og systemoperasjoner",
             "welcomeSubtitleSetup": "Konfigurer en AI-leverandør for å komme i gang",

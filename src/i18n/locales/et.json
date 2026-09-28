@@ -2790,7 +2790,13 @@
                 "noProvider": "Veenduge, et olete seadetes konfigureerinud AI pakkuja.",
                 "rateLimited": "Pakkuja poolt piiratud. Oodake hetk ja proovige uuesti.",
                 "toolsNotSupported": "See mudel ei toeta tööriistade kasutamist. Keelake \"Tööriistad\" selle mudeli jaoks AI seaded → Mudelid.",
-                "noProjectContext": "Agendi mälu jaoks pole projekti konteksti saadaval."
+                "noProjectContext": "Agendi mälu jaoks pole projekti konteksti saadaval.",
+                "missingNativeToolState": "Mudel küsis tööriistu ilma jätkamiseks vajaliku olekuta. Proovi uuesti.",
+                "nativeTurnScopeMismatch": "Vastus kuulub teisele mudelile, lõpp-punktile või käigule ja jäeti kõrvale.",
+                "unknownToolIdentity": "Tundmatu tööriist, või see on muutunud pärast mudelile pakkumist.",
+                "toolTurnExpired": "Käik, millesse see tööriistakutse kuulub, on lõppenud, seega seda ei käivitatud.",
+                "toolIdentityChanged": "Tööriist muutus pärast heakskiitu, seega seda ei käivitatud.",
+                "toolDiscoveryExpired": "Käik, millesse see tööriistaotsing kuulub, on lõppenud."
             },
             "toolLabels": {
                 "agent_memory_write": "Mälu",

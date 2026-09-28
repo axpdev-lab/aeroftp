@@ -2790,7 +2790,13 @@
                 "noProvider": "Pastikan Anda telah mengonfigurasi penyedia AI di pengaturan.",
                 "rateLimited": "Dibatasi oleh penyedia. Tunggu sebentar dan coba lagi.",
                 "toolsNotSupported": "Model ini tidak mendukung penggunaan alat. Nonaktifkan \"Alat\" untuk model ini di Pengaturan AI → Model.",
-                "noProjectContext": "Tidak ada konteks proyek yang tersedia untuk memori agen."
+                "noProjectContext": "Tidak ada konteks proyek yang tersedia untuk memori agen.",
+                "missingNativeToolState": "Model meminta alat tanpa status yang diperlukan untuk melanjutkan. Coba lagi.",
+                "nativeTurnScopeMismatch": "Balasan ini milik model, endpoint, atau giliran yang berbeda dan telah diabaikan.",
+                "unknownToolIdentity": "Alat tidak dikenal, atau telah berubah sejak ditawarkan ke model.",
+                "toolTurnExpired": "Giliran tempat pemanggilan alat ini berada telah berakhir, sehingga tidak dijalankan.",
+                "toolIdentityChanged": "Alat berubah setelah disetujui, sehingga tidak dijalankan.",
+                "toolDiscoveryExpired": "Giliran tempat pencarian alat ini berada telah berakhir."
             },
             "toolLabels": {
                 "agent_memory_write": "Memori",

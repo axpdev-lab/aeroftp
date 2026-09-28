@@ -8,6 +8,8 @@ import { DEFAULT_MACROS } from './aiChatToolMacros';
 import { appendAssistantTurn, appendToolResult, assertToolResultsComplete } from './aiChatNativeTurn';
 import { recordToolDispatch, assertToolExecutionCurrent, buildToolRegistry, resolveMacroStep, resolveRegisteredTool, ToolExposure } from './aiChatToolRegistry';
 
+const STALE = { turnExpired: 'fixture: turn expired', identityChanged: 'fixture: identity changed' };
+
 const plugin = (id: string, name = 'local_read'): PluginManifest => ({
     id, name: id, author: 'test', version: '1', enabled: true,
     tools: [{ name, description: 'Read sample plugin data', parameters: [], dangerLevel: 'safe', command: 'private executable --secret-path' }],
@@ -54,7 +56,7 @@ describe('namespaced tool registry and scoped exposure', () => {
         for (const changed of [{ ...p, version: '2' }, { ...p, tools: [{ ...p.tools[0], command: 'replacement' }] }, { ...p, tools: [{ ...p.tools[0], integrity: 'new-script-hash' }] }]) {
             const after = buildToolRegistry([changed], []);
             expect(exposure.permits('turn', entry.tool.name, after)).toBe(false);
-            expect(() => assertToolExecutionCurrent(entry, after, 'turn', 'turn')).toThrow('identity');
+            expect(() => assertToolExecutionCurrent(entry, after, 'turn', 'turn', STALE)).toThrow(STALE.identityChanged);
         }
     });
 
@@ -111,9 +113,9 @@ describe('namespaced tool registry and scoped exposure', () => {
         for (const current of [null, 'next']) {
             await expect((async () => {
                 await Promise.resolve('backend approval finished');
-                assertToolExecutionCurrent(resolveRegisteredTool(registry, 'local_delete')!, registry, 'first', current);
+                assertToolExecutionCurrent(resolveRegisteredTool(registry, 'local_delete')!, registry, 'first', current, STALE);
                 execute();
-            })()).rejects.toThrow('turn expired');
+            })()).rejects.toThrow(STALE.turnExpired);
         }
         expect(execute).not.toHaveBeenCalled();
     });

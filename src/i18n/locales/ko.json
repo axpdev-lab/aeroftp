@@ -2790,7 +2790,13 @@
                 "noProvider": "설정에서 AI 프로바이더가 구성되어 있는지 확인하세요.",
                 "rateLimited": "프로바이더의 속도 제한. 잠시 후 다시 시도하세요.",
                 "toolsNotSupported": "이 모델은 도구 사용을 지원하지 않습니다. AI 설정 → 모델에서 \"도구\"를 비활성화하세요.",
-                "noProjectContext": "에이전트 메모리에 사용할 프로젝트 컨텍스트가 없습니다."
+                "noProjectContext": "에이전트 메모리에 사용할 프로젝트 컨텍스트가 없습니다.",
+                "missingNativeToolState": "모델이 계속하는 데 필요한 상태 없이 도구를 요청했습니다. 다시 시도하세요.",
+                "nativeTurnScopeMismatch": "이 응답은 다른 모델, 엔드포인트 또는 턴에 속하여 폐기되었습니다.",
+                "unknownToolIdentity": "알 수 없는 도구이거나 모델에 제공된 이후 변경되었습니다.",
+                "toolTurnExpired": "이 도구 호출이 속한 턴이 종료되어 실행되지 않았습니다.",
+                "toolIdentityChanged": "승인 후 도구가 변경되어 실행되지 않았습니다.",
+                "toolDiscoveryExpired": "이 도구 검색이 속한 턴이 종료되었습니다."
             },
             "toolLabels": {
                 "agent_memory_write": "메모리",

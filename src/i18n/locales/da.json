@@ -2790,7 +2790,13 @@
                 "noProvider": "Sørg for at du har konfigureret en AI-udbyder i indstillinger.",
                 "rateLimited": "Hastighedsbegrænset af udbyderen. Vent et øjeblik og prøv igen.",
                 "toolsNotSupported": "Denne model understøtter ikke værktøjsbrug. Deaktivér \"Værktøjer\" for denne model i AI-indstillinger → Modeller.",
-                "noProjectContext": "Ingen projektkontekst tilgængelig for agenthukommelsen."
+                "noProjectContext": "Ingen projektkontekst tilgængelig for agenthukommelsen.",
+                "missingNativeToolState": "Modellen anmodede om værktøjer uden den nødvendige tilstand for at fortsætte. Prøv igen.",
+                "nativeTurnScopeMismatch": "Svaret tilhører en anden model, endpoint eller tur og blev kasseret.",
+                "unknownToolIdentity": "Ukendt værktøj, eller det er ændret siden det blev tilbudt til modellen.",
+                "toolTurnExpired": "Turen, som dette værktøjskald tilhører, er afsluttet, så det blev ikke kørt.",
+                "toolIdentityChanged": "Værktøjet blev ændret efter godkendelse, så det blev ikke kørt.",
+                "toolDiscoveryExpired": "Turen, som denne værktøjssøgning tilhører, er afsluttet."
             },
             "toolLabels": {
                 "agent_memory_write": "Hukommelse",

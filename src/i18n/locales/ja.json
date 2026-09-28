@@ -2755,7 +2755,13 @@
                 "noProvider": "設定でAIプロバイダーが構成されていることを確認してください。",
                 "rateLimited": "プロバイダーによるレート制限。しばらく待ってから再試行してください。",
                 "toolsNotSupported": "このモデルはツール使用をサポートしていません。AI設定→モデルで「ツール」を無効にしてください。",
-                "noProjectContext": "エージェントメモリー用のプロジェクトコンテキストがありません。"
+                "noProjectContext": "エージェントメモリー用のプロジェクトコンテキストがありません。",
+                "missingNativeToolState": "モデルが続行に必要な状態がないままツールを要求しました。もう一度お試しください。",
+                "nativeTurnScopeMismatch": "この応答は別のモデル、エンドポイント、またはターンに属しているため破棄されました。",
+                "unknownToolIdentity": "不明なツールか、モデルに提示された後に変更されました。",
+                "toolTurnExpired": "このツール呼び出しが属するターンは終了したため、実行されませんでした。",
+                "toolIdentityChanged": "承認後にツールが変更されたため、実行されませんでした。",
+                "toolDiscoveryExpired": "このツール検索が属するターンは終了しました。"
             },
             "toolLabels": {
                 "agent_memory_write": "メモリ",

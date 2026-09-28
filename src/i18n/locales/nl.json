@@ -2790,7 +2790,13 @@
                 "noProvider": "Zorg ervoor dat u een AI-provider hebt geconfigureerd in de instellingen.",
                 "rateLimited": "Beperkt door de provider. Wacht even en probeer het opnieuw.",
                 "toolsNotSupported": "Dit model ondersteunt geen toolgebruik. Schakel \"Tools\" uit voor dit model in AI-instellingen → Modellen.",
-                "noProjectContext": "Geen projectcontext beschikbaar voor het agentgeheugen."
+                "noProjectContext": "Geen projectcontext beschikbaar voor het agentgeheugen.",
+                "missingNativeToolState": "Het model heeft tools aangevraagd zonder de status die nodig is om door te gaan. Probeer het opnieuw.",
+                "nativeTurnScopeMismatch": "Het antwoord hoort bij een ander model, endpoint of beurt en is genegeerd.",
+                "unknownToolIdentity": "Onbekende tool, of deze is gewijzigd sinds ze aan het model werd aangeboden.",
+                "toolTurnExpired": "De beurt waartoe deze tool-aanroep behoort is beëindigd, dus is deze niet uitgevoerd.",
+                "toolIdentityChanged": "De tool is na goedkeuring gewijzigd, dus is deze niet uitgevoerd.",
+                "toolDiscoveryExpired": "De beurt waartoe deze tool-zoekopdracht behoort is beëindigd."
             },
             "toolLabels": {
                 "agent_memory_write": "Geheugen",

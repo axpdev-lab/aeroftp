@@ -2790,7 +2790,13 @@
                 "noProvider": "Siguraduhing naka-configure ka ng AI provider sa settings.",
                 "rateLimited": "Na-rate limit ng provider. Maghintay ng sandali at subukan muli.",
                 "toolsNotSupported": "Ang model na ito ay hindi sumusuporta sa paggamit ng tool. I-disable ang \"Tools\" para sa model na ito sa AI Settings → Models.",
-                "noProjectContext": "Walang available na konteksto ng proyekto para sa memorya ng ahente."
+                "noProjectContext": "Walang available na konteksto ng proyekto para sa memorya ng ahente.",
+                "missingNativeToolState": "Humiling ang modelo ng mga tool nang walang kinakailangang state para magpatuloy. Subukan muli.",
+                "nativeTurnScopeMismatch": "Ang sagot na ito ay para sa ibang modelo, endpoint, o turn kaya't itinapon ito.",
+                "unknownToolIdentity": "Hindi kilalang tool, o nagbago ito mula nang ito ay ialok sa modelo.",
+                "toolTurnExpired": "Natapos na ang turn kung saan kabilang ang tawag na ito sa tool, kaya hindi ito pinatakbo.",
+                "toolIdentityChanged": "Nagbago ang tool pagkatapos maaprubahan, kaya hindi ito pinatakbo.",
+                "toolDiscoveryExpired": "Natapos na ang turn kung saan kabilang ang paghahanap na ito ng tool."
             },
             "toolLabels": {
                 "agent_memory_write": "Memory",

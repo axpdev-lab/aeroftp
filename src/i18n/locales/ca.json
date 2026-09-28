@@ -2790,7 +2790,13 @@
                 "noProvider": "Assegura't d'haver configurat un proveïdor d'AI a la configuració.",
                 "rateLimited": "Limitat pel proveïdor. Espera un moment i torna-ho a provar.",
                 "toolsNotSupported": "Aquest model no admet l'ús d'eines. Desactiva \"Eines\" per a aquest model a Configuració d'AI → Models.",
-                "noProjectContext": "No hi ha context de projecte disponible per a la memòria de l'agent."
+                "noProjectContext": "No hi ha context de projecte disponible per a la memòria de l'agent.",
+                "missingNativeToolState": "El model ha sol·licitat eines sense l'estat necessari per continuar. Torneu-ho a provar.",
+                "nativeTurnScopeMismatch": "La resposta pertany a un altre model, endpoint o torn i s'ha descartat.",
+                "unknownToolIdentity": "Eina desconeguda, o ha canviat des que es va oferir al model.",
+                "toolTurnExpired": "El torn al qual pertany aquesta crida a l'eina ha finalitzat, per la qual cosa no s'ha executat.",
+                "toolIdentityChanged": "L'eina ha canviat després de l'aprovació, per la qual cosa no s'ha executat.",
+                "toolDiscoveryExpired": "El torn al qual pertany aquesta cerca d'eines ha finalitzat."
             },
             "toolLabels": {
                 "agent_memory_write": "Memòria",

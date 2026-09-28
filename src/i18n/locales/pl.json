@@ -2790,7 +2790,13 @@
                 "noProvider": "Upewnij się, że skonfigurowałeś dostawcę AI w ustawieniach.",
                 "rateLimited": "Limit zapytań przekroczony przez dostawcę. Poczekaj chwilę i spróbuj ponownie.",
                 "toolsNotSupported": "Ten model nie obsługuje użycia narzędzi. Wyłącz \"Narzędzia\" dla tego modelu w Ustawienia AI → Modele.",
-                "noProjectContext": "Brak kontekstu projektu dla pamięci agenta."
+                "noProjectContext": "Brak kontekstu projektu dla pamięci agenta.",
+                "missingNativeToolState": "Model zażądał narzędzi bez stanu potrzebnego do kontynuowania. Spróbuj ponownie.",
+                "nativeTurnScopeMismatch": "Odpowiedź należy do innego modelu, punktu końcowego lub tury i została odrzucona.",
+                "unknownToolIdentity": "Nieznane narzędzie lub zmieniło się od momentu zaoferowania go modelowi.",
+                "toolTurnExpired": "Tura, do której należy to wywołanie narzędzia, zakończyła się, więc nie zostało ono uruchomione.",
+                "toolIdentityChanged": "Narzędzie zmieniło się po zatwierdzeniu, więc nie zostało uruchomione.",
+                "toolDiscoveryExpired": "Tura, do której należy to wyszukiwanie narzędzi, zakończyła się."
             },
             "toolLabels": {
                 "agent_memory_write": "Pamięć",

@@ -2790,7 +2790,13 @@
                 "noProvider": "Preverite, ali ste konfigurirali AI ponudnika v nastavitvah.",
                 "rateLimited": "Omejitev števila zahtev s strani ponudnika. Počakajte trenutek in poskusite znova.",
                 "toolsNotSupported": "Ta model ne podpira uporabe orodij. Onemogočite \"Orodja\" za ta model v AI nastavitve → Modeli.",
-                "noProjectContext": "Za pomnilnik agenta ni na voljo konteksta projekta."
+                "noProjectContext": "Za pomnilnik agenta ni na voljo konteksta projekta.",
+                "missingNativeToolState": "Model je zahteval orodja brez stanja, potrebnega za nadaljevanje. Poskusite znova.",
+                "nativeTurnScopeMismatch": "Odgovor pripada drugemu modelu, končni točki ali potezi in je bil zavržen.",
+                "unknownToolIdentity": "Neznano orodje, ali pa se je spremenilo, odkar je bilo ponujeno modelu.",
+                "toolTurnExpired": "Poteza, ki ji ta klic orodja pripada, se je končala, zato ni bil izveden.",
+                "toolIdentityChanged": "Orodje se je spremenilo po odobritvi, zato ni bilo izvedeno.",
+                "toolDiscoveryExpired": "Poteza, ki ji to iskanje orodij pripada, se je končala."
             },
             "toolLabels": {
                 "agent_memory_write": "Spomin",

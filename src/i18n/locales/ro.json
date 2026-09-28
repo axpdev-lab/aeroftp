@@ -2790,7 +2790,13 @@
                 "noProvider": "Asigurați-vă că ați configurat un furnizor AI în setări.",
                 "rateLimited": "Limitat de furnizor. Așteptați un moment și încercați din nou.",
                 "toolsNotSupported": "Acest model nu suportă utilizarea instrumentelor. Dezactivați \"Instrumente\" pentru acest model în Setări AI → Modele.",
-                "noProjectContext": "Nu există context de proiect disponibil pentru memoria agentului."
+                "noProjectContext": "Nu există context de proiect disponibil pentru memoria agentului.",
+                "missingNativeToolState": "Modelul a solicitat instrumente fără starea necesară pentru a continua. Încearcă din nou.",
+                "nativeTurnScopeMismatch": "Răspunsul aparține altui model, endpoint sau tură și a fost respins.",
+                "unknownToolIdentity": "Instrument necunoscut, sau s-a schimbat de când a fost oferit modelului.",
+                "toolTurnExpired": "Tura căreia îi aparține acest apel de instrument s-a încheiat, deci nu a fost executat.",
+                "toolIdentityChanged": "Instrumentul s-a schimbat după aprobare, deci nu a fost executat.",
+                "toolDiscoveryExpired": "Tura căreia îi aparține această căutare de instrumente s-a încheiat."
             },
             "toolLabels": {
                 "agent_memory_write": "Memorie",

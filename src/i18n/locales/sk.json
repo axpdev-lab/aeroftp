@@ -2790,7 +2790,13 @@
                 "noProvider": "Uistite sa, že ste nakonfigurovali poskytovateľa AI v nastavení.",
                 "rateLimited": "Limit požiadaviek prekročený poskytovateľom. Počkajte chvíľu a skúste to znova.",
                 "toolsNotSupported": "Tento model nepodporuje použitie nástrojov. Deaktivujte \"Nástroje\" pre tento model v Nastavenie AI → Modely.",
-                "noProjectContext": "Pre pamäť agenta nie je k dispozícii žiadny kontext projektu."
+                "noProjectContext": "Pre pamäť agenta nie je k dispozícii žiadny kontext projektu.",
+                "missingNativeToolState": "Model požiadal o nástroje bez stavu potrebného na pokračovanie. Skúste to znova.",
+                "nativeTurnScopeMismatch": "Odpoveď patrí inému modelu, koncovému bodu alebo kolu a bola zahodená.",
+                "unknownToolIdentity": "Neznámy nástroj, alebo sa zmenil odvtedy, čo bol ponúknutý modelu.",
+                "toolTurnExpired": "Kolo, do ktorého toto volanie nástroja patrí, sa skončilo, preto nebolo spustené.",
+                "toolIdentityChanged": "Nástroj sa po schválení zmenil, preto nebol spustený.",
+                "toolDiscoveryExpired": "Kolo, do ktorého toto vyhľadávanie nástroja patrí, sa skončilo."
             },
             "toolLabels": {
                 "agent_memory_write": "Pamäť",

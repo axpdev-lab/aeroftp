@@ -2790,7 +2790,13 @@
                 "noProvider": "Įsitikinkite, kad nustatymuose sukonfigūravote AI teikėją.",
                 "rateLimited": "Teikėjo apribotas. Palaukite akimirką ir bandykite dar kartą.",
                 "toolsNotSupported": "Šis modelis nepalaiko įrankių naudojimo. Išjunkite \"Įrankiai\" šiam modeliui AI nustatymai → Modeliai.",
-                "noProjectContext": "Agento atminčiai nėra prieinamo projekto konteksto."
+                "noProjectContext": "Agento atminčiai nėra prieinamo projekto konteksto.",
+                "missingNativeToolState": "Modelis paprašė įrankių neturėdamas tęsti reikalingos būsenos. Bandykite dar kartą.",
+                "nativeTurnScopeMismatch": "Atsakymas priklauso kitam modeliui, galiniam taškui ar ėjimui, todėl buvo atmestas.",
+                "unknownToolIdentity": "Nežinomas įrankis arba jis pasikeitė nuo tada, kai buvo pasiūlytas modeliui.",
+                "toolTurnExpired": "Ėjimas, kuriam priklauso šis įrankio iškvietimas, baigėsi, todėl jis nebuvo vykdomas.",
+                "toolIdentityChanged": "Įrankis pasikeitė po patvirtinimo, todėl jis nebuvo vykdomas.",
+                "toolDiscoveryExpired": "Ėjimas, kuriam priklauso ši įrankio paieška, baigėsi."
             },
             "toolLabels": {
                 "agent_memory_write": "Atmintis",

@@ -2790,7 +2790,13 @@
                 "noProvider": "Asegúrate de haber configurado un proveedor de AI en la configuración.",
                 "rateLimited": "Limitado por el proveedor. Espera un momento e inténtalo de nuevo.",
                 "toolsNotSupported": "Este modelo no admite el uso de herramientas. Desactiva \"Herramientas\" para este modelo en Configuración de AI → Modelos.",
-                "noProjectContext": "No hay contexto de proyecto disponible para la memoria del agente."
+                "noProjectContext": "No hay contexto de proyecto disponible para la memoria del agente.",
+                "missingNativeToolState": "El modelo solicitó herramientas sin el estado necesario para continuar. Vuelve a intentarlo.",
+                "nativeTurnScopeMismatch": "La respuesta pertenece a otro modelo, endpoint o turno y se descartó.",
+                "unknownToolIdentity": "Herramienta desconocida, o ha cambiado desde que se ofreció al modelo.",
+                "toolTurnExpired": "El turno al que pertenece esta llamada a herramienta ha terminado, por lo que no se ejecutó.",
+                "toolIdentityChanged": "La herramienta cambió tras la aprobación, por lo que no se ejecutó.",
+                "toolDiscoveryExpired": "El turno al que pertenece esta búsqueda de herramientas ha terminado."
             },
             "toolLabels": {
                 "agent_memory_write": "Memoria",

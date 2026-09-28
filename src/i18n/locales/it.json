@@ -2991,7 +2991,13 @@
                 "noProvider": "Assicurati di aver configurato un provider AI nelle impostazioni.",
                 "rateLimited": "Limite di richieste raggiunto dal provider. Attendi un momento e riprova.",
                 "toolsNotSupported": "Questo modello non supporta l'uso degli strumenti. Disabilita \"Strumenti\" per questo modello in Impostazioni AI → Modelli.",
-                "noProjectContext": "Nessun contesto di progetto disponibile per la memoria dell'agente."
+                "noProjectContext": "Nessun contesto di progetto disponibile per la memoria dell'agente.",
+                "missingNativeToolState": "Il modello ha richiesto degli strumenti senza lo stato necessario per continuare. Riprova.",
+                "nativeTurnScopeMismatch": "La risposta appartiene a un altro modello, endpoint o turno ed è stata scartata.",
+                "unknownToolIdentity": "Strumento sconosciuto, oppure è cambiato da quando è stato proposto al modello.",
+                "toolTurnExpired": "Il turno a cui appartiene questa chiamata dello strumento è terminato, quindi non è stata eseguita.",
+                "toolIdentityChanged": "Lo strumento è cambiato dopo l'approvazione, quindi non è stato eseguito.",
+                "toolDiscoveryExpired": "Il turno a cui appartiene questa ricerca degli strumenti è terminato."
             },
             "analyzeThisImage": "Analizza questa immagine",
             "toolLabels": {

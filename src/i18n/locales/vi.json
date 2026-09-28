@@ -2790,7 +2790,13 @@
                 "noProvider": "Đảm bảo bạn đã cấu hình nhà cung cấp AI trong cài đặt.",
                 "rateLimited": "Bị giới hạn tốc độ bởi nhà cung cấp. Chờ một lát rồi thử lại.",
                 "toolsNotSupported": "Mô hình này không hỗ trợ sử dụng công cụ. Tắt \"Công cụ\" cho mô hình này trong Cài đặt AI → Mô hình.",
-                "noProjectContext": "Không có ngữ cảnh dự án nào cho bộ nhớ tác nhân."
+                "noProjectContext": "Không có ngữ cảnh dự án nào cho bộ nhớ tác nhân.",
+                "missingNativeToolState": "Mô hình đã yêu cầu công cụ mà không có trạng thái cần thiết để tiếp tục. Hãy thử lại.",
+                "nativeTurnScopeMismatch": "Phản hồi này thuộc về một mô hình, endpoint hoặc lượt khác nên đã bị loại bỏ.",
+                "unknownToolIdentity": "Công cụ không xác định, hoặc đã thay đổi kể từ khi được cung cấp cho mô hình.",
+                "toolTurnExpired": "Lượt mà lệnh gọi công cụ này thuộc về đã kết thúc, nên nó không được chạy.",
+                "toolIdentityChanged": "Công cụ đã thay đổi sau khi được phê duyệt, nên nó không được chạy.",
+                "toolDiscoveryExpired": "Lượt mà tìm kiếm công cụ này thuộc về đã kết thúc."
             },
             "toolLabels": {
                 "agent_memory_write": "Bộ nhớ",

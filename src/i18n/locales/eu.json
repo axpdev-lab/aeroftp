@@ -2790,7 +2790,13 @@
                 "noProvider": "Ziurtatu AI hornitzailea konfiguratu duzula ezarpenetan.",
                 "rateLimited": "Hornitzaileak mugatuta. Itxaron pixka bat eta saiatu berriro.",
                 "toolsNotSupported": "Modelo honek ez du tresna-erabilera onartzen. Desaktibatu \"Tresnak\" modelo honetarako AI Ezarpenak → Modeloak atalean.",
-                "noProjectContext": "Ez dago proiektuaren testuingururik eskuragarri agentearen memoriarako."
+                "noProjectContext": "Ez dago proiektuaren testuingururik eskuragarri agentearen memoriarako.",
+                "missingNativeToolState": "Ereduak tresnak eskatu ditu, jarraitzeko beharrezko egoerarik gabe. Saiatu berriro.",
+                "nativeTurnScopeMismatch": "Erantzuna beste eredu, amaierako puntu edo txanda batekoa da, eta baztertu egin da.",
+                "unknownToolIdentity": "Tresna ezezaguna, edo ereduari eskaini zitzaionetik aldatu egin da.",
+                "toolTurnExpired": "Tresna-dei honi dagokion txanda amaitu da, beraz ez da exekutatu.",
+                "toolIdentityChanged": "Tresna onespenaren ondoren aldatu egin da, beraz ez da exekutatu.",
+                "toolDiscoveryExpired": "Tresna-bilaketa honi dagokion txanda amaitu da."
             },
             "toolLabels": {
                 "agent_memory_write": "Memoria",

@@ -2790,7 +2790,13 @@
                 "noProvider": "Gwnewch yn siŵr eich bod wedi ffurfweddu darparwr AI yn y gosodiadau.",
                 "rateLimited": "Cyfyngedig gan y darparwr. Arhoswch ennyd a rhowch gynnig arall arni.",
                 "toolsNotSupported": "Nid yw'r model hwn yn cefnogi defnyddio offer. Analluogwch \"Offer\" ar gyfer y model hwn yn Gosodiadau AI → Modelau.",
-                "noProjectContext": "Nid oes cyd-destun prosiect ar gael ar gyfer cof yr asiant."
+                "noProjectContext": "Nid oes cyd-destun prosiect ar gael ar gyfer cof yr asiant.",
+                "missingNativeToolState": "Gofynnodd y model am offer heb y cyflwr sydd ei angen i barhau. Rhowch gynnig arall arni.",
+                "nativeTurnScopeMismatch": "Mae'r ateb hwn yn perthyn i fodel, pwynt terfyn neu dro gwahanol, ac fe'i diystyriwyd.",
+                "unknownToolIdentity": "Offeryn anhysbys, neu mae wedi newid ers iddo gael ei gynnig i'r model.",
+                "toolTurnExpired": "Mae'r tro y mae'r alwad offeryn hon yn perthyn iddo wedi dod i ben, felly ni chafodd ei redeg.",
+                "toolIdentityChanged": "Newidiodd yr offeryn ar ôl cymeradwyo, felly ni chafodd ei redeg.",
+                "toolDiscoveryExpired": "Mae'r tro y mae'r chwiliad offer hwn yn perthyn iddo wedi dod i ben."
             },
             "toolLabels": {
                 "agent_memory_write": "Cof",

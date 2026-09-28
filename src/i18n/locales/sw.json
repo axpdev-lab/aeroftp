@@ -2790,7 +2790,13 @@
                 "noProvider": "Hakikisha umesanidi mtoa huduma wa AI katika mipangilio.",
                 "rateLimited": "Umepunguzwa kiwango na mtoa huduma. Subiri kidogo na ujaribu tena.",
                 "toolsNotSupported": "Muundo huu hauwezi matumizi ya zana. Lemaza \"Zana\" kwa muundo huu katika Mipangilio ya AI → Miundo.",
-                "noProjectContext": "Hakuna muktadha wa mradi unaopatikana kwa kumbukumbu ya wakala."
+                "noProjectContext": "Hakuna muktadha wa mradi unaopatikana kwa kumbukumbu ya wakala.",
+                "missingNativeToolState": "Mfano uliomba zana bila hali inayohitajika kuendelea. Jaribu tena.",
+                "nativeTurnScopeMismatch": "Jibu hili ni la mfano, kituo cha mwisho, au zamu tofauti na limetupwa.",
+                "unknownToolIdentity": "Zana isiyojulikana, au imebadilika tangu ilipotolewa kwa mfano.",
+                "toolTurnExpired": "Zamu ambayo wito huu wa zana unahusiana nayo imekwisha, hivyo haikuendeshwa.",
+                "toolIdentityChanged": "Zana ilibadilika baada ya idhini, hivyo haikuendeshwa.",
+                "toolDiscoveryExpired": "Zamu ambayo utafutaji huu wa zana unahusiana nayo imekwisha."
             },
             "toolLabels": {
                 "agent_memory_write": "Kumbukumbu",

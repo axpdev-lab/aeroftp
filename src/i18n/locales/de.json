@@ -2790,7 +2790,13 @@
                 "noProvider": "Stellen Sie sicher, dass Sie einen AI-Provider in den Einstellungen konfiguriert haben.",
                 "rateLimited": "Vom Provider ratenbegrenzt. Warten Sie einen Moment und versuchen Sie es erneut.",
                 "toolsNotSupported": "Dieses Modell unterstützt keine Tool-Verwendung. Deaktivieren Sie \"Tools\" für dieses Modell in AI-Einstellungen → Modelle.",
-                "noProjectContext": "Für den Agentenspeicher ist kein Projektkontext verfügbar."
+                "noProjectContext": "Für den Agentenspeicher ist kein Projektkontext verfügbar.",
+                "missingNativeToolState": "Das Modell hat Tools angefordert, ohne den dafür nötigen Zustand zu haben. Bitte erneut versuchen.",
+                "nativeTurnScopeMismatch": "Die Antwort gehört zu einem anderen Modell, Endpunkt oder Turn und wurde verworfen.",
+                "unknownToolIdentity": "Unbekanntes Tool, oder es hat sich geändert, seit es dem Modell angeboten wurde.",
+                "toolTurnExpired": "Der Turn, zu dem dieser Tool-Aufruf gehört, ist beendet, daher wurde er nicht ausgeführt.",
+                "toolIdentityChanged": "Das Tool hat sich nach der Genehmigung geändert, daher wurde es nicht ausgeführt.",
+                "toolDiscoveryExpired": "Der Turn, zu dem diese Tool-Suche gehört, ist beendet."
             },
             "toolLabels": {
                 "agent_memory_write": "Speicher",

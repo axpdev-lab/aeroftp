@@ -2790,7 +2790,13 @@
                 "noProvider": "Provjerite jeste li konfigurirali AI davatelja usluge u postavkama.",
                 "rateLimited": "Ograničenje broja zahtjeva od davatelja usluge. Pričekajte trenutak i pokušajte ponovno.",
                 "toolsNotSupported": "Ovaj model ne podržava korištenje alata. Onemogućite \"Alate\" za ovaj model u AI postavke → Modeli.",
-                "noProjectContext": "Za memoriju agenta nije dostupan kontekst projekta."
+                "noProjectContext": "Za memoriju agenta nije dostupan kontekst projekta.",
+                "missingNativeToolState": "Model je zatražio alate bez stanja potrebnog za nastavak. Pokušajte ponovno.",
+                "nativeTurnScopeMismatch": "Odgovor pripada drugom modelu, krajnjoj točki ili potezu i odbačen je.",
+                "unknownToolIdentity": "Nepoznat alat, ili se promijenio otkako je ponuđen modelu.",
+                "toolTurnExpired": "Potez kojem pripada ovaj poziv alata je završio, pa nije pokrenut.",
+                "toolIdentityChanged": "Alat se promijenio nakon odobrenja, pa nije pokrenut.",
+                "toolDiscoveryExpired": "Potez kojem pripada ovo pretraživanje alata je završio."
             },
             "toolLabels": {
                 "agent_memory_write": "Memorija",

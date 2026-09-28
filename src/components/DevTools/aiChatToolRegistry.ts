@@ -133,10 +133,11 @@ export class ToolExposure {
     }
 }
 
-/** Recheck after asynchronous approval and before dispatch, including macro children. */
-export function assertToolExecutionCurrent(entry: RegisteredTool, current: ToolRegistry, scope: string | undefined, activeScope: string | null): void {
-    if (scope !== undefined && scope !== activeScope) throw new Error('Tool execution turn expired');
-    if (resolveRegisteredTool(current, entry.tool.name)?.revision !== entry.revision) throw new Error('Tool identity changed after approval');
+/** Recheck after asynchronous approval and before dispatch, including macro children.
+ *  `messages` are the translated texts for the two ways a call can go stale. */
+export function assertToolExecutionCurrent(entry: RegisteredTool, current: ToolRegistry, scope: string | undefined, activeScope: string | null, messages: { turnExpired: string; identityChanged: string }): void {
+    if (scope !== undefined && scope !== activeScope) throw new Error(messages.turnExpired);
+    if (resolveRegisteredTool(current, entry.tool.name)?.revision !== entry.revision) throw new Error(messages.identityChanged);
 }
 
 /** Only dispatched calls count as duplicates; failed exposure checks remain retryable. */

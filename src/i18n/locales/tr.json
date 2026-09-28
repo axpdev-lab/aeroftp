@@ -2790,7 +2790,13 @@
                 "noProvider": "Ayarlarda bir AI sağlayıcısı yapılandırdığınızdan emin olun.",
                 "rateLimited": "Sağlayıcı tarafından hız sınırlandırıldı. Bir süre bekleyin ve tekrar deneyin.",
                 "toolsNotSupported": "Bu model araç kullanımını desteklemiyor. AI Ayarları → Modeller'de bu model için \"Araçlar\" seçeneğini devre dışı bırakın.",
-                "noProjectContext": "Aracı belleği için proje bağlamı yok."
+                "noProjectContext": "Aracı belleği için proje bağlamı yok.",
+                "missingNativeToolState": "Model, devam etmek için gereken duruma sahip olmadan araç istedi. Tekrar deneyin.",
+                "nativeTurnScopeMismatch": "Yanıt başka bir modele, uç noktaya veya sıraya ait olduğu için atıldı.",
+                "unknownToolIdentity": "Bilinmeyen araç veya modele sunulduğundan beri değişti.",
+                "toolTurnExpired": "Bu araç çağrısının ait olduğu sıra sona erdi, bu yüzden çalıştırılmadı.",
+                "toolIdentityChanged": "Araç onaydan sonra değişti, bu yüzden çalıştırılmadı.",
+                "toolDiscoveryExpired": "Bu araç aramasının ait olduğu sıra sona erdi."
             },
             "toolLabels": {
                 "agent_memory_write": "Bellek",

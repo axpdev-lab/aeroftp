@@ -2790,7 +2790,13 @@
                 "noProvider": "Pārliecinieties, ka iestatījumos esat konfigurējis AI pakalpojumu sniedzēju.",
                 "rateLimited": "Pakalpojumu sniedzēja ierobežots. Uzgaidiet brīdi un mēģiniet vēlreiz.",
                 "toolsNotSupported": "Šis modelis neatbalsta rīku lietošanu. Atspējojiet \"Rīki\" šim modelim AI iestatījumi → Modeļi.",
-                "noProjectContext": "Aģenta atmiņai nav pieejams projekta konteksts."
+                "noProjectContext": "Aģenta atmiņai nav pieejams projekta konteksts.",
+                "missingNativeToolState": "Modelis pieprasīja rīkus bez turpināšanai nepieciešamā stāvokļa. Mēģiniet vēlreiz.",
+                "nativeTurnScopeMismatch": "Atbilde pieder citam modelim, galapunktam vai gājienam, un tā tika atmesta.",
+                "unknownToolIdentity": "Nezināms rīks, vai tas ir mainījies kopš tā piedāvāšanas modelim.",
+                "toolTurnExpired": "Gājiens, kuram pieder šis rīka izsaukums, ir beidzies, tāpēc tas netika izpildīts.",
+                "toolIdentityChanged": "Rīks mainījās pēc apstiprināšanas, tāpēc tas netika izpildīts.",
+                "toolDiscoveryExpired": "Gājiens, kuram pieder šis rīku meklējums, ir beidzies."
             },
             "toolLabels": {
                 "agent_memory_write": "Atmiņa",

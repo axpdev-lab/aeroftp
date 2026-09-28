@@ -1409,12 +1409,15 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         options: ExecuteToolOptions = {},
     ): Promise<unknown> => {
         const entry = resolveRegisteredTool(toolRegistryRef.current, toolName);
-        if (!entry) throw new Error('Unknown or changed tool identity');
-        const assertCurrent = () => assertToolExecutionCurrent(entry, toolRegistryRef.current, options.turnScope, activeTurnRef.current);
+        if (!entry) throw new Error(t('ai.error.unknownToolIdentity'));
+        const assertCurrent = () => assertToolExecutionCurrent(entry, toolRegistryRef.current, options.turnScope, activeTurnRef.current, {
+            turnExpired: t('ai.error.toolTurnExpired'),
+            identityChanged: t('ai.error.toolIdentityChanged'),
+        });
         assertCurrent();
         if (entry.source.kind === 'discovery') {
             const exposure = toolExposureRef.current;
-            if (!exposure || exposure.scope !== activeTurnRef.current) throw new Error('Tool discovery turn expired');
+            if (!exposure || exposure.scope !== activeTurnRef.current) throw new Error(t('ai.error.toolDiscoveryExpired'));
             return exposure.search(args.query);
         }
         const isBuiltIn = entry.source.kind === 'builtin';
@@ -1981,8 +1984,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 });
 
                 if (autoStopRef.current || activeTurnRef.current !== aiRequest.turn_scope) return;
-                if (requiresNativeTurn(aiRequest) && response.tool_calls?.length && !response.native_turn) throw new Error('Missing native tool state');
-                if (response.native_turn && !nativeTurnMatches(response.native_turn, aiRequest)) throw new Error('Native turn scope mismatch');
+                if (requiresNativeTurn(aiRequest) && response.tool_calls?.length && !response.native_turn) throw new Error(t('ai.error.missingNativeToolState'));
+                if (response.native_turn && !nativeTurnMatches(response.native_turn, aiRequest)) throw new Error(t('ai.error.nativeTurnScopeMismatch'));
                 if (response.native_turn && response.tool_calls?.length) appendAssistantTurn(messageHistory, response.content, response.tool_calls, response.native_turn);
 
                 // Parse ALL tool calls from response (parallel support)
@@ -2555,7 +2558,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         }
                         return;
                     }
-                    if (streamResult.nativeTurn && !nativeTurnMatches(streamResult.nativeTurn, aiRequest)) throw new Error('Native turn scope mismatch');
+                    if (streamResult.nativeTurn && !nativeTurnMatches(streamResult.nativeTurn, aiRequest)) throw new Error(t('ai.error.nativeTurnScopeMismatch'));
                     if (streamResult.nativeTurn && streamResult.toolCalls?.length) appendAssistantTurn(messageHistory, streamContent, streamResult.toolCalls, streamResult.nativeTurn);
 
                     // Check for tool calls from streaming: process ALL (parallel support)
@@ -2664,8 +2667,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     }
 
                     if (autoStopRef.current || activeTurnRef.current !== turnScope) return;
-                    if (requiresNativeTurn(aiRequest) && response.tool_calls?.length && !response.native_turn) throw new Error('Missing native tool state');
-                    if (response.native_turn && !nativeTurnMatches(response.native_turn, aiRequest)) throw new Error('Native turn scope mismatch');
+                    if (requiresNativeTurn(aiRequest) && response.tool_calls?.length && !response.native_turn) throw new Error(t('ai.error.missingNativeToolState'));
+                    if (response.native_turn && !nativeTurnMatches(response.native_turn, aiRequest)) throw new Error(t('ai.error.nativeTurnScopeMismatch'));
                     if (response.native_turn && response.tool_calls?.length) appendAssistantTurn(messageHistory, response.content, response.tool_calls, response.native_turn);
 
                     // Check if AI wants to use tools: process ALL (parallel support)

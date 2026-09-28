@@ -2790,7 +2790,13 @@
                 "noProvider": "Se till att du har konfigurerat en AI-leverantör i inställningar.",
                 "rateLimited": "Hastighetsbegränsad av leverantören. Vänta ett ögonblick och försök igen.",
                 "toolsNotSupported": "Denna modell stöder inte verktygsanvändning. Inaktivera \"Verktyg\" för denna modell i AI-inställningar → Modeller.",
-                "noProjectContext": "Ingen projektkontext tillgänglig för agentminnet."
+                "noProjectContext": "Ingen projektkontext tillgänglig för agentminnet.",
+                "missingNativeToolState": "Modellen begärde verktyg utan det tillstånd som krävs för att fortsätta. Försök igen.",
+                "nativeTurnScopeMismatch": "Svaret tillhör en annan modell, slutpunkt eller tur och kasserades.",
+                "unknownToolIdentity": "Okänt verktyg, eller så har det ändrats sedan det erbjöds modellen.",
+                "toolTurnExpired": "Turen som detta verktygsanrop tillhör har avslutats, så det kördes inte.",
+                "toolIdentityChanged": "Verktyget ändrades efter godkännande, så det kördes inte.",
+                "toolDiscoveryExpired": "Turen som denna verktygssökning tillhör har avslutats."
             },
             "toolLabels": {
                 "agent_memory_write": "Minne",

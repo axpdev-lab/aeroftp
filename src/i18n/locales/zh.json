@@ -2790,7 +2790,13 @@
                 "noProvider": "请确保已在设置中配置AI提供商。",
                 "rateLimited": "已被提供商限速。请稍后再试。",
                 "toolsNotSupported": "此模型不支持工具使用。请在AI设置→模型中禁用\"工具\"。",
-                "noProjectContext": "没有可用于代理记忆的项目上下文。"
+                "noProjectContext": "没有可用于代理记忆的项目上下文。",
+                "missingNativeToolState": "模型请求了工具，但缺少继续所需的状态。请重试。",
+                "nativeTurnScopeMismatch": "该回复属于另一个模型、端点或轮次，已被丢弃。",
+                "unknownToolIdentity": "未知工具，或自提供给模型后已发生变化。",
+                "toolTurnExpired": "此工具调用所属的轮次已结束，因此未执行。",
+                "toolIdentityChanged": "该工具在获得批准后发生了变化，因此未执行。",
+                "toolDiscoveryExpired": "此工具搜索所属的轮次已结束。"
             },
             "toolLabels": {
                 "agent_memory_write": "记忆",
