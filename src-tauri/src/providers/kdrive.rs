@@ -701,6 +701,30 @@ impl KDriveProvider {
         folder_id: i64,
         filename: &str,
     ) -> Result<Option<(i64, bool)>, ProviderError> {
+        self.find_in_folder(folder_id, filename, true).await
+    }
+
+    /// [`Self::find_file_in_folder`] without the fallback to another letter
+    /// case, for a step that destroys what it finds. kDrive is taken to keep
+    /// `A.txt` and `a.txt` as two items (as rclone lists it), so the fallback
+    /// can answer an item other than the one named: `rm /a.txt` beside only
+    /// `A.txt` trashed `A.txt`.
+    async fn find_exact_in_folder(
+        &self,
+        folder_id: i64,
+        filename: &str,
+    ) -> Result<Option<(i64, bool)>, ProviderError> {
+        self.find_in_folder(folder_id, filename, false).await
+    }
+
+    /// The item named `filename` in `folder_id`: the exact name first, and
+    /// when `other_case`, another letter case as the fallback.
+    async fn find_in_folder(
+        &self,
+        folder_id: i64,
+        filename: &str,
+        other_case: bool,
+    ) -> Result<Option<(i64, bool)>, ProviderError> {
         let base_url = self.api_url_v3(&format!("/files/{}/files", folder_id));
         let mut cursor: Option<String> = None;
         let mut case_insensitive_match: Option<(i64, bool)> = None;
@@ -746,7 +770,8 @@ impl KDriveProvider {
                     if name == filename {
                         // Exact match: return immediately
                         return Ok(Some((file.id, is_dir)));
-                    } else if case_insensitive_match.is_none()
+                    } else if other_case
+                        && case_insensitive_match.is_none()
                         && name.eq_ignore_ascii_case(filename)
                     {
                         case_insensitive_match = Some((file.id, is_dir));
@@ -1258,7 +1283,7 @@ impl StorageProvider for KDriveProvider {
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
         let (file_id, _) = self
-            .find_file_in_folder(parent_id, filename)
+            .find_exact_in_folder(parent_id, filename)
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
@@ -1268,8 +1293,10 @@ impl StorageProvider for KDriveProvider {
         let sent = self.delete_with_retry(&url).await;
         // Whatever the answer, even none (a delete kDrive applied whose
         // answer was lost), the folder ids cached for the path and everything
-        // under it may point at items now in the trash.
-        super::forget_cached_subtree(&mut self.dir_cache, &resolved);
+        // under it may point at items now in the trash. Under every
+        // capitalization: a folder lookup falls back to another case, so the
+        // same folder can be cached under two spellings.
+        super::forget_cached_subtree_ignoring_case(&mut self.dir_cache, &resolved);
         let resp = sent?;
 
         if !resp.status().is_success() {
@@ -1319,9 +1346,10 @@ impl StorageProvider for KDriveProvider {
         // was lost), the folder ids cached for either path and everything
         // under them may now point at a moved folder or at one in the trash
         // (the one a replace set aside): a later `put` into `/dst/sub` wrote
-        // into the trashed folder.
-        super::forget_cached_subtree(&mut self.dir_cache, &resolved_from);
-        super::forget_cached_subtree(&mut self.dir_cache, &resolved_to);
+        // into the trashed folder. Under every capitalization, as in
+        // `delete`.
+        super::forget_cached_subtree_ignoring_case(&mut self.dir_cache, &resolved_from);
+        super::forget_cached_subtree_ignoring_case(&mut self.dir_cache, &resolved_to);
         let resp = sent?;
 
         if !resp.status().is_success() {
@@ -1348,8 +1376,23 @@ impl StorageProvider for KDriveProvider {
     /// file a replace is meant to replace: the item at the destination is set
     /// aside, the source renamed in, and the one set aside deleted (into
     /// kDrive's trash), as on Koofr.
+    ///
+    /// Only an item of exactly that name is set aside and deleted: the
+    /// lookups fall back to another letter case, and a replace onto `a.txt`
+    /// beside only `A.txt` set `A.txt` aside and deleted it. Without one it
+    /// is the rename, whose look before the move still refuses a name taken
+    /// in another case.
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let (from, to) = (self.resolve_path(from), self.resolve_path(to));
+        let (to_parent, to_name) = Self::split_path(&to);
+        let to_parent_id = self.resolve_folder_id(to_parent).await?;
+        if self
+            .find_exact_in_folder(to_parent_id, to_name)
+            .await?
+            .is_none()
+        {
+            return self.rename(&from, &to).await;
+        }
         super::replace_by_setting_aside(self, &from, &to).await
     }
 
@@ -2610,6 +2653,66 @@ mod tests {
         assert_eq!(changes.len(), 3, "{changes:?}");
         assert!(changes[0].starts_with("move 12 .b.txt."), "{changes:?}");
         assert_eq!(changes[1..], ["move 11 b.txt", "delete 12"]);
+    }
+
+    /// A folder lookup falls back to another letter case and caches the
+    /// spelling it was given, so `/Dst` can hold the id of `dst`. A rename
+    /// or delete forgot only its own spelling: `/Dst/sub` kept the id of the
+    /// moved folder and `/GONE/deep` that of the trashed one. Every
+    /// capitalization goes; a sibling sharing the prefix stays.
+    #[tokio::test]
+    async fn a_rename_or_delete_forgets_the_folder_ids_cached_under_any_case() {
+        let (mut provider, _, _) =
+            provider_on_kdrive_files(&[(21, "dst"), (22, "gone"), (23, "dstx")]).await;
+        for (path, id) in [
+            ("/Dst", 21),
+            ("/Dst/sub", 31),
+            ("/GONE/deep", 33),
+            ("/Dstx", 23),
+        ] {
+            provider.dir_cache_insert(path.to_string(), DirInfo { id });
+        }
+        provider.rename("/dst", "/moved").await.expect("rename");
+        provider.delete("/gone").await.expect("delete");
+        let mut cached: Vec<&str> = provider.dir_cache.keys().map(String::as_str).collect();
+        cached.sort();
+        assert_eq!(cached, ["/Dstx"], "a sibling sharing the prefix stays");
+    }
+
+    /// kDrive keeps `A.txt` and `a.txt` as two files, and the lookup falls
+    /// back to another case: `rm /a.txt` beside only `A.txt` trashed
+    /// `A.txt`. A delete takes the exact name only.
+    #[tokio::test]
+    async fn a_delete_does_not_take_a_file_of_another_case() {
+        let (mut provider, store, changes) = provider_on_kdrive_files(&[(10, "A.txt")]).await;
+        let outcome = provider.delete("/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(changes.lock().unwrap().is_empty());
+        assert_eq!(*store.lock().unwrap(), [(10, "A.txt".to_string())]);
+    }
+
+    /// A replace onto `a.txt` beside only `A.txt` took `A.txt` for the file
+    /// to replace: it was set aside and deleted. Only an item of the exact
+    /// name is replaced; here the replace is the rename, whose look before
+    /// the move refuses the name taken in another case, and nothing changes.
+    #[tokio::test]
+    async fn a_replace_does_not_delete_a_file_of_another_case() {
+        let (mut provider, store, changes) =
+            provider_on_kdrive_files(&[(10, "A.txt"), (11, "x.txt")]).await;
+        let outcome = provider.replace("/x.txt", "/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
+        assert_eq!(store.lock().unwrap().len(), 2);
     }
 
     /// Upload a 300 KB file to the v3 upload route of a local fixture that
