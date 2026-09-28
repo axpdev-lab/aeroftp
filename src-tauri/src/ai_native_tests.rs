@@ -759,3 +759,36 @@ async fn provider_errors_keep_status_and_a_bounded_body() {
         .unwrap_err();
     assert!(err.contains("Overloaded"), "{err}");
 }
+
+#[tokio::test]
+async fn text_stream_that_ends_after_its_finish_reason_completes_without_done() {
+    let text = json!({"choices":[{"delta":{"role":"assistant","content":"All done."},"finish_reason":null}]});
+    let last = json!({"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":3}});
+    // No [DONE], and the last event has no trailing newline either.
+    let (base, server) = one_shot_server(
+        "200 OK",
+        "text/event-stream",
+        format!("data: {text}\n\ndata: {last}"),
+    )
+    .await;
+    let mut req = request("nvidia", "z-ai/glm-5.3");
+    req.base_url = base;
+    let sink = Sink::default();
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    stream(&reqwest::Client::new(), &req, &sink, "no-done", &cancel)
+        .await
+        .unwrap();
+    server.await.unwrap();
+    let chunks = sink.0.lock().unwrap();
+    let done = chunks.last().unwrap();
+    assert!(done.done && done.tool_calls.is_none());
+    assert!(done.native_turn.is_some());
+    assert_eq!(done.output_tokens, Some(3));
+    assert_eq!(
+        chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<String>(),
+        "All done."
+    );
+}

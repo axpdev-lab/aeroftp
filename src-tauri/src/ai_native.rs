@@ -853,6 +853,16 @@ impl StreamState {
         Ok((text, thinking))
     }
 
+    /// The connection closed without a terminal marker. Some Chat servers end
+    /// that way after the finish_reason chunk; as the legacy reader did, a
+    /// finished text-only answer is accepted. A tool call still needs [DONE],
+    /// and an Anthropic message still needs message_stop.
+    pub(crate) fn end_of_stream(&mut self, anthropic: bool) {
+        if !anthropic && self.reason.is_some() && self.message["tool_calls"].is_null() {
+            self.complete = true;
+        }
+    }
+
     pub(crate) fn finish(&self, request: &AIRequest) -> Result<AIResponse, AIError> {
         if !self.complete {
             return Err(invalid("Stream ended before provider completion"));
@@ -909,10 +919,17 @@ pub(crate) async fn stream(
             _ = crate::ai_stream::wait_for_cancel(cancel) => return Ok(()),
             next = bytes.next() => next,
         };
-        let Some(next) = next else { break };
-        buffer.extend_from_slice(&next?);
-        if buffer.len() > 16 * 1024 * 1024 {
-            return Err("Native SSE frame exceeds 16 MiB".into());
+        let ended = next.is_none();
+        match next {
+            Some(next) => {
+                buffer.extend_from_slice(&next?);
+                if buffer.len() > 16 * 1024 * 1024 {
+                    return Err("Native SSE frame exceeds 16 MiB".into());
+                }
+            }
+            // The last event may lack its trailing newline.
+            None if !buffer.is_empty() => buffer.push(b'\n'),
+            None => {}
         }
         while let Some(end) = buffer.iter().position(|b| *b == b'\n') {
             let line = String::from_utf8(buffer.drain(..=end).collect())?;
@@ -947,6 +964,10 @@ pub(crate) async fn stream(
             }
         }
         if state.complete {
+            break;
+        }
+        if ended {
+            state.end_of_stream(anthropic);
             break;
         }
     }
