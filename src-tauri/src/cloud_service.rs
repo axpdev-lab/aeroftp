@@ -2330,6 +2330,9 @@ mod baseline_tests {
         inexact_size: bool,
         /// Refuses the upload of the local file with this name.
         refused: Option<&'static str>,
+        /// Reports the size as FTP does when its listing gives none: 0, and
+        /// the marker that says so.
+        size_unreadable: bool,
         /// What each upload sent, in order.
         sent: Vec<Vec<u8>>,
         /// The local file of the last upload.
@@ -2452,6 +2455,13 @@ mod baseline_tests {
             };
             let mut entry = ProviderRemoteEntry::file("f.txt".to_string(), path.to_string(), size);
             entry.modified = Some(time.format("%Y-%m-%d %H:%M:%S").to_string());
+            if self.size_unreadable {
+                entry.size = 0;
+                entry.metadata.insert(
+                    crate::providers::ftp_listing::SIZE_UNREADABLE.to_string(),
+                    "1".to_string(),
+                );
+            }
             Ok(entry)
         }
         async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
@@ -2786,6 +2796,29 @@ mod baseline_tests {
     /// remote read as changed the next cycle (a download, and a conflict for
     /// an edit made meanwhile). The check is left to exact-size providers,
     /// as the comparison leaves sizes to them.
+    /// Nit of the verification of the final round, after #956: an FTP stat
+    /// whose size could not be read reports 0 with a marker, and the check for
+    /// another client's write read that 0 as a different size: no stamp, and a
+    /// redundant download the next cycle. A size that says nothing is not
+    /// compared.
+    #[tokio::test]
+    async fn an_unreadable_remote_size_is_not_read_as_another_write() {
+        let root = tempfile::tempdir().expect("local root");
+        let file = root.path().join("f.txt");
+        std::fs::write(&file, b"payload").unwrap();
+        stamp(&file, 1_700_000_000);
+        let mut provider = StampingProvider {
+            size_unreadable: true,
+            ..Default::default()
+        };
+        let (baseline, _) = upload_then_next_cycle(&mut provider, root.path()).await;
+        assert_eq!(
+            baseline.get("f.txt").and_then(|entry| entry.modified),
+            Some(server_time()),
+            "the server's time, stamped on the local file"
+        );
+    }
+
     /// F1 (verification of the final round): a time ahead of the clock was
     /// left out, so a file whose only times were a little ahead was never
     /// waited for. FAT rounds the last write up to its 2 s field, and a
