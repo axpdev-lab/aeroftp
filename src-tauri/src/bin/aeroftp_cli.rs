@@ -10518,13 +10518,24 @@ async fn download_with_resume(
         if offset > 0 {
             match partial_resume_plan(offset, remote_size) {
                 ResumePlan::Complete => {
+                    // Published claimed: a part another download is still
+                    // writing is refused, not renamed into place.
+                    let _claim =
+                        ftp_client_gui_lib::providers::atomic_write::claim_temp_to_publish(
+                            Path::new(&tmp_path),
+                        )
+                        .map_err(ProviderError::IoError)?;
                     tokio::fs::rename(&tmp_path, local_path)
                         .await
                         .map_err(ProviderError::IoError)?;
                     return Ok(());
                 }
                 ResumePlan::Restart => {
-                    let _ = tokio::fs::remove_file(&tmp_path).await;
+                    // A stale part goes; another download's is left alone,
+                    // and the download then fails on it.
+                    let _ = ftp_client_gui_lib::providers::atomic_write::remove_temp_unless_live(
+                        Path::new(&tmp_path),
+                    );
                 }
                 ResumePlan::Resume => {
                     return provider
@@ -10741,7 +10752,9 @@ async fn delta_until_interrupted<T>(
     let temp_was_there = temp.exists();
     let outcome = run_until_interrupted(cancelled, attempt).await;
     if outcome.is_none() && !temp_was_there {
-        let _ = std::fs::remove_file(&temp);
+        // The writer is gone with the attempt; a download that has claimed the
+        // name since keeps it.
+        let _ = ftp_client_gui_lib::providers::atomic_write::remove_temp_unless_live(&temp);
     }
     outcome
 }

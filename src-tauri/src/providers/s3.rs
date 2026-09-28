@@ -3643,7 +3643,23 @@ impl S3Provider {
         }
 
         // Pre-allocate the temp file. `set_len` reserves the full size up front so
-        // that concurrent seek+writes don't race on file extension.
+        // that concurrent seek+writes don't race on file extension. On Unix it
+        // is claimed for the whole run, as the shared engine claims its own
+        // (see `atomic_write::temp_claim`): a second segmented download of the
+        // file is refused instead of truncating this one's windows.
+        #[cfg(unix)]
+        let _claim = {
+            let temp = temp_path.clone();
+            let file =
+                tokio::task::spawn_blocking(move || super::atomic_write::temp_claim::create(&temp))
+                    .await
+                    .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?
+                    .map_err(ProviderError::IoError)?;
+            file.set_len(total_size).map_err(ProviderError::IoError)?;
+            file.sync_all().map_err(ProviderError::IoError)?;
+            file
+        };
+        #[cfg(not(unix))]
         {
             let f = tokio::fs::OpenOptions::new()
                 .write(true)
@@ -4781,9 +4797,10 @@ impl StorageProvider for S3Provider {
                 Ok(())
             }
             StatusCode::RANGE_NOT_SATISFIABLE => {
-                // Discard stale .aerotmp to prevent infinite 416 loop on next attempt
+                // Discard stale .aerotmp to prevent infinite 416 loop on next
+                // attempt, unless another download is writing it.
                 let tmp = format!("{}.aerotmp", local_path);
-                let _ = tokio::fs::remove_file(&tmp).await;
+                let _ = super::atomic_write::remove_temp_unless_live(std::path::Path::new(&tmp));
                 Err(ProviderError::TransferFailed(
                     "Range not satisfiable: file may have changed on server".to_string(),
                 ))

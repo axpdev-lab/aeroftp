@@ -4661,8 +4661,9 @@ impl StorageProvider for WebDavProvider {
                 Ok(())
             }
             StatusCode::RANGE_NOT_SATISFIABLE => {
+                // A stale part goes; another download's is left alone.
                 let tmp = format!("{}.aerotmp", local_path);
-                let _ = tokio::fs::remove_file(&tmp).await;
+                let _ = super::atomic_write::remove_temp_unless_live(std::path::Path::new(&tmp));
                 Err(ProviderError::TransferFailed(
                     "Range not satisfiable: file may have changed on server".to_string(),
                 ))

@@ -89,9 +89,8 @@ static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::At
 /// a live writer's, and is refused with `AlreadyExists` instead of being
 /// truncated under it; one whose lock is free is stale, and is reused. The
 /// name must still point at the file the lock was taken on, or another
-/// writer replaced it in between. Unix only (Windows locks are mandatory and
-/// would stop the writer's own second handles); where the filesystem cannot
-/// lock, or on NFS, where `flock` can block even when asked not to, the file
+/// writer replaced it in between. Linux only, on a local filesystem (see
+/// `locks_usable`); elsewhere, and where the filesystem cannot lock, the file
 /// is opened as before these locks.
 fn claim_temp(temp: &Path) -> io::Result<std::fs::File> {
     claim_temp_with(temp, |file| file.try_lock())
@@ -143,7 +142,7 @@ fn claim_temp_with(
     Ok(file)
 }
 
-/// Whether locks are used where `path` lives: not on NFS (Linux).
+/// Whether locks are used where `path` lives (see `locks_usable_on`).
 #[cfg(target_os = "linux")]
 fn locks_usable(path: &Path) -> bool {
     use std::os::unix::ffi::OsStrExt;
@@ -166,15 +165,31 @@ fn locks_usable(path: &Path) -> bool {
     locks_usable_on(kind as u32)
 }
 
-/// Whether a filesystem of this `statfs` type takes the locks.
+/// Whether a filesystem of this `statfs` type takes the locks: not
+// NFS, where `flock` can block even when asked not to (Cargo skips it
+// there too), and CIFS/SMB, where Linux 5.5 and later turn it into a
+// whole-file SMB lock that is mandatory on Windows servers and most NAS
+// shares: a second handle of the same process could no longer write, and
+// the segmented engine writes its windows through handles of their own.
 #[cfg(target_os = "linux")]
 fn locks_usable_on(kind: u32) -> bool {
-    kind != libc::NFS_SUPER_MAGIC as u32
+    const CIFS_MAGIC_NUMBER: u32 = 0xFF53_4D42;
+    const SMB2_MAGIC_NUMBER: u32 = 0xFE53_4D42;
+    const SMB_SUPER_MAGIC: u32 = 0x517B;
+    ![
+        libc::NFS_SUPER_MAGIC as u32,
+        CIFS_MAGIC_NUMBER,
+        SMB2_MAGIC_NUMBER,
+        SMB_SUPER_MAGIC,
+    ]
+    .contains(&kind)
 }
 
+/// Only Linux says what a mount is (see the application's copy of these
+/// rules): elsewhere the temporary goes unlocked, as before the locks.
 #[cfg(all(unix, not(target_os = "linux")))]
 fn locks_usable(_path: &Path) -> bool {
-    true
+    false
 }
 
 /// Append `TEMP_SUFFIX` to `target` preserving the original extension.
@@ -681,12 +696,12 @@ async fn finalize_steps(
         }
     }
 
-    // Drop the live handle before rename. Mirrors the comment in
-    // `write_atomic_chunked`: some Linux kernels exhibit cache-coherency
-    // oddities when renaming a path with an open writer pinned to its
-    // inode. Cheap to drop explicitly.
-    drop(file);
-    finalize_after_acl(
+    // The handle, and with it the claim on the temporary, is held until the
+    // rename: dropped before the time, the extended attributes and the
+    // rename, it let another download take the temporary as stale in between,
+    // and this writer then published that one's half-written file
+    // (verification of #951).
+    let finalized = finalize_after_acl(
         target,
         temp,
         mtime,
@@ -695,7 +710,9 @@ async fn finalize_steps(
         committed,
         warnings,
     )
-    .await
+    .await;
+    drop(file);
+    finalized
 }
 
 async fn finalize_after_acl(
@@ -799,7 +816,7 @@ mod tests {
     /// Mutation of the final round of #951: the delta writer's claim took a
     /// temporary whose name had been taken over between its open and its lock
     /// for its own, and emptied another writer's file.
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_claim_on_a_replaced_temporary_is_refused() {
         let dir = tempfile::tempdir().unwrap();
