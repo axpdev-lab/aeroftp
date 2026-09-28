@@ -3,7 +3,8 @@
 //!
 //! Each provider parses its rate-limit response in a slightly different way:
 //! - Google Drive: standard `Retry-After` header (seconds form in practice).
-//! - Dropbox: `retry_after` field in the 429 JSON body (float seconds).
+//! - Dropbox: `retry_after` field in the 429 JSON body (seconds), nested
+//!   under `error`.
 //! - OneDrive: `Retry-After` header (seconds) with `X-RateLimit-Reset`
 //!   (epoch UTC seconds) as fallback.
 //! - Box: standard `Retry-After` header (seconds).
@@ -40,17 +41,21 @@ pub fn parse_retry_after_seconds(raw: &str) -> Option<Duration> {
     trimmed.parse::<u64>().ok().map(Duration::from_secs)
 }
 
-/// Parse a `retry_after` numeric field from a Dropbox 429 JSON body. The
-/// Dropbox API spec puts the hint at the top level of the error JSON as a
-/// floating-point value, so this helper accepts a `serde_json::Value` to
-/// keep the JSON dependency local to the call site instead of parsing
-/// inside the helper.
+/// Parse a `retry_after` numeric field from a Dropbox 429 JSON body. Real
+/// Dropbox responses carry it inside the `RateLimitError`, nested under
+/// `error` (`{"error": {"reason": {...}, "retry_after": 300}}`); a top-level
+/// field is read as well. This helper accepts a `serde_json::Value` to keep
+/// the JSON dependency local to the call site instead of parsing inside the
+/// helper.
 ///
 /// Returns `None` if the value is missing, negative, NaN, or infinite.
 /// Fractional seconds round up to the nearest whole second to avoid
 /// defeating the AIMD lower-clamp (which floors at 1 second anyway).
 pub fn parse_retry_after_dropbox_value(body_json: &serde_json::Value) -> Option<Duration> {
-    let secs = body_json.get("retry_after")?.as_f64()?;
+    let secs = body_json
+        .get("retry_after")
+        .or_else(|| body_json.pointer("/error/retry_after"))?
+        .as_f64()?;
     if !secs.is_finite() || secs < 0.0 {
         return None;
     }
@@ -120,6 +125,19 @@ mod tests {
         assert_eq!(
             parse_retry_after_dropbox_value(&body),
             Some(Duration::from_secs(45))
+        );
+    }
+
+    #[test]
+    fn parse_retry_after_dropbox_reads_the_hint_nested_under_error() {
+        // The shape Dropbox actually sends for a RateLimitError.
+        let body = json!({
+            "error_summary": "too_many_requests/..",
+            "error": {"reason": {".tag": "too_many_requests"}, "retry_after": 12}
+        });
+        assert_eq!(
+            parse_retry_after_dropbox_value(&body),
+            Some(Duration::from_secs(12))
         );
     }
 

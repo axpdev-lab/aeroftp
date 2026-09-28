@@ -1045,8 +1045,11 @@ impl OneDriveProvider {
 
         // The ids cached for either path and everything under them now point
         // at a moved item, or at the one a replace sent to the recycle bin.
-        super::forget_cached_subtree(&mut self.path_cache, from_path.trim_matches('/'));
-        super::forget_cached_subtree(&mut self.path_cache, to_path.trim_matches('/'));
+        super::forget_cached_subtree_ignoring_case(
+            &mut self.path_cache,
+            from_path.trim_matches('/'),
+        );
+        super::forget_cached_subtree_ignoring_case(&mut self.path_cache, to_path.trim_matches('/'));
 
         info!("Renamed {} to {}", from, to);
         Ok(())
@@ -1546,6 +1549,10 @@ impl StorageProvider for OneDriveProvider {
             (self.current_path.clone(), path)
         };
 
+        // A parent removed/recreated outside this connection (or beneath a
+        // deleted ancestor) can keep an obsolete ID in the path cache. Resolve
+        // the live path before this write; never create under a moved cached ID.
+        self.path_cache.remove(parent_path.trim_matches('/'));
         let parent_id = self.resolve_path(&parent_path).await?;
 
         let body = serde_json::json!({
@@ -1568,6 +1575,12 @@ impl StorageProvider for OneDriveProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
+            // Same mapping as rename: only Graph's own code for a taken name is
+            // AlreadyExists (a 409 can also mean a missing parent), so callers
+            // that create a folder idempotently can tell "already there" apart.
+            if text.contains("nameAlreadyExists") {
+                return Err(ProviderError::AlreadyExists(path.to_string()));
+            }
             return Err(ProviderError::Other(format!(
                 "mkdir failed: {}",
                 sanitize_api_error(&text)
@@ -1604,8 +1617,12 @@ impl StorageProvider for OneDriveProvider {
             )));
         }
 
-        // Clear from cache
-        self.path_cache.remove(full_path.trim_matches('/'));
+        // The ids cached for the deleted item and everything under it now
+        // point into the recycle bin.
+        super::forget_cached_subtree_ignoring_case(
+            &mut self.path_cache,
+            full_path.trim_matches('/'),
+        );
 
         info!("Deleted: {}", path);
         Ok(())
@@ -2971,6 +2988,179 @@ mod tests {
             .await;
         assert!(outcome.is_err(), "{outcome:?}");
         assert!(!local.exists(), "{:?}", std::fs::read_to_string(&local));
+    }
+
+    #[tokio::test]
+    async fn ehud_mkdir_resolves_live_parent_instead_of_reusing_a_stale_id() {
+        use axum::{
+            http::{Method, StatusCode},
+            routing::any,
+            Json, Router,
+        };
+        use serde_json::json;
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = requests.clone();
+        let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+            let seen = seen.clone();
+            async move {
+                let method = request.method().clone();
+                let path = request.uri().path().to_string();
+                seen.lock().unwrap().push(format!("{method} {path}"));
+                match (method, path.as_str()) {
+                    (Method::GET, "/v1.0/me/drive/root:/parent") => (
+                        StatusCode::OK,
+                        Json(json!({"id":"live-parent","name":"parent","size":0,"folder":{}})),
+                    ),
+                    (Method::POST, "/v1.0/me/drive/items/live-parent/children") => {
+                        (StatusCode::CREATED, Json(json!({"id":"new-child"})))
+                    }
+                    (Method::POST, "/v1.0/me/drive/root/children") => {
+                        (StatusCode::CREATED, Json(json!({"id":"root-child"})))
+                    }
+                    _ => (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error":{"code":"itemNotFound"}})),
+                    ),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+        p.current_path = "/parent".into();
+        for path in ["/parent/child", "relative-child"] {
+            p.path_cache
+                .insert("parent".into(), "deleted-parent-id".into());
+            p.mkdir(path)
+                .await
+                .expect("mkdir must re-resolve the existing parent");
+        }
+        p.mkdir("/root-child").await.unwrap();
+        let paths = requests.lock().unwrap();
+        assert_eq!(paths.iter().filter(|p| p.starts_with("GET ")).count(), 2);
+        assert_eq!(paths.iter().filter(|p| p.starts_with("POST ")).count(), 3);
+        assert!(!paths.iter().any(|p| p.contains("deleted-parent-id")));
+        assert!(paths.last().unwrap().contains("/root/children"));
+        server.abort();
+    }
+
+    /// Graph fixture answering every request with `answer(method, path)` and
+    /// recording `METHOD path`.
+    async fn graph_fixture(
+        answer: fn(&axum::http::Method, &str) -> (axum::http::StatusCode, serde_json::Value),
+    ) -> (
+        OneDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use axum::{routing::any, Json, Router};
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = requests.clone();
+        let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+            let seen = seen.clone();
+            async move {
+                let method = request.method().clone();
+                let path = request.uri().path().to_string();
+                seen.lock().unwrap().push(format!("{method} {path}"));
+                let (status, body) = answer(&method, &path);
+                (status, Json(body))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+        (p, requests, server)
+    }
+
+    // Pre-existing, found by the #960 review: delete dropped only the exact
+    // cache key, so every descendant kept an id that now points into the
+    // recycle bin, and a folder recreated under the same name resolved to it.
+    #[tokio::test]
+    async fn ehud_delete_forgets_the_cached_subtree() {
+        let (mut p, requests, server) =
+            graph_fixture(|_, _| (axum::http::StatusCode::NO_CONTENT, serde_json::Value::Null))
+                .await;
+        for (path, id) in [
+            ("dir", "id-dir"),
+            ("dir/sub", "id-sub"),
+            ("Dir/Sub", "id-sub"),
+            ("dir/sub/file", "id-file"),
+            ("DIR/sub/file", "id-file"),
+            ("dirx", "id-dirx"),
+            ("Dirx", "id-dirx"),
+        ] {
+            p.path_cache.insert(path.into(), id.into());
+        }
+        p.delete("/dir").await.unwrap();
+        assert_eq!(
+            *requests.lock().unwrap(),
+            ["DELETE /v1.0/me/drive/items/id-dir"]
+        );
+        let mut kept: Vec<_> = p.path_cache.keys().cloned().collect();
+        kept.sort();
+        // OneDrive paths ignore case: `Dir/Sub` and `DIR/sub/file` name items
+        // under the deleted folder too, while `Dirx` is still a sibling.
+        assert_eq!(
+            kept,
+            ["Dirx", "dirx"],
+            "a sibling sharing the prefix stays cached"
+        );
+        server.abort();
+    }
+
+    // Pre-existing, found by the #960 review: rename maps Graph's 409
+    // nameAlreadyExists to AlreadyExists but mkdir did not, so an idempotent
+    // "create if missing" (the CLI's mkdir -p and transfer paths) failed on
+    // an existing folder.
+    #[tokio::test]
+    async fn ehud_mkdir_reports_a_taken_name_as_already_exists() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, _requests, server) = graph_fixture(|method, path| {
+            let refused = |code: &str| {
+                (
+                    StatusCode::CONFLICT,
+                    serde_json::json!({"error":{"code":code,"message":"refused"}}),
+                )
+            };
+            match (method, path) {
+                (&Method::GET, "/v1.0/me/drive/root:/parent") => (
+                    StatusCode::OK,
+                    serde_json::json!({"id":"id-parent","name":"parent","size":0,"folder":{}}),
+                ),
+                (_, "/v1.0/me/drive/root/children") => refused("nameAlreadyExists"),
+                _ => refused("resourceModified"),
+            }
+        })
+        .await;
+        assert!(
+            matches!(
+                p.mkdir("/taken").await,
+                Err(ProviderError::AlreadyExists(ref name)) if name == "/taken"
+            ),
+            "a taken name is AlreadyExists"
+        );
+        let other = p.mkdir("/parent/child").await;
+        assert!(
+            other.is_err() && !matches!(other, Err(ProviderError::AlreadyExists(_))),
+            "any other 409 is not: {other:?}"
+        );
+        server.abort();
     }
 
     // ─── Live check for #397 on a real account ─────────────────────────
