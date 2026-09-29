@@ -1954,21 +1954,29 @@ impl StorageProvider for FtpProvider {
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
-        let stream = self.stream_mut()?;
         // `RMD` refuses a directory that is not empty on the server. A reply
         // that says so (ProFTPD, Pure-FTPd, IIS: "Directory not empty") is
-        // `DirectoryNotEmpty`; vsftpd's bare "Remove directory operation
-        // failed." says no more than that and stays a server error.
-        stream.rmdir(path).await.map_err(|e| {
-            let refusal = Self::classify_command_refusal("rmdir", path, e);
-            match refusal {
-                ProviderError::ServerError(ref text) if reply_names_not_empty(text) => {
-                    ProviderError::DirectoryNotEmpty(text.clone())
-                }
-                other => other,
+        // `DirectoryNotEmpty`. vsftpd's bare "Remove directory operation
+        // failed." says no more than that, so the directory is looked into
+        // (dotfiles included): one that still holds entries is
+        // `DirectoryNotEmpty` too, and only a refusal of an empty or
+        // unreadable directory stays a server error (permissions, a lock).
+        let refused = self.stream_mut()?.rmdir(path).await;
+        let Err(error) = refused else {
+            return Ok(());
+        };
+        match Self::classify_command_refusal("rmdir", path, error) {
+            ProviderError::ServerError(text) if reply_names_not_empty(&text) => {
+                Err(ProviderError::DirectoryNotEmpty(text))
             }
-        })?;
-        Ok(())
+            ProviderError::ServerError(text) => match self.list_for_delete(path).await {
+                Ok(entries) if !entries.is_empty() => Err(ProviderError::DirectoryNotEmpty(
+                    format!("{text} ({path} holds {} entries)", entries.len()),
+                )),
+                _ => Err(ProviderError::ServerError(text)),
+            },
+            other => Err(other),
+        }
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -6217,6 +6225,16 @@ mod rename_contract_tests {
                         "550 Failed to change directory.\r\n".to_string()
                     }
                 }
+                "RMD" => {
+                    log.lock().unwrap().push(format!("RMD {argument}"));
+                    let prefix = format!("{}/", argument.trim_end_matches('/'));
+                    if files.lock().unwrap().iter().any(|f| f.starts_with(&prefix)) {
+                        // vsftpd's reply: it does not say why.
+                        "550 Remove directory operation failed.\r\n".to_string()
+                    } else {
+                        "250 Remove directory operation successful.\r\n".to_string()
+                    }
+                }
                 "DELE" => {
                     log.lock().unwrap().push(format!("DELE {argument}"));
                     files.lock().unwrap().retain(|f| f != &argument);
@@ -6566,6 +6584,28 @@ mod rename_contract_tests {
             .await
             .expect("a plain file is deleted");
         assert_eq!(*log.lock().unwrap(), ["DELE /d/.env"]);
+    }
+
+    /// vsftpd refuses `RMD` of a directory that is not empty with a bare 550
+    /// that does not say why, and a bare LIST hides the dotfile that keeps
+    /// it: the refusal read as a server error (exit 10). The directory is
+    /// looked into with `LIST -a`, and one that holds entries is
+    /// `DirectoryNotEmpty` (exit 9), as on the servers that say so.
+    #[tokio::test]
+    async fn a_bare_rmd_refusal_of_a_directory_holding_a_dotfile_is_not_empty() {
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/.env", "/e/b.txt"], quirks).await;
+        for dir in ["/d", "/e"] {
+            let refused = provider.rmdir(dir).await;
+            assert!(
+                matches!(refused, Err(ProviderError::DirectoryNotEmpty(_))),
+                "{dir}: {refused:?}"
+            );
+        }
     }
 
     /// A refusal that drops the session (a `553`, a refused data open)

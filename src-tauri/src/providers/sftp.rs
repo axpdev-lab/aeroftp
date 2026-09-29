@@ -3048,10 +3048,12 @@ impl StorageProvider for SftpProvider {
         tracing::info!("SFTP: Removing directory: {}", full_path);
 
         // `SSH_FXP_RMDIR` refuses a directory that is not empty on the server.
-        // A reply that says so (OpenSSH: "Directory not empty", status
-        // SSH_FX_DIR_NOT_EMPTY on v6 servers) is `DirectoryNotEmpty`; a
-        // bare "Failure" says no more than that and stays a server error.
-        until_sftp_ends(&sftp.ended, sftp.remove_dir(&full_path))
+        // A reply that says so (status SSH_FX_DIR_NOT_EMPTY on v6 servers) is
+        // `DirectoryNotEmpty`. OpenSSH answers a bare "Failure" that says no
+        // more, so the directory is looked into: one that still holds entries
+        // is `DirectoryNotEmpty` too, and only a refusal of an empty or
+        // unreadable directory stays a server error (permissions, a lock).
+        let refused = until_sftp_ends(&sftp.ended, sftp.remove_dir(&full_path))
             .await
             .map_err(|e| {
                 classify_russh_err(e, |s| {
@@ -3064,9 +3066,17 @@ impl StorageProvider for SftpProvider {
                         ProviderError::ServerError(format!("Failed to remove directory: {}", s))
                     }
                 })
-            })?;
-
-        Ok(())
+            });
+        match refused {
+            Ok(()) => Ok(()),
+            Err(ProviderError::ServerError(text)) => match self.list(&full_path).await {
+                Ok(entries) if !entries.is_empty() => Err(ProviderError::DirectoryNotEmpty(
+                    format!("{text} ({full_path} holds {} entries)", entries.len()),
+                )),
+                _ => Err(ProviderError::ServerError(text)),
+            },
+            Err(other) => Err(other),
+        }
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
