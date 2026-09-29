@@ -805,6 +805,7 @@
             "keystoreCopyName": "{name} (kutoka nakala)",
             "keystorePreviewLocalFromVault": "Orodha ya wasifu wa seva ya kifaa hiki haikuweza kusomwa, kwa hivyo ulinganisho unatumia orodha ya seva iliyohifadhiwa kwenye hifadhi salama.",
             "keystoreDecisionsFailed": "Uingizaji umekamilika, lakini chaguo zako za wasifu wa seva hazikuweza kutumika: {error}",
+            "keystoreListMergeFailed": "Uingizaji umekamilika, lakini orodha ya seva ya nakala rudufu haikuweza kuunganishwa na orodha ya kifaa hiki: {error}",
             "exportKeystoreDesc": "Hamisha vitambulisho vyote vilivyosimbwa kwenye faili ya hifadhi rudufu",
             "importKeystoreDesc": "Ingiza vitambulisho kutoka faili ya hifadhi rudufu",
             "keystoreExported": "Hazina imehamishwa kwa mafanikio (vipengele {count})",

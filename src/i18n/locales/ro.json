@@ -805,6 +805,7 @@
             "keystoreCopyName": "{name} (din copie)",
             "keystorePreviewLocalFromVault": "Lista de profiluri de server a acestui dispozitiv nu a putut fi citită, așa că comparația folosește lista de servere salvată în seif.",
             "keystoreDecisionsFailed": "Importul s-a încheiat, dar alegerile pentru profilurile de server nu au putut fi aplicate: {error}",
+            "keystoreListMergeFailed": "Importul s-a încheiat, dar lista de servere din copia de rezervă nu a putut fi îmbinată cu lista acestui dispozitiv: {error}",
             "exportKeystoreDesc": "Exportați toate credențialele criptate într-un fișier de rezervă",
             "importKeystoreDesc": "Importați credențialele dintr-un fișier de rezervă",
             "keystoreExported": "Seiful a fost exportat cu succes ({count} intrări)",

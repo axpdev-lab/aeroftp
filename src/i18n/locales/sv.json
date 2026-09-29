@@ -805,6 +805,7 @@
             "keystoreCopyName": "{name} (från säkerhetskopia)",
             "keystorePreviewLocalFromVault": "Enhetens lista över serverprofiler kunde inte läsas, så jämförelsen använder serverlistan som finns i valvet.",
             "keystoreDecisionsFailed": "Importen är klar, men dina val för serverprofilerna kunde inte tillämpas: {error}",
+            "keystoreListMergeFailed": "Importen är klar, men serverlistan från säkerhetskopian kunde inte slås ihop med listan på den här enheten: {error}",
             "exportKeystoreDesc": "Exportera alla krypterade uppgifter till en säkerhetskopia",
             "importKeystoreDesc": "Importera uppgifter från en säkerhetskopia",
             "keystoreExported": "Nyckelarkiv exporterat ({count} poster)",

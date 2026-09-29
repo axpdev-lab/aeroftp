@@ -3707,7 +3707,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                 preferencesError = e instanceof Error ? e.message : String(e);
                                                                             }
                                                                         }
-                                                                        setKeystoreMessage(keystoreImportSummary(result, preferencesError, t));
+                                                                        setKeystoreMessage(keystoreImportSummary(result, preferencesError, t, { reviewed: !!keystorePreview }));
                                                                         // F-012 W1/W2: an unmissable modal for the cases that
                                                                         // matter (restart needed, cross-machine re-key/unreadable,
                                                                         // or a reversible snapshot was taken). The inline message

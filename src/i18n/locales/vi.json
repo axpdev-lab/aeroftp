@@ -805,6 +805,7 @@
             "keystoreCopyName": "{name} (từ bản sao lưu)",
             "keystorePreviewLocalFromVault": "Không đọc được danh sách hồ sơ máy chủ của thiết bị này, nên việc so sánh dùng danh sách máy chủ lưu trong kho.",
             "keystoreDecisionsFailed": "Quá trình nhập đã xong, nhưng không áp dụng được lựa chọn của bạn cho hồ sơ máy chủ: {error}",
+            "keystoreListMergeFailed": "Quá trình nhập đã xong, nhưng không gộp được danh sách máy chủ của bản sao lưu với danh sách của thiết bị này: {error}",
             "exportKeystoreDesc": "Xuất tất cả thông tin xác thực đã mã hóa sang tệp sao lưu",
             "importKeystoreDesc": "Nhập thông tin xác thực từ tệp sao lưu",
             "keystoreExported": "Đã xuất kho lưu trữ thành công ({count} mục)",

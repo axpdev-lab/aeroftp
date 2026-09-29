@@ -820,6 +820,7 @@
             "keystoreCopyName": "{name} (babeskopiatik)",
             "keystorePreviewLocalFromVault": "Ezin izan da gailu honetako zerbitzari-profilen zerrenda irakurri, beraz konparazioak gordailuan gordetako zerbitzari-zerrenda erabiltzen du.",
             "keystoreDecisionsFailed": "Inportazioa amaitu da, baina ezin izan dira zerbitzari-profilen aukerak aplikatu: {error}",
+            "keystoreListMergeFailed": "Inportazioa amaitu da, baina babeskopiaren zerbitzari-zerrenda ezin izan da gailu honen zerrendarekin bateratu: {error}",
             "exportKeystoreDesc": "Esportatu enkriptatutako kredentzial guztiak babeskopia fitxategi batera",
             "importKeystoreDesc": "Inportatu kredentzialak babeskopia fitxategi batetik",
             "keystoreExported": "Ganga ondo esportatu da ({count} sarrera)",

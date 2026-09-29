@@ -16,6 +16,16 @@ export interface KeystoreImportOutcome {
     profileDecisionsError?: string;
 }
 
+/** What the caller knows about the import that the result does not carry. */
+export interface KeystoreImportContext {
+    /**
+     * The user reviewed the server list and chose per profile. Without a
+     * review the import applied the plan's defaults on its own, so a failure
+     * of that step is not about choices the user made.
+     */
+    reviewed: boolean;
+}
+
 /**
  * An error as the end of a sentence. The notes are joined with a space, and a
  * note ending in a raw error (`...: {error}`) ran straight into the next one
@@ -37,6 +47,7 @@ export function keystoreImportSummary(
     result: KeystoreImportOutcome,
     preferencesError: string | null,
     t: TranslationFunction,
+    context: KeystoreImportContext = { reviewed: true },
 ): { type: 'success' | 'info'; text: string } {
     // Audit 2026-05-11 C2: the restart hint is appended to the success text
     // and the dedicated banner is triggered by the caller, so the hint survives
@@ -55,7 +66,11 @@ export function keystoreImportSummary(
         extraNotes.push(t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0, defaultValue: '{count} account(s) could not be unlocked on this device. The backup was made on another computer: re-export it there with a password set on those accounts, then import it here.' }));
     }
     if (result.profileDecisionsError) {
-        extraNotes.push(t('settings.keystoreDecisionsFailed', { error: asSentence(result.profileDecisionsError) }));
+        // Review B1 (4.2.1): a skip-existing import with no review applies the
+        // default plan itself. When that fails, the user made no choices, so
+        // the note says what was not done: the two lists were not merged.
+        const key = context.reviewed ? 'settings.keystoreDecisionsFailed' : 'settings.keystoreListMergeFailed';
+        extraNotes.push(t(key, { error: asSentence(result.profileDecisionsError) }));
     }
     if (preferencesError) {
         extraNotes.push(t('settings.keystorePreferencesFailed', { error: asSentence(preferencesError) }));

@@ -805,6 +805,7 @@
             "keystoreCopyName": "{name} (aus Sicherung)",
             "keystorePreviewLocalFromVault": "Die Liste der Serverprofile dieses Geräts konnte nicht gelesen werden, daher vergleicht die Ansicht mit der im Tresor gespeicherten Serverliste.",
             "keystoreDecisionsFailed": "Der Import ist abgeschlossen, aber Ihre Auswahl für die Serverprofile konnte nicht angewendet werden: {error}",
+            "keystoreListMergeFailed": "Der Import ist abgeschlossen, aber die Serverliste der Sicherung konnte nicht mit der Liste dieses Geräts zusammengeführt werden: {error}",
             "exportKeystoreDesc": "Alle verschlüsselten Anmeldedaten in eine Sicherungsdatei exportieren",
             "importKeystoreDesc": "Anmeldedaten aus einer Sicherungsdatei importieren",
             "keystoreExported": "Schlüsselspeicher erfolgreich exportiert ({count} Einträge)",

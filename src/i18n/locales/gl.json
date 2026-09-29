@@ -820,6 +820,7 @@
             "keystoreCopyName": "{name} (da copia)",
             "keystorePreviewLocalFromVault": "Non se puido ler a lista de perfís de servidor deste dispositivo, así que a comparación usa a lista de servidores gardada na caixa forte.",
             "keystoreDecisionsFailed": "A importación rematou, pero non se puideron aplicar as túas escollas para os perfís de servidor: {error}",
+            "keystoreListMergeFailed": "A importación rematou, pero a lista de servidores da copia de seguranza non se puido combinar coa deste dispositivo: {error}",
             "exportKeystoreDesc": "Exportar todas as credenciais cifradas",
             "importKeystoreDesc": "Importar credenciais desde copia de seguridade",
             "keystoreExported": "Bóveda exportada correctamente ({count} entradas)",

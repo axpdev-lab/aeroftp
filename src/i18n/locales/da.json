@@ -805,6 +805,7 @@
             "keystoreCopyName": "{name} (fra sikkerhedskopi)",
             "keystorePreviewLocalFromVault": "Enhedens liste over serverprofiler kunne ikke læses, så sammenligningen bruger serverlisten i boksen.",
             "keystoreDecisionsFailed": "Importen er færdig, men dine valg for serverprofilerne kunne ikke anvendes: {error}",
+            "keystoreListMergeFailed": "Importen er færdig, men serverlisten fra sikkerhedskopien kunne ikke flettes med denne enheds liste: {error}",
             "exportKeystoreDesc": "Eksportér alle krypterede legitimationsoplysninger til en sikkerhedskopifil",
             "importKeystoreDesc": "Importér legitimationsoplysninger fra en sikkerhedskopifil",
             "keystoreExported": "Nøglelager eksporteret ({count} poster)",

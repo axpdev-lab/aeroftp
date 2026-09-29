@@ -805,6 +805,7 @@
             "keystoreCopyName": "{name} (mentésből)",
             "keystorePreviewLocalFromVault": "Az eszköz kiszolgálóprofil-listája nem olvasható, ezért az összehasonlítás a széfben tárolt kiszolgálólistát használja.",
             "keystoreDecisionsFailed": "Az importálás befejeződött, de a kiszolgálóprofilokra vonatkozó választásait nem sikerült alkalmazni: {error}",
+            "keystoreListMergeFailed": "Az importálás befejeződött, de a biztonsági mentés kiszolgálólistáját nem sikerült egyesíteni ennek az eszköznek a listájával: {error}",
             "exportKeystoreDesc": "Minden titkosított hitelesítő adat exportálása biztonsági másolatba",
             "importKeystoreDesc": "Hitelesítő adatok importálása biztonsági másolatból",
             "keystoreExported": "Kulcstároló sikeresen exportálva ({count} bejegyzés)",
