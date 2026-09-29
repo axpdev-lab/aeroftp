@@ -44,6 +44,34 @@ export type SyncRunFileStatus =
 export type SyncRunAction = 'upload' | 'download' | 'delete-remote' | 'delete-local';
 
 /**
+ * Why a folder a Mirror would have removed stayed (round 2 of the 4.2.1
+ * review): a folder read as "skipped" said nothing of what it still held.
+ */
+export type SyncKeptDirReason =
+    /** A row under it did not complete (failed, kept, skipped): it holds files that were not synced. */
+    | 'unfinished_rows'
+    /** Its listing shows entries the plan did not have: excluded or unlisted files. */
+    | 'entries'
+    /** The server refused it as not empty while its listing shows nothing. */
+    | 'server';
+
+/** A folder kept by the run, with the reason. */
+export interface SyncKeptDir {
+    file_path: string;
+    reason: SyncKeptDirReason;
+}
+
+/** What `sync_remove_empty_dir` answers, read into an outcome and a reason. */
+export function readEmptyDirAnswer(answer: unknown): { outcome: 'removed' } | { outcome: 'kept'; reason: 'entries' | 'server' } {
+    switch (answer) {
+        case 'removed': return { outcome: 'removed' };
+        case 'kept:entries': return { outcome: 'kept', reason: 'entries' };
+        case 'kept:server': return { outcome: 'kept', reason: 'server' };
+        default: throw new Error(`unexpected answer ${JSON.stringify(answer ?? null)}`);
+    }
+}
+
+/**
  * One file the runner must act on. `relativePath` is resolved against both
  * `localRoot` and `remoteRoot`; it may be a bare name (flat sync) or contain
  * `/` separators (recursive sync) — the runner pre-creates parent dirs either
@@ -170,6 +198,8 @@ export interface SyncRunReport {
     durationMs: number;
     /** true iff the run stopped early on cancel or transfer budget. */
     cancelled: boolean;
+    /** The folders a delete row left in place, each with why (counted in `skipped`). */
+    keptDirs: SyncKeptDir[];
     /**
      * GAP-9a — present only when `postSyncVerification` ran (Maniac mode). The
      * counts feed the `syncPanel.maniacPostSyncReport` line in the result
@@ -550,6 +580,7 @@ export const runRemoteSync = async (
     let downloaded = 0;
     let deleted = 0;
     let skipped = 0;
+    const keptDirs: SyncKeptDir[] = [];
     let dirsCreated = 0;
     let retried = 0;
     let verifyFailed = 0;
@@ -968,19 +999,18 @@ export const runRemoteSync = async (
             // delete took both along. What stays keeps its folder, and every
             // folder above it, as skipped rather than failed.
             let outcome: 'removed' | 'kept' | 'failed' = 'kept';
+            let keptReason: SyncKeptDirReason = 'unfinished_rows';
             if (!holdsUnfinishedRow(item.relativePath, i)) {
                 const side = item.action === 'delete-remote' ? 'remote' : 'local';
                 try {
-                    const answer = await invoke<unknown>('sync_remove_empty_dir', {
+                    const answer = readEmptyDirAnswer(await invoke<unknown>('sync_remove_empty_dir', {
                         target: side === 'local' || config.isLocalLocal
                             ? 'local'
                             : config.isProvider ? 'provider' : 'ftp',
                         path: side === 'remote' ? remoteFilePath : localFilePath,
-                    });
-                    if (answer !== 'removed' && answer !== 'kept') {
-                        throw new Error(`unexpected answer ${JSON.stringify(answer ?? null)}`);
-                    }
-                    outcome = answer;
+                    }));
+                    outcome = answer.outcome;
+                    if (answer.outcome === 'kept') keptReason = answer.reason;
                 } catch (e) {
                     outcome = 'failed';
                     const errInfo: SyncErrorInfo = {
@@ -1004,6 +1034,7 @@ export const runRemoteSync = async (
                 setStatus(item.relativePath, 'success');
             } else if (outcome === 'kept') {
                 skipped++;
+                keptDirs.push({ file_path: item.relativePath, reason: keptReason });
                 if (journalEntry) journalEntry.status = 'skipped';
                 setStatus(item.relativePath, 'skipped');
             }
@@ -1239,6 +1270,7 @@ export const runRemoteSync = async (
         totalBytes,
         durationMs: now() - startTime,
         cancelled: runCancelled,
+        keptDirs,
         postSyncVerification,
         delta_savings,
         delta_bytes_on_wire: delta_savings?.total_bytes_sent,

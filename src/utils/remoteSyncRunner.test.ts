@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+    readEmptyDirAnswer,
     runRemoteSync,
     groupErrorsByKind,
     filesFromJournal,
@@ -498,7 +499,7 @@ describe('remoteSyncRunner: a folder row never takes along what stayed', () => {
 
     it('keeps every folder above a folder that stayed', async () => {
         const { invoke, calls } = makeInvoke({
-            sync_remove_empty_dir: (args) => (args?.path === '/srv/data/a/b' ? 'kept' : 'removed'),
+            sync_remove_empty_dir: (args) => (args?.path === '/srv/data/a/b' ? 'kept:entries' : 'removed'),
         });
         const report = await runRemoteSync(
             [file('a/b', 'delete-remote', { isDir: true }), file('a', 'delete-remote', { isDir: true })],
@@ -510,6 +511,12 @@ describe('remoteSyncRunner: a folder row never takes along what stayed', () => {
         expect(folderRemovals(calls, '/srv/data/a')).toEqual([]);
         expect(report.skipped).toBe(2);
         expect(report.errors).toEqual([]);
+        // Round 2: each kept folder says why. The lower one holds entries the
+        // plan did not have; the upper one holds a row that did not complete.
+        expect(report.keptDirs).toEqual([
+            { file_path: 'a/b', reason: 'entries' },
+            { file_path: 'a', reason: 'unfinished_rows' },
+        ]);
     });
 
     it('removes a folder with versioned backup on only by the non-recursive removal (B2)', async () => {
@@ -533,7 +540,7 @@ describe('remoteSyncRunner: a folder row never takes along what stayed', () => {
     it('keeps a folder that still holds an excluded file, as kept and not as an error (H6)', async () => {
         // docs/.env is excluded, so the compare gave it no row: only the
         // folder row says anything about docs.
-        const { invoke, calls } = makeInvoke({ sync_remove_empty_dir: () => 'kept' });
+        const { invoke, calls } = makeInvoke({ sync_remove_empty_dir: () => 'kept:entries' });
         const report = await runRemoteSync(
             [file('docs', 'delete-remote', { isDir: true })],
             noDirs,
@@ -547,6 +554,24 @@ describe('remoteSyncRunner: a folder row never takes along what stayed', () => {
         expect(report.deleted).toBe(0);
         expect(report.skipped).toBe(1);
         expect(report.errors).toEqual([]);
+        expect(report.keptDirs).toEqual([{ file_path: 'docs', reason: 'entries' }]);
+    });
+
+    it('says when the server, not the listing, is what keeps a folder', async () => {
+        // An FTP LIST that hides dot files: RMD refuses, the listing shows
+        // nothing, and the run says so instead of a bare "skipped".
+        const { invoke } = makeInvoke({ sync_remove_empty_dir: () => 'kept:server' });
+        const report = await runRemoteSync(
+            [file('docs', 'delete-remote', { isDir: true })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.skipped).toBe(1);
+        expect(report.keptDirs).toEqual([{ file_path: 'docs', reason: 'server' }]);
+        // The old bare answer is not read as anything.
+        expect(() => readEmptyDirAnswer('kept')).toThrow(/unexpected answer/);
     });
 
     it.each([
