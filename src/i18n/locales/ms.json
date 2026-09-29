@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (daripada sandaran)",
             "keystorePreviewLocalFromVault": "Senarai profil pelayan peranti ini tidak dapat dibaca, jadi perbandingan menggunakan senarai pelayan yang disimpan dalam peti besi.",
             "keystoreDecisionsFailed": "Import selesai, tetapi pilihan anda untuk profil pelayan tidak dapat digunakan: {error}",
+            "keystoreListMergeFailed": "Import selesai, tetapi senarai pelayan daripada sandaran tidak dapat digabungkan dengan senarai peranti ini: {error}",
+            "keystorePartitionSkipped": "Partition akaun sandaran tidak dapat dibuka kunci pada peranti ini dan ditinggalkan. Import dengan Tulis Ganti untuk memulihkan partition itu sepenuhnya.",
             "exportKeystoreDesc": "Eksport semua kelayakan disulitkan ke fail sandaran",
             "importKeystoreDesc": "Import kelayakan dari fail sandaran",
             "keystoreExported": "Stor kunci berjaya dieksport ({count} entri)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Kosongkan gantian",
             "uiTokensApplied": "Tulis ganti yang digunakan: {count}",
             "uiTokensRejected": "Entri yang ditolak: {count}",
-            "keystorePreferencesFailed": "Import selesai, tetapi keutamaan aplikasi anda tidak dapat dipulihkan: {error}"
+            "keystorePreferencesFailed": "Import selesai, tetapi keutamaan aplikasi anda tidak dapat dipulihkan: {error}",
+            "keystorePreviewBackupUnreadable": "Senarai pelayan dalam sandaran ini tidak dapat dibaca pada peranti ini, jadi perbandingan menggunakan senarai yang disimpan dalam peti besi sandaran. Import tetap menggantikan senarai pelayan pada peranti ini."
         },
         "devtools": {
             "title": "AeroTools",

@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (iš atsarginės kopijos)",
             "keystorePreviewLocalFromVault": "Nepavyko nuskaityti šio įrenginio serverių profilių sąrašo, todėl palyginimui naudojamas saugykloje išsaugotas serverių sąrašas.",
             "keystoreDecisionsFailed": "Importavimas baigtas, bet jūsų pasirinkimų serverių profiliams pritaikyti nepavyko: {error}",
+            "keystoreListMergeFailed": "Importavimas baigtas, bet atsarginės kopijos serverių sąrašo nepavyko sujungti su šio įrenginio sąrašu: {error}",
+            "keystorePartitionSkipped": "Atsarginės kopijos paskyrų skaidinio šiame įrenginyje atrakinti nepavyksta, todėl jis praleistas. Norėdami atkurti visą tą skaidinį, importuokite pasirinkę Perrašyti.",
             "exportKeystoreDesc": "Eksportuoti visus užšifruotus prisijungimo duomenis į atsarginės kopijos failą",
             "importKeystoreDesc": "Importuoti prisijungimo duomenis iš atsarginės kopijos failo",
             "keystoreExported": "Raktų saugykla sėkmingai eksportuota ({count} įrašų)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Išvalyti perrašymus",
             "uiTokensApplied": "Pritaikyti pakeitimai: {count}",
             "uiTokensRejected": "Atmesti įrašai: {count}",
-            "keystorePreferencesFailed": "Importavimas baigtas, bet nepavyko atkurti jūsų programos nuostatų: {error}"
+            "keystorePreferencesFailed": "Importavimas baigtas, bet nepavyko atkurti jūsų programos nuostatų: {error}",
+            "keystorePreviewBackupUnreadable": "Šios atsarginės kopijos serverių sąrašo nepavyksta perskaityti šiame įrenginyje, todėl palyginimui naudojamas sąrašas, išsaugotas atsarginės kopijos saugykloje. Importavimas vis tiek pakeičia šio įrenginio serverių sąrašą."
         },
         "devtools": {
             "title": "AeroTools",

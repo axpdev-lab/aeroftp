@@ -820,6 +820,8 @@
             "keystoreCopyName": "{name} (da copia)",
             "keystorePreviewLocalFromVault": "Non se puido ler a lista de perfís de servidor deste dispositivo, así que a comparación usa a lista de servidores gardada na caixa forte.",
             "keystoreDecisionsFailed": "A importación rematou, pero non se puideron aplicar as túas escollas para os perfís de servidor: {error}",
+            "keystoreListMergeFailed": "A importación rematou, pero a lista de servidores da copia de seguranza non se puido combinar coa deste dispositivo: {error}",
+            "keystorePartitionSkipped": "A partición de contas da copia de seguranza non se pode desbloquear neste dispositivo e quedou fóra. Importa con Sobrescribir para restaurar esa partición enteira.",
             "exportKeystoreDesc": "Exportar todas as credenciais cifradas",
             "importKeystoreDesc": "Importar credenciais desde copia de seguridade",
             "keystoreExported": "Bóveda exportada correctamente ({count} entradas)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Borrar as substitucións",
             "uiTokensApplied": "Substitucións aplicadas: {count}",
             "uiTokensRejected": "Entradas rexeitadas: {count}",
-            "keystorePreferencesFailed": "A importación rematou, pero non se puideron restaurar as túas preferencias da aplicación: {error}"
+            "keystorePreferencesFailed": "A importación rematou, pero non se puideron restaurar as túas preferencias da aplicación: {error}",
+            "keystorePreviewBackupUnreadable": "A lista de servidores desta copia non se pode ler neste dispositivo, así que a comparación usa a lista gardada na caixa forte da copia. A importación substitúe igualmente a lista de servidores neste dispositivo."
         },
         "devtools": {
             "title": "AeroTools",

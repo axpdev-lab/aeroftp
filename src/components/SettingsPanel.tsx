@@ -3652,6 +3652,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             // another machine without a portable key).
                                                                             userPartitionsRekeyed?: number;
                                                                             userPartitionsUnreadable?: number;
+                                                                            // Review of #980: the backup's partition was left
+                                                                            // out, it cannot be read here.
+                                                                            profilePartitionSkipped?: boolean;
                                                                             // F-012 W3: pre-import snapshot path of the local
                                                                             // user_partitions.db (makes the import reversible).
                                                                             userPartitionsBackupPath?: string;
@@ -3707,7 +3710,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                 preferencesError = e instanceof Error ? e.message : String(e);
                                                                             }
                                                                         }
-                                                                        setKeystoreMessage(keystoreImportSummary(result, preferencesError, t));
+                                                                        setKeystoreMessage(keystoreImportSummary(result, preferencesError, t, { reviewed: !!keystorePreview }));
                                                                         // F-012 W1/W2: an unmissable modal for the cases that
                                                                         // matter (restart needed, cross-machine re-key/unreadable,
                                                                         // or a reversible snapshot was taken). The inline message

@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (mula sa backup)",
             "keystorePreviewLocalFromVault": "Hindi mabasa ang listahan ng mga profile ng server ng device na ito, kaya ang paghahambing ay gumagamit ng listahan ng server na naka-save sa vault.",
             "keystoreDecisionsFailed": "Tapos na ang pag-import, pero hindi nailapat ang mga pinili mo para sa mga profile ng server: {error}",
+            "keystoreListMergeFailed": "Tapos na ang pag-import, pero hindi naipagsama ang listahan ng server mula sa backup sa listahan ng device na ito: {error}",
+            "keystorePartitionSkipped": "Hindi ma-unlock sa device na ito ang partition ng mga account ng backup at hindi ito isinama. Mag-import gamit ang Overwrite para maibalik nang buo ang partition na iyon.",
             "exportKeystoreDesc": "I-export ang lahat ng naka-encrypt na kredensyal sa backup file",
             "importKeystoreDesc": "Mag-import ng mga kredensyal mula sa backup file",
             "keystoreExported": "Matagumpay na na-export ang keystore ({count} entry)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "I-clear ang mga override",
             "uiTokensApplied": "Mga na-apply na override: {count}",
             "uiTokensRejected": "Mga tinanggihang entry: {count}",
-            "keystorePreferencesFailed": "Tapos na ang pag-import, pero hindi naibalik ang mga kagustuhan mo sa app: {error}"
+            "keystorePreferencesFailed": "Tapos na ang pag-import, pero hindi naibalik ang mga kagustuhan mo sa app: {error}",
+            "keystorePreviewBackupUnreadable": "Hindi mabasa ang listahan ng server sa backup na ito sa device na ito, kaya ang paghahambing ay gumagamit ng listahan na naka-save sa vault ng backup. Papalitan pa rin ng pag-import ang listahan ng server sa device na ito."
         },
         "devtools": {
             "title": "AeroTools",

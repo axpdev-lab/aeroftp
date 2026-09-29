@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (varmuuskopiosta)",
             "keystorePreviewLocalFromVault": "Tämän laitteen palvelinprofiilien luetteloa ei voitu lukea, joten vertailussa käytetään holviin tallennettua palvelinluetteloa.",
             "keystoreDecisionsFailed": "Tuonti valmistui, mutta palvelinprofiileja koskevia valintojasi ei voitu toteuttaa: {error}",
+            "keystoreListMergeFailed": "Tuonti valmistui, mutta varmuuskopion palvelinluetteloa ei voitu yhdistää tämän laitteen luetteloon: {error}",
+            "keystorePartitionSkipped": "Varmuuskopion tiliosiota ei voi avata tällä laitteella, ja se jätettiin pois. Tuo Korvaa-valinnalla palauttaaksesi osion kokonaan.",
             "exportKeystoreDesc": "Vie kaikki salatut tunnistetiedot varmuuskopiotiedostoon",
             "importKeystoreDesc": "Tuo tunnistetiedot varmuuskopiotiedostosta",
             "keystoreExported": "Avainholvi viety onnistuneesti ({count} merkintää)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Tyhjennä ohitukset",
             "uiTokensApplied": "Käytetyt ohitukset: {count}",
             "uiTokensRejected": "Hylätyt kohteet: {count}",
-            "keystorePreferencesFailed": "Tuonti valmistui, mutta sovelluksen asetuksiasi ei voitu palauttaa: {error}"
+            "keystorePreferencesFailed": "Tuonti valmistui, mutta sovelluksen asetuksiasi ei voitu palauttaa: {error}",
+            "keystorePreviewBackupUnreadable": "Tämän varmuuskopion palvelinluetteloa ei voida lukea tällä laitteella, joten vertailussa käytetään varmuuskopion holviin tallennettua luetteloa. Tuonti korvaa silti tämän laitteen palvelinluettelon."
         },
         "devtools": {
             "title": "AeroTools",

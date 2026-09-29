@@ -1246,6 +1246,8 @@
             "keystoreCopyName": "{name} (dal backup)",
             "keystorePreviewLocalFromVault": "Non è stato possibile leggere l'elenco dei profili server di questo dispositivo, quindi il confronto usa l'elenco dei server salvato nel vault.",
             "keystoreDecisionsFailed": "L'importazione è terminata, ma le tue scelte sui profili server non sono state applicate: {error}",
+            "keystoreListMergeFailed": "L'importazione è terminata, ma l'elenco dei server del backup non è stato unito a quello di questo dispositivo: {error}",
+            "keystorePartitionSkipped": "La partizione degli account del backup non può essere sbloccata su questo dispositivo ed è stata lasciata fuori. Importa con Sovrascrivi per ripristinare quella partizione per intero.",
             "exportKeystoreDesc": "Esporta tutte le credenziali crittografate in un file di backup",
             "importKeystoreDesc": "Importa credenziali da un file di backup",
             "importKeystorePrompt": "Inserisci la password usata per cifrare questo backup del keystore.",
@@ -1615,7 +1617,8 @@
             "uiTokensReset": "Cancella override",
             "uiTokensApplied": "Sostituzioni applicate: {count}",
             "uiTokensRejected": "Voci rifiutate: {count}",
-            "keystorePreferencesFailed": "L'importazione è terminata, ma le tue preferenze dell'app non sono state ripristinate: {error}"
+            "keystorePreferencesFailed": "L'importazione è terminata, ma le tue preferenze dell'app non sono state ripristinate: {error}",
+            "keystorePreviewBackupUnreadable": "L'elenco dei server in questo backup non può essere letto su questo dispositivo, quindi il confronto usa la copia salvata nel vault del backup. L'importazione sostituisce comunque l'elenco dei server su questo dispositivo."
         },
         "appearance": {
             "patternCross": "Croce",

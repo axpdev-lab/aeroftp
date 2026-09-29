@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (mentésből)",
             "keystorePreviewLocalFromVault": "Az eszköz kiszolgálóprofil-listája nem olvasható, ezért az összehasonlítás a széfben tárolt kiszolgálólistát használja.",
             "keystoreDecisionsFailed": "Az importálás befejeződött, de a kiszolgálóprofilokra vonatkozó választásait nem sikerült alkalmazni: {error}",
+            "keystoreListMergeFailed": "Az importálás befejeződött, de a biztonsági mentés kiszolgálólistáját nem sikerült egyesíteni ennek az eszköznek a listájával: {error}",
+            "keystorePartitionSkipped": "A biztonsági mentés fiókpartíciója nem oldható fel ezen az eszközön, ezért kimaradt. A partíció teljes visszaállításához importálja Felülírás beállítással.",
             "exportKeystoreDesc": "Minden titkosított hitelesítő adat exportálása biztonsági másolatba",
             "importKeystoreDesc": "Hitelesítő adatok importálása biztonsági másolatból",
             "keystoreExported": "Kulcstároló sikeresen exportálva ({count} bejegyzés)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Felülbírálások törlése",
             "uiTokensApplied": "Alkalmazott felülírások: {count}",
             "uiTokensRejected": "Elutasított bejegyzések: {count}",
-            "keystorePreferencesFailed": "Az importálás befejeződött, de az alkalmazás beállításait nem sikerült visszaállítani: {error}"
+            "keystorePreferencesFailed": "Az importálás befejeződött, de az alkalmazás beállításait nem sikerült visszaállítani: {error}",
+            "keystorePreviewBackupUnreadable": "Ennek a mentésnek a kiszolgálólistája nem olvasható ezen az eszközön, ezért az összehasonlítás a mentés széfjében tárolt listát használja. Az importálás ennek ellenére lecseréli az eszköz kiszolgálólistáját."
         },
         "devtools": {
             "title": "AeroTools",

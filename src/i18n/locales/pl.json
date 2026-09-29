@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (z kopii)",
             "keystorePreviewLocalFromVault": "Nie udało się odczytać listy profili serwerów tego urządzenia, więc porównanie używa listy serwerów zapisanej w sejfie.",
             "keystoreDecisionsFailed": "Import zakończył się, ale nie udało się zastosować Twoich wyborów dla profili serwerów: {error}",
+            "keystoreListMergeFailed": "Import zakończył się, ale nie udało się scalić listy serwerów z kopii zapasowej z listą tego urządzenia: {error}",
+            "keystorePartitionSkipped": "Partycji kont z kopii zapasowej nie można odblokować na tym urządzeniu i została pominięta. Zaimportuj z opcją Nadpisz, aby przywrócić tę partycję w całości.",
             "exportKeystoreDesc": "Eksportuj wszystkie zaszyfrowane dane logowania do pliku kopii zapasowej",
             "importKeystoreDesc": "Importuj dane logowania z pliku kopii zapasowej",
             "keystoreExported": "Magazyn wyeksportowany pomyślnie ({count} wpisów)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Wyczyść nadpisania",
             "uiTokensApplied": "Zastosowane nadpisania: {count}",
             "uiTokensRejected": "Odrzucone wpisy: {count}",
-            "keystorePreferencesFailed": "Import zakończył się, ale nie udało się przywrócić Twoich preferencji aplikacji: {error}"
+            "keystorePreferencesFailed": "Import zakończył się, ale nie udało się przywrócić Twoich preferencji aplikacji: {error}",
+            "keystorePreviewBackupUnreadable": "Listy serwerów z tej kopii nie można odczytać na tym urządzeniu, więc porównanie korzysta z listy zapisanej w sejfie kopii. Import mimo to zastępuje listę serwerów na tym urządzeniu."
         },
         "devtools": {
             "title": "AeroTools",

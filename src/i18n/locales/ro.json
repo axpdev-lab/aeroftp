@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (din copie)",
             "keystorePreviewLocalFromVault": "Lista de profiluri de server a acestui dispozitiv nu a putut fi citită, așa că comparația folosește lista de servere salvată în seif.",
             "keystoreDecisionsFailed": "Importul s-a încheiat, dar alegerile pentru profilurile de server nu au putut fi aplicate: {error}",
+            "keystoreListMergeFailed": "Importul s-a încheiat, dar lista de servere din copia de rezervă nu a putut fi îmbinată cu lista acestui dispozitiv: {error}",
+            "keystorePartitionSkipped": "Partiția de conturi a copiei de rezervă nu poate fi deblocată pe acest dispozitiv și a fost omisă. Importați cu Suprascrie pentru a restaura acea partiție în întregime.",
             "exportKeystoreDesc": "Exportați toate credențialele criptate într-un fișier de rezervă",
             "importKeystoreDesc": "Importați credențialele dintr-un fișier de rezervă",
             "keystoreExported": "Seiful a fost exportat cu succes ({count} intrări)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Șterge suprascrierile",
             "uiTokensApplied": "Suprascrieri aplicate: {count}",
             "uiTokensRejected": "Intrări respinse: {count}",
-            "keystorePreferencesFailed": "Importul s-a încheiat, dar preferințele aplicației nu au putut fi restaurate: {error}"
+            "keystorePreferencesFailed": "Importul s-a încheiat, dar preferințele aplicației nu au putut fi restaurate: {error}",
+            "keystorePreviewBackupUnreadable": "Lista de servere din această copie nu poate fi citită pe acest dispozitiv, așa că comparația folosește lista salvată în seiful copiei. Importul înlocuiește totuși lista de servere de pe acest dispozitiv."
         },
         "devtools": {
             "title": "AeroTools",

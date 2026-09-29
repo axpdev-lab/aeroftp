@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name}（来自备份）",
             "keystorePreviewLocalFromVault": "无法读取此设备的服务器配置列表，因此比较使用保管库中保存的服务器列表。",
             "keystoreDecisionsFailed": "导入已完成，但未能应用您对服务器配置的选择：{error}",
+            "keystoreListMergeFailed": "导入已完成，但未能将备份中的服务器列表与此设备的列表合并：{error}",
+            "keystorePartitionSkipped": "备份的账户分区无法在此设备上解锁，已被跳过。请使用“覆盖”方式导入以完整恢复该分区。",
             "exportKeystoreDesc": "将所有加密凭据导出到备份文件",
             "importKeystoreDesc": "从备份文件导入凭据",
             "keystoreExported": "密钥库导出成功（{count} 条记录）",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "清除覆盖",
             "uiTokensApplied": "已应用的覆盖：{count}",
             "uiTokensRejected": "被拒绝的条目：{count}",
-            "keystorePreferencesFailed": "导入已完成，但未能恢复您的应用偏好设置：{error}"
+            "keystorePreferencesFailed": "导入已完成，但未能恢复您的应用偏好设置：{error}",
+            "keystorePreviewBackupUnreadable": "此备份中的服务器列表无法在此设备上读取，因此比较将使用保存在备份保管库中的列表。导入仍会替换此设备上的服务器列表。"
         },
         "devtools": {
             "title": "AeroTools",

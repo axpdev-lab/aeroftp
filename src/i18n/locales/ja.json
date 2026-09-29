@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (バックアップから)",
             "keystorePreviewLocalFromVault": "このデバイスのサーバープロファイル一覧を読み取れなかったため、比較には保管庫に保存されたサーバー一覧を使っています。",
             "keystoreDecisionsFailed": "インポートは完了しましたが、サーバープロファイルに対する選択を適用できませんでした: {error}",
+            "keystoreListMergeFailed": "インポートは完了しましたが、バックアップのサーバー一覧をこのデバイスの一覧と統合できませんでした: {error}",
+            "keystorePartitionSkipped": "バックアップのアカウントパーティションはこのデバイスでロック解除できないため除外されました。そのパーティションを丸ごと復元するには「上書き」でインポートしてください。",
             "exportKeystoreDesc": "暗号化された資格情報をバックアップファイルにエクスポート",
             "importKeystoreDesc": "バックアップファイルから資格情報をインポート",
             "keystoreExported": "キーストアのエクスポートに成功しました（{count}件）",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "オーバーライドを消去",
             "uiTokensApplied": "適用された上書き: {count}",
             "uiTokensRejected": "拒否されたエントリー: {count}",
-            "keystorePreferencesFailed": "インポートは完了しましたが、アプリの設定を復元できませんでした: {error}"
+            "keystorePreferencesFailed": "インポートは完了しましたが、アプリの設定を復元できませんでした: {error}",
+            "keystorePreviewBackupUnreadable": "このバックアップのサーバー一覧はこのデバイスで読み取れないため、比較にはバックアップの保管庫に保存された一覧を使用します。インポートは、それでもこのデバイスのサーバー一覧を置き換えます。"
         },
         "devtools": {
             "title": "AeroTools",

@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (백업에서)",
             "keystorePreviewLocalFromVault": "이 기기의 서버 프로필 목록을 읽을 수 없어 보관함에 저장된 서버 목록과 비교합니다.",
             "keystoreDecisionsFailed": "가져오기는 완료되었지만 서버 프로필에 대한 선택을 적용하지 못했습니다: {error}",
+            "keystoreListMergeFailed": "가져오기는 완료되었지만 백업의 서버 목록을 이 기기의 목록과 병합하지 못했습니다: {error}",
+            "keystorePartitionSkipped": "백업의 계정 파티션을 이 기기에서 잠금 해제할 수 없어 제외되었습니다. 해당 파티션을 통째로 복원하려면 덮어쓰기로 가져오세요.",
             "exportKeystoreDesc": "암호화된 모든 자격 증명을 백업 파일로 내보냅니다",
             "importKeystoreDesc": "백업 파일에서 자격 증명을 가져옵니다",
             "keystoreExported": "키 저장소를 성공적으로 내보냈습니다 ({count}개 항목)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "재정의 지우기",
             "uiTokensApplied": "적용된 재정의: {count}",
             "uiTokensRejected": "거부된 항목: {count}",
-            "keystorePreferencesFailed": "가져오기는 완료되었지만 앱 환경설정을 복원하지 못했습니다: {error}"
+            "keystorePreferencesFailed": "가져오기는 완료되었지만 앱 환경설정을 복원하지 못했습니다: {error}",
+            "keystorePreviewBackupUnreadable": "이 백업의 서버 목록은 이 기기에서 읽을 수 없어 비교에는 백업의 보관함에 저장된 목록을 사용합니다. 가져오기는 그래도 이 기기의 서버 목록을 대체합니다."
         },
         "devtools": {
             "title": "AeroTools",

@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (de la còpia)",
             "keystorePreviewLocalFromVault": "No s'ha pogut llegir la llista de perfils de servidor d'aquest dispositiu, així que la comparació fa servir la llista de servidors desada a la caixa forta.",
             "keystoreDecisionsFailed": "La importació ha acabat, però no s'han pogut aplicar les teves eleccions per als perfils de servidor: {error}",
+            "keystoreListMergeFailed": "La importació ha acabat, però la llista de servidors de la còpia de seguretat no s'ha pogut combinar amb la d'aquest dispositiu: {error}",
+            "keystorePartitionSkipped": "La partició de comptes de la còpia de seguretat no es pot desbloquejar en aquest dispositiu i s'ha deixat fora. Importa amb Sobreescriure per restaurar aquella partició sencera.",
             "exportKeystoreDesc": "Exportar totes les credencials xifrades a un fitxer de còpia de seguretat",
             "importKeystoreDesc": "Importar credencials des d'un fitxer de còpia de seguretat",
             "keystoreExported": "Clauer exportat correctament ({count} entrades)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Esborra les substitucions",
             "uiTokensApplied": "Substitucions aplicades: {count}",
             "uiTokensRejected": "Entrades rebutjades: {count}",
-            "keystorePreferencesFailed": "La importació ha acabat, però no s'han pogut restaurar les teves preferències de l'aplicació: {error}"
+            "keystorePreferencesFailed": "La importació ha acabat, però no s'han pogut restaurar les teves preferències de l'aplicació: {error}",
+            "keystorePreviewBackupUnreadable": "La llista de servidors d'aquesta còpia de seguretat no es pot llegir en aquest dispositiu, així que la comparació fa servir la llista desada a la caixa forta de la còpia de seguretat. La importació igualment substitueix la llista de servidors d'aquest dispositiu."
         },
         "devtools": {
             "title": "AeroTools",

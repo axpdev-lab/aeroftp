@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (från säkerhetskopia)",
             "keystorePreviewLocalFromVault": "Enhetens lista över serverprofiler kunde inte läsas, så jämförelsen använder serverlistan som finns i valvet.",
             "keystoreDecisionsFailed": "Importen är klar, men dina val för serverprofilerna kunde inte tillämpas: {error}",
+            "keystoreListMergeFailed": "Importen är klar, men serverlistan från säkerhetskopian kunde inte slås ihop med listan på den här enheten: {error}",
+            "keystorePartitionSkipped": "Säkerhetskopians kontopartition kan inte låsas upp på den här enheten och utelämnades. Importera med Skriv över för att återställa hela partitionen.",
             "exportKeystoreDesc": "Exportera alla krypterade uppgifter till en säkerhetskopia",
             "importKeystoreDesc": "Importera uppgifter från en säkerhetskopia",
             "keystoreExported": "Nyckelarkiv exporterat ({count} poster)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Rensa åsidosättningar",
             "uiTokensApplied": "Tillämpade åsidosättningar: {count}",
             "uiTokensRejected": "Avvisade poster: {count}",
-            "keystorePreferencesFailed": "Importen är klar, men dina appinställningar kunde inte återställas: {error}"
+            "keystorePreferencesFailed": "Importen är klar, men dina appinställningar kunde inte återställas: {error}",
+            "keystorePreviewBackupUnreadable": "Serverlistan i den här säkerhetskopian kan inte läsas på den här enheten, så jämförelsen använder listan som finns i säkerhetskopians valv. Importen ersätter ändå serverlistan på den här enheten."
         },
         "devtools": {
             "title": "AeroTools",

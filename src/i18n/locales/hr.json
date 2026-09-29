@@ -820,6 +820,8 @@
             "keystoreCopyName": "{name} (iz sigurnosne kopije)",
             "keystorePreviewLocalFromVault": "Popis profila poslužitelja ovog uređaja nije moguće pročitati, pa usporedba koristi popis poslužitelja spremljen u trezoru.",
             "keystoreDecisionsFailed": "Uvoz je završen, ali vaši odabiri za profile poslužitelja nisu primijenjeni: {error}",
+            "keystoreListMergeFailed": "Uvoz je završen, ali popis poslužitelja iz sigurnosne kopije nije spojen s popisom ovog uređaja: {error}",
+            "keystorePartitionSkipped": "Particija računa sigurnosne kopije ne može se otključati na ovom uređaju i izostavljena je. Uvezite s opcijom Prebriši da biste tu particiju vratili u cijelosti.",
             "exportKeystoreDesc": "Izvezi sve kriptirane vjerodajnice u datoteku sigurnosne kopije",
             "importKeystoreDesc": "Uvezi vjerodajnice iz datoteke sigurnosne kopije",
             "keystoreExported": "Trezor uspješno izvezen ({count} stavki)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Očisti nadjačavanja",
             "uiTokensApplied": "Primijenjena nadjačavanja: {count}",
             "uiTokensRejected": "Odbijeni unosi: {count}",
-            "keystorePreferencesFailed": "Uvoz je završen, ali vaše postavke aplikacije nije bilo moguće vratiti: {error}"
+            "keystorePreferencesFailed": "Uvoz je završen, ali vaše postavke aplikacije nije bilo moguće vratiti: {error}",
+            "keystorePreviewBackupUnreadable": "Popis poslužitelja u ovoj kopiji ne može se pročitati na ovom uređaju, pa usporedba koristi popis pohranjen u trezoru kopije. Uvoz ipak zamjenjuje popis poslužitelja na ovom uređaju."
         },
         "devtools": {
             "title": "AeroTools",
