@@ -893,7 +893,12 @@ impl OneDriveProvider {
         basename: &str,
         parent_id: &str,
     ) -> Result<Vec<String>, ProviderError> {
-        const MAX_PAGES: usize = 5;
+        // Every page is read before the caller decides that the path has one
+        // match: a second item of the name on a page never read would make
+        // the first look like the only one, and it would be purged. A bin
+        // that does not end within `MAX_PAGES` is refused, not read as
+        // complete.
+        const MAX_PAGES: usize = 25;
         let mut url = format!(
             "{}/me/drive/special/deleted/children?$top=200",
             self.graph_api()
@@ -933,7 +938,12 @@ impl OneDriveProvider {
             pages += 1;
             match result.next_link {
                 Some(next) if pages < MAX_PAGES => url = next,
-                _ => return Ok(matches),
+                Some(_) => {
+                    return Err(ProviderError::ServerError(format!(
+                        "Not purged: the recycle bin did not end within {MAX_PAGES} pages, so a second {basename} cannot be ruled out"
+                    )))
+                }
+                None => return Ok(matches),
             }
         }
     }
@@ -3107,18 +3117,24 @@ mod tests {
         use axum::{routing::any, Json, Router};
         let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let seen = requests.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        // `{base}` in an answer becomes the server's own origin, for a link
+        // Graph gives absolute (`@odata.nextLink`).
+        let base = format!("http://{addr}");
         let app = Router::new().fallback(any(move |request: axum::extract::Request| {
             let seen = seen.clone();
+            let base = base.clone();
             async move {
                 let method = request.method().clone();
                 let path = request.uri().path().to_string();
                 seen.lock().unwrap().push(format!("{method} {path}"));
                 let (status, body) = answer(&method, &path);
+                let body: serde_json::Value =
+                    serde_json::from_str(&body.to_string().replace("{base}", &base)).unwrap();
                 (status, Json(body))
             }
         }));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
         });
@@ -3327,6 +3343,57 @@ mod tests {
         let outcome = p.delete_permanent("/a.txt").await;
         assert!(
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            !requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|r| r.starts_with("DELETE")),
+            "{:?}",
+            requests.lock().unwrap()
+        );
+        server.abort();
+    }
+
+    /// The recycle-bin lookup stopped after its page limit and returned
+    /// what it had: a match on the first page was purged while pages never
+    /// read could hold a second item of the name. A bin that does not end
+    /// within the limit refuses the purge.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_a_recycle_bin_it_cannot_read_to_the_end() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "ROOT", "name": "root", "size": 0, "folder": {} }),
+            ),
+            (&Method::GET, "/v1.0/me/drive/special/deleted/children") => (
+                StatusCode::OK,
+                serde_json::json!({
+                    "value": [{ "id": "T1", "name": "a.txt", "parentReference": { "id": "ROOT" } }],
+                    "@odata.nextLink": "{base}/v1.0/me/drive/special/deleted/children/more",
+                }),
+            ),
+            // A bin that never ends: every further page is empty and links on.
+            (&Method::GET, "/v1.0/me/drive/special/deleted/children/more") => (
+                StatusCode::OK,
+                serde_json::json!({
+                    "value": [],
+                    "@odata.nextLink": "{base}/v1.0/me/drive/special/deleted/children/more",
+                }),
+            ),
+            (&Method::DELETE, _) => (StatusCode::NO_CONTENT, serde_json::Value::Null),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({ "error": { "code": "itemNotFound" } }),
+            ),
+        })
+        .await;
+        let outcome = p.delete_permanent("/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("pages")),
             "{outcome:?}"
         );
         assert!(

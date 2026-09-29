@@ -2062,28 +2062,59 @@ impl KDriveProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let url = self.api_url_v3("/trash");
-        let resp = self.get_with_retry(&url).await?;
+        // Every page is read: `delete_permanent` decides from this listing
+        // whether the path has one trashed item, and a second item of the
+        // name on a page never read would make the first look like the only
+        // one. A listing that does not end within `MAX_PAGES` is an error,
+        // not a shorter trash.
+        const MAX_PAGES: usize = 200;
+        let mut files = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut complete = false;
+        for _ in 0..MAX_PAGES {
+            let mut url = self.api_url_v3("/trash");
+            if let Some(cursor) = &cursor {
+                url.push_str("?cursor=");
+                url.push_str(&urlencoding::encode(cursor));
+            }
+            let resp = self.get_with_retry(&url).await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(api_failure("List trash failed", Some(status), &body));
+            let status = resp.status();
+            if !status.is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(api_failure("List trash failed", Some(status), &body));
+            }
+
+            let api_resp: ApiResponse<TrashPayload> = resp
+                .json()
+                .await
+                .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+            let payload = api_resp.data.ok_or_else(|| {
+                ProviderError::ParseError("No trash data in response".to_string())
+            })?;
+
+            match payload {
+                TrashPayload::Paginated {
+                    data,
+                    has_more: Some(true),
+                    cursor: Some(next),
+                } => {
+                    files.extend(data);
+                    cursor = Some(next);
+                }
+                TrashPayload::Paginated { data, .. } | TrashPayload::Flat(data) => {
+                    files.extend(data);
+                    complete = true;
+                    break;
+                }
+            }
         }
-
-        let api_resp: ApiResponse<TrashPayload> = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
-
-        let payload = api_resp
-            .data
-            .ok_or_else(|| ProviderError::ParseError("No trash data in response".to_string()))?;
-
-        let files = match payload {
-            TrashPayload::Paginated { data, .. } => data,
-            TrashPayload::Flat(data) => data,
-        };
+        if !complete {
+            return Err(ProviderError::ServerError(format!(
+                "The trash listing did not end within {MAX_PAGES} pages"
+            )));
+        }
 
         let entries = files
             .iter()
@@ -2756,6 +2787,20 @@ mod tests {
         KDriveProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_on_kdrive_trash_paged(folders, trashed, usize::MAX).await
+    }
+
+    /// [`provider_on_kdrive_trash`] listing the trash `per_page` items at a
+    /// time in the paginated shape (`data`, `has_more`, `cursor`) while items
+    /// remain, and the flat array when they fit in one answer.
+    async fn provider_on_kdrive_trash_paged(
+        folders: &'static [(i64, &'static str)],
+        trashed: &'static [(i64, &'static str, i64)],
+        per_page: usize,
+    ) -> (
+        KDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         use axum::response::IntoResponse;
         use std::sync::{Arc, Mutex};
         let purges: Arc<Mutex<Vec<String>>> = Arc::default();
@@ -2765,6 +2810,12 @@ mod tests {
                 let seen = Arc::clone(&seen);
                 async move {
                     let path = req.uri().path().to_string();
+                    let cursor: usize = req
+                        .uri()
+                        .query()
+                        .and_then(|q| q.strip_prefix("cursor="))
+                        .and_then(|c| c.parse().ok())
+                        .unwrap_or(0);
                     let ok = |data: serde_json::Value| {
                         axum::Json(serde_json::json!({ "result": "success", "data": data }))
                             .into_response()
@@ -2779,12 +2830,23 @@ mod tests {
                             .iter()
                             .map(|(id, name)| serde_json::json!({ "id": id, "name": name, "type": "dir" }))
                             .collect::<Vec<_>>())),
-                        "/3/drive/987654/trash" => ok(serde_json::json!(trashed
-                            .iter()
-                            .map(|(id, name, parent)| serde_json::json!({
-                                "id": id, "name": name, "type": "file", "parent_id": parent,
+                        "/3/drive/987654/trash" => {
+                            let items: Vec<serde_json::Value> = trashed
+                                .iter()
+                                .map(|(id, name, parent)| serde_json::json!({
+                                    "id": id, "name": name, "type": "file", "parent_id": parent,
+                                }))
+                                .collect();
+                            if per_page >= items.len() {
+                                return ok(serde_json::json!(items));
+                            }
+                            let to = items.len().min(cursor.saturating_add(per_page));
+                            ok(serde_json::json!({
+                                "data": items[cursor.min(items.len())..to],
+                                "has_more": to < items.len(),
+                                "cursor": (to < items.len()).then(|| to.to_string()),
                             }))
-                            .collect::<Vec<_>>())),
+                        }
                         _ => ok(serde_json::json!([])),
                     }
                 }
@@ -2831,6 +2893,29 @@ mod tests {
     async fn a_permanent_delete_refuses_two_trashed_items_of_one_name() {
         let (mut provider, purges) =
             provider_on_kdrive_trash(&[(22, "new")], &[(31, "a.txt", 22), (32, "a.txt", 22)]).await;
+        let outcome = provider.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            purges.lock().unwrap().is_empty(),
+            "{:?}",
+            purges.lock().unwrap()
+        );
+    }
+
+    /// The trash listing read its first page only: with the two generations
+    /// of `a.txt` on two pages, the first looked like the only one and was
+    /// purged. Every page is read before the purge is decided.
+    #[tokio::test]
+    async fn a_permanent_delete_reads_every_trash_page_before_it_decides() {
+        let (mut provider, purges) = provider_on_kdrive_trash_paged(
+            &[(22, "new")],
+            &[(31, "a.txt", 22), (32, "a.txt", 22)],
+            1,
+        )
+        .await;
         let outcome = provider.delete_permanent("/new/a.txt").await;
         assert!(
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
