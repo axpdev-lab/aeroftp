@@ -239,15 +239,21 @@ mod imp {
         let mut out = Vec::with_capacity(bytes.len());
         let mut i = 0;
         while i < bytes.len() {
-            if bytes[i] == b'\\'
+            // Three octal digits reach 511: computed wide, and one above a
+            // byte (only a hand-edited /etc/mtab can hold it) stays as written.
+            let escaped = (bytes[i] == b'\\'
                 && i + 3 < bytes.len()
                 && bytes[i + 1..i + 4]
                     .iter()
-                    .all(|b| (b'0'..=b'7').contains(b))
-            {
-                let value =
-                    (bytes[i + 1] - b'0') * 64 + (bytes[i + 2] - b'0') * 8 + (bytes[i + 3] - b'0');
-                out.push(value);
+                    .all(|b| (b'0'..=b'7').contains(b)))
+            .then(|| {
+                bytes[i + 1..i + 4]
+                    .iter()
+                    .fold(0u32, |value, digit| value * 8 + u32::from(digit - b'0'))
+            })
+            .and_then(|value| u8::try_from(value).ok());
+            if let Some(byte) = escaped {
+                out.push(byte);
                 i += 4;
             } else {
                 out.push(bytes[i]);
@@ -450,6 +456,19 @@ mod imp {
                 parse_mount_table(table),
                 vec![PathBuf::from("/media/me/My Drive"), PathBuf::from("/proc")]
             );
+        }
+
+        /// Pre-release review of 4.2.1 (L2): `\4xx` to `\7xx` computed the
+        /// first digit times 64 in a byte, which overflows (a panic in a debug
+        /// build, a wrong path in release). `/proc/mounts` never writes one,
+        /// the user-editable `/etc/mtab` fallback can. Above 255 an escape is
+        /// not a byte and stays as written.
+        #[test]
+        fn an_octal_escape_above_one_byte_is_kept_as_written() {
+            assert_eq!(unescape_octal("/mnt/a\\400b"), "/mnt/a\\400b");
+            assert_eq!(unescape_octal("/mnt/\\777"), "/mnt/\\777");
+            assert_eq!(unescape_octal("/mnt/\\101\\040x"), "/mnt/A x");
+            assert_eq!(unescape_octal("/mnt/\\303\\251"), "/mnt/\u{e9}");
         }
 
         #[test]
