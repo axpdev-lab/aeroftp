@@ -1528,7 +1528,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }
 
             // In expert mode, the user already confirmed via the approval panel -
-            // skip the native OS dialog to avoid double-confirmation.
+            // skip the native OS dialog to avoid double-confirmation. The backend
+            // still opens its window for a tool that needs it on every call
+            // (delete, shell, any High tool): the webview alone cannot approve one.
             // In safe/normal mode, always show both (defense in depth).
             // In extreme mode, tools are auto-approved so panelApproved is never true here.
             const mode = agentModeRef.current;

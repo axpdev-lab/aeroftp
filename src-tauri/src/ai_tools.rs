@@ -169,20 +169,40 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
     }
 }
 
+/// Whether a tool may be allowed "for the rest of this chat". Fails closed:
+/// a tool the registry does not know, or classifies `High`, is approved one
+/// call at a time, and the explicit list below keeps the Medium tools that
+/// still destroy data (trash, extraction over files, checkpoint restore...).
+/// A grant refused here also cannot skip the approval window (see
+/// [`approval_window_required`]).
 fn allows_session_grant(tool_name: &str, args: &Value) -> bool {
-    if tool_name == "shell_execute" {
+    // `server_exec` is `High` for its mutating operations; its read-only
+    // ones are decided by the arguments and keep the chat-wide grant.
+    if tool_name == "server_exec" {
+        return !server_exec_is_mutating(args);
+    }
+
+    // A sync start can delete under a delete-enabled profile.
+    if tool_name == "sync_control"
+        && !matches!(
+            args.get("action").and_then(|value| value.as_str()),
+            Some("status" | "stop")
+        )
+    {
         return false;
     }
 
-    if (tool_name == "server_exec" && server_exec_is_mutating(args))
-        || tool_name == "cross_profile_transfer"
+    if crate::ai_core::tools::find_tool(tool_name)
+        .is_none_or(|def| def.danger == crate::ai_core::tools::DangerLevel::High)
     {
         return false;
     }
 
     !matches!(
         tool_name,
-        "remote_delete"
+        "shell_execute"
+            | "cross_profile_transfer"
+            | "remote_delete"
             | "local_delete"
             | "local_trash"
             | "archive_decompress"
@@ -575,8 +595,10 @@ pub(crate) async fn ensure_ai_tool_approval(
             return Err(AI_APPROVAL_REQUIRED_REASON.to_string());
         };
 
+        // A chat-wide grant covers the tool in the context it was given in
+        // (working folder, connected server), never another one.
         let scope_matches = if grant.remember_for_session {
-            true
+            grant.scope_key == session_scope_key
         } else {
             grant.scope_key == scope_key
         };
@@ -1969,6 +1991,19 @@ pub async fn prepare_ai_tool_approval(
     .await)
 }
 
+/// Whether the approval window has to be shown for `request`.
+///
+/// `skip_native_dialog` is the chat webview's word that it already showed
+/// its own approval panel (expert mode), so the webview alone decides it.
+/// It is honoured only for a tool that could also be allowed for the rest
+/// of the chat: delete, trash, shell, extraction, a mutating `server_exec`,
+/// a sync start, any `High` tool, any tool the registry does not know and a
+/// `high` plugin tool always get the window, which only the backend opens
+/// and only the user can answer.
+fn approval_window_required(skip_native_dialog: bool, request: &AiToolApprovalRequest) -> bool {
+    !skip_native_dialog || !request.allow_session_grant
+}
+
 #[tauri::command]
 pub async fn grant_ai_tool_approval(
     app: tauri::AppHandle,
@@ -1989,12 +2024,13 @@ pub async fn grant_ai_tool_approval(
     }
 
     // When the frontend already showed an approval panel (expert mode),
-    // skip the approval window to avoid double-confirmation.
+    // skip the approval window to avoid double-confirmation, except for the
+    // tools that need it on every call (see `approval_window_required`).
     // In safe/normal mode, always show the approval window as a second factor.
     // It is a separate window that only the backend opens and only it can
     // answer (see `ai_approval_window`), so the chat webview cannot approve.
     let mut remember_for_session = remember_for_session;
-    if !skip_native_dialog {
+    if approval_window_required(skip_native_dialog, &request) {
         let (action, details) = split_approval_message(&request.message);
         let decision = crate::ai_approval_window::ask(
             &app,
@@ -2223,6 +2259,126 @@ mod session_grant_tests {
         )
         .await;
         assert!(other_chat.approval_required);
+    }
+
+    /// M8 of the 4.2.1 review: the chat-wide grant was refused by tool name
+    /// only, so every destructive tool missing from the list (and any added
+    /// later) could be allowed for the rest of the chat. A `High` tool of
+    /// the registry never can, whatever the list says.
+    #[test]
+    fn no_high_danger_tool_can_be_allowed_for_the_rest_of_the_chat() {
+        use crate::ai_core::tools::{DangerLevel, TOOL_DEFINITIONS};
+        let granted: Vec<&str> = TOOL_DEFINITIONS
+            .iter()
+            .filter(|def| def.danger == DangerLevel::High)
+            .filter(|def| allows_session_grant(def.name, &json!({})))
+            .map(|def| def.name)
+            .collect();
+        assert!(
+            granted.is_empty(),
+            "chat-wide grant allowed for {granted:?}"
+        );
+    }
+
+    /// A sync start can delete under a delete-enabled profile, and a tool the
+    /// registry does not know has no danger level to trust: neither is
+    /// granted for the chat. Reading a sync status and a read-only
+    /// `server_exec` keep the chat-wide grant.
+    #[test]
+    fn sync_start_and_unknown_tools_are_not_granted_for_the_chat() {
+        assert!(!allows_session_grant(
+            "sync_control",
+            &json!({ "action": "start" })
+        ));
+        assert!(!allows_session_grant("a_tool_added_later", &json!({})));
+        assert!(allows_session_grant(
+            "sync_control",
+            &json!({ "action": "status" })
+        ));
+        assert!(allows_session_grant(
+            "server_exec",
+            &json!({ "operation": "ls" })
+        ));
+        assert!(allows_session_grant("local_mkdir", &json!({})));
+    }
+
+    /// M8, second half: a chat-wide grant presented by id was accepted in any
+    /// context, so a grant given in `/work` let the same tool run against
+    /// another folder or server. It must hold only where it was given; a
+    /// presentation in another context withdraws it, as for a one-shot grant.
+    #[tokio::test]
+    async fn a_chat_grant_presented_by_id_holds_only_in_its_own_context() {
+        let session = format!("s-{}", Uuid::new_v4());
+        let grant_id = Uuid::new_v4().to_string();
+        AI_TOOL_APPROVAL_GRANTS.lock().await.insert(
+            grant_id.clone(),
+            AiToolApprovalGrant {
+                session_key: cache_session_key(Some(&session)),
+                tool_name: "local_mkdir".into(),
+                scope_key: session_key_for("local_mkdir"),
+                created_at_ms: current_time_ms(),
+                expires_at_ms: current_time_ms() + AI_SESSION_GRANT_TTL_MS,
+                remember_for_session: true,
+            },
+        );
+        ensure_ai_tool_approval(
+            Some(&session),
+            "local_mkdir",
+            &key("local_mkdir", "/work/y"),
+            &session_key_for("local_mkdir"),
+            Some(&grant_id),
+        )
+        .await
+        .expect("the grant holds in its own context");
+        let elsewhere = build_session_scope_key("local_mkdir", Some("/elsewhere"), None).unwrap();
+        let outcome = ensure_ai_tool_approval(
+            Some(&session),
+            "local_mkdir",
+            &build_tool_cache_key(
+                "local_mkdir",
+                &json!({ "path": "/elsewhere/x" }),
+                Some("/elsewhere"),
+                None,
+            )
+            .unwrap(),
+            &elsewhere,
+            Some(&grant_id),
+        )
+        .await;
+        assert!(
+            outcome.is_err(),
+            "a /work grant let the tool run in /elsewhere"
+        );
+        let withdrawn = ensure_ai_tool_approval(
+            Some(&session),
+            "local_mkdir",
+            &key("local_mkdir", "/work/z"),
+            &session_key_for("local_mkdir"),
+            Some(&grant_id),
+        )
+        .await;
+        assert!(withdrawn.is_err(), "the mismatch withdraws the grant");
+    }
+
+    /// M7 of the 4.2.1 review: `skip_native_dialog` comes from the chat
+    /// webview. It may spare the approval window only for a tool that could
+    /// also be allowed for the chat, never for delete, shell, extraction or
+    /// any `High` tool, so the webview alone can never approve one.
+    #[test]
+    fn the_webview_cannot_skip_the_window_for_a_tool_that_needs_it_every_time() {
+        let request = |allow_session_grant| AiToolApprovalRequest {
+            session_key: "s".into(),
+            tool_name: "t".into(),
+            scope_key: "k".into(),
+            session_scope_key: "k".into(),
+            created_at_ms: 0,
+            allow_session_grant,
+            message: "m".into(),
+        };
+        assert!(approval_window_required(true, &request(false)));
+        assert!(approval_window_required(false, &request(false)));
+        assert!(approval_window_required(false, &request(true)));
+        assert!(!approval_window_required(true, &request(true)));
     }
 }
 
